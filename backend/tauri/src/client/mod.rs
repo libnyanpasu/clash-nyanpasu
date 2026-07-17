@@ -31,7 +31,7 @@ use crate::{
         },
         profiles::{
             CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
-            ports::{ProfileFsPort, SubscriptionFetcher},
+            ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
         },
         session_state::SessionStateSnapshot,
     },
@@ -298,6 +298,7 @@ impl NyanpasuClient {
                 profiles_path,
                 file_service.clone() as Arc<dyn ProfileFsPort>,
                 file_service.clone() as Arc<dyn SubscriptionFetcher>,
+                file_service.clone() as Arc<dyn ProfileMaterializationPort>,
                 Arc::new(rebuild::ChannelRebuildNotifier::new(tx)),
             )
             .await?;
@@ -786,9 +787,12 @@ impl NyanpasuClient {
         // Post-commit side-effect failures are degraded results, not
         // transaction failures (T04 contract): the state is already
         // persisted, so surface them instead of dropping them.
-        for warning in &report.warnings {
+        for degradation in &report.degradations {
             tracing::warn!(
-                warning = %warning,
+                phase = ?degradation.phase,
+                code = ?degradation.code,
+                retryable = degradation.code.retryable(),
+                message = %degradation.message,
                 "profile commit completed with a degraded side effect",
             );
         }
@@ -927,13 +931,16 @@ impl NyanpasuClient {
                 // preserve the legacy all-or-nothing observable behavior. Log if the
                 // rollback itself fails so the orphaned placeholder is not silent —
                 // including file-removal failures, which the actor reports as
-                // warnings on an otherwise committed delete.
+                // internal degradations on an otherwise committed delete.
                 match self.inner.profiles.delete(created.clone()).await {
                     Ok(report) => {
-                        for warning in &report.warnings {
+                        for degradation in &report.degradations {
                             tracing::warn!(
                                 uid = %created,
-                                warning = %warning,
+                                phase = ?degradation.phase,
+                                code = ?degradation.code,
+                                retryable = degradation.code.retryable(),
+                                message = %degradation.message,
                                 "placeholder cleanup after failed import left degraded state",
                             );
                         }
@@ -1501,7 +1508,11 @@ mod tests {
             ClashLegacyBridge, NoopPreparedLegacyMirror, PreparedLegacyMirror, VergeLegacyBridge,
             WindowLegacyBridge,
         },
-        profiles::ports::{MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher},
+        profiles::ports::{
+            CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
+            MockProfileMaterializationPort, MockRebuildNotifier, MockSubscriptionFetcher,
+            PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
+        },
     };
     use async_trait::async_trait;
     use camino::Utf8PathBuf;
@@ -1920,6 +1931,35 @@ mod tests {
         (application, session_state, clash_config)
     }
 
+    fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
+        materialization
+            .expect_prepare_file_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
+        materialization.expect_promote().returning(|_| Ok(()));
+        materialization.expect_complete().returning(|_| Ok(()));
+        materialization.expect_compensate().returning(|_| Ok(()));
+        materialization
+            .expect_prepare_cleanup()
+            .returning(|_, _| Ok(PreparedCleanup::new("cleanup".into())));
+        materialization
+            .expect_activate_cleanup()
+            .returning(|_| Ok(()));
+        materialization
+            .expect_cancel_cleanup()
+            .returning(|_| Ok(()));
+        materialization
+            .expect_retry_cleanup()
+            .returning(|_, _| Ok(CleanupOutcome::Removed));
+        Arc::new(materialization)
+    }
+
     async fn test_client(dir: &TempDir) -> NyanpasuClient {
         test_client_with_system_dns(dir, Arc::new(NoopSystemDnsCache)).await
     }
@@ -1933,6 +1973,7 @@ mod tests {
             temp_config_path(dir, "profiles.yaml"),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
             Arc::new(MockRebuildNotifier::new()),
         )
         .await
@@ -2060,6 +2101,7 @@ mod tests {
             temp_config_path(dir, "profiles.yaml"),
             file_service.clone() as Arc<dyn ProfileFsPort>,
             fetcher,
+            file_service.clone() as Arc<dyn ProfileMaterializationPort>,
             Arc::new(rebuild::ChannelRebuildNotifier::new(tx)),
         )
         .await

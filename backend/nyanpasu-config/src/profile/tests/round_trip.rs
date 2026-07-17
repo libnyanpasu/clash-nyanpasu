@@ -7,6 +7,29 @@ fn parse(yaml: &str) -> Profiles {
 }
 
 #[test]
+fn durable_revision_defaults_for_legacy_documents_and_round_trips_when_advanced() {
+    let mut profiles = parse("items: []\n");
+    assert_eq!(profiles.revision(), 0);
+
+    assert_eq!(profiles.bump_revision().unwrap(), 1);
+    assert_eq!(profiles.bump_revision().unwrap(), 2);
+    let dumped = serde_yaml_ng::to_string(&profiles).expect("serializes");
+    assert!(dumped.contains("revision: 2"));
+    assert_eq!(parse(&dumped).revision(), 2);
+}
+
+#[test]
+fn durable_revision_overflow_is_a_domain_error() {
+    let mut profiles = parse("revision: 18446744073709551615\nitems: []\n");
+
+    assert_eq!(
+        profiles.bump_revision(),
+        Err(ProfileRevisionError::Overflow)
+    );
+    assert_eq!(profiles.revision(), u64::MAX);
+}
+
+#[test]
 fn metadata_missing_custom_name_defaults_to_user_owned() {
     // Documents persisted before provenance tracking omit `custom_name`; the
     // default must be `true` so a refresh never renames a pre-existing profile.

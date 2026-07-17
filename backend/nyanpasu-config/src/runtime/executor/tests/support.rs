@@ -191,15 +191,15 @@ pub fn profiles_with(
     valid: &[&str],
     items: Vec<ProfileItem>,
 ) -> Profiles {
-    Profiles {
-        current: current.map(pid),
-        global_transforms: global_transforms.iter().map(|t| pid(t)).collect(),
-        valid: valid.iter().map(|v| (*v).to_string()).collect(),
-        items: items
-            .into_iter()
-            .map(|item| (item.uid.clone(), item))
-            .collect(),
-    }
+    let mut profiles = Profiles::default();
+    profiles.current = current.map(pid);
+    profiles.global_transforms = global_transforms.iter().map(|t| pid(t)).collect();
+    profiles.valid = valid.iter().map(|v| (*v).to_string()).collect();
+    profiles.items = items
+        .into_iter()
+        .map(|item| (item.uid.clone(), item))
+        .collect();
+    profiles
 }
 
 #[cfg(test)]

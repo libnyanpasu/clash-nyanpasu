@@ -13,7 +13,7 @@ use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use crate::state::profiles::{
     CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
     ProfilesError, RefreshOrigin, ReorderOp,
-    ports::{ProfileFsPort, RebuildNotifier, SubscriptionFetcher},
+    ports::{ProfileFsPort, ProfileMaterializationPort, RebuildNotifier, SubscriptionFetcher},
 };
 
 pub const PROFILES_READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -32,6 +32,7 @@ impl ProfilesClient {
         profiles_path: Utf8PathBuf,
         fs: Arc<dyn ProfileFsPort>,
         fetcher: Arc<dyn SubscriptionFetcher>,
+        materialization: Arc<dyn ProfileMaterializationPort>,
         notifier: Arc<dyn RebuildNotifier>,
     ) -> anyhow::Result<Self> {
         let should_load = profiles_path.exists();
@@ -64,6 +65,7 @@ impl ProfilesClient {
                 manager,
                 fs,
                 fetcher,
+                materialization,
                 notifier,
             },
         )
@@ -250,54 +252,6 @@ impl ProfilesClient {
             Err(e) => Err(ProfilesError::Rpc(e.to_string())),
         }
     }
-
-    #[cfg(test)]
-    fn debug_pending_refresh(
-        &self,
-        uid: ProfileId,
-    ) -> (
-        tokio::sync::oneshot::Receiver<()>,
-        tokio::task::JoinHandle<Result<CommitReport, ProfilesError>>,
-    ) {
-        let (inserted, inserted_rx) = tokio::sync::oneshot::channel();
-        let client = self.clone();
-        let handle = tokio::spawn(async move {
-            client
-                .call(
-                    |reply| ProfilesActorMessage::DebugInsertPendingRefresh {
-                        uid,
-                        reply,
-                        inserted,
-                    },
-                    None,
-                )
-                .await
-        });
-        (inserted_rx, handle)
-    }
-
-    #[cfg(test)]
-    async fn debug_cast_commit_refreshed(
-        &self,
-        uid: ProfileId,
-        url: url::Url,
-        outcome: crate::state::profiles::RefreshOutcome,
-    ) {
-        let _ = self
-            .inner
-            .actor_ref
-            .cast(ProfilesActorMessage::CommitRefreshed { uid, url, outcome });
-        tokio::task::yield_now().await;
-    }
-
-    #[cfg(test)]
-    async fn debug_cast_external_changed(&self, uid: ProfileId) {
-        let _ = self
-            .inner
-            .actor_ref
-            .cast(ProfilesActorMessage::ExternalFileChanged { uid });
-        tokio::task::yield_now().await;
-    }
 }
 
 impl Drop for ProfilesClientInner {
@@ -312,7 +266,10 @@ mod tests {
     use crate::{
         service::profile_file::{ProfileFileService, SelfProxyPortSource},
         state::profiles::ports::{
-            FetchedSubscription, MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher,
+            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport, MockProfileFsPort,
+            MockProfileMaterializationPort, MockRebuildNotifier, MockSubscriptionFetcher,
+            PreparedCleanup, PreparedMaterialization, ProfileDegradationCode,
+            ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
         },
         utils::path::PathResolver,
     };
@@ -333,6 +290,139 @@ mod tests {
         }
     }
 
+    fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
+        counted_materialization_port(Arc::new(std::sync::atomic::AtomicUsize::new(0)))
+    }
+
+    fn counted_materialization_port(
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    ) -> Arc<dyn ProfileMaterializationPort> {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization.expect_reconcile().returning(move |_| {
+            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(MaterializationReconcileReport::default())
+        });
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
+        materialization
+            .expect_prepare_file_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
+        materialization.expect_promote().returning(|_| Ok(()));
+        materialization.expect_complete().returning(|_| Ok(()));
+        materialization.expect_compensate().returning(|_| Ok(()));
+        materialization
+            .expect_prepare_cleanup()
+            .returning(|_, _| Ok(PreparedCleanup::new("cleanup".into())));
+        materialization
+            .expect_activate_cleanup()
+            .returning(|_| Ok(()));
+        materialization
+            .expect_cancel_cleanup()
+            .returning(|_| Ok(()));
+        materialization
+            .expect_retry_cleanup()
+            .returning(|_, _| Ok(CleanupOutcome::Removed));
+        Arc::new(materialization)
+    }
+
+    fn failing_state_promote_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
+        materialization
+            .expect_promote()
+            .returning(|_| Err(anyhow::anyhow!("disk full")));
+        materialization.expect_compensate().returning(|_| Ok(()));
+        Arc::new(materialization)
+    }
+
+    fn failing_file_promote_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_file_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
+        materialization
+            .expect_promote()
+            .returning(|_| Err(anyhow::anyhow!("disk full")));
+        materialization.expect_compensate().returning(|_| Ok(()));
+        Arc::new(materialization)
+    }
+
+    fn failing_cleanup_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_cleanup()
+            .returning(|_, _| Ok(PreparedCleanup::new("cleanup".into())));
+        materialization
+            .expect_activate_cleanup()
+            .returning(|_| Ok(()));
+        materialization
+            .expect_retry_cleanup()
+            .returning(|_, _| Err(anyhow::anyhow!("disk on fire")));
+        Arc::new(materialization)
+    }
+
+    fn add_placeholder_request() -> NewProfileRequest {
+        NewProfileRequest {
+            metadata: file_config_item("placeholder").metadata,
+            definition: file_config_item("placeholder").definition,
+        }
+    }
+
+    fn kind_switch_script_definition() -> ProfileDefinition {
+        ProfileDefinition::Transform {
+            transform: TransformDefinition::Script(ScriptTransform {
+                source: ProfileSource::Local {
+                    binding: LocalBinding::Managed {
+                        materialized: MaterializedFile {
+                            file: ManagedProfilePath::new("client-supplied.lua").unwrap(),
+                            updated_at: Some(time::OffsetDateTime::UNIX_EPOCH),
+                        },
+                    },
+                },
+                runtime: ScriptRuntime::Lua,
+            }),
+        }
+    }
+
+    fn assert_no_materialization_artifact_files(config_dir: &std::path::Path) {
+        let root = config_dir
+            .join("profiles")
+            .join(".profile-materialization-v1");
+        if !root.exists() {
+            return;
+        }
+        let mut leftovers = Vec::new();
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                let file_type = entry.file_type().unwrap();
+                if file_type.is_dir() {
+                    stack.push(path);
+                } else {
+                    leftovers.push(path);
+                }
+            }
+        }
+        assert!(
+            leftovers.is_empty(),
+            "successful materialization must not leave private artifacts: {leftovers:?}"
+        );
+    }
+
     pub(crate) fn temp_profiles_path(dir: &TempDir) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).expect("utf-8 temp path")
     }
@@ -343,6 +433,7 @@ mod tests {
             temp_profiles_path(&dir),
             std::sync::Arc::new(fs),
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
             std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
@@ -357,6 +448,23 @@ mod tests {
         assert!(snapshot.current.is_none());
         assert!(snapshot.items.is_empty());
         assert_eq!(snapshot.valid.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn materialization_reconciles_before_client_startup_returns() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let _client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            counted_materialization_port(Arc::clone(&calls)),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .expect("profiles client should spawn");
+
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     pub(crate) fn file_config_item(uid: &str) -> nyanpasu_config::profile::ProfileItem {
@@ -543,6 +651,7 @@ mod tests {
             temp_profiles_path(&dir),
             std::sync::Arc::new(fs),
             fetcher,
+            test_materialization_port(),
             std::sync::Arc::new(notifier),
         )
         .await
@@ -580,14 +689,25 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_downloads_writes_and_commits_subscription() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
-        fs.expect_write_atomic()
-            .withf(|path, content| path.as_str() == "r1.yaml" && content == "proxies: []\n")
-            .times(1)
-            .returning(|_, _| Ok(()));
-        let (client, _dir) =
-            remote_seeded_client(fs, ok_fetch("proxies: []\n"), MockRebuildNotifier::new()).await;
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let client = ProfilesClient::new(
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            Arc::new(ok_fetch("proxies: []\n")),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
 
         let report = client
             .refresh(ProfileId("r1".into()), None)
@@ -603,6 +723,11 @@ mod tests {
             _ => unreachable!(),
         }
         assert!(!report.affects_current);
+        assert_eq!(
+            fs.read(&ManagedProfilePath::new("r1.yaml").unwrap())
+                .unwrap(),
+            "proxies: []\n"
+        );
     }
 
     fn ok_fetch_named(content: &'static str, filename: &'static str) -> MockSubscriptionFetcher {
@@ -624,14 +749,13 @@ mod tests {
         custom_name: bool,
         fetcher: MockSubscriptionFetcher,
     ) -> (ProfilesClient, TempDir) {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
-        fs.expect_write_atomic().returning(|_, _| Ok(()));
+        let fs = MockProfileFsPort::new();
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
             temp_profiles_path(&dir),
             std::sync::Arc::new(fs),
             std::sync::Arc::new(fetcher),
+            test_materialization_port(),
             std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
@@ -706,9 +830,7 @@ mod tests {
     #[tokio::test]
     async fn manual_and_explicit_import_refresh_ignore_server_interval_suggestions() {
         for import_explicit in [None, Some(true)] {
-            let mut fs = MockProfileFsPort::new();
-            fs.expect_ensure_not_symlink().returning(|_| Ok(()));
-            fs.expect_write_atomic().returning(|_, _| Ok(()));
+            let fs = MockProfileFsPort::new();
             let (client, _dir) = remote_seeded_client(
                 fs,
                 suggested_fetch("proxies: []\n", Some(360)),
@@ -737,9 +859,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn import_suggestion_is_committed_and_reschedules_the_timer() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
-        fs.expect_write_atomic().returning(|_, _| Ok(()));
+        let fs = MockProfileFsPort::new();
         let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut fetcher = MockSubscriptionFetcher::new();
         let counter = std::sync::Arc::clone(&fetch_count);
@@ -839,16 +959,19 @@ mod tests {
 
     #[tokio::test]
     async fn import_suggestion_is_not_committed_when_materialization_fails() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
-        fs.expect_write_atomic()
-            .returning(|_, _| Err(anyhow::anyhow!("disk full")));
-        let (client, _dir) = remote_seeded_client(
-            fs,
-            suggested_fetch("proxies: []\n", Some(360)),
-            MockRebuildNotifier::new(),
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(suggested_fetch("proxies: []\n", Some(360))),
+            failing_file_promote_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
         )
-        .await;
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
 
         assert!(
             client
@@ -892,9 +1015,7 @@ mod tests {
             started: std::sync::Mutex::new(Some(started)),
             release: std::sync::Arc::clone(&release_fetch),
         };
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
-        fs.expect_write_atomic().returning(|_, _| Ok(()));
+        let fs = MockProfileFsPort::new();
         let (client, _dir) = remote_seeded_client_with_fetcher(
             fs,
             std::sync::Arc::new(fetcher),
@@ -922,47 +1043,40 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_commit_refreshed_deleted_profile_settles_reply_without_writes() {
-        let removals = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        let mut fs = MockProfileFsPort::new();
-        let observed = std::sync::Arc::clone(&removals);
-        fs.expect_remove().returning(move |path| {
-            observed.lock().unwrap().push(path.as_str().to_string());
-            Ok(())
-        });
-        // No write_atomic expectation: with the write moved into the commit
-        // phase, a refresh settling after delete must not touch the fs.
-        let (client, _dir) = remote_seeded_client(
-            fs,
-            MockSubscriptionFetcher::new(),
+        // A refresh that settles after Delete must not materialize content for
+        // the removed profile; Delete owns its cleanup transaction.
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let release_fetch = std::sync::Arc::new(tokio::sync::Notify::new());
+        let fetcher = HoldingFetcher {
+            started: std::sync::Mutex::new(Some(started)),
+            release: std::sync::Arc::clone(&release_fetch),
+        };
+        let (client, _dir) = remote_seeded_client_with_fetcher(
+            MockProfileFsPort::new(),
+            std::sync::Arc::new(fetcher),
             MockRebuildNotifier::new(),
         )
         .await;
 
-        let (inserted, pending) = client.debug_pending_refresh(ProfileId("r1".into()));
-        inserted.await.unwrap();
+        let c = client.clone();
+        let pending = tokio::spawn(async move { c.refresh(ProfileId("r1".into()), None).await });
+        started_rx.await.unwrap();
         client.delete(ProfileId("r1".into())).await.unwrap();
-        client
-            .debug_cast_commit_refreshed(
-                ProfileId("r1".into()),
-                url::Url::parse("https://example.com/sub").unwrap(),
-                crate::state::profiles::RefreshOutcome::Succeeded {
-                    subscription: SubscriptionInfo::default(),
-                    suggested_update_interval_minutes: None,
-                    content: "proxies: []\n".into(),
-                    filename: None,
-                },
-            )
-            .await;
+        release_fetch.notify_waiters();
 
         let err = pending.await.unwrap().unwrap_err();
         assert!(
             matches!(err, ProfilesError::RefreshFailed { message } if message.contains("deleted"))
         );
-        // Only the delete's own post-op removal; no orphan-cleanup sweep.
-        let removals = removals.lock().unwrap();
-        assert_eq!(removals.iter().filter(|path| *path == "r1.yaml").count(), 1);
-        assert!(!removals.iter().any(|path| path == "r1.js"));
-        assert!(!removals.iter().any(|path| path == "r1.lua"));
+        assert!(
+            client
+                .get()
+                .await
+                .unwrap()
+                .items
+                .get(&ProfileId("r1".into()))
+                .is_none()
+        );
     }
 
     /// Review fix regression pin (2026-07-11): a download committed after the
@@ -970,30 +1084,34 @@ mod tests {
     /// file write, no metadata update.
     #[tokio::test]
     async fn refresh_commit_is_fenced_when_url_changed_mid_download() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_remove().returning(|_| Ok(()));
-        // No write_atomic expectation: the stale commit must never write.
-        let (client, _dir) = remote_seeded_client(
+        let fs = MockProfileFsPort::new();
+        // The stale commit must never materialize or update metadata.
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let release_fetch = std::sync::Arc::new(tokio::sync::Notify::new());
+        let fetcher = HoldingFetcher {
+            started: std::sync::Mutex::new(Some(started)),
+            release: std::sync::Arc::clone(&release_fetch),
+        };
+        let (client, _dir) = remote_seeded_client_with_fetcher(
             fs,
-            MockSubscriptionFetcher::new(),
+            std::sync::Arc::new(fetcher),
             MockRebuildNotifier::new(),
         )
         .await;
 
-        let (inserted, pending) = client.debug_pending_refresh(ProfileId("r1".into()));
-        inserted.await.unwrap();
+        let c = client.clone();
+        let pending = tokio::spawn(async move { c.refresh(ProfileId("r1".into()), None).await });
+        started_rx.await.unwrap();
+
+        let mut replacement = remote_config_item("r1");
+        if let Some(ProfileSource::Remote { url, .. }) = replacement.definition.source_mut() {
+            *url = url::Url::parse("https://old.example.com/replaced").unwrap();
+        }
         client
-            .debug_cast_commit_refreshed(
-                ProfileId("r1".into()),
-                url::Url::parse("https://old.example.com/replaced").unwrap(),
-                crate::state::profiles::RefreshOutcome::Succeeded {
-                    subscription: SubscriptionInfo::default(),
-                    suggested_update_interval_minutes: None,
-                    content: "proxies: []\n".into(),
-                    filename: None,
-                },
-            )
-            .await;
+            .replace_definition(ProfileId("r1".into()), replacement.definition)
+            .await
+            .unwrap();
+        release_fetch.notify_waiters();
 
         let err = pending.await.unwrap().unwrap_err();
         assert!(
@@ -1012,16 +1130,59 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn refresh_commit_is_fenced_when_same_url_definition_changes_mid_download() {
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let release_fetch = Arc::new(tokio::sync::Notify::new());
+        let fetcher = HoldingFetcher {
+            started: std::sync::Mutex::new(Some(started)),
+            release: Arc::clone(&release_fetch),
+        };
+        let (client, _dir) = remote_seeded_client_with_fetcher(
+            MockProfileFsPort::new(),
+            Arc::new(fetcher),
+            MockRebuildNotifier::new(),
+        )
+        .await;
+
+        let refresh_client = client.clone();
+        let pending =
+            tokio::spawn(async move { refresh_client.refresh(ProfileId("r1".into()), None).await });
+        started_rx.await.unwrap();
+        let mut patch = RemoteProfileOptions::new_empty_patch();
+        patch.update_interval_minutes = Some(60);
+        client
+            .patch_remote_options(ProfileId("r1".into()), patch)
+            .await
+            .unwrap();
+        release_fetch.notify_waiters();
+
+        let err = pending.await.unwrap().unwrap_err();
+        assert!(
+            matches!(err, ProfilesError::RefreshFailed { message } if message.contains("changed"))
+        );
+        assert!(
+            client.get().await.unwrap().items[&ProfileId("r1".into())]
+                .definition
+                .source()
+                .unwrap()
+                .materialized()
+                .updated_at
+                .is_none()
+        );
+    }
+
     #[tokio::test(start_paused = true)]
     async fn scheduler_fires_refresh_on_interval() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
-        fs.expect_write_atomic().returning(|_, _| Ok(()));
+        let fs = MockProfileFsPort::new();
         let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let fetched = std::sync::Arc::new(tokio::sync::Notify::new());
         let mut fetcher = MockSubscriptionFetcher::new();
         let counter = std::sync::Arc::clone(&fetch_count);
+        let fetched_notice = std::sync::Arc::clone(&fetched);
         fetcher.expect_fetch().returning(move |_, _| {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            fetched_notice.notify_one();
             Ok(FetchedSubscription {
                 content: "proxies: []\n".into(),
                 filename: None,
@@ -1034,6 +1195,7 @@ mod tests {
             temp_profiles_path(&dir),
             std::sync::Arc::new(fs),
             std::sync::Arc::new(fetcher),
+            test_materialization_port(),
             std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
@@ -1048,13 +1210,10 @@ mod tests {
 
         assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 0);
         tokio::time::advance(std::time::Duration::from_secs(120 * 60 + 1)).await;
-        for _ in 0..200 {
-            if fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 1 {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-        assert!(fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+        tokio::time::timeout(std::time::Duration::from_secs(1), fetched.notified())
+            .await
+            .expect("scheduled refresh should reach the fetcher");
+        assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 1);
         drop(client);
     }
 
@@ -1067,9 +1226,12 @@ mod tests {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             anyhow::bail!("count only")
         });
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_remove().returning(|_| Ok(()));
-        let (client, _dir) = remote_seeded_client(fs, fetcher, MockRebuildNotifier::new()).await;
+        let (client, _dir) = remote_seeded_client(
+            MockProfileFsPort::new(),
+            fetcher,
+            MockRebuildNotifier::new(),
+        )
+        .await;
 
         client
             .replace_definition(ProfileId("r1".into()), file_config_item("r1").definition)
@@ -1107,6 +1269,7 @@ mod tests {
                 temp_profiles_path(&dir),
                 std::sync::Arc::new(MockProfileFsPort::new()),
                 std::sync::Arc::new(MockSubscriptionFetcher::new()),
+                test_materialization_port(),
                 std::sync::Arc::new(MockRebuildNotifier::new()),
             )
             .await
@@ -1124,6 +1287,7 @@ mod tests {
             temp_profiles_path(&dir),
             std::sync::Arc::new(MockProfileFsPort::new()),
             std::sync::Arc::new(fetcher),
+            test_materialization_port(),
             std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
@@ -1139,31 +1303,39 @@ mod tests {
 
     #[tokio::test]
     async fn external_mirror_change_syncs_copy_and_bumps_updated_at() {
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let target = external_path(&target_path);
-
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_read_external()
-            .withf({
-                let target = target.clone();
-                move |observed| observed == &target
-            })
-            .times(1)
-            .returning(|_| Ok("proxies: []\n".into()));
-        fs.expect_write_atomic()
-            .withf(|path, content| path.as_str() == "ext1.yaml" && content == "proxies: []\n")
-            .times(1)
-            .returning(|_, _| Ok(()));
-        let (client, _dir) = test_client_with(fs).await;
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = std::sync::Arc::new(ProfileFileService::new(
+            paths,
+            std::sync::Arc::new(NoProxyPort),
+        ));
+        let client = ProfilesClient::new(
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
         let mut profiles = Profiles::default();
-        profiles.append_item(external_item("ext1", ExternalMode::Mirror, target));
+        profiles.append_item(external_item(
+            "ext1",
+            ExternalMode::Mirror,
+            external_path(&target_path),
+        ));
         client.replace(profiles).await.unwrap();
 
-        client
-            .debug_cast_external_changed(ProfileId("ext1".into()))
-            .await;
+        // Production path: OS watcher casts ExternalFileChanged after the
+        // external binding target changes. Poll with yields (no sleep).
+        std::fs::write(&target_path, "proxies: []\n# touched\n").unwrap();
 
         let snapshot = wait_for_updated_at(&client, "ext1").await;
         assert!(
@@ -1175,64 +1347,92 @@ mod tests {
                 .updated_at
                 .is_some()
         );
+        let mirrored = config_dir.path().join("profiles").join("ext1.yaml");
+        let content = std::fs::read_to_string(mirrored).unwrap();
+        assert!(content.contains("# touched"));
     }
 
     #[tokio::test]
     async fn external_symlink_change_bumps_updated_at_without_copy() {
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let target = external_path(&target_path);
-
-        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = std::sync::Arc::new(ProfileFileService::new(
+            paths,
+            std::sync::Arc::new(NoProxyPort),
+        ));
+        let client = ProfilesClient::new(
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
         let mut profiles = Profiles::default();
-        profiles.append_item(external_item("ext1", ExternalMode::Symlink, target));
+        profiles.append_item(external_item(
+            "ext1",
+            ExternalMode::Symlink,
+            external_path(&target_path),
+        ));
         client.replace(profiles).await.unwrap();
 
-        client
-            .debug_cast_external_changed(ProfileId("ext1".into()))
-            .await;
-
+        std::fs::write(&target_path, "proxies: []\n# touched\n").unwrap();
         wait_for_updated_at(&client, "ext1").await;
     }
 
     #[tokio::test]
     async fn external_background_commit_requests_rebuild_once_for_current() {
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let target = external_path(&target_path);
-
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_read_external()
-            .times(1)
-            .returning(|_| Ok("proxies: []\n".into()));
-        fs.expect_write_atomic().times(1).returning(|_, _| Ok(()));
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = std::sync::Arc::new(ProfileFileService::new(
+            paths,
+            std::sync::Arc::new(NoProxyPort),
+        ));
+        let rebuilds = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut notifier = MockRebuildNotifier::new();
-        notifier.expect_request_rebuild().times(1).returning(|| ());
-        let dir = tempdir().unwrap();
+        let counter = std::sync::Arc::clone(&rebuilds);
+        notifier.expect_request_rebuild().returning(move || {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        });
         let client = ProfilesClient::new(
-            temp_profiles_path(&dir),
-            std::sync::Arc::new(fs),
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
             std::sync::Arc::new(notifier),
         )
         .await
         .unwrap();
         let mut profiles = Profiles::default();
-        profiles.append_item(external_item("ext1", ExternalMode::Mirror, target));
+        profiles.append_item(external_item(
+            "ext1",
+            ExternalMode::Mirror,
+            external_path(&target_path),
+        ));
         profiles.set_current(Some(ProfileId("ext1".into())));
         client.replace(profiles).await.unwrap();
 
-        client
-            .debug_cast_external_changed(ProfileId("ext1".into()))
-            .await;
-
+        std::fs::write(&target_path, "proxies: []\n# touched\n").unwrap();
         wait_for_updated_at(&client, "ext1").await;
+        assert_eq!(rebuilds.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
-    #[ignore = "relies on real OS file events; flaky on loaded CI runners - run manually"]
     async fn external_watcher_smoke_mirror_real_file_event() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
@@ -1251,8 +1451,9 @@ mod tests {
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
         let client = ProfilesClient::new(
             profiles_path,
-            fs,
+            fs.clone() as Arc<dyn ProfileFsPort>,
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
             std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
@@ -1269,28 +1470,19 @@ mod tests {
             .await
             .unwrap();
 
-        let managed_path = config_dir.path().join("profiles").join("ext1.yaml");
-        tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            loop {
-                let updated = client
-                    .get()
-                    .await
-                    .unwrap()
-                    .items
-                    .get(&ProfileId("ext1".into()))
-                    .and_then(|item| item.definition.source())
-                    .and_then(|source| source.materialized().updated_at)
-                    .is_some();
-                let mirrored = std::fs::read_to_string(&managed_path)
-                    .is_ok_and(|content| content.contains("mode: rule"));
-                if updated && mirrored {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-            }
-        })
-        .await
-        .expect("real external watcher event should commit within 5s");
+        let snapshot = wait_for_updated_at(&client, "ext1").await;
+        assert!(
+            snapshot.items[&ProfileId("ext1".into())]
+                .definition
+                .source()
+                .unwrap()
+                .materialized()
+                .updated_at
+                .is_some()
+        );
+        let content = std::fs::read_to_string(config_dir.path().join("profiles").join("ext1.yaml"))
+            .expect("real external watcher event should mirror the changed file");
+        assert!(content.contains("mode: rule"));
     }
 
     #[tokio::test]
@@ -1302,12 +1494,14 @@ mod tests {
             .expect("activate cfg1");
         assert!(report.affects_current);
         assert_eq!(report.snapshot.current, Some(ProfileId("cfg1".into())));
+        assert_eq!(report.snapshot.revision(), 2);
 
         let report = client
             .set_current(Some(ProfileId("cfg1".into())))
             .await
             .unwrap();
         assert!(!report.affects_current);
+        assert_eq!(report.snapshot.revision(), 3);
 
         drop(client);
         let (client, _dir2) = {
@@ -1316,6 +1510,7 @@ mod tests {
                 path,
                 std::sync::Arc::new(MockProfileFsPort::new()),
                 std::sync::Arc::new(MockSubscriptionFetcher::new()),
+                test_materialization_port(),
                 std::sync::Arc::new(MockRebuildNotifier::new()),
             )
             .await
@@ -1405,12 +1600,22 @@ mod tests {
 
     #[tokio::test]
     async fn add_generates_uid_canonical_path_and_writes_initial_file() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_write_atomic()
-            .withf(|path, content| path.as_str().ends_with(".yaml") && content == "proxies: []\n")
-            .times(1)
-            .returning(|_, _| Ok(()));
-        let (client, _dir) = test_client_with(fs).await;
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let client = ProfilesClient::new(
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            Arc::new(MockSubscriptionFetcher::new()),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
 
         let report = client
             .add(
@@ -1428,7 +1633,7 @@ mod tests {
             .expect("add should succeed");
 
         assert!(!report.affects_current);
-        assert!(report.warnings.is_empty());
+        assert!(report.degradations.is_empty());
         let created = report
             .created
             .clone()
@@ -1446,160 +1651,695 @@ mod tests {
             .file
             .as_str();
         assert_eq!(file, format!("{uid}.yaml"));
+        assert_eq!(
+            std::fs::read_to_string(config_dir.path().join("profiles").join(file)).unwrap(),
+            "proxies: []\n"
+        );
     }
 
-    /// S01 failure contract (task §S01 #5 / design failure matrix):
-    /// profile Add file failure leaves success state.
-    ///
-    /// Current defective behavior (pre-S07): `run_write` persists the new item
-    /// first, then runs `WriteInitial` as a post-commit op. A write failure is
-    /// degraded into `CommitReport.warnings` and the API still returns `Ok`
-    /// with `created` set. S07 must replace this with prepare/finalize recovery
-    /// so Add cannot leave an orphan success state without materialization.
     #[tokio::test]
-    async fn s01_profile_add_file_failure_leaves_success_state() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_write_atomic()
-            .times(1)
-            .returning(|_, _| Err(anyhow::anyhow!("disk full during WriteInitial")));
-        let (client, dir) = test_client_with(fs).await;
+    async fn add_promotion_failure_rolls_back_before_reporting_created() {
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            failing_state_promote_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
 
-        let mut metadata = file_config_item("placeholder").metadata;
-        metadata.name = "BrokenAdd".into();
-        let report = client
+        let err = client
             .add(
                 NewProfileRequest {
-                    metadata,
+                    metadata: file_config_item("placeholder").metadata,
                     definition: file_config_item("placeholder").definition,
                 },
                 Some("proxies: []\n".to_string()),
             )
             .await
-            .expect(
-                "S01 current defect: Add post-commit file failure still returns Ok/success state",
-            );
+            .expect_err("promote failure must fail Add");
+        assert!(matches!(err, ProfilesError::Materialization(_)));
+        assert!(client.get().await.unwrap().items.is_empty());
+    }
 
-        let created = report
-            .created
-            .clone()
-            .expect("S01 defect: Add still reports created uid after file failure");
-        assert!(
-            report.snapshot.items.contains_key(&created),
-            "S01 defect: success snapshot still contains the new profile after file failure"
-        );
-        assert_eq!(
-            report.warnings.len(),
-            1,
-            "file failure is currently degraded to a warning, not a hard error"
-        );
-        assert!(
-            report.warnings[0].contains("post-commit file operation failed"),
-            "warning must identify the post-commit materialization failure: {:?}",
-            report.warnings
-        );
+    #[tokio::test]
+    async fn add_prepare_failure_has_zero_commit() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        let promote_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Err(anyhow::anyhow!("staging refused")));
+        {
+            let promote_calls = Arc::clone(&promote_calls);
+            materialization.expect_promote().returning(move |_| {
+                promote_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            });
+        }
+        {
+            let compensate_calls = Arc::clone(&compensate_calls);
+            materialization.expect_compensate().returning(move |_| {
+                compensate_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            });
+        }
 
-        // Persist authority also keeps the orphan success state across reopen.
-        drop(client);
-        let reopened = ProfilesClient::new(
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
             temp_profiles_path(&dir),
-            std::sync::Arc::new(MockProfileFsPort::new()),
-            std::sync::Arc::new(MockSubscriptionFetcher::new()),
-            std::sync::Arc::new(MockRebuildNotifier::new()),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
         )
         .await
-        .expect("reopen after defective Add");
-        let snapshot = reopened.get().await.unwrap();
+        .unwrap();
+
+        let err = client
+            .add(add_placeholder_request(), Some("proxies: []\n".into()))
+            .await
+            .expect_err("prepare failure must fail Add");
+        let message = err.to_string();
         assert!(
-            snapshot.items.contains_key(&created),
-            "S01 defect: reopened profiles still contain the success-state item without a file"
+            matches!(err, ProfilesError::Materialization(_))
+                && message.contains("prepare materialization"),
+            "prepare-phase failure expected, got: {message}"
+        );
+        assert!(client.get().await.unwrap().items.is_empty());
+        assert_eq!(promote_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(
+            compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
+            0
         );
     }
 
-    /// S01 failure contract (task §S01 #6 / design failure matrix):
-    /// remote refresh metadata persist failure leaves new file.
-    ///
-    /// Current defective behavior (pre-S07): CommitRefreshed writes the new
-    /// subscription bytes first, then persists metadata (`updated_at` /
-    /// subscription). If that metadata upsert fails, the actor returns
-    /// `ProfilesError::Persist` without restoring the previous file bytes, so
-    /// the new file remains while metadata stays old. S07 must capture old
-    /// bytes and restore them on metadata persist failure.
     #[tokio::test]
-    async fn s01_remote_refresh_metadata_persist_failure_leaves_new_file() {
-        let file_bytes = std::sync::Arc::new(std::sync::Mutex::new(String::from(
-            "proxies:\n  - name: old\n",
-        )));
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
-        let written = std::sync::Arc::clone(&file_bytes);
-        fs.expect_write_atomic()
-            .times(1)
-            .returning(move |path, content| {
-                assert_eq!(path.as_str(), "r1.yaml");
-                *written.lock().unwrap() = content.to_string();
+    async fn add_promote_and_compensate_failure_reports_compound_error() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
+        materialization
+            .expect_promote()
+            .returning(|_| Err(anyhow::anyhow!("disk full")));
+        let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        {
+            let compensate_calls = Arc::clone(&compensate_calls);
+            materialization.expect_compensate().returning(move |_| {
+                compensate_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Err(anyhow::anyhow!("cannot restore"))
+            });
+        }
+
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+
+        let err = client
+            .add(add_placeholder_request(), Some("proxies: []\n".into()))
+            .await
+            .expect_err("compound materialization failure");
+        let message = err.to_string();
+        assert!(
+            message.contains("promotion failed") && message.contains("compensate"),
+            "compound error must mention promotion and compensate failures: {message}"
+        );
+        assert_eq!(
+            compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        assert!(client.get().await.unwrap().items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn add_complete_failure_returns_committed_degradation() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
+        materialization.expect_promote().returning(|_| Ok(()));
+        materialization
+            .expect_complete()
+            .returning(|_| Err(anyhow::anyhow!("journal stuck")));
+
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+
+        let report = client
+            .add(add_placeholder_request(), Some("proxies: []\n".into()))
+            .await
+            .expect("complete failure is committed-degraded");
+        assert!(report.created.is_some());
+        assert_eq!(report.snapshot.items.len(), 1);
+        let created = report.created.clone().unwrap();
+        assert!(
+            client.get().await.unwrap().items.contains_key(&created),
+            "complete degradation must leave the committed item durable"
+        );
+        assert_eq!(report.degradations.len(), 1);
+        assert_eq!(
+            report.degradations[0].phase,
+            ProfileDegradationPhase::Reconcile
+        );
+        assert_eq!(
+            report.degradations[0].code,
+            ProfileDegradationCode::MaterializationDeferred
+        );
+        assert!(report.degradations[0].code.retryable());
+    }
+
+    #[tokio::test]
+    async fn replace_definition_prepare_cleanup_failure_compensates_new_and_preserves_old() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("new".into())));
+        materialization
+            .expect_prepare_cleanup()
+            .returning(|_, _| Err(anyhow::anyhow!("cleanup journal refused")));
+        let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        {
+            let compensate_calls = Arc::clone(&compensate_calls);
+            materialization.expect_compensate().returning(move |_| {
+                compensate_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Ok(())
             });
+        }
 
-        let (client, dir) = remote_seeded_client(
-            fs,
-            ok_fetch("proxies:\n  - name: new\n"),
-            MockRebuildNotifier::new(),
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
         )
-        .await;
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(file_config_item("cfg2"));
+        client.replace(profiles).await.unwrap();
 
-        // Replace the persisted document with a directory after seeding. The
-        // refreshed profile bytes still go through the injected filesystem port,
-        // while the subsequent real metadata upsert deterministically fails to
-        // atomically replace this directory.
-        let profiles_path = temp_profiles_path(&dir);
-        std::fs::remove_file(&profiles_path).expect("remove seeded profiles document");
-        std::fs::create_dir(&profiles_path).expect("block metadata persistence");
+        let err = client
+            .replace_definition(ProfileId("cfg2".into()), kind_switch_script_definition())
+            .await
+            .expect_err("prepare-cleanup failure must fail ReplaceDefinition");
+        assert!(matches!(err, ProfilesError::Materialization(_)));
+        assert_eq!(
+            compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        let snapshot = client.get().await.unwrap();
+        let item = &snapshot.items[&ProfileId("cfg2".into())];
+        match &item.definition {
+            ProfileDefinition::Config { config } => {
+                assert_eq!(
+                    config.source().unwrap().materialized().file.as_str(),
+                    "cfg2.yaml"
+                );
+            }
+            other => panic!("old definition must be preserved, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn replace_definition_promote_failure_cancels_cleanup_and_rolls_back() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("new".into())));
+        materialization
+            .expect_prepare_cleanup()
+            .returning(|_, _| Ok(PreparedCleanup::new("old".into())));
+        materialization
+            .expect_promote()
+            .returning(|_| Err(anyhow::anyhow!("disk full")));
+        let cancel_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        {
+            let cancel_calls = Arc::clone(&cancel_calls);
+            materialization.expect_cancel_cleanup().returning(move |_| {
+                cancel_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            });
+        }
+        {
+            let compensate_calls = Arc::clone(&compensate_calls);
+            materialization.expect_compensate().returning(move |_| {
+                compensate_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            });
+        }
+
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(file_config_item("cfg2"));
+        client.replace(profiles).await.unwrap();
+
+        let err = client
+            .replace_definition(ProfileId("cfg2".into()), kind_switch_script_definition())
+            .await
+            .expect_err("promote failure must roll back ReplaceDefinition");
+        assert!(matches!(err, ProfilesError::Materialization(_)));
+        assert_eq!(cancel_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        let snapshot = client.get().await.unwrap();
+        let item = &snapshot.items[&ProfileId("cfg2".into())];
+        match &item.definition {
+            ProfileDefinition::Config { config } => {
+                assert_eq!(
+                    config.source().unwrap().materialized().file.as_str(),
+                    "cfg2.yaml"
+                );
+            }
+            other => panic!("old definition must be restored, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn refresh_promote_failure_compensates_without_advancing_metadata() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_file_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
+        materialization
+            .expect_promote()
+            .returning(|_| Err(anyhow::anyhow!("disk full")));
+        let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        {
+            let compensate_calls = Arc::clone(&compensate_calls);
+            materialization.expect_compensate().returning(move |_| {
+                compensate_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            });
+        }
+
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(ok_fetch("proxies: []\n")),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
 
         let err = client
             .refresh(ProfileId("r1".into()), None)
             .await
-            .expect_err(
-                "S01 current defect: metadata persist failure surfaces as ProfilesError::Persist",
-            );
-        assert!(
-            matches!(err, ProfilesError::Persist(_)),
-            "expected Persist after metadata upsert failure, got {err:?}"
-        );
-
+            .expect_err("refresh promote failure");
+        assert!(matches!(err, ProfilesError::Materialization(_)));
         assert_eq!(
-            file_bytes.lock().unwrap().as_str(),
-            "proxies:\n  - name: new\n",
-            "S01 defect: new refreshed content remains on disk; old bytes are not restored"
+            compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
+            1
         );
-
         let snapshot = client.get().await.unwrap();
         let source = snapshot.items[&ProfileId("r1".into())]
             .definition
             .source()
             .unwrap();
-        assert!(
-            source.materialized().updated_at.is_none(),
-            "metadata upsert failed, so updated_at must remain unset"
+        assert!(source.materialized().updated_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn refresh_complete_failure_commits_with_degradation() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_file_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
+        materialization.expect_promote().returning(|_| Ok(()));
+        materialization
+            .expect_complete()
+            .returning(|_| Err(anyhow::anyhow!("journal stuck")));
+
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(ok_fetch("proxies: []\n")),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
+
+        let report = client
+            .refresh(ProfileId("r1".into()), None)
+            .await
+            .expect("complete failure is committed-degraded");
+        assert_eq!(report.degradations.len(), 1);
+        assert_eq!(
+            report.degradations[0].phase,
+            ProfileDegradationPhase::Reconcile
         );
-        match source {
-            ProfileSource::Remote { subscription, .. } => {
-                assert!(
-                    subscription.is_empty(),
-                    "subscription metadata must remain pre-refresh when persist fails"
-                );
-            }
-            other => panic!("expected remote source, got {other:?}"),
+        assert_eq!(
+            report.degradations[0].code,
+            ProfileDegradationCode::MaterializationDeferred
+        );
+        assert!(report.degradations[0].code.retryable());
+        assert!(
+            report.snapshot.items[&ProfileId("r1".into())]
+                .definition
+                .source()
+                .unwrap()
+                .materialized()
+                .updated_at
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_prepare_failure_preserves_item() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_cleanup()
+            .returning(|_, _| Err(anyhow::anyhow!("cleanup journal refused")));
+
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        client.replace(seeded_profiles()).await.unwrap();
+
+        let err = client
+            .delete(ProfileId("cfg2".into()))
+            .await
+            .expect_err("prepare-cleanup failure must fail Delete");
+        assert!(matches!(err, ProfilesError::Materialization(_)));
+        assert!(
+            client
+                .get()
+                .await
+                .unwrap()
+                .items
+                .contains_key(&ProfileId("cfg2".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_activate_failure_commits_deletion_with_cleanup_degradation() {
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_cleanup()
+            .returning(|_, _| Ok(PreparedCleanup::new("cleanup".into())));
+        materialization
+            .expect_activate_cleanup()
+            .returning(|_| Err(anyhow::anyhow!("activate refused")));
+        let retry_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        {
+            let retry_calls = Arc::clone(&retry_calls);
+            materialization
+                .expect_retry_cleanup()
+                .returning(move |_, _| {
+                    retry_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok(CleanupOutcome::Removed)
+                });
         }
+
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        client.replace(seeded_profiles()).await.unwrap();
+
+        let report = client
+            .delete(ProfileId("cfg2".into()))
+            .await
+            .expect("activate failure is committed-degraded");
+        assert!(
+            report
+                .snapshot
+                .items
+                .get(&ProfileId("cfg2".into()))
+                .is_none()
+        );
+        assert_eq!(report.degradations.len(), 1);
+        assert_eq!(
+            report.degradations[0].phase,
+            ProfileDegradationPhase::Cleanup
+        );
+        assert_eq!(
+            report.degradations[0].code,
+            ProfileDegradationCode::CleanupDeferred
+        );
+        assert_eq!(retry_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn caller_aborted_refresh_eventually_settles_and_does_not_leave_pending_stuck() {
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let release_fetch = Arc::new(tokio::sync::Notify::new());
+        let holds_remaining = Arc::new(std::sync::atomic::AtomicUsize::new(1));
+        struct FirstHoldFetcher {
+            started: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+            release: Arc<tokio::sync::Notify>,
+            holds_remaining: Arc<std::sync::atomic::AtomicUsize>,
+        }
+        #[async_trait::async_trait]
+        impl SubscriptionFetcher for FirstHoldFetcher {
+            async fn fetch(
+                &self,
+                _url: &url::Url,
+                _options: &RemoteProfileOptions,
+            ) -> anyhow::Result<FetchedSubscription> {
+                let should_hold = self
+                    .holds_remaining
+                    .fetch_update(
+                        std::sync::atomic::Ordering::SeqCst,
+                        std::sync::atomic::Ordering::SeqCst,
+                        |n| n.checked_sub(1),
+                    )
+                    .map(|prev| prev == 1)
+                    .unwrap_or(false);
+                if should_hold {
+                    if let Some(started) = self.started.lock().unwrap().take() {
+                        let _ = started.send(());
+                    }
+                    self.release.notified().await;
+                }
+                Ok(FetchedSubscription {
+                    content: "proxies: []\n".into(),
+                    filename: None,
+                    subscription: SubscriptionInfo {
+                        upload: Some(1),
+                        ..Default::default()
+                    },
+                    suggested_update_interval_minutes: None,
+                })
+            }
+        }
+        let fetcher = FirstHoldFetcher {
+            started: std::sync::Mutex::new(Some(started)),
+            release: Arc::clone(&release_fetch),
+            holds_remaining,
+        };
+        let (client, _dir) = remote_seeded_client_with_fetcher(
+            MockProfileFsPort::new(),
+            Arc::new(fetcher),
+            MockRebuildNotifier::new(),
+        )
+        .await;
+
+        let refresh_client = client.clone();
+        let pending =
+            tokio::spawn(async move { refresh_client.refresh(ProfileId("r1".into()), None).await });
+        started_rx.await.unwrap();
+        pending.abort();
+        let join_err = pending.await.expect_err("aborted refresh join must fail");
+        assert!(
+            join_err.is_cancelled(),
+            "caller-aborted refresh must cancel the waiting call future"
+        );
+
+        release_fetch.notify_waiters();
+
+        // CommitRefreshed removes pending_refresh even when the reply port is gone.
+        // Bound the poll so a stuck pending_refresh fails the test instead of hanging CI.
+        let report = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                match client.refresh(ProfileId("r1".into()), None).await {
+                    Ok(report) => break report,
+                    Err(ProfilesError::RefreshFailed { message })
+                        if message.contains("in progress") =>
+                    {
+                        tokio::task::yield_now().await;
+                    }
+                    Err(other) => {
+                        panic!("subsequent refresh must settle cleanly, got {other:?}")
+                    }
+                }
+            }
+        })
+        .await
+        .expect("aborted refresh must clear pending_refresh promptly");
+        assert!(
+            report.snapshot.items[&ProfileId("r1".into())]
+                .definition
+                .source()
+                .unwrap()
+                .materialized()
+                .updated_at
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn add_success_leaves_no_materialization_staging_leftovers() {
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let client = ProfilesClient::new(
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            Arc::new(MockSubscriptionFetcher::new()),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+
+        let report = client
+            .add(add_placeholder_request(), Some("proxies: []\n".into()))
+            .await
+            .expect("add success");
+        assert!(report.degradations.is_empty());
+        let created = report.created.expect("created uid");
+        let file = report.snapshot.items[&created]
+            .definition
+            .source()
+            .unwrap()
+            .materialized()
+            .file
+            .as_str();
+        assert_eq!(
+            std::fs::read_to_string(config_dir.path().join("profiles").join(file)).unwrap(),
+            "proxies: []\n"
+        );
+        assert_no_materialization_artifact_files(config_dir.path());
+    }
+
+    #[tokio::test]
+    async fn refresh_persist_failure_restores_previous_materialized_bytes() {
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let profiles_path =
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
+        let client = ProfilesClient::new(
+            profiles_path.clone(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            Arc::new(ok_fetch("proxies:\n  - name: new\n")),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
+        let path = ManagedProfilePath::new("r1.yaml").unwrap();
+        fs.write_atomic(&path, "proxies:\n  - name: old\n").unwrap();
+
+        std::fs::remove_file(&profiles_path).unwrap();
+        std::fs::create_dir(&profiles_path).unwrap();
+        assert!(matches!(
+            client.refresh(ProfileId("r1".into()), None).await,
+            Err(ProfilesError::Persist(_))
+        ));
+        assert_eq!(
+            fs.read(&path).unwrap(),
+            "proxies:\n  - name: old\n",
+            "file-first compensation must restore old bytes after metadata CAS failure"
+        );
     }
 
     #[tokio::test]
     async fn add_script_transform_uses_runtime_extension() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_write_atomic()
-            .withf(|path, _| path.as_str().ends_with(".lua"))
-            .times(1)
-            .returning(|_, _| Ok(()));
-        let (client, _dir) = test_client_with(fs).await;
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
         let mut item = overlay_item("placeholder");
         item.definition = ProfileDefinition::Transform {
             transform: TransformDefinition::Script(ScriptTransform {
@@ -1644,13 +2384,28 @@ mod tests {
 
     #[tokio::test]
     async fn delete_unreferenced_managed_profile_removes_file() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_remove()
-            .withf(|path| path.as_str() == "cfg2.yaml")
-            .times(1)
-            .returning(|_| Ok(()));
-        let (client, _dir) = test_client_with(fs).await;
-        client.replace(seeded_profiles()).await.unwrap();
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let client = ProfilesClient::new(
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            Arc::new(MockSubscriptionFetcher::new()),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(file_config_item("cfg2"));
+        client.replace(profiles).await.unwrap();
+        let path = ManagedProfilePath::new("cfg2.yaml").unwrap();
+        fs.write_atomic(&path, "proxies: []\n").unwrap();
+
         let report = client
             .delete(ProfileId("cfg2".into()))
             .await
@@ -1663,20 +2418,30 @@ mod tests {
                 .get(&ProfileId("cfg2".into()))
                 .is_none()
         );
+        assert!(
+            fs.read(&path).is_err(),
+            "cleanup must remove the managed file"
+        );
     }
 
     #[tokio::test]
     async fn delete_cleanup_failure_degrades_to_warning() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_remove()
-            .returning(|_| anyhow::bail!("disk on fire"));
-        let (client, _dir) = test_client_with(fs).await;
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            failing_cleanup_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
         client.replace(seeded_profiles()).await.unwrap();
         let report = client
             .delete(ProfileId("cfg2".into()))
             .await
             .expect("delete commits anyway");
-        assert_eq!(report.warnings.len(), 1);
+        assert_eq!(report.degradations.len(), 1);
         assert!(
             report
                 .snapshot
@@ -1814,6 +2579,7 @@ mod tests {
             temp_profiles_path(&dir),
             std::sync::Arc::new(MockProfileFsPort::new()),
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
             std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
@@ -1903,13 +2669,8 @@ mod tests {
             "/outside/b.yaml"
         };
 
-        // External Symlink: only the app-managed link is removed.
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_remove()
-            .withf(|path| path.as_str() == "sym1.yaml")
-            .times(1)
-            .returning(|_| Ok(()));
-        let (client, _dir) = test_client_with(fs).await;
+        // External Symlink cleanup is delegated to ProfileMaterializationPort.
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
         let mut profiles = Profiles::default();
         profiles.append_item(external_item(
             "sym1",
@@ -1919,13 +2680,8 @@ mod tests {
         client.replace(profiles).await.unwrap();
         client.delete(ProfileId("sym1".into())).await.unwrap();
 
-        // External Mirror: the mirror copy is removed.
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_remove()
-            .withf(|path| path.as_str() == "mir1.yaml")
-            .times(1)
-            .returning(|_| Ok(()));
-        let (client, _dir) = test_client_with(fs).await;
+        // External Mirror cleanup is delegated to ProfileMaterializationPort.
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
         let mut profiles = Profiles::default();
         profiles.append_item(external_item(
             "mir1",
@@ -1973,6 +2729,7 @@ mod tests {
             path,
             std::sync::Arc::new(MockProfileFsPort::new()),
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
             std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await;
@@ -2032,6 +2789,7 @@ mod tests {
             temp_profiles_path(&dir),
             std::sync::Arc::new(MockProfileFsPort::new()),
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
             std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
@@ -2046,13 +2804,27 @@ mod tests {
 
     #[tokio::test]
     async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
-        let mut fs = MockProfileFsPort::new();
-        fs.expect_remove()
-            .withf(|path| path.as_str() == "cfg2.yaml")
-            .times(1)
-            .returning(|_| Ok(()));
-        let (client, _dir) = test_client_with(fs).await;
-        client.replace(seeded_profiles()).await.unwrap();
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let client = ProfilesClient::new(
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            Arc::new(MockSubscriptionFetcher::new()),
+            fs.clone() as Arc<dyn ProfileMaterializationPort>,
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(file_config_item("cfg2"));
+        client.replace(profiles).await.unwrap();
+        let old_path = ManagedProfilePath::new("cfg2.yaml").unwrap();
+        fs.write_atomic(&old_path, "proxies: []\n").unwrap();
 
         let definition = ProfileDefinition::Transform {
             transform: TransformDefinition::Script(nyanpasu_config::profile::ScriptTransform {
@@ -2075,5 +2847,14 @@ mod tests {
         let source = item.definition.source().unwrap();
         assert_eq!(source.materialized().file.as_str(), "cfg2.lua");
         assert!(source.materialized().updated_at.is_none());
+        assert!(
+            fs.read(&old_path).is_err(),
+            "old managed path must be cleaned up"
+        );
+        assert_eq!(
+            fs.read(&ManagedProfilePath::new("cfg2.lua").unwrap())
+                .unwrap(),
+            ""
+        );
     }
 }

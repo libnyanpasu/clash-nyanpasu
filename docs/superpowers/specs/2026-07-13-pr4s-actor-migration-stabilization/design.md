@@ -1,9 +1,9 @@
 # PR-4S — PR-1～PR-4 Actor Migration 稳定化门（设计 spec）
 
 **日期：** 2026-07-13  
-**状态：** Implementing（S01～S06 已完成；S07～S10 pending；不得宣告 PR-4S 完成。S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。）
+**状态：** Implementing（S01～S07 已完成；S08～S10 pending；不得宣告 PR-4S 完成。S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。）
 
-**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease`、统一 `CoreManager` lifecycle mutex、`change_core` lease span through rollback、updater stop/swap/restart；S05 Applied-based patch compensation 工作区已验证；S06 prepared mirrors / three-domain saga 工作区已验证）
+**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease`、统一 `CoreManager` lifecycle mutex、`change_core` lease span through rollback、updater stop/swap/restart；S05 Applied-based patch compensation 工作区已验证；S06 prepared mirrors / three-domain saga 工作区已验证；S07 profile materialization transactions / durable `Profiles.revision` / startup+periodic reconcile 工作区已验证）
 **上游依据：** `docs/design/actor-migration-roadmap.md` v3 §5  
 **建议分支：** `fix/pr4s-actor-migration-stabilization`  
 **原子性：** 本 spec 的 S01～S10 为一个稳定化 PR；可以多 commit，但不得只合并部分语义
@@ -26,8 +26,8 @@ PR-1～PR-4 已完成以下主要方向：
 
 1. **生命周期锁域（S04 已完成）**：`CoreLifecyclePort`/`CoreLifecycleLease` 统一 run/restart/stop/check/apply/recover；`CoreManager` 以单一 `lifecycle_lock` 替代仅覆盖部分路径的 `run_lock`；`change_core` 全程持有 `rebuild_gate + lease` 至 rollback 结束；updater stop/swap/restart 同锁域。S09 fake-core 进程级 failure matrix 仍 pending。
 2. **状态语义残差（S03 + S05 已完成）**：facade 持有 `RuntimeLifecycleState { promoted, applied }` 与 revision/core/hash/exact product bytes；四读 IPC 读 Promoted；`change_core` 深层 rollback 同步恢复 product/Promoted/Applied。S05 的 instance-owned patch gate 以 Applied 生成 Set/Remove 计划，用 expected Applied revision fence 拒绝 stale compensation，并在 rebuild/lifecycle exclusion 内以私有 candidate 直接恢复运行核而不晋升 product；
-3. **跨资源提交不一致（S06 typed/legacy 三域已完成；S07 仍 pending）**：S06 已为 typed state ↔ legacy mirror 建立 fallible prepare → manager-level CAS commit → infallible in-memory apply，并实现 Application→Session→Clash saga、reverse compensation、structured `PartialCommit` 与 finalizer uncertainty；profile materialization 仍待 S07；
-4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径；S04 已有 barrier 并发测试；dispatcher deglobalization / fake-core / ledger gate 仍待完成。
+3. **跨资源提交不一致（S06 typed/legacy 三域已完成；S07 profile materialization 已完成）**：S06 已为 typed state ↔ legacy mirror 建立 fallible prepare → manager-level CAS commit → infallible in-memory apply，并实现 Application→Session→Clash saga、reverse compensation、structured `PartialCommit` 与 finalizer uncertainty；S07 已为 Profiles 状态/物化文件建立 state-first / file-first / cleanup / reconcile 协议、durable `Profiles.revision` 与 crate-internal degradation。公共 `MutationOutcome` wire 仍待 S08；
+4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径；S04 已有 barrier 并发测试；S07 已有 deterministic failure/crash/cleanup/fence tests；dispatcher deglobalization / fake-core / ledger gate 仍待完成。
 
 PR-4S 不继续扩大 actor 数量。它先修复 PR-1～PR-4 的 correctness boundary，使 PR-5 可以在可靠状态模型上接管核心生命周期。
 
@@ -129,7 +129,7 @@ pub struct RuntimeLifecycleState {
 | D6  | D6 patch compensation                       | **S05 已完成**：instance-owned patch gate 串行；基于 Applied snapshot 的 transport-independent Set/Remove（禁止 JSON `null` 删除）；expected Applied revision fence 防止覆盖后续更新；私有 candidate 直接 apply，不 promote product |
 | D7  | actor mirror                                | **S06 已完成**：`prepare(next)` 可失败且在 persist 前；`PreparedLegacyMirror::apply()` 不可失败、仅更新内存 projection、且在 persist 后；prepare failure 零提交                                                                     |
 | D8  | legacy 三域 patch                           | **S06 已完成**：manager-level expected-version CAS（actor 消息 `ReplacePreparedIfVersion`）；Application→Session→Clash saga；reverse compensation；structured `PartialCommit` 与 finalizer uncertainty                              |
-| D9  | profile 文件事务                            | 为 Add/Replace/Refresh 建 prepare/finalize/compensate；Delete cleanup 可 committed-degraded + persistent cleanup queue                                                                                                              |
+| D9  | profile 文件事务                            | **S07 已完成**：durable server-owned `Profiles.revision`（≠ manager MVCC）；state-first / file-first / cleanup / reconcile 协议与操作映射；启动+周期 recovery；crate-internal `ProfileDegradation`；公共 wire 留给 S08              |
 | D10 | runtime 路径                                | `RuntimePaths` 由 composition root 注入；测试禁止全局 dirs                                                                                                                                                                          |
 | D11 | candidate 安全                              | 私有目录 + tempfile/random + create_new + owner-only 权限 + cleanup guard + stale cleanup                                                                                                                                           |
 | D12 | rebuild dispatcher                          | bounded/coalescing、可关闭、可重建；不允许 first-install-wins 静态 handler                                                                                                                                                          |
@@ -285,7 +285,7 @@ rebuild_gate + CoreLifecycleLease
 
 ### 6.7 Applied-based patch compensation
 
-**状态：** S05 已完成；S06 已完成；PR-4S 仍未完成，S07～S10 pending，且 S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
+**状态：** S05 已完成；S06 已完成；S07 已完成；PR-4S 仍未完成，S08～S10 pending，且 S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
 
 facade 的 instance-owned `clash_patch_gate` 覆盖：
 
@@ -319,7 +319,7 @@ pub enum PatchCompensationOp {
 
 ### 6.8 Prepared legacy mirror
 
-**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S07～S10 仍 pending。
+**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S08～S10 仍 pending。
 
 Tauri-free trait：
 
@@ -357,7 +357,7 @@ prepared object 捕获转换后的 legacy projection 和具体 legacy store hand
 
 ### 6.9 Legacy 三域 saga
 
-**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S07～S10 仍 pending。
+**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S08～S10 仍 pending。
 
 为 Application/Session/Clash actor 增加：
 
@@ -385,42 +385,83 @@ typed 直接 mutation 可以并发，但 manager-level version check 防止 saga
 
 ### 6.10 Profile materialization transaction
 
-#### Add managed/local profile
+**状态：** S07 已完成（工作区已验证；PR-4S 整体未完成）。S08～S10 仍 pending。公共 `MutationOutcome` / IPC / Specta / frontend 仍完全归属 S08，尚未开始。
+
+#### Durable revision（≠ manager MVCC）
+
+- `Profiles.revision` 是 server-owned、可持久化的 durable state generation，专供 materialization journal 与 recovery 使用。
+- 它故意不进入公共 Specta 文档；与 `PersistentStateManager` 的 process-local MVCC `version` 严格分离，不得从后者派生或混用。
+- 每次 forward 或 compensating state commit 前，actor 在 prepare candidate 时 `bump_revision()`；prepare/journal 写入 expected `Profiles` 快照上的 durable revision、operation id、managed path 与 content hash。
+
+#### 协议
 
 ```text
-prepare state + validate
-  → stage initial file in profiles/.staging
-  → persist profiles state
-  → atomic rename stage → materialized path
-  → finalize metadata if needed
+state-first: prepare(next) → state CAS → promote → complete/compensate
+file-first:  prepare(next) → promote → state CAS → complete/compensate
+cleanup:     prepare(next) → state CAS → activate → retry
+reconcile:   reconcile(loaded profiles) before watchers or mutations
 ```
 
-rename 失败时 actor mailbox 尚未处理下一条 mutation：立即将 profiles state version-checked 回滚到 before，并删除 stage；返回 Err。不得留下指向缺失文件的成功 profile。
+- state-first / file-first journal 相位位于应用私有目录（prepared / promoting / promoted / compensating）；cleanup 有 pending / ready 相位与 tombstone。
+- prepare 失败零提交；promote/compensate 失败返回 compound materialization error；`complete` 失败可 crate-internal deferred degradation，由 reconcile 收尾。
+- cleanup 成功可 `Removed` / `AlreadyAbsent`；active path 与 hash reuse 触发 fence，不盲删。
 
-#### ReplaceDefinition
+#### 操作映射
 
-- 新 materialization/symlink 先 prepare；
-- state commit 后 finalize；
-- finalize 失败时 rollback state 和新资源；
-- old file cleanup 在成功 finalize 后执行；cleanup 失败可 committed-degraded + cleanup queue。
+| 操作                      | 协议                                                    | 权威 / 失败语义                                                                                                          |
+| ------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Add                       | state-first（附 resource）                              | state 提交后 promote；promote 失败 version-checked state rollback + compensate；不得留下指向缺失文件的成功 profile       |
+| ReplaceDefinition         | state-first；slot 变化附 resource；旧 path 可附 cleanup | 新资源 prepare → state CAS → promote；prepare-cleanup 失败补偿新资源并保留旧文件；promote 失败 cancel cleanup + rollback |
+| Remote refresh            | file-first                                              | download/validate 后 promote 新 bytes，再 CAS 元数据；CAS 失败 restore backup；URL/definition stale fence 继续保留       |
+| External Mirror 同步      | file-first                                              | 与 refresh 同协议，变更 fence 后写入                                                                                     |
+| Delete                    | cleanup（state commit 为权威）                          | prepare-cleanup 失败则不删 state；state 删除成功后 activate/retry 失败 → `CleanupDeferred`，不回滚 state                 |
+| ReconcileMaterializations | recovery                                                | 启动与 actor-owned 周期任务串行恢复 journal / cleanup                                                                    |
 
-#### Remote refresh
+#### Superseded state-first journal 规则（已修正）
 
-```text
-download + validate
-  → stage new bytes
-  → capture old materialized bytes/path metadata
-  → promote staged bytes
-  → persist subscription/updated_at
+当 `profiles.revision > journal.revision` 且 managed path 仍 active：
+
+- target 已匹配 journal hash：
+  - `StatePromoting` → `complete`；
+  - `StatePrepared` → `discard`（不 promote）；
+- target 仍处于 pre-promote（备份/旧字节）：**必须 `compensate`，绝不可 promote** 将 stale staged content 应用到更新的 committed revision；
+- target 已偏离 journal 且非 pre-promote：bail 为 recovery degradation，保留可审计现场。
+
+此规则取代“revision 前进即自动 promote 未完成 state-first journal”的错误假设。file-first 在 revision 已前进且 target 匹配时可完成；不匹配则 compensate/discard。
+
+#### 启动与周期 recovery
+
+- client/actor 启动返回前执行一次 `reconcile(loaded profiles)`；
+- `ProfilesActor` 持有 periodic reconcile task，仅 cast `ReconcileMaterializations`；actor mailbox 串行处理，不与 mutation 交错；
+- reconcile 负责：完成已提交但未 complete 的 journal、补偿未提交/被 supersede 的 journal、重试 cleanup queue、隔离 malformed journal、sweep 无引用 artifact/tombstone。
+
+#### Crate-internal degradation（非 S08 wire）
+
+```rust
+// crate-internal only; public MutationOutcome is exclusively S08
+ProfileDegradation {
+    phase: Cleanup | Reconcile,
+    code: JournalInvalid | MaterializationDeferred | CleanupDeferred,
+    message,
+}
 ```
 
-metadata persist 失败则恢复旧 bytes；恢复失败返回 compound `ProfileMaterialization` degradation。URL/definition stale fence 继续保留。
+- 存储字段仅为 `phase` / `code` / `message`；**不**存储 `retryable`。
+- 可重试性由 `ProfileDegradationCode::retryable()` 穷尽派生：`JournalInvalid → false`，`MaterializationDeferred | CleanupDeferred → true`。
+- `CommitReport.degradations` 与 `MaterializationReconcileReport.degradations` 仅供 actor/facade 内部观测与 tracing；
+- 不暴露 Specta / IPC / frontend；S08 才将 committed-degraded 统一到公共 `MutationOutcome`。
 
-#### Delete
+#### 验证（S07 green）
 
-state 删除是权威 commit。文件删除失败不回滚 profile state，写入持久 cleanup queue 并返回 committed-degraded。下次启动和定期 reconcile 重试。
+- deterministic failure injection：prepare 零提交、promote/compensate compound error、complete deferred、delete cleanup deferred；
+- crash/journal fixture：state-promoting / file-promoted 中断后 complete、uncommitted file-prepared compensate、compensating phase 收尾；
+- superseded state-first：`revision > journal` + active pre-promote → compensate never promote；
+- cleanup fence：active path、hash reuse、already-absent、symlink no-follow；
+- startup reconcile 先于 client ready；remote stale fence 保持。
 
 ### 6.11 MutationOutcome
+
+**状态：** 专属 S08；尚未开始。S07 仅落地 crate-internal `ProfileDegradation`，不得提前暴露公共 `MutationOutcome` / Specta / frontend wire。
 
 ```rust
 #[derive(Serialize, Deserialize, specta::Type)]
@@ -502,7 +543,7 @@ pub struct Degradation {
 - typed concurrent mutation 导致 version conflict，saga 不覆盖新值；
 - compensation 自身失败返回 PartialCommit。
 
-S06 验证已完成：prepared-mirror zero-commit、manager CAS monotonic/conflict/persistence failure、第二/第三域失败与逆序补偿、concurrent typed update conflict、finalizer/legacy-state uncertainty 和 structured `PartialCommit` 字段均有 deterministic tests。并发交错使用 oneshot/mpsc channel 与 release barrier，不使用 sleep。S07～S10 仍 pending。
+S06 验证已完成：prepared-mirror zero-commit、manager CAS monotonic/conflict/persistence failure、第二/第三域失败与逆序补偿、concurrent typed update conflict、finalizer/legacy-state uncertainty 和 structured `PartialCommit` 字段均有 deterministic tests。并发交错使用 oneshot/mpsc channel 与 release barrier，不使用 sleep。S08～S10 仍 pending。
 
 ### 8.2 PR-3 profiles
 
@@ -516,6 +557,15 @@ S06 验证已完成：prepared-mirror zero-commit、manager CAS monotonic/confli
 - refresh metadata persist 失败恢复旧文件；
 - delete cleanup 失败进入 cleanup queue；
 - symlink/reparse point 拒绝写入。
+
+S07 materialization 验证已完成（deterministic，无 sleep）：
+
+- state-first / file-first prepare → promote → complete / compensate；
+- crash journal recovery（state-promoting、file-promoted、uncommitted file-prepared、compensating phase）；
+- superseded state-first：`revision > journal` + active pre-promote 只 compensate、不 promote；
+- cleanup fence（active path、hash reuse、already-absent、symlink no-follow）；
+- startup + periodic reconcile；malformed journal isolation；
+- crate-internal `ProfileDegradation` 字段断言；公共 `MutationOutcome` 仍属 S08。
 
 ### 8.3 PR-4 runtime/core
 
@@ -611,12 +661,14 @@ RuntimeHealth {
 - 不跟随意外 symlink/reparse point；
 - startup reconcile：
   - 删除 stale runtime candidates；
-  - 删除 profile staging leftovers；
-  - 重试 delete cleanup queue；
+  - 删除 profile staging leftovers / unreferenced materialization artifacts；
+  - 按 durable `Profiles.revision` 恢复 materialization journal 与 delete cleanup queue；
   - 校验 product hash 与 promoted snapshot；若内存 store 初始为空，从可信产品重建只读 snapshot 或等待首次 rebuild，不读取 unchecked 文件；
-- crash 发生在 state commit/file finalize 之间时，下一次启动依据 journal/queue 恢复。
+- crash 发生在 state commit/file finalize 之间时，下一次启动与 periodic reconcile 依据 journal/queue 恢复。
 
-journal 只保存路径、operation id、revision 和 hash，不保存敏感完整内容；旧字节备份使用 owner-only 临时文件并在完成后删除。
+profile journal 只保存路径、operation id、durable `Profiles.revision` 和 hash，不保存敏感完整内容；旧字节备份使用 owner-only 临时文件并在完成后删除。
+
+**Superseded state-first 恢复（已修正）：** 若 committed `Profiles.revision > journal.revision` 且 active target 仍为 pre-promote 备份字节，reconcile 必须 compensate 并丢弃 staged forward content，**不得 promote** 到更新的 committed revision。
 
 ---
 

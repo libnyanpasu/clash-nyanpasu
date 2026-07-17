@@ -10,6 +10,14 @@ use super::*;
 /// Persisted profile document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profiles {
+    /// Server-owned durable state generation for materialization recovery.
+    ///
+    /// This is intentionally absent from the public Specta document. Writers
+    /// must advance it once for every forward or compensating persisted state
+    /// commit; it must never be sourced from a process-local MVCC counter.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    revision: u64,
+
     /// The single selected activatable Config profile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current: Option<ProfileId>,
@@ -41,9 +49,16 @@ struct ProfileDocument {
     items: IndexMap<ProfileId, ProfileItem>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("profile revision overflow")]
+pub enum ProfileRevisionError {
+    Overflow,
+}
+
 impl Default for Profiles {
     fn default() -> Self {
         Self {
+            revision: 0,
             current: None,
             global_transforms: Vec::new(),
             valid: default_valid(),
@@ -53,6 +68,21 @@ impl Default for Profiles {
 }
 
 impl Profiles {
+    /// Durable, persisted profile state generation used by materialization journals.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Advance the server-owned durable generation before persisting a forward
+    /// or compensating profile state commit.
+    pub fn bump_revision(&mut self) -> Result<u64, ProfileRevisionError> {
+        self.revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(ProfileRevisionError::Overflow)?;
+        Ok(self.revision)
+    }
+
     pub fn get_item(&self, uid: &ProfileId) -> Option<&ProfileItem> {
         self.items.get(uid)
     }
@@ -430,6 +460,10 @@ fn validate_source(
             });
         }
     }
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 fn default_valid() -> Vec<String> {

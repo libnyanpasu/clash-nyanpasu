@@ -3,7 +3,7 @@
 - **关联设计：** [`./design.md`](./design.md)；下文 `design §N` 均指该文件。
 - **任务定位：** roadmap v3 的单一硬前置 Task `R4S`。内部拆成 S01～S10 commit group，全部属于同一 atomic PR；任何子集都不能单独宣告稳定化完成。
 - **分支建议：** `fix/pr4s-actor-migration-stabilization`
-- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）；S01 基线冻结提交为 `daf872d9`；S02 RuntimePaths/candidate hardening 为 `807f1733`；S03 RuntimeLifecycleState/rollback snapshot、S04 CoreLifecycleLease / 统一 lifecycle mutex / change_core lease span / updater stop-swap-restart、S05 Applied-based patch compensation、S06 prepared mirrors / Application→Session→Clash version-checked saga 均已在工作区实现并验证（均未单独 merge）。S07～S10 仍 pending；S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
+- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）；S01 基线冻结提交为 `daf872d9`；S02 RuntimePaths/candidate hardening 为 `807f1733`；S03 RuntimeLifecycleState/rollback snapshot、S04 CoreLifecycleLease / 统一 lifecycle mutex / change_core lease span / updater stop-swap-restart、S05 Applied-based patch compensation、S06 prepared mirrors / Application→Session→Clash version-checked saga、S07 profile materialization transactions / durable `Profiles.revision` / startup+periodic reconcile 均已在工作区实现并验证（均未单独 merge）。S08～S10 仍 pending；S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
 - **建议 PR 标题：** `fix(tauri)!: close PR1-4 actor-migration consistency and regression gaps (PR-4S)`
 
 ---
@@ -57,18 +57,18 @@ flowchart LR
 
 ## 2. 任务总表
 
-| ID  | 任务                                       | Scope                                                                                                          | 建议 commit                                                                      | Design       |
-| --- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------ |
-| S01 | 基线、故障注入接口与回归 fixtures          | 固化当前缺陷和既有回归，不改生产行为                                                                           | `test: pin PR1-4 migration regressions and failure contracts`                    | §1, §8       |
-| S02 | RuntimePaths 与 candidate 安全             | 路径全注入、私有随机 candidate、cleanup                                                                        | `refactor(tauri): inject runtime paths and harden candidate files`               | §6.1–6.2     |
-| S03 | RuntimeLifecycleState 与 rollback snapshot | promoted/applied/revision/hash；完整恢复                                                                       | `fix(tauri): track promoted and applied runtime revisions`                       | §4, §6.4–6.5 |
-| S04 | CoreLifecycleLease                         | 统一 run/restart/change-core 锁域                                                                              | `fix(core): serialize core lifecycle through an exclusive lease`                 | §6.3, §6.6   |
-| S05 | Patch gate 与 Applied compensation         | **已完成**：Applied Set/Remove、revision fence、private candidate direct apply、thin IPC                       | `fix(tauri): compensate runtime patches from applied state`                      | §6.7         |
-| S06 | Prepared mirror 与三域 saga                | **已完成**：prepared mirrors、manager-level CAS、ordered saga/reverse compensation、structured `PartialCommit` | `fix(state): make legacy mirrors prepared and cross-domain patches compensating` | §6.8–6.9     |
-| S07 | Profile materialization transaction        | add/replace/refresh/delete 的恢复协议                                                                          | `fix(profile): make profile state and materialization recoverable`               | §6.10        |
-| S08 | MutationOutcome wire                       | 统一 phase/code degradation 与前端                                                                             | `feat(ipc)!: expose structured committed-degraded mutation outcomes`             | §6.11, §9    |
-| S09 | Dispatcher 与 fake-core                    | bounded/coalescing、可销毁 service graph、进程故障注入                                                         | `refactor(tauri): remove process-global rebuild handler and add fake-core tests` | §6.12, §8.5  |
-| S10 | 验收与文档收尾                             | 三平台 smoke、review disposition、roadmap ledger                                                               | `docs: close PR-4S stabilization gate`                                           | §13          |
+| ID  | 任务                                       | Scope                                                                                                                                    | 建议 commit                                                                      | Design       |
+| --- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------ |
+| S01 | 基线、故障注入接口与回归 fixtures          | 固化当前缺陷和既有回归，不改生产行为                                                                                                     | `test: pin PR1-4 migration regressions and failure contracts`                    | §1, §8       |
+| S02 | RuntimePaths 与 candidate 安全             | 路径全注入、私有随机 candidate、cleanup                                                                                                  | `refactor(tauri): inject runtime paths and harden candidate files`               | §6.1–6.2     |
+| S03 | RuntimeLifecycleState 与 rollback snapshot | promoted/applied/revision/hash；完整恢复                                                                                                 | `fix(tauri): track promoted and applied runtime revisions`                       | §4, §6.4–6.5 |
+| S04 | CoreLifecycleLease                         | 统一 run/restart/change-core 锁域                                                                                                        | `fix(core): serialize core lifecycle through an exclusive lease`                 | §6.3, §6.6   |
+| S05 | Patch gate 与 Applied compensation         | **已完成**：Applied Set/Remove、revision fence、private candidate direct apply、thin IPC                                                 | `fix(tauri): compensate runtime patches from applied state`                      | §6.7         |
+| S06 | Prepared mirror 与三域 saga                | **已完成**：prepared mirrors、manager-level CAS、ordered saga/reverse compensation、structured `PartialCommit`                           | `fix(state): make legacy mirrors prepared and cross-domain patches compensating` | §6.8–6.9     |
+| S07 | Profile materialization transaction        | **已完成**：durable `Profiles.revision`、state-first/file-first/cleanup/reconcile、startup+periodic recovery、crate-internal degradation | `fix(profile): make profile state and materialization recoverable`               | §6.10        |
+| S08 | MutationOutcome wire                       | **未开始**：公共 `MutationOutcome` / IPC / Specta / frontend（S07 仅 crate-internal degradation）                                        | `feat(ipc)!: expose structured committed-degraded mutation outcomes`             | §6.11, §9    |
+| S09 | Dispatcher 与 fake-core                    | bounded/coalescing、可销毁 service graph、进程故障注入                                                                                   | `refactor(tauri): remove process-global rebuild handler and add fake-core tests` | §6.12, §8.5  |
+| S10 | 验收与文档收尾                             | 三平台 smoke、review disposition、roadmap ledger                                                                                         | `docs: close PR-4S stabilization gate`                                           | §13          |
 
 ---
 
@@ -76,7 +76,7 @@ flowchart LR
 
 ## S01 — 基线、故障注入接口与回归 fixtures
 
-**状态：** 已完成（`daf872d9` 固化 failure contracts / 初版 ledger 报告脚本）。不得将 PR-4S 整体标为完成；S07～S10 仍 pending。
+**状态：** 已完成（`daf872d9` 固化 failure contracts / 初版 ledger 报告脚本）。不得将 PR-4S 整体标为完成；S08～S10 仍 pending。
 
 **目标：** 先用测试复现/冻结缺陷，避免后续重构掩盖行为。
 
@@ -224,7 +224,7 @@ RuntimeTransactionSnapshot { product, lifecycle, selected_core }
 
 ## S05 — Patch gate 与 Applied-based compensation
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。S03 的 `lifecycle.applied` 与 S04 的统一 lifecycle lease 已用于 D6：instance-owned `clash_patch_gate` 串行化 API-first patch、desired persist、rebuild/check/promote、apply/restart 与 compensation。S06 已完成；S07～S10 仍 pending；S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
+**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。S03 的 `lifecycle.applied` 与 S04 的统一 lifecycle lease 已用于 D6：instance-owned `clash_patch_gate` 串行化 API-first patch、desired persist、rebuild/check/promote、apply/restart 与 compensation。S06/S07 已完成；S08～S10 仍 pending；S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
 
 **目标：** 修复 D6 补偿读取错误状态、不能删除新键和并发覆盖问题。
 
@@ -268,7 +268,7 @@ PatchCompensationPlan {
 
 ## S06 — Prepared mirrors 与 version-checked three-domain saga
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。落地：fallible prepare-before-persist / infallible in-memory apply-after-persist；manager-level expected-version CAS（actor 消息 `ReplacePreparedIfVersion`）；Application→Session→Clash ordered saga 与 reverse compensation；structured `PartialCommit`；finalizer/legacy-state uncertainty。S07～S10 仍 pending；S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
+**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。落地：fallible prepare-before-persist / infallible in-memory apply-after-persist；manager-level expected-version CAS（actor 消息 `ReplacePreparedIfVersion`）；Application→Session→Clash ordered saga 与 reverse compensation；structured `PartialCommit`；finalizer/legacy-state uncertainty。S07 已完成；S08～S10 仍 pending；S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
 
 **目标：** 消灭 typed commit 后 mirror error 和 legacy patch 的部分提交。
 
@@ -315,37 +315,59 @@ PatchCompensationPlan {
 
 ## S07 — Profile materialization transaction
 
+**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。落地：durable server-owned `Profiles.revision`（≠ manager MVCC）；state-first / file-first / cleanup / reconcile 协议与操作映射；启动 + actor-owned 周期 recovery；crate-internal `ProfileDegradation`；superseded state-first journal 修正规则。S08～S10 仍 pending；公共 `MutationOutcome` / IPC / Specta / frontend 专属 S08 且未开始。
+
 **目标：** 使 Profiles 状态和物化文件在失败时可恢复，warning 可观察。
 
 **Files：**
 
-- Modify: `state/profiles/actor.rs`；
-- Modify: profile ports/service；
-- Modify: `client/profiles.rs`；
-- Create: staging/cleanup journal 类型和 startup reconcile；
-- Modify: profile tests。
+- Modify: `nyanpasu-config` `Profiles.revision` / `bump_revision`；
+- Modify: `state/profiles/actor.rs`、`ports.rs`；
+- Modify: `service/profile_file.rs` journal/cleanup/reconcile；
+- Modify: `client/profiles.rs` / startup wiring；
+- Modify: deterministic profile materialization tests。
 
-**操作规则：**
+**已实现协议：**
 
-- Add：stage → persist → rename；rename fail 则 version-checked state rollback；
-- ReplaceDefinition：prepare new → persist → finalize → cleanup old；
-- Refresh：stage/capture old → promote → persist metadata；persist fail 恢复 old；
-- Delete：state commit 为权威；cleanup fail 入 persistent queue + degraded；
-- symlink/reparse point 必须拒绝意外写穿。
+- **state-first**：`prepare(next) → state CAS → promote → complete/compensate`；
+- **file-first**：`prepare(next) → promote → state CAS → complete/compensate`；
+- **cleanup**：`prepare(next) → state CAS → activate → retry`（active path / hash reuse fence）；
+- **reconcile**：`reconcile(loaded profiles)` 启动先于 ready，并由 actor 周期 cast `ReconcileMaterializations`。
 
-**Outcome：** 所有 warnings 转为 typed degradation，不只 tracing。
+**操作映射：**
 
-**验证：**
+- Add / ReplaceDefinition → state-first（slot 变化附 resource；旧 path 可附 cleanup）；
+- Remote refresh / External Mirror → file-first；
+- Delete → state commit 为权威 + durable cleanup；prepare-cleanup 失败则不提交删除；
+- symlink/reparse point 拒绝意外写穿。
 
-- 每个阶段 failure injection；
-- crash journal fixture；
-- cleanup retry；
+**Durable revision：**
+
+- journal 使用 `Profiles.revision`，不是 `PersistentStateManager` MVCC version；
+- 每次 forward / compensating state commit 前 `bump_revision()`。
+
+**已修正 superseded state-first 规则：**
+
+- 当 `revision > journal` 且 path 仍 active、target 仍 pre-promote：只 `compensate`，**永不 promote**；
+- target 已匹配 journal hash 时：`StatePromoting` 可 `complete`，`StatePrepared` 可 `discard`。
+
+**Outcome：** crate-internal `ProfileDegradation{Cleanup|Reconcile, JournalInvalid|MaterializationDeferred|CleanupDeferred}`；公共 wire 留给 S08。
+
+**验证：** green。
+
+- 每阶段 failure injection（prepare 零提交、promote/compensate compound、complete deferred、cleanup deferred）；
+- crash journal fixture（state-promoting / file-promoted / uncommitted file-prepared / compensating）；
+- superseded state-first compensate-never-promote；
+- cleanup retry + fence；
 - no orphan success state；
-- remote stale fence 保持。
+- remote stale fence 保持；
+- startup reconcile before client ready。
 
 ---
 
 ## S08 — MutationOutcome wire 与前端原子切换
+
+**状态：** 未开始（专属 S08）。S07 仅落地 crate-internal degradation；不得将 PR-4S 标为完成。
 
 **目标：** 统一 mutation success/degraded 语义，并把 profile/materialization/runtime warnings 交付前端。
 
@@ -454,7 +476,7 @@ PatchCompensationPlan {
 - [x] one lifecycle lease covers all core mutations（S04 工作区已验证；S09 fake-core 进程级矩阵仍 pending）
 - [x] mirror prepare before persist; apply infallible（S06 工作区已验证）
 - [x] three-domain patch saga version-checked（S06：manager-level CAS + Application→Session→Clash + reverse compensation）
-- [ ] profile materialization recoverable
+- [x] profile materialization recoverable（S07：state-first/file-first/cleanup/reconcile + durable `Profiles.revision`；公共 wire 仍待 S08）
 - [ ] dispatcher test-resettable/deglobalized
 - [ ] Tauri commands thin
 
@@ -465,13 +487,15 @@ PatchCompensationPlan {
 - [x] D6 supports Applied-based Set/Remove and revision conflict（S05；exact bytes/private candidate direct apply；tests green）
 - [x] no ghost Err after typed commit（S06：fallible prepare-before-persist；infallible apply-after-persist）
 - [x] no silent partial domain commit（S06：version-checked saga + structured `PartialCommit` / finalizer uncertainty）
-- [ ] profile file failure not returned as naked success
-- [ ] remote refresh metadata failure restores old file
+- [x] profile file failure not returned as naked success（S07 state-first promote/compensate；crate-internal degradation）
+- [x] remote refresh metadata failure restores old file（S07 file-first compensate）
+- [ ] public `MutationOutcome` / IPC / Specta / frontend wire（S08 未开始）
 
 ### 测试
 
 - [ ] zero test access to real user dirs
-- [x] no sleep-based S04-S06 actor concurrency tests（barrier/oneshot/mpsc；S07～S09 新增测试仍须保持）
+- [x] no sleep-based S04-S07 actor concurrency / materialization tests（barrier/oneshot/mpsc + deterministic journal fixtures；S08～S09 新增测试仍须保持）
+- [x] S07 failure/crash/cleanup/fence tests green（含 superseded state-first compensate-never-promote）
 - [ ] fake-core failure matrix green
 - [ ] regression fixtures #4893/#4916/#4917/#4920/#4921 green
 - [ ] Windows/macOS/Linux CI green
@@ -484,4 +508,4 @@ PatchCompensationPlan {
 - [ ] roadmap ledger generated and current
 - [ ] residual TODO owner/removal condition complete
 
-只有全部勾选后，roadmap 才能把 PR-4S 标为完成并解锁 PR-5a。
+只有全部勾选后，roadmap 才能把 PR-4S 标为完成并解锁 PR-5a。S01～S07 工作区已验证不构成关闭条件。

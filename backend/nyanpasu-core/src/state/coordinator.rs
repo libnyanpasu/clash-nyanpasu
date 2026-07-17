@@ -15,6 +15,19 @@ pub(super) type ArcStateSubscriber<T> = Arc<dyn StateAckSubscriber<T> + Send + S
 pub(super) type Subscribers<T> = Vec<ArcStateSubscriber<T>>;
 pub(super) type StateStore<T> = Arc<ArcSwap<VersionedState<T>>>;
 
+#[derive(Debug)]
+pub(crate) enum ConditionalEffectError<E> {
+    Conflict {
+        actual: Version,
+    },
+    State(StateChangedError),
+    Effect(E),
+    Recovery {
+        commit_error: StateChangedError,
+        recovery_error: E,
+    },
+}
+
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
     current_state: StateStore<T>,
@@ -63,7 +76,11 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         StateSnapshot::from_store(Arc::clone(&self.current_state))
     }
 
-    fn pending_change_id(&self) -> StateChangeId {
+    fn pending_change_id(&mut self) -> StateChangeId {
+        let expected = StateChangeId(self.snapshot_versioned().version.next());
+        if self.next_change_id != expected {
+            self.next_change_id = expected;
+        }
         self.next_change_id
     }
 
@@ -187,6 +204,90 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     {
         self.with_pending_state_inner(new_state, None, effect_fn)
             .await
+    }
+
+    pub(crate) async fn with_pending_state_if_version<'s, F, Fut, RF, RFut, E>(
+        &mut self,
+        expected_version: Version,
+        new_state: &'s T,
+        effect_fn: F,
+        recovery_fn: RF,
+    ) -> Result<(), ConditionalEffectError<E>>
+    where
+        F: FnOnce(&'s T) -> Fut,
+        Fut: Future<Output = Result<(), E>> + 's,
+        RF: FnOnce(T) -> RFut,
+        RFut: Future<Output = Result<(), E>>,
+        E: std::fmt::Debug,
+    {
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore should never closed");
+        let subscribers = self.clone_subscribers();
+        let notify_strategy = self.notify_strategy;
+        let next_changed_id = self.pending_change_id();
+        let current_state = self.snapshot_versioned();
+        if current_state.version != expected_version {
+            return Err(ConditionalEffectError::Conflict {
+                actual: current_state.version,
+            });
+        }
+        let change = StateChange {
+            id: next_changed_id,
+            previous: Some(current_state.clone()),
+            current: Arc::new(new_state.clone()),
+        };
+        let tx = new_transaction(
+            change,
+            self.current_state.clone(),
+            subscribers,
+            notify_strategy,
+            permit,
+        );
+        let tx = match tx.prepare().await {
+            Ok((_report, prepared_tx)) => prepared_tx,
+            Err((report, _)) => {
+                return Err(ConditionalEffectError::State(
+                    StateChangedError::PrepareAck(PrepareAckError { report }),
+                ));
+            }
+        };
+        if let Err(error) = effect_fn(new_state).await {
+            tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
+                "effect function failed: {error:#?}"
+            ))))
+            .await;
+            return Err(ConditionalEffectError::Effect(error));
+        }
+        match tx.try_commit() {
+            Ok(committed_tx) => {
+                committed_tx.notify_committed().await;
+                self.mark_change_id_committed(next_changed_id);
+                Ok(())
+            }
+            Err(commit_mismatch) => {
+                let actual = self.sync_change_id_after_cas_mismatch();
+                let commit_error = StateChangedError::StateCasMismatch {
+                    expected: current_state.version,
+                    actual,
+                };
+                let committed = self.snapshot_versioned();
+                let recovery_result = recovery_fn(committed.state.clone()).await;
+                // Recovery is complete before rollback notifications begin. The
+                // latter are best-effort and may be cancelled by the caller.
+                commit_mismatch.notify_rollback().await;
+                match recovery_result {
+                    Ok(()) => Err(ConditionalEffectError::State(commit_error)),
+                    Err(recovery_error) => Err(ConditionalEffectError::Recovery {
+                        commit_error,
+                        recovery_error,
+                    }),
+                }
+            }
+        }
     }
 
     /// Run an external effect between prepare and commit, rolling back if the
@@ -409,6 +510,25 @@ mod test {
         should_fail: Arc<AtomicBool>,
         should_degrade: Arc<AtomicBool>,
         committed_history: Arc<Mutex<Vec<CommittedEntry>>>,
+    }
+
+    struct BlockingRollbackSubscriber {
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+        recovery_completed: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl StateAckSubscriber<TestState> for BlockingRollbackSubscriber {
+        fn name(&self) -> SubscriberName<'_> {
+            "blocking_rollback".into()
+        }
+
+        async fn on_rolled_back(&self, _change: StateChange<TestState>, _reason: RollbackReason) {
+            assert!(self.recovery_completed.load(Ordering::SeqCst));
+            self.started.notify_one();
+            self.release.notified().await;
+        }
     }
 
     impl MockAckSubscriber {
@@ -1292,6 +1412,121 @@ mod test {
             .await
             .unwrap();
         assert_eq!(coordinator.snapshot_versioned().version, Version::new(100));
+    }
+
+    #[tokio::test]
+    async fn test_conditional_commit_cas_mismatch_recovers_committed_state() {
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
+        let store = Arc::clone(&coordinator.current_state);
+        let recovered = Arc::new(Mutex::new(None));
+        let recovered_for_closure = Arc::clone(&recovered);
+        let next = TestState {
+            value: 42,
+            name: "conditional".to_string(),
+        };
+        let winner = TestState {
+            value: 7,
+            name: "winner".to_string(),
+        };
+        let winner_for_effect = winner.clone();
+
+        let result: Result<_, ConditionalEffectError<anyhow::Error>> = coordinator
+            .with_pending_state_if_version(
+                Version::new(0),
+                &next,
+                move |_state| async move {
+                    store.store(Arc::new(VersionedState {
+                        version: Version::new(7),
+                        state: winner_for_effect,
+                    }));
+                    Ok(())
+                },
+                move |committed| {
+                    let committed = committed.clone();
+                    async move {
+                        *recovered_for_closure.lock().await = Some(committed);
+                        Ok(())
+                    }
+                },
+            )
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ConditionalEffectError::State(
+                StateChangedError::StateCasMismatch {
+                    expected,
+                    actual
+                }
+            )) if expected == Version::new(0) && actual == Version::new(7)
+        ));
+        assert_eq!(recovered.lock().await.as_ref(), Some(&winner));
+        assert_eq!(&coordinator.snapshot_versioned().state, &winner);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_conditional_cas_recovery_precedes_blocking_rollback_notification() {
+        let rollback_started = Arc::new(Notify::new());
+        let rollback_release = Arc::new(Notify::new());
+        let recovery_completed = Arc::new(AtomicBool::new(false));
+        let subscriber = BlockingRollbackSubscriber {
+            started: Arc::clone(&rollback_started),
+            release: Arc::clone(&rollback_release),
+            recovery_completed: Arc::clone(&recovery_completed),
+        };
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber))
+            .build(default_test_state());
+        let store = Arc::clone(&coordinator.current_state);
+        let next = TestState {
+            value: 42,
+            name: "conditional".to_string(),
+        };
+        let winner = TestState {
+            value: 7,
+            name: "winner".to_string(),
+        };
+        let winner_for_effect = winner.clone();
+        let recovery_completed_for_closure = Arc::clone(&recovery_completed);
+
+        let operation = tokio::spawn(async move {
+            coordinator
+                .with_pending_state_if_version(
+                    Version::new(0),
+                    &next,
+                    move |_state| async move {
+                        store.store(Arc::new(VersionedState {
+                            version: Version::new(7),
+                            state: winner_for_effect,
+                        }));
+                        Ok::<_, anyhow::Error>(())
+                    },
+                    move |committed| async move {
+                        assert_eq!(committed, winner);
+                        recovery_completed_for_closure.store(true, Ordering::SeqCst);
+                        Ok::<_, anyhow::Error>(())
+                    },
+                )
+                .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), rollback_started.notified())
+            .await
+            .expect("rollback subscriber should be reached");
+        assert!(recovery_completed.load(Ordering::SeqCst));
+        assert!(!operation.is_finished());
+
+        rollback_release.notify_one();
+        let result = operation.await.expect("conditional operation should join");
+        assert!(matches!(
+            result,
+            Err(ConditionalEffectError::State(
+                StateChangedError::StateCasMismatch {
+                    expected,
+                    actual
+                }
+            )) if expected == Version::new(0) && actual == Version::new(7)
+        ));
     }
 
     #[tokio::test]

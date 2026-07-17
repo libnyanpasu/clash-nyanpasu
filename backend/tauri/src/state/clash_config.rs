@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use nyanpasu_config::clash::config::{ClashConfig, ClashConfigPatch};
-use nyanpasu_core::state::PersistentStateManager;
+use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 
-use super::mirror::ClashLegacyBridge;
+use super::{
+    ConditionalReplaceResult,
+    mirror::{ClashLegacyBridge, PreparedTypedReplace},
+};
 
 /// Snapshot of the saved Clash configuration domain, not live Clash runtime API state.
 #[derive(Debug, Clone)]
@@ -36,6 +39,15 @@ pub enum ClashConfigActorMessage {
         state: ClashConfig,
         reply: RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>,
     },
+    PrepareReplace {
+        state: ClashConfig,
+        reply: RpcReplyPort<anyhow::Result<PreparedTypedReplace<ClashConfig>>>,
+    },
+    ReplacePreparedIfVersion {
+        expected_version: u64,
+        prepared: PreparedTypedReplace<ClashConfig>,
+        reply: RpcReplyPort<anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>>>,
+    },
 }
 
 /// Actor-owned persistent Clash configuration. Runtime Clash API state stays in the core/API path.
@@ -50,20 +62,53 @@ impl ClashConfigActor {
         }
     }
 
+    fn prepare_replace(
+        state: &ClashConfigActorState,
+        next: ClashConfig,
+    ) -> anyhow::Result<PreparedTypedReplace<ClashConfig>> {
+        let mirror = state
+            .bridge
+            .prepare(&next)
+            .context("failed to prepare legacy clash mirror")?;
+        Ok(PreparedTypedReplace::new(next, mirror))
+    }
+
     async fn commit(
         state: &mut ClashConfigActorState,
         next: ClashConfig,
     ) -> anyhow::Result<ClashConfigSnapshot> {
+        let (next, mirror) = Self::prepare_replace(state, next)?.into_parts();
         state
             .manager
-            .upsert(next.clone())
+            .upsert(next)
             .await
             .context("failed to persist clash config")?;
-        state
-            .bridge
-            .mirror(&next)
-            .context("failed to sync legacy clash mirror")?;
+        mirror.apply();
         Ok(Self::snapshot(state))
+    }
+
+    async fn replace_prepared_if_version(
+        state: &mut ClashConfigActorState,
+        expected_version: u64,
+        prepared: PreparedTypedReplace<ClashConfig>,
+    ) -> anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>> {
+        let (next, mirror) = prepared.into_parts();
+        match state
+            .manager
+            .replace_if_version(Version::new(expected_version), next)
+            .await
+            .context("failed to conditionally persist clash config")?
+        {
+            ReplaceIfVersionResult::Replaced => {
+                mirror.apply();
+                Ok(ConditionalReplaceResult::Replaced(Self::snapshot(state)))
+            }
+            ReplaceIfVersionResult::Conflict { actual_version } => {
+                Ok(ConditionalReplaceResult::Conflict {
+                    actual_version: *actual_version.as_ref(),
+                })
+            }
+        }
     }
 }
 
@@ -105,6 +150,18 @@ impl Actor for ClashConfigActor {
             ClashConfigActorMessage::Replace { state: next, reply } => {
                 let _ = reply.send(Self::commit(state, next).await);
             }
+            ClashConfigActorMessage::PrepareReplace { state: next, reply } => {
+                let _ = reply.send(Self::prepare_replace(state, next));
+            }
+            ClashConfigActorMessage::ReplacePreparedIfVersion {
+                expected_version,
+                prepared,
+                reply,
+            } => {
+                let _ = reply.send(
+                    Self::replace_prepared_if_version(state, expected_version, prepared).await,
+                );
+            }
         }
         Ok(())
     }
@@ -113,18 +170,18 @@ impl Actor for ClashConfigActor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::mirror::PreparedLegacyMirror;
     use nyanpasu_core::state::PersistentStateManagerSetup;
     use ractor::rpc::CallResult;
     use struct_patch::Patch;
     use tempfile::tempdir;
 
-    /// Test-only double that fails every clash legacy mirror projection.
-    /// Pins upsert-then-mirror for ClashConfigActor until S06.
+    /// Test-only double that fails every Clash legacy mirror preparation.
     struct FailingClashMirror;
 
     impl ClashLegacyBridge for FailingClashMirror {
-        fn mirror(&self, _snap: &ClashConfig) -> anyhow::Result<()> {
-            anyhow::bail!("injected clash mirror failure");
+        fn prepare(&self, _snap: &ClashConfig) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            anyhow::bail!("injected clash mirror prepare failure");
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<ClashConfig> {
@@ -164,11 +221,8 @@ mod tests {
         }
     }
 
-    /// S01 regression contract: current commit path is upsert-then-mirror.
-    /// A post-upsert mirror failure still advances typed state/version while
-    /// returning Err. S06 must invert this to prepare-before-persist.
     #[tokio::test]
-    async fn typed_mirror_failure_after_upsert_leaves_version_advanced() {
+    async fn mirror_prepare_failure_returns_error_without_commit() {
         let (actor, _dir) = spawn_actor(Arc::new(FailingClashMirror)).await;
 
         let before = get_snapshot(&actor)
@@ -201,22 +255,12 @@ mod tests {
         let after = get_snapshot(&actor)
             .await
             .expect("post-failure get should succeed");
-        assert!(
-            after.state.enable_tun_mode,
-            "upsert already committed desired state before mirror failed"
-        );
-        assert!(
-            after.version > before_version,
-            "version must advance after successful upsert even when mirror fails (before={before_version}, after={})",
-            after.version
-        );
+        assert_eq!(after.state.enable_tun_mode, before.state.enable_tun_mode);
+        assert_eq!(after.version, before_version);
     }
 
-    /// Desired S06 invariant kept red until prepare-before-persist lands.
-    /// Do not "fix green" by weakening this assertion.
     #[tokio::test]
-    #[ignore = "S06 desired invariant: mirror prepare failure must leave state/version unchanged; currently red under upsert-then-mirror"]
-    async fn desired_mirror_prepare_failure_leaves_state_and_version_unchanged() {
+    async fn mirror_prepare_failure_leaves_state_and_version_unchanged() {
         let (actor, _dir) = spawn_actor(Arc::new(FailingClashMirror)).await;
 
         let before = get_snapshot(&actor)

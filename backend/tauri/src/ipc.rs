@@ -60,6 +60,7 @@ impl From<ClientError> for IpcError {
             ClientError::Storage(err) => IpcError::Storage(err),
             ClientError::Anyhow(err) => IpcError::Anyhow(err),
             ClientError::Profiles(err) => IpcError::Profiles(err),
+            ClientError::PartialCommit(err) => IpcError::Custom(err.to_string()),
             ClientError::Custom(err) => IpcError::Custom(err),
         }
     }

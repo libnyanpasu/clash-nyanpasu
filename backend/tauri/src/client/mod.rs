@@ -20,8 +20,11 @@ use crate::{
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::{
+        ConditionalReplaceResult, TypedConfigPatchPlan,
+        application::ApplicationSnapshot,
+        clash_config::ClashConfigSnapshot,
         mirror::{
-            ClashLegacyBridge as ClashLegacyBridgeTrait,
+            ClashLegacyBridge as ClashLegacyBridgeTrait, PreparedTypedReplace,
             VergeLegacyBridge as VergeLegacyBridgeTrait,
             WindowLegacyBridge as WindowLegacyBridgeTrait,
         },
@@ -29,6 +32,7 @@ use crate::{
             CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
             ports::{ProfileFsPort, SubscriptionFetcher},
         },
+        session_state::SessionStateSnapshot,
     },
     utils::path::PathResolver,
 };
@@ -54,6 +58,7 @@ pub use core_bridge::{
     RunningConfigPatchPort,
 };
 pub use error::{ClientError, Result};
+pub(crate) use error::{CompensationFailure, LegacyVergeDomain, PartialCommit};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
 pub use event_sink::{TauriUiEventSink, UiEventSink};
@@ -82,6 +87,45 @@ pub struct LegacyBridgeSet {
 #[derive(Clone)]
 pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
+}
+
+pub(crate) struct TypedConfigSnapshots {
+    pub application: ApplicationSnapshot,
+    pub session: SessionStateSnapshot,
+    pub clash: ClashConfigSnapshot,
+}
+
+enum PreparedConfigDomain {
+    Application {
+        expected_version: u64,
+        forward: PreparedTypedReplace<NyanpasuAppConfig>,
+        rollback: PreparedTypedReplace<NyanpasuAppConfig>,
+    },
+    Session {
+        expected_version: u64,
+        forward: PreparedTypedReplace<PersistentState>,
+        rollback: PreparedTypedReplace<PersistentState>,
+    },
+    Clash {
+        expected_version: u64,
+        forward: PreparedTypedReplace<ClashConfig>,
+        rollback: PreparedTypedReplace<ClashConfig>,
+    },
+}
+
+enum CommittedConfigDomain {
+    Application {
+        committed_version: u64,
+        rollback: PreparedTypedReplace<NyanpasuAppConfig>,
+    },
+    Session {
+        committed_version: u64,
+        rollback: PreparedTypedReplace<PersistentState>,
+    },
+    Clash {
+        committed_version: u64,
+        rollback: PreparedTypedReplace<ClashConfig>,
+    },
 }
 
 async fn new_typed_config_clients(
@@ -126,8 +170,9 @@ async fn sync_legacy_mirrors(
         .state;
     bridges
         .verge
-        .mirror(&application)
-        .context("failed to mirror loaded application config into legacy state")?;
+        .prepare(&application)
+        .context("failed to prepare loaded application config legacy mirror")?
+        .apply();
 
     let session_state = session_state
         .get()
@@ -136,8 +181,9 @@ async fn sync_legacy_mirrors(
         .state;
     bridges
         .window
-        .mirror(&session_state)
-        .context("failed to mirror loaded session state into legacy state")?;
+        .prepare(&session_state)
+        .context("failed to prepare loaded session state legacy mirror")?
+        .apply();
 
     let clash_config = clash_config
         .get()
@@ -146,8 +192,9 @@ async fn sync_legacy_mirrors(
         .state;
     bridges
         .clash
-        .mirror(&clash_config)
-        .context("failed to mirror loaded clash config into legacy state")?;
+        .prepare(&clash_config)
+        .context("failed to prepare loaded clash config legacy mirror")?
+        .apply();
 
     Ok(())
 }
@@ -375,6 +422,323 @@ impl NyanpasuClient {
         let client = self.inner.clash_config.clone();
         client.replace(state).await?;
         Ok(())
+    }
+
+    pub(crate) async fn typed_config_snapshots(&self) -> Result<TypedConfigSnapshots> {
+        Ok(TypedConfigSnapshots {
+            application: self.inner.application.get().await?,
+            session: self.inner.session_state.get().await?,
+            clash: self.inner.clash_config.get().await?,
+        })
+    }
+
+    pub(crate) async fn apply_legacy_verge_patch_saga<F>(
+        &self,
+        plan: TypedConfigPatchPlan,
+        finalize: F,
+    ) -> Result<()>
+    where
+        F: FnOnce() -> anyhow::Result<()>,
+    {
+        let snapshots = self.typed_config_snapshots().await?;
+        let application = plan.application.map(|patch| {
+            let mut state = snapshots.application.state.clone();
+            state.apply(patch);
+            state
+        });
+        let session = plan.session_state.map(|patch| {
+            let mut state = snapshots.session.state.clone();
+            state.apply(patch);
+            state
+        });
+        let clash = plan.clash_config.map(|patch| {
+            let mut state = snapshots.clash.state.clone();
+            state.apply(patch);
+            state
+        });
+        self.apply_legacy_verge_states_saga(snapshots, application, session, clash, finalize)
+            .await
+    }
+
+    pub(crate) async fn apply_legacy_verge_replacement_saga<F>(
+        &self,
+        application: NyanpasuAppConfig,
+        session: PersistentState,
+        clash: ClashConfig,
+        finalize: F,
+    ) -> Result<()>
+    where
+        F: FnOnce() -> anyhow::Result<()>,
+    {
+        let snapshots = self.typed_config_snapshots().await?;
+        self.apply_legacy_verge_states_saga(
+            snapshots,
+            Some(application),
+            Some(session),
+            Some(clash),
+            finalize,
+        )
+        .await
+    }
+
+    async fn apply_legacy_verge_states_saga<F>(
+        &self,
+        snapshots: TypedConfigSnapshots,
+        application: Option<NyanpasuAppConfig>,
+        session: Option<PersistentState>,
+        clash: Option<ClashConfig>,
+        finalize: F,
+    ) -> Result<()>
+    where
+        F: FnOnce() -> anyhow::Result<()>,
+    {
+        let mut prepared = Vec::new();
+        if let Some(state) = application {
+            prepared.push(PreparedConfigDomain::Application {
+                expected_version: snapshots.application.version,
+                forward: self.inner.application.prepare_replace(state).await?,
+                rollback: self
+                    .inner
+                    .application
+                    .prepare_replace(snapshots.application.state.clone())
+                    .await?,
+            });
+        }
+        if let Some(state) = session {
+            prepared.push(PreparedConfigDomain::Session {
+                expected_version: snapshots.session.version,
+                forward: self.inner.session_state.prepare_replace(state).await?,
+                rollback: self
+                    .inner
+                    .session_state
+                    .prepare_replace(snapshots.session.state.clone())
+                    .await?,
+            });
+        }
+        if let Some(state) = clash {
+            prepared.push(PreparedConfigDomain::Clash {
+                expected_version: snapshots.clash.version,
+                forward: self.inner.clash_config.prepare_replace(state).await?,
+                rollback: self
+                    .inner
+                    .clash_config
+                    .prepare_replace(snapshots.clash.state.clone())
+                    .await?,
+            });
+        }
+
+        let mut committed = Vec::new();
+        for domain in prepared {
+            let result = match domain {
+                PreparedConfigDomain::Application {
+                    expected_version,
+                    forward,
+                    rollback,
+                } => match self
+                    .inner
+                    .application
+                    .replace_prepared_if_version(expected_version, forward)
+                    .await
+                {
+                    Ok(ConditionalReplaceResult::Replaced(snapshot)) => {
+                        committed.push(CommittedConfigDomain::Application {
+                            committed_version: snapshot.version,
+                            rollback,
+                        });
+                        continue;
+                    }
+                    Ok(ConditionalReplaceResult::Conflict { actual_version }) => {
+                        ClientError::Custom(format!(
+                            "application config version conflict: expected {expected_version}, actual {actual_version}"
+                        ))
+                    }
+                    Err(error) => ClientError::Anyhow(
+                        error.context("failed to commit application config in legacy verge saga"),
+                    ),
+                },
+                PreparedConfigDomain::Session {
+                    expected_version,
+                    forward,
+                    rollback,
+                } => match self
+                    .inner
+                    .session_state
+                    .replace_prepared_if_version(expected_version, forward)
+                    .await
+                {
+                    Ok(ConditionalReplaceResult::Replaced(snapshot)) => {
+                        committed.push(CommittedConfigDomain::Session {
+                            committed_version: snapshot.version,
+                            rollback,
+                        });
+                        continue;
+                    }
+                    Ok(ConditionalReplaceResult::Conflict { actual_version }) => {
+                        ClientError::Custom(format!(
+                            "session config version conflict: expected {expected_version}, actual {actual_version}"
+                        ))
+                    }
+                    Err(error) => ClientError::Anyhow(
+                        error.context("failed to commit session state in legacy verge saga"),
+                    ),
+                },
+                PreparedConfigDomain::Clash {
+                    expected_version,
+                    forward,
+                    rollback,
+                } => match self
+                    .inner
+                    .clash_config
+                    .replace_prepared_if_version(expected_version, forward)
+                    .await
+                {
+                    Ok(ConditionalReplaceResult::Replaced(snapshot)) => {
+                        committed.push(CommittedConfigDomain::Clash {
+                            committed_version: snapshot.version,
+                            rollback,
+                        });
+                        continue;
+                    }
+                    Ok(ConditionalReplaceResult::Conflict { actual_version }) => {
+                        ClientError::Custom(format!(
+                            "clash config version conflict: expected {expected_version}, actual {actual_version}"
+                        ))
+                    }
+                    Err(error) => ClientError::Anyhow(
+                        error.context("failed to commit clash config in legacy verge saga"),
+                    ),
+                },
+            };
+            return self
+                .compensate_legacy_verge_saga(committed, result, Vec::new())
+                .await;
+        }
+
+        if let Err(error) = finalize() {
+            let legacy_uncertainty = CompensationFailure::LegacyStateUncertain {
+                message: format!("{error:#}"),
+            };
+            return self
+                .compensate_legacy_verge_saga(
+                    committed,
+                    ClientError::Anyhow(
+                        error.context("failed to finalize legacy verge persistence"),
+                    ),
+                    vec![legacy_uncertainty],
+                )
+                .await;
+        }
+
+        Ok(())
+    }
+
+    async fn compensate_legacy_verge_saga(
+        &self,
+        mut committed: Vec<CommittedConfigDomain>,
+        primary: ClientError,
+        mut failed_compensations: Vec<CompensationFailure>,
+    ) -> Result<()> {
+        let committed_domains = committed
+            .iter()
+            .map(|domain| match domain {
+                CommittedConfigDomain::Application { .. } => LegacyVergeDomain::Application,
+                CommittedConfigDomain::Session { .. } => LegacyVergeDomain::Session,
+                CommittedConfigDomain::Clash { .. } => LegacyVergeDomain::Clash,
+            })
+            .collect::<Vec<_>>();
+        let mut compensated_domains = Vec::new();
+
+        while let Some(domain) = committed.pop() {
+            match domain {
+                CommittedConfigDomain::Application {
+                    committed_version,
+                    rollback,
+                } => match self
+                    .inner
+                    .application
+                    .replace_prepared_if_version(committed_version, rollback)
+                    .await
+                {
+                    Ok(ConditionalReplaceResult::Replaced(_)) => {
+                        compensated_domains.push(LegacyVergeDomain::Application)
+                    }
+                    Ok(ConditionalReplaceResult::Conflict { actual_version }) => {
+                        failed_compensations.push(CompensationFailure::Conflict {
+                            domain: LegacyVergeDomain::Application,
+                            expected_version: committed_version,
+                            actual_version,
+                        });
+                    }
+                    Err(error) => failed_compensations.push(CompensationFailure::Error {
+                        domain: LegacyVergeDomain::Application,
+                        message: format!("{error:#}"),
+                    }),
+                },
+                CommittedConfigDomain::Session {
+                    committed_version,
+                    rollback,
+                } => match self
+                    .inner
+                    .session_state
+                    .replace_prepared_if_version(committed_version, rollback)
+                    .await
+                {
+                    Ok(ConditionalReplaceResult::Replaced(_)) => {
+                        compensated_domains.push(LegacyVergeDomain::Session)
+                    }
+                    Ok(ConditionalReplaceResult::Conflict { actual_version }) => {
+                        failed_compensations.push(CompensationFailure::Conflict {
+                            domain: LegacyVergeDomain::Session,
+                            expected_version: committed_version,
+                            actual_version,
+                        });
+                    }
+                    Err(error) => failed_compensations.push(CompensationFailure::Error {
+                        domain: LegacyVergeDomain::Session,
+                        message: format!("{error:#}"),
+                    }),
+                },
+                CommittedConfigDomain::Clash {
+                    committed_version,
+                    rollback,
+                } => match self
+                    .inner
+                    .clash_config
+                    .replace_prepared_if_version(committed_version, rollback)
+                    .await
+                {
+                    Ok(ConditionalReplaceResult::Replaced(_)) => {
+                        compensated_domains.push(LegacyVergeDomain::Clash)
+                    }
+                    Ok(ConditionalReplaceResult::Conflict { actual_version }) => {
+                        failed_compensations.push(CompensationFailure::Conflict {
+                            domain: LegacyVergeDomain::Clash,
+                            expected_version: committed_version,
+                            actual_version,
+                        });
+                    }
+                    Err(error) => failed_compensations.push(CompensationFailure::Error {
+                        domain: LegacyVergeDomain::Clash,
+                        message: format!("{error:#}"),
+                    }),
+                },
+            }
+        }
+
+        if failed_compensations.is_empty() {
+            return Err(primary);
+        }
+
+        let partial = PartialCommit::new(
+            &primary,
+            committed_domains,
+            compensated_domains,
+            failed_compensations,
+        );
+        tracing::error!(partial_commit = ?partial, "legacy verge saga requires reconciliation");
+        self.inner.ui_sink.refresh_verge();
+        self.inner.ui_sink.refresh_clash();
+        Err(partial.into())
     }
 
     // ---- profiles domain (PR-3 T07) ----
@@ -1098,7 +1462,10 @@ fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
 mod tests {
     use super::*;
     use crate::state::{
-        mirror::{ClashLegacyBridge, VergeLegacyBridge, WindowLegacyBridge},
+        mirror::{
+            ClashLegacyBridge, NoopPreparedLegacyMirror, PreparedLegacyMirror, VergeLegacyBridge,
+            WindowLegacyBridge,
+        },
         profiles::ports::{MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher},
     };
     use async_trait::async_trait;
@@ -1308,8 +1675,11 @@ mod tests {
     struct NoopVergeBridge;
 
     impl VergeLegacyBridge for NoopVergeBridge {
-        fn mirror(&self, _snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
-            Ok(())
+        fn prepare(
+            &self,
+            _snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(NoopPreparedLegacyMirror))
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
@@ -1321,13 +1691,29 @@ mod tests {
         mirrored_theme_color: Arc<StdMutex<Option<String>>>,
     }
 
-    impl VergeLegacyBridge for RecordingVergeBridge {
-        fn mirror(&self, snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
+    struct RecordingPreparedVergeMirror {
+        mirrored_theme_color: Arc<StdMutex<Option<String>>>,
+        theme_color: String,
+    }
+
+    impl PreparedLegacyMirror for RecordingPreparedVergeMirror {
+        fn apply(self: Box<Self>) {
             *self
                 .mirrored_theme_color
                 .lock()
-                .expect("mirror capture should not poison") = Some(snap.theme_color.to_string());
-            Ok(())
+                .expect("mirror capture should not poison") = Some(self.theme_color);
+        }
+    }
+
+    impl VergeLegacyBridge for RecordingVergeBridge {
+        fn prepare(
+            &self,
+            snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(RecordingPreparedVergeMirror {
+                mirrored_theme_color: Arc::clone(&self.mirrored_theme_color),
+                theme_color: snap.theme_color.to_string(),
+            }))
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
@@ -1338,8 +1724,11 @@ mod tests {
     struct NoopWindowBridge;
 
     impl WindowLegacyBridge for NoopWindowBridge {
-        fn mirror(&self, _snap: &PersistentState) -> anyhow::Result<()> {
-            Ok(())
+        fn prepare(
+            &self,
+            _snap: &PersistentState,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(NoopPreparedLegacyMirror))
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
@@ -1455,8 +1844,8 @@ mod tests {
     struct NoopClashBridge;
 
     impl ClashLegacyBridge for NoopClashBridge {
-        fn mirror(&self, _snap: &ClashConfig) -> anyhow::Result<()> {
-            Ok(())
+        fn prepare(&self, _snap: &ClashConfig) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(NoopPreparedLegacyMirror))
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<ClashConfig> {

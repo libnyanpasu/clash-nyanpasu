@@ -34,6 +34,9 @@ mod weak_persistent_state;
 use super::{builder::*, coordinator::*};
 
 pub use persistent_builder::*;
-pub use persistent_state::{PersistentStateManager, PersistentStateManagerSetup};
+pub use persistent_state::{
+    PersistentStateManager, PersistentStateManagerSetup, ReplaceIfVersionError,
+    ReplaceIfVersionResult,
+};
 pub use simple::{SimpleStateManager, SimpleStateManagerSetup};
 pub use weak_persistent_state::{WeakPersistentStateManager, WeakPersistentStateManagerSetup};

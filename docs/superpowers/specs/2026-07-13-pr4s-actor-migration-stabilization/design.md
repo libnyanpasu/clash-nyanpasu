@@ -1,9 +1,9 @@
 # PR-4S — PR-1～PR-4 Actor Migration 稳定化门（设计 spec）
 
 **日期：** 2026-07-13  
-**状态：** Implementing（S01～S05 已完成；S06～S10 pending；不得宣告 PR-4S 完成。S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。）
+**状态：** Implementing（S01～S06 已完成；S07～S10 pending；不得宣告 PR-4S 完成。S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。）
 
-**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease`、统一 `CoreManager` lifecycle mutex、`change_core` lease span through rollback、updater stop/swap/restart）
+**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease`、统一 `CoreManager` lifecycle mutex、`change_core` lease span through rollback、updater stop/swap/restart；S05 Applied-based patch compensation 工作区已验证；S06 prepared mirrors / three-domain saga 工作区已验证）
 **上游依据：** `docs/design/actor-migration-roadmap.md` v3 §5  
 **建议分支：** `fix/pr4s-actor-migration-stabilization`  
 **原子性：** 本 spec 的 S01～S10 为一个稳定化 PR；可以多 commit，但不得只合并部分语义
@@ -26,7 +26,7 @@ PR-1～PR-4 已完成以下主要方向：
 
 1. **生命周期锁域（S04 已完成）**：`CoreLifecyclePort`/`CoreLifecycleLease` 统一 run/restart/stop/check/apply/recover；`CoreManager` 以单一 `lifecycle_lock` 替代仅覆盖部分路径的 `run_lock`；`change_core` 全程持有 `rebuild_gate + lease` 至 rollback 结束；updater stop/swap/restart 同锁域。S09 fake-core 进程级 failure matrix 仍 pending。
 2. **状态语义残差（S03 + S05 已完成）**：facade 持有 `RuntimeLifecycleState { promoted, applied }` 与 revision/core/hash/exact product bytes；四读 IPC 读 Promoted；`change_core` 深层 rollback 同步恢复 product/Promoted/Applied。S05 的 instance-owned patch gate 以 Applied 生成 Set/Remove 计划，用 expected Applied revision fence 拒绝 stale compensation，并在 rebuild/lifecycle exclusion 内以私有 candidate 直接恢复运行核而不晋升 product；
-3. **跨资源提交不一致（S06/S07 未完成）**：typed state、legacy mirror、profile 文件、runtime 文件、核心进程之间缺乏明确 prepare/commit/compensate；
+3. **跨资源提交不一致（S06 typed/legacy 三域已完成；S07 仍 pending）**：S06 已为 typed state ↔ legacy mirror 建立 fallible prepare → manager-level CAS commit → infallible in-memory apply，并实现 Application→Session→Clash saga、reverse compensation、structured `PartialCommit` 与 finalizer uncertainty；profile materialization 仍待 S07；
 4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径；S04 已有 barrier 并发测试；dispatcher deglobalization / fake-core / ledger gate 仍待完成。
 
 PR-4S 不继续扩大 actor 数量。它先修复 PR-1～PR-4 的 correctness boundary，使 PR-5 可以在可靠状态模型上接管核心生命周期。
@@ -127,8 +127,8 @@ pub struct RuntimeLifecycleState {
 | D4  | 核心并发控制                                | 所有产品检查、apply、restart、change-core 使用统一 `CoreLifecycleLease`；固定锁顺序 `rebuild/patch gate → lifecycle lease`                                                                                                          |
 | D5  | rollback 材料                               | 捕获 `RuntimeTransactionSnapshot`：旧产品字节、旧 lifecycle state、旧 core selection                                                                                                                                                |
 | D6  | D6 patch compensation                       | **S05 已完成**：instance-owned patch gate 串行；基于 Applied snapshot 的 transport-independent Set/Remove（禁止 JSON `null` 删除）；expected Applied revision fence 防止覆盖后续更新；私有 candidate 直接 apply，不 promote product |
-| D7  | actor mirror                                | `prepare(next)` 可失败且在 persist 前；`PreparedMirror::apply()` 不可失败且在 persist 后                                                                                                                                            |
-| D8  | legacy 三域 patch                           | version-checked saga；任一步失败补偿已提交域；补偿失败返回 `PartialCommit`                                                                                                                                                          |
+| D7  | actor mirror                                | **S06 已完成**：`prepare(next)` 可失败且在 persist 前；`PreparedLegacyMirror::apply()` 不可失败、仅更新内存 projection、且在 persist 后；prepare failure 零提交                                                                     |
+| D8  | legacy 三域 patch                           | **S06 已完成**：manager-level expected-version CAS（actor 消息 `ReplacePreparedIfVersion`）；Application→Session→Clash saga；reverse compensation；structured `PartialCommit` 与 finalizer uncertainty                              |
 | D9  | profile 文件事务                            | 为 Add/Replace/Refresh 建 prepare/finalize/compensate；Delete cleanup 可 committed-degraded + persistent cleanup queue                                                                                                              |
 | D10 | runtime 路径                                | `RuntimePaths` 由 composition root 注入；测试禁止全局 dirs                                                                                                                                                                          |
 | D11 | candidate 安全                              | 私有目录 + tempfile/random + create_new + owner-only 权限 + cleanup guard + stale cleanup                                                                                                                                           |
@@ -285,7 +285,7 @@ rebuild_gate + CoreLifecycleLease
 
 ### 6.7 Applied-based patch compensation
 
-**状态：** S05 已完成；PR-4S 仍未完成，S06～S10 pending，且 S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
+**状态：** S05 已完成；S06 已完成；PR-4S 仍未完成，S07～S10 pending，且 S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
 
 facade 的 instance-owned `clash_patch_gate` 覆盖：
 
@@ -319,6 +319,8 @@ pub enum PatchCompensationOp {
 
 ### 6.8 Prepared legacy mirror
 
+**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S07～S10 仍 pending。
+
 Tauri-free trait：
 
 ```rust
@@ -343,22 +345,26 @@ Actor commit：
 
 ```text
 clone + patch + validate
-  → bridge.prepare(next)          // 可失败；失败则零提交
-  → manager.upsert(next)          // typed commit
-  → prepared.apply()              // 不可失败
+  → bridge.prepare(next)                         // 可失败；失败则零提交
+  → manager.upsert / replace_if_version(next)    // typed commit；CAS 路径校验 expected version
+  → prepared.apply()                             // 不可失败
   → reply committed snapshot
 ```
 
-prepared object 捕获转换后的 legacy projection 和具体 legacy store handle。apply 不返回 Result；若实现中仍存在可失败操作，说明 prepare 边界设计错误。
+prepared object 捕获转换后的 legacy projection 和具体 legacy store handle。apply 不返回 Result；若实现中仍存在可失败操作，说明 prepare 边界设计错误。`PreparedTypedReplace<T>` 将 next typed state 与 prepared mirror 绑定；manager-level CAS conflict 或 persistence failure 均发生在 `apply()` 前，state/version 与 legacy projection 不前进。
+
+**生命周期边界：** `PreparedLegacyMirror`、`PreparedTypedReplace<T>` 和 actor/client 的 `PrepareReplace` 只为 PR-7 前仍存在的 runtime legacy projection 服务，不是目标架构中的长期领域抽象。PR-7a 删除 `state/mirror.rs` 与最后的 legacy bridge 后，普通 typed mutation 直接执行 validate → manager persist → reply，不再生成 prepared mirror。
 
 ### 6.9 Legacy 三域 saga
+
+**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S07～S10 仍 pending。
 
 为 Application/Session/Clash actor 增加：
 
 ```rust
-ReplaceIfVersion {
-    expected: u64,
-    state: T,
+ReplacePreparedIfVersion {
+    expected_version: u64,
+    prepared: PreparedTypedReplace<T>,
 }
 ```
 
@@ -366,13 +372,16 @@ Saga：
 
 1. 读取三域 `{state, version}`；
 2. 纯函数生成三个 next state；
-3. 对三个 next state 做全部校验和 mirror prepare；
-4. 固定顺序 Application → Session → Clash 进行 `ReplaceIfVersion`；
-5. 任一步失败，按逆序用 `ReplaceIfVersion(new_version, old_state)` 补偿；
-6. 补偿全成功：返回原始错误，最终三域保持旧值；
-7. 补偿失败：返回 `PartialCommit { committed_domains, compensated_domains, failed_compensations }`，发布高优先级 degradation 并触发 reconciliation。
+3. 对全部 forward 与 rollback state 完成 mirror prepare；任一 prepare 失败则零提交；
+4. 固定顺序 Application → Session → Clash 通过 `ReplacePreparedIfVersion` 提交；expected-version CAS 由 manager/coordinator 在 persistence effect 前执行；
+5. 任一步 CAS/commit 失败，按已提交域的逆序用 committed version 与 rollback prepared state 补偿；第三域失败时为 Session → Application；
+6. typed 补偿全成功且 legacy state 确定：返回原始错误，最终三域保持旧值；
+7. compensation conflict/error 或 legacy finalizer/state uncertainty：返回 `PartialCommit { primary_error, committed_domains, compensated_domains, failed_compensations }`，发布高优先级 degradation 并触发 reconciliation；
+8. `CompensationFailure` 区分 `Conflict { domain, expected_version, actual_version }`、`Error { domain, message }` 与 `LegacyStateUncertain { message }`；补偿继续收集全部失败，不在首个失败处停止。
 
-typed 直接 mutation 可以并发，但 version check 防止 saga 覆盖更晚的 typed commit。
+typed 直接 mutation 可以并发，但 manager-level version check 防止 saga 或 compensation 覆盖更晚的 typed commit。legacy finalizer 在全部 typed commit 后执行；若 finalizer 失败，即使 reverse compensation 全部成功，legacy persistence 仍不确定，必须保留 structured `PartialCommit`，不得返回普通 `Err`。
+
+**PR-7a 清算契约：** `ReplacePreparedIfVersion` 的 prepared payload 同时承载 typed state 和 legacy mirror，因此不能在 mirror 删除后原样保留。legacy `IVerge` 三域入口及其 saga/finalizer 全部迁出后，PR-7a 同步删除三个 actor/client 的 `PrepareReplace`、`ReplacePreparedIfVersion`、`PreparedTypedReplace<T>` 以及仅被 saga 使用的 forward/rollback bookkeeping。manager/coordinator 的原子 `replace_if_version` 是独立并发控制 primitive：若届时仍有非 legacy production caller，则 actor 协议收敛为 `ReplaceIfVersion { expected_version, state }`；若无 caller，则删除 actor/client conditional protocol。不得保留一个仅把 legacy 名称隐藏起来的兼容 wrapper。
 
 ### 6.10 Profile materialization transaction
 
@@ -492,6 +501,8 @@ pub struct Degradation {
 - three-domain saga 第二/第三域失败；
 - typed concurrent mutation 导致 version conflict，saga 不覆盖新值；
 - compensation 自身失败返回 PartialCommit。
+
+S06 验证已完成：prepared-mirror zero-commit、manager CAS monotonic/conflict/persistence failure、第二/第三域失败与逆序补偿、concurrent typed update conflict、finalizer/legacy-state uncertainty 和 structured `PartialCommit` 字段均有 deterministic tests。并发交错使用 oneshot/mpsc channel 与 release barrier，不使用 sleep。S07～S10 仍 pending。
 
 ### 8.2 PR-3 profiles
 

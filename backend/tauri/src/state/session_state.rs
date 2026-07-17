@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
-use nyanpasu_core::state::PersistentStateManager;
+use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 
-use super::mirror::WindowLegacyBridge;
+use super::{
+    ConditionalReplaceResult,
+    mirror::{PreparedTypedReplace, WindowLegacyBridge},
+};
 
 #[derive(Debug, Clone)]
 pub struct SessionStateSnapshot {
@@ -35,6 +38,15 @@ pub enum SessionStateActorMessage {
         state: PersistentState,
         reply: RpcReplyPort<anyhow::Result<SessionStateSnapshot>>,
     },
+    PrepareReplace {
+        state: PersistentState,
+        reply: RpcReplyPort<anyhow::Result<PreparedTypedReplace<PersistentState>>>,
+    },
+    ReplacePreparedIfVersion {
+        expected_version: u64,
+        prepared: PreparedTypedReplace<PersistentState>,
+        reply: RpcReplyPort<anyhow::Result<ConditionalReplaceResult<SessionStateSnapshot>>>,
+    },
 }
 
 pub struct SessionStateActor;
@@ -52,16 +64,49 @@ impl SessionStateActor {
         state: &mut SessionStateActorState,
         next: PersistentState,
     ) -> anyhow::Result<SessionStateSnapshot> {
+        let (next, mirror) = Self::prepare_replace(state, next)?.into_parts();
         state
             .manager
-            .upsert(next.clone())
+            .upsert(next)
             .await
             .context("failed to persist session state")?;
-        state
-            .bridge
-            .mirror(&next)
-            .context("failed to sync legacy session mirror")?;
+        mirror.apply();
         Ok(Self::snapshot(state))
+    }
+
+    fn prepare_replace(
+        state: &SessionStateActorState,
+        next: PersistentState,
+    ) -> anyhow::Result<PreparedTypedReplace<PersistentState>> {
+        let mirror = state
+            .bridge
+            .prepare(&next)
+            .context("failed to prepare legacy session mirror")?;
+        Ok(PreparedTypedReplace::new(next, mirror))
+    }
+
+    async fn replace_prepared_if_version(
+        state: &mut SessionStateActorState,
+        expected_version: u64,
+        prepared: PreparedTypedReplace<PersistentState>,
+    ) -> anyhow::Result<ConditionalReplaceResult<SessionStateSnapshot>> {
+        let (next, mirror) = prepared.into_parts();
+        match state
+            .manager
+            .replace_if_version(Version::new(expected_version), next)
+            .await
+            .context("failed to conditionally persist session state")?
+        {
+            ReplaceIfVersionResult::Replaced => {
+                mirror.apply();
+                Ok(ConditionalReplaceResult::Replaced(Self::snapshot(state)))
+            }
+            ReplaceIfVersionResult::Conflict { actual_version } => {
+                Ok(ConditionalReplaceResult::Conflict {
+                    actual_version: *actual_version.as_ref(),
+                })
+            }
+        }
     }
 }
 
@@ -103,6 +148,18 @@ impl Actor for SessionStateActor {
             SessionStateActorMessage::Replace { state: next, reply } => {
                 let _ = reply.send(Self::commit(state, next).await);
             }
+            SessionStateActorMessage::PrepareReplace { state: next, reply } => {
+                let _ = reply.send(Self::prepare_replace(state, next));
+            }
+            SessionStateActorMessage::ReplacePreparedIfVersion {
+                expected_version,
+                prepared,
+                reply,
+            } => {
+                let _ = reply.send(
+                    Self::replace_prepared_if_version(state, expected_version, prepared).await,
+                );
+            }
         }
         Ok(())
     }
@@ -111,6 +168,7 @@ impl Actor for SessionStateActor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::mirror::PreparedLegacyMirror;
     use nyanpasu_config::state::window::{WindowLabel, WindowState};
     use nyanpasu_core::state::PersistentStateManagerSetup;
     use ractor::rpc::CallResult;
@@ -118,13 +176,15 @@ mod tests {
     use struct_patch::Patch;
     use tempfile::tempdir;
 
-    /// Test-only double that fails every session/window mirror projection.
-    /// Pins upsert-then-mirror for SessionStateActor until S06.
+    /// Test-only double that fails every session/window mirror preparation.
     struct FailingWindowMirror;
 
     impl WindowLegacyBridge for FailingWindowMirror {
-        fn mirror(&self, _snap: &PersistentState) -> anyhow::Result<()> {
-            anyhow::bail!("injected session mirror failure");
+        fn prepare(
+            &self,
+            _snap: &PersistentState,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            anyhow::bail!("injected session mirror prepare failure");
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
@@ -164,11 +224,8 @@ mod tests {
         }
     }
 
-    /// S01 regression contract: current commit path is upsert-then-mirror.
-    /// A post-upsert mirror failure still advances typed state/version while
-    /// returning Err. S06 must invert this to prepare-before-persist.
     #[tokio::test]
-    async fn typed_mirror_failure_after_upsert_leaves_version_advanced() {
+    async fn mirror_prepare_failure_returns_error_without_commit() {
         let (actor, _dir) = spawn_actor(Arc::new(FailingWindowMirror)).await;
 
         let before = get_snapshot(&actor)
@@ -211,23 +268,12 @@ mod tests {
         let after = get_snapshot(&actor)
             .await
             .expect("post-failure get should succeed");
-        assert_eq!(
-            after.state.window_state.get(&label),
-            Some(&window),
-            "upsert already committed desired state before mirror failed"
-        );
-        assert!(
-            after.version > before_version,
-            "version must advance after successful upsert even when mirror fails (before={before_version}, after={})",
-            after.version
-        );
+        assert_eq!(after.state.window_state, before.state.window_state);
+        assert_eq!(after.version, before_version);
     }
 
-    /// Desired S06 invariant kept red until prepare-before-persist lands.
-    /// Do not "fix green" by weakening this assertion.
     #[tokio::test]
-    #[ignore = "S06 desired invariant: mirror prepare failure must leave state/version unchanged; currently red under upsert-then-mirror"]
-    async fn desired_mirror_prepare_failure_leaves_state_and_version_unchanged() {
+    async fn mirror_prepare_failure_leaves_state_and_version_unchanged() {
         let (actor, _dir) = spawn_actor(Arc::new(FailingWindowMirror)).await;
 
         let before = get_snapshot(&actor)

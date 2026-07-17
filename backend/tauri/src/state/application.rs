@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
-use nyanpasu_core::state::PersistentStateManager;
+use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 
-use super::mirror::VergeLegacyBridge;
+use super::{
+    ConditionalReplaceResult,
+    mirror::{PreparedTypedReplace, VergeLegacyBridge},
+};
 
 #[derive(Debug, Clone)]
 pub struct ApplicationSnapshot {
@@ -35,6 +38,15 @@ pub enum ApplicationActorMessage {
         state: NyanpasuAppConfig,
         reply: RpcReplyPort<anyhow::Result<ApplicationSnapshot>>,
     },
+    PrepareReplace {
+        state: NyanpasuAppConfig,
+        reply: RpcReplyPort<anyhow::Result<PreparedTypedReplace<NyanpasuAppConfig>>>,
+    },
+    ReplacePreparedIfVersion {
+        expected_version: u64,
+        prepared: PreparedTypedReplace<NyanpasuAppConfig>,
+        reply: RpcReplyPort<anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>>>,
+    },
 }
 
 pub struct ApplicationActor;
@@ -48,20 +60,53 @@ impl ApplicationActor {
         }
     }
 
+    fn prepare_replace(
+        state: &ApplicationActorState,
+        next: NyanpasuAppConfig,
+    ) -> anyhow::Result<PreparedTypedReplace<NyanpasuAppConfig>> {
+        let mirror = state
+            .bridge
+            .prepare(&next)
+            .context("failed to prepare legacy application mirror")?;
+        Ok(PreparedTypedReplace::new(next, mirror))
+    }
+
     async fn commit(
         state: &mut ApplicationActorState,
         next: NyanpasuAppConfig,
     ) -> anyhow::Result<ApplicationSnapshot> {
+        let (next, mirror) = Self::prepare_replace(state, next)?.into_parts();
         state
             .manager
-            .upsert(next.clone())
+            .upsert(next)
             .await
             .context("failed to persist application config")?;
-        state
-            .bridge
-            .mirror(&next)
-            .context("failed to sync legacy application mirror")?;
+        mirror.apply();
         Ok(Self::snapshot(state))
+    }
+
+    async fn replace_prepared_if_version(
+        state: &mut ApplicationActorState,
+        expected_version: u64,
+        prepared: PreparedTypedReplace<NyanpasuAppConfig>,
+    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
+        let (next, mirror) = prepared.into_parts();
+        match state
+            .manager
+            .replace_if_version(Version::new(expected_version), next)
+            .await
+            .context("failed to conditionally persist application config")?
+        {
+            ReplaceIfVersionResult::Replaced => {
+                mirror.apply();
+                Ok(ConditionalReplaceResult::Replaced(Self::snapshot(state)))
+            }
+            ReplaceIfVersionResult::Conflict { actual_version } => {
+                Ok(ConditionalReplaceResult::Conflict {
+                    actual_version: *actual_version.as_ref(),
+                })
+            }
+        }
     }
 }
 
@@ -103,6 +148,18 @@ impl Actor for ApplicationActor {
             ApplicationActorMessage::Replace { state: next, reply } => {
                 let _ = reply.send(Self::commit(state, next).await);
             }
+            ApplicationActorMessage::PrepareReplace { state: next, reply } => {
+                let _ = reply.send(Self::prepare_replace(state, next));
+            }
+            ApplicationActorMessage::ReplacePreparedIfVersion {
+                expected_version,
+                prepared,
+                reply,
+            } => {
+                let _ = reply.send(
+                    Self::replace_prepared_if_version(state, expected_version, prepared).await,
+                );
+            }
         }
         Ok(())
     }
@@ -111,18 +168,21 @@ impl Actor for ApplicationActor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::mirror::PreparedLegacyMirror;
     use nyanpasu_core::state::PersistentStateManagerSetup;
     use ractor::rpc::CallResult;
     use struct_patch::Patch;
     use tempfile::tempdir;
 
-    /// Test-only double that fails every mirror projection.
-    /// Used to pin the upsert-then-mirror ordering defect until S06.
+    /// Test-only double that fails every mirror preparation.
     struct FailingVergeMirror;
 
     impl VergeLegacyBridge for FailingVergeMirror {
-        fn mirror(&self, _snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
-            anyhow::bail!("injected application mirror failure");
+        fn prepare(
+            &self,
+            _snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            anyhow::bail!("injected application mirror prepare failure");
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
@@ -162,76 +222,31 @@ mod tests {
         }
     }
 
-    /// S01 regression contract: current commit path is upsert-then-mirror.
-    /// A post-upsert mirror failure still advances typed state/version while
-    /// returning Err. S06 must invert this to prepare-before-persist.
     #[tokio::test]
-    async fn typed_mirror_failure_after_upsert_leaves_version_advanced() {
+    async fn mirror_prepare_failure_leaves_state_and_version_unchanged() {
         let (actor, _dir) = spawn_actor(Arc::new(FailingVergeMirror)).await;
 
         let before = get_snapshot(&actor)
             .await
             .expect("initial get should succeed");
-        assert!(!before.state.enable_system_proxy);
-        let before_version = before.version;
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.enable_system_proxy = Some(true);
-        let err = match actor
+        let result = actor
             .call(
                 |reply| ApplicationActorMessage::Patch { patch, reply },
                 None,
             )
             .await
-            .expect("actor call should complete")
-        {
-            CallResult::Success(result) => result
-                .expect_err("mirror failure after upsert must surface as Err under current defect"),
+            .expect("actor call should complete");
+        match result {
+            CallResult::Success(result) => {
+                let error = result.expect_err("mirror prepare must reject the mutation");
+                assert!(error.to_string().contains("application mirror"));
+            }
             CallResult::SenderError => panic!("application actor reply dropped"),
             CallResult::Timeout => panic!("application actor call timed out"),
-        };
-        assert!(
-            err.to_string().contains("legacy application mirror")
-                || err
-                    .to_string()
-                    .contains("injected application mirror failure"),
-            "unexpected error: {err:#}"
-        );
-
-        let after = get_snapshot(&actor)
-            .await
-            .expect("post-failure get should succeed");
-        // Current defective behavior: typed state and version already advanced.
-        assert!(
-            after.state.enable_system_proxy,
-            "upsert already committed desired state before mirror failed"
-        );
-        assert!(
-            after.version > before_version,
-            "version must advance after successful upsert even when mirror fails (before={before_version}, after={})",
-            after.version
-        );
-    }
-
-    /// Desired S06 invariant kept red until prepare-before-persist lands.
-    /// Do not "fix green" by weakening this assertion.
-    #[tokio::test]
-    #[ignore = "S06 desired invariant: mirror prepare failure must leave state/version unchanged; currently red under upsert-then-mirror"]
-    async fn desired_mirror_prepare_failure_leaves_state_and_version_unchanged() {
-        let (actor, _dir) = spawn_actor(Arc::new(FailingVergeMirror)).await;
-
-        let before = get_snapshot(&actor)
-            .await
-            .expect("initial get should succeed");
-
-        let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.enable_system_proxy = Some(true);
-        let _ = actor
-            .call(
-                |reply| ApplicationActorMessage::Patch { patch, reply },
-                None,
-            )
-            .await;
+        }
 
         let after = get_snapshot(&actor)
             .await

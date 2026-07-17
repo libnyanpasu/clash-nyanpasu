@@ -52,6 +52,15 @@ macro_rules! draft_define {
                 let mut inner = self.inner.lock();
                 inner.1.take()
             }
+
+            /// Apply a prepared field update atomically to committed and pending values.
+            pub fn apply_update(&self, update: impl Fn(&mut $id)) {
+                let mut inner = self.inner.lock();
+                update(&mut inner.0);
+                if let Some(draft) = &mut inner.1 {
+                    update(draft);
+                }
+            }
         }
 
         impl From<$id> for Draft<$id> {
@@ -132,4 +141,21 @@ fn test_draft() {
     assert!(draft.discard().is_none());
 
     assert_eq!(draft.draft().enable_auto_launch, Some(false));
+}
+
+#[test]
+fn apply_update_preserves_disjoint_pending_fields() {
+    let draft = Draft::from(IVerge {
+        enable_auto_launch: Some(false),
+        enable_tun_mode: Some(false),
+        ..IVerge::default()
+    });
+    draft.draft().enable_tun_mode = Some(true);
+
+    draft.apply_update(|state| state.enable_auto_launch = Some(true));
+
+    assert_eq!(draft.data().enable_auto_launch, Some(true));
+    assert_eq!(draft.data().enable_tun_mode, Some(false));
+    assert_eq!(draft.latest().enable_auto_launch, Some(true));
+    assert_eq!(draft.latest().enable_tun_mode, Some(true));
 }

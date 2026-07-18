@@ -7,10 +7,11 @@ use nyanpasu_core::state::PersistentStateManagerSetup;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::{
+    ConditionalReplaceResult,
     application::{
         ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
     },
-    mirror::VergeLegacyBridge,
+    mirror::{PreparedTypedReplace, VergeLegacyBridge},
 };
 
 const APPLICATION_READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -84,6 +85,59 @@ impl ApplicationClient {
         .await
     }
 
+    pub(crate) async fn replace_if_version(
+        &self,
+        expected_version: u64,
+        state: NyanpasuAppConfig,
+    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
+        let prepared = self.prepare_replace(state).await?;
+        self.replace_prepared_if_version(expected_version, prepared)
+            .await
+    }
+
+    pub(crate) async fn prepare_replace(
+        &self,
+        state: NyanpasuAppConfig,
+    ) -> anyhow::Result<PreparedTypedReplace<NyanpasuAppConfig>> {
+        match self
+            .inner
+            .actor_ref
+            .call(
+                |reply| ApplicationActorMessage::PrepareReplace { state, reply },
+                None,
+            )
+            .await?
+        {
+            CallResult::Success(result) => result,
+            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
+            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
+        }
+    }
+
+    pub(crate) async fn replace_prepared_if_version(
+        &self,
+        expected_version: u64,
+        prepared: PreparedTypedReplace<NyanpasuAppConfig>,
+    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
+        match self
+            .inner
+            .actor_ref
+            .call(
+                |reply| ApplicationActorMessage::ReplacePreparedIfVersion {
+                    expected_version,
+                    prepared,
+                    reply,
+                },
+                None,
+            )
+            .await?
+        {
+            CallResult::Success(result) => result,
+            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
+            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
+        }
+    }
+
     async fn call<F>(
         &self,
         make: F,
@@ -109,14 +163,18 @@ impl Drop for ApplicationClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::mirror::{NoopPreparedLegacyMirror, PreparedLegacyMirror};
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
 
     struct NoopVergeBridge;
 
     impl VergeLegacyBridge for NoopVergeBridge {
-        fn mirror(&self, _snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
-            Ok(())
+        fn prepare(
+            &self,
+            _snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(NoopPreparedLegacyMirror))
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
@@ -160,5 +218,22 @@ mod tests {
             .await
             .expect("replace should succeed");
         assert!(replaced.state.enable_silent_start);
+    }
+
+    #[tokio::test]
+    async fn replace_if_version_rejects_stale_snapshot() {
+        let (client, _dir) = test_client().await;
+        let current = client.get().await.expect("get should succeed");
+        let mut replacement = current.state.clone();
+        replacement.enable_silent_start = true;
+
+        let result = client
+            .replace_if_version(current.version + 1, replacement)
+            .await
+            .expect("stale replace should return a conflict");
+        assert!(matches!(
+            result,
+            ConditionalReplaceResult::Conflict { actual_version: 0 }
+        ));
     }
 }

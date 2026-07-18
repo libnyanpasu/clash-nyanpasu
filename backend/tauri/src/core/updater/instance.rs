@@ -195,15 +195,26 @@ impl Updater {
 
     async fn replace_core(&self) -> anyhow::Result<()> {
         self.dispatch_state(UpdaterState::Replacing);
+        let core_manager = CoreManager::global();
+        // TODO(actor-migration): temporary bridge to the legacy global core manager.
+        // Reason: the updater has not yet been injected with the core lifecycle port.
+        // Remove when: the updater receives the lifecycle port through the composition root.
+        let lifecycle = core_manager.begin_lifecycle().await;
         let current_core = crate::config::Config::verge()
             .latest()
             .clash_core
             .unwrap_or_default();
         tracing::debug!("current core: {}", current_core);
-        if current_core == self.core_type {
+
+        let runtime_paths = if current_core == self.core_type {
+            let resolver = crate::utils::path::PathResolver::from_env()?;
+            let runtime_paths = crate::client::RuntimePaths::from_resolver(&resolver)?;
             tracing::debug!("stopping core to replace");
-            CoreManager::global().stop_core().await?;
-        }
+            lifecycle.stop_core().await?;
+            Some(runtime_paths)
+        } else {
+            None
+        };
         #[cfg(target_os = "windows")]
         let target_core = format!("{}.exe", self.core_type);
         #[cfg(not(target_os = "windows"))]
@@ -260,9 +271,9 @@ impl Updater {
             }
         };
 
-        if current_core == self.core_type {
+        if let Some(runtime_paths) = runtime_paths.as_ref() {
             self.dispatch_state(UpdaterState::Restarting);
-            CoreManager::global().run_core().await?;
+            lifecycle.run_core_from(runtime_paths.product()).await?;
         }
 
         Ok(())

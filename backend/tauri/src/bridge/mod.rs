@@ -3,7 +3,7 @@ pub mod mapping;
 pub mod verge;
 pub mod window;
 
-use crate::config::{Config, IVerge};
+use crate::{config::IVerge, state::TypedConfigPatchPlan};
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
@@ -11,22 +11,6 @@ use nyanpasu_config::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 use struct_patch::Patch;
-
-#[derive(Debug, Default)]
-pub(crate) struct TypedConfigPatchPlan {
-    pub application: Option<NyanpasuAppConfigPatch>,
-    pub session_state: Option<PersistentStatePatch>,
-    pub clash_config: Option<ClashConfigPatch>,
-}
-
-pub(crate) fn legacy_iverge_base_for_typed_read() -> IVerge {
-    // TODO(actor-migration): compatibility bridge for legacy-only IVerge DTO fields.
-    // Reason: get_verge_config still returns the legacy IVerge DTO while only part of
-    // the schema is owned by typed config actors.
-    // Remove when: frontend IPC uses typed application/session/clash DTOs and legacy
-    // IVerge fields are deleted or explicitly migrated to typed owners.
-    Config::verge().data().clone()
-}
 
 pub(crate) fn legacy_iverge_from_typed(
     mut base: IVerge,
@@ -38,13 +22,6 @@ pub(crate) fn legacy_iverge_from_typed(
     window::apply_session_state_to_legacy_verge(&mut base, session)?;
     clash::apply_clash_config_to_legacy_verge(&mut base, clash)?;
     Ok(base)
-}
-
-pub(crate) fn typed_config_from_legacy(
-    legacy: &IVerge,
-) -> anyhow::Result<(NyanpasuAppConfig, PersistentState, ClashConfig)> {
-    let legacy_clash = Config::clash().data().clone();
-    typed_config_from_legacy_parts(legacy, &legacy_clash.0)
 }
 
 pub(crate) fn typed_config_from_legacy_parts(
@@ -61,9 +38,10 @@ pub(crate) fn typed_config_from_legacy_parts(
 pub(crate) fn typed_patches_from_legacy_patch(
     mut base: IVerge,
     patch: &IVerge,
+    legacy_clash: &serde_yaml::Mapping,
 ) -> anyhow::Result<TypedConfigPatchPlan> {
     base.patch_config(patch.clone());
-    let (app, session, clash) = typed_config_from_legacy(&base)?;
+    let (app, session, clash) = typed_config_from_legacy_parts(&base, legacy_clash)?;
 
     Ok(TypedConfigPatchPlan {
         application: application_patch_from_legacy_patch(patch, app),

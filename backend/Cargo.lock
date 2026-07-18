@@ -1836,6 +1836,7 @@ dependencies = [
  "dunce",
  "dyn-clone",
  "enumflags2",
+ "fake-core",
  "fast_image_resize",
  "flate2",
  "fs-err",
@@ -3388,6 +3389,10 @@ dependencies = [
  "smallvec",
  "zune-inflate",
 ]
+
+[[package]]
+name = "fake-core"
+version = "0.1.0"
 
 [[package]]
 name = "fast-float2"

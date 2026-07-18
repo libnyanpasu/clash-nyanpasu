@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import {
   commands,
+  type MutationOutcome,
   type NewProfileRequest_Deserialize,
   type ProfileDefinition_Deserialize,
   type ProfileId,
@@ -49,8 +50,8 @@ export interface ProfileHelperFn {
   view: () => Promise<unknown>
   update: (
     option?: RemoteProfileOptionsPatch_Deserialize | null,
-  ) => Promise<unknown>
-  drop: () => Promise<unknown>
+  ) => Promise<MutationOutcome<null>>
+  drop: () => Promise<MutationOutcome<null>>
 }
 
 export type ProfileQueryResultItem = ProfileItem_Serialize &
@@ -102,25 +103,25 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
   })
 
+  // Profile mutations return the full MutationOutcome so MutationCache can
+  // observe `committed_degraded`. Do not collapse to bare values or legacy
+  // `{ uid, rebuild }` shapes before React Query onSuccess.
   const create = useMutation({
-    mutationFn: async (params: CreateParams) => {
+    mutationFn: async (
+      params: CreateParams,
+    ): Promise<MutationOutcome<ProfileId>> => {
       if (params.type === 'url') {
-        const outcome = unwrapResult(
+        return unwrapResult(
           await commands.importProfile(
             params.data.url,
             params.data.name ?? null,
             params.data.option ?? null,
           ),
         )
-        if (!outcome) {
-          throw new Error('importProfile returned no result')
-        }
-        return { uid: outcome.value, rebuild: outcome.rebuild }
       }
-      const rebuild = unwrapResult(
+      return unwrapResult(
         await commands.createProfile(params.data.request, params.data.fileData),
       )
-      return { uid: null, rebuild }
     },
     onSuccess: invalidate,
   })

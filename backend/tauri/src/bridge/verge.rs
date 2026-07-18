@@ -1,29 +1,184 @@
 use std::{future::Future, sync::Arc};
 
-use anyhow::Context as _;
 use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::{
-    client::{NyanpasuClient, Result as ClientResult},
-    config::{Config, IVerge, nyanpasu as legacy_app},
-    state::mirror::VergeLegacyBridge,
-    utils::help,
+    client::{ClientError, NyanpasuClient, PartialCommit, Result as ClientResult},
+    config::{Config, Draft, IVerge, nyanpasu as legacy_app},
+    state::mirror::{PreparedLegacyMirror, VergeLegacyBridge},
 };
 use nyanpasu_config::application::{
     NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
 };
 use nyanpasu_egui::widget::StatisticWidgetVariant;
+use struct_patch::Patch as _;
 use tokio::sync::Mutex;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct LegacyVergeBridge {
     managed: Option<Arc<LegacyVergeBridgeInner>>,
+    legacy_store: Arc<dyn LegacyVergeStore>,
+}
+
+impl Default for LegacyVergeBridge {
+    fn default() -> Self {
+        Self {
+            managed: None,
+            legacy_store: Arc::new(ConfigLegacyVergeStore::default()),
+        }
+    }
 }
 
 struct LegacyVergeBridgeInner {
     client: NyanpasuClient,
     legacy_verge_path: Utf8PathBuf,
     verge_update_lock: Mutex<()>,
+}
+
+pub(crate) trait LegacyVergeStore: Send + Sync {
+    fn snapshot(&self) -> anyhow::Result<IVerge>;
+    fn prepare_application(
+        &self,
+        snap: &NyanpasuAppConfig,
+    ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>>;
+    fn prepare_commit(
+        &self,
+        path: &Utf8Path,
+        state: IVerge,
+    ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>>;
+    fn prepare_restore(
+        &self,
+        path: &Utf8Path,
+        state: IVerge,
+    ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>>;
+    fn prepare_projection(&self, state: IVerge) -> anyhow::Result<Box<dyn PreparedLegacyMirror>>;
+}
+
+pub(crate) trait PreparedLegacyVergeCommit: Send {
+    fn commit(self: Box<Self>) -> anyhow::Result<()>;
+}
+
+pub(crate) struct ConfigLegacyVergeStore {
+    legacy_lock: Arc<parking_lot::Mutex<()>>,
+}
+
+impl Default for ConfigLegacyVergeStore {
+    fn default() -> Self {
+        Self::new(Arc::new(parking_lot::Mutex::new(())))
+    }
+}
+
+impl ConfigLegacyVergeStore {
+    pub(crate) fn new(legacy_lock: Arc<parking_lot::Mutex<()>>) -> Self {
+        Self { legacy_lock }
+    }
+
+    fn prepare(
+        &self,
+        path: &Utf8Path,
+        state: IVerge,
+        preserve_typed_projection: bool,
+    ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>> {
+        serde_yaml::to_string(&state)?;
+        Ok(Box::new(ConfigPreparedLegacyVergeCommit {
+            path: path.to_owned(),
+            state,
+            preserve_typed_projection,
+            legacy_lock: Arc::clone(&self.legacy_lock),
+        }))
+    }
+}
+
+// TODO(actor-migration): compatibility adapter for the legacy Config::verge() store.
+// Reason: legacy side-effect writers and readers still use the process-wide Draft<IVerge>.
+// Remove when: all IVerge fields and side effects are owned by injected typed services.
+impl LegacyVergeStore for ConfigLegacyVergeStore {
+    fn snapshot(&self) -> anyhow::Result<IVerge> {
+        let _guard = self.legacy_lock.lock();
+        Ok(Config::verge().data().clone())
+    }
+
+    fn prepare_application(
+        &self,
+        snap: &NyanpasuAppConfig,
+    ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+        let store = Config::verge();
+        let mut projected = {
+            let _guard = self.legacy_lock.lock();
+            store.data().clone()
+        };
+        apply_app_config_to_legacy_verge(&mut projected, snap)?;
+        Ok(Box::new(PreparedVergeMirror {
+            legacy_lock: Arc::clone(&self.legacy_lock),
+            store,
+            projected,
+        }))
+    }
+
+    fn prepare_commit(
+        &self,
+        path: &Utf8Path,
+        state: IVerge,
+    ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>> {
+        self.prepare(path, state, true)
+    }
+
+    fn prepare_restore(
+        &self,
+        path: &Utf8Path,
+        state: IVerge,
+    ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>> {
+        self.prepare(path, state, false)
+    }
+
+    fn prepare_projection(&self, state: IVerge) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+        Ok(Box::new(PreparedFullVergeProjection {
+            legacy_lock: Arc::clone(&self.legacy_lock),
+            store: Config::verge(),
+            state,
+        }))
+    }
+}
+
+struct PreparedFullVergeProjection {
+    legacy_lock: Arc<parking_lot::Mutex<()>>,
+    store: Draft<IVerge>,
+    state: IVerge,
+}
+
+impl PreparedLegacyMirror for PreparedFullVergeProjection {
+    fn apply(self: Box<Self>) {
+        let _guard = self.legacy_lock.lock();
+        self.store
+            .apply_update(|target| *target = self.state.clone());
+    }
+}
+
+struct ConfigPreparedLegacyVergeCommit {
+    path: Utf8PathBuf,
+    state: IVerge,
+    preserve_typed_projection: bool,
+    legacy_lock: Arc<parking_lot::Mutex<()>>,
+}
+
+impl PreparedLegacyVergeCommit for ConfigPreparedLegacyVergeCommit {
+    fn commit(self: Box<Self>) -> anyhow::Result<()> {
+        let _guard = self.legacy_lock.lock();
+        let mut state = self.state;
+        if self.preserve_typed_projection {
+            let current = Config::verge().data().clone();
+            apply_prepared_app_projection(&mut state, &current);
+            state.window_size_state = current.window_size_state.clone();
+            state.window_size_position = current.window_size_position.clone();
+            super::clash::apply_prepared_clash_verge_projection(&mut state, &current);
+        }
+        let yaml = serde_yaml::to_string(&state)?;
+        let bytes = format!("# Clash Nyanpasu Config\n\n{yaml}").into_bytes();
+        crate::core::migration::fs::atomic_write(self.path.as_std_path(), &bytes)?;
+        *Config::verge().draft() = state;
+        Config::verge().apply();
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,13 +188,25 @@ pub(crate) enum LegacyVergePatchRoute {
 }
 
 impl LegacyVergeBridge {
-    pub(crate) fn new(client: NyanpasuClient, legacy_verge_path: Utf8PathBuf) -> Self {
+    pub(crate) fn with_store(legacy_store: Arc<dyn LegacyVergeStore>) -> Self {
+        Self {
+            managed: None,
+            legacy_store,
+        }
+    }
+
+    pub(crate) fn new(
+        client: NyanpasuClient,
+        legacy_verge_path: Utf8PathBuf,
+        legacy_store: Arc<dyn LegacyVergeStore>,
+    ) -> Self {
         Self {
             managed: Some(Arc::new(LegacyVergeBridgeInner {
                 client,
                 legacy_verge_path,
                 verge_update_lock: Mutex::new(()),
             })),
+            legacy_store,
         }
     }
 
@@ -56,13 +223,20 @@ impl LegacyVergeBridge {
                 let _guard = managed.verge_update_lock.lock().await;
                 Self::validate_patch(&payload)?;
                 let base = self.get_verge_config_unlocked().await?;
-                let plan = Self::typed_patch_plan(base, &payload)?;
-                self.apply_typed_config_patch_plan(plan).await?;
-                let committed = self.get_verge_config_unlocked().await?;
-                Self::commit_full_replacement(&managed.legacy_verge_path, committed)?;
+                let clash = managed.client.get_clash_config().await?;
+                let legacy_clash = super::yaml_convert(&clash.overrides)?;
+                let plan = Self::typed_patch_plan(base.clone(), &payload, &legacy_clash)?;
+                let mut desired = base;
+                desired.patch_config(payload.clone());
+                let prepared = self
+                    .legacy_store
+                    .prepare_commit(&managed.legacy_verge_path, desired)?;
+                self.apply_typed_config_patch_plan(plan, move || prepared.commit())
+                    .await?;
             }
             LegacyVergePatchRoute::LegacySideEffects => {
-                self.run_legacy_verge_mutation(|| crate::feat::patch_verge(payload))
+                let client = self.managed()?.client.clone();
+                self.run_legacy_verge_mutation(move || crate::feat::patch_verge(client, payload))
                     .await?;
             }
         }
@@ -72,8 +246,11 @@ impl LegacyVergeBridge {
     pub async fn replace_verge_config(&self, state: IVerge) -> ClientResult<()> {
         let managed = self.managed()?;
         let _guard = managed.verge_update_lock.lock().await;
-        self.replace_typed_config_from_legacy(state.clone()).await?;
-        Self::commit_full_replacement(&managed.legacy_verge_path, state)?;
+        let prepared = self
+            .legacy_store
+            .prepare_commit(&managed.legacy_verge_path, state.clone())?;
+        self.replace_typed_config_from_legacy(state, move || prepared.commit())
+            .await?;
         Ok(())
     }
 
@@ -84,16 +261,67 @@ impl LegacyVergeBridge {
     {
         let managed = self.managed()?;
         let _guard = managed.verge_update_lock.lock().await;
-        mutate().await?;
+        let previous = self.legacy_store.snapshot()?;
+        if let Err(error) = mutate().await {
+            return Err(Self::legacy_mutation_partial(
+                anyhow::anyhow!("legacy mutation failed: {error:#}"),
+                None,
+            ));
+        }
         // TODO(actor-migration): compatibility bridge for legacy side-effect writers.
-        // Reason: feat::patch_verge still commits side-effect fields through Config::verge().
-        // Remove when: side-effect fields are handled by typed actor post-commit effects.
-        // Bind the clone to a local so the `Config::verge()` guard is dropped before the
-        // await (a held parking_lot guard would make this future !Send).
-        let committed = Self::committed_snapshot();
-        self.replace_typed_config_from_legacy(committed).await?;
-        Self::save_committed_snapshot(&managed.legacy_verge_path)?;
-        Ok(())
+        // Reason: feat::patch_verge still executes OS effects while producing legacy state.
+        // Remove when: side effects are prepared and committed by typed domain services.
+        let desired = self.legacy_store.snapshot()?;
+        let patch = legacy_patch_between(&previous, &desired)?;
+        let restore = self
+            .legacy_store
+            .prepare_restore(&managed.legacy_verge_path, previous)
+            .map_err(|error| Self::legacy_mutation_partial(error, None))?;
+        if let Err(error) = restore.commit() {
+            return Err(Self::legacy_mutation_partial(error, None));
+        }
+
+        let base = self.refresh_legacy_projection().await.map_err(|error| {
+            Self::legacy_mutation_partial(anyhow::anyhow!(format!("{error:#}")), Some(error))
+        })?;
+        let clash = managed.client.get_clash_config().await.map_err(|error| {
+            Self::legacy_mutation_partial(anyhow::anyhow!(format!("{error:#}")), Some(error))
+        })?;
+        let legacy_clash = super::yaml_convert(&clash.overrides)
+            .map_err(|error| Self::legacy_mutation_partial(error, None))?;
+        let plan = Self::typed_patch_plan(base.clone(), &patch, &legacy_clash)
+            .map_err(|error| Self::legacy_mutation_partial(error, None))?;
+        let mut desired = base;
+        desired.patch_config(patch);
+        let finalize = self
+            .legacy_store
+            .prepare_commit(&managed.legacy_verge_path, desired)
+            .map_err(|error| Self::legacy_mutation_partial(error, None))?;
+
+        match self
+            .apply_typed_config_patch_plan(plan, move || finalize.commit())
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(error) => Err(Self::legacy_mutation_partial(
+                anyhow::anyhow!(format!("{error:#}")),
+                Some(error),
+            )),
+        }
+    }
+
+    fn legacy_mutation_partial(error: anyhow::Error, source: Option<ClientError>) -> ClientError {
+        let message = format!(
+            "legacy mutation may have non-reversible side effects and requires reconciliation: {error:#}"
+        );
+        if let Some(ClientError::PartialCommit(partial)) = source {
+            return partial.with_legacy_state_uncertain(message).into();
+        }
+
+        let primary = ClientError::Anyhow(error);
+        PartialCommit::new(&primary, Vec::new(), Vec::new(), Vec::new())
+            .with_legacy_state_uncertain(message)
+            .into()
     }
 
     fn managed(&self) -> ClientResult<&LegacyVergeBridgeInner> {
@@ -108,77 +336,86 @@ impl LegacyVergeBridge {
         let session = managed.client.get_session_state().await?;
         let clash = managed.client.get_clash_config().await?;
 
-        Ok(Self::compose_from_typed(&app, &session, &clash)?)
+        Ok(super::legacy_iverge_from_typed(
+            self.legacy_store.snapshot()?,
+            &app,
+            &session,
+            &clash,
+        )?)
     }
 
-    async fn apply_typed_config_patch_plan(
+    async fn refresh_legacy_projection(&self) -> ClientResult<IVerge> {
+        let managed = self.managed()?;
+        loop {
+            let before = managed.client.typed_config_snapshots().await?;
+            let projected = super::legacy_iverge_from_typed(
+                self.legacy_store.snapshot()?,
+                &before.application.state,
+                &before.session.state,
+                &before.clash.state,
+            )?;
+            self.legacy_store
+                .prepare_projection(projected.clone())?
+                .apply();
+            let after = managed.client.typed_config_snapshots().await?;
+            if before.application.version == after.application.version
+                && before.session.version == after.session.version
+                && before.clash.version == after.clash.version
+            {
+                return Ok(projected);
+            }
+        }
+    }
+
+    async fn apply_typed_config_patch_plan<F>(
         &self,
-        plan: super::TypedConfigPatchPlan,
-    ) -> ClientResult<()> {
-        let managed = self.managed()?;
-        if let Some(patch) = plan.application {
-            managed.client.patch_app_config(patch).await?;
-        }
-        if let Some(patch) = plan.session_state {
-            managed.client.patch_session_state(patch).await?;
-        }
-        if let Some(patch) = plan.clash_config {
-            managed.client.patch_clash_config(patch).await?;
-        }
-
-        Ok(())
+        plan: crate::state::TypedConfigPatchPlan,
+        finalize: F,
+    ) -> ClientResult<()>
+    where
+        F: FnOnce() -> anyhow::Result<()>,
+    {
+        self.managed()?
+            .client
+            .apply_legacy_verge_patch_saga(plan, finalize)
+            .await
     }
 
-    async fn replace_typed_config_from_legacy(&self, legacy: IVerge) -> ClientResult<()> {
+    async fn replace_typed_config_from_legacy<F>(
+        &self,
+        legacy: IVerge,
+        finalize: F,
+    ) -> ClientResult<()>
+    where
+        F: FnOnce() -> anyhow::Result<()>,
+    {
         let managed = self.managed()?;
-        let (app, session, clash) = Self::typed_replacement(&legacy)?;
-
+        let current_clash = managed.client.get_clash_config().await?;
+        let legacy_clash = super::yaml_convert(&current_clash.overrides)?;
+        let (app, session, clash) = Self::typed_replacement(&legacy, &legacy_clash)?;
         managed
             .client
-            .replace_app_config(app)
+            .apply_legacy_verge_replacement_saga(app, session, clash, finalize)
             .await
-            .context("failed to reseed application config from legacy verge state")?;
-        managed
-            .client
-            .replace_session_state(session)
-            .await
-            .context("failed to reseed session state from legacy verge state")?;
-        managed
-            .client
-            .replace_clash_config(clash)
-            .await
-            .context("failed to reseed clash config from legacy verge state")?;
-        Ok(())
-    }
-
-    pub(crate) fn compose_from_typed(
-        app: &NyanpasuAppConfig,
-        session: &nyanpasu_config::state::PersistentState,
-        clash: &nyanpasu_config::clash::config::ClashConfig,
-    ) -> anyhow::Result<IVerge> {
-        super::legacy_iverge_from_typed(
-            super::legacy_iverge_base_for_typed_read(),
-            app,
-            session,
-            clash,
-        )
     }
 
     pub(crate) fn typed_replacement(
         legacy: &IVerge,
+        legacy_clash: &serde_yaml::Mapping,
     ) -> anyhow::Result<(
         NyanpasuAppConfig,
         nyanpasu_config::state::PersistentState,
         nyanpasu_config::clash::config::ClashConfig,
     )> {
-        super::typed_config_from_legacy(legacy)
+        super::typed_config_from_legacy_parts(legacy, legacy_clash)
     }
 
     pub(crate) fn typed_patch_plan(
         base: IVerge,
         patch: &IVerge,
-    ) -> anyhow::Result<super::TypedConfigPatchPlan> {
-        super::typed_patches_from_legacy_patch(base, patch)
+        legacy_clash: &serde_yaml::Mapping,
+    ) -> anyhow::Result<crate::state::TypedConfigPatchPlan> {
+        super::typed_patches_from_legacy_patch(base, patch, legacy_clash)
     }
 
     pub(crate) fn route_patch(patch: &IVerge) -> LegacyVergePatchRoute {
@@ -188,27 +425,20 @@ impl LegacyVergeBridge {
     pub(crate) fn validate_patch(patch: &IVerge) -> anyhow::Result<()> {
         validate_verge_patch(patch)
     }
+}
 
-    pub(crate) fn commit_full_replacement(path: &Utf8Path, state: IVerge) -> anyhow::Result<()> {
-        // TODO(actor-migration): compatibility bridge for full legacy IVerge replacement.
-        // Reason: get_verge_config still composes legacy-only fields from Config::verge().
-        // Remove when: legacy-only IVerge fields are deleted or moved to typed owners.
-        *Config::verge().draft() = state;
-        Config::verge().apply();
-        Self::save_committed_snapshot(path)
-    }
-
-    pub(crate) fn committed_snapshot() -> IVerge {
-        Config::verge().data().clone()
-    }
-
-    pub(crate) fn save_committed_snapshot(path: &Utf8Path) -> anyhow::Result<()> {
-        help::save_yaml(
-            path.as_std_path(),
-            &Config::verge().data().clone(),
-            Some("# Clash Nyanpasu Config"),
-        )
-    }
+fn legacy_patch_between(previous: &IVerge, desired: &IVerge) -> anyhow::Result<IVerge> {
+    let previous = serde_yaml::to_value(previous)?;
+    let desired = serde_yaml::to_value(desired)?;
+    let previous = previous
+        .as_mapping()
+        .ok_or_else(|| anyhow::anyhow!("legacy verge snapshot must serialize as a mapping"))?;
+    let mut patch = desired
+        .as_mapping()
+        .ok_or_else(|| anyhow::anyhow!("legacy verge snapshot must serialize as a mapping"))?
+        .clone();
+    patch.retain(|key, value| previous.get(key) != Some(value));
+    Ok(serde_yaml::from_value(serde_yaml::Value::Mapping(patch))?)
 }
 
 /// Pure classifier (infallible). Validation is delegated to `validate_verge_patch`
@@ -248,22 +478,31 @@ fn validate_verge_patch(verge: &IVerge) -> anyhow::Result<()> {
     Ok(())
 }
 
+struct PreparedVergeMirror {
+    legacy_lock: Arc<parking_lot::Mutex<()>>,
+    store: Draft<IVerge>,
+    projected: IVerge,
+}
+
+impl PreparedLegacyMirror for PreparedVergeMirror {
+    fn apply(self: Box<Self>) {
+        let Self {
+            legacy_lock,
+            store,
+            projected,
+        } = *self;
+        let _guard = legacy_lock.lock();
+        store.apply_update(|target| apply_prepared_app_projection(target, &projected));
+    }
+}
+
 impl VergeLegacyBridge for LegacyVergeBridge {
-    fn mirror(&self, snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
-        // TODO(actor-migration): compatibility bridge for legacy Config::verge().
-        // Reason: legacy readers still consume Config::verge() while typed actors are introduced.
-        // Remove when get_verge_config and direct Config::verge() readers use typed facade data.
-        let verge = Config::verge();
-        let mut draft = verge.draft();
-        apply_app_config_to_legacy_verge(&mut draft, snap)?;
-        drop(draft);
-        verge.apply();
-        Ok(())
+    fn prepare(&self, snap: &NyanpasuAppConfig) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+        self.legacy_store.prepare_application(snap)
     }
 
     fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
-        let legacy = Config::verge().data().clone();
-        application_from_legacy(&legacy)
+        application_from_legacy(&self.legacy_store.snapshot()?)
     }
 }
 
@@ -380,6 +619,39 @@ pub(crate) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<Nyanpas
     Ok(next)
 }
 
+fn apply_prepared_app_projection(target: &mut IVerge, projected: &IVerge) {
+    target.app_singleton_port = projected.app_singleton_port;
+    target.app_log_level = projected.app_log_level.clone();
+    target.language = projected.language.clone();
+    target.theme_mode = projected.theme_mode.clone();
+    target.traffic_graph = projected.traffic_graph;
+    target.enable_memory_usage = projected.enable_memory_usage;
+    target.lighten_animation_effects = projected.lighten_animation_effects;
+    target.enable_service_mode = projected.enable_service_mode;
+    target.enable_auto_launch = projected.enable_auto_launch;
+    target.enable_silent_start = projected.enable_silent_start;
+    target.enable_system_proxy = projected.enable_system_proxy;
+    target.enable_proxy_guard = projected.enable_proxy_guard;
+    target.system_proxy_bypass = projected.system_proxy_bypass.clone();
+    target.proxy_guard_interval = projected.proxy_guard_interval;
+    target.theme_color = projected.theme_color.clone();
+    target.clash_core = projected.clash_core.clone();
+    target.hotkeys = projected.hotkeys.clone();
+    target.default_latency_test = projected.default_latency_test.clone();
+    target.enable_builtin_enhanced = projected.enable_builtin_enhanced;
+    target.proxy_layout_column = projected.proxy_layout_column;
+    target.max_log_files = projected.max_log_files;
+    target.enable_auto_check_update = projected.enable_auto_check_update;
+    target.clash_tray_selector = projected.clash_tray_selector.clone();
+    target.always_on_top = projected.always_on_top;
+    target.network_statistic_widget = projected.network_statistic_widget;
+    target.pac_url = projected.pac_url.clone();
+    target.enable_tray_text = projected.enable_tray_text;
+    target.window_type = projected.window_type;
+    target.tray_menu_mode = projected.tray_menu_mode.clone();
+    target.tray_menu_close_behavior = projected.tray_menu_close_behavior.clone();
+}
+
 pub(crate) fn apply_app_config_to_legacy_verge(
     draft: &mut IVerge,
     snap: &NyanpasuAppConfig,
@@ -458,8 +730,9 @@ mod tests {
     use super::*;
     use crate::{
         client::{
-            ClientSetupArgs, LegacyBridgeSet, MockRunningCoreBridge, NoopUiEventSink,
-            NyanpasuClient,
+            ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet,
+            LegacyRunningConfigPatchBridge, LegacyVergeDomain, MockRunningCoreBridge,
+            NoopUiEventSink, NyanpasuClient,
         },
         config::{
             IClashTemp,
@@ -467,24 +740,36 @@ mod tests {
                 LoggingLevel, NetworkStatisticWidgetConfig, ProxiesSelectorMode, TrayMenuMode,
             },
         },
-        state::mirror::{ClashLegacyBridge, WindowLegacyBridge},
+        state::mirror::{
+            ClashLegacyBridge, NoopPreparedLegacyMirror, PreparedLegacyMirror, WindowLegacyBridge,
+        },
     };
     use nyanpasu_config::{
+        application::I18nLanguage,
         clash::config::ClashConfig,
         state::{
             PersistentState,
             window::{WindowLabel, WindowState},
         },
     };
-    use std::{collections::BTreeMap, sync::Arc};
+    use std::{
+        collections::BTreeMap,
+        sync::{Arc, Mutex as StdMutex, mpsc},
+    };
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
+    use tokio::sync::oneshot;
+
+    static INTERLEAVING_TEST_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
     struct NoopWindowBridge;
 
     impl WindowLegacyBridge for NoopWindowBridge {
-        fn mirror(&self, _snap: &PersistentState) -> anyhow::Result<()> {
-            Ok(())
+        fn prepare(
+            &self,
+            _snap: &PersistentState,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(NoopPreparedLegacyMirror))
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
@@ -492,15 +777,240 @@ mod tests {
         }
     }
 
+    /// Test-only double that accepts the initial empty snapshot and fails once
+    /// the session patch contains window state.
+    struct FailingWindowMirror;
+
+    impl WindowLegacyBridge for FailingWindowMirror {
+        fn prepare(&self, snap: &PersistentState) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            if snap.window_state.is_empty() {
+                return Ok(Box::new(NoopPreparedLegacyMirror));
+            }
+            anyhow::bail!("injected session mirror prepare failure");
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
+            Ok(PersistentState::default())
+        }
+    }
+
+    struct BlockingPreparedLegacyCommit {
+        inner: Box<dyn PreparedLegacyVergeCommit>,
+        entered: oneshot::Sender<()>,
+        release: Arc<StdMutex<mpsc::Receiver<()>>>,
+    }
+
+    impl PreparedLegacyVergeCommit for BlockingPreparedLegacyCommit {
+        fn commit(self: Box<Self>) -> anyhow::Result<()> {
+            let _ = self.entered.send(());
+            self.release.lock().unwrap().recv().unwrap();
+            self.inner.commit()
+        }
+    }
+
+    struct BlockingLegacyCommitStore {
+        inner: ConfigLegacyVergeStore,
+        block_restore: bool,
+        barrier: StdMutex<Option<(oneshot::Sender<()>, Arc<StdMutex<mpsc::Receiver<()>>>)>>,
+    }
+
+    impl BlockingLegacyCommitStore {
+        fn block(
+            &self,
+            inner: Box<dyn PreparedLegacyVergeCommit>,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>> {
+            let Some((entered, release)) = self.barrier.lock().unwrap().take() else {
+                return Ok(inner);
+            };
+            Ok(Box::new(BlockingPreparedLegacyCommit {
+                inner,
+                entered,
+                release,
+            }))
+        }
+    }
+
+    impl LegacyVergeStore for BlockingLegacyCommitStore {
+        fn snapshot(&self) -> anyhow::Result<IVerge> {
+            self.inner.snapshot()
+        }
+
+        fn prepare_application(
+            &self,
+            snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            self.inner.prepare_application(snap)
+        }
+
+        fn prepare_commit(
+            &self,
+            path: &Utf8Path,
+            state: IVerge,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>> {
+            let inner = self.inner.prepare_commit(path, state)?;
+            if self.block_restore {
+                return Ok(inner);
+            }
+            self.block(inner)
+        }
+
+        fn prepare_restore(
+            &self,
+            path: &Utf8Path,
+            state: IVerge,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>> {
+            let inner = self.inner.prepare_restore(path, state)?;
+            if !self.block_restore {
+                return Ok(inner);
+            }
+            self.block(inner)
+        }
+
+        fn prepare_projection(
+            &self,
+            state: IVerge,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            self.inner.prepare_projection(state)
+        }
+    }
+
+    struct FailingLegacyCommit;
+
+    impl PreparedLegacyVergeCommit for FailingLegacyCommit {
+        fn commit(self: Box<Self>) -> anyhow::Result<()> {
+            anyhow::bail!("injected legacy persistence failure")
+        }
+    }
+
+    impl LegacyVergeStore for FailingLegacyCommit {
+        fn snapshot(&self) -> anyhow::Result<IVerge> {
+            ConfigLegacyVergeStore::default().snapshot()
+        }
+
+        fn prepare_application(
+            &self,
+            snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            ConfigLegacyVergeStore::default().prepare_application(snap)
+        }
+
+        fn prepare_commit(
+            &self,
+            _path: &Utf8Path,
+            _state: IVerge,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>> {
+            Ok(Box::new(Self))
+        }
+
+        fn prepare_restore(
+            &self,
+            path: &Utf8Path,
+            state: IVerge,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyVergeCommit>> {
+            ConfigLegacyVergeStore::default().prepare_restore(path, state)
+        }
+
+        fn prepare_projection(
+            &self,
+            state: IVerge,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            ConfigLegacyVergeStore::default().prepare_projection(state)
+        }
+    }
+
     struct NoopClashBridge;
 
     impl ClashLegacyBridge for NoopClashBridge {
-        fn mirror(&self, _snap: &ClashConfig) -> anyhow::Result<()> {
-            Ok(())
+        fn prepare(&self, _snap: &ClashConfig) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(NoopPreparedLegacyMirror))
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<ClashConfig> {
             Ok(ClashConfig::default())
+        }
+    }
+
+    struct RecordingPreparedMirror {
+        event: &'static str,
+        events: Arc<StdMutex<Vec<&'static str>>>,
+        entered: Option<oneshot::Sender<()>>,
+        release: Option<Arc<StdMutex<mpsc::Receiver<()>>>>,
+    }
+
+    impl PreparedLegacyMirror for RecordingPreparedMirror {
+        fn apply(self: Box<Self>) {
+            self.events.lock().unwrap().push(self.event);
+            if let Some(entered) = self.entered {
+                let _ = entered.send(());
+            }
+            if let Some(release) = self.release {
+                release.lock().unwrap().recv().unwrap();
+            }
+        }
+    }
+
+    struct RecordingVergeMirror {
+        events: Arc<StdMutex<Vec<&'static str>>>,
+        barrier: StdMutex<Option<(oneshot::Sender<()>, Arc<StdMutex<mpsc::Receiver<()>>>)>>,
+    }
+
+    impl VergeLegacyBridge for RecordingVergeMirror {
+        fn prepare(
+            &self,
+            snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            let is_new = snap.theme_color.to_string() == "#abcdef";
+            let (entered, release) = if is_new {
+                match self.barrier.lock().unwrap().take() {
+                    Some((entered, release)) => (Some(entered), Some(release)),
+                    None => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+            Ok(Box::new(RecordingPreparedMirror {
+                event: if is_new {
+                    "application:new"
+                } else {
+                    "application:old"
+                },
+                events: Arc::clone(&self.events),
+                entered,
+                release,
+            }))
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
+            Ok(NyanpasuAppConfig::default())
+        }
+    }
+
+    struct RecordingWindowMirror {
+        events: Arc<StdMutex<Vec<&'static str>>>,
+        barrier: StdMutex<Option<(oneshot::Sender<()>, Arc<StdMutex<mpsc::Receiver<()>>>)>>,
+    }
+
+    impl WindowLegacyBridge for RecordingWindowMirror {
+        fn prepare(&self, snap: &PersistentState) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            let is_new = !snap.window_state.is_empty();
+            let (entered, release) = if is_new {
+                match self.barrier.lock().unwrap().take() {
+                    Some((entered, release)) => (Some(entered), Some(release)),
+                    None => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+            Ok(Box::new(RecordingPreparedMirror {
+                event: if is_new { "session:new" } else { "session:old" },
+                events: Arc::clone(&self.events),
+                entered,
+                release,
+            }))
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
+            Ok(PersistentState::default())
         }
     }
 
@@ -509,29 +1019,71 @@ mod tests {
     }
 
     fn test_bridge(dir: &TempDir) -> (NyanpasuClient, LegacyVergeBridge) {
-        // Keep tests hermetic: the legacy global otherwise reads host config/registry state.
-        let clash = Config::clash();
-        *clash.draft() = IClashTemp::template();
-        clash.apply();
+        test_bridge_with_window(dir, Arc::new(NoopWindowBridge))
+    }
+
+    fn test_bridge_with_window(
+        dir: &TempDir,
+        window: Arc<dyn WindowLegacyBridge>,
+    ) -> (NyanpasuClient, LegacyVergeBridge) {
+        test_bridge_with_bridges(
+            dir,
+            Arc::new(LegacyVergeBridge::default()),
+            window,
+            Arc::new(NoopClashBridge),
+        )
+    }
+
+    fn test_bridge_with_bridges(
+        dir: &TempDir,
+        verge: Arc<dyn VergeLegacyBridge>,
+        window: Arc<dyn WindowLegacyBridge>,
+        clash: Arc<dyn ClashLegacyBridge>,
+    ) -> (NyanpasuClient, LegacyVergeBridge) {
+        test_bridge_with_bridges_and_store(
+            dir,
+            verge,
+            window,
+            clash,
+            Arc::new(ConfigLegacyVergeStore::default()),
+        )
+    }
+
+    fn test_bridge_with_bridges_and_store(
+        dir: &TempDir,
+        verge: Arc<dyn VergeLegacyBridge>,
+        window: Arc<dyn WindowLegacyBridge>,
+        clash: Arc<dyn ClashLegacyBridge>,
+        legacy_store: Arc<dyn LegacyVergeStore>,
+    ) -> (NyanpasuClient, LegacyVergeBridge) {
+        let clash_store = Config::clash();
+        *clash_store.draft() = IClashTemp::template();
+        clash_store.apply();
+        let verge_store = Config::verge();
+        *verge_store.draft() = IVerge::default();
+        verge_store.apply();
 
         let paths = crate::utils::path::PathResolver::with_base_dirs(
             dir.path().into(),
             dir.path().join("data"),
         );
         let legacy_verge_path = temp_config_path(dir, "nyanpasu-config.yaml");
+        let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths).unwrap();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
             paths,
+            runtime_paths,
             bridges: LegacyBridgeSet {
-                verge: Arc::new(LegacyVergeBridge::default()),
-                window: Arc::new(NoopWindowBridge),
-                clash: Arc::new(NoopClashBridge),
+                verge,
+                window,
+                clash,
             },
             ui_sink: Arc::new(NoopUiEventSink),
             core: Arc::new(MockRunningCoreBridge::new()),
+            clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
         })
         .expect("client should construct with typed config actors");
-        let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path);
+        let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path, legacy_store);
         (client, bridge)
     }
 
@@ -575,6 +1127,7 @@ mod tests {
 
     #[test]
     fn get_verge_config_composes_typed_actor_snapshots() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");
         let (client, bridge) = test_bridge(&dir);
 
@@ -626,6 +1179,7 @@ mod tests {
 
     #[test]
     fn legacy_patch_then_get_verge_config_preserves_contract() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");
         let (client, bridge) = test_bridge(&dir);
 
@@ -657,6 +1211,7 @@ mod tests {
 
     #[test]
     fn pure_verge_patch_persists_legacy_snapshot_to_injected_path() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");
         let (_client, bridge) = test_bridge(&dir);
 
@@ -678,7 +1233,333 @@ mod tests {
     }
 
     #[test]
+    fn legacy_commit_failure_compensates_typed_application() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let events = Arc::new(StdMutex::new(Vec::new()));
+        let (client, bridge) = test_bridge_with_bridges_and_store(
+            &dir,
+            Arc::new(RecordingVergeMirror {
+                events: Arc::clone(&events),
+                barrier: StdMutex::new(None),
+            }),
+            Arc::new(NoopWindowBridge),
+            Arc::new(NoopClashBridge),
+            Arc::new(FailingLegacyCommit),
+        );
+
+        tauri::async_runtime::block_on(async {
+            let before = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should load");
+            let error = bridge
+                .patch_verge_config(IVerge {
+                    theme_color: Some("#abcdef".into()),
+                    ..IVerge::default()
+                })
+                .await
+                .expect_err("legacy persistence failure should fail the patch");
+            let ClientError::PartialCommit(partial) = error else {
+                panic!("expected legacy uncertainty partial commit, got {error:#}");
+            };
+            assert!(
+                partial
+                    .primary_error
+                    .contains("failed to finalize legacy verge persistence")
+            );
+            assert!(matches!(
+                partial.failed_compensations.as_slice(),
+                [CompensationFailure::LegacyStateUncertain { message }]
+                    if message.contains("injected legacy persistence failure")
+            ));
+            assert_eq!(
+                partial.compensated_domains,
+                vec![LegacyVergeDomain::Application]
+            );
+            let after = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should reload");
+            assert_eq!(after.application.version, before.application.version + 2);
+            assert_eq!(
+                after.application.state.theme_color,
+                before.application.state.theme_color
+            );
+            assert_eq!(after.session.version, before.session.version);
+            assert_eq!(after.clash.version, before.clash.version);
+        });
+    }
+
+    #[test]
+    fn legacy_finalizer_preserves_concurrent_typed_projection() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let legacy_lock = Arc::new(parking_lot::Mutex::new(()));
+        let legacy_store = Arc::new(BlockingLegacyCommitStore {
+            inner: ConfigLegacyVergeStore::new(legacy_lock),
+            block_restore: false,
+            barrier: StdMutex::new(Some((entered_tx, Arc::new(StdMutex::new(release_rx))))),
+        });
+        let (client, bridge) = test_bridge_with_bridges_and_store(
+            &dir,
+            Arc::new(LegacyVergeBridge::with_store(legacy_store.clone())),
+            Arc::new(NoopWindowBridge),
+            Arc::new(NoopClashBridge),
+            legacy_store,
+        );
+
+        tauri::async_runtime::block_on(async {
+            let saga = bridge.clone();
+            let task = tauri::async_runtime::spawn(async move {
+                saga.patch_verge_config(IVerge {
+                    theme_color: Some("#abcdef".into()),
+                    ..IVerge::default()
+                })
+                .await
+            });
+
+            entered_rx.await.expect("legacy finalizer should start");
+            let mut app_patch = NyanpasuAppConfig::new_empty_patch();
+            app_patch.language = Some(I18nLanguage::Korean);
+            client
+                .patch_app_config(app_patch)
+                .await
+                .expect("concurrent typed update should succeed");
+            release_tx
+                .send(())
+                .expect("legacy finalizer should release");
+            task.await
+                .expect("saga task should join")
+                .expect("saga should succeed");
+
+            let typed = client
+                .get_app_config()
+                .await
+                .expect("application state should load");
+            assert_eq!(typed.theme_color.to_string(), "#abcdef");
+            assert_eq!(typed.language, I18nLanguage::Korean);
+            assert_eq!(Config::verge().data().language.as_deref(), Some("ko"));
+            let saved: IVerge = crate::utils::help::read_yaml(
+                temp_config_path(&dir, "nyanpasu-config.yaml").as_std_path(),
+            )
+            .expect("legacy snapshot should load");
+            assert_eq!(saved.language.as_deref(), Some("ko"));
+        });
+    }
+
+    #[test]
+    fn legacy_mutation_preserves_concurrent_typed_update_before_restore() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let legacy_lock = Arc::new(parking_lot::Mutex::new(()));
+        let legacy_store = Arc::new(BlockingLegacyCommitStore {
+            inner: ConfigLegacyVergeStore::new(legacy_lock.clone()),
+            block_restore: true,
+            barrier: StdMutex::new(Some((entered_tx, Arc::new(StdMutex::new(release_rx))))),
+        });
+        let (client, bridge) = test_bridge_with_bridges_and_store(
+            &dir,
+            Arc::new(LegacyVergeBridge::with_store(legacy_store.clone())),
+            Arc::new(crate::bridge::window::LegacyWindowBridge::new(legacy_lock)),
+            Arc::new(NoopClashBridge),
+            legacy_store,
+        );
+
+        tauri::async_runtime::block_on(async {
+            let mutation = bridge.clone();
+            let task = tauri::async_runtime::spawn(async move {
+                mutation
+                    .run_legacy_verge_mutation(|| async {
+                        Config::verge().draft().theme_color = Some("#abcdef".into());
+                        Config::verge().apply();
+                        Ok(())
+                    })
+                    .await
+            });
+
+            entered_rx.await.expect("legacy restore should start");
+            let concurrent_window = WindowState {
+                width: 1000,
+                height: 700,
+                x: 10,
+                y: 20,
+                maximized: false,
+                fullscreen: false,
+            };
+            let mut session_patch = PersistentState::new_empty_patch();
+            session_patch.window_state = Some(BTreeMap::from([(
+                WindowLabel("main".into()),
+                concurrent_window.clone(),
+            )]));
+            client
+                .patch_session_state(session_patch)
+                .await
+                .expect("concurrent typed session update should succeed");
+            release_tx.send(()).expect("legacy restore should release");
+            task.await
+                .expect("mutation task should join")
+                .expect("mutation saga should succeed");
+
+            let application = client
+                .get_app_config()
+                .await
+                .expect("application state should load");
+            let session = client
+                .get_session_state()
+                .await
+                .expect("session state should load");
+            assert_eq!(application.theme_color.to_string(), "#abcdef");
+            assert_eq!(
+                session.window_state.get(&WindowLabel("main".into())),
+                Some(&concurrent_window)
+            );
+            assert_eq!(
+                Config::verge()
+                    .data()
+                    .window_size_state
+                    .as_ref()
+                    .map(|state| state.width),
+                Some(1000)
+            );
+        });
+    }
+
+    #[test]
+    fn legacy_mutation_failure_restores_legacy_state_and_reports_reconciliation() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge_with_window(&dir, Arc::new(FailingWindowMirror));
+
+        tauri::async_runtime::block_on(async {
+            let error = bridge
+                .run_legacy_verge_mutation(|| async {
+                    Config::verge().draft().patch_config(IVerge {
+                        window_size_state: Some(crate::config::nyanpasu::WindowState {
+                            width: 1440,
+                            height: 900,
+                            x: 1,
+                            y: 2,
+                            maximized: false,
+                            fullscreen: false,
+                        }),
+                        ..IVerge::default()
+                    });
+                    Config::verge().apply();
+                    Ok(())
+                })
+                .await
+                .expect_err("typed prepare failure must report reconciliation");
+            let ClientError::PartialCommit(partial) = error else {
+                panic!("expected partial commit, got {error:#}");
+            };
+            assert!(partial.failed_compensations.iter().any(|failure| matches!(
+                failure,
+                CompensationFailure::LegacyStateUncertain { .. }
+            )));
+            assert!(Config::verge().data().window_size_state.is_none());
+            assert!(
+                client
+                    .get_session_state()
+                    .await
+                    .expect("session state should load")
+                    .window_state
+                    .is_empty()
+            );
+        });
+    }
+
+    #[test]
+    fn failed_legacy_mutation_reports_uncertainty_without_guessing_restore() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (_client, bridge) = test_bridge(&dir);
+
+        tauri::async_runtime::block_on(async {
+            let error = bridge
+                .run_legacy_verge_mutation(|| async {
+                    Config::verge().draft().theme_color = Some("#abcdef".into());
+                    Config::verge().apply();
+                    anyhow::bail!("injected legacy mutation failure")
+                })
+                .await
+                .expect_err("failed legacy mutation must report uncertainty");
+            let ClientError::PartialCommit(partial) = error else {
+                panic!("expected partial commit, got {error:#}");
+            };
+            assert!(
+                partial
+                    .primary_error
+                    .contains("injected legacy mutation failure")
+            );
+            assert!(partial.failed_compensations.iter().any(|failure| matches!(
+                failure,
+                CompensationFailure::LegacyStateUncertain { message }
+                    if message.contains("injected legacy mutation failure")
+            )));
+        });
+    }
+
+    #[test]
+    fn failed_legacy_mutation_preserves_concurrent_typed_projection() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let legacy_lock = Arc::new(parking_lot::Mutex::new(()));
+        let legacy_store = Arc::new(ConfigLegacyVergeStore::new(legacy_lock));
+        let (client, bridge) = test_bridge_with_bridges_and_store(
+            &dir,
+            Arc::new(LegacyVergeBridge::with_store(legacy_store.clone())),
+            Arc::new(NoopWindowBridge),
+            Arc::new(NoopClashBridge),
+            legacy_store,
+        );
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+
+        tauri::async_runtime::block_on(async {
+            let mutation = bridge.clone();
+            let task = tauri::async_runtime::spawn(async move {
+                mutation
+                    .run_legacy_verge_mutation(|| async move {
+                        Config::verge().draft().theme_color = Some("#abcdef".into());
+                        Config::verge().apply();
+                        let _ = entered_tx.send(());
+                        let _ = release_rx.await;
+                        anyhow::bail!("injected legacy mutation failure")
+                    })
+                    .await
+            });
+
+            entered_rx.await.expect("legacy mutation should apply");
+            let mut app_patch = NyanpasuAppConfig::new_empty_patch();
+            app_patch.language = Some(I18nLanguage::Korean);
+            client
+                .patch_app_config(app_patch)
+                .await
+                .expect("concurrent typed update should succeed");
+            release_tx.send(()).expect("legacy mutation should release");
+
+            let error = task
+                .await
+                .expect("mutation task should join")
+                .expect_err("mutation failure should surface");
+            assert!(matches!(error, ClientError::PartialCommit(_)));
+            let typed = client
+                .get_app_config()
+                .await
+                .expect("application state should load");
+            assert_eq!(typed.language, I18nLanguage::Korean);
+            assert_eq!(Config::verge().data().language.as_deref(), Some("ko"));
+        });
+    }
+
+    #[test]
     fn pure_verge_patch_preserves_session_state_fields() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");
         let (_client, bridge) = test_bridge(&dir);
 
@@ -718,6 +1599,7 @@ mod tests {
 
     #[test]
     fn pure_verge_patch_preserves_clash_config_fields() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");
         let (_client, bridge) = test_bridge(&dir);
 
@@ -744,6 +1626,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn replace_verge_config_persists_legacy_only_fields_to_injected_path() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");
         let (_client, bridge) = test_bridge(&dir);
 
@@ -768,6 +1651,7 @@ mod tests {
 
     #[test]
     fn legacy_mutation_reseeds_typed_actors_without_os_side_effects() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");
         let (client, bridge) = test_bridge(&dir);
 
@@ -891,5 +1775,459 @@ mod tests {
         assert_legacy!(enable_tray_text: true);
         assert_legacy!(tray_menu_mode: TrayMenuMode::default());
         assert_legacy!(network_statistic_widget: NetworkStatisticWidgetConfig::default());
+    }
+
+    #[test]
+    fn three_domain_second_domain_prepare_failure_leaves_failing_domain_old() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge_with_window(&dir, Arc::new(FailingWindowMirror));
+
+        tauri::async_runtime::block_on(async {
+            let versions_before = client
+                .typed_config_snapshots()
+                .await
+                .expect("typed snapshots should load");
+            let app_before = client
+                .get_app_config()
+                .await
+                .expect("app get should succeed");
+            let session_before = client
+                .get_session_state()
+                .await
+                .expect("session get should succeed");
+            assert_ne!(app_before.theme_color.to_string(), "#abcdef");
+            assert!(session_before.window_state.is_empty());
+
+            let err = bridge
+                .patch_verge_config(IVerge {
+                    // Application domain (first)
+                    theme_color: Some("#abcdef".into()),
+                    // Session domain (second) — mirror preparation fails before upsert
+                    window_size_state: Some(crate::config::nyanpasu::WindowState {
+                        width: 1440,
+                        height: 900,
+                        x: 1,
+                        y: 2,
+                        maximized: false,
+                        fullscreen: false,
+                    }),
+                    // Clash domain (third) — should not be reached under sequential plan
+                    web_ui_list: Some(vec!["https://example.invalid/ui".to_string()]),
+                    ..IVerge::default()
+                })
+                .await
+                .expect_err("second-domain prepare failure must surface as Err");
+            let err_text = format!("{err:#}");
+            assert!(
+                err_text.contains("legacy session mirror")
+                    || err_text.contains("injected session mirror failure"),
+                "unexpected error: {err_text}"
+            );
+
+            let app_after = client
+                .get_app_config()
+                .await
+                .expect("app get after failure should succeed");
+            let session_after = client
+                .get_session_state()
+                .await
+                .expect("session get after failure should succeed");
+            let clash_after = client
+                .get_clash_config()
+                .await
+                .expect("clash get after failure should succeed");
+            let versions_after = client
+                .typed_config_snapshots()
+                .await
+                .expect("typed snapshots should reload");
+
+            assert_eq!(
+                versions_after.application.version,
+                versions_before.application.version
+            );
+            assert_eq!(
+                versions_after.session.version,
+                versions_before.session.version
+            );
+            assert_eq!(versions_after.clash.version, versions_before.clash.version);
+            assert_eq!(
+                app_after.theme_color.to_string(),
+                app_before.theme_color.to_string(),
+                "application domain must remain old when any prepare fails"
+            );
+            // Prepared mirror failure prevents the failing domain from committing.
+            assert!(
+                session_after.window_state.is_empty(),
+                "session domain must remain old when mirror preparation fails"
+            );
+            // Third domain must not have been patched (sequential stop).
+            assert!(
+                clash_after.web_ui_list.is_empty(),
+                "clash domain must remain untouched when second domain fails"
+            );
+        });
+    }
+
+    #[test]
+    fn three_domain_second_domain_commit_failure_compensates_application() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let events = Arc::new(StdMutex::new(Vec::new()));
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let verge = Arc::new(RecordingVergeMirror {
+            events: Arc::clone(&events),
+            barrier: StdMutex::new(Some((entered_tx, Arc::new(StdMutex::new(release_rx))))),
+        });
+        let (client, bridge) = test_bridge_with_bridges(
+            &dir,
+            verge,
+            Arc::new(NoopWindowBridge),
+            Arc::new(NoopClashBridge),
+        );
+
+        tauri::async_runtime::block_on(async {
+            events.lock().unwrap().clear();
+            let before = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should load");
+            let saga = bridge.clone();
+            let task = tauri::async_runtime::spawn(async move {
+                saga.patch_verge_config(IVerge {
+                    theme_color: Some("#abcdef".into()),
+                    window_size_state: Some(crate::config::nyanpasu::WindowState {
+                        width: 1440,
+                        height: 900,
+                        x: 1,
+                        y: 2,
+                        maximized: false,
+                        fullscreen: false,
+                    }),
+                    ..IVerge::default()
+                })
+                .await
+            });
+
+            entered_rx.await.expect("application apply should start");
+            let mut session_patch = PersistentState::new_empty_patch();
+            session_patch.window_state = Some(BTreeMap::from([(
+                WindowLabel("concurrent".into()),
+                WindowState {
+                    width: 800,
+                    height: 600,
+                    x: 0,
+                    y: 0,
+                    maximized: false,
+                    fullscreen: false,
+                },
+            )]));
+            client
+                .patch_session_state(session_patch)
+                .await
+                .expect("concurrent session update should succeed");
+            release_tx
+                .send(())
+                .expect("application apply should release");
+
+            let error = task
+                .await
+                .expect("saga task should join")
+                .expect_err("session CAS conflict should fail the saga");
+            assert!(
+                error
+                    .to_string()
+                    .contains("session config version conflict")
+            );
+
+            let after = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should reload");
+            assert_eq!(after.application.version, before.application.version + 2);
+            assert_eq!(after.session.version, before.session.version + 1);
+            assert_eq!(after.clash.version, before.clash.version);
+            assert_eq!(
+                after.application.state.theme_color,
+                before.application.state.theme_color
+            );
+            assert!(!after.session.state.window_state.is_empty());
+            assert_eq!(
+                *events.lock().unwrap(),
+                vec!["application:new", "application:old"]
+            );
+        });
+    }
+
+    #[test]
+    fn full_replacement_second_domain_failure_compensates_application() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let events = Arc::new(StdMutex::new(Vec::new()));
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (client, bridge) = test_bridge_with_bridges(
+            &dir,
+            Arc::new(RecordingVergeMirror {
+                events: Arc::clone(&events),
+                barrier: StdMutex::new(Some((entered_tx, Arc::new(StdMutex::new(release_rx))))),
+            }),
+            Arc::new(NoopWindowBridge),
+            Arc::new(NoopClashBridge),
+        );
+
+        tauri::async_runtime::block_on(async {
+            events.lock().unwrap().clear();
+            let before = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should load");
+            let saga = bridge.clone();
+            let task = tauri::async_runtime::spawn(async move {
+                saga.replace_verge_config(IVerge {
+                    theme_color: Some("#abcdef".into()),
+                    window_size_state: Some(crate::config::nyanpasu::WindowState {
+                        width: 1440,
+                        height: 900,
+                        x: 1,
+                        y: 2,
+                        maximized: false,
+                        fullscreen: false,
+                    }),
+                    ..IVerge::default()
+                })
+                .await
+            });
+
+            entered_rx.await.expect("application apply should start");
+            let mut session_patch = PersistentState::new_empty_patch();
+            session_patch.window_state = Some(BTreeMap::from([(
+                WindowLabel("concurrent".into()),
+                WindowState {
+                    width: 800,
+                    height: 600,
+                    x: 0,
+                    y: 0,
+                    maximized: false,
+                    fullscreen: false,
+                },
+            )]));
+            client
+                .patch_session_state(session_patch)
+                .await
+                .expect("concurrent session update should succeed");
+            release_tx
+                .send(())
+                .expect("application apply should release");
+
+            let error = task
+                .await
+                .expect("replacement task should join")
+                .expect_err("session CAS conflict should fail full replacement");
+            assert!(
+                format!("{error:#}").contains("session config version conflict"),
+                "unexpected replacement error: {error:#}"
+            );
+            let after = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should reload");
+            assert_eq!(after.application.version, before.application.version + 2);
+            assert_eq!(
+                after.application.state.theme_color,
+                before.application.state.theme_color
+            );
+            assert_eq!(after.session.version, before.session.version + 1);
+            assert_eq!(after.clash.version, before.clash.version);
+            assert_eq!(
+                *events.lock().unwrap(),
+                vec!["application:new", "application:old"]
+            );
+        });
+    }
+
+    #[test]
+    fn three_domain_third_domain_failure_compensates_session_then_application() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let events = Arc::new(StdMutex::new(Vec::new()));
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let window = Arc::new(RecordingWindowMirror {
+            events: Arc::clone(&events),
+            barrier: StdMutex::new(Some((entered_tx, Arc::new(StdMutex::new(release_rx))))),
+        });
+        let (client, bridge) = test_bridge_with_bridges(
+            &dir,
+            Arc::new(RecordingVergeMirror {
+                events: Arc::clone(&events),
+                barrier: StdMutex::new(None),
+            }),
+            window,
+            Arc::new(NoopClashBridge),
+        );
+
+        tauri::async_runtime::block_on(async {
+            events.lock().unwrap().clear();
+            let before = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should load");
+            let saga = bridge.clone();
+            let task = tauri::async_runtime::spawn(async move {
+                saga.patch_verge_config(IVerge {
+                    theme_color: Some("#abcdef".into()),
+                    window_size_state: Some(crate::config::nyanpasu::WindowState {
+                        width: 1440,
+                        height: 900,
+                        x: 1,
+                        y: 2,
+                        maximized: false,
+                        fullscreen: false,
+                    }),
+                    web_ui_list: Some(vec!["https://example.invalid/ui".into()]),
+                    ..IVerge::default()
+                })
+                .await
+            });
+
+            entered_rx.await.expect("session apply should start");
+            let mut clash_patch = ClashConfig::new_empty_patch();
+            clash_patch.web_ui_list = Some(vec!["https://concurrent.invalid/ui".into()]);
+            client
+                .patch_clash_config(clash_patch)
+                .await
+                .expect("concurrent clash update should succeed");
+            release_tx.send(()).expect("session apply should release");
+
+            let error = task
+                .await
+                .expect("saga task should join")
+                .expect_err("clash CAS conflict should fail the saga");
+            assert!(error.to_string().contains("clash config version conflict"));
+            let after = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should reload");
+            assert_eq!(after.application.version, before.application.version + 2);
+            assert_eq!(after.session.version, before.session.version + 2);
+            assert_eq!(after.clash.version, before.clash.version + 1);
+            assert_eq!(
+                after.application.state.theme_color,
+                before.application.state.theme_color
+            );
+            assert!(after.session.state.window_state.is_empty());
+            assert_eq!(
+                *events.lock().unwrap(),
+                vec![
+                    "application:new",
+                    "session:new",
+                    "session:old",
+                    "application:old"
+                ]
+            );
+        });
+    }
+
+    #[test]
+    fn compensation_conflict_returns_partial_commit_and_preserves_concurrent_update() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let events = Arc::new(StdMutex::new(Vec::new()));
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let window = Arc::new(RecordingWindowMirror {
+            events: Arc::clone(&events),
+            barrier: StdMutex::new(Some((entered_tx, Arc::new(StdMutex::new(release_rx))))),
+        });
+        let (client, bridge) = test_bridge_with_bridges(
+            &dir,
+            Arc::new(RecordingVergeMirror {
+                events: Arc::clone(&events),
+                barrier: StdMutex::new(None),
+            }),
+            window,
+            Arc::new(NoopClashBridge),
+        );
+
+        tauri::async_runtime::block_on(async {
+            events.lock().unwrap().clear();
+            let before = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should load");
+            let saga = bridge.clone();
+            let task = tauri::async_runtime::spawn(async move {
+                saga.patch_verge_config(IVerge {
+                    theme_color: Some("#abcdef".into()),
+                    window_size_state: Some(crate::config::nyanpasu::WindowState {
+                        width: 1440,
+                        height: 900,
+                        x: 1,
+                        y: 2,
+                        maximized: false,
+                        fullscreen: false,
+                    }),
+                    web_ui_list: Some(vec!["https://example.invalid/ui".into()]),
+                    ..IVerge::default()
+                })
+                .await
+            });
+
+            entered_rx.await.expect("session apply should start");
+            let mut clash_patch = ClashConfig::new_empty_patch();
+            clash_patch.web_ui_list = Some(vec!["https://concurrent.invalid/ui".into()]);
+            client
+                .patch_clash_config(clash_patch)
+                .await
+                .expect("concurrent clash update should succeed");
+            let mut app_patch = NyanpasuAppConfig::new_empty_patch();
+            app_patch.language = Some(I18nLanguage::Korean);
+            client
+                .patch_app_config(app_patch)
+                .await
+                .expect("concurrent application update should succeed");
+            release_tx.send(()).expect("session apply should release");
+
+            let error = task
+                .await
+                .expect("saga task should join")
+                .expect_err("compensation conflict should return an error");
+            let ClientError::PartialCommit(partial) = error else {
+                panic!("expected partial commit, got {error:#}");
+            };
+            assert_eq!(
+                partial.committed_domains,
+                vec![
+                    crate::client::LegacyVergeDomain::Application,
+                    crate::client::LegacyVergeDomain::Session,
+                ]
+            );
+            assert_eq!(
+                partial.compensated_domains,
+                vec![crate::client::LegacyVergeDomain::Session,]
+            );
+            assert!(matches!(
+                partial.failed_compensations.as_slice(),
+                [crate::client::CompensationFailure::Conflict {
+                    domain: crate::client::LegacyVergeDomain::Application,
+                    ..
+                }]
+            ));
+
+            let after = client
+                .typed_config_snapshots()
+                .await
+                .expect("snapshots should reload");
+            assert_eq!(after.application.version, before.application.version + 2);
+            assert_eq!(after.application.state.language, I18nLanguage::Korean);
+            assert_eq!(after.session.version, before.session.version + 2);
+            assert_eq!(
+                after.session.state.window_state,
+                before.session.state.window_state
+            );
+            assert_eq!(after.clash.version, before.clash.version + 1);
+        });
     }
 }

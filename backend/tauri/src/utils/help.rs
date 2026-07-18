@@ -250,7 +250,18 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
     super::resolve::resolve_reset();
     let widget_manager = app_handle.state::<crate::widget::WidgetManager>();
+    // Managed Tauri state — no process-global client lookup. Shutdown the
+    // instance-owned rebuild worker before final core/widget teardown so exit
+    // cannot race a background dirty rebuild. Tauri ExitRequested is already
+    // off the main event-loop spin; block_on here matches the existing cleanup
+    // pattern (widget stop / core stop).
+    let client = app_handle
+        .try_state::<crate::client::NyanpasuClient>()
+        .map(|state| state.inner().clone());
     let _ = nyanpasu_utils::runtime::block_on(async {
+        if let Some(client) = client.as_ref() {
+            client.shutdown().await;
+        }
         if let Err(e) = widget_manager.stop().await {
             log::error!("failed to stop widget manager: {e:?}");
         };

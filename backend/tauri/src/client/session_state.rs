@@ -7,7 +7,8 @@ use nyanpasu_core::state::PersistentStateManagerSetup;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::{
-    mirror::WindowLegacyBridge,
+    ConditionalReplaceResult,
+    mirror::{PreparedTypedReplace, WindowLegacyBridge},
     session_state::{
         SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
     },
@@ -84,6 +85,59 @@ impl SessionStateClient {
         .await
     }
 
+    pub(crate) async fn replace_if_version(
+        &self,
+        expected_version: u64,
+        state: PersistentState,
+    ) -> anyhow::Result<ConditionalReplaceResult<SessionStateSnapshot>> {
+        let prepared = self.prepare_replace(state).await?;
+        self.replace_prepared_if_version(expected_version, prepared)
+            .await
+    }
+
+    pub(crate) async fn prepare_replace(
+        &self,
+        state: PersistentState,
+    ) -> anyhow::Result<PreparedTypedReplace<PersistentState>> {
+        match self
+            .inner
+            .actor_ref
+            .call(
+                |reply| SessionStateActorMessage::PrepareReplace { state, reply },
+                None,
+            )
+            .await?
+        {
+            CallResult::Success(result) => result,
+            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
+            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
+        }
+    }
+
+    pub(crate) async fn replace_prepared_if_version(
+        &self,
+        expected_version: u64,
+        prepared: PreparedTypedReplace<PersistentState>,
+    ) -> anyhow::Result<ConditionalReplaceResult<SessionStateSnapshot>> {
+        match self
+            .inner
+            .actor_ref
+            .call(
+                |reply| SessionStateActorMessage::ReplacePreparedIfVersion {
+                    expected_version,
+                    prepared,
+                    reply,
+                },
+                None,
+            )
+            .await?
+        {
+            CallResult::Success(result) => result,
+            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
+            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
+        }
+    }
+
     async fn call<F>(
         &self,
         make: F,
@@ -109,6 +163,7 @@ impl Drop for SessionStateClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::mirror::{NoopPreparedLegacyMirror, PreparedLegacyMirror};
     use nyanpasu_config::state::window::{WindowLabel, WindowState};
     use std::collections::BTreeMap;
     use struct_patch::Patch;
@@ -117,8 +172,11 @@ mod tests {
     struct NoopWindowBridge;
 
     impl WindowLegacyBridge for NoopWindowBridge {
-        fn mirror(&self, _snap: &PersistentState) -> anyhow::Result<()> {
-            Ok(())
+        fn prepare(
+            &self,
+            _snap: &PersistentState,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(NoopPreparedLegacyMirror))
         }
 
         fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
@@ -170,5 +228,39 @@ mod tests {
             .await
             .expect("replace should succeed");
         assert!(replaced.state.window_state.is_empty());
+    }
+
+    #[tokio::test]
+    async fn replace_if_version_commits_matching_snapshot() {
+        let (client, _dir) = test_client().await;
+        let current = client.get().await.expect("get should succeed");
+        let label = WindowLabel("main".into());
+        let next = PersistentState {
+            window_state: BTreeMap::from([(
+                label.clone(),
+                WindowState {
+                    width: 800,
+                    height: 600,
+                    x: 10,
+                    y: 20,
+                    maximized: false,
+                    fullscreen: false,
+                },
+            )]),
+        };
+
+        let result = client
+            .replace_if_version(current.version, next)
+            .await
+            .expect("matching replace should succeed");
+        match result {
+            ConditionalReplaceResult::Replaced(snapshot) => {
+                assert_eq!(snapshot.version, current.version + 1);
+                assert!(snapshot.state.window_state.contains_key(&label));
+            }
+            ConditionalReplaceResult::Conflict { actual_version } => {
+                panic!("unexpected conflict at version {actual_version}")
+            }
+        }
     }
 }

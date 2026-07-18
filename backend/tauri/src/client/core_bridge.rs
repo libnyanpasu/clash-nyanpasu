@@ -1,49 +1,82 @@
-//! Boundary adapter for "apply the regenerated runtime to the running core"
-//! (PR-3 T07, reshaped by PR-4). The facade depends on this trait so it stays
-//! testable; the production impl concentrates the legacy-global touches behind
-//! documented bridges.
+//! Core lifecycle port (S04): exclusive lease over check/promote/apply/restart/stop.
+//!
+//! Application code depends on [`CoreLifecyclePort`] and its borrowed lease so
+//! lifecycle operations cannot re-lock `CoreManager` in the middle of a
+//! transaction. The legacy adapter acquires the process-wide lifecycle mutex
+//! once and delegates through the unlocked lease methods.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use camino::Utf8Path;
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_ipc::api::status::CoreState;
+use sha2::Digest;
 
+use super::runtime::{CandidateFile, RuntimePaths};
+
+/// Narrow boundary for API-first updates to the running core configuration.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
-pub trait RunningCoreBridge: Send + Sync + 'static {
-    /// Read the candidate ONCE, check those exact bytes with the EXPLICIT target
-    /// core's binary, then atomically promote the very bytes that were checked
-    /// to the runtime product (spec D5: the product only ever holds checked
-    /// configs). The bytes are captured BEFORE the check and identity-verified
-    /// AFTER the check (the candidate is re-read and compared): a candidate
-    /// swapped between check and promote can neither be promoted nor have its
-    /// check verdict transferred to different bytes. `target_core` must come from
-    /// the same input snapshot the builder used — implementations must not
-    /// re-read global state to pick the core (spec §5.3, P0-3). Usable on the
-    /// boot path where the core is not running yet.
-    async fn check_and_promote(
-        &self,
-        candidate: &Utf8Path,
-        target_core: ClashCore,
-    ) -> anyhow::Result<()>;
-    /// Push the promoted product to the running core over its api.
-    async fn apply_config(&self) -> anyhow::Result<()>;
-    /// Restart the core off the current promoted product (consumed by the
-    /// facade change_core / regenerate_and_restart transactions, spec §5.4/5.5).
-    async fn restart_core(&self) -> anyhow::Result<()>;
+pub trait RunningConfigPatchPort: Send + Sync + 'static {
+    async fn patch(&self, patch: &serde_yaml::Mapping) -> anyhow::Result<()>;
+}
+
+pub struct LegacyRunningConfigPatchBridge;
+
+#[async_trait]
+impl RunningConfigPatchPort for LegacyRunningConfigPatchBridge {
+    async fn patch(&self, patch: &serde_yaml::Mapping) -> anyhow::Result<()> {
+        crate::core::clash::api::patch_configs(patch).await
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CoreStatusSnapshot {
+    pub state: CoreState,
+    pub state_changed_at: i64,
+    pub run_type: crate::core::RunType,
+}
+
+/// Port for entering the single core lifecycle mutex domain.
+#[async_trait]
+pub trait CoreLifecyclePort: Send + Sync + 'static {
+    /// Acquire an exclusive lease until the returned value is dropped.
+    async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>>;
+    async fn status(&self) -> anyhow::Result<CoreStatusSnapshot>;
     async fn on_profile_change(&self);
 }
 
-/// Atomically write known-good product bytes back: the sole promote path
-/// (check_and_promote publishes the pre-checked bytes) and the change_core
-/// last-resort rollback (spec §5.4). atomicwrites: temp file + durable rename,
-/// so readers never observe a half-written product.
+/// Operations that must remain serialized by one lifecycle lease.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait CoreLifecycleLease: Send {
+    /// Check the captured candidate, atomically promote those exact bytes, and
+    /// return the resulting product hash.
+    async fn check_and_promote(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+        product: &Utf8Path,
+    ) -> anyhow::Result<[u8; 32]>;
+    /// Check and apply exact candidate bytes without promoting them to product.
+    async fn apply_candidate(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+    ) -> anyhow::Result<()>;
+    async fn apply_promoted(&mut self, product: &Utf8Path) -> anyhow::Result<()>;
+    async fn restart(&mut self) -> anyhow::Result<()>;
+    async fn stop(&mut self) -> anyhow::Result<()>;
+}
+
+/// Atomically write known-good product bytes back: the sole promote path and
+/// the change-core last-resort rollback path.
 pub(crate) async fn restore_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     if let Some(parent) = product.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let product = product.to_path_buf();
+    let product: PathBuf = product.to_path_buf();
     let bytes = bytes.to_vec();
     tokio::task::spawn_blocking(move || {
         atomicwrites::AtomicFile::new(&product, atomicwrites::OverwriteBehavior::AllowOverwrite)
@@ -54,10 +87,7 @@ pub(crate) async fn restore_product(product: &Path, bytes: &[u8]) -> anyhow::Res
     Ok(())
 }
 
-/// Typed facade `ClashCore` -> legacy `crate::config::nyanpasu::ClashCore` for the
-/// legacy `CoreManager::check_config` call. Both enums are variant-identical; this
-/// is a total 1:1 map. The core comes from the builder's input snapshot, never
-/// re-read from globals here (spec §5.3, P0-3).
+/// Map the typed snapshot core to the legacy manager's equivalent enum.
 impl From<ClashCore> for crate::config::nyanpasu::ClashCore {
     fn from(core: ClashCore) -> Self {
         match core {
@@ -70,60 +100,125 @@ impl From<ClashCore> for crate::config::nyanpasu::ClashCore {
     }
 }
 
-pub struct LegacyCoreBridge;
+pub struct LegacyCoreBridge {
+    runtime_paths: RuntimePaths,
+}
+
+impl LegacyCoreBridge {
+    pub fn new(runtime_paths: RuntimePaths) -> Self {
+        Self { runtime_paths }
+    }
+}
+
+struct LegacyCoreLifecycleLease {
+    lease: crate::core::CoreLifecycleLease<'static>,
+    runtime_paths: RuntimePaths,
+}
 
 #[async_trait]
-impl RunningCoreBridge for LegacyCoreBridge {
-    async fn check_and_promote(
-        &self,
-        candidate: &Utf8Path,
-        target_core: ClashCore,
-    ) -> anyhow::Result<()> {
-        // Capture the candidate bytes ONCE before checking so the bytes we
-        // promote are exactly the bytes we validated (spec D5): a post-check
-        // swap of the candidate file can never reach the product.
-        let bytes = tokio::fs::read(candidate.as_std_path()).await?;
+impl CoreLifecyclePort for LegacyCoreBridge {
+    async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
         // TODO(actor-migration): temporary bridge to CoreManager::global().
-        // Reason: core lifecycle is PR-5 (CoreActor).
-        // Remove when: PR-5 lands CoreActor and the facade owns core apply.
-        crate::core::CoreManager::global()
-            .check_config(candidate, target_core.into())
-            .await?;
-        // Post-check identity gate (spec D5, PR-4 re-review): re-read the
-        // candidate and refuse to promote if its bytes changed since capture.
-        // A candidate swapped after check_config passed can neither be promoted
-        // nor have its check verdict transferred to different bytes.
-        let after = tokio::fs::read(candidate.as_std_path()).await?;
-        if after != bytes {
-            anyhow::bail!("candidate config changed between check and promote");
-        }
-        let product = crate::client::runtime::runtime_config_path()?;
-        restore_product(&product, &bytes).await
+        // Reason: core ownership migrates in PR-5 (CoreActor).
+        // Remove when: the composition root injects the core lifecycle owner.
+        let lease = crate::core::CoreManager::global().begin_lifecycle().await;
+        Ok(Box::new(LegacyCoreLifecycleLease {
+            lease,
+            runtime_paths: self.runtime_paths.clone(),
+        }))
     }
 
-    async fn apply_config(&self) -> anyhow::Result<()> {
-        // TODO(actor-migration): temporary bridge to CoreManager::global().
-        // Reason: core lifecycle is PR-5 (CoreActor).
-        // Remove when: PR-5 lands CoreActor and the facade owns core apply.
-        crate::core::CoreManager::global().apply_config().await
-    }
-
-    async fn restart_core(&self) -> anyhow::Result<()> {
-        // TODO(actor-migration): temporary bridge to CoreManager::global().
-        // Reason: core lifecycle is PR-5 (CoreActor).
-        // Remove when: PR-5 lands CoreActor and the facade owns core restart.
-        crate::core::CoreManager::global().run_core().await
+    async fn status(&self) -> anyhow::Result<CoreStatusSnapshot> {
+        let (state, state_changed_at, run_type) = crate::core::CoreManager::global().status().await;
+        Ok(CoreStatusSnapshot {
+            state: state.into_owned(),
+            state_changed_at,
+            run_type,
+        })
     }
 
     async fn on_profile_change(&self) {
-        // TODO(actor-migration): connection interruption still reads Config::verge()
-        // inside the service. Reason: break_when_* options + clash api client are
-        // PR-6 scope. Remove when: interruption reads typed
-        // ClashConfig.break_connection via an injected client.
+        // TODO(actor-migration): connection interruption still reads Config::verge().
+        // Reason: break_when_* and clash API client migration is PR-6 scope.
+        // Remove when: interruption reads typed ClashConfig.break_connection.
         let _ =
             crate::core::connection_interruption::ConnectionInterruptionService::on_profile_change(
             )
             .await;
+    }
+}
+
+#[async_trait]
+impl CoreLifecycleLease for LegacyCoreLifecycleLease {
+    async fn check_and_promote(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+        product: &Utf8Path,
+    ) -> anyhow::Result<[u8; 32]> {
+        anyhow::ensure!(
+            product == self.runtime_paths.product(),
+            "product path must match the lifecycle adapter runtime product"
+        );
+        let bytes = tokio::fs::read(candidate.path()).await?;
+        self.lease
+            .check_config(candidate.path(), target_core.into())
+            .await?;
+
+        let after = tokio::fs::read(candidate.path().as_std_path()).await?;
+        if after != bytes {
+            anyhow::bail!("candidate config changed between check and promote");
+        }
+        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
+        if candidate_hash != candidate.bytes_sha256() {
+            anyhow::bail!("candidate config hash changed before promotion");
+        }
+
+        restore_product(product.as_std_path(), &bytes).await?;
+        let promoted = tokio::fs::read(product.as_std_path()).await?;
+        let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
+        if promoted_hash != candidate.bytes_sha256() {
+            anyhow::bail!("promoted runtime product hash does not match candidate");
+        }
+        Ok(promoted_hash)
+    }
+
+    async fn apply_candidate(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+    ) -> anyhow::Result<()> {
+        let bytes = tokio::fs::read(candidate.path()).await?;
+        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
+        anyhow::ensure!(
+            candidate_hash == candidate.bytes_sha256(),
+            "candidate config hash changed before check"
+        );
+        self.lease
+            .check_config(candidate.path(), target_core.into())
+            .await?;
+        let after = tokio::fs::read(candidate.path()).await?;
+        anyhow::ensure!(
+            after == bytes,
+            "candidate config changed between check and apply"
+        );
+        self.lease.apply_config_from(candidate.path()).await
+    }
+
+    async fn apply_promoted(&mut self, product: &Utf8Path) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            product == self.runtime_paths.product(),
+            "product path must match the lifecycle adapter runtime product"
+        );
+        self.lease.apply_config_from(product).await
+    }
+
+    async fn restart(&mut self) -> anyhow::Result<()> {
+        self.lease.run_core_from(self.runtime_paths.product()).await
+    }
+
+    async fn stop(&mut self) -> anyhow::Result<()> {
+        self.lease.stop_core().await
     }
 }
 
@@ -137,7 +232,6 @@ mod tests {
         let product = dir.path().join("runtime").join("clash-config.yaml");
         restore_product(&product, b"mode: rule\n").await.unwrap();
         assert_eq!(std::fs::read_to_string(&product).unwrap(), "mode: rule\n");
-        // second write overwrites
         restore_product(&product, b"mode: direct\n").await.unwrap();
         assert_eq!(std::fs::read_to_string(&product).unwrap(), "mode: direct\n");
     }

@@ -8,6 +8,9 @@ members = [
   "nyanpasu-core",
   "nyanpasu-helper",
   "nyanpasu-config",
+  # Test-only deterministic fake clash core. Never packaged as a production
+  # sidecar/resource (see tauri.conf.json externalBin / resources).
+  "fake-core",
 ]
 
 [patch.crates-io]

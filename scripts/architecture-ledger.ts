@@ -1,8 +1,9 @@
 /**
  * Architecture ledger for the actor-migration residual surface.
  *
- * S01 ships report-only mode (always exits 0 on successful scan).
- * Gate-mode thresholds and committed-snapshot diff land in S10.
+ * S01 shipped report-only mode (always exits 0 on successful scan).
+ * S10 adds gate mode: committed stable-snapshot exact compare + hard
+ * denylist on test real-dir hits.
  *
  * Metrics:
  * - Config::*() call sites
@@ -17,7 +18,9 @@ import * as path from "jsr:@std/path";
 import { consola } from "./utils/logger.ts";
 
 const ROOT = Deno.cwd();
-const DEFAULT_ROOTS = ["backend"];
+export const DEFAULT_ROOTS = ["backend"];
+export const DEFAULT_SNAPSHOT_PATH =
+  "scripts/architecture-ledger.snapshot.json";
 
 const SKIP_DIR_NAMES = new Set([
   ".git",
@@ -46,21 +49,56 @@ const LEGACY_DTO_RE =
 
 /**
  * Real product/user-dir and free global runtime path helpers that tests must
- * not resolve (design §8.4). Require an explicit `dirs::` / `utils::dirs::`
- * qualifier so injected `PathResolver` methods (`paths.profiles_path()` etc.)
- * are not counted. Free global runtime helpers are matched by name.
+ * not resolve (design §8.4).
+ *
+ * Counts:
+ * - qualified: `dirs::app_home_dir()`, `crate::utils::dirs::profiles_path()`
+ * - bare imported: `use ...::app_home_dir; app_home_dir()`
+ * - free runtime helpers: `runtime_config_path()`, `candidate_config_path()`
+ *
+ * Excludes:
+ * - method receivers: `paths.app_home_dir()`, `resolver.cache_dir()`
+ * - obvious function definitions: `fn app_home_dir(`, `pub async fn cache_dir(`
  */
-const REAL_DIR_DENYLIST_RE =
-  /\b(?:crate::)?(?:utils::)?dirs::(?:app_config_dir|app_data_dir|app_home_dir|app_profiles_dir|app_logs_dir|app_resources_dir|app_install_dir|nyanpasu_config_path|profiles_path|clash_guard_overrides_path|clash_pid_path|storage_path)\s*\(|\b(?:crate::client::runtime::)?(?:runtime_config_path|candidate_config_path)\s*\(/g;
+export const REAL_DIR_HELPER_NAMES = [
+  "app_config_dir",
+  "app_data_dir",
+  "app_home_dir",
+  "app_profiles_dir",
+  "app_logs_dir",
+  "app_resources_dir",
+  "app_install_dir",
+  "nyanpasu_config_path",
+  "profiles_path",
+  "clash_guard_overrides_path",
+  "clash_pid_path",
+  "storage_path",
+  "cache_dir",
+  "tray_icons_path",
+  "runtime_config_path",
+  "candidate_config_path",
+] as const;
 
-type Hit = {
+const REAL_DIR_HELPER_ALT = REAL_DIR_HELPER_NAMES.join("|");
+
+const REAL_DIR_DENYLIST_RE = new RegExp(
+  String
+    .raw`\b(?:(?:crate::)?(?:utils::)?dirs::|(?:crate::)?(?:client::)?runtime::)?(?:${REAL_DIR_HELPER_ALT})\s*\(`,
+  "g",
+);
+
+const REAL_DIR_HELPER_NAME_RE = new RegExp(
+  String.raw`(${REAL_DIR_HELPER_ALT})\s*\($`,
+);
+
+export type Hit = {
   file: string;
   line: number;
   text: string;
   detail?: string;
 };
 
-type MetricBucket = {
+export type MetricBucket = {
   id: string;
   label: string;
   total: number;
@@ -68,44 +106,153 @@ type MetricBucket = {
   hits: Hit[];
 };
 
-type LedgerReport = {
+export type MetricBuckets = {
+  configCalls: MetricBucket;
+  serviceGlobals: MetricBucket;
+  migrationMarkers: MetricBucket;
+  legacyDtos: MetricBucket;
+  testRealDirs: MetricBucket;
+};
+
+export type ReportMetric = {
+  total: number;
+  byKey: Record<string, number>;
+  samples: Hit[];
+};
+
+export type LedgerReport = {
   generatedAt: string;
   mode: "report" | "gate";
   roots: string[];
   scannedFiles: number;
-  metrics: Record<
-    string,
-    {
-      total: number;
-      byKey: Record<string, number>;
-      samples: Hit[];
-    }
-  >;
+  metrics: Record<string, ReportMetric>;
   bridgeFiles: string[];
   notes: string[];
 };
 
-function rel(filePath: string): string {
-  return path.relative(ROOT, filePath).split(path.SEPARATOR).join("/");
+/** Committed residual budget: excludes nondeterministic / report-only fields. */
+export type StableMetric = {
+  total: number;
+  byKey: Record<string, number>;
+};
+
+export type StableSnapshot = {
+  roots: string[];
+  metrics: Record<string, StableMetric>;
+  bridgeFiles: string[];
+};
+
+export type GateIssue = {
+  kind:
+    | "hard_denylist"
+    | "metric_total"
+    | "metric_key"
+    | "roots"
+    | "bridge_files"
+    | "snapshot";
+  message: string;
+};
+
+export type GateResult = {
+  ok: boolean;
+  issues: GateIssue[];
+};
+
+export function rel(filePath: string, root = ROOT): string {
+  return path.relative(root, filePath).split(path.SEPARATOR).join("/");
 }
 
-function isRustSource(filePath: string): boolean {
+export function isRustSource(filePath: string): boolean {
   return filePath.endsWith(".rs");
 }
 
-function isBridgePath(relPath: string): boolean {
+export function isBridgePath(relPath: string): boolean {
   return (
     relPath.includes("/bridge/") ||
     /(^|\/)[^/]*bridge[^/]*\.rs$/i.test(relPath)
   );
 }
 
-function isDedicatedTestPath(relPath: string): boolean {
+export function isDedicatedTestPath(relPath: string): boolean {
   return (
     relPath.includes("/tests/") ||
     /(^|\/)[^/]+_test\.rs$/.test(relPath) ||
-    /(^|\/)test\.rs$/.test(relPath)
+    // sibling module files: test.rs / tests.rs
+    /(^|\/)tests?\.rs$/.test(relPath)
   );
+}
+
+/**
+ * True when a `#[cfg(...)]` attribute enables the test configuration.
+ * Accepts `cfg(test)`, `cfg(all(test, ...))`, `cfg(any(..., test, ...))`.
+ * Rejects `cfg(not(test))` and other configs after stripping `not(...)`.
+ */
+export function isTestCfgAttr(trimmed: string): boolean {
+  if (!/^#\[cfg\s*\(/.test(trimmed)) return false;
+  const open = trimmed.indexOf("(");
+  const close = trimmed.lastIndexOf(")");
+  if (open < 0 || close <= open) return false;
+  const inner = trimmed.slice(open + 1, close);
+  return cfgInnerEnablesTest(inner);
+}
+
+/** Strip string literals and balanced `not(...)` groups, then look for bare `test`. */
+export function cfgInnerEnablesTest(inner: string): boolean {
+  // Drop string/char literals so `feature = "test"` is not a false positive.
+  let s = inner
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''");
+  let prev = "";
+  while (s !== prev) {
+    prev = s;
+    s = s.replace(/not\s*\((?:[^()]|\([^()]*\))*\)/g, "");
+  }
+  return /(?:^|[^A-Za-z0-9_])test(?:[^A-Za-z0-9_]|$)/.test(s);
+}
+
+/**
+ * True when `helperName` at `nameIndex` is an obvious `fn` definition site.
+ * Keeps denylist focused on call sites (including bare imported calls).
+ */
+export function isLikelyFnDefinition(
+  code: string,
+  nameIndex: number,
+): boolean {
+  const before = code.slice(Math.max(0, nameIndex - 96), nameIndex);
+  return /(?:^|[\s;{}])(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+$/
+    .test(before);
+}
+
+/**
+ * Match denylist real-dir / runtime-path call sites in a code line.
+ * Excludes method receivers and obvious function definitions.
+ */
+export function matchRealDirDenylist(
+  code: string,
+): Array<{ index: number; match: string; key: string }> {
+  const out: Array<{ index: number; match: string; key: string }> = [];
+  REAL_DIR_DENYLIST_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = REAL_DIR_DENYLIST_RE.exec(code)) !== null) {
+    const full = m[0];
+    const nameMatch = full.match(REAL_DIR_HELPER_NAME_RE);
+    if (!nameMatch) continue;
+    const helperName = nameMatch[1];
+    const nameOffset = full.lastIndexOf(helperName);
+    const nameIndex = m.index + nameOffset;
+    // Method call: `paths.app_home_dir()`
+    if (nameIndex > 0 && code[nameIndex - 1] === ".") continue;
+    // Definition: `fn app_home_dir(` / `pub fn cache_dir(`
+    if (isLikelyFnDefinition(code, nameIndex)) continue;
+    // Normalize trailing `foo(` → `foo()` so keys stay call-shaped.
+    const key = full.replace(/\s+/g, "").replace(/\($/, "()");
+    out.push({
+      index: m.index,
+      match: full,
+      key,
+    });
+  }
+  return out;
 }
 
 function stripLineComment(line: string): string {
@@ -129,8 +276,30 @@ function stripLineComment(line: string): string {
   return line;
 }
 
-function emptyBucket(id: string, label: string): MetricBucket {
+export function emptyBucket(id: string, label: string): MetricBucket {
   return { id, label, total: 0, byKey: new Map(), hits: [] };
+}
+
+export function createBuckets(): MetricBuckets {
+  return {
+    configCalls: emptyBucket("config_calls", "Config::*() call sites"),
+    serviceGlobals: emptyBucket(
+      "service_globals",
+      "service ::global() call sites",
+    ),
+    migrationMarkers: emptyBucket(
+      "migration_markers",
+      "TODO/FIXME(actor-migration)",
+    ),
+    legacyDtos: emptyBucket(
+      "legacy_dto_refs",
+      "bridge / legacy DTO references",
+    ),
+    testRealDirs: emptyBucket(
+      "test_real_dirs",
+      "test real-dir / runtime-path hits",
+    ),
+  };
 }
 
 function record(
@@ -202,13 +371,15 @@ async function collectRustFiles(roots: string[]): Promise<string[]> {
  *
  * Early `#[cfg(test)] pub use ...` must NOT mark the rest of the file.
  */
-function testLineMask(lines: string[], dedicatedTestFile: boolean): boolean[] {
+export function testLineMask(
+  lines: string[],
+  dedicatedTestFile: boolean,
+): boolean[] {
   const mask = Array.from({ length: lines.length }, () => dedicatedTestFile);
   if (dedicatedTestFile) return mask;
 
   const isAttr = (trimmed: string) => trimmed.startsWith("#[");
-  const isTestCfg = (trimmed: string) =>
-    /^#\[cfg\s*\(\s*test\s*\)\]/.test(trimmed);
+  const isTestCfg = (trimmed: string) => isTestCfgAttr(trimmed);
   const isTestFnAttr = (trimmed: string) =>
     /^#\[(?:tokio::)?test(?:\s*\(.*\))?\]/.test(trimmed);
 
@@ -297,16 +468,10 @@ function findItemEndLine(lines: string[], startLine: number): number {
   return lines.length - 1;
 }
 
-function scanFile(
+export function scanFile(
   relPath: string,
   source: string,
-  buckets: {
-    configCalls: MetricBucket;
-    serviceGlobals: MetricBucket;
-    migrationMarkers: MetricBucket;
-    legacyDtos: MetricBucket;
-    testRealDirs: MetricBucket;
-  },
+  buckets: MetricBuckets,
 ): void {
   const lines = source.split(/\r?\n/);
   const testMask = testLineMask(lines, isDedicatedTestPath(relPath));
@@ -375,9 +540,8 @@ function scanFile(
     }
 
     if (testMask[i]) {
-      for (const m of matchAll(REAL_DIR_DENYLIST_RE, code)) {
-        const key = m.match.replace(/\s+/g, "");
-        record(buckets.testRealDirs, key, {
+      for (const m of matchRealDirDenylist(code)) {
+        record(buckets.testRealDirs, m.key, {
           file: relPath,
           line: lineNo,
           text: raw.trim(),
@@ -387,10 +551,273 @@ function scanFile(
   }
 }
 
-function sortedRecord(map: Map<string, number>): Record<string, number> {
+export function sortedRecord(map: Map<string, number>): Record<string, number> {
   return Object.fromEntries(
     [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
   );
+}
+
+/** Stable object-key order for exact snapshot JSON / compare. */
+export function sortedObjectKeys(
+  record: Record<string, number>,
+): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(record).sort((a, b) =>
+      b[1] - a[1] || a[0].localeCompare(b[0])
+    ),
+  );
+}
+
+export function metricsFromBuckets(
+  buckets: MetricBuckets,
+): Record<string, ReportMetric> {
+  return {
+    config_calls: {
+      total: buckets.configCalls.total,
+      byKey: sortedRecord(buckets.configCalls.byKey),
+      samples: buckets.configCalls.hits,
+    },
+    service_globals: {
+      total: buckets.serviceGlobals.total,
+      byKey: sortedRecord(buckets.serviceGlobals.byKey),
+      samples: buckets.serviceGlobals.hits,
+    },
+    migration_markers: {
+      total: buckets.migrationMarkers.total,
+      byKey: sortedRecord(buckets.migrationMarkers.byKey),
+      samples: buckets.migrationMarkers.hits,
+    },
+    legacy_dto_refs: {
+      total: buckets.legacyDtos.total,
+      byKey: sortedRecord(buckets.legacyDtos.byKey),
+      samples: buckets.legacyDtos.hits,
+    },
+    test_real_dirs: {
+      total: buckets.testRealDirs.total,
+      byKey: sortedRecord(buckets.testRealDirs.byKey),
+      samples: buckets.testRealDirs.hits,
+    },
+  };
+}
+
+export function toStableSnapshot(
+  roots: string[],
+  metrics: Record<string, ReportMetric | StableMetric>,
+  bridgeFiles: string[],
+): StableSnapshot {
+  const stableMetrics: Record<string, StableMetric> = {};
+  for (const [id, metric] of Object.entries(metrics)) {
+    stableMetrics[id] = {
+      total: metric.total,
+      byKey: sortedObjectKeys({ ...metric.byKey }),
+    };
+  }
+  return {
+    roots: [...roots],
+    metrics: stableMetrics,
+    bridgeFiles: [...bridgeFiles].sort(),
+  };
+}
+
+export function reportToStableSnapshot(report: LedgerReport): StableSnapshot {
+  return toStableSnapshot(report.roots, report.metrics, report.bridgeFiles);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Validate and normalize a JSON-decoded snapshot into the stable contract.
+ * Throws with an actionable message on structural invalidity.
+ */
+export function parseStableSnapshot(raw: unknown): StableSnapshot {
+  if (!isPlainObject(raw)) {
+    throw new Error("snapshot must be a JSON object");
+  }
+  if (
+    !Array.isArray(raw.roots) || !raw.roots.every((r) => typeof r === "string")
+  ) {
+    throw new Error("snapshot.roots must be string[]");
+  }
+  if (
+    !Array.isArray(raw.bridgeFiles) ||
+    !raw.bridgeFiles.every((r) => typeof r === "string")
+  ) {
+    throw new Error("snapshot.bridgeFiles must be string[]");
+  }
+  if (!isPlainObject(raw.metrics)) {
+    throw new Error("snapshot.metrics must be an object");
+  }
+
+  const metrics: Record<string, StableMetric> = {};
+  for (const [id, metric] of Object.entries(raw.metrics)) {
+    if (!isPlainObject(metric)) {
+      throw new Error(`snapshot.metrics.${id} must be an object`);
+    }
+    if (typeof metric.total !== "number" || !Number.isFinite(metric.total)) {
+      throw new Error(`snapshot.metrics.${id}.total must be a finite number`);
+    }
+    if (!isPlainObject(metric.byKey)) {
+      throw new Error(`snapshot.metrics.${id}.byKey must be an object`);
+    }
+    const byKey: Record<string, number> = {};
+    for (const [key, count] of Object.entries(metric.byKey)) {
+      if (typeof count !== "number" || !Number.isFinite(count)) {
+        throw new Error(
+          `snapshot.metrics.${id}.byKey[${
+            JSON.stringify(key)
+          }] must be a finite number`,
+        );
+      }
+      byKey[key] = count;
+    }
+    metrics[id] = {
+      total: metric.total,
+      byKey: sortedObjectKeys(byKey),
+    };
+  }
+
+  return {
+    roots: raw.roots.map(String),
+    metrics,
+    bridgeFiles: [...raw.bridgeFiles.map(String)].sort(),
+  };
+}
+
+function formatListDiff(
+  label: string,
+  expected: string[],
+  actual: string[],
+): string[] {
+  const messages: string[] = [];
+  const expSet = new Set(expected);
+  const actSet = new Set(actual);
+  for (const item of expected) {
+    if (!actSet.has(item)) {
+      messages.push(`${label}: missing ${JSON.stringify(item)}`);
+    }
+  }
+  for (const item of actual) {
+    if (!expSet.has(item)) {
+      messages.push(`${label}: unexpected ${JSON.stringify(item)}`);
+    }
+  }
+  if (
+    messages.length === 0 &&
+    (expected.length !== actual.length ||
+      expected.some((v, i) => v !== actual[i]))
+  ) {
+    messages.push(
+      `${label}: order/content mismatch expected=${
+        JSON.stringify(expected)
+      } actual=${JSON.stringify(actual)}`,
+    );
+  }
+  return messages;
+}
+
+/**
+ * Exact stable-snapshot compare + hard denylist on test_real_dirs.
+ * Intentional residual shrink/growth requires an audited snapshot update.
+ */
+export function evaluateGate(
+  current: StableSnapshot,
+  expected: StableSnapshot,
+): GateResult {
+  const issues: GateIssue[] = [];
+
+  const denylistTotal = current.metrics.test_real_dirs?.total ?? 0;
+  if (denylistTotal !== 0) {
+    issues.push({
+      kind: "hard_denylist",
+      message:
+        `hard denylist: test_real_dirs.total must be 0, got ${denylistTotal}`,
+    });
+  }
+
+  for (
+    const msg of formatListDiff("roots", expected.roots, current.roots)
+  ) {
+    issues.push({ kind: "roots", message: msg });
+  }
+
+  for (
+    const msg of formatListDiff(
+      "bridgeFiles",
+      expected.bridgeFiles,
+      current.bridgeFiles,
+    )
+  ) {
+    issues.push({ kind: "bridge_files", message: msg });
+  }
+
+  const expectedIds = new Set(Object.keys(expected.metrics));
+  const currentIds = new Set(Object.keys(current.metrics));
+
+  for (const id of expectedIds) {
+    if (!currentIds.has(id)) {
+      issues.push({
+        kind: "metric_key",
+        message: `metrics: missing metric id ${JSON.stringify(id)}`,
+      });
+    }
+  }
+  for (const id of currentIds) {
+    if (!expectedIds.has(id)) {
+      issues.push({
+        kind: "metric_key",
+        message: `metrics: unexpected metric id ${JSON.stringify(id)}`,
+      });
+    }
+  }
+
+  for (const id of expectedIds) {
+    if (!currentIds.has(id)) continue;
+    const exp = expected.metrics[id];
+    const act = current.metrics[id];
+    if (exp.total !== act.total) {
+      issues.push({
+        kind: "metric_total",
+        message:
+          `metrics.${id}.total: expected ${exp.total}, actual ${act.total}`,
+      });
+    }
+
+    const expKeys = new Set(Object.keys(exp.byKey));
+    const actKeys = new Set(Object.keys(act.byKey));
+    for (const key of expKeys) {
+      if (!actKeys.has(key)) {
+        issues.push({
+          kind: "metric_key",
+          message: `metrics.${id}.byKey: missing key ${
+            JSON.stringify(key)
+          } (expected ${exp.byKey[key]})`,
+        });
+        continue;
+      }
+      if (exp.byKey[key] !== act.byKey[key]) {
+        issues.push({
+          kind: "metric_key",
+          message: `metrics.${id}.byKey[${JSON.stringify(key)}]: expected ${
+            exp.byKey[key]
+          }, actual ${act.byKey[key]}`,
+        });
+      }
+    }
+    for (const key of actKeys) {
+      if (!expKeys.has(key)) {
+        issues.push({
+          kind: "metric_key",
+          message: `metrics.${id}.byKey: unexpected key ${
+            JSON.stringify(key)
+          } (actual ${act.byKey[key]})`,
+        });
+      }
+    }
+  }
+
+  return { ok: issues.length === 0, issues };
 }
 
 function printHuman(report: LedgerReport): void {
@@ -449,21 +876,101 @@ function printHuman(report: LedgerReport): void {
   }
 }
 
+function printGateResult(
+  result: GateResult,
+  report: LedgerReport,
+  snapshotPath: string,
+): void {
+  console.log("");
+  if (result.ok) {
+    consola.success(
+      `architecture ledger gate passed (snapshot: ${snapshotPath})`,
+    );
+    return;
+  }
+
+  consola.error(
+    `architecture ledger gate FAILED (${result.issues.length} issue(s); snapshot: ${snapshotPath})`,
+  );
+  for (const issue of result.issues) {
+    console.log(`  [${issue.kind}] ${issue.message}`);
+  }
+
+  const denylist = report.metrics.test_real_dirs;
+  if (denylist && denylist.total > 0 && denylist.samples.length > 0) {
+    console.log("  denylist samples:");
+    for (const sample of denylist.samples.slice(0, 12)) {
+      console.log(
+        `    ${sample.file}:${sample.line}: ${sample.detail ?? sample.text}`,
+      );
+    }
+  }
+
+  console.log("");
+  console.log(
+    "To accept intentional residual changes after review, regenerate the committed snapshot:",
+  );
+  console.log(
+    `  deno run -A scripts/architecture-ledger.ts --write-snapshot --snapshot ${snapshotPath}`,
+  );
+}
+
+async function loadSnapshotFile(
+  snapshotPath: string,
+): Promise<{ snapshot?: StableSnapshot; error?: string }> {
+  const abs = path.isAbsolute(snapshotPath)
+    ? snapshotPath
+    : path.join(ROOT, snapshotPath);
+  try {
+    const text = await Deno.readTextFile(abs);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text);
+    } catch (err) {
+      return {
+        error: `invalid snapshot JSON at ${snapshotPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
+    }
+    try {
+      return { snapshot: parseStableSnapshot(raw) };
+    } catch (err) {
+      return {
+        error: `invalid snapshot contract at ${snapshotPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
+    }
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return { error: `missing snapshot file: ${snapshotPath}` };
+    }
+    return {
+      error: `failed to read snapshot ${snapshotPath}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(Deno.args, {
-    string: ["mode", "root", "format"],
+    string: ["mode", "root", "format", "snapshot"],
     collect: ["root"],
     default: {
       mode: "report",
       format: "text",
+      snapshot: DEFAULT_SNAPSHOT_PATH,
     },
     alias: {
       m: "mode",
       r: "root",
       f: "format",
+      s: "snapshot",
       h: "help",
     },
-    boolean: ["help", "json"],
+    boolean: ["help", "json", "write-snapshot"],
   });
 
   if (args.help) {
@@ -471,8 +978,13 @@ async function main(): Promise<void> {
 
 Options:
   --mode, -m <report|gate>   report (default) always exits 0 after printing.
-                             gate is reserved for S10 CI thresholds; currently
-                             still report-only and exits 0.
+                             gate loads the committed snapshot, hard-fails on
+                             test_real_dirs.total != 0, and exact-compares
+                             stable totals/byKey, roots, and bridgeFiles.
+  --snapshot, -s <path>      committed stable snapshot path
+                             (default: ${DEFAULT_SNAPSHOT_PATH})
+  --write-snapshot           write the current stable snapshot to --snapshot
+                             (excludes generatedAt/samples/notes/mode/scannedFiles)
   --root, -r <path>          scan root relative to repo (repeatable).
                              default: backend
   --format, -f <text|json>   output format (default: text)
@@ -496,26 +1008,10 @@ Options:
     throw new Error(`invalid --format "${format}" (expected text|json)`);
   }
 
-  const buckets = {
-    configCalls: emptyBucket("config_calls", "Config::*() call sites"),
-    serviceGlobals: emptyBucket(
-      "service_globals",
-      "service ::global() call sites",
-    ),
-    migrationMarkers: emptyBucket(
-      "migration_markers",
-      "TODO/FIXME(actor-migration)",
-    ),
-    legacyDtos: emptyBucket(
-      "legacy_dto_refs",
-      "bridge / legacy DTO references",
-    ),
-    testRealDirs: emptyBucket(
-      "test_real_dirs",
-      "test real-dir / runtime-path hits",
-    ),
-  };
+  const snapshotPath = String(args.snapshot ?? DEFAULT_SNAPSHOT_PATH);
+  const writeSnapshot = Boolean(args["write-snapshot"]);
 
+  const buckets = createBuckets();
   const files = await collectRustFiles(roots);
   const bridgeFiles = new Set<string>();
 
@@ -526,48 +1022,34 @@ Options:
     scanFile(relPath, source, buckets);
   }
 
-  const notes = [
-    "S01 report-only: metrics are informational and do not fail CI.",
-    mode === "gate"
-      ? "Gate thresholds / snapshot diff are reserved for S10; this run still exits 0."
-      : "Use --mode=gate later (S10) once residual budgets are committed.",
-  ];
+  const notes = mode === "gate"
+    ? [
+      "S10 gate: exact stable-snapshot compare + hard denylist on test_real_dirs.",
+      `snapshot: ${snapshotPath}`,
+    ]
+    : [
+      "Report mode: metrics are informational and do not fail CI.",
+      `Use --mode=gate (snapshot: ${snapshotPath}) for the S10 residual budget check.`,
+    ];
 
   const report: LedgerReport = {
     generatedAt: new Date().toISOString(),
     mode,
     roots,
     scannedFiles: files.length,
-    metrics: {
-      config_calls: {
-        total: buckets.configCalls.total,
-        byKey: sortedRecord(buckets.configCalls.byKey),
-        samples: buckets.configCalls.hits,
-      },
-      service_globals: {
-        total: buckets.serviceGlobals.total,
-        byKey: sortedRecord(buckets.serviceGlobals.byKey),
-        samples: buckets.serviceGlobals.hits,
-      },
-      migration_markers: {
-        total: buckets.migrationMarkers.total,
-        byKey: sortedRecord(buckets.migrationMarkers.byKey),
-        samples: buckets.migrationMarkers.hits,
-      },
-      legacy_dto_refs: {
-        total: buckets.legacyDtos.total,
-        byKey: sortedRecord(buckets.legacyDtos.byKey),
-        samples: buckets.legacyDtos.hits,
-      },
-      test_real_dirs: {
-        total: buckets.testRealDirs.total,
-        byKey: sortedRecord(buckets.testRealDirs.byKey),
-        samples: buckets.testRealDirs.hits,
-      },
-    },
+    metrics: metricsFromBuckets(buckets),
     bridgeFiles: [...bridgeFiles].sort(),
     notes,
   };
+
+  if (writeSnapshot) {
+    const stable = reportToStableSnapshot(report);
+    const abs = path.isAbsolute(snapshotPath)
+      ? snapshotPath
+      : path.join(ROOT, snapshotPath);
+    await Deno.writeTextFile(abs, `${JSON.stringify(stable, null, 2)}\n`);
+    consola.success(`wrote stable snapshot: ${snapshotPath}`);
+  }
 
   if (format === "json") {
     console.log(JSON.stringify(report, null, 2));
@@ -575,11 +1057,29 @@ Options:
     printHuman(report);
   }
 
-  // Report-only (and pre-S10 gate placeholder): successful scan always exits 0.
-  Deno.exit(0);
+  if (mode === "report") {
+    Deno.exit(0);
+  }
+
+  // Gate mode
+  const loaded = await loadSnapshotFile(snapshotPath);
+  if (!loaded.snapshot) {
+    consola.error(loaded.error ?? "failed to load snapshot");
+    console.log(
+      "Regenerate with: deno run -A scripts/architecture-ledger.ts --write-snapshot",
+    );
+    Deno.exit(1);
+  }
+
+  const current = reportToStableSnapshot(report);
+  const result = evaluateGate(current, loaded.snapshot);
+  printGateResult(result, report, snapshotPath);
+  Deno.exit(result.ok ? 0 : 1);
 }
 
-main().catch((err) => {
-  consola.error(err);
-  Deno.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    consola.error(err);
+    Deno.exit(1);
+  });
+}

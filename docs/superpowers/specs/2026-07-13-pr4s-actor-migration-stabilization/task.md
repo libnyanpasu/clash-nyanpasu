@@ -485,14 +485,14 @@ PatchCompensationPlan {
 
 1. PR-4 四个 review finding disposition 表 + **thread-gate Path A 已完成**：`#4932` 四 thread 均由 authenticated actor `4o3F` 于 2026-07-18 resolve，API `isResolved: true`（见 `review-disposition.md`）；code disposition 仍不单独构成 closeout 规则；
 2. PR-4 五项 smoke 以及 design §13.2 新增 smoke 记录；
-3. Windows/macOS/Linux build、core version、步骤、日志/artifact；
-4. architecture ledger CI gate：**当前 S10 工作树已实现** gate mode、committed snapshot（`scripts/architecture-ledger.snapshot.json`）与 `package.json` `lint:architecture-ledger` → `pnpm lint` 的 Ubuntu CI 集成；**target-tip CI 跑通证据仍 pending**（本地/工作树落地 ≠ tip CI green 宣称）；
+3. Windows/macOS/Linux build、core version、步骤、日志/artifact（**CI lint/build/unit** 见 tip 证据；**手工 smoke 仍 pending**）；
+4. architecture ledger CI gate：**已实现** gate mode、committed snapshot（`scripts/architecture-ledger.snapshot.json`）与 `package.json` `lint:architecture-ledger` → `pnpm lint` 的 Ubuntu CI 集成；**target-tip CI 证据已齐**：tip `10c837cd0068bb217e6195d286d6d022d9930f60`，run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) **success**（Windows/macOS/Linux lint/build/unit 全绿）；
 5. roadmap 状态/数字/依赖图更新（含 S09 residual ledger）；
 6. PR-4 spec §13 addendum：哪些决策被 PR-4S 修正；
 7. residual TODO ledger，明确 PR-5/6 owner（含 legacy `Config`/`CoreManager` global 非 full desired-state isolation）；
-8. full test/build commands 和结果记录（**仅此处**可宣称 full workspace green）。
+8. full test/build commands 和结果记录（tip CI 已绿；**S10 全量 closeout / 手工 smoke 仍 pending**，不得据此单独宣告 PR-4S 完成）。
 
-**禁止：** 仅在 PR 描述打勾但不附证据；禁止因 S09 完成、review thread-gate 关闭、或 S10 部分工作树落地提前宣告 PR-4S 关闭。
+**禁止：** 仅在 PR 描述打勾但不附证据；禁止因 S09 完成、review thread-gate 关闭、tip CI green、或 S10 部分工作树落地提前宣告 PR-4S 关闭。
 
 ---
 
@@ -550,15 +550,15 @@ PatchCompensationPlan {
 - [x] S08 focused wire/facade/frontend/import contracts green
 - [x] S09 coordinator isolation + fake-core process matrix green（focused/S09 路径；**非** full workspace green 宣称）
 - [ ] regression fixtures #4893/#4916/#4917/#4920/#4921 green
-- [ ] Windows/macOS/Linux CI green
+- [x] Windows/macOS/Linux CI green（tip `10c837cd0068bb217e6195d286d6d022d9930f60`；run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) success；lint/build/unit 三平台全绿）
 - [x] bindings freshness green（S08 Specta freeze；拒绝 `RebuildOutcome` / legacy status tags）
 
 ### 证据
 
 - [x] PR-4 review thread-gate closed（**每个** finding 已完成 Path A：`#4932` 四 thread 由 `4o3F` 于 2026-07-18 resolve，API `isResolved: true`；见 `review-disposition.md`）
 - [ ] manual smoke records attached
-- [ ] architecture ledger target-tip CI evidence attached（gate mode / snapshot / Ubuntu `pnpm lint` 集成已在工作树；tip CI green 仍 pending）
+- [x] architecture ledger target-tip CI evidence attached（gate mode / snapshot / Ubuntu `pnpm lint` 集成；tip `10c837cd0068bb217e6195d286d6d022d9930f60`；run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) success）
 - [ ] roadmap ledger generated and current
 - [ ] residual TODO owner/removal condition complete
 
-只有全部勾选后，roadmap 才能把 PR-4S 标为完成并解锁 PR-5a。S01～S09 工作区已验证不构成关闭条件；review thread-gate Path A 与 S10 部分工作树落地（含 ledger gate 实现与 disposition 记录）亦不构成关闭条件；S10 仍 pending。
+只有全部勾选后，roadmap 才能把 PR-4S 标为完成并解锁 PR-5a。S01～S09 工作区已验证、review thread-gate Path A、tip CI green 与 S10 部分工作树落地均**不**构成关闭条件；manual smoke / roadmap closeout 仍缺；S10 仍 pending。

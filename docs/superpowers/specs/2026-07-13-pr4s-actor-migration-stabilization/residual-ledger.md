@@ -2,7 +2,7 @@
 
 **Status:** Snapshot of residual compatibility surface after S01–S09 work; **not** a migration of CoreActor, effects, or globals.
 **S10 scope boundary:** this ledger **documents** residuals and owners. It does **not** implement PR-5/6/7 and does not delete bridges.
-**Architecture tooling (branch state):** gate mode, committed snapshot, package lint integration, and focused ledger QA harness are **implemented**; **target-tip CI run evidence** remains **PENDING** (see `smoke-evidence.md` §2 / §5).
+**Architecture tooling (branch state):** gate mode, committed snapshot, package lint integration, and focused ledger QA harness are **implemented**; **target-tip multi-OS CI evidence is complete** at tip `10c837cd0068bb217e6195d286d6d022d9930f60` (run https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676, success; see `smoke-evidence.md` §2 / §5 Q-09…Q-11). CI fix commits `a88730fd`, `10c837cd`.
 **Snapshot commit / branch:** `refactor/pr-4s` @ `b70aefb0` (2026-07-18)
 **Enumeration method:** `rg -n "TODO\\(actor-migration\\)|FIXME\\(actor-migration\\)"` over Rust sources excluding `target/` / `node_modules/`.
 **Hit count at snapshot:** **18** markers.
@@ -82,13 +82,13 @@ Roadmap authority: `docs/design/actor-migration-roadmap.md` §6–§8.
 
 ## 4. Architecture ledger tooling residual (S10 process)
 
-| Item                      | Branch implementation status                                   | Evidence still required                                             |
-| ------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Gate mode (`--mode=gate`) | **Implemented** in `scripts/architecture-ledger.ts`            | Durable local/CI run log on tip (`smoke-evidence.md` Q-01)          |
-| Committed snapshot        | **Implemented** as `scripts/architecture-ledger.snapshot.json` | Snapshot stays in sync with tip; gate compares exactly              |
-| Package lint integration  | **Implemented** (`lint:architecture-ledger` under `lint`)      | Tip CI executing `pnpm lint` / gate job URL (`Q-06`, `Q-09`…`Q-11`) |
-| Focused ledger QA harness | **Implemented** (`pnpm test:architecture-ledger`)              | Real test run record (`Q-02`) — do not invent PASS                  |
-| Target-tip multi-OS CI    | **Not evidenced**                                              | **PENDING** only open item for this tooling track                   |
+| Item                      | Branch implementation status                                   | Evidence still required                                                                                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gate mode (`--mode=gate`) | **Implemented** in `scripts/architecture-ledger.ts`            | Durable local/CI run log on tip (`smoke-evidence.md` Q-01)                                                                                                                                                      |
+| Committed snapshot        | **Implemented** as `scripts/architecture-ledger.snapshot.json` | Snapshot stays in sync with tip; gate compares exactly                                                                                                                                                          |
+| Package lint integration  | **Implemented** (`lint:architecture-ledger` under `lint`)      | Local Q-06 PASS; tip multi-OS lint jobs under Q-09…Q-11 @ `10c837cd0068bb217e6195d286d6d022d9930f60`                                                                                                            |
+| Focused ledger QA harness | **Implemented** (`pnpm test:architecture-ledger`)              | Local Q-02 PASS 21/21                                                                                                                                                                                           |
+| Target-tip multi-OS CI    | **Complete / PASS**                                            | Tip `10c837cd0068bb217e6195d286d6d022d9930f60`; run https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676 (success); Windows/macOS/Linux lint+build+unit URLs in `smoke-evidence.md` Q-09…Q-11 |
 
 S10 docs do not claim residual metrics are zero. Gate enforces the **committed budget** + hard `test_real_dirs == 0`, not full migration completion.
 
@@ -100,7 +100,7 @@ S10 docs do not claim residual metrics are zero. Gate enforces the **committed b
 - S10 does **not** implement SystemProxy/Hotkey/Proxies/Updater actors or ApplicationEffects.
 - S10 does **not** perform PR-7 deletion sweeps.
 - Creating this ledger is **not** residual zeroing.
-- PR-4S / S10 remain **OPEN** while manual smoke, Full QA command log, tip CI, and review-thread gate are incomplete.
+- PR-4S / S10 remain **OPEN** while manual smoke `E-01`…`E-11` is incomplete (tip multi-OS CI and review thread-gate are done).
 
 ---
 
@@ -119,14 +119,14 @@ Update this file when markers move. Prefer editing rows in place over silent del
 
 ## 7. Verdict
 
-| Check                                                       | State                     |
-| ----------------------------------------------------------- | ------------------------- |
-| Markers enumerated with path:line                           | **YES** (18 @ `b70aefb0`) |
-| Each row has owner + removal condition                      | **YES**                   |
-| R-14/R-17 wording tightened                                 | **YES**                   |
-| Owners respect PR-5a/5b/5c, PR-6\*, PR-7 boundaries         | **YES**                   |
-| Architecture gate/snapshot/lint/focused harness implemented | **YES** (tooling)         |
-| Tip CI run evidence complete                                | **NO — PENDING**          |
-| Implies S10 implemented core/effects migration              | **NO**                    |
-| Residuals cleared                                           | **NO** (expected)         |
-| PR-4S / S10 closed                                          | **NO**                    |
+| Check                                                       | State                                                                                                                                          |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Markers enumerated with path:line                           | **YES** (18 @ `b70aefb0`)                                                                                                                      |
+| Each row has owner + removal condition                      | **YES**                                                                                                                                        |
+| R-14/R-17 wording tightened                                 | **YES**                                                                                                                                        |
+| Owners respect PR-5a/5b/5c, PR-6\*, PR-7 boundaries         | **YES**                                                                                                                                        |
+| Architecture gate/snapshot/lint/focused harness implemented | **YES** (tooling)                                                                                                                              |
+| Tip CI run evidence complete                                | **YES** — tip `10c837cd0068bb217e6195d286d6d022d9930f60`; run https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676 (success) |
+| Implies S10 implemented core/effects migration              | **NO**                                                                                                                                         |
+| Residuals cleared                                           | **NO** (expected)                                                                                                                              |
+| PR-4S / S10 closed                                          | **NO**                                                                                                                                         |

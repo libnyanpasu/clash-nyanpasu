@@ -19,7 +19,7 @@
 7. Actor 并发测试禁止 sleep；使用 barrier、oneshot、RPC ack 或 test hook。
 8. 每个 commit group 均需 build/test 绿；但 wire 切换 S08～S09 作为原子小组一起合并。
 9. 所有 compatibility residual 必须带规范 `TODO(actor-migration)`、原因和删除条件。
-10. PR 合并前，四个 PR-4 unresolved review finding 必须 resolved 或以明确代码 disposition 关闭。
+10. PR 合并前，四个 PR-4 review finding **各自**必须具备 Path A（GitHub thread 实际 resolve 且可发现证据）或 Path B（显式 maintainer disposition：signed/dated 记录 + 理由）；仅代码/test disposition **不**关闭 review gate。禁止 silent deferral；任一 finding 未完成 Path A/B 前 review gate 保持 OPEN。
 
 ---
 
@@ -475,35 +475,42 @@ PatchCompensationPlan {
 
 ## S10 — Smoke evidence、review disposition 与 roadmap closeout
 
-**状态：** pending。S01～S09 工作区已验证**不**关闭 PR-4S。
+**状态：** pending。S01～S09 工作区已验证**不**关闭 PR-4S。S10 工作树部分落地**不**关闭 PR-4S。
 
 **目标：** 将“代码完成”转为可审计验收完成。
 
 **交付：**
 
-1. PR-4 四个 unresolved review finding disposition 表；
+1. PR-4 四个 unresolved review finding disposition 表（见 `review-disposition.md`；**code disposition ≠ thread-gate close**）；
 2. PR-4 五项 smoke 以及 design §13.2 新增 smoke 记录；
 3. Windows/macOS/Linux build、core version、步骤、日志/artifact；
-4. architecture ledger 由报告模式改为 CI gate；
+4. architecture ledger CI gate：**当前 S10 工作树已实现** gate mode、committed snapshot（`scripts/architecture-ledger.snapshot.json`）与 `package.json` `lint:architecture-ledger` → `pnpm lint` 的 Ubuntu CI 集成；**target-tip CI 跑通证据仍 pending**（本地/工作树落地 ≠ tip CI green 宣称）；
 5. roadmap 状态/数字/依赖图更新（含 S09 residual ledger）；
-6. PR-4 spec §12 addendum：哪些决策被 PR-4S 修正；
+6. PR-4 spec §13 addendum：哪些决策被 PR-4S 修正；
 7. residual TODO ledger，明确 PR-5/6 owner（含 legacy `Config`/`CoreManager` global 非 full desired-state isolation）；
 8. full test/build commands 和结果记录（**仅此处**可宣称 full workspace green）。
 
-**禁止：** 仅在 PR 描述打勾但不附证据；禁止因 S09 完成提前宣告 PR-4S 关闭。
+**禁止：** 仅在 PR 描述打勾但不附证据；禁止因 S09 完成或 S10 部分工作树落地提前宣告 PR-4S 关闭。
 
 ---
 
 ## 4. PR-4 review finding disposition（必须完成）
 
-| Finding                                  | 当前判断                                                               | PR-4S 处置                                                                                                                                                              |
-| ---------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| createProfile `undefined` review comment | typed error 实际 throw，但 helper 返回类型不穷尽，易掩盖未来 wire 漂移 | **S08 已关闭**：`unwrapResult` exhaustive `T` + Specta/bindings freeze；wire drift 不再坍缩为 `undefined`                                                               |
-| rollback test 写真实用户 runtime path    | 有效 correctness/test-isolation finding                                | S02 全路径注入并删除真实路径访问                                                                                                                                        |
-| change_core 与 run_core 锁域竞态         | S04 已关闭：统一 lifecycle lease + barrier 并发测试                    | 已由 S04 代码 + `s04_concurrent_restart_waits_until_change_core_rollback_completes` 处置；S09 已补齐 fake-core 进程级 matrix（含 process-level `change_core` rollback） |
-| product rollback 未恢复 runtime store    | S03 已关闭：transaction snapshot 同步恢复 product/Promoted/Applied     | 已由 S03 代码 + rollback 分支测试处置；S04 已补齐 lease 串行                                                                                                            |
+对齐 `review-disposition.md`：每个 finding 须有 thread URL、原始主张、PR-4S code/test disposition、owning S0x，以及 **显式 thread-gate 状态**。
 
-所有 thread 在代码合并前必须 resolve；延期不接受。
+| Finding                                  | 当前判断                                                               | PR-4S code/test 处置                                                                                                                                                    | Thread-gate |
+| ---------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| createProfile `undefined` review comment | typed error 实际 throw，但 helper 返回类型不穷尽，易掩盖未来 wire 漂移 | **S08 代码已落地**：`unwrapResult` exhaustive `T` + Specta/bindings freeze；wire drift 不再坍缩为 `undefined`                                                           | **OPEN**    |
+| rollback test 写真实用户 runtime path    | 有效 correctness/test-isolation finding                                | S02 全路径注入并删除真实路径访问                                                                                                                                        | **OPEN**    |
+| change_core 与 run_core 锁域竞态         | S04 代码已落地：统一 lifecycle lease + barrier 并发测试                | 已由 S04 代码 + `s04_concurrent_restart_waits_until_change_core_rollback_completes` 处置；S09 已补齐 fake-core 进程级 matrix（含 process-level `change_core` rollback） | **OPEN**    |
+| product rollback 未恢复 runtime store    | S03 代码已落地：transaction snapshot 同步恢复 product/Promoted/Applied | 已由 S03 代码 + rollback 分支测试处置；S04 已补齐 lease 串行                                                                                                            | **OPEN**    |
+
+**Thread-gate closeout（四 finding 各自独立）：**
+
+- **Path A** — GitHub thread 实际 resolve（`isResolved: true` + 可发现 resolve 证据）；或
+- **Path B** — 显式 maintainer disposition（signed/dated 记录于 `review-disposition.md` 或链接 issue/PR comment，含理由）。
+
+代码/test disposition **不**自动 resolve thread，也**不**单独满足 closeout。禁止 silent deferral / “以后再说”。任一 finding 未完成 Path A 或 Path B 前，review gate 保持 **OPEN**；PR-4S 不得因代码已修而关闭。
 
 ---
 
@@ -546,9 +553,10 @@ PatchCompensationPlan {
 
 ### 证据
 
-- [ ] PR-4 review threads resolved
+- [ ] PR-4 review thread-gate closed（**每个** finding 已完成 Path A 实际 GitHub resolve **或** Path B 显式 maintainer disposition；见 `review-disposition.md`；仅代码 disposition 不算）
 - [ ] manual smoke records attached
+- [ ] architecture ledger target-tip CI evidence attached（gate mode / snapshot / Ubuntu `pnpm lint` 集成已在工作树；tip CI green 仍 pending）
 - [ ] roadmap ledger generated and current
 - [ ] residual TODO owner/removal condition complete
 
-只有全部勾选后，roadmap 才能把 PR-4S 标为完成并解锁 PR-5a。S01～S09 工作区已验证不构成关闭条件；S10 仍 pending。
+只有全部勾选后，roadmap 才能把 PR-4S 标为完成并解锁 PR-5a。S01～S09 工作区已验证不构成关闭条件；S10 部分工作树落地（含 ledger gate 实现与 disposition 记录）亦不构成关闭条件；S10 仍 pending。

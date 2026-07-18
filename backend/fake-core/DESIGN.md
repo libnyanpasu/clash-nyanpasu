@@ -105,16 +105,13 @@ Library (fake_core):
 
 ## Env / Argv 契约
 
-### Argv（与 nyanpasu-utils 真实调用一致）
+### Argv
 
-- check: `-t -d <app_dir> -f <config>`
-- start mihomo: `-m -d <app_dir> -f <config>`
-- start clash-rs: `-d <app_dir> -c <config>`
-- start premium: `-d <app_dir> -f <config>`
+完整 argv 形态（check / mihomo / clash-rs / premium，与 nyanpasu-utils 真实调用一致）见 [README.md § Argv shapes](README.md#argv-shapes)。未知 flags 或缺失 `-d` / `-f` / `-c` → stderr + exit `2`。
 
 ### 行为 env
 
-见 [README.md](README.md) 表。设计要点：
+完整键表与默认值见 [README.md § Environment contract](README.md#environment-contract)。设计要点：
 
 - **Unset vs set-but-invalid**：unset 可走默认；set 必须可解析，否则 exit 2（禁止静默忽略导致假绿）。
 - **`START_EXIT` 与 barrier 互斥语义**：`START_EXIT` 表示立即结束，不是长跑失败模式。

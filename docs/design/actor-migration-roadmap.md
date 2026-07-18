@@ -215,81 +215,15 @@ flowchart LR
 12. fake-core failure-injection 与可追溯三平台 smoke 记录；
 13. roadmap 状态和 grep 指标自动生成或 CI 校验。
 
-### S05 disposition（已完成；不关闭 PR-4S）
+### S05–S09 disposition（压缩状态交叉引用；不关闭 PR-4S）
 
-- `PatchCompensationPlan` 从 **Applied** 快照生成显式 `Set` / `Remove` 操作；`Remove` 是 transport-independent 的领域操作，禁止用 JSON `null` 表达删除。
-- instance-owned `clash_patch_gate` 将 API-first patch、desired persist、rebuild/check/promote、apply/restart 与补偿保序，并固定获取 `patch_gate → rebuild_gate → CoreLifecycleLease`。
-- `RuntimeSnapshot` 保留 exact product bytes 及 hash；补偿在 rebuild/lifecycle exclusion 内以私有 Applied candidate 直接 apply，不晋升或覆盖 product。
-- revision fence 不匹配时拒绝 stale compensation。补偿后的状态矩阵为 `Promoted = P3`、`Applied = P1`：产品/read model 保持最新已晋升 P3，运行核恢复 P1。
-- IPC 仅解析 DTO 并调用 facade；S05 set/remove、unknown-Applied、revision-conflict、exclusion、exact-bytes 和 P3/P1 tests green。
-
-### S06 disposition（已完成；不关闭 PR-4S）
-
-- Application / Session / Clash bridge 在 typed persistence 前执行 fallible `prepare(next)`，完成转换与序列化；persist 成功后的 `PreparedLegacyMirror::apply()` 仅更新内存 legacy projection，不返回 `Result`、不执行 IO。
-- `PersistentStateManager::replace_if_version` 在 manager/coordinator 层执行 expected-version CAS；actor 通过 `ReplacePreparedIfVersion` 提交 prepared state，CAS conflict 不应用 mirror，也不覆盖并发 typed 更新。
-- legacy `IVerge` patch/replace 固定按 Application → Session → Clash 提交；失败时按已提交域的逆序补偿，并继续收集全部 compensation conflict/error。
-- `PartialCommit` 结构化保留 `primary_error`、`committed_domains`、`compensated_domains`、`failed_compensations`；失败项区分 version conflict、domain error 与 `LegacyStateUncertain`。
-- legacy finalizer 失败或副作用结果不确定时，即使 typed reverse compensation 全部成功，仍返回 `PartialCommit` 并触发 reconciliation，不降格为普通 `Err`。
-- `PrepareReplace`、`ReplacePreparedIfVersion` 和 `PreparedTypedReplace<T>` 是 legacy mirror/saga 的迁移期协议，不是最终 actor API。它们保留到 PR-7a；当 legacy `IVerge` 路由、运行期 mirror 和三域补偿 saga 删除后同步移除。
-- manager/coordinator 的 `replace_if_version` CAS primitive 与 legacy mirror 解耦，不随上述协议自动删除。PR-7a 应按剩余生产调用决定：仍需非 legacy 条件写入时收敛为直接携带 typed state 的 `ReplaceIfVersion { expected_version, state }`；无调用方时删除 actor/client conditional protocol，但可保留 manager CAS 供领域内部使用。
-- S06 tests 以 oneshot/mpsc channel 与 release barrier 固定交错，不使用 sleep；prepare 零提交、manager CAS、第二/第三域失败、逆序补偿、并发 conflict、finalizer uncertainty 与 structured `PartialCommit` 均已验证。S09 已完成；S10 仍 pending。
-
-### S07 disposition（已完成；不关闭 PR-4S）
-
-- `Profiles.revision` 是 server-owned、可持久化的 durable state generation，专供 materialization journal / recovery 使用；与 `PersistentStateManager` 的 process-local MVCC version 严格分离，不得从后者派生。
-- 每次 forward 或 compensating state commit 前 `bump_revision()`；journal 写入 expected `Profiles` 快照上的 durable revision、operation id、managed path 与 content hash，不保存敏感完整内容。
-- 协议固定：
-  - **state-first**：`prepare(next) → state CAS → promote → complete/compensate`（Add、ReplaceDefinition、成功后的 Remote import、Delete 的 cleanup 准备阶段）；
-  - **file-first**：`prepare(next) → promote → state CAS → complete/compensate`（**仅** manual/scheduled Remote refresh、External Mirror 同步）；
-  - **cleanup**：`prepare(next) → state CAS → activate → retry`（Delete / 替换旧路径；active path 与 hash reuse fence）；
-  - **reconcile**：启动与周期性恢复，先于 watcher 与 mutation 生效；
-  - **import fetch-before-commit**：`validate → in-memory PendingImport → fetch/validate → CommitImported`；成功才一次 state-first（真实 bytes）；取消/失败零 state/file。
-- 操作映射：Add / ReplaceDefinition → state-first（slot 变化时附带 resource；旧 path 可附 cleanup）；**Remote import → actor-owned fetch-before-commit，成功后一次 state-first + 既有 journal recovery**（**禁止** `add empty placeholder → refresh → delete compensation`；**不**新增 import journal/schema/field heuristics）；Delete → state commit 为权威 + durable cleanup；RefreshRemote（手动/定时）/ External Mirror → file-first 不变；`ReconcileMaterializations` 串行执行 recovery。
-- **已修正的 superseded state-first journal 规则：** 当 `profiles.revision > journal.revision` 且路径仍 active 时，若 target 仍处于 pre-promote（备份字节），必须 `compensate` 并丢弃 staged forward content，**绝不可 promote** 到更新的 committed revision。仅 target 已匹配 journal hash 时，`StatePromoting` 可 `complete`，`StatePrepared` 可 `discard`。
-- 启动与 actor-owned 周期任务都会 `reconcile(loaded profiles)`；malformed journal 隔离、unreferenced artifact sweep、cleanup fence（active path / hash mismatch / already-absent）均有 deterministic tests。
-- `ProfileDegradation{phase,code,message}` 仍仅 crate-internal（`Cleanup`/`Reconcile` × `JournalInvalid`/`MaterializationDeferred`/`CleanupDeferred`）；S08 已将其映射到公共 wire，不改变 actor 内部存储形状。
-- S07 failure/crash/cleanup/fence/**import cancellation-restart-materialization** tests green；S09 已完成；S10 仍 pending。
-
-### S08 disposition（已完成；不关闭 PR-4S）
-
-- 公共终态 wire 仅为 `MutationOutcome<T> { Applied { value } | CommittedDegraded { value, degradations } }`；`Degradation { phase, code, message, retryable }`；`DegradationPhase` 为 snake_case 枚举。**无** `_v1` alias，**无** legacy `RebuildOutcome`。
-- create/import 单位 outcome 为 `MutationOutcome<ProfileId>`；其余 profile mutation 为 `MutationOutcome<()>`。facade 在 commit 后合并 S07 profile degradations 与 post-commit rebuild degradation，再由 `from_parts`/`extend_degradations` 产出 Applied / CommittedDegraded。
-- **H1 retained-forward：** state-first promote 失败且 compensating state CAS 也失败时，forward head 保持可恢复，mutation 返回 `Ok(CommittedDegraded)`（crate-internal `MaterializationDeferred` → public `profile_materialization` / `materialization_deferred`），不得把已提交 uid 抹成 hard `Err`。
-- **H2 auto-activation（post-commit only）：** create/import 在 facade 共用 `try_auto_activate_if_none` / `set_current_if_none`；`Ok(None)` 保持 Applied；hard failure → `SystemEffect` / `profile_auto_activation_failed` 的 committed-degraded，并**保留**已提交 `ProfileId`。激活不是 import 的 pre-commit 步骤。
-- **Import 终态协议：** actor-owned fetch-before-commit；validation + fetch 在任何 durable placeholder 之前；cancel before commit → discard、零 state/file；success → 一次 state-first（真实 bytes + 既有 materialization journal recovery）；**无**新 import journal/schema/field heuristics；**不再**使用 add-empty-placeholder→refresh→delete；pre-commit 失败为普通 `Err`，post-commit 降级才进 `committed_degraded`。manual/scheduled remote refresh 保持 file-first。
-- **Runtime rebuild 相位保真显式延期：** 当前 `rebuild_running_config()` 只有不透明 `Result`，facade 统一映射为粗粒度且真实的 `RuntimeBuild` / `runtime_rebuild_failed`（retryable）。**禁止**伪造 RuntimeCheck/Promote/Apply 精度；该精度不在 S08 范围，也不冒充 S09 工作。
-- 前端：`unwrapResult` 穷尽返回 `T`；`MutationCache.onSuccess` 仅识别 `committed_degraded` 并仍走 success/invalidation；toast 本地化 phase/code（en/zh-cn/zh-tw/ru/ko），`message` 仅详细/日志。
-- Specta 生成并冻结 `MutationOutcome`/`Degradation`/`DegradationPhase`；bindings freshness contract 拒绝 `RebuildOutcome` 与 legacy status tag。
-- 验证真相：focused S08 tests / build / clippy 通过（含 import cancellation-safe 与 facade H1/H2）。full workspace green **不得**在 S10 最终 QA 前宣称；历史 red contract 中的 `REGEN_BRIDGE` two-client isolation 已由 S09 关闭，不得再当作稳定 red。network 类 flaky 与 PR-5/6 residual global-state rebuild 类失败须如实记录——**不得**伪装为 S08/S09 未关，也不得据此宣告 PR-4S 完成。S09 已完成；S10 仍 pending。
-
-### S09 disposition（已完成；不关闭 PR-4S）
-
-- **`REGEN_BRIDGE` / `OnceCell` 已删除**。不再存在 process-global first-install-wins rebuild dispatcher；历史 “S09 `REGEN_BRIDGE` two-client isolation is the only stable full-suite red contract” 陈述作废。
-- **instance-owned capacity-1 coalescing `RebuildCoordinator`**：background dirty 为 `mpsc` 容量 1 + receiver-side coalesce window；`try_send` 满则合并；request/reply regeneration 直接调用 typed facade 方法，不经进程静态 dispatcher。
-- **Weak worker**：`start_rebuild_worker` 仅捕获 `Weak` client graph，upgrade 后调用 `rebuild_running_config()`，避免 Arc 环；`Drop` 仅 best-effort 关停，**显式 `shutdown().await`** 才等待 worker 退出。
-- **生产 exit 集成**：`cleanup_processes` 在 core/widget teardown 前从 Tauri managed state 取 `NyanpasuClient` 并 `client.shutdown().await`；不引入新的 process-global client lookup。
-- **Coordinator / clone / dirty 隔离与 paused-time shutdown tests**：`s09_two_client_graphs_are_independent`、`s09_clones_share_one_coordinator`、`s09_legacy_call_sites_use_supplied_client`；coordinator 单元测试用 `tokio::time::pause/advance` 验证 coalesce、shutdown 等待 in-flight、coalesce 中途 shutdown 跳过 rebuild、shutdown 后 dirty 为空操作。
-- **test-only `fake-core` package 协议（最终 disposition）**：取代早期 illustrative CLI flags（`--check-ok/--start-fail` 等）。最终协议为 **real core argv shapes** + **`FAKE_CORE_*` env**：
-  - check：`-t -d <app_dir> -f <config>`；
-  - start：mihomo / clash-rs / premium argv；
-  - TCP READY/RELEASE barrier（`FAKE_CORE_READY_ADDR`）；无 barrier 且无 `START_EXIT` 则 fail-fast exit 2；
-  - 动态 hold/http 端口（`0` = ephemeral，READY 帧回报 `hold=` / `http=`）；
-  - exact `PUT /configs` 与 `PATCH /configs` 状态注入（`FAKE_CORE_APPLY_STATUS`）；严格 env；`ScopedChild` RAII reap；
-  - **never packaged** as production sidecar/resource（workspace member + tauri **dev-dependency** only；`publish = false`）。
-- **`cfg(test)` `ProcessCoreLifecycleAdapter`**：TempDir `RuntimePaths`；禁止 `CoreManager::global()` / real sidecar / 真实用户目录；仅链接于测试。
-- **process matrix（工作区已验证；非全 workspace 宣称绿）**：
-  - check fail → product/Promoted/Applied 不变；
-  - immediate start fail → 无 child leak；
-  - apply HTTP 500 after promote → Promoted 新、Applied 旧/None；
-  - fixed-port hold conflict + stop 后释放；
-  - lifecycle lease serialization（barrier/oneshot，无 sleep）；
-  - clean stop / `ScopedChild` reap；
-  - two graph PID/port/path isolation；
-  - real-process `change_core`：new-core start failure + old-core rollback success。
-- **prebuild 要求**：跨 crate 测试须 `cargo build -p fake-core`（或 `cargo test -p fake-core`）；`CARGO_BIN_EXE_fake-core` 仅同包 integration test 自动设置；discovery：`NYANPASU_FAKE_CORE` → current_exe profile sibling → `$CARGO_TARGET_DIR/{debug|release}/fake-core`；缺失时错误文案含稳定 `PREBUILD_COMMAND`。
-- **平台限制**：fake-core 为 std-only 跨平台协议实现；Windows service-mode / TUN 权限路径仍属 S10 手工 smoke，不在 process matrix 自动化范围。
-- **PR-5/6 residuals**：legacy `Config` / `CoreManager::global()` 仍存在；`change_core` 等路径仍可能触碰 legacy desired-state mirrors——**不是** full graph desired-state isolation。S09 shutdown 只拆除 rebuild worker，不停止 desired-state actors / system proxy / OS resources。
-- **S10 仍负责**：architecture ledger CI gate、Windows/macOS/Linux smoke/evidence、PR-4 review final disposition 表、roadmap closeout 与 PR-4S 完成宣告。S09 单独完成**不得**宣告 PR-4S 完成。
+| Step | Status                                | Summary（一行）                                                                                                                                                | Residual / deferred                                                                                                                                                   | Spec cross-ref                                                                          |
+| ---- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| S05  | 已完成/工作区已验证；**不关闭 PR-4S** | Applied-based `Set`/`Remove` compensation + instance-owned patch gate + revision fence + private candidate direct apply（P3/P1）                               | PR-5b：gate / Applied owner 迁入 CoreActor mailbox                                                                                                                    | `design.md` §6.7 / D6；`task.md` S05                                                    |
+| S06  | 已完成/工作区已验证；**不关闭 PR-4S** | Fallible prepare-before-persist；infallible in-memory apply；manager CAS；Application→Session→Clash saga + reverse compensation；structured `PartialCommit`    | PR-7a：随 legacy mirror/saga 删除 `PrepareReplace` / `ReplacePreparedIfVersion` / `PreparedTypedReplace`；manager CAS 可保留                                          | `design.md` §6.8–6.9 / D7–D8；`task.md` S06                                             |
+| S07  | 已完成/工作区已验证；**不关闭 PR-4S** | Durable `Profiles.revision`；state-first / file-first / cleanup / reconcile；import fetch-before-commit；startup+periodic recovery；crate-internal degradation | 公共 wire 已由 S08 映射；手工 smoke / full-suite closeout 仍属 S10                                                                                                    | `design.md` §6.10 / D9；`task.md` S07                                                   |
+| S08  | 已完成/工作区已验证；**不关闭 PR-4S** | 公共 `MutationOutcome` / `Degradation` wire + Specta/frontend；H1/H2；import 终态；粗粒度 `RuntimeBuild` rebuild 映射                                          | RuntimeCheck/Promote/Apply 相位保真延期；full workspace green **仅**经 S10 宣称                                                                                       | `design.md` §6.11 / §9；`task.md` S08；`smoke-evidence.md` A-proxy only                 |
+| S09  | 已完成/工作区已验证；**不关闭 PR-4S** | 删除 `REGEN_BRIDGE`/OnceCell；instance-owned capacity-1 `RebuildCoordinator`；test-only `fake-core` process matrix；生产 `client.shutdown()`                   | PR-5/6 residual：legacy `Config`/`CoreManager` global（非 full graph isolation）；service-mode / TUN / true-core UI → S10 手工 `E-01`…`E-11`；**不得**宣告 PR-4S 完成 | `design.md` §6.12–6.13 / §8.5；`task.md` S09；`smoke-evidence.md` E-records **PENDING** |
 
 ### R4S 退出判据
 

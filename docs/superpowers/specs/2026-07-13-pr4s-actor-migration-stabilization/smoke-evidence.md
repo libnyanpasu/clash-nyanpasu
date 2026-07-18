@@ -175,23 +175,7 @@ Authoring note (not an execution record): matrix revised on WSL2 Linux at `b70ae
 
 ---
 
-## 6. Automated coverage index (A only)
-
-| Capability                                                      | Primary S0x | Class       | Notes                                                                                                                   |
-| --------------------------------------------------------------- | ----------- | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
-| RuntimePaths / TempDir / candidate hardening                    | S02         | A           | Denylist: no real user dirs in tests                                                                                    |
-| Promoted / Applied + rollback snapshot                          | S03         | A           | Deep rollback restores product + both revisions                                                                         |
-| CoreLifecycleLease / change_core serialization                  | S04         | A           | Barrier/oneshot; no sleep ordering                                                                                      |
-| Applied-based patch compensation                                | S05         | A           | Set/Remove; fence; exact bytes                                                                                          |
-| Prepared mirrors + three-domain saga                            | S06         | A           | Prepare-before-persist; reverse compensation                                                                            |
-| Profile materialization / import fetch-before-commit            | S07         | A           | Journal + cancel-safe import                                                                                            |
-| MutationOutcome wire / Specta / frontend                        | S08         | A           | H1/H2; locales; bindings freeze                                                                                         |
-| RebuildCoordinator + fake-core process matrix                   | S09         | A           | Not service-mode / TUN / true-core UI                                                                                   |
-| Architecture ledger gate + snapshot + lint hook + focused tests | S10 tooling | A (tooling) | Implemented; local Q-01/Q-02 PASS; tip multi-OS CI PASS @ `10c837cd0068bb217e6195d286d6d022d9930f60` (§2, §5 Q-09…Q-11) |
-
----
-
-## 7. Artifact drop zone
+## 6. Artifact drop zone
 
 When executing an `E-xxx` or `Q-xxx` row, attach durable artifacts, for example:
 
@@ -205,7 +189,7 @@ Local Q rows use in-document result strings as durable artifacts. Tip CI Q-09…
 
 ---
 
-## 8. Closeout checklist (smoke + S10 QA)
+## 7. Closeout checklist (smoke + S10 QA)
 
 - [ ] E-01…E-11 in-scope rows PASS or BLOCKED with owner + follow-up
 - [ ] Every P4-S\* / D13-\* label’s mapped E-records are satisfied (no circular label PASS)

@@ -184,7 +184,7 @@ Immediate check/start failure injection uses `FakeCoreCommand::check` / `start_*
 | `resolve_bin_path` / `require_bin_path`      | Cross-crate binary lookup                                                                              |
 | `PathEnvLock` / `PathEnvGuard`               | Test-only serialization of `NYANPASU_FAKE_CORE` mutations                                              |
 | `signal_ready_and_wait_release`              | Child-side barrier (used by the binary)                                                                |
-| `wait_with_timeout` / `ephemeral_port`       | Test utilities                                                                                         |
+| `wait_with_timeout`                          | Test utility (deadlock safety net; also on `ScopedChild`)                                              |
 
 There is no production service API and no `Object::new()`-style facade.
 

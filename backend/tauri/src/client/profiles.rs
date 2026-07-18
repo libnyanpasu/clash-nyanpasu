@@ -1673,10 +1673,14 @@ mod tests {
     /// also fails → mutation stays Ok(degraded) with forward head recoverable.
     #[tokio::test]
     async fn add_promote_failure_with_failed_compensating_state_returns_degraded_commit() {
-        use std::os::unix::fs::PermissionsExt;
+        let root = tempdir().unwrap();
+        let live = root.path().join("live");
+        std::fs::create_dir(&live).unwrap();
+        let profiles_path =
+            Utf8PathBuf::from_path_buf(live.join("profiles.yaml")).expect("utf-8 temp path");
+        let dead = root.path().join("dead");
+        let durable_forward = dead.join("profiles.yaml");
 
-        let dir = tempdir().unwrap();
-        let parent = dir.path().to_path_buf();
         let mut materialization = MockProfileMaterializationPort::new();
         materialization
             .expect_reconcile()
@@ -1684,12 +1688,14 @@ mod tests {
         materialization
             .expect_prepare_state_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
-        let parent_for_promote = parent.clone();
+        let live_for_promote = live.clone();
+        let dead_for_promote = dead.clone();
         materialization.expect_promote().returning(move |_| {
-            // Block profiles.yaml rewrite so the compensating state CAS fails while
-            // the already-committed forward head remains in memory + on disk.
-            std::fs::set_permissions(&parent_for_promote, std::fs::Permissions::from_mode(0o555))
-                .expect("make profiles parent read-only");
+            // Move the profiles parent aside so compensating AtomicFile CAS cannot
+            // rewrite profiles.yaml, while the durable forward head remains at the
+            // renamed path (cross-platform; no Unix chmod).
+            std::fs::rename(&live_for_promote, &dead_for_promote)
+                .expect("move profiles parent aside after forward CAS");
             Err(anyhow::anyhow!("disk full"))
         });
         // Compensating state fails before materialization.compensate is reached.
@@ -1703,7 +1709,7 @@ mod tests {
         }
 
         let client = ProfilesClient::new(
-            temp_profiles_path(&dir),
+            profiles_path,
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
@@ -1716,7 +1722,6 @@ mod tests {
             .add(add_placeholder_request(), Some("proxies: []\n".into()))
             .await
             .expect("failed compensating state keeps forward committed as degraded Ok");
-        let _ = std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755));
 
         assert!(report.created.is_some(), "create must surface real uid");
         assert_eq!(report.snapshot.items.len(), 1);
@@ -1724,6 +1729,10 @@ mod tests {
         assert!(
             client.get().await.unwrap().items.contains_key(&created),
             "forward state must remain visible/recoverable after failed compensating CAS"
+        );
+        assert!(
+            durable_forward.is_file(),
+            "durable forward profiles.yaml must remain at the renamed parent path"
         );
         assert_eq!(report.degradations.len(), 1);
         assert_eq!(

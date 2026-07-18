@@ -612,19 +612,6 @@ impl CoreManager {
         Ok(())
     }
 
-    /// 更新proxies那些
-    /// 如果涉及端口和外部控制则需要重启
-    pub async fn update_config(&self) -> Result<()> {
-        log::debug!(target: "app", "try to update clash config");
-        // FIXME(actor-migration): legacy regenerate path. Sole remaining caller
-        // chain: feat::patch_verge (TUN/service toggles) -> update_core_config
-        // -> update_config. New code must use
-        // NyanpasuClient::rebuild_running_config(). Remove when PR-5 migrates
-        // the verge feature flows onto injected clients.
-        // P0-2: regenerate+apply 在桥另一侧的单次 gate 持有内一体完成。
-        crate::client::rebuild::regenerate_and_apply().await
-    }
-
     /// Push the promoted runtime product to the running core over the api.
     /// Check + promote happen in the rebuild pipeline (RunningCoreBridge::
     /// check_and_promote) before this is called.

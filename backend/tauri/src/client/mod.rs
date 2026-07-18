@@ -4,6 +4,8 @@ mod core_bridge;
 mod error;
 mod event_sink;
 mod ports;
+#[cfg(test)]
+mod process_core_bridge;
 pub mod profiles;
 pub mod rebuild;
 pub mod runtime;
@@ -241,6 +243,9 @@ struct NyanpasuClientInner {
     /// a slow rebuild started for an older commit can finish after a newer
     /// one and overwrite the runtime with a stale snapshot.
     rebuild_gate: tokio::sync::Mutex<()>,
+    /// Instance-owned background dirty coordinator (capacity-1 coalesce).
+    /// Request/reply regeneration calls typed facade methods directly.
+    rebuild: rebuild::RebuildCoordinator,
     runtime_revisions: runtime::RuntimeRevisionAllocator,
     runtime: runtime::RuntimeLifecycleStore,
 }
@@ -263,56 +268,48 @@ impl NyanpasuClient {
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
-        let (
-            application,
-            session_state,
-            clash_config,
-            profiles,
-            runtime_store,
-            ports,
-            fs,
-            rebuild_rx,
-        ) = tauri::async_runtime::block_on(async move {
-            runtime_paths_for_setup
-                .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
-                .await
-                .context("failed to clean stale runtime candidates")?;
-            let (application, session_state, clash_config) =
-                new_typed_config_clients(paths.clone(), bridges).await?;
+        let (application, session_state, clash_config, profiles, runtime_store, ports, fs, rebuild) =
+            tauri::async_runtime::block_on(async move {
+                runtime_paths_for_setup
+                    .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
+                    .await
+                    .context("failed to clean stale runtime candidates")?;
+                let (application, session_state, clash_config) =
+                    new_typed_config_clients(paths.clone(), bridges).await?;
 
-            // Eager session port resolution: the core is not running yet,
-            // so probing strategies is race-free (design §19.2 caller duty).
-            let ports = Arc::new(SessionPortResolver::default());
-            let clash_snapshot = clash_config.get().await?.state;
-            ports
-                .resolve(&clash_snapshot)
-                .context("failed to resolve session ports")?;
+                // Eager session port resolution: the core is not running yet,
+                // so probing strategies is race-free (design §19.2 caller duty).
+                let ports = Arc::new(SessionPortResolver::default());
+                let clash_snapshot = clash_config.get().await?.state;
+                ports
+                    .resolve(&clash_snapshot)
+                    .context("failed to resolve session ports")?;
 
-            let file_service = Arc::new(ProfileFileService::new(
-                paths,
-                ports.clone() as Arc<dyn SelfProxyPortSource>,
-            ));
-            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-            let profiles = profiles::ProfilesClient::new(
-                profiles_path,
-                file_service.clone() as Arc<dyn ProfileFsPort>,
-                file_service.clone() as Arc<dyn SubscriptionFetcher>,
-                file_service.clone() as Arc<dyn ProfileMaterializationPort>,
-                Arc::new(rebuild::ChannelRebuildNotifier::new(tx)),
-            )
-            .await?;
-            let runtime_store = runtime::new_runtime_lifecycle_store().await?;
-            anyhow::Ok((
-                application,
-                session_state,
-                clash_config,
-                profiles,
-                runtime_store,
-                ports,
-                file_service as Arc<dyn ProfileFsPort>,
-                rx,
-            ))
-        })?;
+                let file_service = Arc::new(ProfileFileService::new(
+                    paths,
+                    ports.clone() as Arc<dyn SelfProxyPortSource>,
+                ));
+                let rebuild = rebuild::RebuildCoordinator::new();
+                let profiles = profiles::ProfilesClient::new(
+                    profiles_path,
+                    file_service.clone() as Arc<dyn ProfileFsPort>,
+                    file_service.clone() as Arc<dyn SubscriptionFetcher>,
+                    file_service.clone() as Arc<dyn ProfileMaterializationPort>,
+                    Arc::new(rebuild.notifier()),
+                )
+                .await?;
+                let runtime_store = runtime::new_runtime_lifecycle_store().await?;
+                anyhow::Ok((
+                    application,
+                    session_state,
+                    clash_config,
+                    profiles,
+                    runtime_store,
+                    ports,
+                    file_service as Arc<dyn ProfileFsPort>,
+                    rebuild,
+                ))
+            })?;
         let client = Self::with_parts(
             application,
             session_state,
@@ -327,39 +324,9 @@ impl NyanpasuClient {
             clash_patch,
             system_dns,
             runtime_store,
+            rebuild,
         );
-        {
-            let listener = client.clone();
-            rebuild::spawn_listener_with(rebuild_rx, move || {
-                let client = listener.clone();
-                async move {
-                    client
-                        .rebuild_running_config()
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            });
-        }
-        {
-            let bridge = client.clone();
-            rebuild::install_regen_bridge(move |kind| {
-                let client = bridge.clone();
-                async move {
-                    let result = match kind {
-                        rebuild::RegenKind::Regenerate => {
-                            client.regenerate_runtime_for_legacy().await
-                        }
-                        rebuild::RegenKind::RegenerateAndApply => {
-                            client.regenerate_and_apply_for_legacy().await
-                        }
-                        rebuild::RegenKind::RegenerateAndRestart => {
-                            client.regenerate_and_restart_for_legacy().await
-                        }
-                    };
-                    result.map_err(anyhow::Error::from)
-                }
-            });
-        }
+        client.start_rebuild_worker();
         Ok(client)
     }
 
@@ -377,6 +344,7 @@ impl NyanpasuClient {
         clash_patch: Arc<dyn RunningConfigPatchPort>,
         system_dns: Arc<dyn SystemDnsCache>,
         runtime: runtime::RuntimeLifecycleStore,
+        rebuild: rebuild::RebuildCoordinator,
     ) -> Self {
         Self {
             inner: Arc::new(NyanpasuClientInner {
@@ -394,10 +362,52 @@ impl NyanpasuClient {
                 clash_patch_gate: tokio::sync::Mutex::new(()),
                 system_dns,
                 rebuild_gate: tokio::sync::Mutex::new(()),
+                rebuild,
                 runtime_revisions: runtime::RuntimeRevisionAllocator::new(),
                 runtime,
             }),
         }
+    }
+
+    /// Start the capacity-1 dirty worker. The worker upgrades a `Weak` client
+    /// graph so shutdown/drop cannot form an Arc cycle.
+    fn start_rebuild_worker(&self) {
+        let weak = Arc::downgrade(&self.inner);
+        self.inner.rebuild.start_worker(move || {
+            let weak = weak.clone();
+            async move {
+                let Some(inner) = weak.upgrade() else {
+                    return Ok(());
+                };
+                NyanpasuClient { inner }
+                    .rebuild_running_config()
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
+        });
+    }
+
+    /// Stop the instance-owned **rebuild coordinator worker** and await its exit.
+    ///
+    /// Contract (PR-4S S09):
+    /// - Shuts down only the capacity-1 dirty rebuild worker owned by this client graph.
+    /// - Does **not** act as a general service locator teardown.
+    /// - Does **not** stop desired-state actors, CoreManager globals, system proxy,
+    ///   or OS-side resources — those remain PR-5/6 residuals and existing
+    ///   `cleanup_processes` / core stop paths.
+    /// - Safe to call multiple times; post-shutdown dirty notifications are no-ops.
+    /// - An already in-flight rebuild is allowed to finish; coalesce waits abort.
+    pub async fn shutdown(&self) {
+        self.inner.rebuild.shutdown().await;
+    }
+
+    pub(crate) fn runtime_paths(&self) -> &RuntimePaths {
+        &self.inner.runtime_paths
+    }
+
+    #[cfg(test)]
+    pub(crate) fn rebuild_coordinator(&self) -> &rebuild::RebuildCoordinator {
+        &self.inner.rebuild
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
@@ -2037,6 +2047,7 @@ mod tests {
             crate::client::runtime::new_runtime_lifecycle_store()
                 .await
                 .expect("runtime state store"),
+            rebuild::RebuildCoordinator::new(),
         )
     }
 
@@ -2067,9 +2078,12 @@ mod tests {
         assert!(error.to_string().contains("dns flush exploded"));
     }
 
-    pub(crate) fn test_profiles_client_args(
+    /// Like [`test_profiles_client_args`], but accepts an already-typed
+    /// [`CoreLifecyclePort`] (e.g. process-backed S09 adapter) without the
+    /// mockall `TestRunningCoreBridge` wrapper.
+    pub(crate) fn test_client_args_with_lifecycle(
         dir: &TempDir,
-        core: Arc<dyn TestRunningCoreBridge>,
+        core: Arc<dyn CoreLifecyclePort>,
     ) -> ClientSetupArgs {
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
@@ -2082,10 +2096,17 @@ mod tests {
                 clash: Arc::new(NoopClashBridge),
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
-            core: test_core_port(core),
+            core,
             clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
             system_dns: Arc::new(NoopSystemDnsCache),
         }
+    }
+
+    pub(crate) fn test_profiles_client_args(
+        dir: &TempDir,
+        core: Arc<dyn TestRunningCoreBridge>,
+    ) -> ClientSetupArgs {
+        test_client_args_with_lifecycle(dir, test_core_port(core))
     }
 
     fn minimal_file_profile_request() -> NewProfileRequest {
@@ -2131,13 +2152,13 @@ mod tests {
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
         ));
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let rebuild = rebuild::RebuildCoordinator::new();
         let profiles = profiles::ProfilesClient::new(
             temp_config_path(dir, "profiles.yaml"),
             file_service.clone() as Arc<dyn ProfileFsPort>,
             fetcher,
             file_service.clone() as Arc<dyn ProfileMaterializationPort>,
-            Arc::new(rebuild::ChannelRebuildNotifier::new(tx)),
+            Arc::new(rebuild.notifier()),
         )
         .await
         .expect("profiles client should be created");
@@ -2157,17 +2178,9 @@ mod tests {
             crate::client::runtime::new_runtime_lifecycle_store()
                 .await
                 .expect("runtime state store"),
+            rebuild,
         );
-        let listener = client.clone();
-        rebuild::spawn_listener_with(rx, move || {
-            let client = listener.clone();
-            async move {
-                client
-                    .rebuild_running_config()
-                    .await
-                    .map_err(anyhow::Error::from)
-            }
-        });
+        client.start_rebuild_worker();
         client
     }
 
@@ -3214,6 +3227,7 @@ mod tests {
                 crate::client::runtime::new_runtime_lifecycle_store()
                     .await
                     .expect("runtime state store"),
+                rebuild::RebuildCoordinator::new(),
             );
 
             let outcome = client

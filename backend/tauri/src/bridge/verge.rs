@@ -235,7 +235,8 @@ impl LegacyVergeBridge {
                     .await?;
             }
             LegacyVergePatchRoute::LegacySideEffects => {
-                self.run_legacy_verge_mutation(|| crate::feat::patch_verge(payload))
+                let client = self.managed()?.client.clone();
+                self.run_legacy_verge_mutation(move || crate::feat::patch_verge(client, payload))
                     .await?;
             }
         }

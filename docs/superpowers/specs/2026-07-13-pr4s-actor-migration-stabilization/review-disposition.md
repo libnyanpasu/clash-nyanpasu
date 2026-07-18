@@ -1,33 +1,31 @@
 # PR-4S S10 — PR-4 Review Finding Disposition
 
-**Status:** Code/test dispositions for S02/S03/S04/S08 are implemented on `refactor/pr-4s`; **all four GitHub review threads remain unresolved**. PR-4S / S10 stay **OPEN**.
+**Status:** Code/test dispositions for S02/S03/S04/S08 are implemented on `refactor/pr-4s`; **Path A complete** — all four `#4932` review threads resolved on GitHub (`isResolved: true`) by authenticated actor `4o3F` on **2026-07-18**. **Review thread-gate satisfied.** PR-4S / S10 remain **OPEN** because manual smoke (`smoke-evidence.md` E-records) and target-tip multi-OS CI (Q-09…Q-11) are still **PENDING**.
 **Source PR:** [#4932](https://github.com/libnyanpasu/clash-nyanpasu/pull/4932) — `refactor(tauri)!: runtime derivation cleanup — checked promote pipeline and RebuildOutcome (PR-4)` (MERGED 2026-07-12).
-**Stabilization PR (docs context only):** [#4956](https://github.com/libnyanpasu/clash-nyanpasu/pull/4956) draft on `refactor/pr-4s` — review threads: none discovered via GraphQL at authoring time.
+**Stabilization PR (docs context only):** [#4956](https://github.com/libnyanpasu/clash-nyanpasu/pull/4956) draft on `refactor/pr-4s`.
 **Disposition revised:** 2026-07-18 (UTC)
-**Discovery method:** read-only `gh api` + GraphQL `reviewThreads` on `#4932` / `#4956` (no mutations).
+**Resolve evidence method:** authenticated GitHub API mutation responses for each thread id returned `isResolved: true` (actor `4o3F`, date 2026-07-18). No more-precise timestamp or separate resolve URL is invented; thread discussion URLs below remain the durable links.
 
 ---
 
 ## 0. Rules
 
-1. Every PR-4 unresolved finding must have: thread URL, original claim, PR-4S code/test disposition, owning S0x, and **explicit thread-gate state**.
-2. Code disposition **does not** auto-resolve a GitHub thread. If GraphQL reports `isResolved: false`, the thread-gate remains **OPEN / PENDING** even when the fix is on the working branch.
-3. Do not invent reply URLs, resolve timestamps, or “resolved by @…” claims without API evidence.
-4. **Thread-gate (closeout blocker):** all four findings remain unresolved on GitHub. PR-4S review closeout requires, **for each finding**, one of the following durable outcomes — this document **does not choose** which path maintainers take:
-   - **Path A — actual GitHub resolve:** thread `isResolved: true` with discoverable resolve evidence; or
-   - **Path B — explicit maintainer disposition:** a signed/dated maintainer note (in this file or a linked issue/PR comment) that the finding is accepted as code-disposed without GitHub resolve, with rationale.
-     Until Path A or Path B exists per finding, the review gate is **not** satisfied.
+1. Every PR-4 finding must have: thread URL, original claim, PR-4S code/test disposition, owning S0x, and **explicit thread-gate state**.
+2. Code disposition alone does **not** close the thread-gate; an actual GitHub resolve (Path A) or explicit maintainer note (Path B) is required.
+3. Do not invent reply URLs, sub-second timestamps, or resolve evidence beyond API-confirmed facts.
+4. **Thread-gate:** satisfied when each finding has Path A **or** Path B. As of 2026-07-18, all four findings use **Path A**.
+5. Thread-gate satisfaction does **not** close PR-4S / S10 while manual smoke or tip multi-OS CI evidence remains incomplete.
 
 ---
 
 ## 1. Summary table
 
-| ID   | Finding (short)                                                                  | Thread URL                                                                     | GraphQL `isResolved` @ 2026-07-18 | Code/test owner            | Code disposition status                    | GitHub resolve status |
-| ---- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------- | -------------------------- | ------------------------------------------ | --------------------- |
-| RF-1 | `createProfile` / `unwrapResult` can mask typed errors as success (`undefined`)  | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566317999 | **false**                         | S08                        | Implemented on branch (wire + frontend)    | **PENDING**           |
-| RF-2 | Rollback unit test writes real user runtime product path                         | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566318012 | **false**                         | S02                        | Implemented (RuntimePaths / TempDir)       | **PENDING**           |
-| RF-3 | `change_core` only holds `rebuild_gate`; races `CoreManager::run_core` / restart | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566323210 | **false**                         | S04 (+ S09 process matrix) | Implemented (CoreLifecycleLease + tests)   | **PENDING**           |
-| RF-4 | Product rollback does not restore runtime read model                             | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566323213 | **false**                         | S03 (+ S04 lease span)     | Implemented (transaction snapshot restore) | **PENDING**           |
+| ID   | Finding (short)                                                                  | Thread URL                                                                     | GraphQL `isResolved` @ 2026-07-18 | Code/test owner            | Code disposition status                    | GitHub resolve status                    |
+| ---- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------- | -------------------------- | ------------------------------------------ | ---------------------------------------- |
+| RF-1 | `createProfile` / `unwrapResult` can mask typed errors as success (`undefined`)  | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566317999 | **true**                          | S08                        | Implemented on branch (wire + frontend)    | **Path A complete** (`4o3F`, 2026-07-18) |
+| RF-2 | Rollback unit test writes real user runtime product path                         | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566318012 | **true**                          | S02                        | Implemented (RuntimePaths / TempDir)       | **Path A complete** (`4o3F`, 2026-07-18) |
+| RF-3 | `change_core` only holds `rebuild_gate`; races `CoreManager::run_core` / restart | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566323210 | **true**                          | S04 (+ S09 process matrix) | Implemented (CoreLifecycleLease + tests)   | **Path A complete** (`4o3F`, 2026-07-18) |
+| RF-4 | Product rollback does not restore runtime read model                             | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566323213 | **true**                          | S03 (+ S04 lease span)     | Implemented (transaction snapshot restore) | **Path A complete** (`4o3F`, 2026-07-18) |
 
 ---
 
@@ -43,7 +41,7 @@
 | Author            | `copilot-pull-request-reviewer` (Copilot)                                      |
 | Created           | 2026-07-12T12:43:47Z                                                           |
 | GraphQL thread id | `PRRT_kwDOKroWZM6QMw0z`                                                        |
-| GraphQL resolved  | **false** (queried 2026-07-18)                                                 |
+| GraphQL resolved  | **true** (Path A, 2026-07-18)                                                  |
 
 **Original claim (faithful summary):**
 `commands.createProfile(...)` is wrapped by `unwrapResult`, which returns `undefined` on typed error. Returning `{ uid: null, rebuild: undefined }` lets React Query treat the mutation as success and still invalidate, masking failure. The URL/import branch already throws when `unwrapResult` returns no result; the non-URL branch should do the same.
@@ -56,10 +54,10 @@
 - Specta freeze + bindings freshness reject legacy status tags / `RebuildOutcome`.
 - Create/import return `MutationOutcome<ProfileId>`; H1/H2 retain committed ids under materialization/auto-activation degradation.
 
-**Evidence pointers (branch, not GitHub resolve):** S08 task disposition in `task.md` / `design.md` §6.11; frontend `unwrapResult` + profile hooks on `refactor/pr-4s` (e.g. post-`1cd8f78b`).
+**Evidence pointers (branch):** S08 task disposition in `task.md` / `design.md` §6.11; frontend `unwrapResult` + profile hooks on `refactor/pr-4s` (e.g. post-`1cd8f78b`).
 
-**GitHub resolution:** **PENDING** — no resolve event discovered; thread still open on merged `#4932`.
-**Resolve URL / actor / timestamp:** **PENDING / not discovered**.
+**GitHub resolution:** **Path A complete** — API mutation response `isResolved: true` for thread `PRRT_kwDOKroWZM6QMw0z`; actor `4o3F`; date **2026-07-18**.
+**Resolve link / actor / date:** existing thread URL above; actor `4o3F`; date 2026-07-18 (no separate resolve URL or sub-day timestamp claimed).
 
 ---
 
@@ -73,7 +71,7 @@
 | Author            | `copilot-pull-request-reviewer` (Copilot)                                      |
 | Created           | 2026-07-12T12:43:48Z                                                           |
 | GraphQL thread id | `PRRT_kwDOKroWZM6QMw08`                                                        |
-| GraphQL resolved  | **false** (queried 2026-07-18)                                                 |
+| GraphQL resolved  | **true** (Path A, 2026-07-18)                                                  |
 
 **Original claim (faithful summary):**
 A unit test writes to `runtime_config_path()` derived from `dirs::app_config_dir()`, i.e. the real per-user config directory on non-Windows platforms. Panic/abort before restore, or concurrent tests, can corrupt a developer’s real config and introduce cross-test flakiness via shared global filesystem state.
@@ -87,8 +85,8 @@ A unit test writes to `runtime_config_path()` derived from `dirs::app_config_dir
 
 **Evidence pointers:** S02 `807f1733` lineage / task card; `design.md` §6.1–6.2; `smoke-evidence.md` §2 / §5.
 
-**GitHub resolution:** **PENDING**.
-**Resolve URL / actor / timestamp:** **PENDING / not discovered**.
+**GitHub resolution:** **Path A complete** — API mutation response `isResolved: true` for thread `PRRT_kwDOKroWZM6QMw08`; actor `4o3F`; date **2026-07-18**.
+**Resolve link / actor / date:** existing thread URL above; actor `4o3F`; date 2026-07-18 (no separate resolve URL or sub-day timestamp claimed).
 
 ---
 
@@ -102,7 +100,7 @@ A unit test writes to `runtime_config_path()` derived from `dirs::app_config_dir
 | Author                    | `chatgpt-codex-connector` (Codex)                                              |
 | Created                   | 2026-07-12T12:47:00Z                                                           |
 | GraphQL thread id         | `PRRT_kwDOKroWZM6QMxw3`                                                        |
-| GraphQL resolved          | **false** (queried 2026-07-18)                                                 |
+| GraphQL resolved          | **true** (Path A, 2026-07-18)                                                  |
 | Severity badge in comment | P2                                                                             |
 
 **Original claim (faithful summary):**
@@ -118,8 +116,8 @@ Because `change_core` only holds `rebuild_gate`, it no longer serializes the ful
 
 **Evidence pointers:** commits in lineage including `666b078d` (lifecycle serialization), S09 `b70aefb0` rebuild isolation; `design.md` §6.3 / §6.6 / §6.13.
 
-**GitHub resolution:** **PENDING**.
-**Resolve URL / actor / timestamp:** **PENDING / not discovered**.
+**GitHub resolution:** **Path A complete** — API mutation response `isResolved: true` for thread `PRRT_kwDOKroWZM6QMxw3`; actor `4o3F`; date **2026-07-18**.
+**Resolve link / actor / date:** existing thread URL above; actor `4o3F`; date 2026-07-18 (no separate resolve URL or sub-day timestamp claimed).
 
 ---
 
@@ -133,7 +131,7 @@ Because `change_core` only holds `rebuild_gate`, it no longer serializes the ful
 | Author                    | `chatgpt-codex-connector` (Codex)                                              |
 | Created                   | 2026-07-12T12:47:00Z                                                           |
 | GraphQL thread id         | `PRRT_kwDOKroWZM6QMxw5`                                                        |
-| GraphQL resolved          | **false** (queried 2026-07-18)                                                 |
+| GraphQL resolved          | **true** (Path A, 2026-07-18)                                                  |
 | Severity badge in comment | P2                                                                             |
 
 **Original claim (faithful summary):**
@@ -148,41 +146,44 @@ In the rollback-rebuild-failure branch, restoring/removing the product leaves `s
 
 **Evidence pointers:** S03 task disposition; runtime lifecycle work in branch history (e.g. `372f5493` applied snapshot restore lineage); `design.md` §4 / §6.4–6.5.
 
-**GitHub resolution:** **PENDING**.
-**Resolve URL / actor / timestamp:** **PENDING / not discovered**.
+**GitHub resolution:** **Path A complete** — API mutation response `isResolved: true` for thread `PRRT_kwDOKroWZM6QMxw5`; actor `4o3F`; date **2026-07-18**.
+**Resolve link / actor / date:** existing thread URL above; actor `4o3F`; date 2026-07-18 (no separate resolve URL or sub-day timestamp claimed).
 
 ---
 
-## 3. Why threads can remain open after code fix
+## 3. Path A execution record
 
-`#4932` is already **MERGED**. GraphQL still returns four unresolved threads. Likely causes (non-exclusive):
+On **2026-07-18**, authenticated actor **`4o3F`** executed GitHub Path A resolves for all four `#4932` review threads. API mutation responses returned `isResolved: true` for:
 
-- No maintainer clicked “Resolve conversation” after merge.
-- Fixes landed on follow-up branch `refactor/pr-4s` (`#4956`) rather than as commits on `#4932`.
-- Bot-authored threads were never re-reviewed post-fix.
+| Finding | GraphQL thread id       | Thread URL                                                                     |
+| ------- | ----------------------- | ------------------------------------------------------------------------------ |
+| RF-1    | `PRRT_kwDOKroWZM6QMw0z` | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566317999 |
+| RF-2    | `PRRT_kwDOKroWZM6QMw08` | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566318012 |
+| RF-3    | `PRRT_kwDOKroWZM6QMxw3` | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566323210 |
+| RF-4    | `PRRT_kwDOKroWZM6QMxw5` | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#discussion_r3566323213 |
 
-None of the above is treated as silent resolution.
+No more-precise wall-clock timestamp and no distinct “resolve event URL” beyond the existing discussion URLs and the API mutation responses are claimed.
+
+Earlier note that threads could remain open after merge (fixes on `refactor/pr-4s`) is historical; Path A is now complete.
 
 ---
 
-## 4. Thread-gate status (no path selected)
+## 4. Thread-gate status
 
-**Fact:** GraphQL reports **four** `#4932` threads with `isResolved: false` (RF-1…RF-4).
+**Fact:** all four `#4932` threads are **resolved** via **Path A** (`isResolved: true`, actor `4o3F`, date 2026-07-18).
 
-**Closeout requirement (unchosen):** for each of the four findings, maintainers must later supply **either** Path A (actual GitHub resolve) **or** Path B (explicit maintainer disposition recorded with date/rationale). This file records both as acceptable; it does **not** pick one.
+| Finding | GraphQL resolved | Path A (GitHub resolve)           | Path B (maintainer disposition note) | Thread-gate   |
+| ------- | ---------------- | --------------------------------- | ------------------------------------ | ------------- |
+| RF-1    | **true**         | **Complete** (`4o3F`, 2026-07-18) | Not required (Path A used)           | **SATISFIED** |
+| RF-2    | **true**         | **Complete** (`4o3F`, 2026-07-18) | Not required (Path A used)           | **SATISFIED** |
+| RF-3    | **true**         | **Complete** (`4o3F`, 2026-07-18) | Not required (Path A used)           | **SATISFIED** |
+| RF-4    | **true**         | **Complete** (`4o3F`, 2026-07-18) | Not required (Path A used)           | **SATISFIED** |
 
-| Finding | GraphQL resolved | Path A (GitHub resolve) | Path B (maintainer disposition note) | Thread-gate |
-| ------- | ---------------- | ----------------------- | ------------------------------------ | ----------- |
-| RF-1    | false            | **PENDING**             | **PENDING**                          | **OPEN**    |
-| RF-2    | false            | **PENDING**             | **PENDING**                          | **OPEN**    |
-| RF-3    | false            | **PENDING**             | **PENDING**                          | **OPEN**    |
-| RF-4    | false            | **PENDING**             | **PENDING**                          | **OPEN**    |
-
-| Supporting action                                                        | Owner                  | Status      |
-| ------------------------------------------------------------------------ | ---------------------- | ----------- |
-| Optional code-pointer replies on RF-1…RF-4 (helps either path)           | Maintainer / PR author | **PENDING** |
-| Ensure `#4956` (or successor atomic PR) references this disposition file | PR author              | **PENDING** |
-| Do not treat “code fixed on branch” as thread-gate close                 | Everyone               | Active rule |
+| Supporting action                                                        | Owner     | Status                |
+| ------------------------------------------------------------------------ | --------- | --------------------- |
+| Path A resolve RF-1…RF-4                                                 | `4o3F`    | **Done** (2026-07-18) |
+| Ensure `#4956` (or successor atomic PR) references this disposition file | PR author | Recommended / open    |
+| Do not treat thread-gate alone as PR-4S closeout                         | Everyone  | Active rule           |
 
 ---
 
@@ -193,7 +194,7 @@ None of the above is treated as silent resolution.
 | `#4932` approval review by `4o3F` | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#pullrequestreview-4680010628 — approval ≠ finding disposition |
 | Copilot PR overview review        | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#pullrequestreview-4680057410                                  |
 | Codex review wrapper              | https://github.com/libnyanpasu/clash-nyanpasu/pull/4932#pullrequestreview-4680062051                                  |
-| `#4956` review threads            | GraphQL returned **zero** threads at authoring time                                                                   |
+| `#4956` review threads            | GraphQL returned **zero** threads at earlier authoring time                                                           |
 
 ---
 
@@ -203,9 +204,11 @@ None of the above is treated as silent resolution.
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Four findings have identified URLs                        | **YES**                                                                                                  |
 | Four findings have implemented S0x code/test dispositions | **YES** (on `refactor/pr-4s` working tree / commits; not a claim that `#4932` itself contains the fixes) |
-| Four GitHub threads resolved (Path A)                     | **NO — PENDING**                                                                                         |
-| Explicit maintainer disposition per finding (Path B)      | **NO — PENDING**                                                                                         |
-| Thread-gate satisfied (Path A **or** Path B for each RF)  | **NO**                                                                                                   |
-| PR-4S / S10 closable on review-disposition grounds        | **NO**                                                                                                   |
+| Four GitHub threads resolved (Path A)                     | **YES** — actor `4o3F`, date 2026-07-18, API `isResolved: true` for all four thread ids                  |
+| Explicit maintainer disposition per finding (Path B)      | **Not required** (Path A used for all four)                                                              |
+| Thread-gate satisfied (Path A **or** Path B for each RF)  | **YES**                                                                                                  |
+| Manual smoke E-records complete                           | **NO — PENDING** (`smoke-evidence.md`)                                                                   |
+| Target-tip multi-OS CI complete                           | **NO — PENDING** (Q-09…Q-11)                                                                             |
+| PR-4S / S10 closable overall                              | **NO**                                                                                                   |
 
-This file records disposition truth. It does **not** mark PR-4S complete.
+**Review thread-gate is satisfied.** This file does **not** mark PR-4S / S10 complete while manual smoke and tip multi-OS CI remain open.

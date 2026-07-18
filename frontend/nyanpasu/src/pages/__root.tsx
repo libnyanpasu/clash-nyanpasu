@@ -24,8 +24,10 @@ import { message } from '@/utils/notification'
 import {
   events,
   NyanpasuProvider,
-  setDegradedRebuildHandler,
+  setMutationDegradationHandler,
   useSettings,
+  type Degradation,
+  type DegradationPhase,
 } from '@nyanpasu/interface'
 
 dayjs.extend(relativeTime)
@@ -118,15 +120,85 @@ function WindowReveal() {
   return null
 }
 
-function DegradedRebuildNotifier() {
+function localizeDegradationPhase(phase: DegradationPhase): string {
+  switch (phase) {
+    case 'legacy_mirror':
+      return m.mutation_degradation_phase_legacy_mirror()
+    case 'profile_materialization':
+      return m.mutation_degradation_phase_profile_materialization()
+    case 'runtime_build':
+      return m.mutation_degradation_phase_runtime_build()
+    case 'runtime_check':
+      return m.mutation_degradation_phase_runtime_check()
+    case 'runtime_promote':
+      return m.mutation_degradation_phase_runtime_promote()
+    case 'runtime_publish':
+      return m.mutation_degradation_phase_runtime_publish()
+    case 'runtime_apply':
+      return m.mutation_degradation_phase_runtime_apply()
+    case 'core_rollback':
+      return m.mutation_degradation_phase_core_rollback()
+    case 'system_effect':
+      return m.mutation_degradation_phase_system_effect()
+    case 'ui_effect':
+      return m.mutation_degradation_phase_ui_effect()
+    default: {
+      const _exhaustive: never = phase
+      return String(_exhaustive)
+    }
+  }
+}
+
+function localizeDegradationCode(code: string): string {
+  switch (code) {
+    case 'journal_invalid':
+      return m.mutation_degradation_code_journal_invalid()
+    case 'materialization_deferred':
+      return m.mutation_degradation_code_materialization_deferred()
+    case 'cleanup_deferred':
+      return m.mutation_degradation_code_cleanup_deferred()
+    case 'runtime_rebuild_failed':
+      return m.mutation_degradation_code_runtime_rebuild_failed()
+    case 'profile_auto_activation_failed':
+      return m.mutation_degradation_code_profile_auto_activation_failed()
+    default:
+      return m.mutation_degradation_code_unknown({ code })
+  }
+}
+
+function formatDegradationItem(degradation: Degradation): string {
+  return m.mutation_degraded_item({
+    phase: localizeDegradationPhase(degradation.phase),
+    detail: localizeDegradationCode(degradation.code),
+  })
+}
+
+function MutationDegradationNotifier() {
   useEffect(
     () =>
-      // setDegradedRebuildHandler 返回 disposer:useEffect cleanup 直接透传,
-      // StrictMode 双挂载 / HMR 下不留悬挂 handler(r2)。
-      setDegradedRebuildHandler((error) => {
-        message(m.profile_rebuild_degraded_message({ error }), {
-          title: 'Warning',
+      // setMutationDegradationHandler returns a disposer; useEffect cleanup
+      // passes it through so StrictMode remount / HMR leave no dangling handler.
+      setMutationDegradationHandler((degradations) => {
+        if (degradations.length === 0) {
+          return
+        }
+
+        // Backend `message` is diagnostic-only; primary copy is phase + code.
+        for (const degradation of degradations) {
+          console.warn('[mutation-degradation]', {
+            phase: degradation.phase,
+            code: degradation.code,
+            retryable: degradation.retryable,
+            message: degradation.message,
+          })
+        }
+
+        const items = degradations.map(formatDegradationItem).join('; ')
+        message(m.mutation_degraded_summary({ items }), {
+          title: m.mutation_degraded_title(),
           kind: 'warning',
+        }).catch((error) => {
+          console.error('[mutation-degradation] failed to show warning', error)
         })
       }),
     [],
@@ -148,7 +220,7 @@ export default function App() {
             <CustomCssProvider>
               <TooltipProvider>
                 <WindowReveal />
-                <DegradedRebuildNotifier />
+                <MutationDegradationNotifier />
                 <DeepLinkImport />
                 <Outlet />
               </TooltipProvider>

@@ -5,7 +5,8 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
-    ProfileDefinition, ProfileId, ProfileMetadataPatch, Profiles, RemoteProfileOptionsPatch,
+    ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
+    RemoteProfileOptions, RemoteProfileOptionsPatch,
 };
 use nyanpasu_core::state::PersistentStateManagerSetup;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
@@ -205,19 +206,22 @@ impl ProfilesClient {
         .await
     }
 
-    pub(crate) async fn refresh_import(
+    /// Fetch-before-commit remote import. No durable placeholder is written until
+    /// download + validation succeed and the caller is still awaiting the result.
+    pub async fn import(
         &self,
-        uid: ProfileId,
+        url: url::Url,
+        metadata: ProfileMetadata,
+        option: RemoteProfileOptions,
         update_interval_explicit: bool,
     ) -> Result<CommitReport, ProfilesError> {
         self.call(
-            |reply| ProfilesActorMessage::RefreshRemote {
-                uid,
-                patch: None,
-                origin: RefreshOrigin::Import {
-                    update_interval_explicit,
-                },
-                reply: Some(reply),
+            |reply| ProfilesActorMessage::ImportRemote {
+                url,
+                metadata,
+                option,
+                update_interval_explicit,
+                reply,
             },
             None,
         )
@@ -334,21 +338,6 @@ mod tests {
         materialization
             .expect_prepare_state_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
-        materialization
-            .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
-        materialization.expect_compensate().returning(|_| Ok(()));
-        Arc::new(materialization)
-    }
-
-    fn failing_file_promote_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
-        let mut materialization = MockProfileMaterializationPort::new();
-        materialization
-            .expect_reconcile()
-            .returning(|_| Ok(MaterializationReconcileReport::default()));
-        materialization
-            .expect_prepare_file_first()
-            .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
         materialization
             .expect_promote()
             .returning(|_| Err(anyhow::anyhow!("disk full")));
@@ -828,38 +817,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn manual_and_explicit_import_refresh_ignore_server_interval_suggestions() {
-        for import_explicit in [None, Some(true)] {
-            let fs = MockProfileFsPort::new();
-            let (client, _dir) = remote_seeded_client(
-                fs,
-                suggested_fetch("proxies: []\n", Some(360)),
-                MockRebuildNotifier::new(),
-            )
-            .await;
+    async fn manual_refresh_ignores_server_interval_suggestions() {
+        let fs = MockProfileFsPort::new();
+        let (client, _dir) = remote_seeded_client(
+            fs,
+            suggested_fetch("proxies: []\n", Some(360)),
+            MockRebuildNotifier::new(),
+        )
+        .await;
 
-            let report = if let Some(update_interval_explicit) = import_explicit {
-                client
-                    .refresh_import(ProfileId("r1".into()), update_interval_explicit)
-                    .await
-                    .unwrap()
-            } else {
-                client.refresh(ProfileId("r1".into()), None).await.unwrap()
-            };
-            let source = report.snapshot.items[&ProfileId("r1".into())]
-                .definition
-                .source()
-                .unwrap();
-            let ProfileSource::Remote { option, .. } = source else {
-                unreachable!()
-            };
-            assert_eq!(option.update_interval_minutes, 120);
-        }
+        let report = client.refresh(ProfileId("r1".into()), None).await.unwrap();
+        let source = report.snapshot.items[&ProfileId("r1".into())]
+            .definition
+            .source()
+            .unwrap();
+        let ProfileSource::Remote { option, .. } = source else {
+            unreachable!()
+        };
+        assert_eq!(option.update_interval_minutes, 120);
     }
 
     #[tokio::test(start_paused = true)]
     async fn import_suggestion_is_committed_and_reschedules_the_timer() {
-        let fs = MockProfileFsPort::new();
         let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut fetcher = MockSubscriptionFetcher::new();
         let counter = std::sync::Arc::clone(&fetch_count);
@@ -875,16 +854,32 @@ mod tests {
                 suggested_update_interval_minutes: Some(if call == 1 { 60 } else { 30 }),
             })
         });
-        let (client, _dir) = remote_seeded_client(fs, fetcher, MockRebuildNotifier::new()).await;
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
 
         let report = client
-            .refresh_import(ProfileId("r1".into()), false)
+            .import(
+                url::Url::parse("https://example.com/sub").unwrap(),
+                ProfileMetadata {
+                    name: "imported".into(),
+                    desc: None,
+                    custom_name: true,
+                },
+                RemoteProfileOptions::default(),
+                false,
+            )
             .await
             .unwrap();
-        let source = report.snapshot.items[&ProfileId("r1".into())]
-            .definition
-            .source()
-            .unwrap();
+        let uid = report.created.clone().expect("import creates a uid");
+        let source = report.snapshot.items[&uid].definition.source().unwrap();
         let ProfileSource::Remote { option, .. } = source else {
             unreachable!()
         };
@@ -894,10 +889,7 @@ mod tests {
         tokio::time::advance(std::time::Duration::from_secs(60 * 60 + 1)).await;
         for _ in 0..200 {
             let snapshot = client.get().await.unwrap();
-            let source = snapshot.items[&ProfileId("r1".into())]
-                .definition
-                .source()
-                .unwrap();
+            let source = snapshot.items[&uid].definition.source().unwrap();
             if matches!(
                 source,
                 ProfileSource::Remote { subscription, .. }
@@ -909,10 +901,7 @@ mod tests {
         }
         assert!(fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 2);
         let snapshot = client.get().await.unwrap();
-        let source = snapshot.items[&ProfileId("r1".into())]
-            .definition
-            .source()
-            .unwrap();
+        let source = snapshot.items[&uid].definition.source().unwrap();
         let ProfileSource::Remote {
             option,
             subscription,
@@ -958,41 +947,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn import_suggestion_is_not_committed_when_materialization_fails() {
+    async fn import_is_not_committed_when_materialization_promote_fails() {
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(suggested_fetch("proxies: []\n", Some(360))),
-            failing_file_promote_materialization_port(),
+            failing_state_promote_materialization_port(),
             Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
-        let mut profiles = Profiles::default();
-        profiles.append_item(remote_config_item("r1"));
-        client.replace(profiles).await.unwrap();
 
         assert!(
             client
-                .refresh_import(ProfileId("r1".into()), false)
+                .import(
+                    url::Url::parse("https://example.com/sub").unwrap(),
+                    ProfileMetadata {
+                        name: "imported".into(),
+                        desc: None,
+                        custom_name: true,
+                    },
+                    RemoteProfileOptions::default(),
+                    false,
+                )
                 .await
                 .is_err()
         );
-        let snapshot = client.get().await.unwrap();
-        let ProfileSource::Remote {
-            materialized,
-            option,
-            ..
-        } = snapshot.items[&ProfileId("r1".into())]
-            .definition
-            .source()
-            .unwrap()
-        else {
-            unreachable!()
-        };
-        assert!(materialized.updated_at.is_none());
-        assert_eq!(option.update_interval_minutes, 120);
+        assert!(
+            client.get().await.unwrap().items.is_empty(),
+            "state-first promote failure with full rollback must leave zero items"
+        );
     }
 
     #[tokio::test]
@@ -1682,6 +1667,87 @@ mod tests {
             .expect_err("promote failure must fail Add");
         assert!(matches!(err, ProfilesError::Materialization(_)));
         assert!(client.get().await.unwrap().items.is_empty());
+    }
+
+    /// H1: promote fails after durable forward CAS, then compensating state commit
+    /// also fails → mutation stays Ok(degraded) with forward head recoverable.
+    #[tokio::test]
+    async fn add_promote_failure_with_failed_compensating_state_returns_degraded_commit() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempdir().unwrap();
+        let parent = dir.path().to_path_buf();
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
+        let parent_for_promote = parent.clone();
+        materialization.expect_promote().returning(move |_| {
+            // Block profiles.yaml rewrite so the compensating state CAS fails while
+            // the already-committed forward head remains in memory + on disk.
+            std::fs::set_permissions(&parent_for_promote, std::fs::Permissions::from_mode(0o555))
+                .expect("make profiles parent read-only");
+            Err(anyhow::anyhow!("disk full"))
+        });
+        // Compensating state fails before materialization.compensate is reached.
+        let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        {
+            let compensate_calls = Arc::clone(&compensate_calls);
+            materialization.expect_compensate().returning(move |_| {
+                compensate_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            });
+        }
+
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+
+        let report = client
+            .add(add_placeholder_request(), Some("proxies: []\n".into()))
+            .await
+            .expect("failed compensating state keeps forward committed as degraded Ok");
+        let _ = std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755));
+
+        assert!(report.created.is_some(), "create must surface real uid");
+        assert_eq!(report.snapshot.items.len(), 1);
+        let created = report.created.clone().unwrap();
+        assert!(
+            client.get().await.unwrap().items.contains_key(&created),
+            "forward state must remain visible/recoverable after failed compensating CAS"
+        );
+        assert_eq!(report.degradations.len(), 1);
+        assert_eq!(
+            report.degradations[0].phase,
+            ProfileDegradationPhase::Reconcile
+        );
+        assert_eq!(
+            report.degradations[0].code,
+            ProfileDegradationCode::MaterializationDeferred
+        );
+        assert!(report.degradations[0].code.retryable());
+        assert!(
+            report.degradations[0].message.contains("promotion failed")
+                && report.degradations[0]
+                    .message
+                    .contains("compensating state commit failed"),
+            "degradation must carry the compound promote+compensate-state error: {}",
+            report.degradations[0].message
+        );
+        assert_eq!(
+            compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "materialization compensate runs only after compensating state succeeds"
+        );
     }
 
     #[tokio::test]
@@ -2856,5 +2922,490 @@ mod tests {
                 .unwrap(),
             ""
         );
+    }
+
+    fn import_metadata(name: &str, custom_name: bool) -> ProfileMetadata {
+        ProfileMetadata {
+            name: name.into(),
+            desc: None,
+            custom_name,
+        }
+    }
+
+    async fn wait_until_empty(client: &ProfilesClient) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            if client.get().await.unwrap().items.is_empty() {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "items did not stay empty after cancelled import"
+            );
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn import_happy_path_commits_complete_remote_profile() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(FetchedSubscription {
+                content: "proxies: []\n".into(),
+                filename: Some("Server Title".into()),
+                subscription: SubscriptionInfo {
+                    upload: Some(9),
+                    download: Some(3),
+                    total: Some(100),
+                    expire: None,
+                },
+                suggested_update_interval_minutes: Some(180),
+            })
+        });
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+
+        let report = client
+            .import(
+                url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap(),
+                import_metadata("url-name", false),
+                RemoteProfileOptions::default(),
+                false,
+            )
+            .await
+            .expect("import");
+        let uid = report.created.expect("import must return created uid");
+        let item = &report.snapshot.items[&uid];
+        assert_eq!(item.metadata.name, "Server Title");
+        assert!(!item.metadata.custom_name);
+        let ProfileSource::Remote {
+            url,
+            option,
+            subscription,
+            materialized,
+        } = item.definition.source().unwrap()
+        else {
+            panic!("expected remote");
+        };
+        assert_eq!(url.as_str(), "https://example.com/subs/my-sub.yaml");
+        assert_eq!(option.update_interval_minutes, 180);
+        assert_eq!(subscription.upload, Some(9));
+        assert_eq!(subscription.download, Some(3));
+        assert!(materialized.updated_at.is_some());
+        assert_eq!(materialized.file.as_str(), format!("{uid}.yaml"));
+    }
+
+    #[tokio::test]
+    async fn import_fetch_failure_leaves_zero_items_without_delete_compensation() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher
+            .expect_fetch()
+            .times(1)
+            .returning(|_, _| anyhow::bail!("dns exploded"));
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        // No prepare/promote/cleanup expectations: failure must not touch journals.
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            Arc::new(materialization),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+
+        let err = client
+            .import(
+                url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                import_metadata("x", true),
+                RemoteProfileOptions::default(),
+                false,
+            )
+            .await
+            .expect_err("fetch failure");
+        assert!(matches!(err, ProfilesError::ImportFailed { .. }));
+        assert!(client.get().await.unwrap().items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn import_fetch_panic_returns_import_failed_and_clears_pending() {
+        let dir = tempdir().unwrap();
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        struct PanicOnceThenSucceedFetcher {
+            calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        }
+        #[async_trait::async_trait]
+        impl SubscriptionFetcher for PanicOnceThenSucceedFetcher {
+            async fn fetch(
+                &self,
+                _url: &url::Url,
+                _options: &RemoteProfileOptions,
+            ) -> anyhow::Result<FetchedSubscription> {
+                let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                if call == 1 {
+                    panic!("boom in subscription fetch");
+                }
+                Ok(FetchedSubscription {
+                    content: "proxies: []\n".into(),
+                    filename: None,
+                    subscription: SubscriptionInfo::default(),
+                    suggested_update_interval_minutes: None,
+                })
+            }
+        }
+
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(PanicOnceThenSucceedFetcher {
+                calls: std::sync::Arc::clone(&calls),
+            }),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+
+        let err = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            client.import(
+                url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                import_metadata("x", true),
+                RemoteProfileOptions::default(),
+                false,
+            ),
+        )
+        .await
+        .expect("import must complete after fetch panic")
+        .expect_err("panic must surface as ImportFailed");
+        assert!(matches!(
+            err,
+            ProfilesError::ImportFailed { message } if message == "subscription fetch task panicked"
+        ));
+        assert!(client.get().await.unwrap().items.is_empty());
+
+        // Pending import must be cleared: a subsequent valid import proceeds.
+        client
+            .import(
+                url::Url::parse("https://example.com/subs/y.yaml").unwrap(),
+                import_metadata("y", true),
+                RemoteProfileOptions::default(),
+                false,
+            )
+            .await
+            .expect("second import after fetch panic");
+        assert_eq!(client.get().await.unwrap().items.len(), 1);
+        assert!(calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+    }
+
+    #[tokio::test]
+    async fn import_caller_abort_during_successful_fetch_commits_nothing() {
+        let dir = tempdir().unwrap();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        struct AbortThenSucceedFetcher {
+            started: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+            release: std::sync::Arc<tokio::sync::Notify>,
+            calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        }
+        #[async_trait::async_trait]
+        impl SubscriptionFetcher for AbortThenSucceedFetcher {
+            async fn fetch(
+                &self,
+                _url: &url::Url,
+                _options: &RemoteProfileOptions,
+            ) -> anyhow::Result<FetchedSubscription> {
+                let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                if call == 1 {
+                    if let Some(started) = self.started.lock().unwrap().take() {
+                        let _ = started.send(());
+                    }
+                    self.release.notified().await;
+                }
+                Ok(FetchedSubscription {
+                    content: "proxies: []\n".into(),
+                    filename: None,
+                    subscription: SubscriptionInfo::default(),
+                    suggested_update_interval_minutes: None,
+                })
+            }
+        }
+
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(AbortThenSucceedFetcher {
+                started: std::sync::Mutex::new(Some(started_tx)),
+                release: std::sync::Arc::clone(&release),
+                calls: std::sync::Arc::clone(&calls),
+            }),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let client_for_task = client.clone();
+        let handle = tokio::spawn(async move {
+            client_for_task
+                .import(
+                    url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                    import_metadata("x", true),
+                    RemoteProfileOptions::default(),
+                    false,
+                )
+                .await
+        });
+        started_rx.await.expect("fetch started");
+        handle.abort();
+        let _ = handle.await;
+        release.notify_waiters();
+        wait_until_empty(&client).await;
+        // Pending import must be cleared: a subsequent import on the same actor proceeds.
+        client
+            .import(
+                url::Url::parse("https://example.com/subs/y.yaml").unwrap(),
+                import_metadata("y", true),
+                RemoteProfileOptions::default(),
+                false,
+            )
+            .await
+            .expect("second import after abort");
+        assert_eq!(client.get().await.unwrap().items.len(), 1);
+        assert!(calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+    }
+
+    #[tokio::test]
+    async fn import_caller_abort_during_fetch_failure_leaves_nothing() {
+        let dir = tempdir().unwrap();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+
+        struct FailingHoldingFetcher {
+            started: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+            release: std::sync::Arc<tokio::sync::Notify>,
+        }
+        #[async_trait::async_trait]
+        impl SubscriptionFetcher for FailingHoldingFetcher {
+            async fn fetch(
+                &self,
+                _url: &url::Url,
+                _options: &RemoteProfileOptions,
+            ) -> anyhow::Result<FetchedSubscription> {
+                if let Some(started) = self.started.lock().unwrap().take() {
+                    let _ = started.send(());
+                }
+                self.release.notified().await;
+                anyhow::bail!("dns exploded after cancel")
+            }
+        }
+
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(FailingHoldingFetcher {
+                started: std::sync::Mutex::new(Some(started_tx)),
+                release: std::sync::Arc::clone(&release),
+            }),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let client_for_task = client.clone();
+        let handle = tokio::spawn(async move {
+            client_for_task
+                .import(
+                    url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                    import_metadata("x", true),
+                    RemoteProfileOptions::default(),
+                    false,
+                )
+                .await
+        });
+        started_rx.await.expect("fetch started");
+        handle.abort();
+        let _ = handle.await;
+        release.notify_waiters();
+        wait_until_empty(&client).await;
+    }
+
+    #[tokio::test]
+    async fn import_client_drop_while_fetch_blocked_leaves_no_durable_item() {
+        let dir = tempdir().unwrap();
+        let path = temp_profiles_path(&dir);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+        let fetcher = HoldingFetcher {
+            started: std::sync::Mutex::new(Some(started_tx)),
+            release: std::sync::Arc::clone(&release),
+        };
+        let client = ProfilesClient::new(
+            path.clone(),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let handle = tokio::spawn(async move {
+            client
+                .import(
+                    url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                    import_metadata("x", true),
+                    RemoteProfileOptions::default(),
+                    false,
+                )
+                .await
+        });
+        started_rx.await.expect("fetch started");
+        // Dropping the client (via task abort of the only clone owner after spawn
+        // moved it) stops the actor; any in-flight fetch must not materialize.
+        handle.abort();
+        let _ = handle.await;
+        release.notify_waiters();
+        // Allow the aborted fetch task to finish casting against a stopped actor.
+        for _ in 0..20 {
+            tokio::task::yield_now().await;
+        }
+        let client = ProfilesClient::new(
+            path,
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        assert!(client.get().await.unwrap().items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn import_explicit_interval_and_pinned_name_remain_authoritative() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(FetchedSubscription {
+                content: "proxies: []\n".into(),
+                filename: Some("Server Title".into()),
+                subscription: SubscriptionInfo::default(),
+                suggested_update_interval_minutes: Some(360),
+            })
+        });
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let option = RemoteProfileOptions {
+            update_interval_minutes: 45,
+            ..RemoteProfileOptions::default()
+        };
+        let report = client
+            .import(
+                url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                import_metadata("Pinned Name", true),
+                option,
+                true,
+            )
+            .await
+            .expect("import");
+        let uid = report.created.unwrap();
+        let item = &report.snapshot.items[&uid];
+        assert_eq!(item.metadata.name, "Pinned Name");
+        assert!(item.metadata.custom_name);
+        let ProfileSource::Remote { option, .. } = item.definition.source().unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(option.update_interval_minutes, 45);
+    }
+
+    #[tokio::test]
+    async fn import_suggested_interval_applies_only_when_not_explicit() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(FetchedSubscription {
+                content: "proxies: []\n".into(),
+                filename: None,
+                subscription: SubscriptionInfo::default(),
+                suggested_update_interval_minutes: Some(240),
+            })
+        });
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let report = client
+            .import(
+                url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                import_metadata("x", true),
+                RemoteProfileOptions::default(),
+                false,
+            )
+            .await
+            .expect("import");
+        let uid = report.created.unwrap();
+        let ProfileSource::Remote { option, .. } =
+            report.snapshot.items[&uid].definition.source().unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(option.update_interval_minutes, 240);
+    }
+
+    #[tokio::test]
+    async fn import_rejects_zero_interval_before_fetch() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(0);
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let option = RemoteProfileOptions {
+            update_interval_minutes: 0,
+            ..RemoteProfileOptions::default()
+        };
+        let err = client
+            .import(
+                url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                import_metadata("x", true),
+                option,
+                true,
+            )
+            .await
+            .expect_err("zero interval");
+        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        assert!(client.get().await.unwrap().items.is_empty());
     }
 }

@@ -134,7 +134,7 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<CommitOutcome<ProfileId>, string>(
+    typedError<MutationOutcome<ProfileId>, string>(
       __TAURI_INVOKE('import_profile', { url, name, option }),
     ),
   /**
@@ -148,15 +148,15 @@ export const commands = {
     request: NewProfileRequest_Deserialize,
     fileData: string | null,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<ProfileId>, string>(
       __TAURI_INVOKE('create_profile', { request, fileData }),
     ),
   reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('reorder_profile', { activeId, overId }),
     ),
   reorderProfilesByList: (list: ProfileId[]) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('reorder_profiles_by_list', { list }),
     ),
   updateProfile: (
@@ -168,44 +168,44 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('update_profile', { uid, option }),
     ),
   deleteProfile: (uid: ProfileId) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('delete_profile', { uid }),
     ),
   activateProfile: (uid: string | null) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('activate_profile', { uid }),
     ),
   setGlobalTransforms: (ids: ProfileId[]) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('set_global_transforms', { ids }),
     ),
   setProfileValidFields: (fields: string[]) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('set_profile_valid_fields', { fields }),
     ),
   patchProfileMetadata: (
     uid: ProfileId,
     patch: ProfileMetadataPatch_Deserialize,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('patch_profile_metadata', { uid, patch }),
     ),
   patchRemoteProfileOptions: (
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch_Deserialize,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('patch_remote_profile_options', { uid, patch }),
     ),
   replaceProfileDefinition: (
     uid: ProfileId,
     definition: ProfileDefinition_Deserialize,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('replace_profile_definition', { uid, definition }),
     ),
   viewProfile: (uid: ProfileId) =>
@@ -510,12 +510,6 @@ export type ClashWsTraffic = {
   down: number
 }
 
-/**  Mutation payload + rebuild outcome for data-carrying commands (import). */
-export type CommitOutcome<T> = {
-  value: T
-  rebuild: RebuildOutcome
-}
-
 export type CompositionConfig =
   | CompositionConfig_Serialize
   | CompositionConfig_Deserialize
@@ -601,6 +595,28 @@ export type CoreInfos = {
 export type CoreState = 'Running' | { Stopped: string | null }
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
+
+/**  Structured committed-degraded detail surfaced over IPC / Specta. */
+export type Degradation = {
+  phase: DegradationPhase
+  /**  Stable snake_case code string (not a free-form English phrase). */
+  code: string
+  message: string
+  retryable: boolean
+}
+
+/**  Public degradation phases for mutation outcomes. Serde/Specta use snake_case. */
+export type DegradationPhase =
+  | 'legacy_mirror'
+  | 'profile_materialization'
+  | 'runtime_build'
+  | 'runtime_check'
+  | 'runtime_promote'
+  | 'runtime_publish'
+  | 'runtime_apply'
+  | 'core_rollback'
+  | 'system_effect'
+  | 'ui_effect'
 
 export type DelayRes = {
   delay: number
@@ -1058,6 +1074,16 @@ export type MaterializedFile_Serialize = {
   /**  Last successful materialization time. */
   updated_at?: number | null
 }
+
+/**
+ *  Public mutation wire (PR-4S S08 / plan §12): state is committed first; post-
+ *  commit side-effect failures degrade instead of erroring.
+ *
+ *  Final wire is only `applied` / `committed_degraded` — no `_v1` alias.
+ */
+export type MutationOutcome<T> =
+  | { status: 'applied'; value: T }
+  | { status: 'committed_degraded'; value: T; degradations: Degradation[] }
 
 export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
 
@@ -1708,14 +1734,6 @@ export type ProxyProviderItem_Serialize = {
   testUrl?: string | null
   expectedStatus?: string | null
 }
-
-/**
- *  Post-commit rebuild result for mutation IPC (spec §6.2, decision D2):
- *  state is committed first; a failed rebuild degrades instead of erroring.
- */
-export type RebuildOutcome =
-  | { status: 'ok' }
-  | { status: 'degraded'; error: string }
 
 export type RemoteProfileOptionsPatch =
   | RemoteProfileOptionsPatch_Serialize

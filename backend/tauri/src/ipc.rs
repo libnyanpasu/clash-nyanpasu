@@ -148,17 +148,12 @@ pub async fn import_profile(
     url: String,
     name: Option<String>,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<crate::client::runtime::CommitOutcome<ProfileId>> {
+) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     // `name` carries deep-link intent (e.g. an install-config `name=` param);
     // when absent the facade derives the name from the url server-side. Return
-    // the created uid plus the rebuild outcome so a degraded post-import
-    // rebuild surfaces to the UI.
-    let (uid, rebuild) = client.import_profile(url, name, option).await?;
-    Ok(crate::client::runtime::CommitOutcome {
-        value: uid,
-        rebuild,
-    })
+    // MutationOutcome so a degraded post-import rebuild still carries the uid.
+    Ok(client.import_profile(url, name, option).await?)
 }
 
 /// Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
@@ -199,9 +194,9 @@ pub async fn create_profile(
     client: State<'_, NyanpasuClient>,
     request: NewProfileRequest,
     file_data: Option<String>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
-    let (_uid, rebuild) = client.create_profile(request, file_data).await?;
-    Ok(rebuild)
+) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
+    // Must return the created ProfileId; never drop it on the wire.
+    Ok(client.create_profile(request, file_data).await?)
 }
 
 #[tauri::command]
@@ -210,7 +205,7 @@ pub async fn reorder_profile(
     client: State<'_, NyanpasuClient>,
     active_id: ProfileId,
     over_id: ProfileId,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.reorder_profile(active_id, over_id).await?)
 }
 
@@ -219,7 +214,7 @@ pub async fn reorder_profile(
 pub async fn reorder_profiles_by_list(
     client: State<'_, NyanpasuClient>,
     list: Vec<ProfileId>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.reorder_profiles_by_list(list).await?)
 }
 
@@ -229,7 +224,7 @@ pub async fn update_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.refresh_profile(uid, option).await?)
 }
 
@@ -238,7 +233,7 @@ pub async fn update_profile(
 pub async fn delete_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.delete_profile(uid).await?)
 }
 
@@ -247,7 +242,7 @@ pub async fn delete_profile(
 pub async fn activate_profile(
     client: State<'_, NyanpasuClient>,
     uid: Option<ProfileId>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.activate_profile(uid).await?)
 }
 
@@ -256,7 +251,7 @@ pub async fn activate_profile(
 pub async fn set_global_transforms(
     client: State<'_, NyanpasuClient>,
     ids: Vec<ProfileId>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.set_global_transforms(ids).await?)
 }
 
@@ -265,7 +260,7 @@ pub async fn set_global_transforms(
 pub async fn set_profile_valid_fields(
     client: State<'_, NyanpasuClient>,
     fields: Vec<String>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.set_profile_valid_fields(fields).await?)
 }
 
@@ -275,7 +270,7 @@ pub async fn patch_profile_metadata(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: ProfileMetadataPatch,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.patch_profile_metadata(uid, patch).await?)
 }
 
@@ -285,7 +280,7 @@ pub async fn patch_remote_profile_options(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.patch_remote_profile_options(uid, patch).await?)
 }
 
@@ -295,7 +290,7 @@ pub async fn replace_profile_definition(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     definition: ProfileDefinition,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.replace_profile_definition(uid, definition).await?)
 }
 

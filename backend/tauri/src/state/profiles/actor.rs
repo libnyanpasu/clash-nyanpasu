@@ -4,10 +4,11 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use nyanpasu_config::profile::{
-    ConfigDefinition, ExternalMode, LocalBinding, ManagedProfilePath, ProfileDefinition,
-    ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata, ProfileMetadataPatch,
-    ProfileRevisionError, ProfileSource, ProfileValidationError, Profiles,
-    RemoteProfileOptionsPatch, ScriptRuntime, SubscriptionInfo, TransformDefinition,
+    ConfigDefinition, ExternalMode, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
+    ProfileDefinition, ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata,
+    ProfileMetadataPatch, ProfileRevisionError, ProfileSource, ProfileValidationError, Profiles,
+    RemoteProfileOptions, RemoteProfileOptionsPatch, ScriptRuntime, SubscriptionInfo,
+    TransformDefinition,
 };
 use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
@@ -54,6 +55,8 @@ pub enum ProfilesError {
     FileNotWritable { reason: String },
     #[error("refresh failed: {message}")]
     RefreshFailed { message: String },
+    #[error("import failed: {message}")]
+    ImportFailed { message: String },
     #[error("failed to persist profiles: {0}")]
     Persist(String),
     #[error("profiles state version conflict: expected {expected}, actual {actual}")]
@@ -73,9 +76,23 @@ pub struct CommitReport {
     pub affects_current: bool,
     /// Crate-internal detail for committed mutations that left maintenance work.
     pub(crate) degradations: Vec<ProfileDegradation>,
-    /// Server-generated uid (D13); set only by Add, consumed by import
-    /// auto-activation (design §9).
+    /// Server-generated uid (D13); set by Add / import commit, consumed by
+    /// facade auto-activation (design §9).
     pub created: Option<ProfileId>,
+}
+
+/// Outcome of undoing a state-first mutation after promote failure.
+/// Distinguishes full state rollback (hard error) from a retained forward head
+/// (committed + MaterializationDeferred degradation). No string matching required.
+enum StateFirstRollbackOutcome {
+    /// Compensating state commit succeeded. Residual cancel/compensate failures
+    /// still compound into a hard error at the call site.
+    RolledBack {
+        materialization_failures: Vec<String>,
+    },
+    /// Compensating state commit failed; forward head remains authoritative and
+    /// was reconciled for index/scheduler/journal recovery.
+    ForwardRetained { error: ProfilesError },
 }
 
 #[derive(Debug, Clone, serde::Deserialize, specta::Type)]
@@ -108,6 +125,8 @@ pub struct ProfilesActorState {
     materialization: Arc<dyn ProfileMaterializationPort>,
     notifier: Arc<dyn RebuildNotifier>,
     pending_refresh: HashMap<ProfileId, PendingRefresh>,
+    pending_imports: HashMap<ImportOperationToken, PendingImport>,
+    next_import_token: u64,
     scheduler: RemoteUpdateScheduler,
     external_watchers: ExternalWatchers,
     /// Periodic journal recovery. Background task only casts; actor owns work.
@@ -116,25 +135,24 @@ pub struct ProfilesActorState {
 
 struct PendingRefresh {
     reply: Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>,
-    apply_suggested_interval: bool,
+}
+
+/// In-memory handle for one fetch-before-commit import. Never durable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ImportOperationToken(u64);
+
+struct PendingImport {
+    reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    metadata: ProfileMetadata,
+    url: url::Url,
+    option: RemoteProfileOptions,
+    update_interval_explicit: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum RefreshOrigin {
-    Import { update_interval_explicit: bool },
     Manual,
     Scheduled,
-}
-
-impl RefreshOrigin {
-    fn apply_suggested_interval(self) -> bool {
-        matches!(
-            self,
-            Self::Import {
-                update_interval_explicit: false
-            }
-        )
-    }
 }
 
 #[derive(Debug)]
@@ -229,6 +247,19 @@ pub enum ProfilesActorMessage {
         /// for. Commit is discarded if either stale fence changed in flight.
         url: url::Url,
         definition_fingerprint: String,
+        outcome: RefreshOutcome,
+    },
+    /// Fetch-before-commit remote import. No durable placeholder is written
+    /// until download + validation succeed and the caller is still live.
+    ImportRemote {
+        url: url::Url,
+        metadata: ProfileMetadata,
+        option: RemoteProfileOptions,
+        update_interval_explicit: bool,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    CommitImported {
+        token: ImportOperationToken,
         outcome: RefreshOutcome,
     },
     ExternalFileChanged {
@@ -461,11 +492,65 @@ impl ProfilesActor {
                 Ok(Some(MaterializationResource::File { content }))
             }
             ProfileSource::Remote { .. } => Ok(Some(MaterializationResource::File {
-                // Imports refresh this durable staged placeholder with file-first
-                // materialization; failed initial refresh uses transactional Delete.
+                // Direct Add of a remote source still stages an empty file.
+                // Remote *import* never uses this path: it fetch-before-commits
+                // real bytes through ImportRemote / CommitImported.
                 content: String::new(),
             })),
         }
+    }
+
+    fn remote_import_definition(
+        url: url::Url,
+        option: RemoteProfileOptions,
+        file: ManagedProfilePath,
+        subscription: SubscriptionInfo,
+        updated_at: Option<time::OffsetDateTime>,
+    ) -> ProfileDefinition {
+        ProfileDefinition::Config {
+            config: ConfigDefinition::File(FileConfig {
+                source: ProfileSource::Remote {
+                    materialized: MaterializedFile { file, updated_at },
+                    url,
+                    option,
+                    subscription,
+                },
+                transforms: vec![],
+            }),
+        }
+    }
+
+    /// Validate URL/options against the live document without writing state/files.
+    fn validate_import_request(
+        before: &Profiles,
+        metadata: &ProfileMetadata,
+        url: url::Url,
+        option: RemoteProfileOptions,
+    ) -> Result<(), ProfilesError> {
+        let definition = Self::remote_import_definition(
+            url,
+            option,
+            ManagedProfilePath::new("pending.yaml").expect("static managed path is valid"),
+            SubscriptionInfo::default(),
+            None,
+        );
+        let uid = Self::generate_uid(&definition, before);
+        let mut next = before.clone();
+        let mut definition = definition;
+        let ext = Self::canonical_extension(&definition);
+        if let Some(source) = definition.source_mut() {
+            source.materialized_mut().file = ManagedProfilePath::new(format!("{uid}.{ext}"))
+                .expect("uid-derived path is always a valid managed path");
+        }
+        if !next.append_item(ProfileItem {
+            uid,
+            metadata: metadata.clone(),
+            definition,
+        }) {
+            return Err(ProfilesError::Persist("uid collision".into()));
+        }
+        next.validate().map_err(ProfilesError::ValidationFailed)?;
+        Ok(())
     }
 
     async fn rollback_state_first(
@@ -474,12 +559,23 @@ impl ProfilesActor {
         before: &Profiles,
         prepared: Option<PreparedMaterialization>,
         cleanup: Option<PreparedCleanup>,
-    ) -> Result<(), ProfilesError> {
+    ) -> StateFirstRollbackOutcome {
         let versioned = state.manager.snapshot_handle().load();
         let expected_version = versioned.version;
         let committed = versioned.state.clone();
         drop(versioned);
-        let rollback = Self::rollback_candidate(before, &committed)?;
+        let rollback = match Self::rollback_candidate(before, &committed) {
+            Ok(rollback) => rollback,
+            Err(error) => {
+                // Forward state is already durable; keep derived state on that head.
+                Self::reconcile_committed(myself, state, &committed);
+                return StateFirstRollbackOutcome::ForwardRetained {
+                    error: ProfilesError::Materialization(format!(
+                        "compensating state commit failed; materialization journal remains recoverable: {error}"
+                    )),
+                };
+            }
+        };
         let rollback_snapshot = match Self::persist_candidate(state, expected_version, rollback)
             .await
         {
@@ -488,32 +584,33 @@ impl ProfilesActor {
                 // Forward state is already durable. Keep all derived state aligned
                 // with that committed head while reconciliation finishes recovery.
                 Self::reconcile_committed(myself, state, &committed);
-                return Err(ProfilesError::Materialization(format!(
-                    "compensating state commit failed; materialization journal remains recoverable: {error}"
-                )));
+                return StateFirstRollbackOutcome::ForwardRetained {
+                    error: ProfilesError::Materialization(format!(
+                        "compensating state commit failed; materialization journal remains recoverable: {error}"
+                    )),
+                };
             }
         };
 
-        let mut failures = Vec::new();
+        let mut materialization_failures = Vec::new();
         if let Some(cleanup) = cleanup {
             if let Err(error) =
                 Self::materialization_call(state, move |port| port.cancel_cleanup(&cleanup)).await
             {
-                failures.push(format!("failed to cancel cleanup: {error}"));
+                materialization_failures.push(format!("failed to cancel cleanup: {error}"));
             }
         }
         if let Some(prepared) = prepared {
             if let Err(error) =
                 Self::materialization_call(state, move |port| port.compensate(&prepared)).await
             {
-                failures.push(format!("failed to compensate materialization: {error}"));
+                materialization_failures
+                    .push(format!("failed to compensate materialization: {error}"));
             }
         }
         Self::reconcile_committed(myself, state, &rollback_snapshot);
-        if failures.is_empty() {
-            Ok(())
-        } else {
-            Err(ProfilesError::Materialization(failures.join("; ")))
+        StateFirstRollbackOutcome::RolledBack {
+            materialization_failures,
         }
     }
 
@@ -635,17 +732,47 @@ impl ProfilesActor {
             })
             .await
             {
-                let rollback =
-                    Self::rollback_state_first(myself, state, &before, Some(prepared), cleanup)
-                        .await;
-                return Err(match rollback {
-                    Ok(()) => {
-                        Self::materialization_error("materialization promotion failed", error)
-                    }
-                    Err(rollback) => ProfilesError::Materialization(format!(
-                        "materialization promotion failed: {error}; {rollback}"
+                // State CAS already committed. Full rollback → hard error; failed
+                // compensating state with forward retained → degraded Ok report.
+                return match Self::rollback_state_first(
+                    myself,
+                    state,
+                    &before,
+                    Some(prepared),
+                    cleanup,
+                )
+                .await
+                {
+                    StateFirstRollbackOutcome::RolledBack {
+                        materialization_failures,
+                    } if materialization_failures.is_empty() => Err(Self::materialization_error(
+                        "materialization promotion failed",
+                        error,
                     )),
-                });
+                    StateFirstRollbackOutcome::RolledBack {
+                        materialization_failures,
+                    } => {
+                        let residual =
+                            ProfilesError::Materialization(materialization_failures.join("; "));
+                        Err(ProfilesError::Materialization(format!(
+                            "materialization promotion failed: {error}; {residual}"
+                        )))
+                    }
+                    StateFirstRollbackOutcome::ForwardRetained {
+                        error: rollback_error,
+                    } => Ok(CommitReport {
+                        affects_current: Self::evaluate_affects(&affects, &before, &snapshot),
+                        snapshot,
+                        degradations: vec![ProfileDegradation {
+                            phase: ProfileDegradationPhase::Reconcile,
+                            code: ProfileDegradationCode::MaterializationDeferred,
+                            message: format!(
+                                "materialization promotion failed: {error}; {rollback_error}"
+                            ),
+                        }],
+                        created,
+                    }),
+                };
             }
             if let Err(error) =
                 Self::materialization_call(state, move |port| port.complete(&prepared)).await
@@ -949,6 +1076,8 @@ impl Actor for ProfilesActor {
             materialization: args.materialization,
             notifier: args.notifier,
             pending_refresh: HashMap::new(),
+            pending_imports: HashMap::new(),
+            next_import_token: 1,
             scheduler: RemoteUpdateScheduler::default(),
             external_watchers: ExternalWatchers::default(),
             reconcile_task: None,
@@ -1221,7 +1350,7 @@ impl Actor for ProfilesActor {
             ProfilesActorMessage::RefreshRemote {
                 uid,
                 patch,
-                origin,
+                origin: _origin,
                 reply,
             } => {
                 if state.pending_refresh.contains_key(&uid) {
@@ -1290,13 +1419,9 @@ impl Actor for ProfilesActor {
                 };
                 let url = url.clone();
                 let option = option.clone();
-                state.pending_refresh.insert(
-                    uid.clone(),
-                    PendingRefresh {
-                        reply,
-                        apply_suggested_interval: origin.apply_suggested_interval(),
-                    },
-                );
+                state
+                    .pending_refresh
+                    .insert(uid.clone(), PendingRefresh { reply });
                 let fetcher = Arc::clone(&state.fetcher);
                 let actor = myself.clone();
                 tokio::spawn(async move {
@@ -1349,10 +1474,7 @@ impl Actor for ProfilesActor {
                 let pending = state
                     .pending_refresh
                     .remove(&uid)
-                    .unwrap_or(PendingRefresh {
-                        reply: None,
-                        apply_suggested_interval: false,
-                    });
+                    .unwrap_or(PendingRefresh { reply: None });
                 let reply = pending.reply;
                 let result = match outcome {
                     RefreshOutcome::Failed { message } => {
@@ -1360,7 +1482,7 @@ impl Actor for ProfilesActor {
                     }
                     RefreshOutcome::Succeeded {
                         subscription,
-                        suggested_update_interval_minutes,
+                        suggested_update_interval_minutes: _,
                         content,
                         filename,
                     } => {
@@ -1423,21 +1545,15 @@ impl Actor for ProfilesActor {
                                                 match item.definition.source_mut() {
                                                     Some(ProfileSource::Remote {
                                                         materialized,
-                                                        option,
                                                         subscription: slot,
                                                         ..
                                                     }) => {
                                                         materialized.updated_at =
                                                             Some(time::OffsetDateTime::now_utc());
                                                         *slot = subscription;
-                                                        if pending.apply_suggested_interval {
-                                                            if let Some(minutes) =
-                                                                suggested_update_interval_minutes
-                                                            {
-                                                                option.update_interval_minutes =
-                                                                    minutes;
-                                                            }
-                                                        }
+                                                        // Manual/scheduled refresh never adopts
+                                                        // server interval suggestions; import
+                                                        // applies them only on first commit.
                                                         Self::commit_file_first(
                                                             &myself,
                                                             state,
@@ -1476,6 +1592,180 @@ impl Actor for ProfilesActor {
                 if let Some(reply) = reply {
                     let _ = reply.send(result);
                 }
+            }
+            ProfilesActorMessage::ImportRemote {
+                url,
+                metadata,
+                option,
+                update_interval_explicit,
+                reply,
+            } => {
+                let before = Self::current_state(state);
+                if let Err(error) =
+                    Self::validate_import_request(&before, &metadata, url.clone(), option.clone())
+                {
+                    let _ = reply.send(Err(error));
+                    return Ok(());
+                }
+
+                let token = ImportOperationToken(state.next_import_token);
+                state.next_import_token = state.next_import_token.wrapping_add(1).max(1);
+                state.pending_imports.insert(
+                    token,
+                    PendingImport {
+                        reply,
+                        metadata,
+                        url: url.clone(),
+                        option: option.clone(),
+                        update_interval_explicit,
+                    },
+                );
+
+                let fetcher = Arc::clone(&state.fetcher);
+                let actor = myself.clone();
+                // Content validation uses a Config definition shape; import is
+                // always a remote Config File profile.
+                let definition_for_validation = Self::remote_import_definition(
+                    url.clone(),
+                    option.clone(),
+                    ManagedProfilePath::new("pending.yaml").expect("static managed path is valid"),
+                    SubscriptionInfo::default(),
+                    None,
+                );
+                // Supervise the fetch future so a panic still produces one
+                // CommitImported outcome. Without this, an unsupervised panic
+                // leaves pending_imports and a timeout-less RPC stuck forever.
+                // Actor shutdown / cast failure remains safe: pending state drops.
+                tokio::spawn(async move {
+                    let fetch_result = tokio::spawn(async move {
+                        let fetched = fetcher
+                            .fetch(&url, &option)
+                            .await
+                            .map_err(|e| format!("download failed: {e}"))?;
+                        Self::validate_fetched_content(
+                            &definition_for_validation,
+                            &fetched.content,
+                        )?;
+                        Ok::<_, String>((
+                            fetched.subscription,
+                            fetched.suggested_update_interval_minutes,
+                            fetched.content,
+                            fetched.filename,
+                        ))
+                    })
+                    .await;
+                    let outcome = match fetch_result {
+                        Ok(Ok((
+                            subscription,
+                            suggested_update_interval_minutes,
+                            content,
+                            filename,
+                        ))) => RefreshOutcome::Succeeded {
+                            subscription,
+                            suggested_update_interval_minutes,
+                            content,
+                            filename,
+                        },
+                        Ok(Err(message)) => RefreshOutcome::Failed { message },
+                        // Do not downcast panic payloads; emit a stable diagnostic.
+                        Err(join_error) => RefreshOutcome::Failed {
+                            message: if join_error.is_panic() {
+                                "subscription fetch task panicked".into()
+                            } else {
+                                "subscription fetch task cancelled".into()
+                            },
+                        },
+                    };
+                    let _ = actor.cast(ProfilesActorMessage::CommitImported { token, outcome });
+                });
+            }
+            ProfilesActorMessage::CommitImported { token, outcome } => {
+                let Some(pending) = state.pending_imports.remove(&token) else {
+                    // Actor restart / late completion: nothing durable was written.
+                    return Ok(());
+                };
+                // Cancellation before durable commit begins: discard fetch result.
+                if pending.reply.is_closed() {
+                    return Ok(());
+                }
+
+                let result = match outcome {
+                    RefreshOutcome::Failed { message } => {
+                        Err(ProfilesError::ImportFailed { message })
+                    }
+                    RefreshOutcome::Succeeded {
+                        subscription,
+                        suggested_update_interval_minutes,
+                        content,
+                        filename,
+                    } => {
+                        let versioned = state.manager.snapshot_handle().load();
+                        let expected_version = versioned.version;
+                        let before = versioned.state.clone();
+                        drop(versioned);
+
+                        let mut option = pending.option;
+                        if !pending.update_interval_explicit {
+                            if let Some(minutes) = suggested_update_interval_minutes {
+                                option.update_interval_minutes = minutes;
+                            }
+                        }
+                        let mut metadata = pending.metadata;
+                        if let Some(name) = synced_name(metadata.custom_name, &filename) {
+                            metadata.name = name;
+                        }
+
+                        let mut definition = Self::remote_import_definition(
+                            pending.url,
+                            option,
+                            ManagedProfilePath::new("pending.yaml")
+                                .expect("static managed path is valid"),
+                            subscription,
+                            Some(time::OffsetDateTime::now_utc()),
+                        );
+                        if let Err(message) = Self::validate_fetched_content(&definition, &content)
+                        {
+                            Err(ProfilesError::ImportFailed {
+                                message: format!(
+                                    "downloaded content is not valid for import: {message}"
+                                ),
+                            })
+                        } else {
+                            let uid = Self::generate_uid(&definition, &before);
+                            let ext = Self::canonical_extension(&definition);
+                            let canonical = ManagedProfilePath::new(format!("{uid}.{ext}"))
+                                .expect("uid-derived path is always a valid managed path");
+                            if let Some(source) = definition.source_mut() {
+                                source.materialized_mut().file = canonical.clone();
+                            }
+                            let mut next = before.clone();
+                            if !next.append_item(ProfileItem {
+                                uid: uid.clone(),
+                                metadata,
+                                definition,
+                            }) {
+                                Err(ProfilesError::Persist("uid collision".into()))
+                            } else {
+                                // If the caller closed between the pre-check and
+                                // the first durable step, a complete valid profile
+                                // may still remain — never an empty shell.
+                                Self::commit_state_first(
+                                    &myself,
+                                    state,
+                                    expected_version,
+                                    before,
+                                    next,
+                                    AffectsRule::Never,
+                                    Some((canonical, MaterializationResource::File { content })),
+                                    None,
+                                    Some(uid),
+                                )
+                                .await
+                            }
+                        }
+                    }
+                };
+                let _ = pending.reply.send(result);
             }
             ProfilesActorMessage::ExternalFileChanged { uid } => {
                 let snapshot = Self::current_state(state);

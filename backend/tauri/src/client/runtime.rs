@@ -373,34 +373,105 @@ fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
         .map_err(|path| anyhow::anyhow!("runtime path is not UTF-8: {}", path.display()))
 }
 
-/// Post-commit rebuild result for mutation IPC (spec §6.2, decision D2):
-/// state is committed first; a failed rebuild degrades instead of erroring.
-// TODO(post-PR-7): degraded outcome is transitional. State managers already
-// expose async commit acks; the end-state is ack-driven rollback when config
-// application fails, replacing this degraded-report model. Tracked in
-// actor-migration-roadmap §6.
+/// Public mutation wire (PR-4S S08 / plan §12): state is committed first; post-
+/// commit side-effect failures degrade instead of erroring.
+///
+/// Final wire is only `applied` / `committed_degraded` — no `_v1` alias.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "status", rename_all = "snake_case")]
-pub enum RebuildOutcome {
-    Ok,
-    Degraded { error: String },
+pub enum MutationOutcome<T> {
+    Applied {
+        value: T,
+    },
+    CommittedDegraded {
+        value: T,
+        degradations: Vec<Degradation>,
+    },
 }
 
-impl RebuildOutcome {
-    /// Combine sequential outcomes; the first degradation wins.
-    pub fn merge(self, other: RebuildOutcome) -> RebuildOutcome {
-        match self {
-            RebuildOutcome::Degraded { .. } => self,
-            RebuildOutcome::Ok => other,
+impl<T> MutationOutcome<T> {
+    /// Applied iff the degradation list is empty.
+    pub fn from_parts(value: T, degradations: Vec<Degradation>) -> Self {
+        if degradations.is_empty() {
+            Self::Applied { value }
+        } else {
+            Self::CommittedDegraded {
+                value,
+                degradations,
+            }
         }
+    }
+
+    pub fn value(&self) -> &T {
+        match self {
+            Self::Applied { value } | Self::CommittedDegraded { value, .. } => value,
+        }
+    }
+
+    pub fn into_value(self) -> T {
+        match self {
+            Self::Applied { value } | Self::CommittedDegraded { value, .. } => value,
+        }
+    }
+
+    pub fn degradations(&self) -> &[Degradation] {
+        match self {
+            Self::Applied { .. } => &[],
+            Self::CommittedDegraded { degradations, .. } => degradations,
+        }
+    }
+
+    pub fn into_parts(self) -> (T, Vec<Degradation>) {
+        match self {
+            Self::Applied { value } => (value, Vec::new()),
+            Self::CommittedDegraded {
+                value,
+                degradations,
+            } => (value, degradations),
+        }
+    }
+
+    pub fn is_applied(&self) -> bool {
+        matches!(self, Self::Applied { .. })
+    }
+
+    pub fn is_degraded(&self) -> bool {
+        matches!(self, Self::CommittedDegraded { .. })
+    }
+
+    /// Append degradations from a later committed step; Applied only when both
+    /// sides contributed none.
+    pub fn extend_degradations(self, extra: Vec<Degradation>) -> Self {
+        let (value, mut degradations) = self.into_parts();
+        degradations.extend(extra);
+        Self::from_parts(value, degradations)
     }
 }
 
-/// Mutation payload + rebuild outcome for data-carrying commands (import).
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-pub struct CommitOutcome<T> {
-    pub value: T,
-    pub rebuild: RebuildOutcome,
+/// Structured committed-degraded detail surfaced over IPC / Specta.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct Degradation {
+    pub phase: DegradationPhase,
+    /// Stable snake_case code string (not a free-form English phrase).
+    pub code: String,
+    pub message: String,
+    pub retryable: bool,
+}
+
+/// Public degradation phases for mutation outcomes. Serde/Specta use snake_case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum DegradationPhase {
+    LegacyMirror,
+    ProfileMaterialization,
+    RuntimeBuild,
+    RuntimeCheck,
+    RuntimePromote,
+    RuntimePublish,
+    RuntimeApply,
+    CoreRollback,
+    SystemEffect,
+    UiEffect,
 }
 
 #[cfg(test)]
@@ -416,6 +487,70 @@ mod tests {
         assert_eq!(first.get(), 1);
         assert_eq!(second.get(), 2);
         assert!(second > first);
+    }
+
+    #[test]
+    fn mutation_outcome_applied_iff_degradations_empty() {
+        let applied = MutationOutcome::from_parts("uid", Vec::new());
+        assert!(applied.is_applied());
+        assert_eq!(applied.value(), &"uid");
+
+        let degraded = MutationOutcome::from_parts(
+            "uid",
+            vec![Degradation {
+                phase: DegradationPhase::RuntimeBuild,
+                code: "runtime_rebuild_failed".into(),
+                message: "boom".into(),
+                retryable: true,
+            }],
+        );
+        assert!(degraded.is_degraded());
+        assert_eq!(degraded.degradations().len(), 1);
+
+        let merged =
+            MutationOutcome::from_parts((), Vec::new()).extend_degradations(vec![Degradation {
+                phase: DegradationPhase::ProfileMaterialization,
+                code: "cleanup_deferred".into(),
+                message: "left behind".into(),
+                retryable: true,
+            }]);
+        assert!(merged.is_degraded());
+        assert_eq!(merged.degradations()[0].code, "cleanup_deferred");
+    }
+
+    #[test]
+    fn degradation_phase_serde_is_snake_case() {
+        let json = serde_json::to_string(&DegradationPhase::ProfileMaterialization).unwrap();
+        assert_eq!(json, "\"profile_materialization\"");
+        let json = serde_json::to_string(&DegradationPhase::RuntimeApply).unwrap();
+        assert_eq!(json, "\"runtime_apply\"");
+    }
+
+    #[test]
+    fn mutation_outcome_wire_uses_applied_and_committed_degraded() {
+        let applied = MutationOutcome::from_parts((), Vec::new());
+        let applied_json = serde_json::to_value(&applied).unwrap();
+        assert_eq!(applied_json["status"], "applied");
+        assert!(applied_json.get("value").is_some());
+
+        let degraded = MutationOutcome::from_parts(
+            "p1",
+            vec![Degradation {
+                phase: DegradationPhase::RuntimeBuild,
+                code: "runtime_rebuild_failed".into(),
+                message: "check boom".into(),
+                retryable: true,
+            }],
+        );
+        let degraded_json = serde_json::to_value(&degraded).unwrap();
+        assert_eq!(degraded_json["status"], "committed_degraded");
+        assert_eq!(degraded_json["value"], "p1");
+        assert_eq!(
+            degraded_json["degradations"][0]["code"],
+            "runtime_rebuild_failed"
+        );
+        assert_eq!(degraded_json["degradations"][0]["phase"], "runtime_build");
+        assert_eq!(degraded_json["degradations"][0]["retryable"], true);
     }
 
     fn applied_snapshot(revision: u64, config: Mapping) -> RuntimeSnapshot {

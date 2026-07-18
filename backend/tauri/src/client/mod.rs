@@ -43,9 +43,8 @@ use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
-        ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
-        ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, ProfileSource,
-        Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch, SubscriptionInfo,
+        LocalBinding, ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch,
+        ProfileSource, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch,
     },
     runtime::executor::ResolvedPortBindings,
     state::{PersistentState, PersistentStatePatch},
@@ -783,97 +782,175 @@ impl NyanpasuClient {
         Ok(self.inner.profiles.get().await?)
     }
 
-    async fn after_commit(&self, report: &CommitReport) -> runtime::RebuildOutcome {
-        // Post-commit side-effect failures are degraded results, not
-        // transaction failures (T04 contract): the state is already
-        // persisted, so surface them instead of dropping them.
-        for degradation in &report.degradations {
-            tracing::warn!(
-                phase = ?degradation.phase,
-                code = ?degradation.code,
-                retryable = degradation.code.retryable(),
-                message = %degradation.message,
-                "profile commit completed with a degraded side effect",
-            );
+    /// Map crate-internal profile materialization degradations onto the public
+    /// wire. Actor-internal Cleanup/Reconcile phases collapse to
+    /// `ProfileMaterialization`; retryability stays code-derived.
+    fn map_profile_degradation(
+        degradation: &crate::state::profiles::ports::ProfileDegradation,
+    ) -> runtime::Degradation {
+        use crate::state::profiles::ports::ProfileDegradationCode;
+
+        let code = match degradation.code {
+            ProfileDegradationCode::JournalInvalid => "journal_invalid",
+            ProfileDegradationCode::MaterializationDeferred => "materialization_deferred",
+            ProfileDegradationCode::CleanupDeferred => "cleanup_deferred",
+        };
+        runtime::Degradation {
+            phase: runtime::DegradationPhase::ProfileMaterialization,
+            code: code.into(),
+            message: degradation.message.clone(),
+            retryable: degradation.code.retryable(),
         }
+    }
+
+    /// Post-commit rebuild has a single opaque `Result` today; do not invent
+    /// RuntimeCheck/Promote/Apply precision the error surface cannot support.
+    fn map_runtime_rebuild_degradation(error: &ClientError) -> runtime::Degradation {
+        runtime::Degradation {
+            phase: runtime::DegradationPhase::RuntimeBuild,
+            code: "runtime_rebuild_failed".into(),
+            message: error.to_string(),
+            retryable: true,
+        }
+    }
+
+    async fn collect_post_commit_degradations(
+        &self,
+        report: &CommitReport,
+    ) -> Vec<runtime::Degradation> {
+        // Post-commit side-effect failures are degraded results, not transaction
+        // failures (T04 contract): state is already persisted, so surface them.
+        let mut degradations: Vec<runtime::Degradation> = report
+            .degradations
+            .iter()
+            .map(|degradation| {
+                tracing::warn!(
+                    phase = ?degradation.phase,
+                    code = ?degradation.code,
+                    retryable = degradation.code.retryable(),
+                    message = %degradation.message,
+                    "profile commit completed with a degraded side effect",
+                );
+                Self::map_profile_degradation(degradation)
+            })
+            .collect();
+
         if report.affects_current {
             if let Err(error) = self.rebuild_running_config().await {
                 tracing::warn!(%error, "post-commit rebuild failed; state stays committed (degraded)");
-                return runtime::RebuildOutcome::Degraded {
-                    error: error.to_string(),
-                };
+                degradations.push(Self::map_runtime_rebuild_degradation(&error));
             }
         }
-        runtime::RebuildOutcome::Ok
+        degradations
     }
 
+    async fn after_commit(&self, report: &CommitReport) -> runtime::MutationOutcome<()> {
+        runtime::MutationOutcome::from_parts(
+            (),
+            self.collect_post_commit_degradations(report).await,
+        )
+    }
+
+    /// Public wire for a post-commit auto-activation hard failure. Create/import
+    /// already committed the profile, so this must never become `Err` that erases
+    /// the `ProfileId`. VersionConflict is not special-cased as success.
+    fn auto_activation_failure_degradation(error: &ProfilesError) -> runtime::Degradation {
+        tracing::warn!(
+            %error,
+            "profile auto-activation failed after commit; retaining committed profile id",
+        );
+        runtime::Degradation {
+            phase: runtime::DegradationPhase::SystemEffect,
+            code: "profile_auto_activation_failed".into(),
+            message: error.to_string(),
+            // Activation can be retried via activate_profile / set_current; even
+            // VersionConflict is a transient CAS race, not a permanent rejection.
+            retryable: true,
+        }
+    }
+
+    /// Shared create/import post-commit auto-activation protocol:
+    /// - `Ok(Some(report))` → merge report (and rebuild) degradations
+    /// - `Ok(None)` → existing current won; no degradation
+    /// - `Err(_)` → committed degradation, profile id retained by the caller
+    async fn try_auto_activate_if_none(&self, uid: ProfileId) -> Vec<runtime::Degradation> {
+        match self.inner.profiles.set_current_if_none(uid).await {
+            Ok(Some(report)) => self.collect_post_commit_degradations(&report).await,
+            Ok(None) => Vec::new(),
+            Err(error) => vec![Self::auto_activation_failure_degradation(&error)],
+        }
+    }
+
+    /// Public facade entry for durable profile adds. Rejects remote definitions
+    /// here so callers cannot stage an empty remote shell and bypass the
+    /// fetch-before-commit import path. `ProfilesClient::add` stays available for
+    /// crate-internal actor tests and legacy internals.
     pub async fn add_profile(
         &self,
         request: NewProfileRequest,
         initial_file: Option<String>,
-    ) -> Result<(ProfileId, runtime::RebuildOutcome)> {
-        let report = self.inner.profiles.add(request, initial_file).await?;
-        let created = report
-            .created
-            .clone()
-            .ok_or_else(|| ClientError::Custom("add committed without a created uid".into()))?;
-        let rebuild = self.after_commit(&report).await;
-        Ok((created, rebuild))
-    }
-
-    /// Create a profile from a fully-specified request and apply the design §9
-    /// auto-activation rule (activate a new Config profile when nothing is
-    /// current). Keeps the auto-activation policy in the facade so the command
-    /// stays a thin adapter.
-    pub async fn create_profile(
-        &self,
-        request: NewProfileRequest,
-        initial_file: Option<String>,
-    ) -> Result<(ProfileId, runtime::RebuildOutcome)> {
-        // Create does not download: a remote source would be added
-        // unmaterialized, and the auto-activation below would then rebuild
-        // against a missing file. Remote subscriptions must use import_profile.
+    ) -> Result<runtime::MutationOutcome<ProfileId>> {
+        // Create/add do not download: a remote source would be committed
+        // unmaterialized (and auto-activation would rebuild against a missing
+        // file). Remote subscriptions must use import_profile.
         if matches!(request.definition.source(), Some(source) if source.is_remote()) {
             return Err(ClientError::Custom(
                 "remote profiles must be created via import_profile".into(),
             ));
         }
-        let (uid, mut rebuild) = self.add_profile(request, initial_file).await?;
+        let report = self.inner.profiles.add(request, initial_file).await?;
+        let created = report
+            .created
+            .clone()
+            .ok_or_else(|| ClientError::Custom("add committed without a created uid".into()))?;
+        Ok(runtime::MutationOutcome::from_parts(
+            created,
+            self.collect_post_commit_degradations(&report).await,
+        ))
+    }
+
+    /// Create a profile from a fully-specified request and apply the design §9
+    /// auto-activation rule (activate a new Config profile when nothing is
+    /// current). Keeps the auto-activation policy in the facade so the command
+    /// stays a thin adapter. Remote rejection is owned by [`Self::add_profile`].
+    pub async fn create_profile(
+        &self,
+        request: NewProfileRequest,
+        initial_file: Option<String>,
+    ) -> Result<runtime::MutationOutcome<ProfileId>> {
+        // Kind is fixed by the request; avoid a post-commit get() that could turn
+        // a successful add into a hard error and erase the committed ProfileId.
+        let is_config = matches!(request.definition, ProfileDefinition::Config { .. });
+        let mut outcome = self.add_profile(request, initial_file).await?;
         // design §9: auto-activate a Config definition (File/Composition) when
         // nothing is currently selected. set_current_if_none keeps the
         // check-and-set atomic so a concurrent selection is not overwritten.
-        let is_config = matches!(
-            self.inner
-                .profiles
-                .get()
-                .await?
-                .items
-                .get(&uid)
-                .map(|item| &item.definition),
-            Some(ProfileDefinition::Config { .. })
-        );
         if is_config {
-            if let Some(report) = self.inner.profiles.set_current_if_none(uid.clone()).await? {
-                rebuild = rebuild.merge(self.after_commit(&report).await);
-            }
+            let uid = outcome.value().clone();
+            outcome = outcome.extend_degradations(self.try_auto_activate_if_none(uid).await);
         }
-        Ok((uid, rebuild))
+        Ok(outcome)
     }
 
-    /// Import a remote subscription: add (placeholder name) -> first download
-    /// via the refresh transaction -> auto-activate when nothing is current.
+    /// Import a remote subscription via actor-owned fetch-before-commit, then
+    /// auto-activate when nothing is current.
     ///
     /// Naming: a non-empty caller-provided `name` (e.g. a deep-link `name=`
     /// parameter) is user intent, so it is pinned (`custom_name = true`) and
     /// never overwritten by later name-sync. Without one, the name is derived
-    /// from the url and left unpinned so the first refresh can adopt the
+    /// from the url and left unpinned so the first import can adopt the
     /// subscription's `profile-title` / `Content-Disposition` name.
+    ///
+    /// No durable placeholder/profile document/file is written until fetch and
+    /// validation succeed. Caller cancellation before durable commit begins
+    /// discards the download; a complete valid profile may remain only if
+    /// cancellation races after commit has already started.
     pub async fn import_profile(
         &self,
         url: url::Url,
         name: Option<String>,
         options: Option<RemoteProfileOptionsPatch>,
-    ) -> Result<(ProfileId, runtime::RebuildOutcome)> {
+    ) -> Result<runtime::MutationOutcome<ProfileId>> {
         let update_interval_explicit = options
             .as_ref()
             .and_then(|patch| patch.update_interval_minutes)
@@ -886,91 +963,32 @@ impl NyanpasuClient {
         if let Some(patch) = options {
             option.apply(patch);
         }
-        let request = NewProfileRequest {
-            metadata: ProfileMetadata {
-                name,
-                desc: None,
-                custom_name,
-            },
-            definition: ProfileDefinition::Config {
-                config: ConfigDefinition::File(FileConfig {
-                    source: ProfileSource::Remote {
-                        // Add rewrites the path to `{uid}.{ext}` and resets the
-                        // subscription/materialization metadata server-side, so
-                        // these placeholders are never persisted.
-                        materialized: MaterializedFile {
-                            file: ManagedProfilePath::new("pending.yaml")
-                                .expect("static managed path is valid"),
-                            updated_at: None,
-                        },
-                        url,
-                        option,
-                        subscription: SubscriptionInfo::default(),
-                    },
-                    transforms: vec![],
-                }),
-            },
-        };
-        let report = self.inner.profiles.add(request, None).await?;
+        let report = self
+            .inner
+            .profiles
+            .import(
+                url,
+                ProfileMetadata {
+                    name,
+                    desc: None,
+                    custom_name,
+                },
+                option,
+                update_interval_explicit,
+            )
+            .await?;
         let created = report
             .created
             .clone()
             .ok_or_else(|| ClientError::Custom("import committed without a created uid".into()))?;
-        let refreshed = self
-            .inner
-            .profiles
-            .refresh_import(created.clone(), update_interval_explicit)
-            .await;
-        let mut rebuild = match refreshed {
-            // Post-commit rebuild failure now degrades instead of rolling back:
-            // the download committed, so the imported profile is kept (BC vs the
-            // legacy all-or-nothing behavior — only a failed download deletes it).
-            Ok(report) => self.after_commit(&report).await,
-            Err(error) => {
-                // First download failed = import failed; delete the empty shell to
-                // preserve the legacy all-or-nothing observable behavior. Log if the
-                // rollback itself fails so the orphaned placeholder is not silent —
-                // including file-removal failures, which the actor reports as
-                // internal degradations on an otherwise committed delete.
-                match self.inner.profiles.delete(created.clone()).await {
-                    Ok(report) => {
-                        for degradation in &report.degradations {
-                            tracing::warn!(
-                                uid = %created,
-                                phase = ?degradation.phase,
-                                code = ?degradation.code,
-                                retryable = degradation.code.retryable(),
-                                message = %degradation.message,
-                                "placeholder cleanup after failed import left degraded state",
-                            );
-                        }
-                    }
-                    Err(cleanup_error) => {
-                        tracing::warn!(
-                            uid = %created,
-                            error = %cleanup_error,
-                            "failed to delete placeholder profile after failed import download",
-                        );
-                    }
-                }
-                return Err(error.into());
-            }
-        };
+        let mut degradations = self.collect_post_commit_degradations(&report).await;
         // Atomically activate only when nothing was selected during the download
-        // window. The actor decides inside a single serialized message, so a
-        // concurrent SetCurrent can never be overwritten by import.
-        if let Some(report) = self
-            .inner
-            .profiles
-            .set_current_if_none(created.clone())
-            .await?
-        {
-            rebuild = rebuild.merge(self.after_commit(&report).await);
-        }
-        Ok((created, rebuild))
+        // window. Failures degrade; they must not erase the committed ProfileId.
+        degradations.extend(self.try_auto_activate_if_none(created.clone()).await);
+        Ok(runtime::MutationOutcome::from_parts(created, degradations))
     }
 
-    pub async fn delete_profile(&self, uid: ProfileId) -> Result<runtime::RebuildOutcome> {
+    pub async fn delete_profile(&self, uid: ProfileId) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.delete(uid).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -979,7 +997,7 @@ impl NyanpasuClient {
         &self,
         active: ProfileId,
         over: ProfileId,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self
             .inner
             .profiles
@@ -991,7 +1009,7 @@ impl NyanpasuClient {
     pub async fn reorder_profiles_by_list(
         &self,
         list: Vec<ProfileId>,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.reorder(ReorderOp::ByList(list)).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1000,7 +1018,7 @@ impl NyanpasuClient {
         &self,
         uid: ProfileId,
         patch: Option<RemoteProfileOptionsPatch>,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.refresh(uid, patch).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1009,7 +1027,7 @@ impl NyanpasuClient {
         &self,
         uid: ProfileId,
         patch: ProfileMetadataPatch,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.patch_metadata(uid, patch).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1018,7 +1036,7 @@ impl NyanpasuClient {
         &self,
         uid: ProfileId,
         patch: RemoteProfileOptionsPatch,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.patch_remote_options(uid, patch).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1027,7 +1045,7 @@ impl NyanpasuClient {
         &self,
         uid: ProfileId,
         definition: ProfileDefinition,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self
             .inner
             .profiles
@@ -1039,7 +1057,7 @@ impl NyanpasuClient {
     pub async fn activate_profile(
         &self,
         uid: Option<ProfileId>,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_current(uid).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1047,7 +1065,7 @@ impl NyanpasuClient {
     pub async fn set_global_transforms(
         &self,
         ids: Vec<ProfileId>,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_global_transforms(ids).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1055,7 +1073,7 @@ impl NyanpasuClient {
     pub async fn set_profile_valid_fields(
         &self,
         fields: Vec<String>,
-    ) -> Result<runtime::RebuildOutcome> {
+    ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_valid_fields(fields).await?;
         Ok(self.after_commit(&report).await)
     }
@@ -1519,7 +1537,7 @@ mod tests {
     use nyanpasu_config::{
         profile::{
             ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
-            ProfileDefinition, ProfileMetadata, ProfileSource,
+            ProfileDefinition, ProfileMetadata, ProfileSource, SubscriptionInfo,
         },
         state::window::{WindowLabel, WindowState},
     };
@@ -1901,6 +1919,23 @@ mod tests {
 
     fn temp_config_path(dir: &TempDir, file_name: &str) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(dir.path().join(file_name)).expect("temp path should be UTF-8")
+    }
+
+    /// Restores a directory's unix mode on drop so tempdir cleanup stays reliable
+    /// after permission-poison tests.
+    #[cfg(unix)]
+    struct RestoreDirMode {
+        path: PathBuf,
+        mode: u32,
+    }
+
+    #[cfg(unix)]
+    impl Drop for RestoreDirMode {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ =
+                std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(self.mode));
+        }
     }
 
     async fn test_typed_config_clients(
@@ -2583,13 +2618,14 @@ mod tests {
                 .unwrap();
 
         tauri::async_runtime::block_on(async {
-            let (uid, _) = client
+            let uid = client
                 .add_profile(
                     minimal_file_profile_request(),
                     Some("proxies: []\nmode: rule\n".into()),
                 )
                 .await
-                .expect("add");
+                .expect("add")
+                .into_value();
             client
                 .activate_profile(Some(uid.clone()))
                 .await
@@ -2640,21 +2676,31 @@ mod tests {
             NyanpasuClient::try_new_with_args(test_profiles_client_args(&dir, Arc::new(core)))
                 .unwrap();
         tauri::async_runtime::block_on(async {
-            let (uid, _) = client
+            let uid = client
                 .add_profile(
                     minimal_file_profile_request(),
                     Some("proxies: []\nmode: rule\n".into()),
                 )
                 .await
-                .expect("add");
+                .expect("add")
+                .into_value();
             let outcome = client
                 .activate_profile(Some(uid.clone()))
                 .await
                 .expect("activate must commit");
-            assert!(matches!(
-                outcome,
-                crate::client::runtime::RebuildOutcome::Degraded { .. }
-            ));
+            assert!(
+                outcome.is_degraded(),
+                "post-commit rebuild failure must be committed_degraded"
+            );
+            let degradations = outcome.degradations();
+            assert_eq!(degradations.len(), 1);
+            assert_eq!(
+                degradations[0].phase,
+                crate::client::runtime::DegradationPhase::RuntimeBuild
+            );
+            assert_eq!(degradations[0].code, "runtime_rebuild_failed");
+            assert!(degradations[0].retryable);
+            assert!(degradations[0].message.contains("check boom"));
             let profiles = client.get_profiles().await.unwrap();
             assert_eq!(
                 profiles.current.as_ref(),
@@ -2699,13 +2745,14 @@ mod tests {
             NyanpasuClient::try_new_with_args(test_profiles_client_args(&dir, Arc::new(core)))
                 .unwrap();
         tauri::async_runtime::block_on(async {
-            let (uid, _) = client
+            let uid = client
                 .add_profile(
                     minimal_file_profile_request(),
                     Some("proxies: []\nmode: rule\n".into()),
                 )
                 .await
-                .expect("add");
+                .expect("add")
+                .into_value();
             client.activate_profile(Some(uid)).await.expect("activate");
         });
     }
@@ -2724,13 +2771,14 @@ mod tests {
             NyanpasuClient::try_new_with_args(test_profiles_client_args(&dir, Arc::new(core)))
                 .unwrap();
         tauri::async_runtime::block_on(async {
-            let (uid, _) = client
+            let uid = client
                 .add_profile(
                     minimal_file_profile_request(),
                     Some("proxies: []\nmode: rule\n".into()),
                 )
                 .await
-                .expect("add");
+                .expect("add")
+                .into_value();
             // T8: a failed rebuild degrades (commit stays) instead of erroring;
             // the rejected candidate must still never reach readers.
             let _ = client.activate_profile(Some(uid)).await;
@@ -2771,13 +2819,14 @@ mod tests {
                 .unwrap();
 
         tauri::async_runtime::block_on(async {
-            let (uid, _) = client
+            let uid = client
                 .add_profile(
                     minimal_file_profile_request(),
                     Some("proxies: []\nmode: rule\n".into()),
                 )
                 .await
-                .expect("add");
+                .expect("add")
+                .into_value();
             client
                 .activate_profile(Some(uid))
                 .await
@@ -2866,10 +2915,11 @@ mod tests {
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.with_proxy = Some(false);
-            let (uid, _) = client
+            let uid = client
                 .import_profile(url, None, Some(patch))
                 .await
-                .expect("import");
+                .expect("import")
+                .into_value();
             let snapshot = client.get_profiles().await.unwrap();
             assert_eq!(
                 snapshot.current.as_ref(),
@@ -2910,10 +2960,11 @@ mod tests {
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.update_interval_minutes = Some(45);
             let url = url::Url::parse("https://example.com/subs/explicit.yaml").unwrap();
-            let (uid, _) = client
+            let uid = client
                 .import_profile(url, None, Some(patch))
                 .await
-                .expect("import");
+                .expect("import")
+                .into_value();
             let snapshot = client.get_profiles().await.unwrap();
             let ProfileSource::Remote { option, .. } =
                 snapshot.items[&uid].definition.source().unwrap()
@@ -2989,7 +3040,7 @@ mod tests {
     }
 
     #[test]
-    fn facade_import_failure_deletes_placeholder() {
+    fn facade_import_failure_commits_nothing() {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
@@ -3009,8 +3060,35 @@ mod tests {
             let snapshot = client.get_profiles().await.unwrap();
             assert!(
                 snapshot.items.is_empty(),
-                "the placeholder profile must be deleted after a failed import"
+                "fetch-before-commit must leave zero durable items on download failure"
             );
+        });
+    }
+
+    #[test]
+    fn facade_add_profile_rejects_remote_before_persist() {
+        let dir = tempdir().unwrap();
+        // No fetcher/core activity: the remote shell must be rejected at the
+        // public facade boundary before ProfilesClient::add is reached.
+        let client = tauri::async_runtime::block_on(test_client(&dir));
+
+        tauri::async_runtime::block_on(async {
+            let rejected = client.add_profile(remote_config_request(), None).await;
+            match rejected {
+                Err(ClientError::Custom(message)) => {
+                    assert!(
+                        message.contains("import_profile"),
+                        "stable rejection must direct callers to import_profile: {message}"
+                    );
+                }
+                other => panic!("expected Custom(import_profile) rejection, got {other:?}"),
+            }
+            let snapshot = client.get_profiles().await.unwrap();
+            assert!(
+                snapshot.items.is_empty(),
+                "direct remote add must leave zero durable items"
+            );
+            assert!(snapshot.current.is_none());
         });
     }
 
@@ -3026,23 +3104,155 @@ mod tests {
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
 
-            // A remote source cannot be created (must go through import_profile).
+            // create_profile shares the public add_profile remote guard.
             let rejected = client.create_profile(remote_config_request(), None).await;
             assert!(
-                matches!(rejected, Err(ClientError::Custom(_))),
-                "create must reject remote sources"
+                matches!(rejected, Err(ClientError::Custom(message)) if message.contains("import_profile")),
+                "create must reject remote sources via the add_profile guard"
+            );
+            assert!(
+                client.get_profiles().await.unwrap().items.is_empty(),
+                "rejected remote create must not persist"
             );
 
             // A local Config with no current selection auto-activates (design §9).
-            let (uid, _) = client
+            let uid = client
                 .create_profile(local_config_request("local"), Some("proxies: []\n".into()))
                 .await
-                .expect("create local config");
+                .expect("create local config")
+                .into_value();
             let snapshot = client.get_profiles().await.unwrap();
             assert_eq!(
                 snapshot.current.as_ref(),
                 Some(&uid),
                 "an empty current must auto-activate the new Config profile"
+            );
+        });
+    }
+
+    /// H2 E2E (Unix): Add commits, then post-commit `set_current_if_none` state
+    /// persistence fails via the production materialization `complete` seam
+    /// permission-poisoning the profiles parent. create_profile must return
+    /// `Ok(CommittedDegraded)` with the real ProfileId and keep current empty.
+    #[cfg(unix)]
+    #[test]
+    fn facade_create_auto_activation_persist_failure_is_committed_degraded() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempdir().unwrap();
+        let parent = dir.path().to_path_buf();
+        let restore = RestoreDirMode {
+            path: parent.clone(),
+            mode: 0o755,
+        };
+
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        materialization
+            .expect_prepare_state_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
+        materialization
+            .expect_prepare_file_first()
+            .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
+        materialization.expect_promote().returning(|_| Ok(()));
+        let parent_for_complete = parent.clone();
+        materialization.expect_complete().returning(move |_| {
+            // After durable Add commit, block the subsequent profiles.yaml rewrite
+            // that set_current_if_none needs for auto-activation.
+            std::fs::set_permissions(&parent_for_complete, std::fs::Permissions::from_mode(0o555))
+                .expect("poison profiles parent after Add complete");
+            Ok(())
+        });
+        materialization.expect_compensate().returning(|_| Ok(()));
+        materialization
+            .expect_prepare_cleanup()
+            .returning(|_, _| Ok(PreparedCleanup::new("cleanup".into())));
+        materialization
+            .expect_activate_cleanup()
+            .returning(|_| Ok(()));
+        materialization
+            .expect_cancel_cleanup()
+            .returning(|_| Ok(()));
+        materialization
+            .expect_retry_cleanup()
+            .returning(|_, _| Ok(CleanupOutcome::Removed));
+
+        tauri::async_runtime::block_on(async {
+            let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
+            let profiles = profiles::ProfilesClient::new(
+                temp_config_path(&dir, "profiles.yaml"),
+                Arc::new(MockProfileFsPort::new()),
+                Arc::new(MockSubscriptionFetcher::new()),
+                Arc::new(materialization),
+                Arc::new(MockRebuildNotifier::new()),
+            )
+            .await
+            .expect("profiles client");
+            let ports = Arc::new(SessionPortResolver::default());
+            ports
+                .resolve(&ClashConfig::default())
+                .expect("default ports");
+            let client = NyanpasuClient::with_parts(
+                application,
+                session_state,
+                clash_config,
+                profiles,
+                Arc::new(MockProfileFsPort::new()),
+                ports,
+                dir.path().join("profiles"),
+                RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
+                    dir.path().into(),
+                    dir.path().join("data"),
+                ))
+                .unwrap(),
+                Arc::new(crate::client::event_sink::NoopUiEventSink),
+                test_core_port(Arc::new(MockRunningCoreBridge::new())),
+                Arc::new(NoopRunningConfigPatchPort),
+                Arc::new(NoopSystemDnsCache),
+                crate::client::runtime::new_runtime_lifecycle_store()
+                    .await
+                    .expect("runtime state store"),
+            );
+
+            let outcome = client
+                .create_profile(local_config_request("local"), Some("proxies: []\n".into()))
+                .await
+                .expect("create must keep the committed ProfileId as Ok");
+            // Restore before further assertions that may touch the temp dir.
+            drop(restore);
+
+            assert!(
+                outcome.is_degraded(),
+                "auto-activation hard failure after commit must be CommittedDegraded"
+            );
+            let uid = outcome.value().clone();
+            let codes: Vec<_> = outcome
+                .degradations()
+                .iter()
+                .map(|item| item.code.as_str())
+                .collect();
+            assert!(
+                codes.contains(&"profile_auto_activation_failed"),
+                "expected profile_auto_activation_failed, got {codes:?}"
+            );
+            assert!(
+                outcome.degradations().iter().any(|item| {
+                    item.phase == crate::client::runtime::DegradationPhase::SystemEffect
+                        && item.retryable
+                }),
+                "H2 degradation must be retryable SystemEffect"
+            );
+
+            let snapshot = client.get_profiles().await.unwrap();
+            assert!(
+                snapshot.items.contains_key(&uid),
+                "committed item must remain after auto-activation failure"
+            );
+            assert!(
+                snapshot.current.is_none(),
+                "failed set_current_if_none must leave current unset"
             );
         });
     }
@@ -3068,10 +3278,11 @@ mod tests {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
 
             // Establish a current selection via a local Config.
-            let (local_uid, _) = client
+            let local_uid = client
                 .create_profile(local_config_request("local"), Some("proxies: []\n".into()))
                 .await
-                .expect("create local config");
+                .expect("create local config")
+                .into_value();
             assert_eq!(
                 client.get_profiles().await.unwrap().current.as_ref(),
                 Some(&local_uid)
@@ -3079,11 +3290,17 @@ mod tests {
 
             // Import a remote subscription; current is already set, so import
             // must NOT overwrite the selection made before it.
+            // Ok(None) from set_current_if_none remains non-degraded applied.
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
-            let (imported, _) = client
+            let outcome = client
                 .import_profile(url, None, None)
                 .await
                 .expect("import");
+            assert!(
+                outcome.is_applied(),
+                "skipped auto-activation (existing current) must stay applied"
+            );
+            let imported = outcome.into_value();
             let snapshot = client.get_profiles().await.unwrap();
             assert_eq!(
                 snapshot.current.as_ref(),
@@ -3098,6 +3315,84 @@ mod tests {
             };
             assert_eq!(option.update_interval_minutes, 120);
         });
+    }
+
+    #[test]
+    fn facade_create_skips_activation_as_applied_when_current_exists() {
+        let dir = tempdir().unwrap();
+        let fetcher = MockSubscriptionFetcher::new();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote().returning(|_, _| Ok(()));
+        core.expect_apply_config().returning(|| Ok(()));
+        core.expect_on_profile_change().returning(|| ());
+
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
+            let first = client
+                .create_profile(local_config_request("first"), Some("proxies: []\n".into()))
+                .await
+                .expect("first create")
+                .into_value();
+            let second = client
+                .create_profile(local_config_request("second"), Some("proxies: []\n".into()))
+                .await
+                .expect("second create");
+            assert!(
+                second.is_applied(),
+                "Ok(None) auto-activation must not invent degradations"
+            );
+            let second_uid = second.into_value();
+            let snapshot = client.get_profiles().await.unwrap();
+            assert_eq!(snapshot.current.as_ref(), Some(&first));
+            assert!(snapshot.items.contains_key(&second_uid));
+        });
+    }
+
+    /// create/import share try_auto_activate_if_none: an activation hard error
+    /// becomes committed_degraded and must retain the already-committed ProfileId.
+    /// VersionConflict is not special-cased as success.
+    #[test]
+    fn create_import_auto_activation_failure_retains_profile_id_as_committed_degraded() {
+        let uid = ProfileId("committed-uid".into());
+        for error in [
+            ProfilesError::Persist("disk full".into()),
+            ProfilesError::VersionConflict {
+                expected: 1,
+                actual: 2,
+            },
+            ProfilesError::Rpc("actor stopped".into()),
+        ] {
+            let degradation = NyanpasuClient::auto_activation_failure_degradation(&error);
+            assert_eq!(degradation.code, "profile_auto_activation_failed");
+            assert_eq!(
+                degradation.phase,
+                crate::client::runtime::DegradationPhase::SystemEffect
+            );
+            assert!(degradation.retryable);
+            assert!(!degradation.message.is_empty());
+
+            // Protocol both create and import use after a successful durable commit.
+            let prior = vec![crate::client::runtime::Degradation {
+                phase: crate::client::runtime::DegradationPhase::ProfileMaterialization,
+                code: "cleanup_deferred".into(),
+                message: "materialization cleanup deferred".into(),
+                retryable: true,
+            }];
+            let outcome = crate::client::runtime::MutationOutcome::from_parts(uid.clone(), prior)
+                .extend_degradations(vec![degradation]);
+            assert!(outcome.is_degraded());
+            assert_eq!(outcome.value(), &uid);
+            let codes: Vec<_> = outcome
+                .degradations()
+                .iter()
+                .map(|item| item.code.as_str())
+                .collect();
+            assert_eq!(
+                codes,
+                ["cleanup_deferred", "profile_auto_activation_failed"],
+                "prior commit degradations must merge with activation failure"
+            );
+        }
     }
 
     fn ok_fetch_without_name() -> MockSubscriptionFetcher {
@@ -3126,10 +3421,11 @@ mod tests {
                 test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name()), Arc::new(core))
                     .await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
-            let (uid, _) = client
+            let uid = client
                 .import_profile(url, None, None)
                 .await
-                .expect("import");
+                .expect("import")
+                .into_value();
             let item = client.get_profiles().await.unwrap().items[&uid].clone();
             assert_eq!(item.metadata.name, "my-sub");
             assert!(
@@ -3152,10 +3448,11 @@ mod tests {
                 test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name()), Arc::new(core))
                     .await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
-            let (uid, _) = client
+            let uid = client
                 .import_profile(url, Some("My VPN".into()), None)
                 .await
-                .expect("import");
+                .expect("import")
+                .into_value();
             let item = client.get_profiles().await.unwrap().items[&uid].clone();
             assert_eq!(item.metadata.name, "My VPN");
             assert!(

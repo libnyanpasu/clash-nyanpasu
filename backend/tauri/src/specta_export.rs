@@ -157,15 +157,15 @@ mod tests {
     );
 
     fn exported_type<'a>(generated: &'a str, name: &str) -> &'a str {
-        let marker = format!("export type {name} =");
+        // Support both `export type Foo =` and generic `export type Foo<T> =`.
+        let plain = format!("export type {name} =");
+        let generic = format!("export type {name}<");
         let start = generated
-            .find(&marker)
+            .find(&plain)
+            .or_else(|| generated.find(&generic))
             .unwrap_or_else(|| panic!("expected generated declaration for {name}"));
         let rest = &generated[start..];
-        let end = rest[marker.len()..]
-            .find("\nexport ")
-            .map(|offset| marker.len() + offset)
-            .unwrap_or(rest.len());
+        let end = rest.find("\nexport ").unwrap_or(rest.len());
         &rest[..end]
     }
 
@@ -229,8 +229,9 @@ mod tests {
             "ProfileMetadataPatch",
             "RemoteProfileOptionsPatch",
             "ProfileValidationError",
-            "RebuildOutcome",
-            "CommitOutcome",
+            "MutationOutcome",
+            "Degradation",
+            "DegradationPhase",
         ] {
             assert!(
                 generated.contains(&format!("export type {name}"))
@@ -238,6 +239,17 @@ mod tests {
                 "expected named TS export for {name}"
             );
         }
+
+        assert!(
+            !generated.contains("export type RebuildOutcome")
+                && !generated.contains("export interface RebuildOutcome"),
+            "old RebuildOutcome wire must be removed from bindings"
+        );
+        assert!(
+            !generated.contains("export type CommitOutcome")
+                && !generated.contains("export interface CommitOutcome"),
+            "old CommitOutcome wire must be removed from bindings"
+        );
 
         for phase in ["Deserialize", "Serialize"] {
             let name = format!("ConfigDefinition_{phase}");
@@ -310,20 +322,61 @@ mod tests {
             );
         }
 
-        // T8 freeze: the named-export loop above only proves these types exist;
+        // S08 freeze: the named-export loop above only proves these types exist;
         // pin the actual generated shapes so a wire-format drift breaks CI.
         // Substrings are copied verbatim from the generated product (prettier
         // emits single-quoted tags and one union variant per line).
-        assert!(
-            generated.contains(
-                "export type RebuildOutcome =\n  | { status: 'ok' }\n  | { status: 'degraded'; error: string }"
-            ),
-            "RebuildOutcome tagged-union shape drifted from the generated bindings"
+        let mutation_outcome = exported_type(&generated, "MutationOutcome");
+        assert_contains_all(
+            mutation_outcome,
+            "MutationOutcome",
+            &[
+                "status: 'applied'",
+                "status: 'committed_degraded'",
+                "value: T",
+                "degradations:",
+            ],
         );
-        // importProfile must return the instantiated generic, not a bare uid.
         assert!(
-            generated.contains("CommitOutcome<ProfileId>"),
-            "importProfile must return CommitOutcome<ProfileId>"
+            !mutation_outcome.contains("status: 'ok'")
+                && !mutation_outcome.contains("status: 'degraded'"),
+            "MutationOutcome must not retain legacy RebuildOutcome status tags:\n{mutation_outcome}"
+        );
+
+        let degradation = exported_type(&generated, "Degradation");
+        assert_contains_all(
+            degradation,
+            "Degradation",
+            &["phase: DegradationPhase", "code:", "message:", "retryable:"],
+        );
+
+        let phase = exported_type(&generated, "DegradationPhase");
+        assert_contains_all(
+            phase,
+            "DegradationPhase",
+            &[
+                "'legacy_mirror'",
+                "'profile_materialization'",
+                "'runtime_build'",
+                "'runtime_check'",
+                "'runtime_promote'",
+                "'runtime_publish'",
+                "'runtime_apply'",
+                "'core_rollback'",
+                "'system_effect'",
+                "'ui_effect'",
+            ],
+        );
+
+        // create/import must return the instantiated generic carrying ProfileId.
+        assert!(
+            generated.contains("MutationOutcome<ProfileId>"),
+            "createProfile/importProfile must return MutationOutcome<ProfileId>"
+        );
+        // Unit mutations must keep a stable MutationOutcome<()> shape (TS null).
+        assert!(
+            generated.contains("MutationOutcome<null>"),
+            "unit profile mutations must return MutationOutcome<null>"
         );
     }
 }

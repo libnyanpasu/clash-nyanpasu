@@ -1,9 +1,9 @@
 # PR-4S — PR-1～PR-4 Actor Migration 稳定化门（设计 spec）
 
 **日期：** 2026-07-13  
-**状态：** Implementing（S01～S07 已完成；S08～S10 pending；不得宣告 PR-4S 完成。S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。）
+**状态：** Implementing（S01～S08 已完成；S09～S10 pending；不得宣告 PR-4S 完成。S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。）
 
-**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease`、统一 `CoreManager` lifecycle mutex、`change_core` lease span through rollback、updater stop/swap/restart；S05 Applied-based patch compensation 工作区已验证；S06 prepared mirrors / three-domain saga 工作区已验证；S07 profile materialization transactions / durable `Profiles.revision` / startup+periodic reconcile 工作区已验证）
+**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease`、统一 `CoreManager` lifecycle mutex、`change_core` lease span through rollback、updater stop/swap/restart；S05 Applied-based patch compensation 工作区已验证；S06 prepared mirrors / three-domain saga 工作区已验证；S07 profile materialization transactions / durable `Profiles.revision` / import fetch-before-commit / startup+periodic reconcile 工作区已验证；S08 `MutationOutcome` wire / Specta / frontend / import 终态协议 工作区已验证）
 **上游依据：** `docs/design/actor-migration-roadmap.md` v3 §5  
 **建议分支：** `fix/pr4s-actor-migration-stabilization`  
 **原子性：** 本 spec 的 S01～S10 为一个稳定化 PR；可以多 commit，但不得只合并部分语义
@@ -26,8 +26,8 @@ PR-1～PR-4 已完成以下主要方向：
 
 1. **生命周期锁域（S04 已完成）**：`CoreLifecyclePort`/`CoreLifecycleLease` 统一 run/restart/stop/check/apply/recover；`CoreManager` 以单一 `lifecycle_lock` 替代仅覆盖部分路径的 `run_lock`；`change_core` 全程持有 `rebuild_gate + lease` 至 rollback 结束；updater stop/swap/restart 同锁域。S09 fake-core 进程级 failure matrix 仍 pending。
 2. **状态语义残差（S03 + S05 已完成）**：facade 持有 `RuntimeLifecycleState { promoted, applied }` 与 revision/core/hash/exact product bytes；四读 IPC 读 Promoted；`change_core` 深层 rollback 同步恢复 product/Promoted/Applied。S05 的 instance-owned patch gate 以 Applied 生成 Set/Remove 计划，用 expected Applied revision fence 拒绝 stale compensation，并在 rebuild/lifecycle exclusion 内以私有 candidate 直接恢复运行核而不晋升 product；
-3. **跨资源提交不一致（S06 typed/legacy 三域已完成；S07 profile materialization 已完成）**：S06 已为 typed state ↔ legacy mirror 建立 fallible prepare → manager-level CAS commit → infallible in-memory apply，并实现 Application→Session→Clash saga、reverse compensation、structured `PartialCommit` 与 finalizer uncertainty；S07 已为 Profiles 状态/物化文件建立 state-first / file-first / cleanup / reconcile 协议、durable `Profiles.revision` 与 crate-internal degradation。公共 `MutationOutcome` wire 仍待 S08；
-4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径；S04 已有 barrier 并发测试；S07 已有 deterministic failure/crash/cleanup/fence tests；dispatcher deglobalization / fake-core / ledger gate 仍待完成。
+3. **跨资源提交不一致（S06 typed/legacy 三域已完成；S07 profile materialization + import fetch-before-commit 已完成；S08 公共 wire 已完成）**：S06 已为 typed state ↔ legacy mirror 建立 fallible prepare → manager-level CAS commit → infallible in-memory apply，并实现 Application→Session→Clash saga、reverse compensation、structured `PartialCommit` 与 finalizer uncertainty；S07 已为 Profiles 状态/物化文件建立 state-first / file-first / cleanup / reconcile 协议、durable `Profiles.revision`、cancellation-safe remote import（fetch-before-commit）与 crate-internal degradation；S08 已将 profile + post-commit rebuild degradations 合并为公共 `MutationOutcome` wire。
+4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径；S04 已有 barrier 并发测试；S07 已有 deterministic failure/crash/cleanup/fence/import-cancel tests；S08 已冻结 Specta/bindings 与 focused wire/import tests；dispatcher deglobalization / fake-core / ledger gate 仍待完成。
 
 PR-4S 不继续扩大 actor 数量。它先修复 PR-1～PR-4 的 correctness boundary，使 PR-5 可以在可靠状态模型上接管核心生命周期。
 
@@ -119,23 +119,23 @@ pub struct RuntimeLifecycleState {
 
 ## 5. 决策记录
 
-| ID  | 决策                                        | 结论                                                                                                                                                                                                                                |
-| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | 是否直接开始 PR-5                           | 否；先合并 PR-4S 稳定化门                                                                                                                                                                                                           |
-| D2  | 普通 config apply 失败是否 rollback desired | 否；保留 desired，返回 committed-degraded，并维持 applied 旧 revision                                                                                                                                                               |
-| D3  | runtime store 语义                          | 拆为 promoted/applied；不再用一个状态兼任两者                                                                                                                                                                                       |
-| D4  | 核心并发控制                                | 所有产品检查、apply、restart、change-core 使用统一 `CoreLifecycleLease`；固定锁顺序 `rebuild/patch gate → lifecycle lease`                                                                                                          |
-| D5  | rollback 材料                               | 捕获 `RuntimeTransactionSnapshot`：旧产品字节、旧 lifecycle state、旧 core selection                                                                                                                                                |
-| D6  | D6 patch compensation                       | **S05 已完成**：instance-owned patch gate 串行；基于 Applied snapshot 的 transport-independent Set/Remove（禁止 JSON `null` 删除）；expected Applied revision fence 防止覆盖后续更新；私有 candidate 直接 apply，不 promote product |
-| D7  | actor mirror                                | **S06 已完成**：`prepare(next)` 可失败且在 persist 前；`PreparedLegacyMirror::apply()` 不可失败、仅更新内存 projection、且在 persist 后；prepare failure 零提交                                                                     |
-| D8  | legacy 三域 patch                           | **S06 已完成**：manager-level expected-version CAS（actor 消息 `ReplacePreparedIfVersion`）；Application→Session→Clash saga；reverse compensation；structured `PartialCommit` 与 finalizer uncertainty                              |
-| D9  | profile 文件事务                            | **S07 已完成**：durable server-owned `Profiles.revision`（≠ manager MVCC）；state-first / file-first / cleanup / reconcile 协议与操作映射；启动+周期 recovery；crate-internal `ProfileDegradation`；公共 wire 留给 S08              |
-| D10 | runtime 路径                                | `RuntimePaths` 由 composition root 注入；测试禁止全局 dirs                                                                                                                                                                          |
-| D11 | candidate 安全                              | 私有目录 + tempfile/random + create_new + owner-only 权限 + cleanup guard + stale cleanup                                                                                                                                           |
-| D12 | rebuild dispatcher                          | bounded/coalescing、可关闭、可重建；不允许 first-install-wins 静态 handler                                                                                                                                                          |
-| D13 | outcome                                     | 采用 `MutationOutcome<T>` + phase/code；旧 `RebuildOutcome` 作为 wire compatibility alias 仅在同 PR 前端切换期间存在                                                                                                                |
-| D14 | PR-3/4 回归                                 | 固化为 contract fixtures，不能仅依赖已关闭 issue                                                                                                                                                                                    |
-| D15 | 手工 smoke                                  | 必须生成可追溯记录；未记录视为未执行                                                                                                                                                                                                |
+| ID  | 决策                                        | 结论                                                                                                                                                                                                                                                                   |
+| --- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | 是否直接开始 PR-5                           | 否；先合并 PR-4S 稳定化门                                                                                                                                                                                                                                              |
+| D2  | 普通 config apply 失败是否 rollback desired | 否；保留 desired，返回 committed-degraded，并维持 applied 旧 revision                                                                                                                                                                                                  |
+| D3  | runtime store 语义                          | 拆为 promoted/applied；不再用一个状态兼任两者                                                                                                                                                                                                                          |
+| D4  | 核心并发控制                                | 所有产品检查、apply、restart、change-core 使用统一 `CoreLifecycleLease`；固定锁顺序 `rebuild/patch gate → lifecycle lease`                                                                                                                                             |
+| D5  | rollback 材料                               | 捕获 `RuntimeTransactionSnapshot`：旧产品字节、旧 lifecycle state、旧 core selection                                                                                                                                                                                   |
+| D6  | D6 patch compensation                       | **S05 已完成**：instance-owned patch gate 串行；基于 Applied snapshot 的 transport-independent Set/Remove（禁止 JSON `null` 删除）；expected Applied revision fence 防止覆盖后续更新；私有 candidate 直接 apply，不 promote product                                    |
+| D7  | actor mirror                                | **S06 已完成**：`prepare(next)` 可失败且在 persist 前；`PreparedLegacyMirror::apply()` 不可失败、仅更新内存 projection、且在 persist 后；prepare failure 零提交                                                                                                        |
+| D8  | legacy 三域 patch                           | **S06 已完成**：manager-level expected-version CAS（actor 消息 `ReplacePreparedIfVersion`）；Application→Session→Clash saga；reverse compensation；structured `PartialCommit` 与 finalizer uncertainty                                                                 |
+| D9  | profile 文件事务                            | **S07 已完成**：durable server-owned `Profiles.revision`（≠ manager MVCC）；state-first / file-first / cleanup / reconcile；import fetch-before-commit（取消安全）；启动+周期 recovery；crate-internal `ProfileDegradation`；**S08 已完成**公共 `MutationOutcome` 映射 |
+| D10 | runtime 路径                                | `RuntimePaths` 由 composition root 注入；测试禁止全局 dirs                                                                                                                                                                                                             |
+| D11 | candidate 安全                              | 私有目录 + tempfile/random + create_new + owner-only 权限 + cleanup guard + stale cleanup                                                                                                                                                                              |
+| D12 | rebuild dispatcher                          | bounded/coalescing、可关闭、可重建；不允许 first-install-wins 静态 handler                                                                                                                                                                                             |
+| D13 | outcome                                     | **S08 已完成**：`MutationOutcome<T>` + phase/code 为唯一公共 wire；旧 `RebuildOutcome` 已删除，无 `_v1` alias                                                                                                                                                          |
+| D14 | PR-3/4 回归                                 | 固化为 contract fixtures，不能仅依赖已关闭 issue                                                                                                                                                                                                                       |
+| D15 | 手工 smoke                                  | 必须生成可追溯记录；未记录视为未执行                                                                                                                                                                                                                                   |
 
 ---
 
@@ -285,7 +285,7 @@ rebuild_gate + CoreLifecycleLease
 
 ### 6.7 Applied-based patch compensation
 
-**状态：** S05 已完成；S06 已完成；S07 已完成；PR-4S 仍未完成，S08～S10 pending，且 S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
+**状态：** S05 已完成；S06 已完成；S07 已完成；S08 已完成；PR-4S 仍未完成，S09～S10 pending，且 S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
 
 facade 的 instance-owned `clash_patch_gate` 覆盖：
 
@@ -319,7 +319,7 @@ pub enum PatchCompensationOp {
 
 ### 6.8 Prepared legacy mirror
 
-**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S08～S10 仍 pending。
+**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S09～S10 仍 pending。
 
 Tauri-free trait：
 
@@ -357,7 +357,7 @@ prepared object 捕获转换后的 legacy projection 和具体 legacy store hand
 
 ### 6.9 Legacy 三域 saga
 
-**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S08～S10 仍 pending。
+**状态：** S06 已完成（工作区已验证；PR-4S 整体未完成）。S09～S10 仍 pending。
 
 为 Application/Session/Clash actor 增加：
 
@@ -385,7 +385,7 @@ typed 直接 mutation 可以并发，但 manager-level version check 防止 saga
 
 ### 6.10 Profile materialization transaction
 
-**状态：** S07 已完成（工作区已验证；PR-4S 整体未完成）。S08～S10 仍 pending。公共 `MutationOutcome` / IPC / Specta / frontend 仍完全归属 S08，尚未开始。
+**状态：** S07 已完成（工作区已验证；PR-4S 整体未完成）。含 cancellation-safe remote import fetch-before-commit。S08 公共 wire 已完成；S09～S10 仍 pending。
 
 #### Durable revision（≠ manager MVCC）
 
@@ -408,14 +408,41 @@ reconcile:   reconcile(loaded profiles) before watchers or mutations
 
 #### 操作映射
 
-| 操作                      | 协议                                                    | 权威 / 失败语义                                                                                                          |
-| ------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Add                       | state-first（附 resource）                              | state 提交后 promote；promote 失败 version-checked state rollback + compensate；不得留下指向缺失文件的成功 profile       |
-| ReplaceDefinition         | state-first；slot 变化附 resource；旧 path 可附 cleanup | 新资源 prepare → state CAS → promote；prepare-cleanup 失败补偿新资源并保留旧文件；promote 失败 cancel cleanup + rollback |
-| Remote refresh            | file-first                                              | download/validate 后 promote 新 bytes，再 CAS 元数据；CAS 失败 restore backup；URL/definition stale fence 继续保留       |
-| External Mirror 同步      | file-first                                              | 与 refresh 同协议，变更 fence 后写入                                                                                     |
-| Delete                    | cleanup（state commit 为权威）                          | prepare-cleanup 失败则不删 state；state 删除成功后 activate/retry 失败 → `CleanupDeferred`，不回滚 state                 |
-| ReconcileMaterializations | recovery                                                | 启动与 actor-owned 周期任务串行恢复 journal / cleanup                                                                    |
+| 操作                        | 协议                                                    | 权威 / 失败语义                                                                                                          |
+| --------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Add                         | state-first（附 resource）                              | state 提交后 promote；promote 失败 version-checked state rollback + compensate；不得留下指向缺失文件的成功 profile       |
+| ReplaceDefinition           | state-first；slot 变化附 resource；旧 path 可附 cleanup | 新资源 prepare → state CAS → promote；prepare-cleanup 失败补偿新资源并保留旧文件；promote 失败 cancel cleanup + rollback |
+| Remote **import**           | actor-owned **fetch-before-commit** → 一次 state-first  | 校验/下载成功且调用方仍在等待后，才用真实 bytes 做一次 state-first commit；取消/失败零 state/file；不走占位回删          |
+| Remote refresh（手动/定时） | file-first                                              | 既有 remote 的 download/validate → promote 新 bytes → CAS 元数据；CAS 失败 restore backup；stale fence 继续保留          |
+| External Mirror 同步        | file-first                                              | 与 refresh 同协议，变更 fence 后写入                                                                                     |
+| Delete                      | cleanup（state commit 为权威）                          | prepare-cleanup 失败则不删 state；state 删除成功后 activate/retry 失败 → `CleanupDeferred`，不回滚 state                 |
+| ReconcileMaterializations   | recovery                                                | 启动与 actor-owned 周期任务串行恢复 journal / cleanup                                                                    |
+
+#### Remote import 终态协议（cancellation-safe；取代占位回删）
+
+**禁止**旧式 `add empty placeholder → refresh → delete compensation` 编排。终态协议固定为 actor 拥有的 fetch-before-commit：
+
+```text
+validate request
+  → in-memory PendingImport (never durable; no Profiles item, no file, no journal)
+  → fetch + validate content
+  → CommitImported:
+       reply closed / token missing  → discard; zero state / zero file
+       fetch failed                  → ImportFailed; zero state / zero file
+       success                       → ONE state-first commit with real bytes
+                                       (existing materialization journal / recovery only)
+  → facade post-commit auto-activation (degradation only; never erases ProfileId)
+```
+
+硬约束：
+
+- **任何 durable placeholder 之前**必须完成 request 校验与 fetch/content validation；`PendingImport` / `ImportOperationToken` 仅内存，不进 schema、不进 `Profiles.revision`、不写新 import journal 字段。
+- 取消发生在 durable commit 开始之前：丢弃下载结果，**零 state / 零 file**；不需要 delete compensation。
+- actor restart / late `CommitImported` 找不到 token：无操作；因从未 durable 写入。
+- 成功路径：一次 `commit_state_first` 写入完整 remote profile + 真实 bytes；物化恢复**只复用**既有 state-first journal / reconcile（prepare → state CAS → promote → complete/compensate），**不**新增 import-specific journal/schema/heuristics。
+- `create_profile` 继续拒绝 remote 源（须走 `import_profile`）。直接 `Add` 的 remote 路径仍可 stage 空文件，但 public import **永不**经该路径。
+- **Manual/scheduled remote refresh 保持 file-first 不变**；import 与 refresh 协议分离。
+- auto-activation 仍是 facade **post-commit** 降级：`set_current_if_none`；`Ok(None)` 保持 Applied；hard failure → `SystemEffect` / `profile_auto_activation_failed`，**保留**已提交 `ProfileId`。
 
 #### Superseded state-first journal 规则（已修正）
 
@@ -448,8 +475,7 @@ ProfileDegradation {
 
 - 存储字段仅为 `phase` / `code` / `message`；**不**存储 `retryable`。
 - 可重试性由 `ProfileDegradationCode::retryable()` 穷尽派生：`JournalInvalid → false`，`MaterializationDeferred | CleanupDeferred → true`。
-- `CommitReport.degradations` 与 `MaterializationReconcileReport.degradations` 仅供 actor/facade 内部观测与 tracing；
-- 不暴露 Specta / IPC / frontend；S08 才将 committed-degraded 统一到公共 `MutationOutcome`。
+- `CommitReport.degradations` 与 `MaterializationReconcileReport.degradations` 仍仅 actor/facade 内部；S08 facade 映射到公共 `MutationOutcome`，actor 存储形状不变。
 
 #### 验证（S07 green）
 
@@ -457,11 +483,19 @@ ProfileDegradation {
 - crash/journal fixture：state-promoting / file-promoted 中断后 complete、uncommitted file-prepared compensate、compensating phase 收尾；
 - superseded state-first：`revision > journal` + active pre-promote → compensate never promote；
 - cleanup fence：active path、hash reuse、already-absent、symlink no-follow；
-- startup reconcile 先于 client ready；remote stale fence 保持。
+- startup reconcile 先于 client ready；remote stale fence 保持；
+- **import cancellation / restart / materialization（deterministic；barrier/oneshot，无 sleep）：**
+  - happy path 一次 state-first 提交完整 remote profile + 真实 bytes；
+  - fetch 失败 → 零 item / 零 file，且**无** delete compensation / 无 journal 触碰；
+  - caller abort（成功 fetch 途中 / 失败 fetch 途中）→ 零 durable item；后续 import 仍可进行；
+  - client drop / actor stop 期间 fetch 阻塞 → restart 后 items 仍空；
+  - promote 失败 → 不留下已提交 import；
+  - 显式 interval / pinned name 权威性；suggested interval 仅非显式时生效；
+  - 零 interval 在 fetch 前 validation 拒绝。
 
 ### 6.11 MutationOutcome
 
-**状态：** 专属 S08；尚未开始。S07 仅落地 crate-internal `ProfileDegradation`，不得提前暴露公共 `MutationOutcome` / Specta / frontend wire。
+**状态：** S08 已完成（工作区已验证；PR-4S 整体未完成）。S09～S10 仍 pending。
 
 ```rust
 #[derive(Serialize, Deserialize, specta::Type)]
@@ -482,9 +516,18 @@ pub struct Degradation {
 }
 ```
 
-对于 `T = ()`，specta 仍生成稳定命名类型，避免前端特殊处理裸 enum 与 wrapper 两套形态。
+落地要点：
 
-旧 `RebuildOutcome` 在同 PR 中一次性迁移并删除；不保留 `_v1` IPC alias。
+- 终态 wire 仅 `applied` / `committed_degraded`；`RebuildOutcome` 已删除，无 `_v1` alias。
+- create/import → `MutationOutcome<ProfileId>`；其余 profile mutation → `MutationOutcome<()>`。对于 `T = ()`，specta 仍生成稳定命名类型。
+- facade `collect_post_commit_degradations` 合并：S07 crate-internal profile degradations（内部 Cleanup/Reconcile 相位折叠为 public `ProfileMaterialization`；code 为 `journal_invalid` / `materialization_deferred` / `cleanup_deferred`）+ 影响 current 时的 post-commit rebuild degradation。
+- **Runtime phase fidelity disposition：** 当前 rebuild 错误面是不透明 `Result`，统一映射粗粒度真实的 `RuntimeBuild` / `runtime_rebuild_failed`。**明确延期** RuntimeCheck/Promote/Publish/Apply 分相位精度，禁止伪精度；不属于 S09。
+- **H1 retained-forward：** promote 后 compensating state CAS 失败 → `Ok(CommittedDegraded)` + 可恢复 forward head / real uid。
+- **H2 auto-activation（create/import 共用 post-commit 协议）：** facade `try_auto_activate_if_none` / `set_current_if_none`；`Ok(None)` → Applied；hard error → `SystemEffect` / `profile_auto_activation_failed`，**保留**已提交 `ProfileId`。激活失败不得把成功 import/create 抹成 hard `Err`。
+- **Import wire 终态：** `import_profile` 走 actor-owned fetch-before-commit（§6.10）；仅在一次 durable state-first 成功后才返回 `MutationOutcome<ProfileId>`。fetch/validation/cancel 失败 → 普通 `Err`（零 state/file），**不是** `CommittedDegraded`，也**不**依赖 placeholder delete。成功后的 materialization / rebuild / auto-activation 降级才进入 `committed_degraded`。
+- 前端：`unwrapResult` 穷尽返回 `T`；`MutationCache` 在 success 路径识别 `committed_degraded` 并仍 invalidate；en/zh-cn/zh-tw/ru/ko 本地化 phase/code。
+- Specta freeze + bindings freshness contract 拒绝 legacy status tag。
+- **验证真相：** focused S08 tests / build / clippy 通过；import cancellation + facade H1/H2 路径 green。full `cargo test` **不**因 S08 全绿：已知失败仅 network 类 flaky、S09 `REGEN_BRIDGE` two-client isolation（唯一稳定 full-suite red contract）、以及 global-state rebuild 类既有失败；不得把上述失败伪装为 S08 未关闭。
 
 ### 6.12 Rebuild dispatcher
 
@@ -511,25 +554,29 @@ pub struct Degradation {
 
 ## 7. Failure Matrix
 
-| 操作               | 失败点                              | Desired                  | Product/Promoted           | Applied                      | 返回                                 |
-| ------------------ | ----------------------------------- | ------------------------ | -------------------------- | ---------------------------- | ------------------------------------ |
-| typed config patch | mirror prepare                      | 旧                       | 不变                       | 不变                         | Err，零提交                          |
-| typed config patch | persistence                         | 旧                       | 不变                       | 不变                         | Err，零提交                          |
-| typed config patch | post-commit effect                  | 新                       | 按需                       | 旧或新                       | CommittedDegraded                    |
-| runtime rebuild    | build/check                         | 新                       | 旧                         | 旧                           | CommittedDegraded / legacy Err       |
-| runtime rebuild    | promote                             | 新                       | 旧                         | 旧                           | Degraded                             |
-| runtime rebuild    | publish store                       | 新                       | 新产品；store 待 reconcile | 旧                           | Degraded                             |
-| runtime apply      | core reject                         | 新                       | 新                         | 旧                           | CommittedDegraded(RuntimeApply)      |
-| change_core        | 新核 build/check                    | 旧 core intent           | 旧                         | 旧                           | Err                                  |
-| change_core        | 新核 restart，rollback 成功         | 旧                       | 旧                         | 旧                           | Err + rollback_succeeded             |
-| change_core        | rollback rebuild 失败、文件恢复成功 | 旧                       | 恢复旧                     | 旧核成功后恢复旧             | compound Err                         |
-| change_core        | 旧核也启动失败                      | 旧                       | 旧                         | 旧 snapshot + health stopped | compound Err / stopped               |
-| legacy 三域 patch  | 第二域 persist                      | compensation 后旧        | 不变                       | 不变                         | Err                                  |
-| legacy 三域 patch  | compensation 失败                   | 部分                     | 不变                       | 不变                         | PartialCommit + critical degradation |
-| profile add        | stage/write                         | 旧                       | —                          | —                            | Err                                  |
-| profile add        | finalize rename                     | 回滚旧                   | —                          | —                            | Err                                  |
-| remote refresh     | metadata persist                    | 旧 metadata，恢复旧 file | —                          | —                            | Err/compound                         |
-| delete             | file cleanup                        | 已删除                   | —                          | —                            | CommittedDegraded + cleanup pending  |
+| 操作               | 失败点                                   | Desired                  | Product/Promoted           | Applied                      | 返回                                                                   |
+| ------------------ | ---------------------------------------- | ------------------------ | -------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| typed config patch | mirror prepare                           | 旧                       | 不变                       | 不变                         | Err，零提交                                                            |
+| typed config patch | persistence                              | 旧                       | 不变                       | 不变                         | Err，零提交                                                            |
+| typed config patch | post-commit effect                       | 新                       | 按需                       | 旧或新                       | CommittedDegraded                                                      |
+| runtime rebuild    | build/check                              | 新                       | 旧                         | 旧                           | CommittedDegraded / legacy Err                                         |
+| runtime rebuild    | promote                                  | 新                       | 旧                         | 旧                           | Degraded                                                               |
+| runtime rebuild    | publish store                            | 新                       | 新产品；store 待 reconcile | 旧                           | Degraded                                                               |
+| runtime apply      | core reject                              | 新                       | 新                         | 旧                           | CommittedDegraded(RuntimeApply)                                        |
+| change_core        | 新核 build/check                         | 旧 core intent           | 旧                         | 旧                           | Err                                                                    |
+| change_core        | 新核 restart，rollback 成功              | 旧                       | 旧                         | 旧                           | Err + rollback_succeeded                                               |
+| change_core        | rollback rebuild 失败、文件恢复成功      | 旧                       | 恢复旧                     | 旧核成功后恢复旧             | compound Err                                                           |
+| change_core        | 旧核也启动失败                           | 旧                       | 旧                         | 旧 snapshot + health stopped | compound Err / stopped                                                 |
+| legacy 三域 patch  | 第二域 persist                           | compensation 后旧        | 不变                       | 不变                         | Err                                                                    |
+| legacy 三域 patch  | compensation 失败                        | 部分                     | 不变                       | 不变                         | PartialCommit + critical degradation                                   |
+| profile add        | stage/write                              | 旧                       | —                          | —                            | Err                                                                    |
+| profile add        | finalize rename                          | 回滚旧                   | —                          | —                            | Err                                                                    |
+| remote **import**  | validate / fetch 失败                    | 旧（零新增）             | —                          | —                            | `ImportFailed` / validation Err；零 state/file；无 delete compensation |
+| remote **import**  | caller cancel before durable commit      | 旧（零新增）             | —                          | —                            | 丢弃 fetch；零 state/file                                              |
+| remote **import**  | state-first promote 失败且 rollback 成功 | 旧                       | —                          | —                            | Err；不留下完整/空壳 import                                            |
+| remote **import**  | post-commit auto-activation 失败         | 新 profile 已提交        | —                          | —                            | `CommittedDegraded` + 保留 ProfileId                                   |
+| remote refresh     | metadata persist                         | 旧 metadata，恢复旧 file | —                          | —                            | Err/compound（file-first；非 import）                                  |
+| delete             | file cleanup                             | 已删除                   | —                          | —                            | CommittedDegraded + cleanup pending                                    |
 
 ---
 
@@ -543,7 +590,7 @@ pub struct Degradation {
 - typed concurrent mutation 导致 version conflict，saga 不覆盖新值；
 - compensation 自身失败返回 PartialCommit。
 
-S06 验证已完成：prepared-mirror zero-commit、manager CAS monotonic/conflict/persistence failure、第二/第三域失败与逆序补偿、concurrent typed update conflict、finalizer/legacy-state uncertainty 和 structured `PartialCommit` 字段均有 deterministic tests。并发交错使用 oneshot/mpsc channel 与 release barrier，不使用 sleep。S08～S10 仍 pending。
+S06 验证已完成：prepared-mirror zero-commit、manager CAS monotonic/conflict/persistence failure、第二/第三域失败与逆序补偿、concurrent typed update conflict、finalizer/legacy-state uncertainty 和 structured `PartialCommit` 字段均有 deterministic tests。并发交错使用 oneshot/mpsc channel 与 release barrier，不使用 sleep。S09～S10 仍 pending。
 
 ### 8.2 PR-3 profiles
 
@@ -554,7 +601,8 @@ S06 验证已完成：prepared-mirror zero-commit、manager CAS monotonic/confli
 - remote source / options / subscription wire（#4917、#4920）；
 - profile title/default interval 与显式 interval；
 - add 初始文件失败不留下 profile；
-- refresh metadata persist 失败恢复旧文件；
+- **remote import fetch-before-commit**（取代 `add empty placeholder → refresh → delete`）：fetch 失败 / cancel 零 state/file；成功一次 state-first + 真实 bytes；无 placeholder delete compensation；
+- refresh metadata persist 失败恢复旧文件（**file-first；manual/scheduled only**）；
 - delete cleanup 失败进入 cleanup queue；
 - symlink/reparse point 拒绝写入。
 
@@ -565,7 +613,8 @@ S07 materialization 验证已完成（deterministic，无 sleep）：
 - superseded state-first：`revision > journal` + active pre-promote 只 compensate、不 promote；
 - cleanup fence（active path、hash reuse、already-absent、symlink no-follow）；
 - startup + periodic reconcile；malformed journal isolation；
-- crate-internal `ProfileDegradation` 字段断言；公共 `MutationOutcome` 仍属 S08。
+- crate-internal `ProfileDegradation` 字段断言；S08 已映射公共 `MutationOutcome`；
+- import cancellation / restart / materialization contracts（见 §6.10 验证列表）。
 
 ### 8.3 PR-4 runtime/core
 
@@ -608,14 +657,16 @@ CI grep/deny：
 
 ## 9. 前端与 wire
 
-- `MutationOutcome<T>` 由 specta 生成；
-- `MutationCache` 识别 `committed_degraded`；
+**状态：** S08 已完成（工作区已验证；PR-4S 整体未完成）。
+
+- `MutationOutcome<T>` 由 specta 生成并冻结；
+- `MutationCache` 仅识别 `committed_degraded`，且仍走 mutation success / query invalidation；
 - toast 展示本地化 phase/code，详细 message 写日志/可展开；
 - profile warnings 不再只记录 tracing；
 - create/import/update/delete/reorder/activate/patch 均返回统一 wrapper；
-- `unwrapResult` 改为穷尽式返回 `T`，不保留理论上的 `undefined`；
-- TS binding shape 有逐字 contract assertion；
-- 同 PR 更新 en/zh-cn/zh-tw/ru/ko。
+- `unwrapResult` 穷尽返回 `T`，wire drift 不坍缩为 `undefined`；
+- TS binding shape 有逐字 contract assertion（含 `RebuildOutcome` 删除）；
+- en/zh-cn/zh-tw/ru/ko 五语 phase/code 已落地。
 
 ---
 

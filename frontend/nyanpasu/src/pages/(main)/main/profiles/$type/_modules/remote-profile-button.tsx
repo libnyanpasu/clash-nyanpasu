@@ -68,7 +68,7 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
     `create-remote-profile`,
     form.handleSubmit(async (data) => {
       try {
-        const { uid } = await create.mutateAsync({
+        const outcome = await create.mutateAsync({
           type: 'url',
           data: {
             url: data.url,
@@ -80,10 +80,12 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
             },
           },
         })
+        const uid = outcome.value
 
         // Import derives the name from the url server-side; apply the user's
         // form name/desc afterwards so their input is not discarded. The
-        // profile exists once import returns, so a rename failure must not be
+        // profile exists once import returns (value carries ProfileId even when
+        // post-commit rebuild is degraded), so a rename failure must not be
         // reported as a create failure (retrying would import a duplicate).
         if (uid && data.name) {
           try {

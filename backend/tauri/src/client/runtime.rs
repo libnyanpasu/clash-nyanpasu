@@ -430,14 +430,6 @@ impl<T> MutationOutcome<T> {
         }
     }
 
-    pub fn is_applied(&self) -> bool {
-        matches!(self, Self::Applied { .. })
-    }
-
-    pub fn is_degraded(&self) -> bool {
-        matches!(self, Self::CommittedDegraded { .. })
-    }
-
     /// Append degradations from a later committed step; Applied only when both
     /// sides contributed none.
     pub fn extend_degradations(self, extra: Vec<Degradation>) -> Self {
@@ -491,7 +483,10 @@ mod tests {
     #[test]
     fn mutation_outcome_applied_iff_degradations_empty() {
         let applied = MutationOutcome::from_parts("uid", Vec::new());
-        assert!(applied.is_applied());
+        assert!(
+            matches!(applied, MutationOutcome::Applied { .. }),
+            "empty degradations must be Applied"
+        );
         assert_eq!(applied.value(), &"uid");
 
         let degraded = MutationOutcome::from_parts(
@@ -503,7 +498,10 @@ mod tests {
                 retryable: true,
             }],
         );
-        assert!(degraded.is_degraded());
+        assert!(
+            matches!(degraded, MutationOutcome::CommittedDegraded { .. }),
+            "non-empty degradations must be CommittedDegraded"
+        );
         assert_eq!(degraded.degradations().len(), 1);
 
         let merged =
@@ -513,7 +511,10 @@ mod tests {
                 message: "left behind".into(),
                 retryable: true,
             }]);
-        assert!(merged.is_degraded());
+        assert!(
+            matches!(merged, MutationOutcome::CommittedDegraded { .. }),
+            "extend_degradations with extra must be CommittedDegraded"
+        );
         assert_eq!(merged.degradations()[0].code, "cleanup_deferred");
     }
 

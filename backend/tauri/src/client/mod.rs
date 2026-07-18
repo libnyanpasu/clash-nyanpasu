@@ -2702,7 +2702,10 @@ mod tests {
                 .await
                 .expect("activate must commit");
             assert!(
-                outcome.is_degraded(),
+                matches!(
+                    outcome,
+                    crate::client::runtime::MutationOutcome::CommittedDegraded { .. }
+                ),
                 "post-commit rebuild failure must be committed_degraded"
             );
             let degradations = outcome.degradations();
@@ -3238,7 +3241,10 @@ mod tests {
             drop(restore);
 
             assert!(
-                outcome.is_degraded(),
+                matches!(
+                    outcome,
+                    crate::client::runtime::MutationOutcome::CommittedDegraded { .. }
+                ),
                 "auto-activation hard failure after commit must be CommittedDegraded"
             );
             let uid = outcome.value().clone();
@@ -3311,7 +3317,10 @@ mod tests {
                 .await
                 .expect("import");
             assert!(
-                outcome.is_applied(),
+                matches!(
+                    outcome,
+                    crate::client::runtime::MutationOutcome::Applied { .. }
+                ),
                 "skipped auto-activation (existing current) must stay applied"
             );
             let imported = outcome.into_value();
@@ -3352,7 +3361,10 @@ mod tests {
                 .await
                 .expect("second create");
             assert!(
-                second.is_applied(),
+                matches!(
+                    second,
+                    crate::client::runtime::MutationOutcome::Applied { .. }
+                ),
                 "Ok(None) auto-activation must not invent degradations"
             );
             let second_uid = second.into_value();
@@ -3394,7 +3406,13 @@ mod tests {
             }];
             let outcome = crate::client::runtime::MutationOutcome::from_parts(uid.clone(), prior)
                 .extend_degradations(vec![degradation]);
-            assert!(outcome.is_degraded());
+            assert!(
+                matches!(
+                    outcome,
+                    crate::client::runtime::MutationOutcome::CommittedDegraded { .. }
+                ),
+                "activation hard error after commit must be CommittedDegraded"
+            );
             assert_eq!(outcome.value(), &uid);
             let codes: Vec<_> = outcome
                 .degradations()

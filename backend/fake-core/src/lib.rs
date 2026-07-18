@@ -640,10 +640,6 @@ impl FakeCoreCommand {
         Self { command }
     }
 
-    pub fn from_resolved() -> io::Result<Self> {
-        Ok(Self::new(require_bin_path()?))
-    }
-
     pub fn check(mut self, app_dir: impl AsRef<Path>, config: impl AsRef<Path>) -> Self {
         self.command
             .arg("-t")
@@ -712,12 +708,6 @@ impl FakeCoreCommand {
     pub fn command_mut(&mut self) -> &mut Command {
         &mut self.command
     }
-}
-
-/// Bind a free local TCP port and return it (port is released when this returns).
-pub fn ephemeral_port() -> io::Result<u16> {
-    let listener = TcpListener::bind(("127.0.0.1", 0))?;
-    Ok(listener.local_addr()?.port())
 }
 
 /// Wait until `child` exits or `timeout` elapses (deadlock safety net).

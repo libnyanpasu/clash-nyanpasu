@@ -123,12 +123,6 @@ impl RebuildCoordinator {
     }
 }
 
-impl Default for RebuildCoordinator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Drop for RebuildCoordinator {
     fn drop(&mut self) {
         // Best-effort only — callers must use `shutdown().await` for clean lifecycle.

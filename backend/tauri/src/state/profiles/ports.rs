@@ -204,15 +204,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ports_are_mockable_and_object_safe() {
-        let _fs: Box<dyn ProfileFsPort> = Box::new(MockProfileFsPort::new());
-        let _fetcher: Box<dyn SubscriptionFetcher> = Box::new(MockSubscriptionFetcher::new());
-        let _notifier: Box<dyn RebuildNotifier> = Box::new(MockRebuildNotifier::new());
-        let _materialization: Box<dyn ProfileMaterializationPort> =
-            Box::new(MockProfileMaterializationPort::new());
-    }
-
-    #[test]
     fn prepared_handles_expose_only_crate_internal_operation_ids() {
         let materialization = PreparedMaterialization::new("materialize".into());
         let cleanup = PreparedCleanup::new("cleanup".into());

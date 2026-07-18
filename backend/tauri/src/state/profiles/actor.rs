@@ -118,7 +118,6 @@ pub struct ProfilesActorArgs {
 
 pub struct ProfilesActorState {
     manager: PersistentStateManager<Profiles>,
-    #[allow(dead_code)]
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,
     fetcher: Arc<dyn SubscriptionFetcher>,

@@ -59,7 +59,7 @@
     "@tanstack/react-router-devtools": "1.167.0",
     "@tanstack/router-plugin": "1.168.22",
     "@tauri-apps/plugin-clipboard-manager": "2.3.2",
-    "@tauri-apps/plugin-dialog": "2.7.1",
+    "@tauri-apps/plugin-dialog": "2.7.2",
     "@tauri-apps/plugin-fs": "2.5.1",
     "@tauri-apps/plugin-notification": "2.3.3",
     "@tauri-apps/plugin-os": "2.3.2",

@@ -171,7 +171,9 @@ CandidateFile::path/hash/cleanup
 ```rust
 RuntimeSnapshot { revision, target_core, product_sha256, ... }
 RuntimeLifecycleState { promoted, applied }
-RuntimeTransactionSnapshot { product, lifecycle, selected_core }
+RuntimeTransactionSnapshot { product, lifecycle }
+// selected core restored by Config::verge().discard() before rollback rebuild
+// (not a RuntimeTransactionSnapshot field)
 ```
 
 **行为：**

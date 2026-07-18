@@ -280,8 +280,9 @@ impl NyanpasuClient {
     /// Core-switch transaction (spec §5.4 / S03). The WHOLE
     /// draft→rebuild→restart→commit/rollback sequence holds the rebuild gate,
     /// so no concurrent rebuild can replace the checked product between check
-    /// and start (P0-2). Rollback restores product, Promoted, Applied, and the
-    /// selected core according to the captured transaction snapshot.
+    /// and start (P0-2). On rollback, product / Promoted / Applied come from the
+    /// captured transaction snapshot; selected core is restored by verge
+    /// `discard()` before the rollback rebuild.
     pub async fn change_core(&self, new_core: crate::config::nyanpasu::ClashCore) -> Result<()> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
@@ -293,11 +294,9 @@ impl NyanpasuClient {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(ClientError::Anyhow(error.into())),
         };
-        let (selected_app, _) = Self::legacy_regen_inputs()?;
         let transaction = crate::client::runtime::RuntimeTransactionSnapshot {
             product,
             lifecycle: self.runtime_lifecycle_state().await,
-            selected_core: selected_app.core,
         };
 
         // TODO(actor-migration): core selection still drafts the legacy verge.
@@ -395,13 +394,7 @@ impl NyanpasuClient {
                         if let Some(restored) = transaction.lifecycle.promoted.clone() {
                             self.publish_applied(restored).await?;
                         }
-                        // selected_core was restored via discard() before rebuild
-                        // (transaction.selected_core is the captured baseline).
-                        debug_assert_eq!(
-                            Self::legacy_regen_inputs().map(|(app, _)| app.core).ok(),
-                            Some(transaction.selected_core),
-                            "selected core must match the pre-transaction snapshot after discard"
-                        );
+                        // selected_core was restored via discard() before rebuild.
                         Err(ClientError::Anyhow(new_core_error.context(format!(
                             "rollback rebuild failed: {rebuild_error}; restored previous product"
                         ))))

@@ -125,7 +125,7 @@ pub struct RuntimeLifecycleState {
 | D2  | 普通 config apply 失败是否 rollback desired | 否；保留 desired，返回 committed-degraded，并维持 applied 旧 revision                                                                                                                                                                                                     |
 | D3  | runtime store 语义                          | 拆为 promoted/applied；不再用一个状态兼任两者                                                                                                                                                                                                                             |
 | D4  | 核心并发控制                                | 所有产品检查、apply、restart、change-core 使用统一 `CoreLifecycleLease`；固定锁顺序 `rebuild/patch gate → lifecycle lease`                                                                                                                                                |
-| D5  | rollback 材料                               | 捕获 `RuntimeTransactionSnapshot`：旧产品字节、旧 lifecycle state、旧 core selection                                                                                                                                                                                      |
+| D5  | rollback 材料                               | 捕获 `RuntimeTransactionSnapshot { product, lifecycle }`（旧产品字节 + 旧 lifecycle state）；旧 core selection 不进 snapshot，由 `Config::verge().discard()` 在 rollback rebuild 前恢复                                                                                   |
 | D6  | D6 patch compensation                       | **S05 已完成**：instance-owned patch gate 串行；基于 Applied snapshot 的 transport-independent Set/Remove（禁止 JSON `null` 删除）；expected Applied revision fence 防止覆盖后续更新；私有 candidate 直接 apply，不 promote product                                       |
 | D7  | actor mirror                                | **S06 已完成**：`prepare(next)` 可失败且在 persist 前；`PreparedLegacyMirror::apply()` 不可失败、仅更新内存 projection、且在 persist 后；prepare failure 零提交                                                                                                           |
 | D8  | legacy 三域 patch                           | **S06 已完成**：manager-level expected-version CAS（actor 消息 `ReplacePreparedIfVersion`）；Application→Session→Clash saga；reverse compensation；structured `PartialCommit` 与 finalizer uncertainty                                                                    |
@@ -252,13 +252,12 @@ allocate revision
 pub struct RuntimeTransactionSnapshot {
     pub product: Option<Vec<u8>>,
     pub lifecycle: RuntimeLifecycleState,
-    pub selected_core: ClashCore,
 }
 ```
 
-仅 all-or-nothing operation 使用。`change_core` 在任何修改前捕获。rollback 顺序：
+仅 all-or-nothing operation 使用。`change_core` 在任何修改前捕获 snapshot（product + lifecycle）。旧 core selection 不在 snapshot 内：rollback 时先通过 `Config::verge().discard()` 恢复旧 selected-core desired value，再做 rollback rebuild。rollback 顺序：
 
-1. 恢复旧 selected core desired value；
+1. 恢复旧 selected core desired value（`Config::verge().discard()`，非 snapshot 字段）；
 2. 尝试从 committed desired state 重建旧核 runtime；
 3. 若重建失败，原子恢复旧 product bytes；
 4. 恢复 lifecycle.promoted；

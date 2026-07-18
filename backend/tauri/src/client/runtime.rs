@@ -108,7 +108,6 @@ pub struct RuntimeLifecycleState {
 pub struct RuntimeTransactionSnapshot {
     pub product: Option<Vec<u8>>,
     pub lifecycle: RuntimeLifecycleState,
-    pub selected_core: ClashCore,
 }
 
 /// Facade-held runtime lifecycle store. It is instance-owned and non-persistent:

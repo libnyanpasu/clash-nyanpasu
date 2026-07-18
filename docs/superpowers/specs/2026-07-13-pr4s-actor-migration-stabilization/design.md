@@ -1,9 +1,9 @@
 # PR-4S — PR-1～PR-4 Actor Migration 稳定化门（设计 spec）
 
 **日期：** 2026-07-13
-**状态：** Implementing（不得宣告 PR-4S 完成；S10 / 手工 smoke 阻塞完成）
+**状态：** **COMPLETE**（PR-4S 稳定化门已关闭；**PR-5a unlocked**）。不宣称 actor migration 全量完成或 residual 清零（PR-5/6/7 残差仍在）。
 
-**状态权威：** 本文件只承载设计语义（协议、类型形状、不变式、锁顺序、failure matrix、决策与验收）。S01～S10 进度、工作区验证记录与“是否完成”宣告以 [`task.md`](./task.md) 为准；closeout 证据见 [`smoke-evidence.md`](./smoke-evidence.md)、[`review-disposition.md`](./review-disposition.md)。本文件不重复逐步执行日记，也不在各小节重复 completion / S10-pending banner。
+**状态权威：** 本文件只承载设计语义（协议、类型形状、不变式、锁顺序、failure matrix、决策与验收）。S01～S10 进度、工作区验证记录与“是否完成”宣告以 [`task.md`](./task.md) 为准；closeout 证据见 [`smoke-evidence.md`](./smoke-evidence.md)（含 cleanup-tip **Q-18…Q-20**）、[`review-disposition.md`](./review-disposition.md)、[`residual-ledger.md`](./residual-ledger.md)。手工 smoke 执行权威为 [`smoke-evidence.md`](./smoke-evidence.md)（E-01…E-11 maintainer-attested PASS @ 2026-07-18；raw fields 未保留）。本文件不重复逐步执行日记。
 
 **范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`）
 **上游依据：** `docs/design/actor-migration-roadmap.md` v3 §5
@@ -33,7 +33,7 @@ PR-1～PR-4 已完成以下主要方向：
 
 **仍属当前、且刻意留给后续 PR 的 residual（非 PR-4S 四类 baseline 缺陷本身）：** legacy `Config` / `CoreManager` global 仍非 full graph desired-state isolation（PR-5/6 ownership migration 范围）。
 
-PR-4S 不继续扩大 actor 数量。它先以本文件的协议与不变式修复 PR-1～PR-4 的 correctness boundary，使 PR-5 可以在可靠状态模型上接管核心生命周期。**在 S10（ledger CI gate、三平台 smoke/evidence、final review disposition、PR-4S closeout）完成前，不得宣告 PR-4S 完成。**
+PR-4S 不继续扩大 actor 数量。它先以本文件的协议与不变式修复 PR-1～PR-4 的 correctness boundary，使 PR-5 可以在可靠状态模型上接管核心生命周期。**S10 / PR-4S 稳定化门已 COMPLETE（2026-07-18）；PR-5a unlocked。** 关闭证据包：E-01…E-11 maintainer-attested PASS（权威 [`smoke-evidence.md`](./smoke-evidence.md)；raw fields 未保留）；review Path A；target-tip CI run 29635372676；cleanup-tip CI run 29638274786 **SUCCESS** @ `8909566c0bb759f562d420af4b9672469920fc21`（权威 [`smoke-evidence.md`](./smoke-evidence.md) **Q-18…Q-20**）；residual ledger 文档化；local QA。**不**宣称 actor migration 完成或 PR-5/6/7 residual 清零。
 
 ---
 
@@ -139,7 +139,7 @@ pub struct RuntimeLifecycleState {
 | D12 | rebuild dispatcher                          | 删除 `REGEN_BRIDGE`/OnceCell；instance-owned capacity-1 coalescing `RebuildCoordinator`；Weak worker；direct typed requests；explicit `shutdown` + 生产 `cleanup_processes` exit 集成；two-client/clone isolation；不允许 first-install-wins 静态 handler |
 | D13 | outcome                                     | `MutationOutcome<T>` + phase/code 为唯一公共 wire；旧 `RebuildOutcome` 已删除，无 `_v1` alias                                                                                                                                                             |
 | D14 | PR-3/4 回归                                 | 固化为 contract fixtures，不能仅依赖已关闭 issue                                                                                                                                                                                                          |
-| D15 | 手工 smoke                                  | 必须生成可追溯记录；未记录视为未执行                                                                                                                                                                                                                      |
+| D15 | 手工 smoke                                  | 必须生成可追溯记录；未记录视为未执行；执行权威 [`smoke-evidence.md`](./smoke-evidence.md)（E-01…E-11 maintainer-attested PASS @ 2026-07-18；raw fields 未保留）；与 cleanup-tip **Q-18…Q-20** 等证据共同关闭 S10 / PR-4S 门                               |
 
 ---
 
@@ -518,7 +518,7 @@ pub struct Degradation {
 - **Import wire 终态：** `import_profile` 走 actor-owned fetch-before-commit（§6.10）；仅在一次 durable state-first 成功后才返回 `MutationOutcome<ProfileId>`。fetch/validation/cancel 失败 → 普通 `Err`（零 state/file），**不是** `CommittedDegraded`，也**不**依赖 placeholder delete。成功后的 materialization / rebuild / auto-activation 降级才进入 `committed_degraded`。
 - 前端：`unwrapResult` 穷尽返回 `T`；`MutationCache` 在 success 路径识别 `committed_degraded` 并仍 invalidate；en/zh-cn/zh-tw/ru/ko 本地化 phase/code。
 - Specta freeze + bindings freshness contract 拒绝 legacy status tag。
-- **验证真相：** focused contract tests / build / clippy 通过；import cancellation + facade H1/H2 路径须 green。full workspace green **不得**在 S10 最终 QA 前宣称。历史 `REGEN_BRIDGE` two-client isolation red contract 已关闭，不得再当作稳定 red；network 类 flaky 与 PR-5/6 residual global-state rebuild 失败须如实记录，不得伪装为未关闭的稳定化 blocker。
+- **验证真相：** focused contract tests / build / clippy 通过；import cancellation + facade H1/H2 路径须 green。full workspace / multi-OS CI green 以 S10 证据包为准（local Q + tip CI + cleanup-tip **Q-18…Q-20**；权威 [`smoke-evidence.md`](./smoke-evidence.md)）。历史 `REGEN_BRIDGE` two-client isolation red contract 已关闭，不得再当作稳定 red；network 类 flaky 与 PR-5/6 residual global-state rebuild 失败须如实记录，不得伪装为未关闭的稳定化 blocker。
 
 ### 6.12 Rebuild dispatcher
 
@@ -551,7 +551,7 @@ pub struct Degradation {
   - two graph PID/port/path isolation；
   - process-level `change_core` new-start failure + old-core rollback success。
 - **prebuild：** 跨 crate 须预构建 `fake-core`；discovery 与错误文案约定见 fake-core README（`NYANPASU_FAKE_CORE` → profile sibling → target path；`PREBUILD_COMMAND`）。
-- **平台限制：** std-only 跨平台协议；Windows service-mode / TUN 权限路径留给 S10 手工 smoke。
+- **平台限制：** std-only 跨平台协议；Windows service-mode / TUN 权限路径属 S10 手工 smoke（E-09…E-11；执行权威 [`smoke-evidence.md`](./smoke-evidence.md)）。
 
 ---
 
@@ -773,28 +773,30 @@ profile journal 只保存路径、operation id、durable `Profiles.revision` 和
 
 ### 13.2 手工 smoke
 
-必须覆盖并记录：
+必须覆盖并记录（映射到 canonical `E-xxx`；执行权威 [`smoke-evidence.md`](./smoke-evidence.md)）：
 
-1. 首次启动 + 删除产品后的 fallback；
-2. profile 切换 + mode/allow-lan/ipv6；
-3. mixed-port fixed/random 与即时生效；
-4. mihomo ↔ clash-rs 成功换核；
-5. 新核二进制故障时硬回滚；
-6. remote-dependent profile 断网后的 committed-degraded；
-7. patch rebuild 失败后的 Applied-based compensation；
-8. local/remote/composition profile 创建、导入、刷新和删除；
-9. Windows service mode；
-10. macOS/Linux TUN 权限路径。
+1. 首次启动 + 删除产品后的 fallback（E-01）；
+2. profile 切换 + mode/allow-lan/ipv6（E-02）；
+3. mixed-port fixed/random 与即时生效（E-07）；
+4. mihomo ↔ clash-rs 成功换核（E-03）；
+5. 新核二进制故障时硬回滚（E-04）；
+6. remote-dependent profile 断网后的 committed-degraded（E-05）；
+7. patch rebuild 失败后的 Applied-based compensation（E-06）；
+8. local/remote/composition profile 创建、导入、刷新和删除（E-08）；
+9. Windows service mode（E-09）；
+10. macOS/Linux TUN 权限路径（E-10 / E-11）。
 
-未记录视为未执行；手工 smoke 阻塞 PR-4S 完成宣告。
+**规则：** 未记录视为未执行。Maintainer attestation（GPG-signed 仓库记录 / 本仓库 durable `smoke-evidence.md` 条目）可作为执行证据；raw commit/build/os/app/core/log 未保留时必须显式 `not captured`，不得伪造 artifact。
+
+**当前执行状态（非本文件 closeout 日记；权威 [`smoke-evidence.md`](./smoke-evidence.md)）：** maintainer `4o3F` 于 2026-07-18 证明 E-01…E-11 **全部 PASS**；raw fields **not captured**。连同 Path A、target-tip CI、cleanup-tip CI **Q-18…Q-20 SUCCESS** @ `8909566c…`、residual ledger 与 local QA，S10 / PR-4S 稳定化门 **COMPLETE**；**PR-5a unlocked**。
 
 ### 13.3 文档
 
-- v3 roadmap 状态更新为 PR-4S 已完成；
-- PR-4 四个 review finding 逐条 disposition；
-- PR-4 五项 smoke 证据链接；
-- `TODO(actor-migration)` ledger 自动刷新；
-- 所有延期项有负责 PR 和删除条件。
+- v3 roadmap / task 状态：PR-4S 稳定化门 **COMPLETE**；**PR-5a unlocked**（权威进度以 [`task.md`](./task.md) 为准；**不**宣称 actor migration 或 residual 清零）；
+- PR-4 四个 review finding 逐条 disposition（[`review-disposition.md`](./review-disposition.md) Path A）；
+- PR-4 五项 smoke + §13.2 证据链接（[`smoke-evidence.md`](./smoke-evidence.md)；E-01…E-11 PASS (maintainer-attested)；cleanup-tip **Q-18…Q-20**）；
+- `TODO(actor-migration)` residual ledger 已文档化（[`residual-ledger.md`](./residual-ledger.md)；**残差仍属 PR-5/6/7**）；
+- 所有延期项有负责 PR 和删除条件（见 residual ledger；**未**清零）。
 
 ---
 
@@ -814,13 +816,14 @@ profile journal 只保存路径、operation id、durable `Profiles.revision` 和
 
 ## 15. 成功定义
 
-PR-4S 完成后：
+PR-4S 完成后（**稳定化门已达成 COMPLETE**；下列为门的成功语义，**不含** actor migration 终态或 residual 清零）：
 
 - PR-1～PR-4 不再存在已确认的 correctness blocker；
 - 产品文件、Promoted、Applied 和 selected core 在所有已建模失败分支保持一致或显式 degraded；
 - typed state 与 legacy mirror 不会产生“已提交但普通 Err”；
 - legacy 三域 patch 不会静默部分提交；
 - profile 状态/文件有恢复协议；
-- 测试图完全隔离；
+- 测试图完全隔离（process-global rebuild dispatcher 已移除）；
 - 已发生回归被 contract suite 固化；
-- PR-5 可以只关注 ownership migration，而不同时修补 PR-4 的事务漏洞。
+- **PR-5a unlocked** — PR-5 可以只关注 ownership migration，而不同时修补 PR-4 的事务漏洞；
+- PR-5/6/7 residual（legacy `Config` / `CoreManager` globals 等）**仍然存在**，见 [`residual-ledger.md`](./residual-ledger.md)。

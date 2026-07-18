@@ -3,7 +3,7 @@
 - **关联设计：** [`./design.md`](./design.md)；下文 `design §N` 均指该文件。
 - **任务定位：** roadmap v3 的单一硬前置 Task `R4S`。内部拆成 S01～S10 commit group，全部属于同一 atomic PR；任何子集都不能单独宣告稳定化完成。
 - **分支建议：** `fix/pr4s-actor-migration-stabilization`
-- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）。S01 `daf872d9`；S02 `807f1733`；S03～S09 均已在工作区实现并验证（均未单独 merge）。S10 仍 pending；**不得**宣告 PR-4S 完成。`REGEN_BRIDGE`/OnceCell first-install-wins 已删除，不再是 full-suite red contract。
+- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）。S01 `daf872d9`；S02 `807f1733`；S03～S09 均已在工作区实现并验证；**S10 / PR-4S 稳定化门 COMPLETE**（2026-07-18）。证据包：E-01…E-11 maintainer-attested PASS；review Path A；target-tip CI run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676)；cleanup-tip CI run [29638274786](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29638274786) **SUCCESS** @ `8909566c0bb759f562d420af4b9672469920fc21`（权威 [`./smoke-evidence.md`](./smoke-evidence.md) **Q-18…Q-20**）；residual ledger + local QA。**PR-5a 已解锁**。不宣称 actor migration 全量完成或 residual 清零（PR-5/6/7 残差仍在）。`REGEN_BRIDGE`/OnceCell first-install-wins 已删除。
 - **建议 PR 标题：** `fix(tauri)!: close PR1-4 actor-migration consistency and regression gaps (PR-4S)`
 - **语义权威：** 协议/语义细节以 design §6.7–6.13、§8.5、§9、§13 为准；finding 卷宗与 Path A 证据以 [`./review-disposition.md`](./review-disposition.md) 为准。本文件只保留执行状态、落地卡片与验收 checklist。
 
@@ -58,18 +58,18 @@ flowchart LR
 
 ## 2. 任务总表
 
-| ID  | 任务                                       | Scope                                                                                                                                                                                                                   | 建议 commit                                                                      | Design           |
-| --- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------- |
-| S01 | 基线、故障注入接口与回归 fixtures          | 固化当前缺陷和既有回归，不改生产行为                                                                                                                                                                                    | `test: pin PR1-4 migration regressions and failure contracts`                    | §1, §8           |
-| S02 | RuntimePaths 与 candidate 安全             | 路径全注入、私有随机 candidate、cleanup                                                                                                                                                                                 | `refactor(tauri): inject runtime paths and harden candidate files`               | §6.1–6.2         |
-| S03 | RuntimeLifecycleState 与 rollback snapshot | promoted/applied/revision/hash；完整恢复                                                                                                                                                                                | `fix(tauri): track promoted and applied runtime revisions`                       | §4, §6.4–6.5     |
-| S04 | CoreLifecycleLease                         | 统一 run/restart/change-core 锁域                                                                                                                                                                                       | `fix(core): serialize core lifecycle through an exclusive lease`                 | §6.3, §6.6       |
-| S05 | Patch gate 与 Applied compensation         | **已完成**：Applied Set/Remove、revision fence、private candidate direct apply、thin IPC                                                                                                                                | `fix(tauri): compensate runtime patches from applied state`                      | §6.7             |
-| S06 | Prepared mirror 与三域 saga                | **已完成**：prepared mirrors、manager-level CAS、ordered saga/reverse compensation、structured `PartialCommit`                                                                                                          | `fix(state): make legacy mirrors prepared and cross-domain patches compensating` | §6.8–6.9         |
-| S07 | Profile materialization transaction        | **已完成**：durable `Profiles.revision`、state-first/file-first/cleanup/reconcile、import fetch-before-commit、startup+periodic recovery、crate-internal degradation                                                    | `fix(profile): make profile state and materialization recoverable`               | §6.10            |
-| S08 | MutationOutcome wire                       | **已完成**：公共 `MutationOutcome` / IPC / Specta / frontend；import 终态协议；facade 合并 S07 degradations + 粗粒度 rebuild；H1/H2 committed-degraded                                                                  | `feat(ipc)!: expose structured committed-degraded mutation outcomes`             | §6.11, §9        |
-| S09 | Dispatcher 与 fake-core                    | **已完成**：删除 `REGEN_BRIDGE`/OnceCell；instance-owned capacity-1 coalescing `RebuildCoordinator`；Weak worker；direct typed requests；shutdown + production exit；test-only env+real-argv `fake-core` process matrix | `refactor(tauri): remove process-global rebuild handler and add fake-core tests` | §6.12–6.13, §8.5 |
-| S10 | 验收与文档收尾                             | 三平台 smoke、review disposition、roadmap ledger                                                                                                                                                                        | `docs: close PR-4S stabilization gate`                                           | §13              |
+| ID  | 任务                                       | Scope                                                                                                                                                                                                                                  | 建议 commit                                                                      | Design           |
+| --- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------- |
+| S01 | 基线、故障注入接口与回归 fixtures          | 固化当前缺陷和既有回归，不改生产行为                                                                                                                                                                                                   | `test: pin PR1-4 migration regressions and failure contracts`                    | §1, §8           |
+| S02 | RuntimePaths 与 candidate 安全             | 路径全注入、私有随机 candidate、cleanup                                                                                                                                                                                                | `refactor(tauri): inject runtime paths and harden candidate files`               | §6.1–6.2         |
+| S03 | RuntimeLifecycleState 与 rollback snapshot | promoted/applied/revision/hash；完整恢复                                                                                                                                                                                               | `fix(tauri): track promoted and applied runtime revisions`                       | §4, §6.4–6.5     |
+| S04 | CoreLifecycleLease                         | 统一 run/restart/change-core 锁域                                                                                                                                                                                                      | `fix(core): serialize core lifecycle through an exclusive lease`                 | §6.3, §6.6       |
+| S05 | Patch gate 与 Applied compensation         | **已完成**：Applied Set/Remove、revision fence、private candidate direct apply、thin IPC                                                                                                                                               | `fix(tauri): compensate runtime patches from applied state`                      | §6.7             |
+| S06 | Prepared mirror 与三域 saga                | **已完成**：prepared mirrors、manager-level CAS、ordered saga/reverse compensation、structured `PartialCommit`                                                                                                                         | `fix(state): make legacy mirrors prepared and cross-domain patches compensating` | §6.8–6.9         |
+| S07 | Profile materialization transaction        | **已完成**：durable `Profiles.revision`、state-first/file-first/cleanup/reconcile、import fetch-before-commit、startup+periodic recovery、crate-internal degradation                                                                   | `fix(profile): make profile state and materialization recoverable`               | §6.10            |
+| S08 | MutationOutcome wire                       | **已完成**：公共 `MutationOutcome` / IPC / Specta / frontend；import 终态协议；facade 合并 S07 degradations + 粗粒度 rebuild；H1/H2 committed-degraded                                                                                 | `feat(ipc)!: expose structured committed-degraded mutation outcomes`             | §6.11, §9        |
+| S09 | Dispatcher 与 fake-core                    | **已完成**：删除 `REGEN_BRIDGE`/OnceCell；instance-owned capacity-1 coalescing `RebuildCoordinator`；Weak worker；direct typed requests；shutdown + production exit；test-only env+real-argv `fake-core` process matrix                | `refactor(tauri): remove process-global rebuild handler and add fake-core tests` | §6.12–6.13, §8.5 |
+| S10 | 验收与文档收尾                             | **COMPLETE**：E-01…E-11 PASS（attested）；Path A；tip CI 29635372676；cleanup-tip CI 29638274786 **SUCCESS** @ `8909566c…`（`smoke-evidence.md` **Q-18…Q-20**）；residual ledger owners 齐；**PR-5a unlocked**；PR-5/6/7 residual 仍存 | `docs: close PR-4S stabilization gate`                                           | §13              |
 
 ---
 
@@ -77,7 +77,7 @@ flowchart LR
 
 ## S01 — 基线、故障注入接口与回归 fixtures
 
-**状态：** 已完成（`daf872d9` 固化 failure contracts / 初版 ledger 报告脚本）。不得将 PR-4S 整体标为完成；S10 仍 pending。
+**状态：** 已完成（`daf872d9` 固化 failure contracts / 初版 ledger 报告脚本）。S10 / PR-4S 稳定化门随后已 COMPLETE（见 S10）。
 
 **目标：** 先用测试复现/冻结缺陷，避免后续重构掩盖行为。
 
@@ -119,7 +119,7 @@ flowchart LR
 
 ## S03 — RuntimeLifecycleState 与 rollback snapshot
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。落地：`RuntimeSnapshot` / `RuntimeLifecycleState { promoted, applied }` / `RuntimeTransactionSnapshot`；revision/core/hash 绑定；四读 IPC 读 Promoted；`change_core` 捕获 transaction snapshot 并按 product → Promoted → old-core restart → Applied 恢复。
+**状态：** 已完成（工作区已验证）。S10 / PR-4S 稳定化门随后已 COMPLETE（见 S10）。落地：`RuntimeSnapshot` / `RuntimeLifecycleState { promoted, applied }` / `RuntimeTransactionSnapshot`；revision/core/hash 绑定；四读 IPC 读 Promoted；`change_core` 捕获 transaction snapshot 并按 product → Promoted → old-core restart → Applied 恢复。
 
 **目标：** 显式区分 promoted/applied，并修复深层 rollback read-model 失真。
 
@@ -135,7 +135,7 @@ flowchart LR
 
 ## S04 — CoreLifecycleLease 与 change-core serialization
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。落地：`CoreLifecyclePort`/`CoreLifecycleLease`（`client/core_bridge.rs`）；`CoreManager::lifecycle_lock` 统一 run/restart/stop/check/apply/recover 锁域，public 方法 `begin_lifecycle` + `*_with_lease` 拆分；`change_core` 全程持有 `rebuild_gate + lease` 至 rollback 结束；updater `replace_core` stop/swap/restart 在同一 lease 内完成；验证 `s04_concurrent_restart_waits_until_change_core_rollback_completes`（barrier/oneshot，无 sleep）。S09 fake-core 进程级 matrix 已覆盖 process-level lease/change_core。
+**状态：** 已完成（工作区已验证）。S10 / PR-4S 稳定化门随后已 COMPLETE（见 S10）。落地：`CoreLifecyclePort`/`CoreLifecycleLease`（`client/core_bridge.rs`）；`CoreManager::lifecycle_lock` 统一 run/restart/stop/check/apply/recover 锁域，public 方法 `begin_lifecycle` + `*_with_lease` 拆分；`change_core` 全程持有 `rebuild_gate + lease` 至 rollback 结束；updater `replace_core` stop/swap/restart 在同一 lease 内完成；验证 `s04_concurrent_restart_waits_until_change_core_rollback_completes`（barrier/oneshot，无 sleep）。S09 fake-core 进程级 matrix 已覆盖 process-level lease/change_core。
 
 **目标：** 所有核心生命周期操作共享同一互斥域，消除换核 rollback 期间并发 restart。
 
@@ -151,7 +151,7 @@ flowchart LR
 
 ## S05 — Patch gate 与 Applied-based compensation
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。S10 pending。
+**状态：** 已完成（工作区已验证）。S10 / PR-4S 稳定化门随后已 COMPLETE（见 S10）。
 
 **目标：** 修复 D6 补偿读取错误状态、不能删除新键和并发覆盖问题。
 
@@ -176,7 +176,7 @@ flowchart LR
 
 ## S06 — Prepared mirrors 与 version-checked three-domain saga
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。S10 pending。
+**状态：** 已完成（工作区已验证）。S10 / PR-4S 稳定化门随后已 COMPLETE（见 S10）。
 
 **目标：** 消灭 typed commit 后 mirror error 和 legacy patch 的部分提交。
 
@@ -203,7 +203,7 @@ flowchart LR
 
 ## S07 — Profile materialization transaction
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。S10 pending。
+**状态：** 已完成（工作区已验证）。S10 / PR-4S 稳定化门随后已 COMPLETE（见 S10）。
 
 **目标：** Profiles 状态与物化文件失败可恢复；import 取消安全且无空壳占位。
 
@@ -227,7 +227,7 @@ flowchart LR
 
 ## S08 — MutationOutcome wire 与前端原子切换
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。S10 pending。
+**状态：** 已完成（工作区已验证）。S10 / PR-4S 稳定化门随后已 COMPLETE（见 S10）。
 
 **目标：** 统一 mutation success/degraded 语义；固定 import 终态 wire 并交付前端。
 
@@ -246,7 +246,7 @@ flowchart LR
 
 - focused wire/facade/H1/H2/import/Specta/frontend path green
 - five-locale keys + bindings freshness 已验证
-- full workspace green **不得**在 S10 最终 QA 前宣称
+- full workspace green 仅在 S10 最终 QA 证据包下宣称（local Q + tip/cleanup-tip CI；见 `smoke-evidence.md`）
 
 **残差/后续：** full runtime phase fidelity（Check/Promote/Publish/Apply）延期；禁止伪精度。
 
@@ -254,7 +254,7 @@ flowchart LR
 
 ## S09 — Dispatcher 去全局化、fake-core 与完整 E2E
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。S10 pending。
+**状态：** 已完成（工作区已验证）。S10 / PR-4S 稳定化门随后已 COMPLETE（见 S10）。
 
 **目标：** service graph 可独立创建/销毁；以真实子进程故障注入验证生命周期。
 
@@ -274,28 +274,30 @@ flowchart LR
 - focused S09 coordinator + process matrix 工作区已验证
 - **不得**因 S09 完成宣称 `cargo test --workspace --all-features` 全绿
 
-**残差/后续：** legacy `Config` / `CoreManager::global()` 与 desired-state isolation 归 PR-5/6；Windows service-mode / TUN 权限路径留给 S10 手工 smoke；S09 `shutdown` 只拆 rebuild worker。
+**残差/后续：** legacy `Config` / `CoreManager::global()` 与 desired-state isolation 归 PR-5/6；Windows service-mode / TUN 权限路径的手工 smoke 已由 maintainer 于 2026-07-18 对 E-09…E-11 出具 PASS 证明（权威见 [`./smoke-evidence.md`](./smoke-evidence.md)；raw fields 未保留）；S09 `shutdown` 只拆 rebuild worker。
 
 ---
 
 ## S10 — Smoke evidence、review disposition 与 roadmap closeout
 
-**状态：** pending。S01～S09 工作区已验证**不**关闭 PR-4S。S10 工作树部分落地**不**关闭 PR-4S。
+**状态：** **COMPLETE**（2026-07-18）。S01～S09 实现 + 下列证据包关闭 PR-4S 稳定化门并**解锁 PR-5a**。不宣称 actor migration 全量完成，也不宣称 residual 清零（PR-5/6/7 残差仍在；见 [`./residual-ledger.md`](./residual-ledger.md)）。
 
 **目标：** 将“代码完成”转为可审计验收完成。
 
 **交付：**
 
-1. PR-4 四个 review finding disposition 表 + **thread-gate Path A 已完成**：`#4932` 四 thread 均由 authenticated actor `4o3F` 于 2026-07-18 resolve，API `isResolved: true`（见 [`./review-disposition.md`](./review-disposition.md)）；code disposition 仍不单独构成 closeout 规则；
-2. PR-4 五项 smoke 以及 design §13.2 新增 smoke 记录；
-3. Windows/macOS/Linux build、core version、步骤、日志/artifact（**CI lint/build/unit** 见 tip 证据；**手工 smoke 仍 pending**）；
-4. architecture ledger CI gate：**已实现** gate mode、committed snapshot（`scripts/architecture-ledger.snapshot.json`）与 `package.json` `lint:architecture-ledger` → `pnpm lint` 的 Ubuntu CI 集成；**target-tip CI 证据已齐**：tip `10c837cd0068bb217e6195d286d6d022d9930f60`，run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) **success**（Windows/macOS/Linux lint/build/unit 全绿）；
-5. roadmap 状态/数字/依赖图更新（含 S09 residual ledger）；
-6. PR-4 spec §13 addendum：哪些决策被 PR-4S 修正；
-7. residual TODO ledger，明确 PR-5/6 owner（含 legacy `Config`/`CoreManager` global 非 full desired-state isolation）；
-8. full test/build commands 和结果记录（tip CI 已绿；**S10 全量 closeout / 手工 smoke 仍 pending**，不得据此单独宣告 PR-4S 完成）。
+1. PR-4 四个 review finding disposition 表 + **thread-gate Path A 已完成**：`#4932` 四 thread 均由 authenticated actor `4o3F` 于 2026-07-18 resolve，API `isResolved: true`（见 [`./review-disposition.md`](./review-disposition.md)）；
+2. PR-4 五项 smoke 以及 design §13.2 新增 smoke 记录：**已完成** — maintainer `4o3F` 于 2026-07-18 证明 E-01…E-11 **全部 PASS**；权威 [`./smoke-evidence.md`](./smoke-evidence.md)；raw fields **未保留**（`not captured`）；
+3. Windows/macOS/Linux build / 步骤 / CI artifact：**target-tip** run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) success @ `10c837cd…`；**cleanup-tip** run [29638274786](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29638274786) **SUCCESS** @ `8909566c0bb759f562d420af4b9672469920fc21`（Windows/macOS/Linux lint/build/unit 全绿；权威 [`./smoke-evidence.md`](./smoke-evidence.md) **Q-18…Q-20**）；手工 smoke E-01…E-11 PASS (attested)；
+4. architecture ledger CI gate：**已实现** + tip CI 证据已齐（见上；gate/snapshot/`pnpm lint` 集成）；
+5. roadmap / residual closeout 包：**已完成（稳定化门语义）** — residual owners/removal conditions 见 [`./residual-ledger.md`](./residual-ledger.md)；PR-4S 状态以本文件 + `design.md` 为准；**PR-5a unlocked**；不迁移/不清零 PR-5/6/7 residual；
+6. PR-4 review disposition + smoke 证据链：见 `review-disposition.md` / `smoke-evidence.md`（含哪些决策由 PR-4S 修正的执行摘要）；
+7. residual TODO ledger：**已完成文档化**（[`./residual-ledger.md`](./residual-ledger.md) R-01…R-18 + S09 capability residuals；owner 与删除条件齐全；**残差仍存在**）；
+8. full test/build commands 和结果记录：**已完成** — local Q-01…Q-17 + tip Q-09…Q-11 + cleanup-tip **Q-18…Q-20**（权威 [`./smoke-evidence.md`](./smoke-evidence.md)）。
 
-**禁止：** 仅在 PR 描述打勾但不附证据；禁止因 S09 完成、review thread-gate 关闭、tip CI green、或 S10 部分工作树落地提前宣告 PR-4S 关闭。
+**关闭条件（已满足）：** review Path A + E-01…E-11 attested PASS + target-tip CI + cleanup-tip CI SUCCESS + residual ledger 文档化 + local QA 记录。
+
+**明确非宣称：** actor migration 未完成；`Config`/`CoreManager` globals 与 PR-5/6/7 residual **未**清零。
 
 ---
 
@@ -315,7 +317,7 @@ flowchart LR
 - **Path A** — GitHub thread 实际 resolve（`isResolved: true` + 可发现 resolve 证据）；或
 - **Path B** — 显式 maintainer disposition（signed/dated 记录于 `review-disposition.md` 或链接 issue/PR comment，含理由）。
 
-**证据（2026-07-18）：** PR `#4932` 四 thread 均由 authenticated actor `4o3F` resolve，GraphQL/API `isResolved: true`。代码/test disposition **不**自动 resolve thread；本轮关闭路径为 **Path A**，非 silent deferral。**Review thread-gate 已满足**；S10 / PR-4S 其他验收项仍 pending，不得因 thread-gate 关闭而宣告 PR-4S 完成。
+**证据（2026-07-18）：** PR `#4932` 四 thread 均由 authenticated actor `4o3F` resolve，GraphQL/API `isResolved: true`。代码/test disposition **不**自动 resolve thread；本轮关闭路径为 **Path A**，非 silent deferral。**Review thread-gate 已满足**。连同 E-01…E-11 attested PASS、residual ledger、local QA、target-tip CI 与 cleanup-tip CI **Q-18…Q-20 SUCCESS**，S10 / PR-4S 稳定化门已 **COMPLETE**；**PR-5a unlocked**。
 
 ---
 
@@ -353,15 +355,19 @@ flowchart LR
 - [x] S08 focused wire/facade/frontend/import contracts green
 - [x] S09 coordinator isolation + fake-core process matrix green（focused/S09 路径；**非** full workspace green 宣称）
 - [ ] regression fixtures #4893/#4916/#4917/#4920/#4921 green
-- [x] Windows/macOS/Linux CI green（tip `10c837cd0068bb217e6195d286d6d022d9930f60`；run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) success；lint/build/unit 三平台全绿）
+- [x] Windows/macOS/Linux CI green（target-tip `10c837cd…` run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) success；**cleanup-tip** `8909566c0bb759f562d420af4b9672469920fc21` run [29638274786](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29638274786) **SUCCESS**；lint/build/unit 三平台全绿；cleanup 权威 [`./smoke-evidence.md`](./smoke-evidence.md) **Q-18…Q-20**）
 - [x] bindings freshness green（S08 Specta freeze；拒绝 `RebuildOutcome` / legacy status tags）
 
 ### 证据
 
 - [x] PR-4 review thread-gate closed（**每个** finding 已完成 Path A：`#4932` 四 thread 由 `4o3F` 于 2026-07-18 resolve，API `isResolved: true`；见 `review-disposition.md`）
-- [ ] manual smoke records attached
-- [x] architecture ledger target-tip CI evidence attached（gate mode / snapshot / Ubuntu `pnpm lint` 集成；tip `10c837cd0068bb217e6195d286d6d022d9930f60`；run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) success）
-- [ ] roadmap ledger generated and current
-- [ ] residual TODO owner/removal condition complete
+- [x] manual smoke records attached（E-01…E-11 **全部 PASS (maintainer-attested)** by `4o3F` on 2026-07-18；权威 [`./smoke-evidence.md`](./smoke-evidence.md)；raw commit/build/os/app/core/log fields **not captured** / 未保留）
+- [x] architecture ledger target-tip CI evidence attached（gate mode / snapshot / Ubuntu `pnpm lint` 集成；tip `10c837cd…`；run [29635372676](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29635372676) success）
+- [x] roadmap / residual closeout package current for PR-4S gate（[`./residual-ledger.md`](./residual-ledger.md) + 本文件 S10 COMPLETE；**不**宣称 migration/residual 清零）
+- [x] residual TODO owner/removal condition complete（[`./residual-ledger.md`](./residual-ledger.md) R-01…R-18 + S09 capability residuals；owner 与删除条件齐全；**残差仍属 PR-5/6/7**）
+- [x] cleanup-tip CI run [29638274786](https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/29638274786) finished and recorded — **SUCCESS** @ `8909566c0bb759f562d420af4b9672469920fc21`；Windows/macOS/Linux lint/build/unit 全绿；权威 [`./smoke-evidence.md`](./smoke-evidence.md) **Q-18…Q-20**
+- [x] S10 / PR-4S final closeout recorded — **COMPLETE**；**PR-5a unlocked**
 
-只有全部勾选后，roadmap 才能把 PR-4S 标为完成并解锁 PR-5a。S01～S09 工作区已验证、review thread-gate Path A、tip CI green 与 S10 部分工作树落地均**不**构成关闭条件；manual smoke / roadmap closeout 仍缺；S10 仍 pending。
+**PR-4S 稳定化门 verdict（2026-07-18）：COMPLETE。** 关闭依据：Path A + E-01…E-11 attested PASS + target-tip CI + cleanup-tip CI Q-18…Q-20 SUCCESS + residual ledger 文档化 + local QA。**PR-5a 已解锁。**
+
+架构/测试 checklist 中仍未勾选项（若有）表示持续不变量或非本 closeout 独证条目，**不**否定稳定化门关闭；**不**宣称 actor migration 完成或 residual 清零。

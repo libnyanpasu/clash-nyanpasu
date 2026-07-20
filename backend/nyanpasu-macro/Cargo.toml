@@ -10,6 +10,6 @@ authors.workspace = true
 proc-macro = true
 
 [dependencies]
-syn = "2"
+syn = "3"
 quote = "1"
 proc-macro2 = "1.0.86"

@@ -189,3 +189,19 @@ export const resolveClashPremium = async (): LatestVersionResolver => {
 
   return { name: "clash_premium", version, archMapping };
 };
+
+export const resolveMeow = async (): LatestVersionResolver => {
+  const version = await getLatestRelease("madeye", "meow-rs");
+  consola.debug(`meow-rs latest release: ${version}`);
+
+  const archMapping: ArchMapping = {
+    "windows-x86_64": "meow-{}-x86_64-pc-windows-msvc.zip",
+    "windows-arm64": "meow-{}-aarch64-pc-windows-msvc.zip",
+    "linux-aarch64": "meow-{}-aarch64-unknown-linux-musl.tar.gz",
+    "linux-amd64": "meow-{}-x86_64-unknown-linux-musl.tar.gz",
+    "darwin-arm64": "meow-{}-aarch64-apple-darwin.tar.gz",
+    "darwin-x64": "meow-{}-x86_64-apple-darwin.tar.gz",
+  };
+
+  return { name: "meow", version, archMapping };
+};

@@ -44,6 +44,7 @@
       "sidecar/mihomo-alpha",
       "sidecar/clash-rs",
       "sidecar/clash-rs-alpha",
+      "sidecar/meow",
       "sidecar/nyanpasu-service"
     ],
     "copyright": "Copyright © 2024-2026 LibNyanpasu",

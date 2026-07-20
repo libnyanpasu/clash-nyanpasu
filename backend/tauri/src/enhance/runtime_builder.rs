@@ -32,13 +32,14 @@ pub struct RuntimeBuildInput {
     pub resolved_ports: ResolvedPortBindings,
 }
 
-const MIHOMO_FAMILY: &[ClashCore] = &[ClashCore::Mihomo, ClashCore::MihomoAlpha];
+const MIHOMO_FAMILY: &[ClashCore] = &[ClashCore::Mihomo, ClashCore::MihomoAlpha, ClashCore::Meow];
 const ALL_CORES: &[ClashCore] = &[
     ClashCore::ClashPremium,
     ClashCore::ClashRs,
     ClashCore::Mihomo,
     ClashCore::MihomoAlpha,
     ClashCore::ClashRsAlpha,
+    ClashCore::Meow,
 ];
 // Legacy quirk preserved (chain.rs:174): clash_rs_comp never gated in ClashRsAlpha.
 const CLASH_RS_ONLY: &[ClashCore] = &[ClashCore::ClashRs];
@@ -203,6 +204,11 @@ mod tests {
         // legacy 怪癖忠实移植:Alpha 不吃 clash_rs_comp(chain.rs:174)
         assert_eq!(names(ClashCore::ClashRsAlpha), vec!["config_fixer"]);
         assert_eq!(names(ClashCore::ClashPremium), vec!["config_fixer"]);
+        // meow-rs is mihomo-compatible, so it gets the same transforms as mihomo
+        assert_eq!(
+            names(ClashCore::Meow),
+            vec!["verge_hy_alpn", "verge_meta_guard", "config_fixer"]
+        );
     }
 
     #[test]
@@ -229,6 +235,13 @@ mod tests {
             derive_tun_flavor(ClashCore::Mihomo, TunStack::System),
             TunFlavor::Standard {
                 stack: TunStack::System
+            }
+        );
+        // meow-rs uses standard TUN path (mihomo-compatible)
+        assert_eq!(
+            derive_tun_flavor(ClashCore::Meow, TunStack::Mixed),
+            TunFlavor::Standard {
+                stack: TunStack::Mixed
             }
         );
     }

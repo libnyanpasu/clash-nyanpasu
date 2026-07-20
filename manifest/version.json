@@ -5,7 +5,8 @@
     "mihomo_alpha": "alpha-e911985",
     "clash_rs": "v0.10.7",
     "clash_premium": "2023-09-05-gdcc8d87",
-    "clash_rs_alpha": "0.10.7-alpha+sha.85fc166"
+    "clash_rs_alpha": "0.10.7-alpha+sha.85fc166",
+    "meow": "v0.18.0"
   },
   "arch_template": {
     "mihomo": {
@@ -47,6 +48,14 @@
       "linux-amd64": "clash-rs-x86_64-unknown-linux-gnu-static-crt",
       "darwin-arm64": "clash-rs-aarch64-apple-darwin",
       "darwin-x64": "clash-rs-x86_64-apple-darwin"
+    },
+    "meow": {
+      "windows-x86_64": "meow-{}-x86_64-pc-windows-msvc.zip",
+      "windows-arm64": "meow-{}-aarch64-pc-windows-msvc.zip",
+      "linux-aarch64": "meow-{}-aarch64-unknown-linux-musl.tar.gz",
+      "linux-amd64": "meow-{}-x86_64-unknown-linux-musl.tar.gz",
+      "darwin-arm64": "meow-{}-aarch64-apple-darwin.tar.gz",
+      "darwin-x64": "meow-{}-x86_64-apple-darwin.tar.gz"
     }
   },
   "updated_at": "2026-07-15T22:33:31.091Z"

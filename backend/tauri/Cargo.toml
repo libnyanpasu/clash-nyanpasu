@@ -220,7 +220,7 @@ tauri-plugin-updater = "2.2"
 tauri-plugin-shell = "2.2"
 tauri-plugin-notification = "2.2"
 tauri-plugin-opener = "2.5"
-window-vibrancy = { version = "0.7.0" }
+window-vibrancy = { version = "0.8.0" }
 
 # Strong typed api binding between typescript and rust
 specta-typescript = { version = "0.0.12", features = ["serde"] }
@@ -272,6 +272,13 @@ webview2-com = "0.38"
 
 [dev-dependencies]
 mockall = "0.15"
+# Test-only protocol helpers + binary discovery for later process-lifecycle
+# matrix tests. A dev-dependency does NOT build the fake-core binary and does
+# NOT set CARGO_BIN_EXE_fake-core for this package. Prebuild with
+# `cargo build -p fake-core` (or `cargo test -p fake-core`), then resolve via
+# `fake_core::require_bin_path()` (current_exe profile/triple lookup, non-empty
+# NYANPASU_FAKE_CORE override, then target-dir fallback).
+fake-core = { path = "../fake-core" }
 
 [features]
 default = ["custom-protocol", "default-meta"]

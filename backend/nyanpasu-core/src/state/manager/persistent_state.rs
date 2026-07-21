@@ -8,9 +8,27 @@ use std::io::Write;
 
 use super::{super::error::*, *};
 
+fn persist_state_sync<State, Formatter>(
+    formatter: &Formatter,
+    config_path: &Utf8PathBuf,
+    config_prefix: Option<&str>,
+    state: &State,
+) -> anyhow::Result<()>
+where
+    State: Serialize,
+    Formatter: Format,
+{
+    let mut buf = Vec::with_capacity(4096);
+    formatter.serialize(&mut buf, state, config_prefix)?;
+    AtomicFile::new(config_path, AllowOverwrite)
+        .write(|file| file.write_all(&buf))
+        .with_context(|| format!("failed to write config: {config_path}"))?;
+    Ok(())
+}
+
 use crate::{
     format::{Format, YamlFormat},
-    state::PrepareReport,
+    state::{PrepareReport, Version},
 };
 
 #[derive(Builder)]
@@ -125,6 +143,28 @@ where
     }
 }
 
+#[derive(Debug)]
+pub enum ReplaceIfVersionResult {
+    Replaced,
+    Conflict { actual_version: Version },
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ReplaceIfVersionError {
+    #[error("state change error: {0}")]
+    State(#[from] StateChangedError),
+    #[error("write config error: {0}")]
+    WriteConfig(#[source] anyhow::Error),
+    #[error(
+        "state commit failed ({commit_error}) and restoring the committed state failed: {recovery_error}"
+    )]
+    Recovery {
+        commit_error: StateChangedError,
+        #[source]
+        recovery_error: anyhow::Error,
+    },
+}
+
 pub struct PersistentStateManager<State, Formatter = YamlFormat>
 where
     State: Clone + Send + Sync + 'static,
@@ -168,6 +208,64 @@ where
                     anyhow::anyhow!("write config timed out after {timeout:?}"),
                 ),
             })
+    }
+
+    pub async fn replace_if_version(
+        &mut self,
+        expected_version: Version,
+        next_state: State,
+    ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
+    where
+        Formatter: Clone,
+    {
+        let config_path = self.config_path.clone();
+        let config_prefix = self.config_prefix.clone();
+        let effect_config_path = config_path.clone();
+        let effect_config_prefix = config_prefix.clone();
+        let effect_formatter = self.formatter.clone();
+        let recovery_formatter = self.formatter.clone();
+        match self
+            .state_coordinator
+            .with_pending_state_if_version(
+                expected_version,
+                &next_state,
+                |state| async move {
+                    persist_state_sync(
+                        &effect_formatter,
+                        &effect_config_path,
+                        effect_config_prefix.as_deref(),
+                        state,
+                    )
+                },
+                |committed| async move {
+                    persist_state_sync(
+                        &recovery_formatter,
+                        &config_path,
+                        config_prefix.as_deref(),
+                        &committed,
+                    )
+                },
+            )
+            .await
+        {
+            Ok(()) => Ok(ReplaceIfVersionResult::Replaced),
+            Err(ConditionalEffectError::Conflict { actual }) => {
+                Ok(ReplaceIfVersionResult::Conflict {
+                    actual_version: actual,
+                })
+            }
+            Err(ConditionalEffectError::State(error)) => Err(ReplaceIfVersionError::State(error)),
+            Err(ConditionalEffectError::Recovery {
+                commit_error,
+                recovery_error,
+            }) => Err(ReplaceIfVersionError::Recovery {
+                commit_error,
+                recovery_error,
+            }),
+            Err(ConditionalEffectError::Effect(error)) => {
+                Err(ReplaceIfVersionError::WriteConfig(error))
+            }
+        }
     }
 }
 
@@ -477,6 +575,125 @@ mod tests {
         let saved: TestState = read_yaml(&config_path).await.unwrap();
         assert_eq!(saved.name, "second");
         assert_eq!(saved.value, 2);
+    }
+
+    #[tokio::test]
+    async fn test_replace_if_version_success_advances_snapshot_version() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = Utf8PathBuf::from_path_buf(temp_dir.path().join("replace.yaml")).unwrap();
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
+
+        let result = manager
+            .replace_if_version(Version::new(0), TestState::new("next".into(), 1))
+            .await
+            .unwrap();
+        assert!(matches!(result, ReplaceIfVersionResult::Replaced));
+        assert_eq!(
+            manager.state_coordinator.snapshot_versioned().version,
+            Version::new(1)
+        );
+        assert_eq!(
+            read_yaml::<TestState>(&config_path).await.unwrap().name,
+            "next"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_replace_if_version_stale_version_returns_conflict() {
+        let temp_dir = tempdir().unwrap();
+        let config_path =
+            Utf8PathBuf::from_path_buf(temp_dir.path().join("replace_conflict.yaml")).unwrap();
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
+        manager
+            .upsert(TestState::new("current".into(), 1))
+            .await
+            .unwrap();
+
+        let result = manager
+            .replace_if_version(Version::new(0), TestState::new("stale".into(), 2))
+            .await
+            .unwrap();
+        assert!(matches!(
+            result,
+            ReplaceIfVersionResult::Conflict { actual_version }
+                if actual_version == Version::new(1)
+        ));
+        assert_eq!(manager.snapshot().name, "current");
+        assert_eq!(
+            read_yaml::<TestState>(&config_path).await.unwrap().name,
+            "current"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_replace_if_version_persistence_failure_keeps_state_and_version() {
+        let temp_dir = tempdir().unwrap();
+        let config_path =
+            Utf8PathBuf::from_path_buf(temp_dir.path().join("replace_failure.yaml")).unwrap();
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_state(TestState::new("initial".into(), 1))
+            .await
+            .unwrap();
+        let missing_dir = tempdir().unwrap();
+        let missing_path =
+            Utf8PathBuf::from_path_buf(missing_dir.path().join("replace.yaml")).unwrap();
+        missing_dir.close().unwrap();
+        manager.config_path = missing_path;
+
+        let result = manager
+            .replace_if_version(Version::new(0), TestState::new("failed".into(), 2))
+            .await;
+        assert!(matches!(result, Err(ReplaceIfVersionError::WriteConfig(_))));
+        assert_eq!(manager.snapshot().name, "initial");
+        assert_eq!(
+            manager.state_coordinator.snapshot_versioned().version,
+            Version::new(0)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_replace_if_version_versions_are_monotonic() {
+        let temp_dir = tempdir().unwrap();
+        let config_path =
+            Utf8PathBuf::from_path_buf(temp_dir.path().join("replace_monotonic.yaml")).unwrap();
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
+
+        let first = manager
+            .replace_if_version(Version::new(0), TestState::new("one".into(), 1))
+            .await
+            .unwrap();
+        assert!(matches!(first, ReplaceIfVersionResult::Replaced));
+        assert_eq!(
+            manager.state_coordinator.snapshot_versioned().version,
+            Version::new(1)
+        );
+
+        let second = manager
+            .replace_if_version(Version::new(1), TestState::new("two".into(), 2))
+            .await
+            .unwrap();
+        assert!(matches!(second, ReplaceIfVersionResult::Replaced));
+        assert_eq!(
+            manager.state_coordinator.snapshot_versioned().version,
+            Version::new(2)
+        );
     }
 
     #[tokio::test]

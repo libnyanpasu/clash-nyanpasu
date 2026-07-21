@@ -177,12 +177,17 @@ pub fn resolve_setup(app: &mut App) {
         log_err!(tauri::async_runtime::block_on(client.regenerate_runtime()));
         // 兜底(spec §5.6):产物缺失时默认配置也必须过 check——check 失败则不落
         // 未检产物(P0-5),boot 继续,核心启动失败可见。
-        let runtime_path = crate::client::runtime::runtime_config_path()
-            .expect("failed to resolve runtime config path");
-        if !runtime_path.exists() {
-            log_err!(tauri::async_runtime::block_on(
-                client.promote_default_runtime_config()
-            ));
+        let runtime_path = client.runtime_product_path();
+        if tauri::async_runtime::block_on(client.promoted_runtime()).is_none() {
+            if runtime_path.exists() {
+                log_err!(tauri::async_runtime::block_on(
+                    client.promote_existing_runtime_product()
+                ));
+            } else {
+                log_err!(tauri::async_runtime::block_on(
+                    client.promote_default_runtime_config()
+                ));
+            }
         }
     }
 
@@ -190,7 +195,12 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(crate::core::storage::setup(app));
 
     log::trace!("launch core");
-    log_err!(CoreManager::global().init());
+    {
+        let client = app.state::<crate::client::NyanpasuClient>();
+        log_err!(tauri::async_runtime::block_on(
+            client.start_promoted_runtime()
+        ));
+    }
 
     log::trace!("init clash connection connector");
     log_err!(crate::core::clash::setup(app));

@@ -3,7 +3,7 @@ mod notify;
 use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::OwnedSemaphorePermit;
 
-use crate::state::{StateStore, VersionedState};
+use crate::state::{StateStore, Version, VersionedState};
 
 use super::{
     Ack, AckPolicy, AckStatus, ArcStateSubscriber, PrepareReport, RollbackReason, StateChange,
@@ -354,44 +354,59 @@ where
     }
 }
 
+pub(crate) struct CommitCasMismatch<T: Clone + Send + Sync + 'static> {
+    tx: StateTransaction<T, state::Prepared>,
+    expected: Version,
+    actual: Version,
+}
+
+impl<T> CommitCasMismatch<T>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    pub(crate) async fn notify_rollback(self) {
+        self.tx
+            ._rollback(RollbackReason::StoreStateCasMismatch {
+                expected: self.expected,
+                actual: self.actual,
+            })
+            .await;
+    }
+}
+
 impl<T> StateTransaction<T, state::Prepared>
 where
     T: Clone + Send + Sync + 'static,
 {
-    /// Commit this transaction, transitioning it to the committed state.
-    pub async fn commit(
-        self,
-    ) -> Result<StateTransaction<T, state::Committed>, StateTransaction<T, state::RolledBack>> {
-        let mut tx = self;
-
-        match tx.change.previous.clone() {
+    pub(crate) fn try_commit(
+        mut self,
+    ) -> Result<StateTransaction<T, state::Committed>, CommitCasMismatch<T>> {
+        match self.change.previous.clone() {
             Some(prev) => {
-                // Compare and swap the state to ensure no other transaction has modified it since we read it.
                 let new_state = Arc::new(VersionedState {
-                    version: tx.change.id.0,
-                    state: (*tx.change.current).clone(),
+                    version: self.change.id.0,
+                    state: (*self.change.current).clone(),
                 });
-                let guard = tx.store.compare_and_swap(&prev, new_state.clone());
+                let guard = self.store.compare_and_swap(&prev, new_state);
 
                 if !Arc::ptr_eq(&guard, &prev) {
-                    return Err(tx
-                        ._rollback(RollbackReason::StoreStateCasMismatch {
-                            expected: prev.version,
-                            actual: guard.version,
-                        })
-                        .await);
+                    return Err(CommitCasMismatch {
+                        tx: self,
+                        expected: prev.version,
+                        actual: guard.version,
+                    });
                 }
             }
             None => {
-                // This is the initial state, so we can just set it without compare and swap.
-                tx.store.store(Arc::new(VersionedState {
-                    version: tx.change.id.0,
-                    state: (*tx.change.current).clone(),
+                self.store.store(Arc::new(VersionedState {
+                    version: self.change.id.0,
+                    state: (*self.change.current).clone(),
                 }));
             }
         }
 
-        tx.rollback_guard.disarm();
+        self.rollback_guard.disarm();
+        drop(self.permit.take());
 
         let StateTransaction {
             change,
@@ -401,26 +416,8 @@ where
             rollback_guard,
             permit,
             _state,
-        } = tx;
+        } = self;
         drop(rollback_guard);
-        drop(permit);
-
-        match notify_strategy {
-            NotifyStrategy::Parallel => {
-                notify::NotifyExecutor::<T, state::Committed, notify::Parallel>::notify_all(
-                    &change,
-                    &subscribers,
-                )
-                .await;
-            }
-            NotifyStrategy::Sequential => {
-                notify::NotifyExecutor::<T, state::Committed, notify::Sequential>::notify_all(
-                    &change,
-                    &subscribers,
-                )
-                .await;
-            }
-        }
 
         Ok(StateTransaction {
             change,
@@ -428,13 +425,55 @@ where
             store,
             notify_strategy,
             rollback_guard: RollbackGuard::disarmed(),
-            permit: None,
+            permit,
             _state: PhantomData,
         })
     }
 
+    /// Commit this transaction, transitioning it to the committed state.
+    pub async fn commit(
+        self,
+    ) -> Result<StateTransaction<T, state::Committed>, StateTransaction<T, state::RolledBack>> {
+        match self.try_commit() {
+            Ok(tx) => Ok(tx.notify_committed().await),
+            Err(mismatch) => {
+                let reason = RollbackReason::StoreStateCasMismatch {
+                    expected: mismatch.expected,
+                    actual: mismatch.actual,
+                };
+                Err(mismatch.tx._rollback(reason).await)
+            }
+        }
+    }
+
     pub async fn rollback(self, reason: RollbackReason) -> StateTransaction<T, state::RolledBack> {
         self._rollback(reason).await
+    }
+}
+
+impl<T> StateTransaction<T, state::Committed>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    pub(crate) async fn notify_committed(self) -> Self {
+        match self.notify_strategy {
+            NotifyStrategy::Parallel => {
+                notify::NotifyExecutor::<T, state::Committed, notify::Parallel>::notify_all(
+                    &self.change,
+                    &self.subscribers,
+                )
+                .await;
+            }
+            NotifyStrategy::Sequential => {
+                notify::NotifyExecutor::<T, state::Committed, notify::Sequential>::notify_all(
+                    &self.change,
+                    &self.subscribers,
+                )
+                .await;
+            }
+        }
+
+        self
     }
 }
 

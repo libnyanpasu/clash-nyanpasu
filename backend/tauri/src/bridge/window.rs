@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
-    config::{Config, IVerge, nyanpasu as legacy_app},
-    state::mirror::WindowLegacyBridge,
+    config::{Config, Draft, IVerge, nyanpasu as legacy_app},
+    state::mirror::{PreparedLegacyMirror, WindowLegacyBridge},
 };
 use nyanpasu_config::state::{
     PersistentState,
@@ -11,22 +11,63 @@ use nyanpasu_config::state::{
 
 const MAIN_WINDOW_LABEL: &str = "main";
 
-pub struct LegacyWindowBridge;
+pub struct LegacyWindowBridge {
+    legacy_lock: Arc<parking_lot::Mutex<()>>,
+}
+
+impl Default for LegacyWindowBridge {
+    fn default() -> Self {
+        Self::new(Arc::new(parking_lot::Mutex::new(())))
+    }
+}
+
+impl LegacyWindowBridge {
+    pub(crate) fn new(legacy_lock: Arc<parking_lot::Mutex<()>>) -> Self {
+        Self { legacy_lock }
+    }
+}
+
+struct PreparedWindowMirror {
+    legacy_lock: Arc<parking_lot::Mutex<()>>,
+    store: Draft<IVerge>,
+    projected: IVerge,
+}
+
+impl PreparedLegacyMirror for PreparedWindowMirror {
+    fn apply(self: Box<Self>) {
+        let Self {
+            legacy_lock,
+            store,
+            projected,
+        } = *self;
+        let _guard = legacy_lock.lock();
+        store.apply_update(|target| {
+            target.window_size_state = projected.window_size_state.clone();
+            target.window_size_position = projected.window_size_position.clone();
+        });
+    }
+}
 
 impl WindowLegacyBridge for LegacyWindowBridge {
-    fn mirror(&self, snap: &PersistentState) -> anyhow::Result<()> {
+    fn prepare(&self, snap: &PersistentState) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
         // TODO(actor-migration): compatibility bridge for legacy Config::verge().window_size_state.
         // Reason: window-state readers still consume Config::verge() during typed actor rollout.
         // Remove when window state commands and restore paths use SessionStateClient.
-        let verge = Config::verge();
-        let mut draft = verge.draft();
-        apply_session_state_to_legacy_verge(&mut draft, snap)?;
-        drop(draft);
-        verge.apply();
-        Ok(())
+        let store = Config::verge();
+        let mut projected = {
+            let _guard = self.legacy_lock.lock();
+            store.data().clone()
+        };
+        apply_session_state_to_legacy_verge(&mut projected, snap)?;
+        Ok(Box::new(PreparedWindowMirror {
+            legacy_lock: Arc::clone(&self.legacy_lock),
+            store,
+            projected,
+        }))
     }
 
     fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
+        let _guard = self.legacy_lock.lock();
         let legacy = Config::verge().data().clone();
         persistent_state_from_legacy(&legacy)
     }

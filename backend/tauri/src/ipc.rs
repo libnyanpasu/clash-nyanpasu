@@ -60,6 +60,7 @@ impl From<ClientError> for IpcError {
             ClientError::Storage(err) => IpcError::Storage(err),
             ClientError::Anyhow(err) => IpcError::Anyhow(err),
             ClientError::Profiles(err) => IpcError::Profiles(err),
+            ClientError::PartialCommit(err) => IpcError::Custom(err.to_string()),
             ClientError::Custom(err) => IpcError::Custom(err),
         }
     }
@@ -147,17 +148,12 @@ pub async fn import_profile(
     url: String,
     name: Option<String>,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<crate::client::runtime::CommitOutcome<ProfileId>> {
+) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     // `name` carries deep-link intent (e.g. an install-config `name=` param);
     // when absent the facade derives the name from the url server-side. Return
-    // the created uid plus the rebuild outcome so a degraded post-import
-    // rebuild surfaces to the UI.
-    let (uid, rebuild) = client.import_profile(url, name, option).await?;
-    Ok(crate::client::runtime::CommitOutcome {
-        value: uid,
-        rebuild,
-    })
+    // MutationOutcome so a degraded post-import rebuild still carries the uid.
+    Ok(client.import_profile(url, name, option).await?)
 }
 
 /// Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
@@ -198,9 +194,9 @@ pub async fn create_profile(
     client: State<'_, NyanpasuClient>,
     request: NewProfileRequest,
     file_data: Option<String>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
-    let (_uid, rebuild) = client.create_profile(request, file_data).await?;
-    Ok(rebuild)
+) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
+    // Must return the created ProfileId; never drop it on the wire.
+    Ok(client.create_profile(request, file_data).await?)
 }
 
 #[tauri::command]
@@ -209,7 +205,7 @@ pub async fn reorder_profile(
     client: State<'_, NyanpasuClient>,
     active_id: ProfileId,
     over_id: ProfileId,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.reorder_profile(active_id, over_id).await?)
 }
 
@@ -218,7 +214,7 @@ pub async fn reorder_profile(
 pub async fn reorder_profiles_by_list(
     client: State<'_, NyanpasuClient>,
     list: Vec<ProfileId>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.reorder_profiles_by_list(list).await?)
 }
 
@@ -228,7 +224,7 @@ pub async fn update_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.refresh_profile(uid, option).await?)
 }
 
@@ -237,7 +233,7 @@ pub async fn update_profile(
 pub async fn delete_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.delete_profile(uid).await?)
 }
 
@@ -246,7 +242,7 @@ pub async fn delete_profile(
 pub async fn activate_profile(
     client: State<'_, NyanpasuClient>,
     uid: Option<ProfileId>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.activate_profile(uid).await?)
 }
 
@@ -255,7 +251,7 @@ pub async fn activate_profile(
 pub async fn set_global_transforms(
     client: State<'_, NyanpasuClient>,
     ids: Vec<ProfileId>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.set_global_transforms(ids).await?)
 }
 
@@ -264,7 +260,7 @@ pub async fn set_global_transforms(
 pub async fn set_profile_valid_fields(
     client: State<'_, NyanpasuClient>,
     fields: Vec<String>,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.set_profile_valid_fields(fields).await?)
 }
 
@@ -274,7 +270,7 @@ pub async fn patch_profile_metadata(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: ProfileMetadataPatch,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.patch_profile_metadata(uid, patch).await?)
 }
 
@@ -284,7 +280,7 @@ pub async fn patch_remote_profile_options(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.patch_remote_profile_options(uid, patch).await?)
 }
 
@@ -294,7 +290,7 @@ pub async fn replace_profile_definition(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     definition: ProfileDefinition,
-) -> Result<crate::client::runtime::RebuildOutcome> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.replace_profile_definition(uid, definition).await?)
 }
 
@@ -347,7 +343,7 @@ pub fn get_clash_info() -> Result<ClashInfo> {
 pub async fn get_runtime_config(
     client: State<'_, NyanpasuClient>,
 ) -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
-    let state = client.runtime_state().await;
+    let state = client.promoted_runtime().await;
     match state.as_ref() {
         Some(state) => {
             let yaml_value = serde_yaml::to_value(&state.config)?;
@@ -363,9 +359,8 @@ pub async fn get_runtime_config(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
-    let state = client.runtime_state().await;
+    let state = client.promoted_runtime().await;
     let mapping = (state
-        .as_ref()
         .as_ref()
         .map(|state| &state.config)
         .ok_or(anyhow::anyhow!("failed to parse config to yaml file"))
@@ -379,9 +374,8 @@ pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<Strin
 #[specta::specta]
 pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
     Ok(client
-        .runtime_state()
+        .promoted_runtime()
         .await
-        .as_ref()
         .as_ref()
         .map(|state| state.exists_keys.clone())
         .unwrap_or_default())
@@ -393,9 +387,8 @@ pub async fn get_postprocessing_output(
     client: State<'_, NyanpasuClient>,
 ) -> Result<PostProcessingOutput> {
     Ok(client
-        .runtime_state()
+        .promoted_runtime()
         .await
-        .as_ref()
         .as_ref()
         .map(|state| state.postprocessing_output.clone())
         .unwrap_or_default())
@@ -461,28 +454,7 @@ pub async fn patch_clash_config(
         _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
     };
 
-    // D6 补偿快照:manager 为 None(核心尚未构建/运行)→ 无补偿,直推本也会失败。
-    let prev = client.runtime_state().await;
-    let compensation = crate::client::runtime::compensation_for(
-        &mapping,
-        prev.as_ref().as_ref().map(|state| &state.config),
-    );
-
-    (crate::core::clash::api::patch_configs(&mapping).await)?;
-
-    if let Err(e) = feat::patch_clash(mapping).await {
-        tracing::error!("{e}");
-        // API-first 已改运行核;rebuild/check 失败时尽力回推旧值(spec §6.4),
-        // 避免「运行核=新值、持久态/产物=旧值」的永久分裂(P0-6)。
-        if let Some(comp) = compensation {
-            if let Err(comp_err) = crate::core::clash::api::patch_configs(&comp).await {
-                tracing::error!("compensation patch failed: {comp_err:?}");
-            }
-        }
-        return Err(IpcError::from(e));
-    }
-
-    feat::update_proxies_buff(None);
+    client.patch_running_config(mapping).await?;
     Ok(())
 }
 

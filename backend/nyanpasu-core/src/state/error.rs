@@ -13,7 +13,6 @@ pub enum StateChangedError {
 
     #[error("state pre-commit but required subscriber ACK failed: {0}")]
     PrepareAck(PrepareAckError),
-    /// This error indicates that the state has been updated optimistically, but the commit failed due to required subscriber ACK failures. The caller should check the current state and decide whether to retry or not.
     #[error(
         "state commit failed due to cas mismatch: expected version {expected}, but actual version is {actual}"
     )]

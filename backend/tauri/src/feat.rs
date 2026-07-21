@@ -15,6 +15,7 @@ use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
+use std::future::Future;
 use strum::EnumString;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -105,20 +106,24 @@ pub fn change_clash_mode(mode: String) {
 
 /// Route a verge patch through the managed `LegacyVergeBridge` when it is available, so
 /// typed actors are reseeded after a legacy side-effect write. Falls back to a direct
-/// `patch_verge` before the bridge is managed during early startup.
+/// `patch_verge` with the managed `NyanpasuClient` during early startup when the bridge
+/// is not yet managed.
 async fn patch_verge_entrypoint(patch: IVerge) -> Result<()> {
     // TODO(actor-migration): compatibility bridge for legacy feature toggles.
     // Reason: feature paths still enter through Handle::global() and legacy Config::verge().
     // Remove when: feature toggles call typed actor clients through injected command adapters.
     let app_handle = handle::Handle::global().app_handle.lock().clone();
-    if let Some(app_handle) = app_handle
-        && let Some(legacy) = app_handle.try_state::<crate::bridge::verge::LegacyVergeBridge>()
-    {
-        let legacy = legacy.inner().clone();
-        legacy.patch_verge_config(patch).await?;
-        return Ok(());
+    if let Some(app_handle) = app_handle {
+        if let Some(legacy) = app_handle.try_state::<crate::bridge::verge::LegacyVergeBridge>() {
+            let legacy = legacy.inner().clone();
+            legacy.patch_verge_config(patch).await?;
+            return Ok(());
+        }
+        if let Some(client) = app_handle.try_state::<crate::client::NyanpasuClient>() {
+            return patch_verge(client.inner().clone(), patch).await;
+        }
     }
-    patch_verge(patch).await
+    bail!("NyanpasuClient is not available for verge patch")
 }
 
 // 切换系统代理
@@ -225,8 +230,31 @@ pub(crate) fn requires_core_restart(patch: &Mapping) -> bool {
         || patch.get("external-controller").is_some()
 }
 
-/// 修改clash的配置
-pub async fn patch_clash(patch: Mapping) -> Result<()> {
+/// Apply a desired clash patch to the legacy draft and rebuild it.
+/// Running-core patch serialization and compensation are owned by `NyanpasuClient`.
+///
+/// Non-restart patches must still regenerate **and apply** so a promote cannot
+/// land without a corresponding apply (use `regenerate_and_apply_for_legacy`).
+pub async fn patch_clash(client: crate::client::NyanpasuClient, patch: Mapping) -> Result<()> {
+    patch_clash_with_rebuild(patch, |restart| {
+        let client = client.clone();
+        async move {
+            if restart {
+                client.regenerate_and_restart_for_legacy().await?;
+            } else {
+                client.regenerate_and_apply_for_legacy().await?;
+            }
+            Ok(())
+        }
+    })
+    .await
+}
+
+pub async fn patch_clash_with_rebuild<F, Fut, T>(patch: Mapping, rebuild: F) -> Result<T>
+where
+    F: FnOnce(bool) -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
     Config::clash().draft().patch_config(patch.clone());
 
     let run = move || async move {
@@ -268,14 +296,12 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             }
         }
 
-        // 激活配置:任何 clash patch 都会进入 rebuild 输入,恒重建派生配置;
-        // 仅端口/控制器/密钥变更需要重启核心(即时性由 IPC 层 api::patch_configs
-        // 直推保证,失败补偿见 ipc::patch_clash_config,D6)。
-        if requires_core_restart(&patch) {
-            crate::client::rebuild::regenerate_and_restart().await?;
+        // Every desired clash patch enters the rebuild input and regenerates the
+        // derived config. Only port/controller/secret changes restart the core.
+        let restart = requires_core_restart(&patch);
+        let rebuilt = rebuild(restart).await?;
+        if restart {
             handle::Handle::refresh_clash();
-        } else {
-            crate::client::rebuild::regenerate().await?;
         }
 
         // 更新系统代理
@@ -284,17 +310,16 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         }
 
         if patch.get("mode").is_some() {
-            crate::feat::update_proxies_buff(None);
             log_err!(handle::Handle::update_systray_part());
         }
 
-        <Result<()>>::Ok(())
+        Ok(rebuilt)
     };
     match run().await {
-        Ok(()) => {
+        Ok(rebuilt) => {
             Config::clash().apply();
             Config::clash().data().save_config()?;
-            Ok(())
+            Ok(rebuilt)
         }
         Err(err) => {
             Config::clash().discard();
@@ -305,7 +330,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 
 /// 修改verge的配置
 /// 一般都是一个个的修改
-pub async fn patch_verge(patch: IVerge) -> Result<()> {
+pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -> Result<()> {
     // Validate theme_color if it's being updated
     if let Some(ref theme_color) = patch.theme_color {
         if !theme_color.is_empty() && !crate::config::nyanpasu::is_hex_color(theme_color) {
@@ -331,7 +356,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if service_mode.is_some() && ipc_state.is_connected() {
             log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
 
-            crate::client::rebuild::regenerate_and_restart().await?;
+            client.regenerate_and_restart_for_legacy().await?;
         }
 
         if tun_mode.is_some() {
@@ -354,7 +379,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             let (state, _, _) = CoreManager::global().status().await;
             if flag || matches!(state.as_ref(), CoreState::Stopped(_)) {
                 log::debug!(target: "app", "core is stopped, restart core");
-                crate::client::rebuild::regenerate_and_restart().await?;
+                client.regenerate_and_restart_for_legacy().await?;
             } else {
                 log::debug!(target: "app", "update core config");
                 #[cfg(target_os = "macos")]
@@ -364,7 +389,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
                     .inspect_err(
                         |e| log::error!(target: "app", "failed to set system dns: {:?}", e),
                     );
-                update_core_config().await?;
+                update_core_config(&client).await?;
             }
         }
 
@@ -432,9 +457,9 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     }
 }
 
-/// 更新配置
-async fn update_core_config() -> Result<()> {
-    match CoreManager::global().update_config().await {
+/// 更新配置 — regenerate+apply through the injected client (no process-global bridge).
+async fn update_core_config(client: &crate::client::NyanpasuClient) -> Result<()> {
+    match client.regenerate_and_apply_for_legacy().await {
         Ok(_) => {
             handle::Handle::refresh_clash();
             handle::Handle::notice_message(&Message::SetConfig(Ok(())));
@@ -442,7 +467,7 @@ async fn update_core_config() -> Result<()> {
         }
         Err(err) => {
             handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err:?}"))));
-            Err(err)
+            Err(err.into())
         }
     }
 }

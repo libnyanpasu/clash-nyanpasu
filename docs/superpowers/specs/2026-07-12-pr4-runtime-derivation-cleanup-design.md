@@ -330,3 +330,40 @@ IPC `patch_clash_config` 顺序改为:
 | 前端 `extractDegradedRebuild` / MutationCache 单测                             | 暂缓:仓库无 JS 测试设施(仅 `cargo test`),引入 vitest 超出 PR-4 范围;记为后续项                                |
 | toast 错误脱敏(code+i18n)                                                      | 暂缓:与应用现有错误通知惯例一致;结构化错误码属独立改造                                                        |
 | 并发竞态测试(change_core×rebuild 等)                                           | 部分采纳:以 gate 结构性串行 + 顺序 mock 断言钉住;多线程真竞态测试易 flaky,不引入                              |
+
+---
+
+## 13. PR-4S addendum — decisions corrected after PR-4 merge
+
+**Date:** 2026-07-18
+**Authority:** `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/design.md` (PR-4S) supersedes the PR-4 decisions listed below where they conflict.
+**Scope of this addendum:** documentation only. It records how PR-4S corrected PR-4. It does **not** declare PR-4S complete (S10 smoke/review-thread/CI-ledger closeout may still be open).
+
+PR-4 delivered the right migration direction (pure runtime derivation, checked promote, facade-held read model, committed/degraded mutations) but several correctness boundaries were incomplete. PR-4S stabilizes those boundaries **before** PR-5 CoreActor work.
+
+| PR-4 assumption / gap                                                                                              | PR-4S correction                                                                                                                                                                                                                                                                     | Primary S0x |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
+| Runtime product/candidate paths still reachable via global dir helpers; tests could touch real user product paths  | **Injected `RuntimePaths`** from composition root; tests use TempDir only; free global runtime path helpers removed from the migrated path                                                                                                                                           | S02         |
+| Candidate naming/permissions/cleanup insufficient (shared temp / predictable names / weak cleanup)                 | **Candidate/product verification:** private candidate dir (non-symlink), random exclusive `create_new`, owner-only mode, hash, Drop/stale cleanup, promote-time product hash verify                                                                                                  | S02         |
+| Single facade `RuntimeState` served as both “last published” and “what the core applied”                           | Explicit **`RuntimeLifecycleState { promoted, applied }`** with **`RuntimeRevision`**, target core, product hash, and exact product bytes                                                                                                                                            | S03         |
+| Rollback restored product bytes but could leave read model on new-core publish                                     | **`RuntimeTransactionSnapshot`** restores product → Promoted → old-core restart → Applied; four read IPCs read **Promoted** only                                                                                                                                                     | S03         |
+| `change_core` held only `rebuild_gate`; concurrent `run_core`/restart could interleave during rollback             | **`CoreLifecycleLease`** unifies run/restart/stop/check/apply/recover; `change_core` holds `rebuild_gate + lease` through rollback; lock order `patch_gate → rebuild_gate → lease → short store write`                                                                               | S04         |
+| D6 compensation used Promoted-like state, could not delete new keys, lacked patch serialization                    | **Applied-based compensation + CAS/revision fence:** transport-independent `Set`/`Remove` (no JSON `null` deletes), expected Applied revision rejects stale plans, private Applied candidate **direct apply** (no product promote), instance-owned `clash_patch_gate`                | S05         |
+| Typed commit then fallible legacy mirror → “committed but `Err`”; three-domain legacy patch without version checks | **Prepared mirror:** fallible `prepare` before persist, infallible in-memory `apply` after; **Application→Session→Clash** saga with manager-level expected-version CAS, reverse compensation, structured `PartialCommit` / finalizer uncertainty                                     | S06         |
+| Profiles state/file split; remote import via empty placeholder → refresh → delete                                  | **Profile materialization/recovery:** durable `Profiles.revision`; state-first / file-first / cleanup / reconcile; **fetch-before-commit** import (cancel/fail ⇒ zero state/file); startup + periodic reconcile; superseded state-first **compensate-never-promote**                 | S07         |
+| Public `RebuildOutcome` / coarse degraded rebuild; warnings weak on wire                                           | **`MutationOutcome<T>`** (`applied` \| `committed_degraded`) + phase/code degradations; Specta/bindings freeze; frontend exhaustive `unwrapResult`; H1 retained-forward + H2 post-commit auto-activation; coarse `RuntimeBuild` only (fine-grained runtime phases deferred honestly) | S08         |
+| Process-global `REGEN_BRIDGE` / OnceCell first-install-wins; weak multi-graph tests                                | **Instance-owned `RebuildCoordinator`** (capacity-1 coalesce, Weak worker, explicit `shutdown`); production exit calls `client.shutdown()`; two-client isolation                                                                                                                     | S09         |
+| Lifecycle failure mostly mock-ordered                                                                              | Test-only **`fake-core` process matrix** (real argv + `FAKE_CORE_*` env + TCP READY/RELEASE); not a substitute for Windows service-mode / TUN / true-core UI smoke                                                                                                                   | S09         |
+
+### Non-corrections (still deferred — do not read as PR-4S scope creep)
+
+- **CoreActor** ownership, Applied mailbox move, service-mode port sequencing, `CoreManager::global()` deletion → **PR-5a/5b/5c**.
+- System proxy / hotkey / proxies / updater actors and application effects → **PR-6\***.
+- Bridge/mirror/saga/legacy DTO/`Config::global()` liquidation → **PR-7a/b**.
+- Manual three-platform smoke evidence, GitHub thread resolve, architecture-ledger CI gate → **S10 closeout** (see sibling files under the PR-4S spec directory).
+
+### Evidence / disposition siblings
+
+- `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/smoke-evidence.md`
+- `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/review-disposition.md`
+- `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/residual-ledger.md`

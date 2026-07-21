@@ -4,24 +4,27 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query'
-import { extractDegradedRebuild } from '../utils'
+import type { Degradation } from '../ipc/bindings'
 import { ClashWSProvider, useClashWSContext } from './clash-ws-provider'
 import { MutationProvider } from './mutation-provider'
 
-let degradedRebuildHandler: ((error: string) => void) | null = null
+let mutationDegradationHandler: ((degradations: Degradation[]) => void) | null =
+  null
 
 /**
- * Register the app-side notifier for committed-but-degraded rebuilds (PR-4
- * spec §6.3). The interface package owns detection (every mutation result
- * passes through the MutationCache); the app owns presentation (toast + i18n).
- * Returns a disposer so HMR / StrictMode double-mount / tests can unregister
- * (r2, 审计 §六.2).
+ * Register the app-side notifier for committed-degraded mutation outcomes
+ * (PR-4S S08 / plan §12). The interface package owns detection (every mutation
+ * result passes through the MutationCache); the app owns presentation
+ * (toast + i18n). Returns a disposer so HMR / StrictMode double-mount / tests
+ * can unregister.
  */
-export const setDegradedRebuildHandler = (handler: (error: string) => void) => {
-  degradedRebuildHandler = handler
+export const setMutationDegradationHandler = (
+  handler: (degradations: Degradation[]) => void,
+) => {
+  mutationDegradationHandler = handler
   return () => {
-    if (degradedRebuildHandler === handler) {
-      degradedRebuildHandler = null
+    if (mutationDegradationHandler === handler) {
+      mutationDegradationHandler = null
     }
   }
 }
@@ -29,10 +32,25 @@ export const setDegradedRebuildHandler = (handler: (error: string) => void) => {
 const queryClient = new QueryClient({
   mutationCache: new MutationCache({
     onSuccess: (data) => {
-      const error = extractDegradedRebuild(data)
-      if (error) {
-        degradedRebuildHandler?.(error)
+      // Only the final S08 wire is recognized. Applied / hard-error / legacy
+      // rebuild shapes are ignored so dual-wire handling cannot linger.
+      if (
+        !data ||
+        typeof data !== 'object' ||
+        !('status' in data) ||
+        (data as { status?: unknown }).status !== 'committed_degraded'
+      ) {
+        return
       }
+
+      const degradations = (data as { degradations?: unknown }).degradations
+      if (!Array.isArray(degradations)) {
+        return
+      }
+
+      // Still on the mutation success path: callers' onSuccess / invalidation
+      // continue to run for committed state even when side effects degraded.
+      mutationDegradationHandler?.(degradations as Degradation[])
     },
   }),
 })

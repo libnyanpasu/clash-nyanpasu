@@ -36,6 +36,7 @@ interface VersionManifest {
     clash_rs: string;
     clash_premium: string;
     clash_rs_alpha: string;
+    meow: string;
   };
   arch_template: {
     mihomo: ArchMapping;
@@ -43,6 +44,7 @@ interface VersionManifest {
     clash_rs: ArchMapping;
     clash_premium: ArchMapping;
     clash_rs_alpha: ArchMapping;
+    meow: ArchMapping;
   };
   updated_at: string;
 }

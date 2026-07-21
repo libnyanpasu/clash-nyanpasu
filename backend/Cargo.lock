@@ -364,7 +364,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -1262,7 +1262,7 @@ dependencies = [
  "indoc",
  "log",
  "mime",
- "nyanpasu-utils 0.1.0 (git+https://github.com/libnyanpasu/nyanpasu-utils.git)",
+ "nyanpasu-utils",
  "phf 0.14.0",
  "postcard",
  "reqwest 0.12.28",
@@ -1896,7 +1896,7 @@ dependencies = [
  "nyanpasu-egui",
  "nyanpasu-ipc",
  "nyanpasu-macro",
- "nyanpasu-utils 0.1.0 (git+https://github.com/libnyanpasu/nyanpasu-utils.git)",
+ "nyanpasu-utils",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
@@ -5363,9 +5363,9 @@ checksum = "34b357333733e8260735ba5894eb928c02ecc69c78715f01a8019e7fa7f2db4c"
 
 [[package]]
 name = "libc"
-version = "0.2.187"
+version = "0.2.188"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7743783ea728ef5c31194c6590797eed286449b4a4e87d626d8a51f0a94e732"
+checksum = "22053b6a34f84abc97f9129e61334f40174659a1b9bd18c970b83db6a9a6348b"
 
 [[package]]
 name = "libdbus-sys"
@@ -6169,7 +6169,7 @@ dependencies = [
  "language-tags",
  "nyanpasu-egui",
  "nyanpasu-helper",
- "nyanpasu-utils 0.1.0 (git+https://github.com/libnyanpasu/nyanpasu-utils.git)",
+ "nyanpasu-utils",
  "port_scanner",
  "rmp-serde",
  "serde",
@@ -6203,7 +6203,7 @@ dependencies = [
  "fs-err",
  "gxhash",
  "indexmap 2.14.0",
- "nyanpasu-utils 0.1.0 (git+https://github.com/libnyanpasu/nyanpasu-utils.git)",
+ "nyanpasu-utils",
  "serde",
  "serde_yaml_ng",
  "tempfile",
@@ -6246,14 +6246,14 @@ dependencies = [
 [[package]]
 name = "nyanpasu-ipc"
 version = "1.4.4"
-source = "git+https://github.com/libnyanpasu/nyanpasu-service.git#cbc11dc81d461adb858cc9573fce9e65f5f0d5c1"
+source = "git+https://github.com/libnyanpasu/nyanpasu-service.git#6c4303666cc01c78416c930d135c7b1335d12395"
 dependencies = [
  "anyhow",
  "derive_builder",
  "futures-util",
  "indexmap 2.14.0",
  "interprocess",
- "nyanpasu-utils 0.1.0 (git+https://github.com/libnyanpasu/nyanpasu-service.git)",
+ "nyanpasu-utils",
  "reqwest 0.13.4",
  "reqwest-websocket",
  "serde",
@@ -6278,32 +6278,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-utils"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/nyanpasu-service.git#cbc11dc81d461adb858cc9573fce9e65f5f0d5c1"
-dependencies = [
- "camino",
- "constcat",
- "derive_builder",
- "encoding_rs",
- "kill_tree",
- "memchr",
- "nix 0.31.3",
- "os_pipe",
- "parking_lot",
- "serde",
- "shared_child",
- "specta",
- "sysinfo",
- "thiserror 2.0.19",
- "tokio",
- "tracing",
- "tracing-attributes",
- "windows 0.62.2",
-]
-
-[[package]]
-name = "nyanpasu-utils"
-version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#6bb8be89e1c17ecb97e1ddee931d942f0bb2dcd6"
+source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#4110eafacd0d72487b0c83be402bec5c323fbd34"
 dependencies = [
  "camino",
  "constcat",
@@ -9555,7 +9530,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f103c50866b8743da9429b8a581d81a27c2d3a9c4ac7df8f8571c1dd7896eda"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -10880,9 +10855,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.18"
+version = "0.7.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098"
+checksum = "494815d09bf52b5548659851081238f0ca39ff638363907596da739561c62c52"
 dependencies = [
  "bytes",
  "futures-core",
@@ -10890,6 +10865,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "hashbrown 0.15.5",
+ "libc",
  "pin-project-lite",
  "slab",
  "tokio",

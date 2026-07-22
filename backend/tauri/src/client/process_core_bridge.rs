@@ -572,7 +572,7 @@ fn start_command(bin: &Path, app_dir: &Path, config: &Path, core: ClashCore) -> 
             FakeCoreCommand::new(bin).start_clash_rs(app_dir, config)
         }
         ClashCore::ClashPremium => FakeCoreCommand::new(bin).start_premium(app_dir, config),
-        ClashCore::Mihomo | ClashCore::MihomoAlpha => {
+        ClashCore::Mihomo | ClashCore::MihomoAlpha | ClashCore::Meow => {
             FakeCoreCommand::new(bin).start_mihomo(app_dir, config)
         }
     }

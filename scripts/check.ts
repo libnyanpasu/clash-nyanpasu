@@ -36,6 +36,7 @@ interface VersionManifest {
     clash_rs: string;
     clash_premium: string;
     clash_rs_alpha: string;
+    meow: string;
   };
   arch_template: {
     mihomo: ArchMapping;
@@ -43,6 +44,7 @@ interface VersionManifest {
     clash_rs: ArchMapping;
     clash_premium: ArchMapping;
     clash_rs_alpha: ArchMapping;
+    meow: ArchMapping;
   };
   updated_at: string;
 }
@@ -311,6 +313,12 @@ const CLASH_RS_ALPHA_MANIFEST: ClashManifest = {
     "https://github.com/Watfaq/clash-rs/releases/download/latest/version.txt",
   URL_PREFIX: "https://github.com/Watfaq/clash-rs/releases/download/latest",
   ARCH_MAPPING: versionManifest.arch_template.clash_rs_alpha as ArchMapping,
+};
+
+const MEOW_MANIFEST: ClashManifest = {
+  URL_PREFIX: "https://github.com/madeye/meow-rs/releases/download/",
+  VERSION: versionManifest.latest.meow,
+  ARCH_MAPPING: versionManifest.arch_template.meow as ArchMapping,
 };
 
 // === Download ===
@@ -648,6 +656,21 @@ async function getClashRustAlphaInfo(): Promise<BinInfo> {
   };
 }
 
+function getMeowInfo(): BinInfo {
+  const { ARCH_MAPPING, URL_PREFIX, VERSION } = MEOW_MANIFEST;
+  const archLabel = mapArch(platform, arch);
+  const name = ARCH_MAPPING[archLabel].replace("{}", VERSION!);
+  const isWin = platform === "win32";
+  return {
+    name: "meow",
+    version: VERSION,
+    targetFile: `meow-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
+    exeFile: `${name}${isWin ? ".exe" : ""}`,
+    tmpFile: name,
+    downloadURL: `${URL_PREFIX}${VERSION}/${name}`,
+  };
+}
+
 async function getNyanpasuServiceInfo(): Promise<BinInfo> {
   const SERVICE_REPO = "libnyanpasu/nyanpasu-service";
   const isWin = SIDECAR_HOST!.includes("windows");
@@ -964,6 +987,13 @@ const tasks: Array<{
     name: "clash-rs-alpha",
     func: (onProgress) =>
       resolveSidecar(getClashRustAlphaInfo(), { force: FORCE, onProgress }),
+    retry: 5,
+  },
+  {
+    name: "meow",
+    version: versionManifest.latest.meow,
+    func: (onProgress) =>
+      resolveSidecar(getMeowInfo(), { force: FORCE, onProgress }),
     retry: 5,
   },
   {

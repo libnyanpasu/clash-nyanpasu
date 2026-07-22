@@ -53,6 +53,7 @@ pub struct ManifestVersionLatest {
     clash_rs: String,
     clash_rs_alpha: String,
     clash_premium: String,
+    meow: String,
 }
 
 #[derive(Deserialize, Serialize, Default, Clone, Debug)]
@@ -62,6 +63,7 @@ pub struct ArchTemplate {
     clash_rs: HashMap<String, String>,
     clash_rs_alpha: HashMap<String, String>,
     clash_premium: HashMap<String, String>,
+    meow: HashMap<String, String>,
 }
 
 impl Default for ManifestVersion {
@@ -83,6 +85,7 @@ impl Default for ManifestVersionLatest {
             clash_rs: "".to_string(),
             clash_rs_alpha: "".to_string(),
             clash_premium: "".to_string(),
+            meow: "".to_string(),
         }
     }
 }
@@ -130,6 +133,14 @@ impl ManifestVersion {
                     .clone()
                     .replace("{}", &self.latest.clash_rs_alpha),
                 CoreTypeMeta::ClashRsAlpha,
+            )),
+            ClashCore::Meow => Some((
+                self.arch_template
+                    .meow
+                    .get(arch)?
+                    .clone()
+                    .replace("{}", &self.latest.meow),
+                CoreTypeMeta::Meow(self.latest.meow.clone()),
             )),
         }
     }

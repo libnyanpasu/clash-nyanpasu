@@ -42,6 +42,7 @@ export const commands = {
       | 'clash-meta'
       | 'mihomo-alpha'
       | 'clash-rs-alpha'
+      | 'meow'
       | null,
   ) =>
     typedError<null, string>(
@@ -416,6 +417,7 @@ export type ClashCoreType =
   | 'clash-rs'
   | 'clash-rs-alpha'
   | 'clash'
+  | 'meow'
 
 export type ClashCore_Deserialize =
   | 'clash'
@@ -425,6 +427,7 @@ export type ClashCore_Deserialize =
   | 'clash-meta'
   | 'mihomo-alpha'
   | 'clash-rs-alpha'
+  | 'meow'
 
 export type ClashCore_Serialize =
   | 'clash'
@@ -432,6 +435,7 @@ export type ClashCore_Serialize =
   | 'mihomo'
   | 'mihomo-alpha'
   | 'clash-rs-alpha'
+  | 'meow'
 
 export type ClashInfo = {
   /**  clash core port */
@@ -1054,6 +1058,7 @@ export type ManifestVersionLatest = {
   clash_rs: string
   clash_rs_alpha: string
   clash_premium: string
+  meow: string
 }
 
 /**  Stable read location used by parsers and processors. */

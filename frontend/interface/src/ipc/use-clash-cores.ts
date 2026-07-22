@@ -19,6 +19,7 @@ export const ClashCores = {
   'mihomo-alpha': 'Mihomo Alpha',
   'clash-rs': 'Clash Rust',
   'clash-rs-alpha': 'Clash Rust Alpha',
+  meow: 'Meow',
 } as Record<ClashCore_Serialize, string>
 
 export type ClashCoresInfo = Record<ClashCore_Serialize, ClashCoresDetail>

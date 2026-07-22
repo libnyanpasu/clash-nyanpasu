@@ -22,6 +22,7 @@ pub(super) enum CoreTypeMeta {
     MihomoAlpha,
     ClashRs(String),
     ClashRsAlpha,
+    Meow(String),
 }
 
 pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> String {
@@ -40,6 +41,9 @@ pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> Stri
         }
         CoreTypeMeta::ClashPremium(tag) => {
             format!("zhongfly/Clash-premium-backup/releases/download/{tag}/{artifact}")
+        }
+        CoreTypeMeta::Meow(tag) => {
+            format!("madeye/meow-rs/releases/download/{tag}/{artifact}")
         }
     }
 }

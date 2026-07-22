@@ -15,6 +15,9 @@ members = [
 
 [patch.crates-io]
 
+[patch."https://github.com/libnyanpasu/nyanpasu-service.git"]
+nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git" }
+
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"
 edition = "2024"

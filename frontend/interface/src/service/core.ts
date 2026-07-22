@@ -14,6 +14,7 @@ export const VALID_CORE: Core[] = [
   { name: 'Mihomo Alpha', core: 'mihomo-alpha' },
   { name: 'Clash Rust', core: 'clash-rs' },
   { name: 'Clash Rust Alpha', core: 'clash-rs-alpha' },
+  { name: 'Meow', core: 'meow' },
 ]
 
 export const fetchCoreVersion = async () => {
@@ -82,6 +83,7 @@ export enum SupportedCore {
   MihomoAlpha = 'mihomo_alpha',
   ClashRs = 'clash_rs',
   ClashPremium = 'clash_premium',
+  Meow = 'meow',
 }
 
 export type ArchMapping = { [key in SupportedArch]: string }

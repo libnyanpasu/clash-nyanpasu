@@ -96,6 +96,7 @@ impl From<ClashCore> for crate::config::nyanpasu::ClashCore {
             ClashCore::Mihomo => Self::Mihomo,
             ClashCore::MihomoAlpha => Self::MihomoAlpha,
             ClashCore::ClashRsAlpha => Self::ClashRsAlpha,
+            ClashCore::Meow => Self::Meow,
         }
     }
 }

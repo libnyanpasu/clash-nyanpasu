@@ -159,7 +159,10 @@ impl Updater {
                         let file_name = file.name();
                         tracing::debug!("Filename: {}", file.name());
                         // TODO: 在 enum 做点魔法
-                        if file_name.contains("mihomo") || file_name.contains("clash") {
+                        if file_name.contains("mihomo")
+                            || file_name.contains("clash")
+                            || file_name.contains("meow")
+                        {
                             tracing::debug!("extract file: {}", file_name);
                             tracing::debug!("extract file size: {}", file.size());
                             std::io::copy(&mut file, &mut buff)?;

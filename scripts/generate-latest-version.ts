@@ -5,6 +5,7 @@ import {
   resolveClashPremium,
   resolveClashRs,
   resolveClashRsAlpha,
+  resolveMeow,
   resolveMihomo,
   resolveMihomoAlpha,
 } from "./manifest.ts";
@@ -24,7 +25,8 @@ type SupportedCore =
   | "mihomo_alpha"
   | "clash_rs"
   | "clash_rs_alpha"
-  | "clash_premium";
+  | "clash_premium"
+  | "meow";
 
 interface ManifestVersion {
   manifest_version: number;
@@ -41,6 +43,7 @@ const resolvers = [
   resolveClashRs,
   resolveClashPremium,
   resolveClashRsAlpha,
+  resolveMeow,
 ];
 
 consola.start(colorize`{cyan Resolving} latest versions`);

@@ -792,7 +792,7 @@ pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore)
     let core = core_type.clone().to_string();
     log::debug!(target: "app", "check config in `{core}`");
     let cmd = match core_type {
-        ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha => {
+        ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha | ClashCore::Meow => {
             shell.sidecar(core)?.args(["-v"])
         }
         ClashCore::ClashRs | ClashCore::ClashRsAlpha => shell.sidecar(core)?.args(["-V"]),

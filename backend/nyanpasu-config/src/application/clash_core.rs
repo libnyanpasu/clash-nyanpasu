@@ -32,6 +32,8 @@ pub enum ClashCore {
     MihomoAlpha,
     #[serde(rename = "clash-rs-alpha")]
     ClashRsAlpha,
+    #[serde(rename = "meow")]
+    Meow,
 }
 
 impl Default for ClashCore {
@@ -61,6 +63,9 @@ impl From<&ClashCore> for nyanpasu_utils::core::CoreType {
             ClashCore::ClashRsAlpha => nyanpasu_utils::core::CoreType::Clash(
                 nyanpasu_utils::core::ClashCoreType::ClashRustAlpha,
             ),
+            ClashCore::Meow => {
+                nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::Meow)
+            }
         }
     }
 }
@@ -80,6 +85,7 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
                 nyanpasu_utils::core::ClashCoreType::ClashRustAlpha => Ok(ClashCore::ClashRsAlpha),
                 nyanpasu_utils::core::ClashCoreType::Mihomo => Ok(ClashCore::Mihomo),
                 nyanpasu_utils::core::ClashCoreType::MihomoAlpha => Ok(ClashCore::MihomoAlpha),
+                nyanpasu_utils::core::ClashCoreType::Meow => Ok(ClashCore::Meow),
             },
             _ => Err(UnsupportedCoreTypeError(core.clone())),
         }

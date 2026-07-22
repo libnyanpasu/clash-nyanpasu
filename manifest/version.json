@@ -2,10 +2,10 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.19.29",
-    "mihomo_alpha": "alpha-d8fbf85",
+    "mihomo_alpha": "alpha-978d25a",
     "clash_rs": "v0.10.7",
     "clash_premium": "2023-09-05-gdcc8d87",
-    "clash_rs_alpha": "0.10.7-alpha+sha.85fc166",
+    "clash_rs_alpha": "0.10.7-alpha+sha.795a890",
     "meow": "v0.18.0"
   },
   "arch_template": {
@@ -58,5 +58,5 @@
       "darwin-x64": "meow-{}-x86_64-apple-darwin.tar.gz"
     }
   },
-  "updated_at": "2026-07-21T22:32:06.047Z"
+  "updated_at": "2026-07-22T22:35:20.260Z"
 }

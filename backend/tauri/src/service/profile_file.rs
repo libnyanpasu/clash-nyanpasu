@@ -428,7 +428,7 @@ fn ensure_real_directory_tree(path: &Path) -> anyhow::Result<()> {
     }
 }
 
-fn set_private_directory_permissions(_path: &Path) -> anyhow::Result<()> {
+fn set_private_directory_permissions(path: &Path) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -438,7 +438,7 @@ fn set_private_directory_permissions(_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn set_private_file_permissions(_path: &Path) -> anyhow::Result<()> {
+fn set_private_file_permissions(path: &Path) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

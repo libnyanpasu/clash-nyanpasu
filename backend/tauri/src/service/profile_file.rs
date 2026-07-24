@@ -428,6 +428,7 @@ fn ensure_real_directory_tree(path: &Path) -> anyhow::Result<()> {
     }
 }
 
+#[allow(unused_variables)]
 fn set_private_directory_permissions(path: &Path) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
@@ -438,6 +439,7 @@ fn set_private_directory_permissions(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(unused_variables)]
 fn set_private_file_permissions(path: &Path) -> anyhow::Result<()> {
     #[cfg(unix)]
     {

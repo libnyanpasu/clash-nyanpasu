@@ -585,6 +585,7 @@ pub fn parse_log(log: String) -> String {
 /// 缩短clash -t的错误输出
 /// 仅适配 clash p核 8-26、clash meta 1.13.1
 #[instrument]
+#[allow(dead_code)]
 pub fn parse_check_output(log: String) -> String {
     let t = log.find("time=");
     let m = log.find("msg=");

@@ -11,11 +11,11 @@ macro_rules! draft_define {
     ($id: ident) => {
         impl Draft<$id> {
             #[allow(unused)]
-            pub fn data(&self) -> MappedMutexGuard<$id> {
+            pub fn data(&self) -> MappedMutexGuard<'_, $id> {
                 MutexGuard::map(self.inner.lock(), |guard| &mut guard.0)
             }
 
-            pub fn latest(&self) -> MappedMutexGuard<$id> {
+            pub fn latest(&self) -> MappedMutexGuard<'_, $id> {
                 MutexGuard::map(self.inner.lock(), |inner| {
                     if inner.1.is_none() {
                         &mut inner.0
@@ -25,7 +25,7 @@ macro_rules! draft_define {
                 })
             }
 
-            pub fn draft(&self) -> MappedMutexGuard<$id> {
+            pub fn draft(&self) -> MappedMutexGuard<'_, $id> {
                 MutexGuard::map(self.inner.lock(), |inner| {
                     if inner.1.is_none() {
                         inner.1 = Some(inner.0.clone());
@@ -79,6 +79,7 @@ draft_define!(IVerge);
 
 impl Draft<IClashTemp> {
     /// Reload configuration from file
+    #[allow(dead_code)]
     pub fn reload(&self) {
         let new_config = IClashTemp::new();
         let mut inner = self.inner.lock();

@@ -333,13 +333,11 @@ impl ClashConnectionsConnectorShared {
     }
 
     fn dispatch_state_changed(&self, state: ClashConnectionsConnectorState) {
-        let event_state = state.clone();
+        let event_state = state;
         self.state.store(state, Ordering::Release);
         let _ = self
             .connections_tx
-            .send(ClashConnectionsConnectorEvent::StateChanged(
-                event_state.clone(),
-            ));
+            .send(ClashConnectionsConnectorEvent::StateChanged(event_state));
         let _ = self.ws_tx.send(ClashWsEvent::StateChanged(event_state));
     }
 
@@ -378,14 +376,8 @@ impl ClashConnectionsConnectorShared {
         let previous_download_total =
             std::mem::replace(&mut info.download_total, msg.download_total);
         let previous_upload_total = std::mem::replace(&mut info.upload_total, msg.upload_total);
-        info.download_speed = msg
-            .download_total
-            .checked_sub(previous_download_total)
-            .unwrap_or_default();
-        info.upload_speed = msg
-            .upload_total
-            .checked_sub(previous_upload_total)
-            .unwrap_or_default();
+        info.download_speed = msg.download_total.saturating_sub(previous_download_total);
+        info.upload_speed = msg.upload_total.saturating_sub(previous_upload_total);
 
         let _ = self
             .connections_tx
@@ -469,6 +461,7 @@ struct ClashConnectionsActorState {
     memory_handler: Option<JoinHandle<()>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum ClashConnectionsActorMessage {
     Start(RpcReplyPort<anyhow::Result<()>>),
@@ -757,6 +750,7 @@ impl ClashConnectionsConnector {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn restart(&self) -> anyhow::Result<()> {
         match self
             .actor_ref
@@ -806,6 +800,7 @@ impl ClashConnectionsConnectorInner {
         self.shared.clear_history(kind);
     }
 
+    #[allow(dead_code)]
     pub async fn stop(&self) {
         let _ = self
             .actor_ref

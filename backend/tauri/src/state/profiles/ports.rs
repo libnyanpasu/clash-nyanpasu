@@ -13,6 +13,7 @@ pub trait ProfileFsPort: Send + Sync + 'static {
     fn read(&self, path: &ManagedProfilePath) -> anyhow::Result<String>;
     fn write_atomic(&self, path: &ManagedProfilePath, content: &str) -> anyhow::Result<()>;
     /// Idempotent: removing a missing file succeeds.
+    #[allow(dead_code)]
     fn remove(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
     /// Read an External binding target for Mirror synchronization.
     fn read_external(&self, target: &ExternalProfilePath) -> anyhow::Result<String>;
@@ -20,6 +21,7 @@ pub trait ProfileFsPort: Send + Sync + 'static {
     /// symlink (clean-design §9 last paragraph).
     fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
     /// Create or repair `path -> target` (External Symlink binding, clean-design §10.1).
+    #[allow(dead_code)]
     fn ensure_symlink(
         &self,
         path: &ManagedProfilePath,

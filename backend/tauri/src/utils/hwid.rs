@@ -178,12 +178,11 @@ fn get_device_model() -> String {
     use winreg::{RegKey, enums::HKEY_LOCAL_MACHINE};
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    if let Ok(key) = hklm.open_subkey("HARDWARE\\DESCRIPTION\\System\\BIOS") {
-        if let Ok(name) = key.get_value::<String, _>("SystemProductName") {
-            if !name.is_empty() {
-                return name;
-            }
-        }
+    if let Ok(key) = hklm.open_subkey("HARDWARE\\DESCRIPTION\\System\\BIOS")
+        && let Ok(name) = key.get_value::<String, _>("SystemProductName")
+        && !name.is_empty()
+    {
+        return name;
     }
     whoami::devicename()
 }

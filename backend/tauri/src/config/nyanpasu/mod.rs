@@ -176,15 +176,11 @@ impl Default for TrayMenuMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TrayMenuCloseBehavior {
+    #[default]
     Hide,
     Close,
-}
-
-impl Default for TrayMenuCloseBehavior {
-    fn default() -> Self {
-        TrayMenuCloseBehavior::Hide
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
@@ -372,11 +368,12 @@ impl IVerge {
         match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge, _>(&path)) {
             Ok(mut config) => {
                 // Validate and fix theme_color if it's invalid
-                if let Some(ref theme_color) = config.theme_color {
-                    if !theme_color.is_empty() && !is_hex_color(theme_color) {
-                        log::warn!(target: "app", "Invalid theme color detected: {}, resetting to default", theme_color);
-                        config.theme_color = None;
-                    }
+                if let Some(ref theme_color) = config.theme_color
+                    && !theme_color.is_empty()
+                    && !is_hex_color(theme_color)
+                {
+                    log::warn!(target: "app", "Invalid theme color detected: {}, resetting to default", theme_color);
+                    config.theme_color = None;
                 }
 
                 Self::merge_with_template(config)
@@ -388,6 +385,7 @@ impl IVerge {
         }
     }
 
+    #[allow(deprecated)]
     fn merge_with_template(mut config: IVerge) -> Self {
         let template = Self::template();
 

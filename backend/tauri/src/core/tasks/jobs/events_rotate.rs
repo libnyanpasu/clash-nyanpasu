@@ -45,7 +45,7 @@ impl AsyncJobExecutor for EventsRotateJob {
                 })
                 .collect::<Vec<_>>();
             // DESC sort events by updated_at
-            events.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            events.sort_by_key(|a| std::cmp::Reverse(a.updated_at));
             // keep max 10 events
             let events = events
                 .into_iter()

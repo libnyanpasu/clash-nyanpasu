@@ -27,6 +27,7 @@ const SUPER_KEYS: &[&str] = &[
 /// Hotkey error types for frontend validation feedback
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", content = "data")]
+#[allow(dead_code)]
 pub enum HotkeyError {
     InvalidHotkey(String),
     MissingSuperKey(String),
@@ -323,10 +324,8 @@ impl Hotkey {
             let func = iter.next();
             let key = iter.next();
 
-            if func.is_some() && key.is_some() {
-                let func = func.unwrap().trim();
-                let key = key.unwrap().trim();
-                map.insert(key, func);
+            if let (Some(func), Some(key)) = (func, key) {
+                map.insert(key.trim(), func.trim());
             }
         });
         map

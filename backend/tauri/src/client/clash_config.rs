@@ -25,6 +25,7 @@ struct ClashConfigClientInner {
     actor_ref: ActorRef<ClashConfigActorMessage>,
 }
 
+#[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
         config_path: Utf8PathBuf,

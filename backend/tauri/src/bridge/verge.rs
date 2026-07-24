@@ -11,7 +11,6 @@ use nyanpasu_config::application::{
     NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
 };
 use nyanpasu_egui::widget::StatisticWidgetVariant;
-use struct_patch::Patch as _;
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
@@ -162,6 +161,7 @@ struct ConfigPreparedLegacyVergeCommit {
 }
 
 impl PreparedLegacyVergeCommit for ConfigPreparedLegacyVergeCommit {
+    #[allow(deprecated)]
     fn commit(self: Box<Self>) -> anyhow::Result<()> {
         let _guard = self.legacy_lock.lock();
         let mut state = self.state;
@@ -635,21 +635,21 @@ fn apply_prepared_app_projection(target: &mut IVerge, projected: &IVerge) {
     target.system_proxy_bypass = projected.system_proxy_bypass.clone();
     target.proxy_guard_interval = projected.proxy_guard_interval;
     target.theme_color = projected.theme_color.clone();
-    target.clash_core = projected.clash_core.clone();
+    target.clash_core = projected.clash_core;
     target.hotkeys = projected.hotkeys.clone();
     target.default_latency_test = projected.default_latency_test.clone();
     target.enable_builtin_enhanced = projected.enable_builtin_enhanced;
     target.proxy_layout_column = projected.proxy_layout_column;
     target.max_log_files = projected.max_log_files;
     target.enable_auto_check_update = projected.enable_auto_check_update;
-    target.clash_tray_selector = projected.clash_tray_selector.clone();
+    target.clash_tray_selector = projected.clash_tray_selector;
     target.always_on_top = projected.always_on_top;
     target.network_statistic_widget = projected.network_statistic_widget;
     target.pac_url = projected.pac_url.clone();
     target.enable_tray_text = projected.enable_tray_text;
     target.window_type = projected.window_type;
-    target.tray_menu_mode = projected.tray_menu_mode.clone();
-    target.tray_menu_close_behavior = projected.tray_menu_close_behavior.clone();
+    target.tray_menu_mode = projected.tray_menu_mode;
+    target.tray_menu_close_behavior = projected.tray_menu_close_behavior;
 }
 
 pub(crate) fn apply_app_config_to_legacy_verge(
@@ -658,8 +658,8 @@ pub(crate) fn apply_app_config_to_legacy_verge(
 ) -> anyhow::Result<()> {
     draft.app_singleton_port = Some(snap.app_singleton_port);
     draft.app_log_level = Some(super::yaml_convert(&snap.app_log_level)?);
-    draft.language = Some(super::yaml_convert(&snap.language)?);
-    draft.theme_mode = Some(super::yaml_convert(&snap.theme_mode)?);
+    draft.language = Some(super::yaml_convert(snap.language)?);
+    draft.theme_mode = Some(super::yaml_convert(snap.theme_mode)?);
     draft.traffic_graph = Some(snap.traffic_graph);
     draft.enable_memory_usage = Some(snap.enable_memory_usage);
     draft.lighten_animation_effects = Some(snap.lighten_animation_effects);
@@ -675,21 +675,21 @@ pub(crate) fn apply_app_config_to_legacy_verge(
     };
     draft.proxy_guard_interval = Some(snap.proxy_guard_interval);
     draft.theme_color = Some(super::yaml_convert(&snap.theme_color)?);
-    draft.clash_core = Some(super::yaml_convert(&snap.core)?);
+    draft.clash_core = Some(super::yaml_convert(snap.core)?);
     draft.hotkeys = Some(snap.hotkeys.clone());
     draft.default_latency_test = Some(snap.default_latency_test.clone());
     draft.enable_builtin_enhanced = Some(snap.enable_builtin_enhanced);
     draft.proxy_layout_column = Some(snap.proxy_layout_column);
     draft.max_log_files = Some(snap.max_log_files);
     draft.enable_auto_check_update = Some(snap.enable_auto_check_update);
-    draft.clash_tray_selector = Some(super::yaml_convert(&snap.tray_selector_mode)?);
+    draft.clash_tray_selector = Some(super::yaml_convert(snap.tray_selector_mode)?);
     draft.always_on_top = Some(snap.always_on_top);
     draft.network_statistic_widget = Some(network_widget_to_legacy(snap.network_statistic_widget));
     draft.pac_url = snap.pac_url.as_ref().map(ToString::to_string);
     draft.enable_tray_text = Some(snap.enable_tray_text);
     draft.window_type = snap.use_legacy_ui.then_some(legacy_app::WindowType::Main);
-    draft.tray_menu_mode = Some(super::yaml_convert(&snap.tray_menu_mode)?);
-    draft.tray_menu_close_behavior = Some(super::yaml_convert(&snap.tray_menu_close_behavior)?);
+    draft.tray_menu_mode = Some(super::yaml_convert(snap.tray_menu_mode)?);
+    draft.tray_menu_close_behavior = Some(super::yaml_convert(snap.tray_menu_close_behavior)?);
     Ok(())
 }
 

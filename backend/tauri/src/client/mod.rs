@@ -105,7 +105,7 @@ enum PreparedConfigDomain {
     Application {
         expected_version: u64,
         forward: PreparedTypedReplace<NyanpasuAppConfig>,
-        rollback: PreparedTypedReplace<NyanpasuAppConfig>,
+        rollback: Box<PreparedTypedReplace<NyanpasuAppConfig>>,
     },
     Session {
         expected_version: u64,
@@ -210,7 +210,7 @@ async fn sync_legacy_mirrors(
 /// else a constant. Kept separate so `import_profile` reads as orchestration.
 fn url_derived_name(url: &url::Url) -> String {
     url.path_segments()
-        .and_then(|segments| segments.filter(|segment| !segment.is_empty()).next_back())
+        .and_then(|mut segments| segments.rfind(|segment| !segment.is_empty()))
         .map(|segment| {
             segment
                 .trim_end_matches(".yaml")
@@ -250,6 +250,7 @@ struct NyanpasuClientInner {
     runtime: runtime::RuntimeLifecycleStore,
 }
 
+#[allow(dead_code)]
 impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
         let ClientSetupArgs {
@@ -330,6 +331,7 @@ impl NyanpasuClient {
         Ok(client)
     }
 
+    #[allow(dead_code, clippy::too_many_arguments)]
     fn with_parts(
         application: ApplicationClient,
         session_state: SessionStateClient,
@@ -542,11 +544,12 @@ impl NyanpasuClient {
             prepared.push(PreparedConfigDomain::Application {
                 expected_version: snapshots.application.version,
                 forward: self.inner.application.prepare_replace(state).await?,
-                rollback: self
-                    .inner
-                    .application
-                    .prepare_replace(snapshots.application.state.clone())
-                    .await?,
+                rollback: Box::new(
+                    self.inner
+                        .application
+                        .prepare_replace(snapshots.application.state.clone())
+                        .await?,
+                ),
             });
         }
         if let Some(state) = session {
@@ -588,7 +591,7 @@ impl NyanpasuClient {
                     Ok(ConditionalReplaceResult::Replaced(snapshot)) => {
                         committed.push(CommittedConfigDomain::Application {
                             committed_version: snapshot.version,
-                            rollback,
+                            rollback: *rollback,
                         });
                         continue;
                     }
@@ -845,11 +848,11 @@ impl NyanpasuClient {
             })
             .collect();
 
-        if report.affects_current {
-            if let Err(error) = self.rebuild_running_config().await {
-                tracing::warn!(%error, "post-commit rebuild failed; state stays committed (degraded)");
-                degradations.push(Self::map_runtime_rebuild_degradation(&error));
-            }
+        if report.affects_current
+            && let Err(error) = self.rebuild_running_config().await
+        {
+            tracing::warn!(%error, "post-commit rebuild failed; state stays committed (degraded)");
+            degradations.push(Self::map_runtime_rebuild_degradation(&error));
         }
         degradations
     }

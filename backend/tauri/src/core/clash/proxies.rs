@@ -177,7 +177,7 @@ impl Proxies {
                         item
                     })
                     .collect();
-                groups.sort_by(|a, b| b.name.to_lowercase().cmp(&a.name.to_lowercase()));
+                groups.sort_by_key(|a| std::cmp::Reverse(a.name.to_lowercase()));
                 groups
             }
         };

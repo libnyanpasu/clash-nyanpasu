@@ -235,6 +235,7 @@ pub(crate) fn requires_core_restart(patch: &Mapping) -> bool {
 ///
 /// Non-restart patches must still regenerate **and apply** so a promote cannot
 /// land without a corresponding apply (use `regenerate_and_apply_for_legacy`).
+#[allow(dead_code)]
 pub async fn patch_clash(client: crate::client::NyanpasuClient, patch: Mapping) -> Result<()> {
     patch_clash_with_rebuild(patch, |restart| {
         let client = client.clone();
@@ -260,15 +261,17 @@ where
     let run = move || async move {
         let mixed_port = patch.get("mixed-port");
         let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
-        if mixed_port.is_some() && !enable_random_port {
-            let changed = mixed_port.unwrap()
+        if let Some(mixed_port) = mixed_port
+            && !enable_random_port
+        {
+            let changed = mixed_port
                 != Config::verge()
                     .latest()
                     .verge_mixed_port
                     .unwrap_or(Config::clash().data().get_mixed_port());
             // 检查端口占用
             if changed
-                && let Some(port) = mixed_port.unwrap().as_u64()
+                && let Some(port) = mixed_port.as_u64()
                 && !port_scanner::local_port_available(port as u16)
             {
                 Config::clash().discard();
@@ -332,10 +335,11 @@ where
 /// 一般都是一个个的修改
 pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -> Result<()> {
     // Validate theme_color if it's being updated
-    if let Some(ref theme_color) = patch.theme_color {
-        if !theme_color.is_empty() && !crate::config::nyanpasu::is_hex_color(theme_color) {
-            anyhow::bail!("Invalid theme color: {}", theme_color);
-        }
+    if let Some(ref theme_color) = patch.theme_color
+        && !theme_color.is_empty()
+        && !crate::config::nyanpasu::is_hex_color(theme_color)
+    {
+        anyhow::bail!("Invalid theme color: {}", theme_color);
     }
 
     Config::verge().draft().patch_config(patch.clone());
@@ -353,8 +357,10 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
     let res = || async move {
         let service_mode = patch.enable_service_mode;
         let ipc_state = get_ipc_state();
-        if service_mode.is_some() && ipc_state.is_connected() {
-            log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
+        if let Some(service_mode) = service_mode
+            && ipc_state.is_connected()
+        {
+            log::debug!(target: "app", "change service mode to {}", service_mode);
 
             client.regenerate_and_restart_for_legacy().await?;
         }

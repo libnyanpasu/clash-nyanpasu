@@ -247,6 +247,7 @@ fn canonicalize_for_compare(path: &Path) -> std::io::Result<PathBuf> {
     std::fs::canonicalize(path)
 }
 
+#[allow(dead_code)]
 fn symlink_points_to(link: &Path, target: &Path) -> anyhow::Result<bool> {
     let existing = std::fs::read_link(link)?;
     let existing = if existing.is_absolute() {
@@ -427,6 +428,7 @@ fn ensure_real_directory_tree(path: &Path) -> anyhow::Result<()> {
     }
 }
 
+#[allow(unused_variables)]
 fn set_private_directory_permissions(path: &Path) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
@@ -437,6 +439,7 @@ fn set_private_directory_permissions(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(unused_variables)]
 fn set_private_file_permissions(path: &Path) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
@@ -526,6 +529,7 @@ fn sync_directory(_path: &Path) -> anyhow::Result<()> {
 }
 
 impl ProfileFileService {
+    #[allow(dead_code)]
     fn materialization_root(&self) -> PathBuf {
         self.paths.app_profiles_dir().join(MATERIALIZATION_ROOT)
     }
@@ -1167,6 +1171,7 @@ impl ProfileFileService {
     /// The journal locations share one private root, so Unix `rename` is an
     /// atomic same-filesystem phase transition. Do not use `move_atomic`: its
     /// hard-link/unlink fallback can leave duplicate phase artifacts.
+    #[allow(dead_code)]
     fn rename_journal_same_filesystem(source: &Path, destination: &Path) -> anyhow::Result<()> {
         let metadata = std::fs::symlink_metadata(source)
             .with_context(|| format!("inspect journal source {}", source.display()))?;
@@ -2161,12 +2166,11 @@ fn parse_profile_title(headers: &reqwest::header::HeaderMap) -> Option<String> {
         }
         if let Some(encoded) = value.strip_prefix("base64:") {
             use base64::Engine;
-            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) {
-                if let Ok(decoded) = String::from_utf8(bytes) {
-                    if !decoded.trim().is_empty() {
-                        return Some(decoded);
-                    }
-                }
+            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded)
+                && let Ok(decoded) = String::from_utf8(bytes)
+                && !decoded.trim().is_empty()
+            {
+                return Some(decoded);
             }
         } else {
             return Some(value.to_owned());

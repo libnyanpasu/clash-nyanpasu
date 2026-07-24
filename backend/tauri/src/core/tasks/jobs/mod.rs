@@ -5,6 +5,7 @@ use super::task::{Task, TaskManager};
 use parking_lot::RwLock;
 use std::sync::Arc;
 pub trait JobExt {
+    #[allow(dead_code)]
     fn name(&self) -> &'static str;
     fn setup(&self) -> Option<Task>; // called when the app starts or the config changed
 }

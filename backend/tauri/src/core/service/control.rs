@@ -345,7 +345,7 @@ pub async fn status<'a>() -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>>
             }
         );
     }
-    let mut status = String::from_utf8(output.stdout)?;
+    let status = String::from_utf8(output.stdout)?;
     tracing::trace!("service status: {}", status);
-    Ok(serde_json::from_str(&mut status)?)
+    Ok(serde_json::from_str(&status)?)
 }

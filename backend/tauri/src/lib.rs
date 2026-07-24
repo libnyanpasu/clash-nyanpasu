@@ -1,4 +1,3 @@
-#![feature(auto_traits, negative_impls, trait_alias, impl_trait_in_assoc_type)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -27,8 +26,6 @@ mod shutdown_hook;
 mod utils;
 mod widget;
 mod window;
-
-use std::io;
 
 use crate::{
     config::Config,
@@ -321,7 +318,7 @@ pub fn run() -> std::io::Result<()> {
             log_err!(tauri_plugin_deep_link::register(
                 &["clash-nyanpasu", "clash"],
                 move |request| {
-                    log::info!(target: "app", "scheme request received: {:?}", &request);
+                    log::info!(target: "app", "scheme request received: {:?}", request);
                     resolve::create_window(&handle.clone()); // create window if not exists
                     while !is_window_opened() {
                         log::info!(target: "app", "waiting for window open");

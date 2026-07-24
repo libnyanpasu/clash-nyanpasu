@@ -13,6 +13,7 @@ pub fn that<T: AsRef<OsStr>>(path: T) -> std::io::Result<()> {
     }
 }
 
+#[allow(dead_code)]
 pub fn with<T: AsRef<OsStr>>(path: T, program: &str) -> std::io::Result<()> {
     // A dirty workaround for AppImage
     if std::env::var("APPIMAGE").is_ok() {

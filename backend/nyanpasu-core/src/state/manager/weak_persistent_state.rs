@@ -126,7 +126,9 @@ where
     > {
         let state = self.load_snapshot().await.unwrap_or_default();
 
-        self.build_manager(state).await.map_err(LoadError::Init)
+        self.build_manager(state)
+            .await
+            .map_err(|e| LoadError::Init(Box::new(e)))
     }
 }
 
@@ -142,7 +144,9 @@ where
         WeakPersistentStateManager<State, Formatter>,
         LoadError<WeakPersistentStateManager<State, Formatter>>,
     > {
-        self.build_manager(state).await.map_err(LoadError::Init)
+        self.build_manager(state)
+            .await
+            .map_err(|e| LoadError::Init(Box::new(e)))
     }
 }
 

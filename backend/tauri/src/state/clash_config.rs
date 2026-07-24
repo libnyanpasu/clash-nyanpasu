@@ -29,6 +29,7 @@ pub struct ClashConfigActorState {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ClashConfigActorMessage {
     Get(RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>),
     Patch {

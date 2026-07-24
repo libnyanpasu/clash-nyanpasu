@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::{config::Config, core::clash::api};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

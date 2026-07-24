@@ -131,6 +131,7 @@ impl ProfilesClient {
         .await
     }
 
+    #[allow(dead_code)]
     pub async fn replace(&self, profiles: Profiles) -> Result<CommitReport, ProfilesError> {
         self.call(
             |reply| ProfilesActorMessage::Replace { profiles, reply },

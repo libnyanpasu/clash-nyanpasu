@@ -42,6 +42,7 @@ pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> anyhow::Resu
     Ok(())
 }
 
+#[allow(dead_code)]
 struct WindowHandle {
     hwnd: HWND,
     h_instance: HINSTANCE,

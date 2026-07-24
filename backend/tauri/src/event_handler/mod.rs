@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 /// This module is a tauri event based handler.
 /// Some state is good to be managed by the Tauri Manager. we should not hold the singletons in the global state in some cases.
 use tauri::{Emitter, Listener, Manager, Runtime};

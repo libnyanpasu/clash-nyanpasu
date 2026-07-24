@@ -384,13 +384,13 @@ fn validate_composition_config(
 
     let mut seen = IndexSet::new();
     for contributor in &composition.extend_proxies_from {
-        if let Some(base) = &composition.base {
-            if contributor == base {
-                errors.push(ProfileValidationError::CompositionBaseAlsoContributor {
-                    composition: composition_id.clone(),
-                    profile: contributor.clone(),
-                });
-            }
+        if let Some(base) = &composition.base
+            && contributor == base
+        {
+            errors.push(ProfileValidationError::CompositionBaseAlsoContributor {
+                composition: composition_id.clone(),
+                profile: contributor.clone(),
+            });
         }
 
         if !seen.insert(contributor.clone()) {

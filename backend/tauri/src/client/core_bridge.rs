@@ -31,6 +31,7 @@ impl RunningConfigPatchPort for LegacyRunningConfigPatchBridge {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct CoreStatusSnapshot {
     pub state: CoreState,
@@ -43,6 +44,7 @@ pub struct CoreStatusSnapshot {
 pub trait CoreLifecyclePort: Send + Sync + 'static {
     /// Acquire an exclusive lease until the returned value is dropped.
     async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>>;
+    #[allow(dead_code)]
     async fn status(&self) -> anyhow::Result<CoreStatusSnapshot>;
     async fn on_profile_change(&self);
 }
@@ -67,6 +69,7 @@ pub trait CoreLifecycleLease: Send {
     ) -> anyhow::Result<()>;
     async fn apply_promoted(&mut self, product: &Utf8Path) -> anyhow::Result<()>;
     async fn restart(&mut self) -> anyhow::Result<()>;
+    #[allow(dead_code)]
     async fn stop(&mut self) -> anyhow::Result<()>;
 }
 

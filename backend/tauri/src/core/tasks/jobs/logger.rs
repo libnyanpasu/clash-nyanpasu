@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use super::JobExt;
 use crate::{
     config::Config,

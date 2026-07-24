@@ -118,9 +118,8 @@ fn collect_stale_node_keys(
     graph
         .nodes
         .iter()
-        .filter_map(|node| {
-            tag_references_any_profile(&node.tag, &stale_profiles).then(|| node.tag.node_key())
-        })
+        .filter(|&node| tag_references_any_profile(&node.tag, &stale_profiles))
+        .map(|node| node.tag.node_key())
         .collect()
 }
 

@@ -25,6 +25,7 @@ struct SessionStateClientInner {
     actor_ref: ActorRef<SessionStateActorMessage>,
 }
 
+#[allow(dead_code)]
 impl SessionStateClient {
     pub(crate) async fn new(
         config_path: Utf8PathBuf,

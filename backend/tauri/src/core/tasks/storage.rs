@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! store is a interface to save and restore task states
 use super::{
     events::TaskEvent,

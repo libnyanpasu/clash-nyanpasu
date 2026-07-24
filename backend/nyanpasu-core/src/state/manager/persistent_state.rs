@@ -104,7 +104,9 @@ where
             .deserialize(bytes.as_slice())
             .map_err(LoadError::DeserializeConfig)?;
 
-        self.build_manager(state).await.map_err(LoadError::Init)
+        self.build_manager(state)
+            .await
+            .map_err(|e| LoadError::Init(Box::new(e)))
     }
 
     pub async fn load_or_default(
@@ -129,7 +131,9 @@ where
             Err(e) => return Err(LoadError::ReadConfig(e.into())),
         };
 
-        self.build_manager(state).await.map_err(LoadError::Init)
+        self.build_manager(state)
+            .await
+            .map_err(|e| LoadError::Init(Box::new(e)))
     }
 
     pub async fn from_state(
@@ -139,7 +143,9 @@ where
         PersistentStateManager<State, Formatter>,
         LoadError<PersistentStateManager<State, Formatter>>,
     > {
-        self.build_manager(state).await.map_err(LoadError::Init)
+        self.build_manager(state)
+            .await
+            .map_err(|e| LoadError::Init(Box::new(e)))
     }
 }
 

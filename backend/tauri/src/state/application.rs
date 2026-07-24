@@ -28,6 +28,7 @@ pub struct ApplicationActorState {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ApplicationActorMessage {
     Get(RpcReplyPort<anyhow::Result<ApplicationSnapshot>>),
     Patch {

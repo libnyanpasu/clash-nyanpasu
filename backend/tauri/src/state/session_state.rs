@@ -28,6 +28,7 @@ pub struct SessionStateActorState {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum SessionStateActorMessage {
     Get(RpcReplyPort<anyhow::Result<SessionStateSnapshot>>),
     Patch {

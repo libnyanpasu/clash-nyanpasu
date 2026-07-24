@@ -70,6 +70,7 @@ pub enum ProfilesError {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CommitReport {
     pub snapshot: Arc<Profiles>,
     /// Dependency-closure judgement per the T04 affects_current rule table.
@@ -187,6 +188,7 @@ fn synced_name(custom_name: bool, filename: &Option<String>) -> Option<String> {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ProfilesActorMessage {
     Get(RpcReplyPort<Result<Arc<Profiles>, ProfilesError>>),
     SetCurrent {
@@ -299,28 +301,27 @@ impl ProfilesActor {
 
         closure.insert(current.clone());
         let mut configs = vec![current.clone()];
-        if let Some(item) = profiles.items.get(current) {
-            if let ProfileDefinition::Config {
+        if let Some(item) = profiles.items.get(current)
+            && let ProfileDefinition::Config {
                 config: ConfigDefinition::Composition(composition),
             } = &item.definition
-            {
-                if let Some(base) = &composition.base {
-                    closure.insert(base.clone());
-                    configs.push(base.clone());
-                }
-                for member in &composition.extend_proxies_from {
-                    closure.insert(member.clone());
-                    configs.push(member.clone());
-                }
+        {
+            if let Some(base) = &composition.base {
+                closure.insert(base.clone());
+                configs.push(base.clone());
+            }
+            for member in &composition.extend_proxies_from {
+                closure.insert(member.clone());
+                configs.push(member.clone());
             }
         }
 
         for config in configs {
-            if let Some(item) = profiles.items.get(&config) {
-                if let ProfileDefinition::Config { config } = &item.definition {
-                    for transform in config.transforms() {
-                        closure.insert(transform.clone());
-                    }
+            if let Some(item) = profiles.items.get(&config)
+                && let ProfileDefinition::Config { config } = &item.definition
+            {
+                for transform in config.transforms() {
+                    closure.insert(transform.clone());
                 }
             }
         }
@@ -592,20 +593,17 @@ impl ProfilesActor {
         };
 
         let mut materialization_failures = Vec::new();
-        if let Some(cleanup) = cleanup {
-            if let Err(error) =
+        if let Some(cleanup) = cleanup
+            && let Err(error) =
                 Self::materialization_call(state, move |port| port.cancel_cleanup(&cleanup)).await
-            {
-                materialization_failures.push(format!("failed to cancel cleanup: {error}"));
-            }
+        {
+            materialization_failures.push(format!("failed to cancel cleanup: {error}"));
         }
-        if let Some(prepared) = prepared {
-            if let Err(error) =
+        if let Some(prepared) = prepared
+            && let Err(error) =
                 Self::materialization_call(state, move |port| port.compensate(&prepared)).await
-            {
-                materialization_failures
-                    .push(format!("failed to compensate materialization: {error}"));
-            }
+        {
+            materialization_failures.push(format!("failed to compensate materialization: {error}"));
         }
         Self::reconcile_committed(myself, state, &rollback_snapshot);
         StateFirstRollbackOutcome::RolledBack {
@@ -642,6 +640,7 @@ impl ProfilesActor {
         Vec::new()
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn commit_state_first(
         myself: &ActorRef<ProfilesActorMessage>,
         state: &mut ProfilesActorState,
@@ -694,23 +693,21 @@ impl ProfilesActor {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 let mut failures = Vec::new();
-                if let Some(cleanup) = cleanup {
-                    if let Err(cancel) =
+                if let Some(cleanup) = cleanup
+                    && let Err(cancel) =
                         Self::materialization_call(state, move |port| port.cancel_cleanup(&cleanup))
                             .await
-                    {
-                        failures.push(format!("failed to cancel cleanup: {cancel}"));
-                    }
+                {
+                    failures.push(format!("failed to cancel cleanup: {cancel}"));
                 }
-                if let Some(prepared) = prepared {
-                    if let Err(compensate) =
+                if let Some(prepared) = prepared
+                    && let Err(compensate) =
                         Self::materialization_call(state, move |port| port.compensate(&prepared))
                             .await
-                    {
-                        failures.push(format!(
-                            "failed to compensate materialization: {compensate}"
-                        ));
-                    }
+                {
+                    failures.push(format!(
+                        "failed to compensate materialization: {compensate}"
+                    ));
                 }
                 return if failures.is_empty() {
                     Err(error)
@@ -796,6 +793,7 @@ impl ProfilesActor {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn commit_file_first(
         myself: &ActorRef<ProfilesActorMessage>,
         state: &mut ProfilesActorState,
@@ -1581,12 +1579,11 @@ impl Actor for ProfilesActor {
                     }
                 };
 
-                if reply.is_none() {
-                    if let Ok(report) = &result {
-                        if report.affects_current {
-                            state.notifier.request_rebuild();
-                        }
-                    }
+                if reply.is_none()
+                    && let Ok(report) = &result
+                    && report.affects_current
+                {
+                    state.notifier.request_rebuild();
                 }
                 if let Some(reply) = reply {
                     let _ = reply.send(result);
@@ -1704,10 +1701,10 @@ impl Actor for ProfilesActor {
                         drop(versioned);
 
                         let mut option = pending.option;
-                        if !pending.update_interval_explicit {
-                            if let Some(minutes) = suggested_update_interval_minutes {
-                                option.update_interval_minutes = minutes;
-                            }
+                        if !pending.update_interval_explicit
+                            && let Some(minutes) = suggested_update_interval_minutes
+                        {
+                            option.update_interval_minutes = minutes;
                         }
                         let mut metadata = pending.metadata;
                         if let Some(name) = synced_name(metadata.custom_name, &filename) {

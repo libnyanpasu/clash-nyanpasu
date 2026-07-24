@@ -6,6 +6,7 @@ use std::path::PathBuf;
 pub use network_statistic_large::NyanpasuNetworkStatisticLargeWidget;
 pub use network_statistic_small::NyanpasuNetworkStatisticSmallWidget;
 
+#[allow(dead_code)]
 fn get_window_state_path() -> std::io::Result<PathBuf> {
     let env = std::env::var("NYANPASU_EGUI_WINDOW_STATE_PATH").map_err(|_| {
         std::io::Error::new(

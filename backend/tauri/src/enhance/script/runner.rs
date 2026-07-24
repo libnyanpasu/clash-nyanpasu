@@ -63,7 +63,7 @@ impl RunnerManager {
                 ScriptType::JavaScript => Box::new(js::JSRunner::try_new()?) as Box<dyn Runner>,
                 ScriptType::Lua => Box::new(lua::LuaRunner::try_new()?) as Box<dyn Runner>,
             };
-            self.runners.insert(script_type.clone(), runner);
+            self.runners.insert(*script_type, runner);
         }
         Ok(self.runners.get(script_type).unwrap().as_ref())
     }

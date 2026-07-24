@@ -30,6 +30,7 @@ static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 static WINDOW_MANAGER: OnceLock<Mutex<WindowManager>> = OnceLock::new();
 /// Window configuration options
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct WindowConfig {
     /// Whether only one instance of this window type is allowed
     pub singleton: bool,
@@ -104,6 +105,7 @@ impl WindowConfig {
     }
 
     /// Set maximum window size
+    #[allow(dead_code)]
     pub fn max_size(mut self, width: f64, height: f64) -> Self {
         self.max_size = Some((width, height));
         self
@@ -149,6 +151,7 @@ pub struct WindowParamsBuilder {
     params: WindowParams,
 }
 
+#[allow(dead_code)]
 impl WindowParamsBuilder {
     pub fn new() -> Self {
         Self::default()
@@ -259,6 +262,7 @@ impl WindowManager {
     }
 
     /// Check if a specific label exists
+    #[allow(dead_code)]
     pub fn has_instance(&self, label: &str) -> bool {
         self.instances
             .values()
@@ -266,6 +270,7 @@ impl WindowManager {
     }
 
     /// Get the count of instances for a base label
+    #[allow(dead_code)]
     pub fn instance_count(&self, base_label: &str) -> usize {
         self.instances.get(base_label).map(|v| v.len()).unwrap_or(0)
     }
@@ -294,6 +299,7 @@ pub struct WindowMessageEvent {
     pub payload: serde_json::Value,
 }
 
+#[allow(dead_code)]
 impl WindowMessageEvent {
     /// Create a new window message
     pub fn new(
@@ -321,6 +327,7 @@ impl WindowMessageEvent {
 }
 
 /// Send a message to a specific window
+#[allow(dead_code)]
 pub fn send_message_to_window(app_handle: &AppHandle, message: WindowMessageEvent) -> Result<()> {
     // Verify window exists
     let _ = app_handle
@@ -333,6 +340,7 @@ pub fn send_message_to_window(app_handle: &AppHandle, message: WindowMessageEven
 }
 
 /// Send a message to all instances of a window type
+#[allow(dead_code)]
 pub fn broadcast_to_window_type(
     app_handle: &AppHandle,
     base_label: &str,
@@ -358,6 +366,7 @@ pub fn broadcast_to_window_type(
 }
 
 /// Broadcast a message to all open windows
+#[allow(dead_code)]
 pub fn broadcast_to_all_windows(
     app_handle: &AppHandle,
     from: &str,
@@ -394,6 +403,7 @@ impl WindowCreateResult {
 }
 
 /// Trait for window management
+#[allow(dead_code)]
 pub trait AppWindow {
     /// Get window base label (e.g., "main", "editor")
     fn label(&self) -> &str;
@@ -711,12 +721,11 @@ pub trait AppWindow {
 
                 if let Some(window) = app_handle.get_webview_window(&label) {
                     let _ = window.with_webview(|webview| unsafe {
-                        if let Ok(core) = webview.controller().CoreWebView2() {
-                            if let Ok(settings) = core.Settings() {
-                                if let Ok(settings6) = settings.cast::<ICoreWebView2Settings6>() {
-                                    let _ = settings6.SetIsSwipeNavigationEnabled(false);
-                                }
-                            }
+                        if let Ok(core) = webview.controller().CoreWebView2()
+                            && let Ok(settings) = core.Settings()
+                            && let Ok(settings6) = settings.cast::<ICoreWebView2Settings6>()
+                        {
+                            let _ = settings6.SetIsSwipeNavigationEnabled(false);
                         }
                     });
                 }
@@ -820,15 +829,13 @@ pub trait AppWindow {
 
                 // During system shutdown, Windows sends resize events with 0x0 dimensions.
                 // Skip saving in this case to preserve the last valid window state.
-                if size.width == 0 || size.height == 0 {
-                    if !maximized && !fullscreen {
-                        tracing::debug!(
-                            "skipping window state save: invalid size {}x{} in normal state",
-                            size.width,
-                            size.height
-                        );
-                        return Ok(());
-                    }
+                if (size.width == 0 || size.height == 0) && !maximized && !fullscreen {
+                    tracing::debug!(
+                        "skipping window state save: invalid size {}x{} in normal state",
+                        size.width,
+                        size.height
+                    );
+                    return Ok(());
                 }
 
                 let mut state = WindowState {

@@ -143,7 +143,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                     })
                 }
             },
-            Err((report, _rolled_back_tx)) => {
+            Err(err) => {
+                let (report, _rolled_back_tx) = *err;
                 Err(StateChangedError::PrepareAck(PrepareAckError { report }))
             }
         }
@@ -186,7 +187,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                     })
                 }
             },
-            Err((report, _rolled_back_tx)) => {
+            Err(err) => {
+                let (report, _rolled_back_tx) = *err;
                 Err(StateChangedError::PrepareAck(PrepareAckError { report }))
             }
         }
@@ -249,7 +251,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         );
         let tx = match tx.prepare().await {
             Ok((_report, prepared_tx)) => prepared_tx,
-            Err((report, _)) => {
+            Err(err) => {
+                let (report, _) = *err;
                 return Err(ConditionalEffectError::State(
                     StateChangedError::PrepareAck(PrepareAckError { report }),
                 ));
@@ -345,7 +348,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         );
         let (report, tx) = match tx.prepare().await {
             Ok((report, prepared_tx)) => (report, prepared_tx),
-            Err((report, _)) => {
+            Err(err) => {
+                let (report, _) = *err;
                 return Err(WithEffectError::State(StateChangedError::PrepareAck(
                     PrepareAckError { report },
                 )));
@@ -470,18 +474,23 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             Ok((report, _)) => {
                 if report.has_required_failures() {
                     Err(InitAckError {
-                        coordinator,
+                        coordinator: Box::new(coordinator),
                         report,
                     })
                 } else {
                     Ok(coordinator)
                 }
             }
-            Err((Some(report), _)) => Err(InitAckError {
-                coordinator,
-                report,
-            }),
-            Err((None, _)) => unreachable!("init transaction cannot hit CAS mismatch"),
+            Err(e) => {
+                let (report, _) = *e;
+                match report {
+                    Some(report) => Err(InitAckError {
+                        coordinator: Box::new(coordinator),
+                        report,
+                    }),
+                    None => unreachable!("init transaction cannot hit CAS mismatch"),
+                }
+            }
         }
     }
 }

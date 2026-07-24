@@ -102,6 +102,7 @@ impl IClashTemp {
     }
 
     #[instrument]
+    #[allow(dead_code)]
     pub fn prepare_external_controller_port(&mut self) -> Result<()> {
         let strategy = Config::verge()
             .latest()
@@ -264,6 +265,7 @@ fn test_clash_info() {
     );
 }
 
+#[allow(dead_code)]
 #[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct IClash {
@@ -279,6 +281,7 @@ pub struct IClash {
     pub interface_name: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct IClashTUN {
@@ -289,6 +292,7 @@ pub struct IClashTUN {
     pub dns_hijack: Option<Vec<String>>,
 }
 
+#[allow(dead_code)]
 #[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct IClashDNS {
@@ -305,6 +309,7 @@ pub struct IClashDNS {
     pub nameserver_policy: Option<Vec<String>>,
 }
 
+#[allow(dead_code)]
 #[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct IClashFallbackFilter {

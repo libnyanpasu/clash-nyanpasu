@@ -86,7 +86,7 @@ fn use_light_green_accent(style: &mut Style) {
     style.visuals.text_cursor.stroke.color = Color32::from_rgb(28, 92, 48);
     style.visuals.selection = Selection {
         bg_fill: Color32::from_rgb(157, 218, 169),
-        stroke: Stroke::new(1.0, Color32::from_rgb(28, 92, 48)),
+        stroke: Stroke::new(1.0_f32, Color32::from_rgb(28, 92, 48)),
     };
 }
 
@@ -97,7 +97,7 @@ fn use_dark_purple_accent(style: &mut Style) {
     style.visuals.text_cursor.stroke.color = Color32::from_rgb(234, 208, 244);
     style.visuals.selection = Selection {
         bg_fill: Color32::from_rgb(105, 67, 119),
-        stroke: Stroke::new(1.0, Color32::from_rgb(234, 208, 244)),
+        stroke: Stroke::new(1.0_f32, Color32::from_rgb(234, 208, 244)),
     };
 }
 

@@ -42,7 +42,7 @@ impl RuntimeRevisionAllocator {
     pub(crate) fn allocate(&self) -> anyhow::Result<RuntimeRevision> {
         let previous = self
             .0
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
             })
             .map_err(|_| anyhow::anyhow!("runtime revision space exhausted"))?;
@@ -204,6 +204,7 @@ impl RuntimePaths {
         })
     }
 
+    #[allow(dead_code)]
     pub fn new(product: Utf8PathBuf, candidate_dir: Utf8PathBuf) -> Self {
         Self {
             product,
@@ -215,6 +216,7 @@ impl RuntimePaths {
         &self.product
     }
 
+    #[allow(dead_code)]
     pub fn candidate_dir(&self) -> &Utf8Path {
         &self.candidate_dir
     }
@@ -407,12 +409,14 @@ impl<T> MutationOutcome<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn into_value(self) -> T {
         match self {
             Self::Applied { value } | Self::CommittedDegraded { value, .. } => value,
         }
     }
 
+    #[allow(dead_code)]
     pub fn degradations(&self) -> &[Degradation] {
         match self {
             Self::Applied { .. } => &[],

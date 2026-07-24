@@ -74,6 +74,7 @@ pub trait WebStorage {
     /// Returns all key-value pairs as raw JSON strings (for debug use).
     fn get_all(&self) -> Result<Vec<(String, String)>>;
     /// Removes all entries from the storage (for debug use).
+    #[allow(dead_code)]
     fn clear(&self) -> Result<()>;
 }
 

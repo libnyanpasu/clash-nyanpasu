@@ -226,7 +226,7 @@ where
         mut self,
     ) -> Result<
         (PrepareReport, StateTransaction<T, state::Prepared>),
-        (PrepareReport, StateTransaction<T, state::RolledBack>),
+        Box<(PrepareReport, StateTransaction<T, state::RolledBack>)>,
     > {
         self.rollback_guard
             .arm(&self.change, &self.subscribers, self.notify_strategy);
@@ -301,7 +301,7 @@ where
             let report = PrepareReport {
                 subscriber_acks: acks,
             };
-            return Err((report, tx));
+            return Err(Box::new((report, tx)));
         }
 
         let report = PrepareReport {
@@ -334,17 +334,20 @@ where
         self,
     ) -> Result<
         (PrepareReport, StateTransaction<T, state::Committed>),
-        (
+        Box<(
             Option<PrepareReport>,
             StateTransaction<T, state::RolledBack>,
-        ),
+        )>,
     > {
         match self.prepare().await {
             Ok((report, prepared_tx)) => match prepared_tx.commit().await {
                 Ok(committed_tx) => Ok((report, committed_tx)),
-                Err(rolled_back_tx) => Err((None, rolled_back_tx)),
+                Err(err) => Err(Box::new((None, *err))),
             },
-            Err((report, rolled_back_tx)) => Err((Some(report), rolled_back_tx)),
+            Err(report_and_tx) => {
+                let (report, rolled_back_tx) = *report_and_tx;
+                Err(Box::new((Some(report), rolled_back_tx)))
+            }
         }
     }
 
@@ -355,7 +358,7 @@ where
 }
 
 pub(crate) struct CommitCasMismatch<T: Clone + Send + Sync + 'static> {
-    tx: StateTransaction<T, state::Prepared>,
+    tx: Box<StateTransaction<T, state::Prepared>>,
     expected: Version,
     actual: Version,
 }
@@ -365,7 +368,7 @@ where
     T: Clone + Send + Sync + 'static,
 {
     pub(crate) async fn notify_rollback(self) {
-        self.tx
+        (*self.tx)
             ._rollback(RollbackReason::StoreStateCasMismatch {
                 expected: self.expected,
                 actual: self.actual,
@@ -380,7 +383,7 @@ where
 {
     pub(crate) fn try_commit(
         mut self,
-    ) -> Result<StateTransaction<T, state::Committed>, CommitCasMismatch<T>> {
+    ) -> Result<StateTransaction<T, state::Committed>, Box<CommitCasMismatch<T>>> {
         match self.change.previous.clone() {
             Some(prev) => {
                 let new_state = Arc::new(VersionedState {
@@ -390,11 +393,11 @@ where
                 let guard = self.store.compare_and_swap(&prev, new_state);
 
                 if !Arc::ptr_eq(&guard, &prev) {
-                    return Err(CommitCasMismatch {
-                        tx: self,
+                    return Err(Box::new(CommitCasMismatch {
+                        tx: Box::new(self),
                         expected: prev.version,
                         actual: guard.version,
-                    });
+                    }));
                 }
             }
             None => {
@@ -433,7 +436,8 @@ where
     /// Commit this transaction, transitioning it to the committed state.
     pub async fn commit(
         self,
-    ) -> Result<StateTransaction<T, state::Committed>, StateTransaction<T, state::RolledBack>> {
+    ) -> Result<StateTransaction<T, state::Committed>, Box<StateTransaction<T, state::RolledBack>>>
+    {
         match self.try_commit() {
             Ok(tx) => Ok(tx.notify_committed().await),
             Err(mismatch) => {
@@ -441,7 +445,7 @@ where
                     expected: mismatch.expected,
                     actual: mismatch.actual,
                 };
-                Err(mismatch.tx._rollback(reason).await)
+                Err(Box::new(mismatch.tx._rollback(reason).await))
             }
         }
     }

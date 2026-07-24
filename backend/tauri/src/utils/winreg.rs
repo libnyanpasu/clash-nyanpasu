@@ -51,25 +51,25 @@ pub fn get_current_user_sid() -> Result<String> {
 
     // Try PowerShell method first (more reliable)
     let output = Command::new("powershell")
-        .args(&[
+        .args([
             "-Command",
             "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
         ])
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output();
 
-    if let Ok(output) = output {
-        if output.status.success() {
-            let sid = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !sid.is_empty() {
-                return Ok(sid);
-            }
+    if let Ok(output) = output
+        && output.status.success()
+    {
+        let sid = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !sid.is_empty() {
+            return Ok(sid);
         }
     }
 
     // Fallback to WMIC method
     let output = Command::new("wmic")
-        .args(&[
+        .args([
             "useraccount",
             "where",
             "name='%username%'",
@@ -80,15 +80,15 @@ pub fn get_current_user_sid() -> Result<String> {
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output();
 
-    if let Ok(output) = output {
-        if output.status.success() {
-            let result = String::from_utf8_lossy(&output.stdout);
-            for line in result.lines() {
-                if line.starts_with("SID=") {
-                    let sid = line[4..].trim().to_string();
-                    if !sid.is_empty() {
-                        return Ok(sid);
-                    }
+    if let Ok(output) = output
+        && output.status.success()
+    {
+        let result = String::from_utf8_lossy(&output.stdout);
+        for line in result.lines() {
+            if let Some(stripped) = line.strip_prefix("SID=") {
+                let sid = stripped.trim().to_string();
+                if !sid.is_empty() {
+                    return Ok(sid);
                 }
             }
         }

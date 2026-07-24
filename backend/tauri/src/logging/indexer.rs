@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::SeekFrom,

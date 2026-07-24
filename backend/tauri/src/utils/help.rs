@@ -111,7 +111,7 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
     #[cfg(all(not(windows), not(target_os = "macos")))]
     let code = "code";
 
-    let shell = app.shell();
+    let _shell = app.shell();
 
     trace_err!(
         match which::which(code) {

@@ -109,6 +109,7 @@ fn set_window_controls_pos(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => {
@@ -265,17 +266,17 @@ fn spawn_window_ready_timeout(app_handle: AppHandle) {
         tokio::time::sleep(std::time::Duration::from_secs(TIMEOUT_SECS)).await;
         let inner = app_handle.clone();
         let _ = app_handle.run_on_main_thread(move || {
-            if let Some(win) = inner.get_webview_window(crate::consts::MAIN_WINDOW_LABEL) {
-                if !win.is_visible().unwrap_or(true) {
-                    tracing::warn!(
-                        "Main window still hidden after {}s timeout, showing as fallback",
-                        TIMEOUT_SECS
-                    );
-                    let _ = win.show();
-                    let _ = win.set_focus();
-                    #[cfg(target_os = "macos")]
-                    crate::utils::dock::macos::show_dock_icon();
-                }
+            if let Some(win) = inner.get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
+                && !win.is_visible().unwrap_or(true)
+            {
+                tracing::warn!(
+                    "Main window still hidden after {}s timeout, showing as fallback",
+                    TIMEOUT_SECS
+                );
+                let _ = win.show();
+                let _ = win.set_focus();
+                #[cfg(target_os = "macos")]
+                crate::utils::dock::macos::show_dock_icon();
             }
         });
     });
@@ -754,6 +755,7 @@ pub fn create_editor_window(
 }
 
 /// Close editor window by window_type and optional uid
+#[allow(dead_code)]
 pub fn close_editor_window(
     app_handle: &AppHandle,
     window_type: &EditorWindowType,
@@ -770,6 +772,7 @@ pub fn close_editor_window(
 }
 
 /// Check if editor window with window_type (and optional uid) is open
+#[allow(dead_code)]
 pub fn is_editor_window_open(
     app_handle: &AppHandle,
     window_type: &EditorWindowType,

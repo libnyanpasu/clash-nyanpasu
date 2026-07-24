@@ -300,6 +300,7 @@ mod utils {
 
     #[derive(Debug)]
     // TODO: support fn params check and support typescript type erase
+    #[allow(dead_code)]
     struct DefaultExport {
         span: Span,
         is_function: bool,

@@ -8,8 +8,10 @@ use tauri::{Env, utils::platform::resource_dir};
 
 #[cfg(not(feature = "verge-dev"))]
 #[allow(unused)]
+#[allow(dead_code)]
 const PREVIOUS_APP_NAME: &str = "clash-verge";
 #[cfg(feature = "verge-dev")]
+#[allow(dead_code)]
 const PREVIOUS_APP_NAME: &str = "clash-verge-dev";
 #[cfg(not(feature = "verge-dev"))]
 pub const APP_NAME: &str = "clash-nyanpasu";
@@ -109,6 +111,7 @@ pub fn app_data_dir() -> Result<PathBuf> {
     since = "1.6.0",
     note = "should use self::app_config_dir or self::app_data_dir instead"
 )]
+#[allow(dead_code)]
 pub fn app_home_dir() -> Result<PathBuf> {
     if cfg!(feature = "verge-dev") {
         return Ok(dirs::home_dir()
@@ -237,6 +240,7 @@ pub fn tray_icons_path(mode: &str) -> Result<PathBuf> {
 
 #[cfg(windows)]
 #[deprecated(since = "1.6.0", note = "should use nyanpasu_utils::dirs mod instead")]
+#[allow(dead_code)]
 pub fn service_log_file() -> Result<PathBuf> {
     use chrono::Local;
 
@@ -251,6 +255,7 @@ pub fn service_log_file() -> Result<PathBuf> {
     Ok(log_file)
 }
 
+#[allow(dead_code)]
 pub fn path_to_str(path: &PathBuf) -> Result<&str> {
     let path_str = path
         .as_os_str()
@@ -267,7 +272,7 @@ pub fn get_single_instance_placeholder() -> Result<String> {
         match crate::utils::winreg::get_current_user_sid() {
             Ok(sid) => {
                 // Use session-local namespace and include app name + user SID to ensure per-user uniqueness
-                return Ok(format!("Local\\{}-{}", APP_NAME, sid));
+                Ok(format!("Local\\{}-{}", APP_NAME, sid))
             }
             Err(_) => {
                 // Fallback to config dir hashing if SID retrieval fails
@@ -278,7 +283,7 @@ pub fn get_single_instance_placeholder() -> Result<String> {
                 let mut hasher = DefaultHasher::new();
                 cfg_dir.to_string_lossy().hash(&mut hasher);
                 let hash = hasher.finish();
-                return Ok(format!("Local\\{}-{:x}", APP_NAME, hash));
+                Ok(format!("Local\\{}-{:x}", APP_NAME, hash))
             }
         }
     }

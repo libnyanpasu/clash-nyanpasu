@@ -1025,7 +1025,7 @@ fn web_key(key: &str) -> String {
 #[specta::specta]
 pub fn get_storage_item(app_handle: AppHandle, key: String) -> Result<Option<String>> {
     let storage = app_handle.state::<Storage>();
-    let value = (storage.get_item(&web_key(&key)))?;
+    let value = (storage.get_item(web_key(&key)))?;
     Ok(value)
 }
 
@@ -1033,7 +1033,7 @@ pub fn get_storage_item(app_handle: AppHandle, key: String) -> Result<Option<Str
 #[specta::specta]
 pub fn set_storage_item(app_handle: AppHandle, key: String, value: String) -> Result {
     let storage = app_handle.state::<Storage>();
-    (storage.set_item(&web_key(&key), &value))?;
+    (storage.set_item(web_key(&key), &value))?;
     Ok(())
 }
 
@@ -1041,7 +1041,7 @@ pub fn set_storage_item(app_handle: AppHandle, key: String, value: String) -> Re
 #[specta::specta]
 pub fn remove_storage_item(app_handle: AppHandle, key: String) -> Result {
     let storage = app_handle.state::<Storage>();
-    (storage.remove_item(&web_key(&key)))?;
+    (storage.remove_item(web_key(&key)))?;
     Ok(())
 }
 

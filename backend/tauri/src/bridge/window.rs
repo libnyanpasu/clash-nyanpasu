@@ -34,6 +34,7 @@ struct PreparedWindowMirror {
 }
 
 impl PreparedLegacyMirror for PreparedWindowMirror {
+    #[allow(deprecated)]
     fn apply(self: Box<Self>) {
         let Self {
             legacy_lock,
@@ -100,6 +101,7 @@ fn window_state_from_position(position: &[f64]) -> WindowState {
     }
 }
 
+#[allow(deprecated)]
 pub(crate) fn apply_session_state_to_legacy_verge(
     draft: &mut IVerge,
     snap: &PersistentState,

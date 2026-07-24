@@ -175,9 +175,9 @@ pub(crate) fn apply_prepared_clash_verge_projection(target: &mut IVerge, project
     target.enable_clash_fields = projected.enable_clash_fields;
     target.enable_random_port = projected.enable_random_port;
     target.verge_mixed_port = projected.verge_mixed_port;
-    target.tun_stack = projected.tun_stack.clone();
+    target.tun_stack = projected.tun_stack;
     target.clash_strategy = projected.clash_strategy.clone();
-    target.break_when_proxy_change = projected.break_when_proxy_change.clone();
+    target.break_when_proxy_change = projected.break_when_proxy_change;
     target.break_when_profile_change = projected.break_when_profile_change;
     target.break_when_mode_change = projected.break_when_mode_change;
 }
@@ -191,7 +191,7 @@ pub(crate) fn apply_clash_config_to_legacy_verge(
     draft.enable_clash_fields = Some(snap.enable_clash_fields);
     draft.enable_random_port = Some(matches!(snap.mixed_port.kind, PortStrategyKind::Random));
     draft.verge_mixed_port = Some(snap.mixed_port.start_port);
-    draft.tun_stack = Some(super::yaml_convert(&snap.tun_stack)?);
+    draft.tun_stack = Some(super::yaml_convert(snap.tun_stack)?);
     draft.clash_strategy = Some(legacy_app::ClashStrategy {
         external_controller_port_strategy: super::yaml_convert(
             &snap.external_controller.port.kind,

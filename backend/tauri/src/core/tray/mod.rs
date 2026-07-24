@@ -472,15 +472,13 @@ impl Tray {
                 button: MouseButton::Right,
                 position,
                 ..
-            } => {
-                if get_tray_menu_mode() == TrayMenuMode::Webview {
-                    log_err!(
-                        resolve::show_tray_menu_window(tray_icon.app_handle(), position),
-                        "failed to show webview tray menu"
-                    );
-                }
-                // In Native mode the system shows the attached menu automatically
+            } if get_tray_menu_mode() == TrayMenuMode::Webview => {
+                log_err!(
+                    resolve::show_tray_menu_window(tray_icon.app_handle(), position),
+                    "failed to show webview tray menu"
+                );
             }
+            // In Native mode the system shows the attached menu automatically
             _ => {}
         }
     }

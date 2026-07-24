@@ -225,6 +225,7 @@ impl NyanpasuClient {
     /// `feat::patch_clash`/`patch_verge` side-effect paths, `change_core`).
     /// Profiles come from the typed actor only; their legacy IPC writers moved
     /// onto the facade in T08 and the legacy profile code was removed in T10.
+    #[allow(dead_code)]
     pub(crate) async fn regenerate_runtime_for_legacy(&self) -> Result<()> {
         // Inputs are read under the rebuild gate so a legacy regeneration
         // serializes with facade rebuilds and always sees the newest drafts.

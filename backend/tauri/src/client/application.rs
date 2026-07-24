@@ -25,6 +25,7 @@ struct ApplicationClientInner {
     actor_ref: ActorRef<ApplicationActorMessage>,
 }
 
+#[allow(dead_code)]
 impl ApplicationClient {
     pub(crate) async fn new(
         config_path: Utf8PathBuf,

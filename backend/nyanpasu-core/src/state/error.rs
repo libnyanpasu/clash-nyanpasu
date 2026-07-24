@@ -34,7 +34,7 @@ pub enum LoadError<Manager = ()> {
     #[error("failed to deserialize the config file: {0}")]
     DeserializeConfig(anyhow::Error),
     #[error("state manager initialization ACK failed: {0}")]
-    Init(ManagerInitError<Manager>),
+    Init(Box<ManagerInitError<Manager>>),
 }
 
 impl<Manager> fmt::Debug for LoadError<Manager> {
@@ -53,7 +53,7 @@ impl<Manager> fmt::Debug for LoadError<Manager> {
 #[derive(thiserror::Error)]
 #[error("state prepared but required subscriber ACK failed during initialization")]
 pub struct InitAckError<T: Clone + Send + Sync + 'static> {
-    pub coordinator: super::coordinator::StateCoordinator<T>,
+    pub coordinator: Box<super::coordinator::StateCoordinator<T>>,
     pub report: PrepareReport,
 }
 
@@ -67,22 +67,25 @@ impl<T: Clone + Send + Sync + 'static> std::fmt::Debug for InitAckError<T> {
 
 impl<T: Clone + Send + Sync + 'static> InitAckError<T> {
     pub fn into_parts(self) -> (super::coordinator::StateCoordinator<T>, PrepareReport) {
-        (self.coordinator, self.report)
+        (*self.coordinator, self.report)
     }
 }
 
 pub struct ManagerInitError<Manager> {
-    pub manager: Manager,
+    pub manager: Box<Manager>,
     pub report: PrepareReport,
 }
 
 impl<Manager> ManagerInitError<Manager> {
     pub fn new(manager: Manager, report: PrepareReport) -> Self {
-        Self { manager, report }
+        Self {
+            manager: Box::new(manager),
+            report,
+        }
     }
 
     pub fn into_parts(self) -> (Manager, PrepareReport) {
-        (self.manager, self.report)
+        (*self.manager, self.report)
     }
 }
 

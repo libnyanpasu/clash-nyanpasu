@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use crate::logging::indexer::Indexer;
@@ -205,19 +206,17 @@ impl IndexerManagerRunner {
                             }
                         }
                     }
-                    EventKind::Modify(_) => {
-                        if is_log_file(path).await.is_ok_and(|ok| ok) {
-                            let (tx, rx) = oneshot::channel();
-                            cmd_tx
-                                .send(IndexerRunnerCmd::LogFileChanged(path.to_path_buf(), tx))
-                                .unwrap();
-                            match rx.await {
-                                Ok(_) => {
-                                    tracing::debug!("indexer for {} updated", path);
-                                }
-                                Err(_err) => {
-                                    tracing::error!("failed to update indexer for {}", path);
-                                }
+                    EventKind::Modify(_) if is_log_file(path).await.is_ok_and(|ok| ok) => {
+                        let (tx, rx) = oneshot::channel();
+                        cmd_tx
+                            .send(IndexerRunnerCmd::LogFileChanged(path.to_path_buf(), tx))
+                            .unwrap();
+                        match rx.await {
+                            Ok(_) => {
+                                tracing::debug!("indexer for {} updated", path);
+                            }
+                            Err(_err) => {
+                                tracing::error!("failed to update indexer for {}", path);
                             }
                         }
                     }

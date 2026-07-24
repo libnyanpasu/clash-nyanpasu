@@ -12,9 +12,9 @@ pub fn collect_logs(target_path: &Path) -> Result<()> {
     let globstr = format!("{}/*.{}.app.log", logs_dir.to_str().unwrap(), now);
     let mut paths = Vec::new();
     for entry in glob(&globstr)? {
-        match entry {
-            Ok(path) => paths.push(path),
-            Err(e) => return Err(e.into()),
+        {
+            let path = entry?;
+            paths.push(path)
         }
     }
     let file = std::fs::File::create(target_path)?;

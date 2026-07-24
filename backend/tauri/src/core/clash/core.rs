@@ -391,6 +391,7 @@ impl CoreLifecycleLease<'_> {
         self.manager.run_core_with_lease(self, config_path).await
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn recover_core(&self) -> Result<()> {
         self.manager.recover_core_with_lease(self).await
     }
@@ -450,6 +451,7 @@ impl CoreManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn init(&self) -> Result<()> {
         tauri::async_runtime::spawn(async {
             // 启动clash
@@ -460,6 +462,7 @@ impl CoreManager {
     }
 
     /// 检查配置是否正确
+    #[allow(dead_code)]
     pub async fn check_config(&self, config_path: &Utf8Path, clash_core: ClashCore) -> Result<()> {
         let lease = self.begin_lifecycle().await;
         self.check_config_with_lease(&lease, config_path, clash_core)
@@ -615,6 +618,7 @@ impl CoreManager {
     /// Push the promoted runtime product to the running core over the api.
     /// Check + promote happen in the rebuild pipeline (RunningCoreBridge::
     /// check_and_promote) before this is called.
+    #[allow(dead_code)]
     pub async fn apply_config_from(&self, product: &Utf8Path) -> Result<()> {
         let lease = self.begin_lifecycle().await;
         self.apply_config_from_with_lease(&lease, product).await

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use tauri::{AppHandle, Event, Runtime};
 
 pub enum WidgetInstance {

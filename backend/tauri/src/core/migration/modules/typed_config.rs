@@ -276,7 +276,7 @@ fn looks_like_legacy_runtime_clash_mapping(value: &Value) -> bool {
         "rule-providers",
     ]
     .iter()
-    .any(|key| map.contains_key(&Value::String((*key).to_string())))
+    .any(|key| map.contains_key(Value::String((*key).to_string())))
 }
 
 fn push_file_state(

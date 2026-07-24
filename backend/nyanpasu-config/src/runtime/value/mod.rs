@@ -32,6 +32,7 @@ impl ConfigValue {
         serde_json::Value::from(self)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn from_json_value(value: serde_json::Value) -> Self {
         convert::from_json_value(value)
     }

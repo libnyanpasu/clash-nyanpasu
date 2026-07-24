@@ -99,7 +99,7 @@ where
 
         self.build_manager(state, config)
             .await
-            .map_err(LoadError::Init)
+            .map_err(|e| LoadError::Init(Box::new(e)))
     }
 
     pub async fn load_or_default(
@@ -131,7 +131,7 @@ where
 
         self.build_manager(state, config)
             .await
-            .map_err(LoadError::Init)
+            .map_err(|e| LoadError::Init(Box::new(e)))
     }
 
     pub async fn from_builder(
@@ -148,7 +148,7 @@ where
 
         self.build_manager(state, builder)
             .await
-            .map_err(LoadError::Init)
+            .map_err(|e| LoadError::Init(Box::new(e)))
     }
 }
 

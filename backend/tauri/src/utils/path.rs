@@ -42,6 +42,7 @@ pub struct PathResolver {
     data_dir: PathBuf,
 }
 
+#[allow(dead_code)]
 impl PathResolver {
     /// Resolve the base directories from the current environment.
     ///

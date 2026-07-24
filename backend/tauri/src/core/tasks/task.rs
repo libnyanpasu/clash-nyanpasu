@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use super::{
     events::{TaskEventState, TaskEvents},
     executor::{Job, TaskExecutor},

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #[allow(dead_code)]
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock,
@@ -46,7 +47,7 @@ where
     T: Clone + Sync + Send,
 {
     /// to auto commit the state when it is dropped
-    pub fn auto_commit(&self) -> ManagedStateAutoCommit<T> {
+    pub fn auto_commit(&self) -> ManagedStateAutoCommit<'_, T> {
         ManagedStateAutoCommit(self)
     }
 }

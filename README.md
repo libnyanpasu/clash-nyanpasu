@@ -20,7 +20,7 @@
 
 ## Features
 
-- Built-in support [Clash Premium](https://github.com/Dreamacro/clash), [Mihomo](https://github.com/MetaCubeX/mihomo) & [Clash Rust](https://github.com/Watfaq/clash-rs).
+- Built-in support [Clash Premium](https://github.com/Dreamacro/clash), [Mihomo](https://github.com/MetaCubeX/mihomo), [Clash Rust](https://github.com/Watfaq/clash-rs) & [Meow](https://github.com/madeye/meow-rs).
 - Profiles management and enhancement (by YAML, JavaScript & Lua). [Doc](https://nyanpasu.org/tutorial/proxy-chain)
 - Provider management support.
 - Google Material You Design UI and animation support.
@@ -88,6 +88,7 @@ Clash Nyanpasu was based on or inspired by these projects and so on:
 - [Dreamacro/clash](https://github.com/Dreamacro/clash): A rule-based tunnel in Go.
 - [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): A rule-based tunnel in Go.
 - [Watfaq/clash-rs](https://github.com/Watfaq/clash-rs): A custom protocol, rule based network proxy software.
+- [madeye/meow-rs](https://github.com/madeye/meow-rs): A high-performance Rust implementation of the mihomo (Clash Meta) proxy kernel.
 - [Fndroid/clash_for_windows_pkg](https://github.com/Fndroid/clash_for_windows_pkg): A Windows/macOS GUI based on Clash.
 - [vitejs/vite](https://github.com/vitejs/vite): Next generation frontend tooling. It's fast!
 - [mui/material-ui](https://github.com/mui/material-ui): Ready-to-use foundational React components, free forever.

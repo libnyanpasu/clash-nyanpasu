@@ -29,7 +29,7 @@ use fake_core::{
 use std::{
     env,
     io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    net::{Shutdown, TcpListener, TcpStream},
     process::ExitCode,
     sync::{
         Arc,
@@ -328,6 +328,11 @@ fn handle_http_client(mut stream: TcpStream, status: u16, body: &str) -> std::io
     );
     stream.write_all(response.as_bytes())?;
     stream.flush()?;
+    // Shutdown write half so the client sees a clean FIN (EOF) on its read
+    // side before the socket is dropped.  Without this, macOS may send a
+    // RST when the drop closes the socket, which races with read_to_string
+    // and causes ConnectionReset (error 54).
+    stream.shutdown(Shutdown::Write)?;
     Ok(())
 }
 

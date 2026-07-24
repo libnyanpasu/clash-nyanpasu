@@ -41,7 +41,7 @@ nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", fe
 
 # --- forks ---
 # `rev` values are the commits Cargo.lock already resolved.
-tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "e81ec655a5ec5c4351104628b1b1ba694f80a1dc", features = [
+tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "5d645cb8ef31aee22023c4590b6ee14cbe7577a5", features = [
   "no-env-filter",
   "pretty-log-printing",
 ] }

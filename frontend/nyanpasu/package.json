@@ -38,7 +38,7 @@
     "framer-motion": "12.42.2",
     "less": "4.7.0",
     "lodash-es": "4.18.1",
-    "monaco-editor": "0.55.1",
+    "monaco-editor": "0.56.0",
     "radix-ui": "1.6.4",
     "react": "19.2.8",
     "react-dom": "19.2.7",

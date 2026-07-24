@@ -41,7 +41,7 @@
     "monaco-editor": "0.55.1",
     "radix-ui": "1.6.4",
     "react": "19.2.8",
-    "react-dom": "19.2.7",
+    "react-dom": "19.2.8",
     "react-error-boundary": "6.1.2",
     "react-hook-form": "7.82.0",
     "react-markdown": "10.1.0",

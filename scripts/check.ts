@@ -671,19 +671,17 @@ function getMeowInfo(): BinInfo {
   };
 }
 
-async function getNyanpasuServiceInfo(): Promise<BinInfo> {
+// TODO: temporarily pinned instead of resolving the latest release, so the
+// sidecar stays on the same released version as the `nyanpasu-ipc` tag pinned
+// in `backend/Cargo.toml`. Unpin when both sides move together.
+const NYANPASU_SERVICE_VERSION = "v1.4.5";
+
+function getNyanpasuServiceInfo(): BinInfo {
   const SERVICE_REPO = "libnyanpasu/nyanpasu-service";
   const isWin = SIDECAR_HOST!.includes("windows");
   const urlExt = isWin ? "zip" : "tar.gz";
 
-  const response = await fetch(
-    `https://github.com/${SERVICE_REPO}/releases/latest`,
-    { method: "GET", redirect: "manual" },
-  );
-  const location = response.headers.get("location");
-  if (!location) throw new Error("Cannot find location from response header");
-  const version = location.split("/").pop();
-  if (!version) throw new Error("Cannot find tag from location");
+  const version = NYANPASU_SERVICE_VERSION;
   debugLog(`nyanpasu-service version: ${version}`);
 
   const name = "nyanpasu-service";

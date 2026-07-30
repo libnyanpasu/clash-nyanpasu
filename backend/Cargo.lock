@@ -6228,8 +6228,8 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "1.4.4"
-source = "git+https://github.com/libnyanpasu/nyanpasu-service.git#6c4303666cc01c78416c930d135c7b1335d12395"
+version = "1.4.5"
+source = "git+https://github.com/libnyanpasu/nyanpasu-service.git?tag=v1.4.5#eb9a3f950e462810eeba2e436aa4ab2fcf315257"
 dependencies = [
  "anyhow",
  "derive_builder",

@@ -34,7 +34,12 @@ authors = ["zzzgydi", "keiko233"]
 nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
   "specta",
 ] }
-nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", features = [
+# TODO: temporarily pinned to the v1.4.5 release tag instead of the default
+# branch, so the IPC client stays on the same released version as the
+# nyanpasu-service sidecar pinned in `scripts/check.ts`. Unlike the `rev` case
+# above this is safe: nyanpasu-service.git is referenced exactly once, and the
+# `[patch]` entry keys on the bare URL. Unpin when both sides move together.
+nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", tag = "v1.4.5", features = [
   "client",
   "specta",
 ] } # IPC bridge between the UI process and service process

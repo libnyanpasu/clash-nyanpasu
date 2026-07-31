@@ -13,3 +13,5 @@ frontend/nyanpasu/project.inlang/
 scripts/
 backend/tauri/gen/schemas/
 backend/tauri/tmp/
+# upstream submodule — formatting is owned by libnyanpasu/nyanpasu-runtime
+backend/nyanpasu-runtime/

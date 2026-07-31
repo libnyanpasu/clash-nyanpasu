@@ -29,6 +29,9 @@ const SKIP_DIR_NAMES = new Set([
   "dist",
   "tmp",
   ".candidates",
+  // Upstream submodule under `backend/`. The ledger measures this repo's own
+  // migration residual; vendored upstream sources are not ours to migrate.
+  "nyanpasu-runtime",
 ]);
 
 /** Config facade call sites still bound to the legacy global config graph. */

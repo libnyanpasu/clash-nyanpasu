@@ -1,0 +1,3 @@
+[submodule "backend/nyanpasu-runtime"]
+	path = backend/nyanpasu-runtime
+	url = https://github.com/libnyanpasu/nyanpasu-runtime.git

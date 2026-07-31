@@ -70,7 +70,7 @@
     "@types/node": "24.13.3",
     "knip": "6.29.0",
     "lint-staged": "17.0.8",
-    "npm-run-all2": "9.0.2",
+    "npm-run-all2": "9.0.3",
     "oxlint": "1.76.0",
     "postcss": "8.5.23",
     "postcss-html": "1.8.1",

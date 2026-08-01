@@ -5,11 +5,11 @@
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md` §3–§6、同目录 `task.md` 卡 A1/A2/A3
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.1；必答项 §6.4 RQ-02 / RQ-04
 **平台：** Windows 11 / PowerShell
-**版本：** v10（2026-08-02）——v1–v9 均经 codex 对抗审查 **REJECT**；v10 补齐 watch 通道的编译级接线，并推翻 round-7 的"预构造请求"裁定以消除 Updater 换核竞态
+**版本：** v11（2026-08-02）——v1–v10 均经 codex 对抗审查 **REJECT**；v11 新增**附录 A（接线单点声明）**根治命名漂移，并修正 lease/Updater 混淆 typed desired 与实际运行身份的两处缺陷
 
 ---
 
-## 0.1 审查处置表（九轮）
+## 0.1 审查处置表（十轮）
 
 历轮发现**全部经本人复核源码确认成立**（无一条被驳回）。第六轮后 leader 以**范围裁定**收敛，第八轮再以**裁定 A-v2** 修正其中一处过度裁剪。
 
@@ -121,7 +121,7 @@
 | --- | ------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
 | 64  | High   | mailbox 串行下慢操作期间一切读排队超时（活性缺陷）                       | **裁定 A-v2**：actor 持 `watch::Sender`，每次提交发布；`status()` = 同步 watch 克隆，零 mailbox；删 `CORE_READ_TIMEOUT`                                                      | §2.1.1；S6；T-RV-10 |
 | 65  | High   | `RefreshStatus` 的 reply 类型与调用形态未分化                            | 拆成守卫 `call`（必填 `OperationId`）与 UI `cast RefreshHint`（空闲才处理，否则丢弃）；定义 `CoreActorError` 四变体                                                          | §2.1.3；S5；T-RV-06 |
-| 66  | Medium | S5 仍有第三个 `Status` 消息；缓存只存投影后的视图                        | 删 `Status` 消息；缓存改存完整 `BackendObservation`（保留忠实 lifecycle）；加 `status_tx`                                                                                    | S5                  |
+| 66  | Medium | S5 仍有第三个 `RefreshStatus` / watch 读；缓存只存投影后的视图           | 删 `RefreshStatus` / watch 读；缓存改存完整 `BackendObservation`（保留忠实 lifecycle）；加 `status_tx`                                                                       | S5                  |
 | 67  | Medium | T-BK-09 期望 `None`，与"`None` 仅瞬态"矛盾                               | 改为期望 `Some(BackendSlot::Failed { error })`                                                                                                                               | T-BK-09             |
 | 68  | Medium | 工厂未单次构造入 `Inner`；updater 仍有两处 legacy 查找；健康检查无注入根 | 工厂在 block 内一次构造后 clone；updater 用 request 的 typed `core_type` 比较（删两处查找）；健康检查根落在 `resolve.rs:152` 的 facade 入口，两处 `Config::verge()` 改为传值 | S8；S9.1            |
 | 69  | Low    | RQ-02 来源表重复且写"三条"；Exit 未含 T-RV-09/10                         | 表去重为两条；Exit 与摘要同步                                                                                                                                                | RQ-02；§5           |
@@ -137,6 +137,20 @@
 | 74  | Medium | 最终一致性未写明例外                                                                                                 | 明确 D3 的 out-of-actor `put_configs` **不发布**，靠后续 idle hint 恢复；随 B3 消失                                                                                                                                 | §2.1.6.1；T-RV-13 |
 | 75  | Medium | `None` 瞬态与 shutdown 的发布无测试钉                                                                                | T-RV-11 / T-RV-12 用 barrier 断言两处都发布                                                                                                                                                                         | T-RV-11/12        |
 | 76  | Low    | T-RV-10 写成阻塞 `apply`（D3=A 下 apply 不占 handler）；v8 措辞残留；模块路径 `pub mod client` 有误                  | T-RV-10 改为阻塞 `Run`；措辞与 C1 指针清扫；`actor/mod.rs` 不声明 `pub mod client`（typed client 在 `client/core.rs`）                                                                                              | 多处              |
+
+**第十轮（v10 → v11）：附录 A 落地 + 运行身份归位。**
+
+> **反漂移机制**：v3 起反复出现"同一类型在不同小节写成不同字段"的缺陷，逐轮打补丁只会再生。v11 新增 **附录 A**——5a 全部类型与构造顺序的**唯一声明处**，其余小节一律引用。
+
+| #   | 级别   | 问题                                                                                                                                   | 处置                                                                                                                             | 落点          |
+| --- | ------ | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 77  | High   | 对象图自相矛盾：`CoreClientArgs` 未定义、`CoreActorArgs` 与 S8 传参不符、`status_rx` 缺失                                              | **附录 A**：A.1 单点声明全部类型，A.2 列 `ClientSetupArgs` 新增字段，A.3 给编号构造序列；§2.1.7 / S5 / S6 / S8 改为引用          | 附录 A        |
+| 78  | High   | **Updater 与 lease 都把 typed desired 当成实际运行身份**：`change_core` 在 legacy 里改核、`restart()` 之后才重播 typed，读快照必得旧核 | A.4 两条互补修法：lease 从 `check_and_promote` 记住 `target_core` 供 `restart()` 消费（回滚覆写）；Updater 查 actor 的 `running` | S7；S9.1；A.4 |
+| 79  | Medium | `hint_pending` 只在 §2.1.6 出现，接线处缺失                                                                                            | 进附录 A（args/state/inner 三处同名字段）；CAS-before-cast、失败重置、handler 入口清位写进 §2.1.7                                | A.1；§2.1.7   |
+| 80  | Medium | T-RV-12 可从初值假通过                                                                                                                 | 改为先提交可区分的 running 观察、持 receiver、断言 `changed()` + 终值                                                            | T-RV-12       |
+| 81  | Medium | 合成观察字段不完整；`initial()` 缺 `run_type`                                                                                          | A.5：统一为"克隆上次 view，只改表列字段"；`initial()` 明确 `run_type = RunType::default()`，T-RV-16 断言 legacy 等价             | A.5；T-RV-16  |
+| 82  | Low    | 可见性规则内部不一致                                                                                                                   | A.6 给出判定口径：类型可见性 ≥ 其出现的最宽签名                                                                                  | A.6           |
+| 83  | Low    | v10 措辞残留（`Run / apply`、`run()` 返回类型、C1 归属）                                                                               | 定点清扫                                                                                                                         | 多处          |
 
 > 对 #9 的一点澄清：审查说"`ConfigRevision` 比 `RevisionId` 多了 `source_hash` 和 `runtime_path`"——这是拿 `ConfigRevision` 与 `RevisionId` 比。原文 RQ-02 里"多一个 `runtime_path`"是拿 `ConfigRevision` 与 **`ConfigRevisionInfo`** 比，那句本身成立。**但结论一致**：原 T-RV-03 把两个不同的转换混成一句，断言不成立，必须拆开。已按建议拆分。
 
@@ -327,7 +341,7 @@ const CORE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(120);
 
 ### 2.1.1 读路径：actor→client watch 投影（裁定 A-v2，2026-08-02）
 
-**为什么 watch 必须回来。** v8 让 `status()` 走 mailbox RPC，八审指出这会破坏活性：ractor 顺序处理消息，`Run` / `apply` 的 handler 可能 await 30–80 s（runtime 的 `startup_timeout` 30 s + `reconcile_timeout` 30 s，R1/R13），期间**排在它后面的每一个读都要等**，5 s 读超时必然失败。**这正是 design.md §6 当初指定 watch 读的原因。**
+**为什么 watch 必须回来。** v8 让 `status()` 走 mailbox RPC，八审指出这会破坏活性：ractor 顺序处理消息，`Run` 的 handler 可能 await 30–80 s（runtime 的 `startup_timeout` 30 s + `reconcile_timeout` 30 s，R1/R13），期间**排在它后面的每一个读都要等**，5 s 读超时必然失败。**这正是 design.md §6 当初指定 watch 读的原因。**
 
 区分两件被混为一谈的事：
 
@@ -394,29 +408,7 @@ D5 的"UI 读取观察到耗尽"因此是**最终一致**的：hint 在 gate 空
 
 ### 2.1.5 观察载荷与忠实生命周期
 
-```rust
-/// 观察载荷：**忠实**生命周期 + 投影视图。
-/// 只在两条路径上出现：mutation 的返回值、`RefreshStatus` 的结果。
-#[derive(Clone)]
-pub(crate) struct BackendObservation {
-    pub(crate) view: CoreStatusView,
-    pub(crate) lifecycle: FaithfulLifecycle,
-}
-
-/// 归一化的忠实生命周期。两个 backend 的原生类型都投影到它，
-/// **crate-private、不上 wire、不进 `CoreStatusView`**。
-/// 存在理由：`CoreStatusView.state` 是两值 `CoreState`，看不见 `Starting`/`Restarting`，
-/// 而 D5 的 latch 必须在投影**之前**区分它们（否则"启动→再次耗尽"无法复位）。
-#[derive(Clone)]
-pub(crate) enum FaithfulLifecycle {
-    Stopped { reason: Option<String> },
-    Starting,
-    Running,
-    Restarting,
-    Switching,
-    Stopping,
-}
-```
+观察载荷 `BackendObservation`（含忠实 `lifecycle`）与 `FaithfulLifecycle` 的**声明见 A.1**。此处只说明存在理由：`CoreStatusView.state` 是两值投影，看不见 `Starting` / `Restarting`，而 D5 的 latch 必须在**投影之前**区分它们，否则"启动→再次耗尽"无法复位。
 
 两侧映射（**必须逐条实现**）：
 
@@ -459,65 +451,15 @@ T-RV-13 钉住这条：外部 apply 期间读到旧值，随后 idle hint 到达
 
 ### 2.1.7 watch 通道的具体接线（编译级，round-9 #1）
 
-**通道在组合根创建，`Sender` 随启动参数交给 actor，`Receiver` 交给 client。** 这样 `CoreClient` 从构造那一刻起就持有可读的接收端，不存在"actor 还没起来但已经有人读"的空窗。
+**类型与构造顺序见附录 A（A.1 / A.3）——此处不复述字段。** 本节只讲行为契约。
 
-```rust
-// APP/core/actor/mod.rs —— actor 启动参数
-pub(crate) struct CoreActorArgs {
-    pub(crate) mode: RunType,
-    pub(crate) requests: CoreRequestFactory,
-    pub(crate) degradation: Arc<dyn CoreDegradationSink>,
-    /// 组合根创建通道后把发送端交进来（唯一写入者 = actor）。
-    pub(crate) status_tx: watch::Sender<CoreStatusView>,
-}
+- watch 通道与 `hint_pending` 都在 `CoreClient::new` **内部**创建（A.3 第 5 步），`Sender` 与共享位随 `CoreActorArgs` 进 actor，`Receiver` 与同一个 `Arc` 留在 `CoreClientInner`——两端同源；
+- `status()`：`self.inner.status_rx.borrow().clone()`，同步、零 mailbox；
+- `refresh_status(&guard)`：`call` 发 `RefreshStatus { operation: guard.id(), reply }`。`CallResult::SenderError` 与 `Err(_)`（actor 已终止）**都映射成** `CoreActorError::ShuttingDown`；不传超时，故 `CallResult::Timeout` 不可达；
+- `hint_refresh()`：`hint_pending.compare_exchange(false, true, AcqRel, Acquire)` 成功才 `cast`；**`cast` 失败必须把该位重置回 `false`**，否则 actor 已死时会永久阻断后续 hint；
+- actor 处理 `RefreshHint` 的**第一条语句**是 `hint_pending.store(false, Release)`，然后才判 gate。
 
-// APP/client/core.rs
-struct CoreClientInner {
-    actor_ref: ActorRef<CoreActorMessage>,
-    next_operation: AtomicU64,
-    /// 读端。`status()` 直接 borrow-clone，永不发消息（§2.1.1）。
-    status_rx: watch::Receiver<CoreStatusView>,
-}
-
-impl CoreClient {
-    pub(crate) async fn new(args: CoreClientArgs) -> anyhow::Result<Self> {
-        // 初值 = "尚未观察到任何后端状态"：state = Stopped(None)、
-        // state_changed_at = 0、revision = None、recovery_exhausted = false。
-        // 与 legacy `CoreManager::status()` 在无 instance 时的返回值一致，
-        // 因此 UI 在 actor 完成首次观察前读到的东西与迁移前完全相同。
-        let (status_tx, status_rx) = watch::channel(CoreStatusView::initial());
-        let actor_ref = Actor::spawn(None, CoreActor, CoreActorArgs { /* … */ status_tx })
-            .await?.0;
-        Ok(Self { inner: Arc::new(CoreClientInner { actor_ref, next_operation: AtomicU64::new(1), status_rx }) })
-    }
-
-    /// 同步 watch 克隆，零 mailbox（§2.1.1）。
-    pub fn status(&self) -> CoreStatusView {
-        self.inner.status_rx.borrow().clone()
-    }
-
-    /// 守卫刷新（§2.1.3）。只有持 guard 的调用方能用。
-    pub async fn refresh_status(
-        &self,
-        operation: &CoreOperationGuard,
-    ) -> Result<BackendObservation, CoreActorError> {
-        match self.inner.actor_ref
-            .call(|reply| CoreActorMessage::RefreshStatus { operation: operation.id(), reply }, None)
-            .await
-        {
-            Ok(CallResult::Success(result)) => result,
-            // actor 已终止 / 回复端被丢弃：都只可能发生在关停之后。
-            Ok(CallResult::SenderError) | Err(_) => Err(CoreActorError::ShuttingDown),
-            Ok(CallResult::Timeout) => unreachable!("guarded refresh passes no timeout"),
-        }
-    }
-
-    /// UI 提示，fire-and-forget（§2.1.3）。发送失败＝actor 已关停，忽略即可。
-    pub fn hint_refresh(&self) {
-        let _ = self.inner.actor_ref.cast(CoreActorMessage::RefreshHint);
-    }
-}
-```
+初值语义见 A.5。
 
 **唯一的提交路径。** actor 内所有状态变更都走同一个 helper，杜绝"改了缓存忘了发布"或"发布了但没过 latch"：
 
@@ -534,19 +476,9 @@ impl CoreActorState {
 }
 ```
 
-**没有 backend 时的观察合成**（槽位 `None` / `Failed` / shutdown 各有确定值）：
+**没有 backend 时的观察合成**（换槽瞬态 `None` / `Failed` / shutdown）：**取值表见 A.5**。三者都经 `commit()`，因此**都会发布 watch**——T-RV-11 / T-RV-12 分别钉住瞬态与关停。
 
-| 场景            | 合成的 `BackendObservation`                                                                 | 何时提交            |
-| --------------- | ------------------------------------------------------------------------------------------- | ------------------- |
-| 换槽瞬态 `None` | `lifecycle = Stopped { reason: None }`，`view.state = Stopped`，`revision` 保留上一次已知值 | 取出旧 backend 之后 |
-| `Failed{error}` | `lifecycle = Stopped { reason: Some(error.to_string()) }`，`view.state = Stopped`           | 构造失败写回槽位时  |
-| `shutdown`      | `lifecycle = Stopped { reason: None }`，`view.state = Stopped`                              | 关闭 backend 之后   |
-
-三者都经 `commit()`，因此**都会发布 watch**——T-RV-11 / T-RV-12 分别钉住瞬态与关停两处。
-
-> `BackendObservation` 与 `FaithfulLifecycle` 必须 `#[derive(Clone)]`（round-9 #3）：actor 既要留存缓存又要把它经 `RefreshStatus` 回给调用方。`CoreStatusView` 同理（watch 需要）。
->
-> 模块路径修正：`APP/core/actor/mod.rs` **不**声明 `pub mod client`——唯一的 typed client 在 `APP/client/core.rs`，与其它四个 client 同层（A7f 房规）。
+> 类型的 `Clone` 派生、可见性与模块路径统一见 A.1 / A.6（typed client 在 `APP/client/core.rs`；`actor/mod.rs` 不声明 `client` 子模块）。
 
 ### 2.1.8 转出到 C1 的内容（前向指针）
 
@@ -742,39 +674,7 @@ pub struct CoreStatusView {
 
 **`CoreRequest` 的构造需要一个显式的工厂（round-6 #7 / round-7 #4）。** 注入 `RuntimePaths` **不够**——它只有 `product` 与 `candidate_dir`（`APP/client/runtime.rs:193-221`），而 `CoreRequest` 还需要 `binary_path` / `working_dir` / `pid_path`。**注入 `PathResolver` 也不够**：它的 `app_install_dir()` 直接委托 `dirs::app_install_dir()`（`APP/utils/path.rs:82-84`），测试无法重定向。因此二进制查找必须是**独立可注入的策略**：
 
-```rust
-/// 核心二进制的查找策略。生产实现复刻既有"data dir → install dir"顺序；
-/// 测试（含 S12 parity）注入固定路径，指向 `require_probe_bin_path()` 的探针核。
-/// 这一层单独存在的唯一理由：`PathResolver::app_install_dir()` 走 `dirs::*`，不可注入。
-pub(crate) trait CoreBinaryResolver: Send + Sync + 'static {
-    fn resolve(&self, core_type: &CoreType) -> anyhow::Result<Utf8PathBuf>;
-}
-
-/// 把"当前意图"物化成 `CoreRequest`。**所有路径都来自注入依赖，无 `dirs::*()`**。
-/// `Clone` 是必需的：`CoreModeReconciler` derive 了 `Clone` 且以它为字段（round-7 #6）。
-#[derive(Clone)]
-pub(crate) struct CoreRequestFactory {
-    data_dir: Utf8PathBuf,                     // 从 PathResolver 取值后固化，非按需调用
-    pid_path: Utf8PathBuf,
-    runtime_paths: RuntimePaths,               // product 路径
-    binary: Arc<dyn CoreBinaryResolver>,       // 可注入的二进制查找
-}
-
-impl CoreRequestFactory {
-    /// `core` 来自 typed 快照，字段名是 **`core`**（`clash_core` 只是 serde alias，
-    /// `nyanpasu-config/src/application/mod.rs:97-99`）。
-    pub(crate) fn for_product(&self, core: ClashCore) -> anyhow::Result<CoreRequest> {
-        let core_type: nyanpasu_utils::core::CoreType = (&core).into();  // 显式转换
-        Ok(CoreRequest {
-            binary_path: self.binary.resolve(&core_type)?,
-            core_type,
-            config_path: self.runtime_paths.product().to_owned(),
-            working_dir: self.data_dir.clone(),
-            pid_path: Some(self.pid_path.clone()),
-        })
-    }
-}
-```
+`CoreBinaryResolver` 与 `CoreRequestFactory` 的**声明见 A.1**；`for_product(core)` 的取值规则：`core` 来自 typed 快照的 **`core`** 字段（`clash_core` 只是 serde alias），显式转 `CoreType`，`binary_path` 经注入的 resolver，其余路径取自工厂构造时固化的值——**全程无 `dirs::*()`**。
 
 **归属：** 工厂存进 `NyanpasuClientInner`（`core_mode_reconciler()`、`restart_core()`、facade 的 service 方法、以及 S9.1 的 Updater 都要用它）。`ClientSetupArgs` 增加 `binary_resolver: Arc<dyn CoreBinaryResolver>`，生产在 `setup.rs` 传 OS 实现，测试传固定路径实现。
 
@@ -788,8 +688,8 @@ impl CoreRequestFactory {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub(crate) trait CoreRequestProvider: Send + Sync + 'static {
-    /// 返回**此刻**的运行请求（当前 typed 快照决定 core type）。
-    async fn current(&self) -> anyhow::Result<CoreRequest>;
+    /// 返回**此刻实际在跑**的运行请求（由 actor 拥有，见 A.4）。
+    async fn running(&self) -> Result<Option<CoreRequest>, CoreActorError>;
 }
 ```
 
@@ -954,36 +854,7 @@ pub enum CoreActorMessage {
 }
 ```
 
-actor state（对照 DV-E：**不含** runtime lifecycle 与 log ring）：
-
-```rust
-struct CoreActorState {
-    /// 显式建模，让 `NoBackend { last_error }` 可从状态复现（round-6 #11）。
-    /// `None` = 换槽瞬态；`Failed` = 构造失败并保留诊断（leader 裁定 B）。
-    backend: Option<BackendSlot>,
-    mode: RunType,
-    operation: OperationGate,
-    /// 缓存**完整**观察（保留忠实 lifecycle，D5 的 latch 需要它）。
-    observed: BackendObservation,
-    /// 每次提交都向它发布投影；`CoreClient` 持 receiver（§2.1.1）。
-    status_tx: watch::Sender<CoreStatusView>,
-    /// `core_recovery_exhausted` 的 per-episode 发布闩锁（D5）。
-    recovery_exhausted_published: bool,
-    /// 注入的降级发布端（D5）。
-    degradation: Arc<dyn CoreDegradationSink>,
-}
-
-/// backend 槽位（leader 裁定 B）。外层 `Option` 表示**换槽瞬态空位**——
-/// 把 `Ready(CoreBackend)` move 出来关停时，状态里必然有一段没有 backend 的区间，
-/// 用 `None` 如实表达，而不是伪造一个 `Failed`。
-/// `Failed` 里用 `Arc<CoreBackendError>`：上游 `nyanpasu_core_manager::Error` 与
-/// `nyanpasu_ipc::ClientError` 都**不是 `Clone`**（含 `io::Error` / `reqwest::Error` 等），
-/// 用 `Arc` 才能在每次 `NoBackend` 回包时廉价复制诊断。
-enum BackendSlot {
-    Ready(CoreBackend),
-    Failed { error: Arc<CoreBackendError> },
-}
-```
+actor state **见附录 A.1 的 `CoreActorState`**（对照 DV-E：**不含** runtime lifecycle 与 log ring——那是 B1 / C1 的字段）。
 
 gate 规则（design §3.3，逐条）：无 active → 立即登记并回复成功；有 active → 入 FIFO，**handler 立即返回，绝不等待**；`ReleaseOperation(active_id)` → 清 active 并放行下一个仍有接收方的 waiter；`ReleaseOperation(waiting_id)` → 从 waiters 删除；未知 ID → 幂等 no-op + debug 日志；mutation 的 ID 与 active 不符 → `StaleOperation`；shutdown → 拒绝全部 waiters、清 active、关 backend。
 
@@ -993,17 +864,7 @@ gate 规则（design §3.3，逐条）：无 active → 立即登记并回复成
 
 新文件 `APP/client/core.rs`（与 `application.rs` / `profiles.rs` 同级，遵循 A7f 房规）。
 
-```rust
-#[derive(Clone)]
-pub struct CoreClient { inner: Arc<CoreClientInner> }
-
-struct CoreClientInner {
-    actor_ref: ActorRef<CoreActorMessage>,
-    next_operation: AtomicU64,   // clones 共享（design §3.1）
-}
-
-pub struct CoreOperationGuard { id: OperationId, client: CoreClient, acquired: bool }
-```
+`CoreClientInner` 的字段**见 A.1**。
 
 关键实现点：
 
@@ -1032,32 +893,40 @@ pub struct CoreOperationGuard { id: OperationId, client: CoreClient, acquired: b
 - lease 以 `&mut dyn` 跨 4 处函数签名传递，并被 **move 进 `async move` 闭包**（`patch_running_config`）→ 适配器必须是 `Box<dyn CoreLifecycleLease>` 且可移动进 boxed future；
 - `begin()` 返回的 `Box<dyn CoreLifecycleLease>` 拥有 guard，作用域结束即 drop → 自动 `ReleaseOperation`。这正好把"借用式 lease"与"RAII guard"对上，**不需要改任何调用点**。
 
-**适配器的依赖不止 `CoreClient`（round-3 #3b，leader 裁定）。** `CoreLifecycleLease::restart(&mut self)` **不带任何参数**（`core_bridge.rs:71`），而 `Run` 需要一个完整 `CoreRequest`——其中的 core type 在 legacy 实现里是从 `Config::verge().latest().clash_core` 取的（`core/clash/core.rs:97-105`）。照抄那段取值会给新代码引入一个隐藏全局依赖，直接违反本计划自己的"新代码禁止 `Config::*()`"闸门。
+**适配器的运行身份来源（round-10 NEW-1，重要修正）。** `CoreLifecycleLease::restart(&mut self)` **不带参数**（`core_bridge.rs:71`），而 `Run` 需要完整 `CoreRequest`。v10 让适配器读 typed 快照取 core type——**那是错的**。
 
-**裁定：适配器显式持有 `ApplicationClient` + `RuntimePaths`，每次调用现读 typed 快照。**
+`change_core` 的真实时序（`APP/client/rebuild.rs:281-317`）：取 lease → **只在 legacy `Config::verge().draft()` 里写新核** → `regenerate_for_legacy_inner` 用新核构建并校验 → **`lease.restart()`** → 成功后才 `Config::verge().apply()`，typed 重播更晚（`APP/bridge/verge.rs:257-303`）。因此在 `restart()` 那一刻读 typed 快照拿到的是**旧核**——适配器会在"换到新核"的事务里**重启旧核**。
+
+**修法（A.4 的 lease 那一行）：让 lease 记住本事务的目标核。**
 
 ```rust
-/// `CoreLifecyclePort` 的内部适配器。三个依赖都是显式注入的：
-/// - `core`：发 actor 消息；
-/// - `application`：**每次**调用时现读 typed 快照拿当前 core type（不缓存——
-///   两次 restart 之间用户可能改过核；也不读 `Config::verge()`）；
-/// - `runtime_paths`：product 路径，注入而非 `dirs::*` 解析。
-struct CoreLifecycleAdapter {
-    core: CoreClient,
-    application: ApplicationClient,
-    requests: CoreRequestFactory,   // 取代裸 RuntimePaths（round-6 #7）
-}
+// 字段声明见 A.1；此处只写行为。
+impl CoreLifecycleLease for CoreLeaseAdapter {
+    async fn check_and_promote(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+        product: &Utf8Path,
+    ) -> anyhow::Result<[u8; 32]> {
+        self.target_core = Some(target_core);   // 记住本事务的意图
+        /* 其余维持现有实现（D3=A） */
+    }
 
-impl CoreLifecycleAdapter {
-    /// seam 的无参方法靠它把"当前意图"物化成一个 `CoreRequest`。
-    async fn current_request(&self) -> anyhow::Result<CoreRequest> {
-        let snapshot = self.application.get().await?.state;   // typed，非 legacy
-        self.requests.for_product(snapshot.core)              // 字段名是 `core`
+    async fn restart(&mut self) -> anyhow::Result<()> {
+        // 优先用本事务记住的核；只有"纯 restart、无 promote"的流程
+        // （如 `restart_sidecar`）才回落到 typed 快照。
+        let core = match self.target_core {
+            Some(core) => core,
+            None => self.application.get().await?.state.core,
+        };
+        let request = self.requests.for_product(core)?;
+        self.core.run(&self.guard, &request).await?;
+        Ok(())
     }
 }
 ```
 
-`CoreRequestFactory::for_product` 的取值全部来自注入依赖（data dir / pid path 固化自 `PathResolver`，二进制经 `CoreBinaryResolver`），**不调用 `find_binary_path` 也不调 `dirs::*()`**；core type 来自 typed 快照的 `core` 字段。
+`change_core` 的回滚分支（`rebuild.rs:333`、`:377`）在重启旧核**之前**必须把 `target_core` 覆写为恢复后的核——否则回滚会再次拉起新核。**T-AD-01 / T-AD-02** 分别钉住成功路径与回滚路径**实际请求的 core type**。
 
 > 备选（**不推荐**）：保留一个 legacy bridge 专门供 seam 取 core type 并显式 allowlist。它会让 `config_calls` 指标不降反留，且把一个本可立即消除的全局依赖延寿到 B2/B3，收益为负。
 
@@ -1087,18 +956,7 @@ impl CoreLifecycleAdapter {
 
 **（1）`CoreClient` 在 block 内、typed 快照之后构造。** 位置紧跟 `new_typed_config_clients(...)`（`client/mod.rs:279`）之后：
 
-```rust
-let application_snapshot = application.get().await?.state;
-let mode = crate::core::RunType::classify(
-    application_snapshot.enable_service_mode,
-    crate::core::service::ipc::get_ipc_state(),
-);
-let core_client = CoreClient::new(CoreActorArgs {
-    mode,
-    runtime_paths: runtime_paths_for_setup.clone(),
-    degradation: degradation_sink.clone(),   // D5，由 ClientSetupArgs 注入
-}).await?;
-```
+**完整构造序列见 A.3（7 步，编号）——此处不复述。** 要点只有一条：`CoreRequestFactory` 必须在 `CoreClient` **之前**构造（A.3 第 4 步先于第 5 步），因为 `CoreClientArgs` 要按值收下它的 clone。
 
 按 D2 的顺序事实此刻必然是 `Normal`（`init_service()` 尚未跑），先建 Local backend；健康检查随后再发 `SetBackend(Service)`。
 
@@ -1115,19 +973,7 @@ struct NyanpasuClientInner {
 `ClientSetupArgs.core` 由 `Arc<dyn CoreLifecyclePort>` 改为 **`Option<Arc<dyn CoreLifecyclePort>>`**：
 
 - 生产（`setup.rs`）传 `None` → block 内构造完整适配器并作为生产 port：
-  ```rust
-  // 工厂**只构造一次**（round-8 #3），存进 `Inner`，再 clone 给 adapter / reconciler / facade。
-  let requests = CoreRequestFactory::new(
-      &paths,                                   // data dir / pid path 在此固化
-      runtime_paths_for_setup.clone(),
-      args_binary_resolver,                     // Arc<dyn CoreBinaryResolver>，测试可换
-  )?;
-  let core = args_core.unwrap_or_else(|| Arc::new(CoreLifecycleAdapter::new(
-      core_client.clone(),
-      application.clone(),                 // typed 快照来源（S7）
-      requests.clone(),                    // 见下：工厂在 block 内**只构造一次**
-  )) as Arc<dyn CoreLifecyclePort>);
-  ```
+  **构造代码见 A.3 第 4/6 步。** 适配器的三个参数缺一不可：少 `application` 就回到"无参 `restart()` 拿不到 core type"的死结（且 A.4 已说明它只用于纯 restart 回落）；少 `CoreRequestFactory` 就凑不齐 `binary_path` / `working_dir` / `pid_path`，只能退回会调 `dirs::*()` 的 `find_binary_path`——那正是被禁止的；
   三个参数**缺一不可**：少 `application` 就回到"无参 `restart()` 拿不到 core type"的死结；少 `CoreRequestFactory` 就凑不齐 `binary_path` / `working_dir` / `pid_path`（`RuntimePaths` 只有 product 与 candidate_dir），只能退回会调 `dirs::*()` 的 `find_binary_path`——那正是被禁止的；
 - 测试传 `Some(mock)` → 沿用既有 `test_client_args_with_lifecycle`（A8f），**测试图零改动**。
 
@@ -1146,21 +992,7 @@ struct NyanpasuClientInner {
 
 **穿的不是裸 `CoreClient`，而是 `CoreModeReconciler`（round-6 #8）。** `on_ipc_state_changed` 要做的是完整事务——读 typed 快照、构造 `CoreRequest`、在 guard 下 `SetBackend` + `Run`——只给 `CoreClient` 三样依赖缺两样。因此定义：
 
-```rust
-/// IpcState 翻转后的运行模式对账。自带全部依赖，**不查全局**。
-#[derive(Clone)]
-pub(crate) struct CoreModeReconciler {
-    core: CoreClient,
-    application: ApplicationClient,
-    requests: CoreRequestFactory,
-}
-
-impl CoreModeReconciler {
-    /// 读 typed 快照 → 取 guard → SetBackend → Run。取代 `on_ipc_state_changed`
-    /// 里原来的 `Config::verge()` + `CoreManager::global()`。
-    pub(crate) async fn reconcile(&self, ipc_state: IpcState) -> anyhow::Result<()>;
-}
-```
+`CoreModeReconciler` 的**声明见 A.1**；它的 `reconcile(ipc_state)` 做完整事务：读 typed 快照 → 取 guard → `SetBackend` → 用工厂构造 `CoreRequest` → `Run`。
 
 `spawn_health_check(reconciler: CoreModeReconciler)`，四个调用者各自把手里的 reconciler 传进去。
 
@@ -1354,8 +1186,13 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 
     // **在 guard 内解析当前意图**（round-9 #2）——下载可能已经跑了几分钟，
     // 期间用户可能换核，因此绝不能用 `update_core()` 调用时刻的快照。
-    let request = self.requests.current().await?;
-    let replacing_running_core = request.core_type == (&self.core_type).into();
+    // **查 actor 拥有的运行身份**（A.4）——不读 typed desired：typed 快照在 legacy
+    // `change_core` 的重播窗口内可能仍是旧核，而 actor 记的是最后一次成功提交的
+    // `CoreRequest`，也就是真正在跑的那个。
+    let running = self.requests.running().await?;
+    let replacing_running_core = running
+        .as_ref()
+        .is_some_and(|r| r.core_type == (&self.core_type).into());
 
     if replacing_running_core {
         tracing::debug!("stopping core to replace");
@@ -1366,7 +1203,9 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 
     if replacing_running_core {
         self.dispatch_state(UpdaterState::Restarting);
-        self.core.run(&operation, &request).await?;    // 取代 lifecycle.run_core_from()
+        // 用**刚才查到的**运行身份重启（同一个核、同一份路径）。
+        let request = running.as_ref().expect("checked by replacing_running_core");
+        self.core.run(&operation, request).await?;   // 取代 lifecycle.run_core_from()
     }
     Ok(())
 }
@@ -1454,13 +1293,21 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 
 #### facade 编排测试
 
+| ID      | 断言                                                                                                                                                                                                                                                                                                              |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-FA-01 | **控制失败仍尝试拉核**（S8(4) 保留的既有语义）：让 `control::start_service` 返回 `Err` → facade **仍然**走 `SetBackend` + `Run`（fail-open-to-Local），最终返回的是控制操作的 `Err`。若实现被"优化"成先 `res?` 再 run，本用例即失败。故障通过注入的 `ServiceControlOps` mock 制造，**不执行任何 OS service 命令** |
+| T-FA-02 | **`enable_service_mode == false` 时不碰核心**：typed 快照为 false → 不取 guard、不发 `SetBackend`/`Run`（backend 零调用），只返回控制操作结果                                                                                                                                                                     |
+| T-FA-03 | **对账块任一环节失败都不改变返回值**：分别注入"快照读取失败"/"取 guard 超时"/"`SetBackend` 失败"/"构造请求失败"/"`Run` 失败"五种故障 → 每种都只记录日志，facade 仍返回**控制操作**的结果（成功则 `Ok`，失败则原始 `Err`）                                                                                         |
+| T-FA-04 | **四个 service 方法 + `core_status` / `restart_core` 都不需要命令层接触 `CoreClient`**：编译期保证——`ipc.rs` 内不出现 `CoreClient` 类型名（用 `rg` 断言）                                                                                                                                                         |
+| T-FA-05 | **控制失败的错误不被顶替**：控制返回 `Err(A)` 且对账也失败 `Err(B)` → facade 返回的是 **A**，B 只进日志                                                                                                                                                                                                           |
+
+#### 生产适配器测试（round-10 NEW-1）
+
 | ID      | 断言                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-FA-01 | **控制失败仍尝试拉核**（S8(4) 保留的既有语义）：让 `control::start_service` 返回 `Err` → facade **仍然**走 `SetBackend` + `Run`（fail-open-to-Local），最终返回的是控制操作的 `Err`。若实现被"优化"成先 `res?` 再 run，本用例即失败。故障通过注入的 `ServiceControlOps` mock 制造，**不执行任何 OS service 命令**                                                                                                                                                                                                |
-| T-FA-02 | **`enable_service_mode == false` 时不碰核心**：typed 快照为 false → 不取 guard、不发 `SetBackend`/`Run`（backend 零调用），只返回控制操作结果                                                                                                                                                                                                                                                                                                                                                                    |
-| T-FA-03 | **对账块任一环节失败都不改变返回值**：分别注入"快照读取失败"/"取 guard 超时"/"`SetBackend` 失败"/"构造请求失败"/"`Run` 失败"五种故障 → 每种都只记录日志，facade 仍返回**控制操作**的结果（成功则 `Ok`，失败则原始 `Err`）                                                                                                                                                                                                                                                                                        |
-| T-FA-04 | **四个 service 方法 + `core_status` / `restart_core` 都不需要命令层接触 `CoreClient`**：编译期保证——`ipc.rs` 内不出现 `CoreClient` 类型名（用 `rg` 断言）                                                                                                                                                                                                                                                                                                                                                        |
-| T-FA-05 | **控制失败的错误不被顶替**：控制返回 `Err(A)` 且对账也失败 `Err(B)` → facade 返回的是 **A**，B 只进日志                                                                                                                                                                                                                                                                                                                                                                                                          |
+| T-AD-01 | **换核成功路径请求的是新核**：走 `check_and_promote(_, 新核, _)` → `restart()` → 断言 backend 收到的 `CoreRequest.core_type` 是**新核**（而非 typed 快照里的旧核）                                                                                                                                                                                                                                                                                                                                               |
+| T-AD-02 | **回滚路径请求的是旧核**：新核 `restart()` 失败 → 回滚分支覆写 `target_core` 为恢复后的核 → 断言第二次 `run` 的 `core_type` 是**旧核**                                                                                                                                                                                                                                                                                                                                                                           |
+| T-AD-03 | **纯 restart 回落 typed**：未经 `check_and_promote` 的 `restart()`（`restart_sidecar` 路径）→ 用 typed 快照的 `core` 构造请求                                                                                                                                                                                                                                                                                                                                                                                    |
 | T-BK-08 | **换槽后目录锁可重新获取**（D2 协议回归钉）。**必须走 Local → Service → Local**，不能用同模式换槽：同模式 `SetBackend` 的行为未定义，合理实现可以直接 no-op，那样测试会在什么都没释放的情况下通过（假阳性）。断言两点：(a) 第二次 Local 的 `CoreManager` 构造**成功**（不出现 `Error::RuntimeDirectoryOwned`）；(b) backend **身份确实变了**——用 `LocalBackend` 里递增的构造计数器（或 `Arc::ptr_eq` 判否）证明是新实例而非复用。等效替代：直接 consume/drop 第一个 `LocalBackend` 再在同一 `runtime_dir` 上重建 |
 | T-BK-09 | **无 backend 失败态**：让替换构造失败 → 槽位为 **`Some(BackendSlot::Failed { error })`**（不是 `None`——`None` 只在换槽**瞬态**出现）→ mutation 返回 `CoreActorError::NoBackend { last_error }`（`Arc` 克隆自槽位）；`status()` 经 watch 仍可读且 `state == Stopped`；随后一次成功的 `SetBackend` 能恢复                                                                                                                                                                                                          |
 | T-BK-10 | **`service_needs_stop` 表驱动**（对应 R5d）：遍历 `CoreStateDetail` **全部 6 个变体** —— `Stopped` → `false`；`Starting` / `Running` / `Restarting` / `Switching` / `Stopping` → `true`；外加 `detail == None` → `true`（fail-safe）。共 7 个用例，用表驱动写法保证新增变体时会因不穷尽而被发现                                                                                                                                                                                                                  |
@@ -1481,10 +1328,11 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 | T-RV-09  | **UI 读路径最终观察到耗尽并只发布一次**（§2.1.4 / D5）：最后一次操作后注入耗尽 → `core_status()`（watch 读 + `cast RefreshHint`）→ hint 出队（gate 空闲）→ 刷新 → 提交并发布 watch → **下一次** `core_status()` 读到耗尽，`publish` 次数 **== 1**；再读一次仍 **== 1**（latch）                                                                           |
 | T-RV-10  | **读的活性**（八审发现，watch 回归的核心理由）：让一次 **`Run`** 阻塞在 backend barrier 上（**不是 `apply`**——D3=A 下 apply 不占 actor handler）→ 期间调 `CoreClient::status()` → **立即返回**（watch 克隆，零 mailbox）。若实现回退成 mailbox RPC 读，本用例会等到超时而失败                                                                             |
 | T-RV-11  | **换槽瞬态也发布**（§2.1.7）：`SetBackend` 期间取出旧 backend 后、构造新 backend 前，用 barrier 卡住 → 此刻 `status()` 读到 `state == Stopped`（合成观察已 `commit()` 并发布），而不是旧的 `Running`                                                                                                                                                      |
-| T-RV-12  | **shutdown 发布终态**：`CoreClient::shutdown()` 后 `status()` 读到 `state == Stopped`（关停合成观察已发布）                                                                                                                                                                                                                                               |
+| T-RV-12  | **shutdown 发布终态**（去空泛版，round-10 #75）：先 `Run` 成功提交一个**可区分的** running 观察（`state == Running`、`state_changed_at` 非 0）→ 取一份 `watch::Receiver` → `CoreClient::shutdown()` → 断言 `receiver.changed().await` **返回 Ok**（确有新发布）且新值 `state == Stopped`。旧写法从初值 `Stopped` 出发，即使 shutdown 从不发布也会通过     |
 | T-RV-13  | **外部 apply 的最终一致例外**（§2.1.6.1）：lease 内 `api::put_configs` 改变运行态 → watch **不更新**（该路径不经 actor）→ 随后一次 idle `RefreshHint` 到达 → watch 更新到新状态                                                                                                                                                                           |
 | T-RV-14  | **hint 合流**（§2.1.6）：gate 空闲时连发 N=10 次 `core_status()` → backend 的 `observe_status` 调用**至多 1 次在途**，总调用数 ≪ N（断言 ≤ 2：一次在途 + 一次清位后重排）                                                                                                                                                                                 |
-| T-RV-15  | **Updater 换核竞态**（round-9 #2）：开始 update（目标核 A）→ **下载期间**把 typed 快照切到核 B → `replace_core` 在 guard 内解析 → 用的是 **B**（当前快照），因此不会停/重启用户已切走的核                                                                                                                                                                 |
+| T-RV-15  | **Updater 用的是运行身份而非 typed desired**（round-10 #71）：模拟 legacy `change_core` 的重播窗口——typed 快照仍是旧核 A、actor 已提交新核 B 为 running → Updater 在 guard 内 `running()` 拿到 **B** → 因此不会误停/误启 A                                                                                                                                |
+| T-RV-16  | **watch 初值与 legacy 等价**（A.5）：`CoreStatusView::initial()` 投影出的三元组与 legacy `CoreManager::status()` 在无 instance 时的返回**逐字段相等**（含 `run_type == RunType::default()`）                                                                                                                                                              |
 
 #### seam 回归
 
@@ -1647,19 +1495,216 @@ roadmap §6.1 附加项：
 
 ---
 
+## 9. 附录 A — 接线单点声明（normative；**其它小节只引用，不复述**）
+
+> **存在理由**：v3 起反复出现同一类缺陷——同一个类型／字段／参数在不同小节写成不同名字或不同成员，逐轮打补丁只会再生。本附录是 5a 全部新增类型与构造顺序的**唯一声明处**。§2.1、S2、S3、S5、S6、S7、S8 一律以"见附录 A"引用；**任何小节不得重复列字段**。
+
+### A.1 全部类型（一次性声明）
+
+```rust
+// APP/core/actor/types.rs
+#[derive(Clone)]
+pub(crate) struct CoreRequest {
+    pub(crate) core_type: nyanpasu_utils::core::CoreType,
+    pub(crate) binary_path: Utf8PathBuf,
+    pub(crate) config_path: Utf8PathBuf,
+    pub(crate) working_dir: Utf8PathBuf,
+    pub(crate) pid_path: Option<Utf8PathBuf>,
+}
+
+#[derive(Clone)]
+pub(crate) struct CoreStatusView {
+    pub(crate) state: nyanpasu_ipc::api::status::CoreState,
+    pub(crate) state_changed_at: i64,
+    pub(crate) run_type: crate::core::RunType,
+    pub(crate) revision: Option<nyanpasu_ipc::api::status::ConfigRevisionInfo>,
+    pub(crate) recovery_exhausted: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct BackendObservation {
+    pub(crate) view: CoreStatusView,
+    pub(crate) lifecycle: FaithfulLifecycle,
+}
+
+#[derive(Clone)]
+pub(crate) enum FaithfulLifecycle {
+    Stopped { reason: Option<String> },
+    Starting,
+    Running,
+    Restarting,
+    Switching,
+    Stopping,
+}
+
+pub(crate) enum CoreActorError {
+    StaleOperation,
+    NoBackend { last_error: Arc<CoreBackendError> },
+    Backend(Arc<CoreBackendError>),
+    ShuttingDown,
+}
+
+// APP/core/actor/backend.rs
+pub(crate) enum CoreBackend {
+    Local(LocalBackend),
+    Service(ServiceBackend),
+    #[cfg(test)]
+    Test(TestBackend),
+}
+pub(crate) enum BackendSlot {
+    Ready(CoreBackend),
+    Failed { error: Arc<CoreBackendError> },
+}
+
+// 注入用 trait：出现在 `ClientSetupArgs` 的公开签名里，因此是 `pub`
+pub trait CoreBinaryResolver: Send + Sync + 'static {
+    fn resolve(&self, kind: &CoreType) -> anyhow::Result<Utf8PathBuf>;
+}
+pub trait CoreDegradationSink: Send + Sync + 'static {
+    fn publish(&self, degradation: crate::client::runtime::Degradation);
+}
+#[async_trait]
+pub trait ServiceControlOps: Send + Sync + 'static {
+    async fn install(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
+    async fn start(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
+    async fn stop(&self) -> anyhow::Result<()>;
+    async fn restart(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
+}
+/// 供 Updater 在替换时刻查询**当前实际运行身份**（不是 typed desired，见 A.4）。
+#[async_trait]
+pub trait CoreRequestProvider: Send + Sync + 'static {
+    async fn running(&self) -> Result<Option<CoreRequest>, CoreActorError>;
+}
+
+// APP/core/actor/mod.rs
+pub(crate) struct CoreActorArgs {
+    pub(crate) mode: crate::core::RunType,
+    pub(crate) requests: CoreRequestFactory,
+    pub(crate) degradation: Arc<dyn CoreDegradationSink>,
+    pub(crate) status_tx: watch::Sender<CoreStatusView>,
+    pub(crate) hint_pending: Arc<AtomicBool>,
+}
+
+pub(crate) struct CoreActorState {
+    pub(crate) backend: Option<BackendSlot>,
+    pub(crate) mode: crate::core::RunType,
+    pub(crate) operation: OperationGate,
+    pub(crate) observed: BackendObservation,
+    /// 最后一次成功提交的运行身份（A.4）。Updater 查它，不查 typed desired。
+    pub(crate) running: Option<CoreRequest>,
+    pub(crate) status_tx: watch::Sender<CoreStatusView>,
+    pub(crate) hint_pending: Arc<AtomicBool>,
+    pub(crate) recovery_exhausted_published: bool,
+    pub(crate) degradation: Arc<dyn CoreDegradationSink>,
+    pub(crate) requests: CoreRequestFactory,
+}
+
+// APP/client/core.rs
+pub(crate) struct CoreClientArgs {
+    pub(crate) mode: crate::core::RunType,
+    pub(crate) requests: CoreRequestFactory,
+    pub(crate) degradation: Arc<dyn CoreDegradationSink>,
+}
+
+struct CoreClientInner {
+    actor_ref: ActorRef<CoreActorMessage>,
+    next_operation: AtomicU64,
+    status_rx: watch::Receiver<CoreStatusView>,
+    hint_pending: Arc<AtomicBool>,
+}
+
+// APP/core/actor/request.rs
+#[derive(Clone)]
+pub(crate) struct CoreRequestFactory {
+    data_dir: Utf8PathBuf,
+    pid_path: Utf8PathBuf,
+    runtime_paths: crate::client::RuntimePaths,
+    binary: Arc<dyn CoreBinaryResolver>,
+}
+
+#[derive(Clone)]
+pub(crate) struct CoreModeReconciler {
+    core: CoreClient,
+    application: ApplicationClient,
+    requests: CoreRequestFactory,
+}
+```
+
+### A.2 `ClientSetupArgs` 的新增字段
+
+```rust
+pub struct ClientSetupArgs {
+    // 既有字段不动
+    pub core: Option<Arc<dyn CoreLifecyclePort>>,   // None = 生产（内部构造）；Some = 测试注入
+    pub binary_resolver: Arc<dyn CoreBinaryResolver>,
+    pub degradation: Arc<dyn CoreDegradationSink>,
+    pub service_control: Arc<dyn ServiceControlOps>,
+}
+```
+
+**5 个字面构造点全部要改**（A22f）：`setup.rs:42`、`bridge/verge.rs:1072`、`client/mod.rs:2093`、`client/mod.rs:2325`、`client/rebuild.rs:955`。
+
+### A.3 构造顺序（编号；在 `try_new_with_args` 的 `block_on` 内、typed clients 之后）
+
+1. `let (application, session_state, clash_config) = new_typed_config_clients(..).await?;`
+2. `let app = application.get().await?.state;`
+3. `let mode = RunType::classify(app.enable_service_mode, get_ipc_state());`
+4. `let requests = CoreRequestFactory::new(&paths, runtime_paths_for_setup.clone(), args.binary_resolver)?;` —— **工厂先于 client**
+5. `let core_client = CoreClient::new(CoreClientArgs { mode, requests: requests.clone(), degradation: args.degradation.clone() }).await?;`
+   - `CoreClient::new` **内部**：`let (status_tx, status_rx) = watch::channel(CoreStatusView::initial());`；`let hint_pending = Arc::new(AtomicBool::new(false));`；`Actor::spawn(None, CoreActor, CoreActorArgs { mode, requests, degradation, status_tx, hint_pending: hint_pending.clone() })`；→ `CoreClientInner { actor_ref, next_operation: AtomicU64::new(1), status_rx, hint_pending }`
+6. `let core = args.core.unwrap_or_else(|| Arc::new(CoreLifecycleAdapter::new(core_client.clone(), application.clone(), requests.clone())) as Arc<dyn CoreLifecyclePort>);`
+7. `NyanpasuClientInner { ..., core_client, core, requests, application, service_control: args.service_control, ... }`
+
+> watch 通道与 `hint_pending` **都在第 5 步内部创建**，两端同源，不存在"某一侧忘了拿"的可能。
+
+### A.4 运行身份归 actor（round-10 #71 与 NEW-1）
+
+**问题**：typed desired 快照**不等于**当前实际在跑的核。`change_core` 只在 legacy `Config::verge().draft()` 里改核，`lease.restart()` 之后才 `apply()`，typed 重播更晚（`APP/client/rebuild.rs:299-317`；`APP/bridge/verge.rs:257-303`）。在 `restart()` 那一刻读 typed 快照会拿到**旧核**——v10 的适配器正是这么写的，因此会在换新核的事务里重启**旧核**。
+
+**两条互补的修法：**
+
+| 谁                   | 需要哪种身份                    | 怎么拿                                                                                                                                                                                                                                        |
+| -------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| lease 的 `restart()` | **本事务要运行的核**（desired） | `check_and_promote(candidate, target_core, product)` **已经收到** `target_core`——lease 把它记在自身，随后的 `restart()` 消费它；回滚分支用恢复后的核**覆写**它。只有"纯 restart、无 promote"的流程（如 `restart_sidecar`）才回落到 typed 快照 |
+| Updater 的替换步骤   | **当前实际在跑的核**（actual）  | 查 actor：`CoreRequestProvider::running()` → 返回 `state.running`（最后一次成功提交的 `CoreRequest`）。**不读 typed desired**                                                                                                                 |
+
+actor 侧规则：每次 `Run` **成功提交**时把该次 `CoreRequest` 写入 `state.running`；`Stop` / shutdown 成功后置 `None`；`SetBackend` 换槽**不改**它（是否在跑由随后的 `Run` 决定）。
+
+### A.5 合成观察的完整取值（round-10 NEW-2）
+
+统一规则：**克隆上一次 `view`，只改下表列出的字段**，其余（含 `revision`、`run_type`、`recovery_exhausted`）一律**保留**。
+
+| 场景            | `lifecycle`                                   | `view.state`       | 其它改动                   |
+| --------------- | --------------------------------------------- | ------------------ | -------------------------- |
+| 换槽瞬态 `None` | `Stopped { reason: None }`                    | `Stopped(None)`    | `state_changed_at = now()` |
+| `Failed{error}` | `Stopped { reason: Some(error.to_string()) }` | `Stopped(Some(…))` | `state_changed_at = now()` |
+| `shutdown`      | `Stopped { reason: None }`                    | `Stopped(None)`    | `state_changed_at = now()` |
+
+`CoreStatusView::initial()`（watch 初值）：`state: Stopped(None)`、`state_changed_at: 0`、**`run_type: RunType::default()`**、`revision: None`、`recovery_exhausted: false`——与 legacy `CoreManager::status()` 在无 instance 时返回的三元组逐字段一致（`APP/core/clash/core.rs:451-466`）。**T-RV-16** 断言该等价性。
+
+### A.6 可见性规则（round-10 NEW-3）
+
+- **`pub(crate)`**：全部实现类型与其字段——`CoreRequest`、`CoreStatusView`、`BackendObservation`、`FaithfulLifecycle`、`CoreActorError`、`CoreBackend`、`BackendSlot`、`CoreActorMessage`、`CoreActorArgs`、`CoreActorState`、`CoreClientArgs`、`CoreRequestFactory`、`CoreModeReconciler`；
+- **`pub`**：只有出现在**公开签名**里的注入 trait——`CoreBinaryResolver`、`CoreDegradationSink`、`ServiceControlOps`、`CoreRequestProvider`（它们是 `ClientSetupArgs` 的字段类型）；
+- `CoreClient` / `CoreOperationGuard` 本身 `pub`，但**返回 crate-private 类型的方法一律 `pub(crate)`**（`status()`、`refresh_status()`、`run()` 等）。仅 `hint_refresh()` 这类无 crate-private 类型出现在签名中的方法可以 `pub`。
+
+> 判定口径：**一个类型的可见性必须 ≥ 它出现的最宽签名的可见性**。实施时按此逐个检查，不要凭直觉。
+
+---
+
 ## 8. 明确 out-of-scope（登记去向）
 
-| 项                                                              | 去向                                                                                                |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| typed `CoreErrorKind` 消费（替换 S4 的过渡映射）                | R0 合并 + submodule bump 之后的**独立一步**；bump 本身待用户授权                                    |
-| `StopReason::RestartBudgetExhausted` typed 变体                 | **独立上游小 PR**，待用户授权推送（leader 已裁定不并入已收口的 R0 分支）                            |
-| apply 管线统一到 `CoreBackend::apply`                           | **PR-5b / B3**（D3=A）                                                                              |
-| Promoted / Applied 入 actor、删 `RuntimeLifecycleStore`         | **PR-5b / B1**                                                                                      |
-| 删 `rebuild_gate` / `clash_patch_gate`                          | **PR-5b / B2**                                                                                      |
-| `change_core` 简化为 commit-first                               | **PR-5b / B4**                                                                                      |
-| post-commit 失败矩阵（RQ-01）、apply parity 含 `Noop`（RQ-03）  | **PR-5b 计划**                                                                                      |
-| watch snapshot 投影、100 条 `LogFrame` ring、删 `Logger` global | **PR-5c / C1**                                                                                      |
-| `set_mode` / `reconcile_mode`、删 5 s 轮询线程与 statics        | **PR-5c / C2**                                                                                      |
-| macOS DNS 归入 actor（`MacosDnsGuard`）                         | **PR-5c / C3**                                                                                      |
-| UpdaterActor 完整迁移、`UpdaterManager::global()`               | **PR-6d**。5a 只把 Updater 的 **core 依赖**显式注入（S9.1，编译必要条件），updater 自身的全局性不动 |
-| `clash-api` workspace 条目                                      | 无 app 侧消费者，暂不加（D1=A）                                                                     |
+| 项                                                             | 去向                                                                                                |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| typed `CoreErrorKind` 消费（替换 S4 的过渡映射）               | R0 合并 + submodule bump 之后的**独立一步**；bump 本身待用户授权                                    |
+| `StopReason::RestartBudgetExhausted` typed 变体                | **独立上游小 PR**，待用户授权推送（leader 已裁定不并入已收口的 R0 分支）                            |
+| apply 管线统一到 `CoreBackend::apply`                          | **PR-5b / B3**（D3=A）                                                                              |
+| Promoted / Applied 入 actor、删 `RuntimeLifecycleStore`        | **PR-5b / B1**                                                                                      |
+| 删 `rebuild_gate` / `clash_patch_gate`                         | **PR-5b / B2**                                                                                      |
+| `change_core` 简化为 commit-first                              | **PR-5b / B4**                                                                                      |
+| post-commit 失败矩阵（RQ-01）、apply parity 含 `Noop`（RQ-03） | **PR-5b 计划**                                                                                      |
+| 100 条 `LogFrame` ring、删 `Logger` global                     | **PR-5c / C1**                                                                                      |
+| `set_mode` / `reconcile_mode`、删 5 s 轮询线程与 statics       | **PR-5c / C2**                                                                                      |
+| macOS DNS 归入 actor（`MacosDnsGuard`）                        | **PR-5c / C3**                                                                                      |
+| UpdaterActor 完整迁移、`UpdaterManager::global()`              | **PR-6d**。5a 只把 Updater 的 **core 依赖**显式注入（S9.1，编译必要条件），updater 自身的全局性不动 |
+| `clash-api` workspace 条目                                     | 无 app 侧消费者，暂不加（D1=A）                                                                     |

@@ -39,8 +39,11 @@ pub(super) fn set_ipc_state(state: IpcState) {
 }
 
 fn dispatch_disconnected() {
+    // Strong CAS on purpose: a spurious `compare_exchange_weak` failure here
+    // would leave a stale `Connected` past the accepted poll window and weaken
+    // the fail-closed compat gate riding on this transition.
     if IPC_STATE
-        .compare_exchange_weak(
+        .compare_exchange(
             IpcState::Connected,
             IpcState::Disconnected,
             Ordering::SeqCst,
@@ -54,7 +57,7 @@ fn dispatch_disconnected() {
 
 fn dispatch_connected() {
     if IPC_STATE
-        .compare_exchange_weak(
+        .compare_exchange(
             IpcState::Disconnected,
             IpcState::Connected,
             Ordering::SeqCst,

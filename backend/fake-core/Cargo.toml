@@ -15,6 +15,10 @@ path = "src/lib.rs"
 name = "fake-core"
 path = "src/main.rs"
 
+[[bin]]
+name = "manager-probe-core"
+path = "src/bin/manager_probe_core.rs"
+
 [dependencies]
 # Intentionally empty: std-only for cross-platform process lifecycle tests.
 

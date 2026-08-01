@@ -222,7 +222,9 @@ export const commands = {
   setCustomAppDir: (path: string) =>
     typedError<null, string>(__TAURI_INVOKE('set_custom_app_dir', { path })),
   statusService: () =>
-    typedError<StatusInfo_Serialize, string>(__TAURI_INVOKE('status_service')),
+    typedError<ServiceStatusInfo_Serialize, string>(
+      __TAURI_INVOKE('status_service'),
+    ),
   installService: () =>
     typedError<null, string>(__TAURI_INVOKE('install_service')),
   uninstallService: () =>
@@ -2070,22 +2072,51 @@ export type ScriptTransform_Serialize = {
   runtime: ScriptRuntime
 }
 
+export type ServiceCompat =
+  /**  daemon 未安装 / 未运行 / 未上报 server 信息，没有可判定的版本。 */
+  | { kind: 'unknown' }
+  /**  主版本匹配，允许进入 Service backend。 */
+  | { kind: 'compatible'; server_version: string }
+  /**  主版本不匹配（典型：v1.4.5）。fail-closed。 */
+  | { kind: 'incompatible'; server_version: string; required_major: number }
+  /**  server 上报的版本不是合法 semver。fail-closed。 */
+  | { kind: 'unparsable'; server_version: string }
+
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
 
-export type StatusInfo = StatusInfo_Serialize | StatusInfo_Deserialize
+/**
+ *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  wire 是原结构的严格超集，前端既有消费点不受影响。
+ */
+export type ServiceStatusInfo =
+  | ServiceStatusInfo_Serialize
+  | ServiceStatusInfo_Deserialize
 
-export type StatusInfo_Deserialize = {
+/**
+ *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  wire 是原结构的严格超集，前端既有消费点不受影响。
+ */
+export type ServiceStatusInfo_Deserialize = {
   name: string
   version: string
   status: ServiceStatus
   server: StatusResBody_Deserialize | null
+  compat: ServiceCompat
 }
 
-export type StatusInfo_Serialize = {
+/**
+ *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  wire 是原结构的严格超集，前端既有消费点不受影响。
+ */
+export type ServiceStatusInfo_Serialize = {
   name: string
   version: string
   status: ServiceStatus
   server: StatusResBody_Serialize | null
+  compat: ServiceCompat
 }
 
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize

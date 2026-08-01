@@ -26,13 +26,13 @@ nyanpasu-core-manager      nyanpasu-ipc
 
 ## Global Constraints
 
-- **作用域仅限 submodule** `backend/nyanpasu-runtime`(独立 git 仓库 + 独立 cargo workspace)。app 侧 `backend/tauri` 一行不改。
+- **作用域仅限 runtime 仓**,且在**隔离 worktree** `G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0` 内实施(独立 git 仓库 + 独立 cargo workspace,见 §「Git 策略」)。app 侧 `backend/tauri` 一行不改;**父仓的 submodule 检出 `backend/nyanpasu-runtime` 全程停在 `main` @ `0d2993a` 不动**。
 - **不新建 crate、不引入 `CoreEngine` trait/工厂、不引入 transport-neutral 抽象层。**
 - **不 bump 任何 crate 版本。** 尤其 `nyanpasu_service/Cargo.toml` 的 `version = "2.0.0-rc.1"` —— app 的 `scripts/check.ts:674-691` 直接读这个文件的 `version` 字段拼出下载 tag `v2.0.0-rc.1`,改动它会让 sidecar 下载 404。`crates/nyanpasu-service-runtime` 的版本同样不动(它是 `consts::APP_VERSION`,ServiceCompat 的 major fail-closed 判据)。
 - **wire 字节不变是硬闸门。** envelope 字段 `R.error_kind` 的类型保持 `Option<Cow<'a, str>>`,12 个字符串一个字符不改;`crates/nyanpasu-service-runtime/src/server/routing/tests.rs:388,414,448,475` 四条端到端断言必须**原样不动地通过** —— 它们是「wire 没动」的最直接证据。
-- **不推送、不开 PR。** 全部工作是 submodule 内的本地 commit。推送到 `libnyanpasu/nyanpasu-runtime` 与开上游 PR 需要用户显式授权,见 §「交接边界」。
-- **不动 app 侧 submodule pin(gitlink)。** 见 §「交接边界」中的 interim consumption 说明,那是 leader 的决策不是本计划的执行项。
-- **不动嵌套 submodule** `crates/nyanpasu-utils`(当前 `3cb3af0`)。理由见 Task 0 Step 4。
+- **不推送、不开 PR。** 全部工作是 worktree 内的本地 commit。推送到 `libnyanpasu/nyanpasu-runtime` 与开上游 PR 需要用户显式授权,见 §「交接边界」。
+- **不动 app 侧 submodule pin(gitlink)。** worktree 隔离从结构上保证了这一点 —— 父仓检出的 HEAD 从不移动,gitlink 漂移在物理上不可能发生。见 §「交接边界」。
+- **不动嵌套 submodule** `crates/nyanpasu-utils`(当前 `3cb3af0`)—— 但新 worktree 必须先**初始化**它才能编译,见 Task 0 Step 2。
 - pre-commit 与 CI 跑 `cargo clippy --all-targets --all-features`(`.github/workflows/ci.yml:52`)。`.cargo/config.toml` 已注入 `--cfg tokio_unstable --cfg tracing_unstable`,不需要手动带。
 - ICE 处置:本机 nightly 偶发 `query stack during panic`,**直接重跑**,不得据此 pin toolchain 日期。
 
@@ -80,14 +80,14 @@ nyanpasu-core-manager      nyanpasu-ipc
 
 ### 二、生产端(谁往 wire 上写 kind)
 
-| 位置                                                          | 输入                                                 | 产出 kind                              | R0 后                                                     |
-| ------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------- | --------------------------------------------------------- | --- | --------------------------- |
-| `manager_bridge.rs:646-665` `map_error_kind`                  | `&ManagerError`                                      | 12 个中的一个或 `None`                 | **整函数删除**,改调 `error.kind()`                        |
-| `manager_bridge.rs:89` `From<ManagerError> for OpError`       | `ManagerError`                                       | 同上                                   | `kind: error.kind()`                                      |
-| `manager_bridge.rs:404`                                       | `find_binary_path` 的 `io::Error`                    | `BINARY_NOT_FOUND`                     | `CoreErrorKind::BinaryNotFound`(**逐点分类,不是表**,保留) |
-| `manager_bridge.rs:791`                                       | `canonical_config_path` 的 `io::ErrorKind::NotFound` | `CONFIG_NOT_FOUND`                     | `CoreErrorKind::ConfigNotFound`(同上,保留)                |
-| `manager_bridge.rs:82` `OpError::into_envelope`               | `OpError`                                            | 落到 `RBuilder::other_error_with_kind` | 签名收敛为 `Option<CoreErrorKind>`                        |
-| `nyanpasu_ipc/src/api/mod.rs:138-147` `other_error_with_kind` | `Option<Cow<str>>`                                   | 写入 `R.error_kind`                    | 入参改 `Option<CoreErrorKind>`,内部 `.map(                | k   | Cow::Borrowed(k.as_str()))` |
+| 位置                                                          | 输入                                                 | 产出 kind                              | R0 后                                                                       |
+| ------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------- |
+| `manager_bridge.rs:646-665` `map_error_kind`                  | `&ManagerError`                                      | 12 个中的一个或 `None`                 | **整函数删除**,改调 `error.kind()`                                          |
+| `manager_bridge.rs:89` `From<ManagerError> for OpError`       | `ManagerError`                                       | 同上                                   | `kind: error.kind()`                                                        |
+| `manager_bridge.rs:404`                                       | `find_binary_path` 的 `io::Error`                    | `BINARY_NOT_FOUND`                     | `CoreErrorKind::BinaryNotFound`(**逐点分类,不是表**,保留)                   |
+| `manager_bridge.rs:791`                                       | `canonical_config_path` 的 `io::ErrorKind::NotFound` | `CONFIG_NOT_FOUND`                     | `CoreErrorKind::ConfigNotFound`(同上,保留)                                  |
+| `manager_bridge.rs:82` `OpError::into_envelope`               | `OpError`                                            | 落到 `RBuilder::other_error_with_kind` | 签名收敛为 `Option<CoreErrorKind>`                                          |
+| `nyanpasu_ipc/src/api/mod.rs:138-147` `other_error_with_kind` | `Option<Cow<str>>`                                   | 写入 `R.error_kind`                    | 入参改 `Option<CoreErrorKind>`,内部 `.map(\|k\| Cow::Borrowed(k.as_str()))` |
 
 唯一写 `R.error_kind` 非 `None` 的构造器就是 `other_error_with_kind`(`api/mod.rs:130`/`:156` 的另两个构造器恒写 `None`)。收敛它的签名 = 从类型上杜绝手写字符串上 wire。
 
@@ -172,43 +172,74 @@ Exit 判据要求「不再各自维护第二份表」。保留 12 个 `pub const
 
 ## Git 策略
 
+**实施在隔离 worktree 中进行,父仓的 submodule 检出全程不动。** 依据 CLAUDE.md / AGENTS.md §17 —— 迁移类工作跑在隔离 worktree 里。对 submodule 而言这条额外买到一个结构性好处:父仓 `backend/nyanpasu-runtime` 的检出 HEAD 全程停在 `main` @ `0d2993a`,**gitlink 漂移在物理上不可能发生**,并行进行的 PR-5-pre(path 依赖)验证也不会混入 R0 的代码。
+
+- **worktree 路径:** `G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0`(沿用 monorepo P1 的 `G:/Programs/Rust/.ccg/clash-nyanpasu/<name>` 惯例)
 - **分支名:** `feat/core-error-kind`
 - **base:** `origin/main`(= `0c67f56`),**不是** tag `v2.0.0-rc.1`。
   理由:两者只差一个纯 `README.md` 的 doc commit,`origin/main..v2.0.0-rc.1` 为空(tag 是 main 的严格祖先),因此以 main 为基**零冲突风险、零代码差异**;而以 tag 为基会让未来的上游 PR 一开始就落后 main、合并前还要 rebase 一次。
-- **工作流:** 只在 submodule 内做本地 commit。
+- **工作流:** 只在 worktree 内做本地 commit。
 
 ```powershell
 git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime fetch origin
-git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime switch -c feat/core-error-kind origin/main
+git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime worktree add G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0 -b feat/core-error-kind origin/main
 ```
 
+worktree 与父仓检出共享同一个 git 存储,所以 `origin/main` 已经在本地、不需要重新 clone。两点代价必须预期:
+
+1. **worktree 有自己独立的 `target/`** —— Task 0 的基线测试是**冷编译**,耗时远超增量构建,不要误判为卡死。
+2. **嵌套 submodule `crates/nyanpasu-utils` 不会自动带过来** —— 新 worktree 里它是空目录,不初始化则整个 workspace 无法编译。见 Task 0 Step 2。
+
 - **commit 规范:** Conventional Commits,scope 用 crate 名。建议 5 个 commit(Task 1–5 各一),而不是一个大 commit —— 每个 Task 结束时树都是编译绿 + 测试绿的。
-- **禁止:** `git push`、`gh pr create`、`git tag`、改任何 `version =`。
+- **禁止:** `git push`、`gh pr create`、`git tag`、改任何 `version =`、以及在父仓 `backend/nyanpasu-runtime` 里执行任何 `git switch` / `git checkout`。
 
 ### 交接边界(需用户显式授权才能越过)
 
 1. **推送 `feat/core-error-kind` 到 `libnyanpasu/nyanpasu-runtime` 并开上游 PR** —— 计划执行到本地 commit 为止,推送必须停下来问。
-2. **app 侧 submodule pin(gitlink)何时移动** —— 上游合并前,把 app 的 gitlink 指向一个**未推送**的本地 commit 会让 CI 的 `git submodule update` 直接失败。可选的过渡消费方式(继续用 `v2.0.0-rc.1` pin 而 R0 只在本地工作树生效 / 先推 branch 再 pin branch commit / 等合并后 pin main)**是 leader 的决策,本计划不预设**。
+2. **app 侧 submodule pin(gitlink)何时移动** —— 上游合并前,把 app 的 gitlink 指向一个**未推送**的本地 commit 会让 CI 的 `git submodule update` 直接失败。worktree 隔离让 R0 期间的 gitlink 保持零漂移(父仓检出不动),但「何时移动」仍是独立决策:可选的过渡消费方式(继续用 `v2.0.0-rc.1` pin / 先推 branch 再 pin branch commit / 等合并后 pin main)**是 leader 的决策,本计划不预设**。
 3. **release / tag** —— R0 不发版。sidecar 仍下载已发布的 `v2.0.0-rc.1`,因为 wire 没动,该二进制与打了 R0 的 app 完全兼容。
+4. **worktree 的销毁** —— Task 6 完成后 worktree **留在原地**供阶段审查使用。`git worktree remove` / `git worktree prune` 只在分支已推送或明确废弃后执行,是 leader 的决策。
 
 ---
 
-## Task 0: 分支与基线
+## Task 0: worktree、分支与基线
 
-**Files:** 无代码变更。以下所有命令均在 `G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime` 下执行(该目录是独立 cargo workspace)。
+**Files:** 无代码变更。**Step 1 在父仓的 submodule 检出下执行;从 Step 2 起,包括后续 Task 1–6 的全部命令,一律以 worktree `G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0` 为工作目录**(该目录是独立 cargo workspace)。
 
-- [ ] **Step 1: 建分支**
+- [ ] **Step 1: 创建隔离 worktree**
 
 ```powershell
-cd G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime
-git fetch origin
-git switch -c feat/core-error-kind origin/main
+git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime fetch origin
+git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime worktree add G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0 -b feat/core-error-kind origin/main
+cd G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0
 git log --oneline -2
 ```
 
-Expected: HEAD = `0c67f56 chore: update docs`,其父为 `0d2993a chore: bump version to v2.0.0-rc.1`。
+Expected: HEAD = `0c67f56 chore: update docs`,其父为 `0d2993a chore: bump version to v2.0.0-rc.1`;当前分支 `feat/core-error-kind`。
 
-- [ ] **Step 2: 基线断言(改动前先确认现状为绿)**
+- [ ] **Step 2: 初始化嵌套 submodule(不做则无法编译)**
+
+```powershell
+git submodule update --init
+git submodule status
+```
+
+Expected: `crates/nyanpasu-utils` 检出到 `3cb3af02222ced3972d95ade599949098b159202`,且状态行首**无** `-`(未初始化)或 `+`(与记录不符)标记。
+
+新 worktree 不会自动带上嵌套 submodule 的工作树内容 —— 不初始化时 `crates/nyanpasu-utils` 是空目录,`cargo` 会因 workspace member 缺失直接失败。
+
+判定(本 Step 之后不再触碰它):`nyanpasu-utils` 只通过 `Error::Process(ProcessError)`(变体 22)与 `From<AtomicFsError>`(→ 变体 12/13/25)进入 `ManagerError`,这三条在 R0 后全部映射 `None` 且分类集合不变 —— **`crates/nyanpasu-utils` 零改动、不 bump**。
+
+- [ ] **Step 3: 确认父仓检出未被扰动(R0 全程的不变量)**
+
+```powershell
+git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime status -sb
+git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime worktree list
+```
+
+Expected: 第一条仍是 `## main...origin/main [behind 1]` 且工作区干净(HEAD 停在 `0d2993a`);第二条列出两个 worktree —— 父仓检出与 `runtime-r0`。**Task 6 Step 4 会再验一次这条不变量。**
+
+- [ ] **Step 4: 基线断言(改动前先确认现状为绿)**
 
 ```powershell
 cargo test -p nyanpasu-ipc --all-features
@@ -217,22 +248,15 @@ cargo test -p nyanpasu-service-runtime --lib
 
 Expected: 全绿。`nyanpasu-ipc --all-features` 覆盖 `wire_golden`(默认 features 即可)与 `roundtrip`(`required-features = ["client","server"]`,见 `nyanpasu_ipc/Cargo.toml:7-10`)。
 
-- [ ] **Step 3: 记录版本基线(收尾时要比对未变)**
+**注意:worktree 的 `target/` 是空的,这一步是冷编译**,耗时远超父仓检出上的增量构建。用后台执行,不要按增量构建的时间预期判定卡死。
+
+- [ ] **Step 5: 记录版本基线(收尾时要比对未变)**
 
 ```powershell
 Select-String -Path nyanpasu_service/Cargo.toml,crates/nyanpasu-service-runtime/Cargo.toml,nyanpasu_ipc/Cargo.toml,crates/nyanpasu-core-manager/Cargo.toml,crates/nyanpasu-core-metadata/Cargo.toml -Pattern '^version' | Select-Object Path,Line
 ```
 
-Expected: `2.0.0-rc.1` / `2.0.0-rc.1` / `2.0.0-rc.1` / `1.0.0-rc.1` / `1.0.0-rc.1`。**Task 5 结束时必须完全一致。**
-
-- [ ] **Step 4: 确认嵌套 submodule 无需改动**
-
-```powershell
-git submodule status
-```
-
-Expected: `3cb3af02222ced3972d95ade599949098b159202 crates/nyanpasu-utils`。
-判定:`nyanpasu-utils` 只通过 `Error::Process(ProcessError)`(变体 22)与 `From<AtomicFsError>`(→ 变体 12/13/25)进入 `ManagerError`,这三条在 R0 后全部映射 `None` 且分类集合不变 —— **`crates/nyanpasu-utils` 零改动、不 bump**。本 Step 只是确认,不执行任何命令式变更。
+Expected: `2.0.0-rc.1` / `2.0.0-rc.1` / `2.0.0-rc.1` / `1.0.0-rc.1` / `1.0.0-rc.1`。**Task 6 Step 3 结束时必须完全一致。**
 
 ---
 
@@ -722,12 +746,12 @@ Commit: `feat(ipc): expose the typed error kind on the client error`
 
 ## Task 6: 全量验证与收尾
 
-**Files:** 无代码变更。
+**Files:** 无代码变更。命令仍在 worktree `G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0` 下执行。
 
 - [ ] **Step 1: 对齐 CI 的全量检查**
 
 ```powershell
-cd G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime
+cd G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0
 cargo clippy --all-targets --all-features
 cargo fmt --all -- --check
 cargo test -p nyanpasu-core-metadata
@@ -760,14 +784,16 @@ git diff origin/main --stat -- '*/Cargo.toml' 'Cargo.toml' 'Cargo.lock'
 
 Expected: **空**。R0 不加依赖、不改 manifest、不动 `Cargo.lock`。若 `Cargo.lock` 出现改动,说明误加了依赖 —— 回退。
 
-- [ ] **Step 4: 嵌套 submodule 未动**
+- [ ] **Step 4: 嵌套 submodule 与父仓检出均未动**
 
 ```powershell
 git diff origin/main -- crates/nyanpasu-utils
 git submodule status
+git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime status -sb
+git -C G:\Programs\Rust\clash-nyanpasu\backend\nyanpasu-runtime rev-parse HEAD
 ```
 
-Expected: 空 diff;`3cb3af0` 未变。
+Expected: 空 diff;`3cb3af0` 未变;父仓检出仍是 `## main...origin/main [behind 1]`、工作区干净、HEAD = `0d2993ab...`(即 Task 0 Step 3 的不变量在整个 R0 期间成立)。父仓 HEAD 若移动了,说明有命令跑错了目录 —— 必须查清并复原后再交接。
 
 - [ ] **Step 5: 变更面复核**
 
@@ -789,7 +815,9 @@ Expected: 恰好 9 个文件 ——
 
 - [ ] **Step 6: 停下来交接**
 
-**不要 push,不要开 PR。** 向 leader 报告:分支名 + commit 列表 + 上述判据结果 + 覆盖率影响观察(见风险 R6)。
+**不要 push,不要开 PR。不要销毁 worktree。** worktree `G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0` **原地保留**供阶段审查使用 —— `git worktree remove` / `git worktree prune` 只在分支已推送或明确废弃之后执行,由 leader 决定时机(交接边界第 4 条)。
+
+向 leader 报告:worktree 路径 + 分支名 + commit 列表 + 上述判据结果 + 父仓检出不变量验证结果 + 覆盖率影响观察(见风险 R6)。
 
 ---
 
@@ -851,6 +879,9 @@ Expected: 恰好 9 个文件 ——
 2. **上游推送与 PR 时机** —— 计划止步于本地 commit。
    **Leader 裁定:确认交接边界。** R0 通过阶段审查后由 leader 向用户申请推送授权;授权前一切停在本地分支。
 3. **上游合并前 app 如何消费 R0** —— 继续 pin `v2.0.0-rc.1` / 先推分支再 pin 分支 commit / 等合并后 pin main。三者对 PR-5-pre P1(切 path 依赖)的排期影响不同,由 leader 定。
-   **Leader 裁定:PR-5-pre P1 继续 pin `v2.0.0-rc.1`,不依赖 R0;消费方式推迟到 PR-5a 启动门,与推送授权一并决。** 补充执行约束:R0 实施结束后 submodule 工作树停在 `feat/core-error-kind` 供审查;PR-5-pre 实施开始前由 leader 将其切回 `main`(= `0d2993a`),避免 path 依赖下的验证混入 R0 代码、也避免 gitlink 误提交。
+   **Leader 裁定:PR-5-pre P1 继续 pin `v2.0.0-rc.1`,不依赖 R0;消费方式推迟到 PR-5a 启动门,与推送授权一并决。** 这一半仍然成立。
+
+   ~~补充执行约束:R0 实施结束后 submodule 工作树停在 `feat/core-error-kind` 供审查;PR-5-pre 实施开始前由 leader 将其切回 `main`(= `0d2993a`),避免 path 依赖下的验证混入 R0 代码、也避免 gitlink 误提交。~~
+   **↑ 已被 worktree 隔离取代(2026-08-02,codex 评审 Job 1)。** 该约束的存在前提是「R0 与 PR-5-pre 共用同一个 submodule 检出」,因而需要人工切分支来分隔两者。改为在 `G:\Programs\Rust\.ccg\clash-nyanpasu\runtime-r0` 的隔离 worktree 中实施后,父仓检出的 HEAD 全程停在 `main` @ `0d2993a`,**根本不需要切回** —— 「验证混入 R0 代码」与「gitlink 误提交」两个风险从结构上消失,而不是靠流程纪律规避。保留原文供追溯。
 
 附:leader 复核补充(2026-08-01) —— 计划 Task 1 使用 `specta::Type` derive 而未验证依赖,已核实 `crates/nyanpasu-core-metadata/Cargo.toml:14` 已有 `specta = { version = "^2.0.0-rc.25", features = ["derive"] }`,「不新增任何依赖」声明成立。

@@ -67,8 +67,8 @@ importers:
         specifier: 17.14.0
         version: 17.14.0(supports-color@10.2.2)(typescript@7.0.2)
       stylelint-config-html:
-        specifier: 1.1.0
-        version: 1.1.0(postcss-html@2.0.0(postcss@8.5.25))(stylelint@17.14.0(supports-color@10.2.2)(typescript@7.0.2))
+        specifier: 2.0.0
+        version: 2.0.0(postcss-html@2.0.0(postcss@8.5.25))(stylelint@17.14.0(supports-color@10.2.2)(typescript@7.0.2))
       stylelint-config-recess-order:
         specifier: 7.7.0
         version: 7.7.0(stylelint-order@8.1.1(stylelint@17.14.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.14.0(supports-color@10.2.2)(typescript@7.0.2))
@@ -6099,12 +6099,12 @@ packages:
   style-to-object@1.0.6:
     resolution: {integrity: sha512-khxq+Qm3xEyZfKd/y9L3oIWQimxuc4STrQKtQn8aSDRHb8mFgpukgX1hdzfrMEW6JCjyJ8p89x+IUMVnCBI1PA==}
 
-  stylelint-config-html@1.1.0:
-    resolution: {integrity: sha512-IZv4IVESjKLumUGi+HWeb7skgO6/g4VMuAYrJdlqQFndgbj6WJAXPhaysvBiXefX79upBdQVumgYcdd17gCpjQ==}
-    engines: {node: ^12 || >=14}
+  stylelint-config-html@2.0.0:
+    resolution: {integrity: sha512-Lk1NPEdUxzHkPv3ehktjpiOk4MPaqQ3H8fkvhxdWlQpaZCm9ze0SoMbRQLqkUxEMfPE1G9/x968uxm/+d2njoA==}
+    engines: {node: ^22.12 || >=24}
     peerDependencies:
-      postcss-html: ^1.0.0
-      stylelint: '>=14.0.0'
+      postcss-html: ^2.0.0
+      stylelint: '>=16.0.0'
 
   stylelint-config-recess-order@7.7.0:
     resolution: {integrity: sha512-TWRkg+BrwHOki4pi9y1emWgx6pFwZXOYZhNsbEObke/mzYUJVJvDEzJJQXhH7ajslQJGcrExy8ZvJqDiUbhFpA==}
@@ -12377,7 +12377,7 @@ snapshots:
     dependencies:
       inline-style-parser: 0.2.3
 
-  stylelint-config-html@1.1.0(postcss-html@2.0.0(postcss@8.5.25))(stylelint@17.14.0(supports-color@10.2.2)(typescript@7.0.2)):
+  stylelint-config-html@2.0.0(postcss-html@2.0.0(postcss@8.5.25))(stylelint@17.14.0(supports-color@10.2.2)(typescript@7.0.2)):
     dependencies:
       postcss-html: 2.0.0(postcss@8.5.25)
       stylelint: 17.14.0(supports-color@10.2.2)(typescript@7.0.2)

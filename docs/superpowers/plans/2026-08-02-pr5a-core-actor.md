@@ -5,11 +5,11 @@
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md` §3–§6、同目录 `task.md` 卡 A1/A2/A3
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.1；必答项 §6.4 RQ-02 / RQ-04
 **平台：** Windows 11 / PowerShell
-**版本：** v7（2026-08-02）——v1–v6 均经 codex 对抗审查 **REJECT**；v7 依 leader **范围裁定**把"推送式观察"整体移出 5a（归 C1），计划因此显著收缩
+**版本：** v8（2026-08-02）——v1–v7 均经 codex 对抗审查 **REJECT**；v7 起模型获认可（no-push + mailbox 串行），v8 补齐两项 leader 裁定（`RefreshStatus` 准入规则 / `Option<BackendSlot>`）与全部注入链
 
 ---
 
-## 0.1 审查处置表（六轮）
+## 0.1 审查处置表（七轮）
 
 六轮发现**全部经本人复核源码确认成立**（无一条被驳回）。第六轮后 leader 做出**范围裁定**而非继续打补丁，详见下方
 
@@ -68,7 +68,7 @@
 | 34  | Medium | fake-core 备选路径**是错的**——RELEASE 即退出，release 后 HTTP 服务已消失            | **leader 裁定**：整段删除，`manager-probe-core` 为唯一 parity 路径；保留一段"为何无效"的说明防止重蹈                          | S12.1                 |
 | 35  | Medium | `message` 截断规则与 T-BK-13 互相矛盾                                               | **leader 裁定**：整条最终 message 上限 512 字节，只截 reason 段，按 UTF-8 字符边界并补 `…`                                    | D5 DTO 表             |
 | 36  | Low    | 两处仍要求 bindings **完全**零 diff，与 S13 的"恰好新增 `core_lifecycle`"矛盾       | 两处改为"除已声明的 `core_lifecycle` 联合成员外无其它 diff"                                                                   | S8；S9.1              |
-| 37  | Low    | Exit / RQ 摘要未点名 T-RV-08 与 T-SM-01/02                                          | RQ-02 摘要改 `T-RV-01…08`；Exit 表逐项点名并新增一行 seam 回归判据                                                            | RQ-02；§5 Exit 表     |
+| 37  | Low    | Exit / RQ 摘要未点名 T-RV-08 与 T-SM-01/02                                          | RQ-02 摘要改 `T-RV-01/02/03a/03b/05/06/07/08`；Exit 表逐项点名并新增一行 seam 回归判据                                        | RQ-02；§5 Exit 表     |
 | 38  | Low    | 回滚/提交切分仍以 "改 fake-core 加 `/version`" 为主语，未覆盖新 bin 路径所需文件    | 回滚清单补 `manager_probe_core.rs` / `Cargo.toml` `[[bin]]` / `control.rs` / `runtime.rs` / `event_sink.rs` 等；commit 1 改名 | §6 回滚；§7 切分      |
 
 **第五轮（v5 → v6）发现的处置：** 剩余缺口全部集中在一个子系统，因此本轮改为**整体规范化**而非继续打补丁——新增 **§2.1「观察协议规范」**（状态表 × 消息集 × 转换规则 R1–R7 × 不变量 I1–I3），RQ-02 / S3 / S5 一律改为引用。
@@ -83,7 +83,7 @@
 | 44  | High   | facade 漏 `stop_service`；且是 `control::*` 直通而非完整 typed 事务              | 补齐**六个**方法（四 service + `core_status` + `restart_core`），写出完整事务；**保留**"控制失败仍尝试拉核"的既有语义                                      | S8(4)；T-FA-01…04  |
 | 45  | Medium | parity 会定位到错误的二进制；gate 命令在无 Cargo.toml 的仓库根执行               | 新增 `resolve_probe_bin_path` / `require_probe_bin_path` 具名 resolver；gate 改 `--manifest-path .ackend\Cargo.toml -p fake-core --bin manager-probe-core` | S12.1；S13         |
 | 46  | Low    | T-RV-07 在单 FIFO mailbox 下不可构造                                             | 重定向到可构造交错（backend 内轮换后 barrier 暂停 → 投旧 ID 帧）                                                                                           | T-RV-07            |
-| 47  | Low    | T-RV-09/10 未进摘要与 Exit；风险表仍写已删除的"路径 A/B"                         | 范围改 **T-RV-01…14**；风险行改写为单一探针 bin 路径                                                                                                       | RQ-02 摘要；§5；§6 |
+| 47  | Low    | T-RV-09/10 未进摘要与 Exit；风险表仍写已删除的"路径 A/B"                         | 范围改 **T-RV-01/02/03a/03b/05/06/07/08**；风险行改写为单一探针 bin 路径                                                                                   | RQ-02 摘要；§5；§6 |
 | 48  | —      | **（自查）** S2 仍写请求路径来自 `dirs::*()`，与 S7 的注入式 `RuntimePaths` 冲突 | S2 改为"路径一律来自注入的 `RuntimePaths` / `PathResolver`，禁 `dirs::*()`；core type 来自 typed 快照"                                                     | S2                 |
 
 **第六轮（v6 → v7）：leader 范围裁定 + 幸存发现。**
@@ -92,13 +92,26 @@
 
 | #   | 级别   | 问题                                                                                                                        | 处置                                                                                                                                       | 落点              |
 | --- | ------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
-| 49  | High   | §2.1 协议仍会接受 T-RV-07 本该拒绝的陈旧帧；取消/watch/观察类型/请求路径/健康检查依赖均不可实现                             | **范围裁定**：删除 `ConnectionId` / `subscription_epoch` / 握手 / 重连 / 推送帧 / 栅栏及 T-RV-04…14；§2.1 重写为两来源模型                 | §2.1（缩减 ~45%） |
+| 49  | High   | §2.1 协议会接受本该拒绝的陈旧帧；取消/watch/观察类型/请求路径/健康检查依赖均不可实现                                        | **范围裁定**：整套推送机制移出 5a（七审确认 #1–#5 MOOT）。**注**：#6 观察载荷**未**随之消失，见第 56 行                                    | §2.1              |
 | 50  | High   | S2 的注入式请求路径不可实现（`RuntimePaths` 缺 binary/pid/working-dir；`find_binary_path` 调 `dirs::*`；字段名应为 `core`） | 新增 `CoreRequestFactory`（持 `PathResolver` + `RuntimePaths`），resolver 版二进制查找；`snapshot.core` + 显式 `ClashCore → CoreType` 转换 | S2；S7；S8        |
 | 51  | High   | 健康检查只穿 `CoreClient`，凑不齐 typed 快照与请求路径                                                                      | 改穿 `CoreModeReconciler{core, application, requests}`，四个调用者共用                                                                     | S8(3)             |
 | 52  | High   | facade 伪码里快照/guard/SetBackend/请求构造仍用 `?`，会顶替控制结果                                                         | 整个对账块捕获成一个 `Result`，块内**一律不 `?`**；`control?` 最后抛；新增可注入 `ServiceControlOps` seam 供 T-FA 制造控制失败             | S8(4)；T-FA-01…05 |
 | 53  | Medium | S9 仍让命令层直接调 `CoreClient`，与 S8 的私有边界及 T-FA-04 矛盾                                                           | S9 表全部改为 facade 目标；facade 领域方法总计 **7 个**                                                                                    | S9                |
 | 54  | Medium | `NoBackend { last_error }` 无法从 actor 状态复现                                                                            | 槽位显式建模为 `BackendSlot::{Ready, Failed{error}}`                                                                                       | S5；D2            |
 | 55  | Low    | 清单陈旧：`fake-core/src/lib.rs` 未进回滚/commit 1；"三个 service 命令"                                                     | 两处清单补齐；计数改为四个                                                                                                                 | §6；§7；S8        |
+
+**第七轮（v7 → v8）：模型获认可，补齐实现契约。** 七审确认"no-push + mailbox 串行"模型可行，round-6 #1–#5 判 MOOT；剩余为完成度缺口。
+
+| #   | 级别   | 问题                                                                                                    | 处置                                                                                                                                         | 落点                |
+| --- | ------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| 56  | High   | `RefreshStatus` 无 `OperationId`，§2.1 的结构论证只是文字                                               | **裁定 A**：`RefreshStatus { operation: Option<OperationId> }` + 两条准入规则（`Some` 须等于 active；`None` 仅 gate 空闲时执行，否则回缓存） | §2.1.2；T-RV-06     |
+| 57  | High   | D5 的"下次 UI 读取即观察到耗尽"没有实现机制                                                             | `core_status()` 走 `None` 路径，gate 空闲时真查 backend——权衡变成**已实现机制**，弱化措辞删除                                                | §2.1.3；D5；T-RV-09 |
+| 58  | High   | `FaithfulLifecycle` 无定义；`run/stop/recover/status` 签名与 `BackendObservation` 矛盾                  | 定义归一化枚举 + 两侧映射表（含 `detail` 缺失的降级）；四个方法统一返回 `BackendObservation`，`observe_status()` 改 async                    | §2.1.4；S3          |
+| 59  | High   | `CoreRequestFactory` 仍不可完全注入（`PathResolver::app_install_dir` 走 `dirs::*`）；Updater 路径不存在 | 抽 `CoreBinaryResolver` 可注入策略；工厂 `derive(Clone)` 并存入 `Inner`；Updater 由 facade 递交**已构造的** `CoreRequest`                    | S2；S8；S9.1        |
+| 60  | High   | `ServiceControlOps` 声明了但没接进对象图                                                                | 四步注入链：`ClientSetupArgs` → `Inner` → `setup.rs` 生产适配器 → facade 调注入 ops                                                          | S8(4)               |
+| 61  | Medium | 六行穿线表仍写裸 `CoreClient`                                                                           | 四行改为 `CoreModeReconciler`；`spawn_health_check` 签名同步                                                                                 | S8(3)               |
+| 62  | Medium | `BackendSlot` 无法表达换槽瞬态；错误不可克隆                                                            | **裁定 B**：`Option<BackendSlot>`，`Failed { error: Arc<CoreBackendError> }`                                                                 | S5；D2              |
+| 63  | Medium | v6 残留：三来源措辞、`/ws/events`、旧测试范围、RQ-04 的"不走 mailbox"                                   | 定点清扫；测试清单固定为 **T-RV-01/02/03a/03b/05/06/07/08 + 09**                                                                             | RQ-02；S3；S12；§5  |
 
 > 对 #9 的一点澄清：审查说"`ConfigRevision` 比 `RevisionId` 多了 `source_hash` 和 `runtime_path`"——这是拿 `ConfigRevision` 与 `RevisionId` 比。原文 RQ-02 里"多一个 `runtime_path`"是拿 `ConfigRevision` 与 **`ConfigRevisionInfo`** 比，那句本身成立。**但结论一致**：原 T-RV-03 把两个不同的转换混成一句，断言不成立，必须拆开。已按建议拆分。
 
@@ -243,7 +256,7 @@ const CORE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(120);
 
 **明确不实现**：TTL、auto-steal、watchdog self-message、续期、心跳。
 
-读操作（status）不走 mailbox 排队，沿用房规 `Some(5s)`（A7f）。
+读操作（status）**走** mailbox（§2.1.3 的 `RefreshStatus { operation: None }`），沿用房规 `Some(5s)` 读超时（A7f）——它不排队等 guard，gate 非空闲时立即回缓存。watch 化是 C1 的端态。
 
 ### RQ-02 — engine revision 的 app 侧处理与 `expected_revision` CAS
 
@@ -275,7 +288,7 @@ const CORE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(120);
 
 **5a / 5b 分工（重要）：**
 
-- **5a 只做"观察与存储"**：表示法、两个观察来源（§2.1.1）、操作返回值的同处理提交，由 **T-RV-01…08** 钉住。
+- **5a 只做"观察与存储"**：表示法、两个观察来源（§2.1.1）、操作返回值的同处理提交，由 **T-RV-01/02/03a/03b/05/06/07/08** 钉住。
 - **5b 才做"CAS 应用"**：因为 5a 不改 apply 管线（决策点 D3），`expected_revision` 在 5a 没有生产调用点。上面的冲突规则属于 B1 的实现契约，5a 只负责让 `last_revision` 在那时是可信的。
 
 > **前向引用（不在本阶段作答）：** RQ-01 完整 post-commit 失败矩阵、RQ-03 apply parity 含 `Noop`——均由 **PR-5b 计划**回答。事实 R11/R23 已为其备好素材。
@@ -290,43 +303,87 @@ const CORE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(120);
 
 ### 2.1.1 两个观察来源（仅此两个）
 
-| 来源                | 触发方式                                                          | 竞态处理                                                     |
-| ------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
-| **操作返回值**      | `run` / `apply` / `recover` 等 mutation 在 backend 调用后返回观察 | actor 在**同一消息处理内**提交，然后才回复调用方——无交错窗口 |
-| **`RefreshStatus`** | 显式 actor 消息，按需查询 backend                                 | 调用方**持 `CoreOperationGuard` 时**调用——见下               |
+| 来源                | 触发方式                                                         | 竞态处理                                                     |
+| ------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------ |
+| **操作返回值**      | `run` / `stop` / `recover` 等 mutation 在 backend 调用后返回观察 | actor 在**同一消息处理内**提交，然后才回复调用方——无交错窗口 |
+| **`RefreshStatus`** | 显式 actor 消息，按需查询 backend                                | 由**准入规则**保证（见 2.1.2）                               |
 
 **没有第三个来源。** 没有订阅任务、没有推送帧、没有连接身份、没有重连循环。
 
-### 2.1.2 为什么不需要栅栏：构造上无竞态
+> `apply` **不在**本表：D3=A 裁定 5a 不改 apply 管线，`apply_promoted` 仍走 lease 内的 `api::put_configs`，它**不经过 actor**，因此不产生观察。这正是下面准入规则必须存在的原因。
 
-`RefreshStatus` 的**唯一**正当调用方式是**持有 `CoreOperationGuard` 时**调用（5b 的 `CheckAndPromote` 事务、health-check 的模式对账都在 guard 下）。而 `OperationGate` 保证同一时刻只有一个 active operation，mutation 也必须携带匹配的 `OperationId`。因此：
+### 2.1.2 `RefreshStatus` 的准入规则（leader 裁定 A，2026-08-02）
 
-- 刷新期间**不可能**有另一个 mutation 并发修改状态（它拿不到 guard）；
-- 刷新结果回来时，"当时的状态"与"现在的状态"必然一致；
-- **不需要** generation、version、token 或任何过期判定。
+```rust
+RefreshStatus {
+    /// `Some(id)`：调用方持有 `CoreOperationGuard`（5b 的事务内刷新）。
+    /// `None`：无守卫的读路径（UI 的 `core_status()`）。
+    operation: Option<OperationId>,
+    reply: RpcReplyPort<Result<BackendObservation, CoreBackendError>>,
+},
+```
 
-这就是把并发控制**收敛到已有的 operation 机制**、而不是再建一套观察层并发协议的收益。
+handler 的**两条准入规则**：
 
-> 不持 guard 也可以调 `RefreshStatus`（例如诊断用途），但那样拿到的就是"某个时刻的快照"，没有任何新鲜度保证——**需要新鲜度的调用方必须持 guard**。这一条要写进 `CoreClient::refresh_status()` 的 doc comment。
+| 入参       | 准入条件                     | 不满足时                                                |
+| ---------- | ---------------------------- | ------------------------------------------------------- |
+| `Some(id)` | `id == gate.active`          | 回 `Err(StaleOperation)`，**不调 backend**              |
+| `None`     | `gate` **空闲**（无 active） | **不调 backend**，直接回当前缓存的 `BackendObservation` |
 
-### 2.1.3 `status()` 的读语义
+**为什么这样就够了（与 guard 同一个结构论证）。** 所有会改变核心状态的路径都持有 `CoreOperationGuard`——包括 D3 保留在 actor 之外的 `api::put_configs`，它由 lease 持有 active operation 期间发出。因此：
 
-`CoreClient::status()` 是**普通 mailbox RPC**，用房规的 5 s 读超时（A7f），返回 actor 当前缓存的 `CoreStatusView`。
+- `gate` 空闲 ⇒ **没有任何 mutation 在飞行**（连 actor 外的 put_configs 也不可能，它需要 lease）⇒ 无守卫刷新读到的必然是稳定状态；
+- `gate` 非空闲 ⇒ 只有**持有该 operation 的调用方**能刷新（`Some(id)` 且匹配），其它读一律拿缓存。
+
+于是**不需要** generation、version、token 或任何过期判定，而读路径**既不阻塞也不获取** guard——`None` 分支在有操作在飞时立即返回缓存，不排队等待。
+
+> `CoreClient` 的两个入口：`refresh_status(&CoreOperationGuard)` 发 `Some(id)`；`status()` 发 `None`。**没有第三个入口**——不存在"绕过准入规则的诊断 API"。
+
+### 2.1.3 `status()` 与 UI 读路径
+
+- `CoreClient::status()` —— 普通 mailbox RPC（房规 5 s 读超时，A7f），走 `RefreshStatus { operation: None }`：**gate 空闲时返回新鲜观察**，有操作在飞时返回缓存。
+- `NyanpasuClient::core_status()`（UI 路径）—— 转调上者，再投影成既有元组 wire。
+
+**这就是 D5 权衡的落地机制**：Local 核心在最后一次操作之后耗尽重启预算时，**下一次 UI status 读取**（gate 此时空闲）会真正查询 backend、观察到耗尽、触发 latch 发布一次。不再需要"发布是观察驱动、可能滞后"的弱化措辞。
 
 > design.md §6 写的"CoreClient 通过 watch snapshot 读取状态，不为读取发送 mailbox RPC"是**端态**，由 **C1** 交付（task.md C1 卡原文："status read 不走 mailbox RPC"）。5a 用 RPC 是通往该端态的中间形态，不是偏离。
 
-### 2.1.4 观察载荷
+### 2.1.4 观察载荷与忠实生命周期
 
 ```rust
 /// 观察载荷：**忠实**生命周期 + 投影视图。
 /// 只在两条路径上出现：mutation 的返回值、`RefreshStatus` 的结果。
 pub(crate) struct BackendObservation {
     pub(crate) view: CoreStatusView,
-    /// Local 用 `nyanpasu_core_manager::CoreState`，Service 用 `CoreInfos.detail`。
-    /// 两值 `CoreStatusView.state` 看不见 `Starting`，D5 的 latch 必须吃这个（投影前判定）。
     pub(crate) lifecycle: FaithfulLifecycle,
 }
+
+/// 归一化的忠实生命周期。两个 backend 的原生类型都投影到它，
+/// **crate-private、不上 wire、不进 `CoreStatusView`**。
+/// 存在理由：`CoreStatusView.state` 是两值 `CoreState`，看不见 `Starting`/`Restarting`，
+/// 而 D5 的 latch 必须在投影**之前**区分它们（否则"启动→再次耗尽"无法复位）。
+pub(crate) enum FaithfulLifecycle {
+    Stopped { reason: Option<String> },
+    Starting,
+    Running,
+    Restarting,
+    Switching,
+    Stopping,
+}
 ```
+
+两侧映射（**必须逐条实现**）：
+
+| `FaithfulLifecycle`  | Local（`nyanpasu_core_manager::CoreState`，R10/state.rs:106-131）    | Service（`CoreInfos.detail`，R5d/status.rs:107-122） |
+| -------------------- | -------------------------------------------------------------------- | ---------------------------------------------------- |
+| `Stopped { reason }` | `Stopped { reason }`（`StopReason` 转字符串，D5 的耗尽前缀在此判定） | `Stopped { reason }`                                 |
+| `Starting`           | `Starting { .. }`                                                    | `Starting { .. }`                                    |
+| `Running`            | `Running { .. }`                                                     | `Running { .. }`                                     |
+| `Restarting`         | `Restarting { .. }`                                                  | `Restarting { .. }`                                  |
+| `Switching`          | `Switching { .. }`                                                   | `Switching { .. }`                                   |
+| `Stopping`           | `Stopping { .. }`                                                    | `Stopping { .. }`                                    |
+
+**Service 侧 `detail` 缺失时**（老 daemon 或字段未送达）：按两值 `CoreState` 保守映射——`Running → Running`，`Stopped(reason) → Stopped { reason }`。此时看不见过渡态，D5 的 latch 会退化为"只在 `Running` 复位"，**这是可接受的降级**（v1 daemon 本就进不了 Service backend，见 PR-5-pre 兼容门）。
 
 ### 2.1.5 转出到 C1 的内容（前向指针）
 
@@ -437,13 +494,11 @@ pub trait CoreDegradationSink: Send + Sync + 'static {
 - latch 为 `true` 时再观察到同一状态 → **不发布**；
 - **latch 复位条件（只有两条）**：观察到核心重新进入非耗尽的**活跃**状态，或 backend 身份变化（`SetBackend` 换槽）。**`recover` 成功本身不复位**——它只清 quarantine、不拉起核心，若复位则重放的同一耗尽快照会二次发布同一 episode。
 
-**观察时机（5a 的已知取舍，round-6 范围裁定的直接后果）。** 没有推送流，耗尽状态只能在**有人观察时**被发现，来源就是 §2.1 的两条：任一 mutation 的返回值，或一次 `RefreshStatus` / `status()` 查询。因此：
+**观察时机（裁定 A 之后已有确定机制）。** 没有推送流，耗尽状态在**有人观察时**被发现，来源是 §2.1 的两条：任一 mutation 的返回值，或一次 `RefreshStatus`。**UI 的 `core_status()` 走 `RefreshStatus { operation: None }`，gate 空闲时会真正查询 backend**（§2.1.2 规则 (d)），因此：
 
-- **发布是观察驱动的，不是即时的**——runtime 放弃重启后，degradation 会在**下一次观察**时发出，而不是当场；
-- 已核实的触发面：前端 `useCoreStatus`（`frontend/interface/src/hooks/use-core-status.ts`）**没有 `refetchInterval`**，只在挂载与 invalidate 时拉取；service 健康检查的 5 s 轮询查的是 **daemon** 状态（`control::status()`），**不是**核心状态，且仅在 service 模式启用时运行。**因此 Local 模式下 5a 没有周期性核心状态观察**；
-- **这是被接受的取舍**：design §5 要求的是"发布一次"（幂等性与不重复），5a 的 latch 完整满足；**即时性**随 C1 的 watch 投影一并到位——届时 backend 状态变化直接推进 actor，发布变成即时。
-
-> 若 leader 认为即时性在 5a 就必须成立，唯一的低成本做法是在 actor 里加一个周期性 `RefreshStatus` 自消息（`tokio::time::interval`）。**本计划不采用**：它会把刚被裁掉的后台机制以另一种形式请回来，且 C1 马上就要用推送替换它。**需要即时性请在 review 时明确要求。**
+- Local 核心在最后一次操作之后耗尽重启预算 → **下一次 UI status 读取**即观察到并发布一次（T-RV-09 钉住）；
+- 无需周期性自消息，也无需依赖 service 健康轮询（那查的是 daemon 状态，不是核心状态）；
+- latch 保证同一 episode 只发一次，复位条件见上。
 
 **（c）latch 必须在投影之前判定（round-3 #5）。** `CoreStatusView.state` 是**有损两值** `CoreState`，看不见 `Starting`（事实 R5d）。若在投影后判定，一次"启动→再次崩溃耗尽"的失败重试会因为从没观察到 `Running` 而无法复位 latch，第二次耗尽就不会发布。因此：
 
@@ -522,39 +577,45 @@ pub struct CoreStatusView {
 }
 ```
 
-**`CoreRequest` 的构造需要一个显式的工厂（round-6 #7）。** 注入 `RuntimePaths` **不够**——它只有 `product` 与 `candidate_dir` 两个字段（`APP/client/runtime.rs:193-221`），而 `CoreRequest` 还需要 `binary_path` / `working_dir` / `pid_path`；而现成的 `find_binary_path()` 内部直接调 `dirs::app_data_dir()` 与 `dirs::app_install_dir()`（`APP/core/clash/core.rs:711-728`），正是本计划禁止的东西。因此定义一个具体工厂：
+**`CoreRequest` 的构造需要一个显式的工厂（round-6 #7 / round-7 #4）。** 注入 `RuntimePaths` **不够**——它只有 `product` 与 `candidate_dir`（`APP/client/runtime.rs:193-221`），而 `CoreRequest` 还需要 `binary_path` / `working_dir` / `pid_path`。**注入 `PathResolver` 也不够**：它的 `app_install_dir()` 直接委托 `dirs::app_install_dir()`（`APP/utils/path.rs:82-84`），测试无法重定向。因此二进制查找必须是**独立可注入的策略**：
 
 ```rust
-/// 把"当前意图"物化成 `CoreRequest`。所有路径都来自注入的 `PathResolver`，
-/// **不调用任何 `dirs::*()`**——这样测试可以用 TempDir 构造它（roadmap §1.6）。
+/// 核心二进制的查找策略。生产实现复刻既有"data dir → install dir"顺序；
+/// 测试（含 S12 parity）注入固定路径，指向 `require_probe_bin_path()` 的探针核。
+/// 这一层单独存在的唯一理由：`PathResolver::app_install_dir()` 走 `dirs::*`，不可注入。
+pub(crate) trait CoreBinaryResolver: Send + Sync + 'static {
+    fn resolve(&self, core_type: &CoreType) -> anyhow::Result<Utf8PathBuf>;
+}
+
+/// 把"当前意图"物化成 `CoreRequest`。**所有路径都来自注入依赖，无 `dirs::*()`**。
+/// `Clone` 是必需的：`CoreModeReconciler` derive 了 `Clone` 且以它为字段（round-7 #6）。
+#[derive(Clone)]
 pub(crate) struct CoreRequestFactory {
-    paths: crate::utils::path::PathResolver,   // data / install / config dir 的唯一来源
+    data_dir: Utf8PathBuf,                     // 从 PathResolver 取值后固化，非按需调用
+    pid_path: Utf8PathBuf,
     runtime_paths: RuntimePaths,               // product 路径
+    binary: Arc<dyn CoreBinaryResolver>,       // 可注入的二进制查找
 }
 
 impl CoreRequestFactory {
-    /// `core` 来自 typed 快照（字段名是 **`core`**，不是 `clash_core`——
-    /// 后者只是 serde alias，见 `nyanpasu-config/src/application/mod.rs:97-99`）。
+    /// `core` 来自 typed 快照，字段名是 **`core`**（`clash_core` 只是 serde alias，
+    /// `nyanpasu-config/src/application/mod.rs:97-99`）。
     pub(crate) fn for_product(&self, core: ClashCore) -> anyhow::Result<CoreRequest> {
-        // ClashCore -> nyanpasu_utils::core::CoreType 需要显式转换（既有 From impl）
-        let core_type: nyanpasu_utils::core::CoreType = (&core).into();
-        let binary_path = self.resolve_binary(&core_type)?;   // resolver 版，非 find_binary_path
+        let core_type: nyanpasu_utils::core::CoreType = (&core).into();  // 显式转换
         Ok(CoreRequest {
+            binary_path: self.binary.resolve(&core_type)?,
             core_type,
-            binary_path,
             config_path: self.runtime_paths.product().to_owned(),
-            working_dir: utf8(self.paths.app_data_dir())?,
-            pid_path: Some(utf8(self.paths.clash_pid_path())?),
+            working_dir: self.data_dir.clone(),
+            pid_path: Some(self.pid_path.clone()),
         })
     }
-
-    /// `find_binary_path` 的 resolver 版：同样的"data dir → install dir"查找顺序，
-    /// 但两个目录都来自注入的 `PathResolver`。测试里指向 TempDir 或探针核路径。
-    fn resolve_binary(&self, core_type: &CoreType) -> anyhow::Result<Utf8PathBuf>;
 }
 ```
 
-parity 测试里 `resolve_binary` 的返回值由 `require_probe_bin_path()`（S12.1）提供，因此**不经过** `find_binary_path`。
+**归属：** 工厂存进 `NyanpasuClientInner`（`core_mode_reconciler()`、`restart_core()`、facade 的 service 方法、以及 S9.1 的 Updater 都要用它）。`ClientSetupArgs` 增加 `binary_resolver: Arc<dyn CoreBinaryResolver>`，生产在 `setup.rs` 传 OS 实现，测试传固定路径实现。
+
+**Updater 的路径（round-7 #4）：** Updater **不自己调** `CoreRequestFactory::for_product`——facade 的 `update_core` 把**已构造好的 `CoreRequest`** 连同 `CoreClient` 一起交给它（`UpdaterBuilder::set_core(core).set_request(request)`）。这样 Updater 不需要知道 typed 快照或路径工厂的存在，注入面最小。
 
 **验证：** `cargo check -p nyanpasu --all-features`（或 `pnpm lint:clippy`）。
 
@@ -576,20 +637,23 @@ impl CoreBackend {
     /// **唯一的 request-bearing 运行迁移原语**（DV-F）。语义 = legacy `run_core_from`：
     /// 核心未跑就按 `request` 启动；已在跑就迁移到 `request` 指定的 spec。
     /// 刻意**不**暴露 `start` / `restart` 两个平级方法——它们各自只在半边状态空间有效
-    /// （`start` 在跑时报 `AlreadyRunning`，`restart` 在全新 backend 上报 `NotStarted`，见 R5c），
-    /// 把选择权交给调用方就是把 bug 交给调用方。
-    /// 返回**刷新后**的状态投影，而不是 `()`：`switch` / `start_core` 都不带 revision，
-    /// 由 backend 在同一次调用内同步补一次 `status()`，让 actor 能原子地提交（RQ-02）。
-    pub async fn run(&self, request: &CoreRequest) -> Result<CoreStatusView, CoreBackendError>;
+    /// （R5c），把选择权交给调用方就是把 bug 交给调用方。
+    pub async fn run(&self, request: &CoreRequest) -> Result<BackendObservation, CoreBackendError>;
+    pub async fn stop(&self) -> Result<BackendObservation, CoreBackendError>;
+    /// 清除 runtime 的 quarantine 闩锁。**不是**"重启核心"——
+    /// Local 走 `recover_quarantine()`、Service 走 `recover_core()`（R6/R22/DV-A）。
+    pub async fn recover(&self) -> Result<BackendObservation, CoreBackendError>;
 
+    /// **async**：Service 需要一次 IPC roundtrip（Local 读 `CoreManager::status()` 是同步的，
+    /// 但签名统一为 async 才能装进同一个封闭 enum）。返回**忠实**观察，不是投影后的视图。
+    pub async fn observe_status(&self) -> Result<BackendObservation, CoreBackendError>;
+
+    /// D4=A：实现但**生产不接线**（B3 才改道）。因此它**不是** §2.1 的观察来源——
+    /// 5a 里只有测试调用它，actor 不会用它的返回值提交状态。
     pub async fn apply(&self, request: &CoreRequest, expected: Option<RevisionIdInfo>)
         -> Result<CoreApplyData, CoreBackendError>;
-    pub async fn stop(&self) -> Result<(), CoreBackendError>;
-    /// 清除 runtime 的 quarantine 闩锁。**不是**"重启核心"——
-    /// Local 走 `recover_quarantine()`、Service 走 `recover_core()`（事实 R6/R22/DV-A）。
-    pub async fn recover(&self) -> Result<(), CoreBackendError>;
-    pub fn status(&self) -> CoreStatusView;
-    /// 优雅停核 + 归档 sink。调用后此值必须被立即 drop（D2 换槽协议第 3 步）——5a 没有订阅任务需要 join。
+
+    /// 优雅停核 + 归档 sink。调用后此值必须被立即 drop（D2 换槽协议）——5a 没有订阅任务需要 join。
     pub async fn shutdown(self) -> Result<(), CoreBackendError>;
 }
 ```
@@ -630,7 +694,7 @@ fn service_needs_stop(infos: &CoreInfos) -> bool {
 `ServiceBackend`：
 
 - 持 `nyanpasu_ipc::client::Client`（实例，`Client::new(SERVICE_PLACEHOLDER)`，**禁止 `service_default()`**——A1 卡要求，事实 R18/R19）；
-- 状态来自 `/status` + `/ws/events`（R21/R24）。
+- 状态经 `observe_status()` 走 `/status`（R21）；`/ws/events` 订阅归 C1。
 
 **5a 不起订阅任务（§2.1 范围裁定）。** 因此 backend 内**没有** `SubscriptionHandle`、没有可取消重连循环、没有需要 join 的后台任务。两个 backend 都只需提供 `status()`（按需查询）与各 mutation 的返回观察，并产出 §2.1 的 `BackendObservation`（含忠实 `lifecycle`）。runtime 侧已有的 `subscribe()` / `subscribe_logs()` 保持可达但**不消费**——C1 接线时无需改 backend 形状。
 
@@ -712,7 +776,8 @@ actor state（对照 DV-E：**不含** runtime lifecycle 与 log ring）：
 ```rust
 struct CoreActorState {
     /// 显式建模，让 `NoBackend { last_error }` 可从状态复现（round-6 #11）。
-    backend: BackendSlot,
+    /// `None` = 换槽瞬态；`Failed` = 构造失败并保留诊断（leader 裁定 B）。
+    backend: Option<BackendSlot>,
     mode: RunType,
     operation: OperationGate,
     status: CoreStatusView,
@@ -722,10 +787,15 @@ struct CoreActorState {
     degradation: Arc<dyn CoreDegradationSink>,
 }
 
-/// backend 槽位。换槽失败时保留失败诊断，供后续 mutation 复现 `NoBackend`。
+/// backend 槽位（leader 裁定 B）。外层 `Option` 表示**换槽瞬态空位**——
+/// 把 `Ready(CoreBackend)` move 出来关停时，状态里必然有一段没有 backend 的区间，
+/// 用 `None` 如实表达，而不是伪造一个 `Failed`。
+/// `Failed` 里用 `Arc<CoreBackendError>`：上游 `nyanpasu_core_manager::Error` 与
+/// `nyanpasu_ipc::ClientError` 都**不是 `Clone`**（含 `io::Error` / `reqwest::Error` 等），
+/// 用 `Arc` 才能在每次 `NoBackend` 回包时廉价复制诊断。
 enum BackendSlot {
     Ready(CoreBackend),
-    Failed { error: CoreBackendError },
+    Failed { error: Arc<CoreBackendError> },
 }
 ```
 
@@ -800,7 +870,7 @@ impl CoreLifecycleAdapter {
 }
 ```
 
-`CoreRequest::for_product` 内部仍沿用 A13f 的既有取值方式（`find_binary_path` + 注入的 data dir + pid path），**只有 core type 的来源从 `Config::verge()` 换成 typed 快照**。
+`CoreRequestFactory::for_product` 的取值全部来自注入依赖（data dir / pid path 固化自 `PathResolver`，二进制经 `CoreBinaryResolver`），**不调用 `find_binary_path` 也不调 `dirs::*()`**；core type 来自 typed 快照的 `core` 字段。
 
 > 备选（**不推荐**）：保留一个 legacy bridge 专门供 seam 取 core type 并显式 allowlist。它会让 `config_calls` 指标不降反留，且把一个本可立即消除的全局依赖延寿到 B2/B3，收益为负。
 
@@ -876,10 +946,10 @@ struct NyanpasuClientInner {
 | --- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `APP/feat.rs:56 restart_clash_core()`                                  | 无参 `pub fn`，`spawn` 后调 `CoreManager::global().run_core()`；调用方是托盘/菜单动作 | 改签名为 `restart_clash_core(client: NyanpasuClient)`，由托盘调用点传入已 `manage` 的 clone（`NyanpasuClient` 是 `Arc` newtype，clone 零开销） |
 | 2   | `APP/core/service/ipc.rs:74 on_ipc_state_changed(state)`               | 健康检查线程内调用                                                                    | 由 `spawn_health_check` 往下传（见 3–6）                                                                                                       |
-| 3   | `APP/core/service/mod.rs:32` `init_service()` → `spawn_health_check()` | 启动路径                                                                              | `init_service(core: CoreClient)`；上游 `APP/utils/init/mod.rs::init_service` 同步加参数                                                        |
-| 4   | `APP/core/service/control.rs:97`（`install_service()` 内）             | 安装成功后拉起健康检查                                                                | `install_service(core: CoreClient)`；IPC 入口 `APP/ipc.rs:937` 加 `client: tauri::State<'_, NyanpasuClient>`                                   |
-| 5   | `APP/core/service/control.rs:225`（`start_service()` 内）              | 同上                                                                                  | `start_service(core: CoreClient)`；IPC 入口 `APP/ipc.rs:951` 同样加 state 参数                                                                 |
-| 6   | `APP/core/service/control.rs:320`（`restart_service()` 内）            | 同上                                                                                  | `restart_service(core: CoreClient)`；IPC 入口 `APP/ipc.rs:985` 同样加 state 参数                                                               |
+| 3   | `APP/core/service/mod.rs:32` `init_service()` → `spawn_health_check()` | 启动路径                                                                              | `init_service(reconciler: CoreModeReconciler)`；上游 `APP/utils/init/mod.rs::init_service` 同步加参数                                          |
+| 4   | `APP/core/service/control.rs:97`（`install_service()` 内）             | 安装成功后拉起健康检查                                                                | `OsServiceControlOps::install(reconciler)` 内部持有并下传；IPC 入口 `APP/ipc.rs:937` 改调 facade                                               |
+| 5   | `APP/core/service/control.rs:225`（`start_service()` 内）              | 同上                                                                                  | `OsServiceControlOps::start(reconciler)`；IPC 入口 `APP/ipc.rs:951` 改调 facade                                                                |
+| 6   | `APP/core/service/control.rs:320`（`restart_service()` 内）            | 同上                                                                                  | `OsServiceControlOps::restart(reconciler)`；IPC 入口 `APP/ipc.rs:985` 改调 facade                                                              |
 
 **穿的不是裸 `CoreClient`，而是 `CoreModeReconciler`（round-6 #8）。** `on_ipc_state_changed` 要做的是完整事务——读 typed 快照、构造 `CoreRequest`、在 guard 下 `SetBackend` + `Run`——只给 `CoreClient` 三样依赖缺两样。因此定义：
 
@@ -899,7 +969,7 @@ impl CoreModeReconciler {
 }
 ```
 
-`spawn_health_check(reconciler: CoreModeReconciler)`，四个调用者各自把手里的 reconciler 传进去。`NyanpasuClient` 上加一个私有构造方法产出它（依赖都在 `inner` 里），facade 的 service 方法与 `install_service` 复用同一个实例。
+`spawn_health_check(reconciler: CoreModeReconciler)`，四个调用者各自把手里的 reconciler 传进去。`NyanpasuClient` 上加一个私有 `core_mode_reconciler()` 产出它（三个依赖都在 `inner` 里：`CoreClient` + `ApplicationClient` + `CoreRequestFactory`），facade 的四个 service 方法与 `install_service` 复用同一个实例。
 
 **四个** service IPC 命令（install / start / stop / restart）改为转调 facade 领域方法（见下 (4)），另有 `get_core_status` / `restart_sidecar` / `update_core` 三个也改走 facade（S9 表）。新增的 `tauri::State` 参数**不进 TS 签名**（managed state 在 specta 导出时被跳过）；验证判据是 **bindings 除已声明的 `core_lifecycle` 联合成员外无其它 diff**（S13）。
 
@@ -921,7 +991,7 @@ impl NyanpasuClient {
     /// `start_service` / `stop_service` / `restart_service` 同形，只有 `control::*` 那一步不同。
     pub async fn start_service(&self) -> Result<()> {
         // 1) 控制操作。结果**存起来不 `?`**。
-        let control = crate::core::service::control::start_service(self.core_mode_reconciler()).await;
+        let control = self.inner.service_control.start(self.core_mode_reconciler()).await;
 
         // 2) 整个对账块捕获成一个 Result —— 内部一律不 `?` 逃逸出去。
         let reconcile: anyhow::Result<()> = async {
@@ -948,7 +1018,30 @@ impl NyanpasuClient {
 >
 > **因此 `control?` 必须留在最后**，对账块的任何错误都只记录不上抛。实施时**不得**"顺手改成先判 `control?` 再对账"——那会静默改变行为：控制失败时用户从"有本地核心"变成"什么都没有"。T-FA-01…05 逐点钉住。
 
-> **T-FA 测试需要一个可注入的控制 seam（round-6 #9）**：不能靠真的执行 OS service 命令来制造 `control::start_service` 失败。因此 `control::{install,start,stop,restart}_service` 抽一个窄 trait（例如 `ServiceControlOps`，四个方法），生产用现有的 `runas` / `sudo` 实现，测试注入 mock。**这是 5a 唯一新增的 port**，理由是没有它 T-FA-01 无法编写；design §9 说的"不引入完整 `ServiceControlPort`"针对的是把 service 管理迁进 CoreActor，这里只是给既有函数加一层可测边界，不迁移所有权。
+**可注入的控制 seam `ServiceControlOps`（round-6 #9 / round-7 #5）。** 不能靠真的执行 OS service 命令来制造控制失败，因此把四个控制函数抽成窄 trait 并**接入对象图**：
+
+```rust
+/// service 控制操作的可测边界。生产实现就是现有的 runas / sudo 调用。
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait ServiceControlOps: Send + Sync + 'static {
+    async fn install(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
+    async fn start(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
+    async fn stop(&self) -> anyhow::Result<()>;
+    async fn restart(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
+}
+```
+
+注入链（**四处都要改**）：
+
+1. `ClientSetupArgs` 增加 `service_control: Arc<dyn ServiceControlOps>`（**5 个字面构造点全部要动**，A22f）；
+2. `NyanpasuClientInner` 增加同名字段；
+3. `setup.rs` 构造生产适配器 `Arc::new(OsServiceControlOps)`——它内部就是现有的 `control::{install,start,stop,restart}_service`；
+4. facade 方法**调注入的 ops**（`self.inner.service_control.start(...)`），**不再**直接 `control::start_service(...)`。
+
+这才是 T-FA-01/05 能注入失败的前提——测试传 `MockServiceControlOps`，不碰任何 OS 命令。
+
+> **这是 5a 唯一新增的 port。** design §9 说的"不引入完整 `ServiceControlPort`"针对的是把 service 管理**迁进 CoreActor**；这里只给既有函数加一层可测边界，所有权仍在 `core::service::control`，不迁移。
 
 > `uninstall_service`（`ipc.rs:944`）**不加** facade 方法——它只置 `KILL_FLAG`，不需要 `CoreClient`。
 
@@ -990,9 +1083,9 @@ impl NyanpasuClient {
 
 ```text
 ipc::update_core(core_type)                       ← Tauri 命令，注入起点
-  → UpdaterManager::update_core(&core_type, core) ← 加一个参数，**不存入 manager 自身**
-    → UpdaterBuilder::set_core(core).build()      ← builder 加一个 Option 字段
-      → Updater { core, .. }                      ← 真实类型名是 `Updater`
+  → UpdaterManager::update_core(&core_type, core, request)  ← 两个参数，**都不存入 manager 自身**
+    → UpdaterBuilder::set_core(core).set_request(request).build()  ← builder 加两个 Option 字段
+      → Updater { core, request, .. }                ← 真实类型名是 `Updater`
 ```
 
 **逐点签名（四处，全部要改）：**
@@ -1014,15 +1107,17 @@ pub async fn update_core(
 //     依赖穿线全部发生在**这一个方法体内**，命令层看不到 CoreClient。
 impl NyanpasuClient {
     pub async fn update_core(&self, core_type: ClashCore) -> Result<usize> {
-        let core = self.inner.core_client.clone();   // 私有字段，不外泄
+        let core = self.inner.core_client.clone();          // 私有字段，不外泄
+        let app = self.inner.application.get().await?.state;
+        let request = self.inner.requests.for_product(app.core)?;   // 路径工厂在 facade 侧
         Ok(crate::core::updater::UpdaterManager::global()
             .write().await
-            .update_core(&core_type, core).await?)
+            .update_core(&core_type, core, request).await?)
     }
 }
 
 // 2) APP/core/updater/mod.rs:222
-pub async fn update_core(&mut self, core_type: &ClashCore, core: CoreClient) -> Result<usize>
+pub async fn update_core(&mut self, core_type: &ClashCore, core: CoreClient, request: CoreRequest) -> Result<usize>
 
 // 3) APP/core/updater/instance.rs — builder 新增字段与 setter
 pub(super) struct UpdaterBuilder {
@@ -1032,9 +1127,11 @@ pub(super) struct UpdaterBuilder {
     artifact: Option<String>,
     tag: Option<CoreTypeMeta>,
     core: Option<CoreClient>,        // 新增
+    request: Option<CoreRequest>,    // 新增（round-7 #4）
 }
 impl UpdaterBuilder {
     pub fn set_core(mut self, core: CoreClient) -> Self { self.core = Some(core); self }
+    pub fn set_request(mut self, request: CoreRequest) -> Self { self.request = Some(request); self }
     // build() 里 `core` 缺失时按既有风格 bail
 }
 
@@ -1042,6 +1139,8 @@ impl UpdaterBuilder {
 pub(super) struct Updater {
     // ...既有字段不动...
     core: CoreClient,
+    /// 由 facade 的 `update_core` 构造好后传入（round-7 #4）——Updater 不持有路径工厂。
+    request: CoreRequest,
 }
 
 async fn replace_core(&self) -> anyhow::Result<()> {
@@ -1061,8 +1160,8 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 
     if let Some(paths) = runtime_paths.as_ref() {
         self.dispatch_state(UpdaterState::Restarting);
-        let request = CoreRequest::for_product(paths.product(), current_core)?;
-        self.core.run(&operation, &request).await?;   // 取代 lifecycle.run_core_from()
+        // request 由 facade 的 `update_core` 构造好后交进来（round-7 #4），Updater 不碰路径工厂
+        self.core.run(&operation, &self.request).await?;   // 取代 lifecycle.run_core_from()
     }
     Ok(())
 }
@@ -1164,16 +1263,17 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 
 #### RQ-02 revision 测试
 
-| ID       | 断言                                                                                                                                                                                                                       |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-RV-01  | **两个观察来源都能更新 `last_revision`**（§2.1.1）：操作返回值、`RefreshStatus` 结果                                                                                                                                       |
-| T-RV-02  | **Service 每次操作/刷新重新学习 revision**：无持久连接，`run()` 与 `RefreshStatus` 各自从 `/status` 取回当前 revision（取代 v6 的重连对账用例）                                                                            |
-| T-RV-03a | `ConfigRevision → ConfigRevisionInfo`：`epoch` / `generation` / `source_hash` / `effective_hash` 保真，**`runtime_path` 被丢弃**                                                                                           |
-| T-RV-03b | `RevisionId → RevisionIdInfo`：三字段（`epoch` / `generation` / `effective_hash`）直拷。**这是两个不同的转换**——`RevisionId` 本来就没有 `runtime_path`，原 T-RV-03 把两者混为一谈，语句不成立                              |
-| T-RV-05  | **start 后同步回填**：Service `run()` 成功（`start_core` 返回 `()`，不带 revision）后 `last_revision` 已非空；Local `switch()` 同理                                                                                        |
-| T-RV-06  | **guard 下刷新拿到新鲜值**（§2.1.2）：持 `CoreOperationGuard` 调 `RefreshStatus` → 返回的观察反映 backend 当前真实状态；期间任何 mutation 都拿不到 guard（用 barrier 让第二个 operation 排队，断言它在刷新完成前未被放行） |
-| T-RV-07  | **操作返回值在回复前已提交**：`run()` 的 RPC 一返回，`CoreClient::status()` 立即可见新 revision，**无需**任何后续刷新或推送                                                                                                |
-| T-RV-08  | **`RefreshStatus` 失败不污染缓存**：backend 查询返回 `Err` → actor 保留上一次成功的 `CoreStatusView`，把错误回给调用方                                                                                                     |
+| ID       | 断言                                                                                                                                                                                                                                                                                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-RV-01  | **两个观察来源都能更新 `last_revision`**（§2.1.1）：操作返回值、`RefreshStatus` 结果                                                                                                                                                                                                                                                                                   |
+| T-RV-02  | **Service 每次操作/刷新重新学习 revision**：无持久连接，`run()` 与 `RefreshStatus` 各自从 `/status` 取回当前 revision（取代 v6 的重连对账用例）                                                                                                                                                                                                                        |
+| T-RV-03a | `ConfigRevision → ConfigRevisionInfo`：`epoch` / `generation` / `source_hash` / `effective_hash` 保真，**`runtime_path` 被丢弃**                                                                                                                                                                                                                                       |
+| T-RV-03b | `RevisionId → RevisionIdInfo`：三字段（`epoch` / `generation` / `effective_hash`）直拷。**这是两个不同的转换**——`RevisionId` 本来就没有 `runtime_path`，原 T-RV-03 把两者混为一谈，语句不成立                                                                                                                                                                          |
+| T-RV-05  | **start 后同步回填**：Service `run()` 成功（`start_core` 返回 `()`，不带 revision）后 `last_revision` 已非空；Local `switch()` 同理                                                                                                                                                                                                                                    |
+| T-RV-06  | **`RefreshStatus` 的两条准入规则**（裁定 A，§2.1.2），四个子用例：(a) 持 guard 且 `Some(active_id)` → **查 backend** 并提交；(b) `Some(wrong_id)` → `Err(StaleOperation)` 且 **backend 零调用**；(c) `None` 且 gate **有** active operation → 立即回**缓存**，backend 零调用、**不阻塞**（不等 operation 结束）；(d) `None` 且 gate **空闲** → 查 backend 返回新鲜观察 |
+| T-RV-07  | **操作返回值在回复前已提交**：`run()` 的 RPC 一返回，`CoreClient::status()` 立即可见新 revision，**无需**任何后续刷新或推送                                                                                                                                                                                                                                            |
+| T-RV-08  | **`RefreshStatus` 失败不污染缓存**：backend 查询返回 `Err` → actor 保留上一次成功的 `CoreStatusView`，把错误回给调用方                                                                                                                                                                                                                                                 |
+| T-RV-09  | **UI 读路径观察到耗尽并发布一次**（D5 权衡的落地证明）：最后一次操作结束后注入"重启预算耗尽"→ 调 `NyanpasuClient::core_status()`（gate 空闲 → 走 (d) 分支查 backend）→ `MockCoreDegradationSink::publish` 次数 **== 1**；再调一次 `core_status()` → 仍 **== 1**（latch 生效）                                                                                          |
 
 #### seam 回归
 
@@ -1234,7 +1334,7 @@ path = "src/bin/manager_probe_core.rs"
 
 `ServiceBackend` 走命名管道 / Unix socket（端点形态见事实 R19）。parity 测试**不能**打真实 daemon（端点是全局固定路径，PR-5-pre 已确认），因此：
 
-- 测试内起一个**进程内最小 IPC 服务端**，绑到**测试专用 placeholder**（如 `nyanpasu_ipc_test_{pid}_{n}`，避开生产的 `nyanpasu_ipc`），实现 parity 所需端点：`/status`、`/core/start`、`/core/stop`、`/core/recover`，以及 `/ws/events`（供 T-RV-02 重连断言）；
+- 测试内起一个**进程内最小 IPC 服务端**，绑到**测试专用 placeholder**（如 `nyanpasu_ipc_test_{pid}_{n}`，避开生产的 `nyanpasu_ipc`），实现 parity 所需端点：`/status`、`/core/start`、`/core/stop`、`/core/recover`；
 - `ServiceBackend` 用 `Client::new(<测试 placeholder>)` 构造——这正是 A1 卡"禁止 `service_default()`、必须实例化 client"带来的**可测性收益**；
 - Windows 命名管道与 Unix socket 绑定方式不同，harness 用 `#[cfg]` 分支。
 
@@ -1295,16 +1395,16 @@ task.md A-Exit 三条：
 
 roadmap §6.1 附加项：
 
-| §6.1 判据                                                    | 对应                                                                                                                                                   |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 封闭 enum，不定义 `CoreEngine` trait/factory                 | S3；`rg 'CoreEngine\|EngineFactory' backend/tauri/src` 为 0                                                                                            |
-| `LocalIpcPolicy::Disable` 显式写出                           | S3 + T-BK-02                                                                                                                                           |
-| 禁用 `service_default()`                                     | S3；ServiceBackend 用 `Client::new`                                                                                                                    |
-| client 预分配 `OperationId` + pending guard                  | S6 + T-OP-03/07                                                                                                                                        |
-| 不实现 TTL / auto-steal / watchdog                           | S5；`rg 'ttl\|auto_steal\|watchdog' backend/tauri/src/core/actor` 为 0                                                                                 |
-| actor 无第二层恢复，只**发布一次** `core_recovery_exhausted` | S3(D5) + S10（删两条裸线程路径） + T-BK-05/06/07                                                                                                       |
-| A3 兼容 seam 保留，旧 trait 名不扩散                         | S7；新代码里 `CoreLifecycle*` 只出现在适配 impl 中                                                                                                     |
-| RQ-02 / RQ-04 已作答                                         | 本计划 §2 + **§2.1（观察协议规范）**；测试由 **T-RV-01…14** 覆盖（含 I1=T-RV-11、I2=T-RV-06/12、I3=T-RV-10/13、R7=T-RV-14），RQ-04 由 **T-OP-07** 覆盖 |
+| §6.1 判据                                                    | 对应                                                                                                                                                                |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 封闭 enum，不定义 `CoreEngine` trait/factory                 | S3；`rg 'CoreEngine\|EngineFactory' backend/tauri/src` 为 0                                                                                                         |
+| `LocalIpcPolicy::Disable` 显式写出                           | S3 + T-BK-02                                                                                                                                                        |
+| 禁用 `service_default()`                                     | S3；ServiceBackend 用 `Client::new`                                                                                                                                 |
+| client 预分配 `OperationId` + pending guard                  | S6 + T-OP-03/07                                                                                                                                                     |
+| 不实现 TTL / auto-steal / watchdog                           | S5；`rg 'ttl\|auto_steal\|watchdog' backend/tauri/src/core/actor` 为 0                                                                                              |
+| actor 无第二层恢复，只**发布一次** `core_recovery_exhausted` | S3(D5) + S10（删两条裸线程路径） + T-BK-05/06/07                                                                                                                    |
+| A3 兼容 seam 保留，旧 trait 名不扩散                         | S7；新代码里 `CoreLifecycle*` 只出现在适配 impl 中                                                                                                                  |
+| RQ-02 / RQ-04 已作答                                         | 本计划 §2 + **§2.1（观察模型）**；测试由 **T-RV-01 / 02 / 03a / 03b / 05 / 06 / 07 / 08** 覆盖（06 证明 `RefreshStatus` 的两条准入规则），RQ-04 由 **T-OP-07** 覆盖 |
 
 ---
 

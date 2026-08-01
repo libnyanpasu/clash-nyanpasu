@@ -5,13 +5,13 @@
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md` §3–§6、同目录 `task.md` 卡 A1/A2/A3
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.1；必答项 §6.4 RQ-02 / RQ-04
 **平台：** Windows 11 / PowerShell
-**版本：** v4（2026-08-02）——v1/v2/v3 均经 codex 对抗审查 **REJECT**，三轮发现逐条修订；本版为第四轮（逐项定点修改，未做整文件重写）
+**版本：** v5（2026-08-02）——v1–v4 均经 codex 对抗审查 **REJECT**，四轮发现逐条修订；v4/v5 采用逐项定点 Edit，未做整文件重写
 
 ---
 
-## 0.1 审查处置表（三轮）
+## 0.1 审查处置表（四轮）
 
-三轮发现**全部经本人复核源码确认成立**（无一条被驳回），逐条修订如下。另有两条审查未发现、由本人自查发现的错误（#10、#23）。
+四轮发现**全部经本人复核源码确认成立**（无一条被驳回），逐条修订如下。另有三条审查未发现、由本人自查发现的错误（#10、#23、#29）。
 
 > **v3 的教训**：第三轮修订时会话中断，重写只传播到部分小节，下游多处停留在 v2，导致三审看到自相矛盾的文档。**第四轮起改为逐项定点 Edit，不做整文件重写**，每完成一项即汇报。
 
@@ -55,6 +55,21 @@
 | 26  | Low    | `runtime_path` 措辞说 app 读不到（Local 其实读得到）                                | 改为"为保持与 IPC 同构的单一表示、不泄漏 runtime 内部路径而丢弃"；不可访问性只对 Service 侧成立                                                                                                                                                       | RQ-02                    |
 | 27  | Medium | `core_client()` 是内部 client 访问器，不是领域 facade                               | **leader 裁定**：改为 `NyanpasuClient::update_core(core_type)` 领域方法，不暴露访问器                                                                                                                                                                 | S9.1                     |
 | 28  | Low    | 文档版本与处置表未推进                                                              | 本节（三轮全覆盖）+ 头部 v4                                                                                                                                                                                                                           | 头部、§0.1               |
+
+**第四轮（v4 → v5）发现的处置：**
+
+| #   | 级别   | 问题                                                                                | 处置                                                                                                                          | 落点                  |
+| --- | ------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| 29  | —      | **（自查）** Exit 判据仍写 `T-BK-01…09`，把新增的 latch/DTO/判定测试排除在验收外    | 改为 `T-BK-01…13`                                                                                                             | §5 Exit 表            |
+| 30  | High   | 消息集缺 `ConnectionOpened` / `RefreshCompleted`；S5 注释仍写"必须带 token"自相矛盾 | 补两条消息 + 三步激活顺序；注释改为"只带连接身份、actor 自增 version"；慢刷新独立 `tokio::spawn` 回投，不阻塞 mailbox         | S5；RQ-02；T-RV-09/10 |
+| 31  | High   | `Run` 前排队的当前连接帧会覆盖 post-run 提交，T-RV-07 失效                          | **把 `Run` 当作一次连接轮换**：调 backend 前先换 `ConnectionId`，早于该点排队的帧全部作废。T-RV-07 重定向到该交错             | RQ-02；T-RV-07        |
+| 32  | High   | S8 仍写 `core_client.as_lifecycle_port()`，少 `ApplicationClient` / `RuntimePaths`  | 构造行改 `CoreLifecycleAdapter::new(core, application, runtime_paths)`；S7 开头改为"由适配器实现"而非"给 CoreClient 实现"     | S7；S8                |
+| 33  | High   | 三个 service IPC 命令拿不到私有 `CoreClient`（且正确地禁止访问器）                  | **leader 裁定**：facade 加 `install_service` / `start_service` / `restart_service` 三个领域方法；命令退化为薄适配器           | S8(4)                 |
+| 34  | Medium | fake-core 备选路径**是错的**——RELEASE 即退出，release 后 HTTP 服务已消失            | **leader 裁定**：整段删除，`manager-probe-core` 为唯一 parity 路径；保留一段"为何无效"的说明防止重蹈                          | S12.1                 |
+| 35  | Medium | `message` 截断规则与 T-BK-13 互相矛盾                                               | **leader 裁定**：整条最终 message 上限 512 字节，只截 reason 段，按 UTF-8 字符边界并补 `…`                                    | D5 DTO 表             |
+| 36  | Low    | 两处仍要求 bindings **完全**零 diff，与 S13 的"恰好新增 `core_lifecycle`"矛盾       | 两处改为"除已声明的 `core_lifecycle` 联合成员外无其它 diff"                                                                   | S8；S9.1              |
+| 37  | Low    | Exit / RQ 摘要未点名 T-RV-08 与 T-SM-01/02                                          | RQ-02 摘要改 `T-RV-01…08`；Exit 表逐项点名并新增一行 seam 回归判据                                                            | RQ-02；§5 Exit 表     |
+| 38  | Low    | 回滚/提交切分仍以 "改 fake-core 加 `/version`" 为主语，未覆盖新 bin 路径所需文件    | 回滚清单补 `manager_probe_core.rs` / `Cargo.toml` `[[bin]]` / `control.rs` / `runtime.rs` / `event_sink.rs` 等；commit 1 改名 | §6 回滚；§7 切分      |
 
 > 对 #9 的一点澄清：审查说"`ConfigRevision` 比 `RevisionId` 多了 `source_hash` 和 `runtime_path`"——这是拿 `ConfigRevision` 与 `RevisionId` 比。原文 RQ-02 里"多一个 `runtime_path`"是拿 `ConfigRevision` 与 **`ConfigRevisionInfo`** 比，那句本身成立。**但结论一致**：原 T-RV-03 把两个不同的转换混成一句，断言不成立，必须拆开。已按建议拆分。
 
@@ -253,16 +268,29 @@ struct RefreshToken {
 2. **请求/响应刷新（主动 `/status` 查询）** —— 发起前捕获 `RefreshToken`；回来时若 `captured.connection != current.connection` **或** `captured.version < current.version` 则**整包丢弃**。这正是"慢 `/status` 被更新的推送抢先"这一竞态的拦截点。
 3. **`run()` 的 post-run 刷新** —— 不走上面任何一条，见下一段（同一消息处理内提交，天然无竞态）。
 
-消息定义相应为：
+**连接激活顺序（round-4 #1）。** `ConnectionId` 由 **actor** 分配，订阅任务不得自行编号：
 
-```rust
-/// 来自订阅任务的内部投递。只带连接身份——**不带 version**（见规则 1）。
-BackendStatus { connection: ConnectionId, view: CoreStatusView },
-```
+1. 任务建立（或重建）连接成功 → 发 `ConnectionOpened { reply }`；
+2. actor 分配新 ID、**立即写入 `state.connection`**（此刻起旧连接的帧全部失效）、回传该 ID；
+3. 任务拿到 ID 后才开始投递 `BackendStatus { connection: <该 ID>, .. }`。
 
-这条栅栏同时覆盖"换 backend 后旧 backend 的在途回包污染新状态"（规则 1 与 2 的 `connection` 比对）。
+注意第 2 步**先于**任务收到回复就已生效——这正是我们要的：换连接的瞬间旧帧即被拒，不存在"新连接已建但旧帧仍被接受"的窗口。任务在收到 ID 之前不发任何帧，因此也不会出现"帧带着未分配的 ID"。
 
-**post-run 状态必须原子提交。** `run()` 返回 `CoreStatusView`（见 S3），actor 在**同一个消息处理内**用它提交状态并 `version += 1`，然后才回复调用方。这样"run 成功但 `last_revision` 还是 `None`/旧值"的窗口在协议层就不存在——不依赖任何后续推送到达。
+**异步刷新用独立消息回投（round-4 #1）。** 主动 `/status` 刷新**不能**在消息处理里同步 await——那会阻塞 mailbox，而 T-RV-04 要求的正是"刷新在途期间 actor 仍能处理推送帧"。因此：发起时捕获 `RefreshToken` 并 `tokio::spawn` 一个任务去查；完成后投 `RefreshCompleted { token, view }`；actor 在处理该消息时按规则 2 判定是否采纳。
+
+**`Run` 期间必须栅栏掉排队的旧帧（round-4 #2）。** 这是 post-run 原子提交的一个漏洞：`Run` 的 handler 在 await backend 期间，**早于 `Run` 就已排队**的 `BackendStatus` 帧仍带着**当前**连接 ID，处理顺序上却排在 `Run` 提交之后——于是一个描述"run 之前状态"的帧会覆盖掉 run 刚提交的新状态，T-RV-07 的断言随即失效。
+
+修法：**把 `Run` 当作一次连接轮换**。`Run` 的 handler 在调用 backend **之前**先 `state.connection = <新 ID>`：
+
+- 所有早于该点排队的帧都带旧 ID，处理到时按规则 1 被丢弃；
+- backend 的订阅任务在 `run` 完成后经 `ConnectionOpened` 重新登记，拿到又一个新 ID 继续投递；
+- `run()` 返回的 `CoreStatusView` 在同一 handler 内提交，`observation_version += 1`，然后才回复调用方。
+
+> Local backend 不换 ws 连接也照样轮换 `ConnectionId`——它在这里的语义是"观察世代"，不是"物理连接"。命名沿用 `ConnectionId` 是因为 Service 侧它恰好一一对应；实现上它只是一个 actor 私有的单调计数器。
+
+这条栅栏与规则 1/2 一起，同时覆盖了"换 backend 后旧 backend 的在途回包污染新状态"。
+
+**post-run 状态必须原子提交。** `run()` 返回 `CoreStatusView`（见 S3），actor 在**同一个消息处理内**用它提交状态并 `observation_version += 1`，然后才回复调用方。这样"run 成功但 `last_revision` 还是 `None`/旧值"的窗口在协议层就不存在——不依赖任何后续推送到达。
 
 依据：`start_core` 的响应体是 `()`（`CoreStartRes<'a> = R<'a, ()>`），`switch` 返回 `SwitchOutcome`，两者都不带 revision，所以刷新必须由 backend 在 `run()` 内部完成并回传。
 
@@ -273,7 +301,7 @@ BackendStatus { connection: ConnectionId, view: CoreStatusView },
 
 **5a / 5b 分工（重要）：**
 
-- **5a 只做"观察与存储"**：建立表示法、订阅刷新、可取消重连循环、`ConnectionId` / `RefreshToken` 两级栅栏、post-run 原子提交、暴露给 `CoreClient` 的读接口，并用测试钉住（T-RV-01…07）。
+- **5a 只做"观察与存储"**：建立表示法、订阅刷新、可取消重连循环、`ConnectionId` / `RefreshToken` 两级栅栏、post-run 原子提交与 run 前后的连接栅栏，并由 **T-RV-01…08** 逐条钉住。
 - **5b 才做"CAS 应用"**：因为 5a 不改 apply 管线（决策点 D3），`expected_revision` 在 5a 没有生产调用点。上面的冲突规则属于 B1 的实现契约，5a 只负责让 `last_revision` 在那时是可信的。
 
 > **前向引用（不在本阶段作答）：** RQ-01 完整 post-commit 失败矩阵、RQ-03 apply parity 含 `Noop`——均由 **PR-5b 计划**回答。事实 R11/R23 已为其备好素材。
@@ -353,12 +381,12 @@ pub trait CoreDegradationSink: Send + Sync + 'static {
 
 **完整 DTO 取值**（复用既有 `Degradation`，`APP/client/runtime.rs:448-470`，四个字段全部定死）：
 
-| 字段        | 值                                                                                                                                                                                             | 理由                                                                                                                                                                                                                                                                                                                 |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `phase`     | **`DegradationPhase::CoreLifecycle`（本阶段新增的变体）**                                                                                                                                      | **leader 裁定（2026-08-02）**：现有 10 个变体没有核心生命周期项，用 `RuntimeApply` 承载"监督重启预算耗尽"是**语义谎言**，且会直接显示成 UI 上的相位标签。零 diff 闸门的目的是拦**非预期**的 wire 变化，而一个**声明在案、精确、纯新增**的期望同样达成该目的。C1 无论如何都要这个变体，推迟只会先发一段时间的错标事件 |
-| `code`      | `"core_recovery_exhausted"`                                                                                                                                                                    | design §5 指定的稳定 snake_case 码                                                                                                                                                                                                                                                                                   |
-| `message`   | `format!("core restart budget exhausted; the core is not running ({reason})")`，`reason` 取自 `StopReason::Error` 的原文（**截断到 512 字节**，与上游 `CoreHealthInfo.last_error` 的上限一致） | 面向支持排查，保留 runtime 原始诊断                                                                                                                                                                                                                                                                                  |
-| `retryable` | `true`                                                                                                                                                                                         | 用户可显式 `restart` / `recover` 重试                                                                                                                                                                                                                                                                                |
+| 字段        | 值                                                                                                                                                                                                                                                                             | 理由                                                                                                                                                                                                                                                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `phase`     | **`DegradationPhase::CoreLifecycle`（本阶段新增的变体）**                                                                                                                                                                                                                      | **leader 裁定（2026-08-02）**：现有 10 个变体没有核心生命周期项，用 `RuntimeApply` 承载"监督重启预算耗尽"是**语义谎言**，且会直接显示成 UI 上的相位标签。零 diff 闸门的目的是拦**非预期**的 wire 变化，而一个**声明在案、精确、纯新增**的期望同样达成该目的。C1 无论如何都要这个变体，推迟只会先发一段时间的错标事件 |
+| `code`      | `"core_recovery_exhausted"`                                                                                                                                                                                                                                                    | design §5 指定的稳定 snake_case 码                                                                                                                                                                                                                                                                                   |
+| `message`   | `format!("core restart budget exhausted; the core is not running ({reason})")`，`reason` 取自 `StopReason::Error` 原文。**整条最终 `message`（前缀 + reason + 后缀）上限 512 字节**——超限时**只截断 reason 段**，且必须按 UTF-8 字符边界截断（不得切出半个码点），截断处补 `…` | 面向支持排查，保留 runtime 原始诊断；512 与上游 `CoreHealthInfo.last_error` 的上限一致                                                                                                                                                                                                                               |
+| `retryable` | `true`                                                                                                                                                                                                                                                                         | 用户可显式 `restart` / `recover` 重试                                                                                                                                                                                                                                                                                |
 
 **生产实现（`TauriCoreDegradationSink`）：** 放在 `APP/client/event_sink.rs` 旁，与 `TauriUiEventSink` 同层（都是 Tauri 边界适配器）。它持有 `Arc<dyn UiEventSink>`，`publish` 时做两件事：
 
@@ -607,8 +635,22 @@ pub enum CoreActorMessage {
     Status(RpcReplyPort<CoreStatusView>),
     Shutdown(RpcReplyPort<()>),
 
-    /// 来自订阅任务的内部投递。**必须带 token**，否则同一条连接内的乱序帧无法拒绝（RQ-02）。
+    /// **连接握手**：订阅任务在每次（首次或重连）建立连接后**先发这条**，
+    /// 由 **actor** 分配新的 `ConnectionId` 并经 `reply` 回传。任务在本次连接
+    /// 生命周期内用该 ID 给每一帧盖章。分配权在 actor 而不在任务，
+    /// 是为了让"谁是当前连接"只有一个真相源。
+    ConnectionOpened { reply: RpcReplyPort<ConnectionId> },
+
+    /// 来自订阅任务的内部投递。只带连接身份，**不带 version**——
+    /// actor 对当前连接的帧一律接受并自增自己的 version（RQ-02 规则 1）。
+    /// 带捕获 version 会让第二帧起被自己的栅栏误杀（v3 的教训）。
     BackendStatus { connection: ConnectionId, view: CoreStatusView },
+
+    /// **异步 `/status` 刷新完成**（RQ-02 规则 2）。刷新在独立任务里跑，
+    /// 完成后把发起时捕获的 `token` 连同结果投回来，由 actor 判定是否过期。
+    /// 独立成一条消息是为了让慢刷新**不阻塞** mailbox——否则 T-RV-04 要求的
+    /// "刷新在途时 actor 仍能处理推送帧"这一交错根本无法发生。
+    RefreshCompleted { token: RefreshToken, view: Result<CoreStatusView, CoreBackendError> },
 }
 ```
 
@@ -671,7 +713,7 @@ pub struct CoreOperationGuard { id: OperationId, client: CoreClient, acquired: b
 
 ### S7 — A3 兼容 seam 适配
 
-在 `APP/client/core.rs` 里为 `CoreClient` 实现 `CoreLifecyclePort`，为一个包住 `CoreOperationGuard` 的适配器实现 `CoreLifecycleLease`。
+在 `APP/client/core.rs` 里定义 **`CoreLifecycleAdapter`** 并由它实现 `CoreLifecyclePort`（**不是**直接给 `CoreClient` 实现——适配器还需要 `ApplicationClient` 与 `RuntimePaths` 两个依赖，见下），再为一个包住 `CoreOperationGuard` 的 lease 适配器实现 `CoreLifecycleLease`。
 
 约束（来自 A1f/A4f，**编译期硬约束，不可妥协**）：
 
@@ -761,7 +803,15 @@ struct NyanpasuClientInner {
 
 `ClientSetupArgs.core` 由 `Arc<dyn CoreLifecyclePort>` 改为 **`Option<Arc<dyn CoreLifecyclePort>>`**：
 
-- 生产（`setup.rs`）传 `None` → block 内 `core = core_client.as_lifecycle_port()`；
+- 生产（`setup.rs`）传 `None` → block 内构造完整适配器并作为生产 port：
+  ```rust
+  let core = args_core.unwrap_or_else(|| Arc::new(CoreLifecycleAdapter::new(
+      core_client.clone(),
+      application.clone(),                 // typed 快照来源（S7）
+      runtime_paths_for_setup.clone(),     // product 路径
+  )) as Arc<dyn CoreLifecyclePort>);
+  ```
+  三个参数**缺一不可**：少 `application` 就回到"无参 `restart()` 拿不到 core type"的死结，少 `runtime_paths` 就得去 `dirs::*` 解析（违反测试禁真实目录）；
 - 测试传 `Some(mock)` → 沿用既有 `test_client_args_with_lifecycle`（A8f），**测试图零改动**。
 
 这**完全复刻**同文件既有的 `clash_patch: Option<...>` 分阶段注入模式（`client/mod.rs:265-268`），是本仓已确立的房规而非新发明。`setup.rs` 相应删掉 `core: Arc::new(LegacyCoreBridge::new(runtime_paths))` 一行，并新增 degradation sink 的注入。
@@ -777,7 +827,40 @@ struct NyanpasuClientInner {
 | 5   | `APP/core/service/control.rs:225`（`start_service()` 内）              | 同上                                                                                  | `start_service(core: CoreClient)`；IPC 入口 `APP/ipc.rs:951` 同样加 state 参数                                                                 |
 | 6   | `APP/core/service/control.rs:320`（`restart_service()` 内）            | 同上                                                                                  | `restart_service(core: CoreClient)`；IPC 入口 `APP/ipc.rs:985` 同样加 state 参数                                                               |
 
-因此 `spawn_health_check` 自身签名变为 `spawn_health_check(core: CoreClient)`，四个调用者各自把手里的 `CoreClient` 传进去。三个 IPC 命令（`installService` / `startService` / `restartService`）新增的 `tauri::State` 参数**不进 TS 签名**（managed state 在 specta 导出时被跳过），但**必须**用 `git diff frontend/interface/src/ipc/bindings.ts` 为空来证明，不要假设。
+因此 `spawn_health_check` 自身签名变为 `spawn_health_check(core: CoreClient)`，四个调用者各自把手里的 `CoreClient` 传进去。三个 IPC 命令（`installService` / `startService` / `restartService`）改为转调 facade 领域方法（见 S8(4)），新增的 `tauri::State` 参数**不进 TS 签名**（managed state 在 specta 导出时被跳过）；验证判据是 **bindings 除已声明的 `core_lifecycle` 联合成员外无其它 diff**（S13），不要写成"零 diff"。
+
+**（4）三个 service IPC 命令必须走 facade 领域方法（round-4 #4）。** 它们拿到的是 `State<NyanpasuClient>`，而 `NyanpasuClient.inner` 是**私有**字段（`client/mod.rs:93-96`）——命令层既够不到 `CoreClient`，计划又（正确地）禁止加 `core_client()` 访问器。因此按 `update_core` 的同一先例（S9.1），facade 上加三个领域方法：
+
+```rust
+// APP/client/mod.rs —— 与 `update_core` 同层的领域方法。
+// CoreClient 的 clone 只发生在方法体内，命令层看不到它（CLAUDE.md §7）。
+impl NyanpasuClient {
+    pub async fn install_service(&self) -> Result<()> {
+        crate::core::service::control::install_service(self.inner.core_client.clone()).await
+    }
+    pub async fn start_service(&self) -> Result<()> {
+        crate::core::service::control::start_service(self.inner.core_client.clone()).await
+    }
+    pub async fn restart_service(&self) -> Result<()> {
+        crate::core::service::control::restart_service(self.inner.core_client.clone()).await
+    }
+}
+```
+
+对应的三个 Tauri 命令退化成薄适配器：
+
+```rust
+// APP/ipc.rs:937 / :951 / :985
+#[tauri::command] #[specta::specta]
+pub async fn install_service(client: tauri::State<'_, NyanpasuClient>) -> Result {
+    Ok(client.install_service().await?)
+}
+// start_service / restart_service 同形
+```
+
+> `uninstall_service`（`ipc.rs:944`）**不加** facade 方法——它只置 `KILL_FLAG`，不需要 `CoreClient`。
+
+> `start_service` / `restart_service` 现有实现体内还有"成功后按 `enable_service_mode` 拉起核心"的逻辑（`ipc.rs:951-1000`）。那段逻辑**随命令一起**下移进 facade 方法，其中的 `CoreManager::global().run_core()` 换成 guard + `Run { request }`（与 S9 表一致）——**不要**留在命令层，否则命令层又需要 `CoreClient`。
 
 > `uninstall_service`（`ipc.rs:944`）**不需要**改——它只置 `KILL_FLAG`，不调 `spawn_health_check`。
 > 这两处都**不是**"再加一个全局"——是把已有的实例显式传下去。若某个调用点确实拿不到 client（例如极早期启动路径），**停下来上报**，不要退回全局查找。
@@ -899,7 +982,7 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 
 原来那条 `TODO(actor-migration): temporary bridge to the legacy global core manager`（instance.rs:202-204）**删除**。
 
-> **`update_core` 的 Tauri 命令签名变化会动 bindings**：新增的 `client: tauri::State<'_, NyanpasuClient>` 参数**不进入** TS 签名（Tauri 的 managed state 参数在 specta 导出时被跳过，与既有 `patch_verge_config` 等命令同理）。因此 `updateCore` 的 TS 形状不变——但**实施时必须核对** `git diff frontend/interface/src/ipc/bindings.ts` 为空来证明这一点，不要假设。
+> **`update_core` 的 Tauri 命令签名变化不应影响 TS**：新增的 `client: tauri::State<'_, NyanpasuClient>` 参数**不进入** TS 签名（Tauri 的 managed state 参数在 specta 导出时被跳过，与既有 `patch_verge_config` 等命令同理）。因此 `updateCore` 的 TS 形状不变——但**实施时必须核对**：bindings 的 diff **除已声明的 `core_lifecycle` 联合成员外应为空**（S13），不要假设。
 
 #### S9.2 — macOS DNS residual allowlist（leader 裁定）
 
@@ -977,17 +1060,19 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 
 #### RQ-02 revision 测试
 
-| ID       | 断言                                                                                                                                                                                                                                                                                         |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-RV-01  | 三个刷新来源（status 查询 / 推送 / 操作返回）都能更新 `last_revision`；**同 generation 内**最后写入者赢                                                                                                                                                                                      |
-| T-RV-02  | Service 断线后 actor 自管的重连循环会重连；重连成功后收到的第一个 `CoreStatusChanged` 快照直接覆盖旧 revision（不发额外对账 RPC）                                                                                                                                                            |
-| T-RV-03a | `ConfigRevision → ConfigRevisionInfo`：`epoch` / `generation` / `source_hash` / `effective_hash` 保真，**`runtime_path` 被丢弃**                                                                                                                                                             |
-| T-RV-03b | `RevisionId → RevisionIdInfo`：三字段（`epoch` / `generation` / `effective_hash`）直拷。**这是两个不同的转换**——`RevisionId` 本来就没有 `runtime_path`，原 T-RV-03 把两者混为一谈，语句不成立                                                                                                |
-| T-RV-04  | **同连接内的乱序栅栏**（规则 2）：`ConnectionId` 保持不变，先发起一次慢 `/status`（捕获 `version = N`）→ 期间接受一个更新的推送帧（actor 自增到 N+1）→ 慢 `/status` 回来时因 `captured.version < current.version` 被**整包丢弃**，`last_revision` 不回退（barrier 控制到达顺序，不用 sleep） |
-| T-RV-06  | **跨连接栅栏**（规则 1）：`SetBackend` 换槽（或 ws 重连）后 `ConnectionId` 换新，旧订阅任务的在途帧因 `frame.connection != state.connection` 被丢弃                                                                                                                                          |
-| T-RV-08  | **连续推送帧不被自己的栅栏误杀**（v3 协议的致命缺陷回归钉）：同一 `ConnectionId` 上连发 3 帧 → **三帧全部被接受**，`observation_version` 递增 3 次。若实现退回"推送帧也带捕获 version"，第 2、3 帧会被丢弃，本用例即刻失败                                                                   |
-| T-RV-07  | **post-run 原子提交**：`run()` 返回的 `CoreStatusView` 在**回复调用方之前**已提交——`run` 的 RPC 一返回，`CoreClient::status()` 立即可见新 revision，无需等待任何推送                                                                                                                         |
-| T-RV-05  | **start 后同步回填**：Service `run()` 成功（`start_core` 返回 `()`，不带 revision）后 `last_revision` 已非空；Local `switch()` 同理                                                                                                                                                          |
+| ID       | 断言                                                                                                                                                                                                                                                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-RV-01  | 三个刷新来源（status 查询 / 推送 / 操作返回）都能更新 `last_revision`；**同 generation 内**最后写入者赢                                                                                                                                                                                                                      |
+| T-RV-02  | Service 断线后 actor 自管的重连循环会重连；重连成功后收到的第一个 `CoreStatusChanged` 快照直接覆盖旧 revision（不发额外对账 RPC）                                                                                                                                                                                            |
+| T-RV-03a | `ConfigRevision → ConfigRevisionInfo`：`epoch` / `generation` / `source_hash` / `effective_hash` 保真，**`runtime_path` 被丢弃**                                                                                                                                                                                             |
+| T-RV-03b | `RevisionId → RevisionIdInfo`：三字段（`epoch` / `generation` / `effective_hash`）直拷。**这是两个不同的转换**——`RevisionId` 本来就没有 `runtime_path`，原 T-RV-03 把两者混为一谈，语句不成立                                                                                                                                |
+| T-RV-04  | **同连接内的乱序栅栏**（规则 2）：`ConnectionId` 保持不变，先发起一次慢 `/status`（捕获 `version = N`）→ 期间接受一个更新的推送帧（actor 自增到 N+1）→ 慢 `/status` 回来时因 `captured.version < current.version` 被**整包丢弃**，`last_revision` 不回退（barrier 控制到达顺序，不用 sleep）                                 |
+| T-RV-06  | **跨连接栅栏**（规则 1）：`SetBackend` 换槽（或 ws 重连）后 `ConnectionId` 换新，旧订阅任务的在途帧因 `frame.connection != state.connection` 被丢弃                                                                                                                                                                          |
+| T-RV-08  | **连续推送帧不被自己的栅栏误杀**（v3 协议的致命缺陷回归钉）：同一 `ConnectionId` 上连发 3 帧 → **三帧全部被接受**，`observation_version` 递增 3 次。若实现退回"推送帧也带捕获 version"，第 2、3 帧会被丢弃，本用例即刻失败                                                                                                   |
+| T-RV-09  | **连接激活顺序**：订阅任务在收到 `ConnectionOpened` 的回复**之前**不投任何帧；actor 在分配新 ID 的**同一处理内**即写入 `state.connection`，因此换连接瞬间旧帧即失效（构造"新连接已建、旧帧仍在途"的交错来断言旧帧被拒）                                                                                                      |
+| T-RV-10  | **慢刷新不阻塞 mailbox**：`/status` 刷新在途期间投递一个推送帧 → 该帧**被正常处理并接受**（`observation_version` 递增）→ 随后 `RefreshCompleted` 到达时因 `captured.version < current.version` 被丢弃。若刷新是同步 await 实现，推送帧无法在其间被处理，本用例即失败                                                         |
+| T-RV-07  | **run 前排队帧不得覆盖 post-run 状态**（round-4 #2 的精确交错）：先让一个 `BackendStatus` 帧**排在 `Run` 之前入队**但让 `Run` 的 backend 调用先被处理（barrier 控制）→ `Run` 提交新状态并回复 → 那个旧帧此时才被处理 → 因 `Run` 已轮换 `ConnectionId`，旧帧**被丢弃**，`CoreClient::status()` 读到的仍是 run 后的新 revision |
+| T-RV-05  | **start 后同步回填**：Service `run()` 成功（`start_core` 返回 `()`，不带 revision）后 `last_revision` 已非空；Local `switch()` 同理                                                                                                                                                                                          |
 
 #### seam 回归
 
@@ -1030,16 +1115,9 @@ path = "src/bin/manager_probe_core.rs"
 
 **为什么端口能对齐：** `LocalIpcPolicy::Disable` 下 manager **不重写** source config 的 `external-controller`（R3 / `spec.rs:65-77`）。所以测试写入 config 的端口 = 探针核监听的端口 = manager 探针访问的端口，三者天然一致。测试用 `tests/common` 风格的 `free_port()` 先取一个空闲端口再写进 config。
 
-**备选路径（若 leader 坚持复用 fake-core，必须完整实现以下生命周期）：**
+> **为什么不提供"复用 fake-core"的备选路径（leader 裁定，round-4 #6）：那条路径是错的。** fake-core 的 barrier 语义不是"放行后继续跑"，而是"收到 RELEASE 即收摊退出"——`signal_ready_and_wait_release` 返回后它立刻 `stop.store(true)`、join HTTP 线程并 `return ExitCode`（`backend/fake-core/src/main.rs:233-249`；release 实现 `lib.rs:490-493`）。所以"accept → release → 让 manager 去探针"根本不成立：release 的那一刻 HTTP 服务就没了。要让它活到断言结束就必须**全程不 release**，那又与"barrier 是同步点"的设计相悖，还得把 ready 连接的所有权一路带到 teardown。**一条好路径胜过两条半路径**——`manager-probe-core` 是唯一 parity 路径。
 
-1. `let barrier = ReadyBarrier::bind_local()?`（`backend/fake-core/src/lib.rs:433`）；
-2. **在 `manager.start(spec)` 之前**设置父进程全局环境：`FAKE_CORE_READY_ADDR = barrier.addr_string()`、`FAKE_CORE_HTTP_PORT = <config 里的 external-controller 端口>`；
-3. 另起一个线程/任务并发执行 `barrier.accept_ready(timeout)` —— **必须与 `manager.start()` 并发**，因为子进程要先拿到 RELEASE 才会继续；
-4. 拿到 `ReadyConnection { stream, .. }` 后**持有 stream 不丢**，随即 `ReadyBarrier::release(stream)`（`lib.rs:490`）放行；提前 drop stream 会让子进程读到 EOF；
-5. 测试结束**恢复**这两个环境变量到原值（保存-设置-恢复三段式）；
-6. **全部使用该路径的测试必须串行**（一把进程级 `static Mutex`，不能靠 `--test-threads=1` 这种外部约定）——环境变量是进程全局的，`APP/client/process_core_bridge.rs:41-54` 的 `FAKE_CORE_BEHAVIOR_ENV_KEYS` 擦除机制正是为同类问题而设，可参考。
-
-**无论走哪条路径**，S13 都要加对应的预构建命令（dev-dependency 不会构建 bin，事实 A15f）。
+**S13 必须加对应的预构建命令**（dev-dependency 不会构建 bin，事实 A15f）。
 
 #### S12.2 — Service parity 需要真实 IPC roundtrip harness
 
@@ -1102,19 +1180,20 @@ task.md A-Exit 三条：
 | operation 测试：FIFO / 等待取消 / 刚获批取消 / stale release / wrong-id mutation / shutdown drain | S5、S6、S12 | T-OP-01…06 全绿                                                                                                                                                                    |
 | Local/Service 基本生命周期 parity 测试                                                            | S3、S12     | T-BK-01…13 全绿，其中 **T-BK-01 必须是真实 Local/Service 双端**（S12.1 探针核 + S12.2 IPC harness），不接受 TestBackend 顶替                                                       |
 | legacy core 生命周期不再被新调用点使用                                                            | S9、S10     | `rg 'begin_lifecycle\|lifecycle_lock\|_with_lease' backend/tauri/src` 为 0；`CoreManager::global()` 的**生产代码**命中仅剩 `feat.rs:392`（macOS DNS，带 allowlist 标记，owner=5c） |
+| 既有 lease 调用点与并发契约不回归                                                                 | S7、S12     | **T-SM-01**（6 个测试替身适配后既有 lease 测试全绿）、**T-SM-02**（三层嵌套顺序不变式回归钉）                                                                                      |
 
 roadmap §6.1 附加项：
 
-| §6.1 判据                                                    | 对应                                                                   |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| 封闭 enum，不定义 `CoreEngine` trait/factory                 | S3；`rg 'CoreEngine\|EngineFactory' backend/tauri/src` 为 0            |
-| `LocalIpcPolicy::Disable` 显式写出                           | S3 + T-BK-02                                                           |
-| 禁用 `service_default()`                                     | S3；ServiceBackend 用 `Client::new`                                    |
-| client 预分配 `OperationId` + pending guard                  | S6 + T-OP-03/07                                                        |
-| 不实现 TTL / auto-steal / watchdog                           | S5；`rg 'ttl\|auto_steal\|watchdog' backend/tauri/src/core/actor` 为 0 |
-| actor 无第二层恢复，只**发布一次** `core_recovery_exhausted` | S3(D5) + S10（删两条裸线程路径） + T-BK-05/06/07                       |
-| A3 兼容 seam 保留，旧 trait 名不扩散                         | S7；新代码里 `CoreLifecycle*` 只出现在适配 impl 中                     |
-| RQ-02 / RQ-04 已作答                                         | 本计划 §2                                                              |
+| §6.1 判据                                                    | 对应                                                                                                                                                                           |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 封闭 enum，不定义 `CoreEngine` trait/factory                 | S3；`rg 'CoreEngine\|EngineFactory' backend/tauri/src` 为 0                                                                                                                    |
+| `LocalIpcPolicy::Disable` 显式写出                           | S3 + T-BK-02                                                                                                                                                                   |
+| 禁用 `service_default()`                                     | S3；ServiceBackend 用 `Client::new`                                                                                                                                            |
+| client 预分配 `OperationId` + pending guard                  | S6 + T-OP-03/07                                                                                                                                                                |
+| 不实现 TTL / auto-steal / watchdog                           | S5；`rg 'ttl\|auto_steal\|watchdog' backend/tauri/src/core/actor` 为 0                                                                                                         |
+| actor 无第二层恢复，只**发布一次** `core_recovery_exhausted` | S3(D5) + S10（删两条裸线程路径） + T-BK-05/06/07                                                                                                                               |
+| A3 兼容 seam 保留，旧 trait 名不扩散                         | S7；新代码里 `CoreLifecycle*` 只出现在适配 impl 中                                                                                                                             |
+| RQ-02 / RQ-04 已作答                                         | 本计划 §2；测试由 **T-RV-01…08** 覆盖（表示法 / 三来源刷新 / 重连快照 / 同连接乱序 / 跨连接 / post-run 原子提交 / run 前排队帧栅栏 / 连续帧不误杀），RQ-04 由 **T-OP-07** 覆盖 |
 
 ---
 
@@ -1135,13 +1214,13 @@ roadmap §6.1 附加项：
 | S12.1 探针核改造污染既有 S09 进程矩阵测试                  | 低   | 既有测试红                            | 路径 A 是纯 additive 的路由新增（既有测试只断言 `/configs` 与退出码）；开工先实测，若污染则改走路径 B                                                        |
 | Updater 迁移触及下载/替换事务                              | 中   | 更新流程回归                          | S9.1 只替换 3 个生命周期调用点，下载/校验/复制逻辑**逐字不动**；guard 覆盖范围与原 `begin_lifecycle` 完全一致                                                |
 
-**回滚：** 改动集中在新增目录 `APP/core/actor/`、新增 `APP/client/core.rs`、以及 `setup.rs` / `ipc.rs` / `feat.rs` / `utils/{help,resolve,init}.rs` / `core/clash/core.rs` / `core/service/{ipc,mod}.rs` / `core/updater/instance.rs` / `client/{mod,core_bridge}.rs` / `backend/fake-core/src/main.rs` 的定点修改。S1–S6 可独立成一个 commit（新增代码，零调用点改动，可编译可测），S7–S11 为第二个 commit（接线与删除）。第一个 commit 单独回滚不影响生产路径。
+**回滚：** 改动集中在——新增 `APP/core/actor/`（目录）、`APP/client/core.rs`；新增 `backend/fake-core/src/bin/manager_probe_core.rs` 与 `backend/fake-core/Cargo.toml` 的 `[[bin]]` 条目（S12.1）；定点修改 `setup.rs` / `ipc.rs` / `feat.rs` / `utils/{help,resolve,init}.rs` / `core/clash/core.rs` / `core/service/{ipc,mod,control}.rs` / `core/updater/{mod,instance}.rs` / `client/{mod,core_bridge,runtime,event_sink}.rs`；以及 `backend/Cargo.toml` + `backend/tauri/Cargo.toml`（S1）。第一个 commit 单独回滚不影响生产路径。
 
 ---
 
 ## 7. 提交切分建议
 
-1. `test(fake-core): answer GET /version for manager readiness probes` —— S12.1 路径 A（若选路径 B 则是新增 bin）。**单独打头**：它是 T-BK-01 的前置，且对既有测试应为纯 additive，先独立验证不污染；
+1. `test(fake-core): add manager-compatible probe core binary` —— S12.1 的 `manager-probe-core`（新 `[[bin]]` + `Cargo.toml` 条目）。**单独打头**：它是 T-BK-01 的前置，且对既有 S09 进程矩阵测试是纯新增，先独立验证不污染既有测试；
 2. `feat(core): add CoreBackend enum and cancellation-safe OperationId protocol` —— S1–S6 + T-OP / T-BK / T-RV（纯新增，生产路径未变）；
 3. `refactor(core): own the core lifecycle in CoreActor` —— S7–S11 + T-SM 回归 + S13。其中 S9.1（Updater）与 S10（删 legacy lease）**必须在同一个 commit 内**——拆开任一半都无法编译。
 

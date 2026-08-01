@@ -1,8 +1,8 @@
 # Clash Nyanpasu Actor 迁移路线图 v3（稳定化优先）
 
 **日期：** 2026-07-13
-**状态修订：** 2026-07-18
-**状态：** Implementing（**PR-4S / S10 稳定化 COMPLETE**；S01～S10 已完成；手工 smoke `E-01`…`E-11` **PASS**——maintainer attestation 2026-07-18，权威 `smoke-evidence.md`，raw per-field artifacts 未保留；target-tip multi-OS CI PASS @ `10c837cd…` run 29635372676 / Q-09…Q-11；cleanup-tip multi-OS CI PASS @ `8909566c…` run 29638274786 / Q-18…Q-20；review thread-gate 已满足；**PR-5a UNLOCKED**。R-01…R-18 与 PR-5/6/7 仍未完成；**不得**宣告整条 actor migration 完成）
+**状态修订：** 2026-08-01（§6 修订为 engine-first：插入 PR-5-pre；权威 spec `docs/superpowers/specs/2026-08-01-pr5-core-actor/`）
+**状态：** Implementing（**PR-4S / S10 稳定化 COMPLETE**；S01～S10 已完成；手工 smoke `E-01`…`E-11` **PASS**——maintainer attestation 2026-07-18，权威 `smoke-evidence.md`，raw per-field artifacts 未保留；target-tip multi-OS CI PASS @ `10c837cd…` run 29635372676 / Q-09…Q-11；cleanup-tip multi-OS CI PASS @ `8909566c…` run 29638274786 / Q-18…Q-20；review thread-gate 已满足；**PR-5a UNLOCKED**；**PR-5 设计与任务卡就绪（2026-08-01，未实施）**。R-01…R-18 与 PR-5/6/7 仍未完成；**不得**宣告整条 actor migration 完成）
 
 **范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；已包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease` / 统一 lifecycle mutex / change_core lease span / updater stop-swap-restart；S05 Applied-based patch compensation 工作区已验证；S06 prepared mirrors / three-domain saga 工作区已验证；S07 profile materialization transactions / durable `Profiles.revision` / import fetch-before-commit / startup+periodic reconcile 工作区已验证；S08 `MutationOutcome` wire / Specta / frontend / import 终态协议 工作区已验证；S09 instance-owned `RebuildCoordinator` + test-only `fake-core` process matrix 工作区已验证）
 **取代：** `actor-migration-roadmap.md` v2  
@@ -124,7 +124,7 @@ unchecked candidate 必须位于应用私有 candidate 目录，使用不可预�
 | PR-3 profiles 域切换         |       ✅ | ⚠️ 条件通过 | S07 已补齐 profile 文件/状态事务 + import fetch-before-commit；S08 已将 crate-internal degradation 与 post-commit rebuild 合并为公共 `MutationOutcome`；已发生回归的 contract tests 继续固化                                                                                                                                                                                                                                                                                                                          |
 | PR-4 runtime 派生化          |       ✅ | ⚠️ 条件闭环 | S03/S04 已补齐 promoted/applied + 统一 lifecycle lease；S05 已补齐 D6 Applied compensation；S09 已去全局化 dispatcher 并补齐 process-level fake-core matrix；S10 smoke + tip/cleanup CI 已 PASS；PR-5/6 residual globals 仍待后续阶段                                                                                                                                                                                                                                                                                 |
 | **PR-4S 稳定化门**           |       ✅ |     ✅ 完成 | S01～S10 已完成。手工 smoke `E-01`…`E-11` **PASS**（maintainer attestation 2026-07-18；权威 `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/smoke-evidence.md`；raw per-field artifacts 未保留）；tip multi-OS CI PASS @ `10c837cd…` run 29635372676（Q-09…Q-11）；cleanup-tip multi-OS CI PASS @ `8909566c0bb759f562d420af4b9672469920fc21` run 29638274786（Q-18…Q-20）；review thread-gate 已满足；`REGEN_BRIDGE`/OnceCell first-install-wins 已删除。**PR-5a UNLOCKED**。R-01…R-18 未清零。 |
-| PR-5 CoreActor               |   未开始 |           — | **已解锁** — 可按 §6 三段式启动；稳定化门已关闭                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| PR-5 CoreActor               |   未开始 |           — | **已解锁**；设计/任务卡就绪（2026-08-01，engine-first：PR-5-pre→5a→5b→5c；权威 spec `docs/superpowers/specs/2026-08-01-pr5-core-actor/`）                                                                                                                                                                                                                                                                                                                                                                             |
 | PR-6 外围 actors/effects     |   未开始 |           — | 必须在 PR-5 生命周期稳定后实施                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | PR-7 清算                    |   未开始 |           — | 只允许删除，不再承载行为迁移                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
@@ -164,8 +164,9 @@ flowchart LR
   P3["PR-3 profiles/runtime pipeline ✅"] --> S
   P4["PR-4 runtime derivation ✅"] --> S
 
-  S["PR-4S 稳定化门 ✅\nTask R4S COMPLETE"] --> P5A["PR-5a CoreActor\n生命周期所有权\nUNLOCKED"]
-  P5A --> P5B["PR-5b Runtime lifecycle\nChangeCore / Applied revision"]
+  S["PR-4S 稳定化门 ✅\nTask R4S COMPLETE"] --> P5P["PR-5-pre 引擎依赖切换\nruntime v2 path deps\n+ ServiceCompat 门禁"]
+  P5P --> P5A["PR-5a CoreActor\n生命周期所有权\n(engine-first)"]
+  P5A --> P5B["PR-5b Runtime lifecycle\nApplied 所有权 / ChangeCore 结局"]
   P5B --> P5C["PR-5c Ports + service mode\nLogSink / Core global 清零"]
 
   P5C --> P6A["PR-6a SystemProxyActor"]
@@ -186,7 +187,7 @@ flowchart LR
 ### 并行性
 
 - PR-4S 是单一原子稳定化门，内部允许按 commit lane 并行开发，但只允许一个 PR 整体合并。
-- PR-5a/5b/5c 严格串行。
+- PR-5-pre/5a/5b/5c 严格串行，各自独立 PR，每个合并后 `main` 保持 shippable。
 - PR-6a～6d 可在 PR-5c 后并行；PR-6e 可在 PR-4S 后预先开发，但最终接线不得早于 PR-5c。
 - PR-7 只能做删除、调用点切换收尾和 denylist，不再引入新行为模型。
 
@@ -240,30 +241,42 @@ flowchart LR
 
 ---
 
-## 6. PR-5 — Core 生命周期迁移（三段式）
+## 6. PR-5 — Core 生命周期迁移（engine-first，四段式；2026-08-01 修订）
 
-### 6.1 PR-5a — CoreActor 生命周期所有权
+> **修订说明（2026-08-01）**：原"三段式所有权搬移"改为 **engine-first 四段式**。依据：`backend/nyanpasu-runtime` submodule（tag `v2.0.0-rc.1`）中 `nyanpasu-core-manager` 已完整实现，上游已发布含 8 目标 sidecar 的 v2.0.0-rc.1 release，`scripts/check.ts` 已与 submodule 钉版 lockstep。`CoreActor` 从第一天起以 `nyanpasu-core-manager`（本地/sidecar）+ `nyanpasu-ipc` v2（service）为引擎，不做"先包 legacy 再换引擎"的二次迁移。
+> **语义权威**：`docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md`（引擎 trait、lease↔mailbox 协议、staging 权威、Deviations、failure matrix）与同目录 `task.md`（P0–P3 / A1–A8 / B1–B5 / C1–C6 任务卡）。
+> **release-gate**：dev 渠道接受 rc.1；**stable 渠道发布前 submodule 须 bump 到上游正式 v2.0.0**。
 
-**范围：**
-
-- `CoreActor` 独占 `Instance::{Child,Service}`、状态、重启退避和生命周期串行；
-- typed `CoreClient` 暴露 `status/start/stop/restart/recover`；
-- `restart_sidecar`、startup 和 health recovery 全部走 facade/client；
-- 禁止 actor 外直接持有 child/process state；
-- `Recover` 使用 actor 内 delayed self-message，不使用裸线程递归。
-
-**退出：** 除 legacy adapter 内部外无 `CoreManager::run_core()` 直接调用。
-
-### 6.2 PR-5b — Runtime lifecycle 与换核事务
+### 6.0 PR-5-pre — 引擎依赖切换（零行为变更）
 
 **范围：**
 
-- CoreActor 消费 `RuntimeRevision`；
-- `CheckConfig/ApplyConfig/RestartWith/ChangeCore` 进入同一 mailbox；
-- 成功 apply/start 后发布 Applied revision；
-- `ChangeCoreOutcome` 结构化表达新核错误、rollback 状态和最终运行状态；
-- API-first patch 由 CoreActor 串行，并以 Applied snapshot 补偿；
-- runtime health 事件经 `UiEventSink` 发布。
+- workspace 依赖 `nyanpasu-utils`/`nyanpasu-ipc` 由 git 切至 submodule path 依赖；新增 `nyanpasu-core-manager`/`nyanpasu-core-metadata`/`clash-api` workspace 条目；`[workspace] exclude = ["nyanpasu-runtime"]`；删除 `[patch."…nyanpasu-service.git"]` 块；
+- `StatusInfo` specta 面扩宽的 bindings regen；
+- **`ServiceCompat` fail-closed 版本门禁**（v1.4.5 的 `/status` 是 v2 的结构子集会静默解码成功——门禁必须先于任何 `/core/*` 调用存在）。
+
+**退出：** `cargo metadata` exit 0；Cargo.lock 零 nyanpasu-\* git source、`nyanpasu-utils` 单份；全测试绿；bindings fresh；ledger snapshot 不变。
+
+### 6.1 PR-5a — CoreActor 生命周期所有权（engine-first）
+
+**范围：**
+
+- `CoreActor` 经窄 `CoreEngine` trait 独占核心生命周期：`LocalCoreEngine`（`nyanpasu-core-manager`，`LocalIpcPolicy::Disable` 强制）与 `ServiceCoreEngine`（ipc v2 `/core/*` + `/ws/events`，实例持有 client，禁 `service_default()`）；
+- typed `CoreClient` 实现既有 `CoreLifecyclePort`/`CoreLifecycleLease`（lease = actor state 内 FIFO token；`client/mod.rs`、`client/rebuild.rs` 在 5a 不动）；
+- `restart_sidecar`、`get_core_status`、startup 与 health recovery 全部走 facade/client；
+- 崩溃恢复：引擎层 Supervisor（有界指数退避）+ actor 层 delayed `Recover` self-message（封顶后发 degradation），删除裸线程递归；
+- 删除 legacy `core/clash/core.rs`（`CoreManager`/`Instance`/`run_core`/`apply_config_from`）。
+
+**退出：** 除 legacy adapter 内部外无 `CoreManager::run_core()` 直接调用；`LegacyCoreBridge` 删除。
+
+### 6.2 PR-5b — Applied 所有权、patch 串行与换核结局
+
+**范围：**
+
+- **Applied 所有权迁入 CoreActor**（store 只留 Promoted；`publish_applied` 删除）；四条 runtime 读 IPC 继续读 Promoted；
+- API-first patch 经 actor 串行（`PatchRunning` + Applied revision 栅栏）；`clash_patch_gate` 被 lease 吸收删除；`clash_patch` 显式 DI（删默认 legacy bridge，R-17）；
+- `change_core` 返回 `MutationOutcome<ChangeCoreReport>`，结构化表达新核错误、rollback 状态与最终运行状态（五分支映射见 spec §6.3）；**编排留在 client、独占性由 actor lease 交付——对本节原文"ChangeCore 进入同一 mailbox"的已批准偏差（spec DV2）**；
+- 核选择 typed-only（R-12）；runtime health 事件经 `UiEventSink` 发布。
 
 **退出：** desired/promoted/applied 不再依赖 legacy CoreManager 推断。
 
@@ -271,12 +284,13 @@ flowchart LR
 
 **范围：**
 
-- restart/change-core 固定时序：`stop → resolve ports → mirror consumers → build/check/promote → start`；
+- restart/change-core 固定时序：`stop → resolve ports → mirror consumers → build/check/promote → start`（单 lease 下结构性保证）；删除 startup 端口 reseed（R-09）；
 - fixed port 被旧核占用的场景自动化测试；
-- `RunType` 由 typed Application snapshot 参数化；
-- `LogSink` 注入 CoreActor，`get_clash_logs` 走 CoreClient；
-- service-mode IPC 全部走 facade；
-- 删除 `CoreManager::global()` 和 `Logger::global()` 写端。
+- `RunType = {Normal, Service}` 由 typed Application snapshot + `ServiceCompat` 参数化（`Elevated` todo!() 删除）；
+- `LogSink` 注入 CoreActor（LogFrame 环形缓冲），`get_clash_logs` 走 CoreClient（wire 不变）+ additive `get_core_log_frames`；
+- service-mode IPC 全部走 facade（`ServiceControlPort`；删 `core/service/ipc.rs` statics 与 5 s 轮询线程；**保留启动时自动版本对比 + `update_service()` 语义**）；
+- updater 一次性 core-port 注入桥（R-05 边界，marker 归 PR-6d）；`NetworkDnsPort`（macOS DNS 归 actor）；
+- 删除 `CoreManager::global()` 和 `Logger::global()` 写端（计数归零）。
 
 ---
 

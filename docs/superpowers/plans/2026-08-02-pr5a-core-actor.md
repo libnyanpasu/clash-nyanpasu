@@ -5,11 +5,11 @@
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md` §3–§6、同目录 `task.md` 卡 A1/A2/A3
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.1；必答项 §6.4 RQ-02 / RQ-04
 **平台：** Windows 11 / PowerShell
-**版本：** v11（2026-08-02）——v1–v10 均经 codex 对抗审查 **REJECT**；v11 新增**附录 A（接线单点声明）**根治命名漂移，并修正 lease/Updater 混淆 typed desired 与实际运行身份的两处缺陷
+**版本：** v12（2026-08-02）——v1–v11 均经 codex 对抗审查 **REJECT**；v12 补齐全部错误类型与模块声明，并以守卫消息 `RunningIdentity` 取代 `CoreRequestProvider` 抽象
 
 ---
 
-## 0.1 审查处置表（十轮）
+## 0.1 审查处置表（十一轮）
 
 历轮发现**全部经本人复核源码确认成立**（无一条被驳回）。第六轮后 leader 以**范围裁定**收敛，第八轮再以**裁定 A-v2** 修正其中一处过度裁剪。
 
@@ -151,6 +151,15 @@
 | 81  | Medium | 合成观察字段不完整；`initial()` 缺 `run_type`                                                                                          | A.5：统一为"克隆上次 view，只改表列字段"；`initial()` 明确 `run_type = RunType::default()`，T-RV-16 断言 legacy 等价             | A.5；T-RV-16  |
 | 82  | Low    | 可见性规则内部不一致                                                                                                                   | A.6 给出判定口径：类型可见性 ≥ 其出现的最宽签名                                                                                  | A.6           |
 | 83  | Low    | v10 措辞残留（`Run / apply`、`run()` 返回类型、C1 归属）                                                                               | 定点清扫                                                                                                                         | 多处          |
+
+**第十一轮（v11 → v12）：编译面收口。**
+
+| #   | 级别   | 问题                                                                                                                                                     | 处置                                                                                                                                                                                     | 落点                  |
+| --- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| 84  | High   | `CoreBackendError` / `OperationError` 被全篇引用却从未定义；`CoreActorError` 缺 `Debug+Error`（Updater 用 `?` 进 `anyhow`）；模块树缺 `request` / `gate` | 新增 **A.1b**（三个错误枚举 + `thiserror` 派生 + 可转换性说明）与 **A.1c**（模块树与 `pub(super)` 可见性）                                                                               | A.1b；A.1c            |
+| 85  | High   | `CoreRequestProvider::running()` 不带 `OperationId`，也没有对应 actor 消息；`state.running` 在换槽/失败/崩溃后陈旧                                       | **裁定**：删除该 trait，改守卫消息 `RunningIdentity { operation, reply }` + `CoreClient::running(&guard)`；A.4 给出 `running` 的**六行生命周期表**（含观察到终止态即清空）与三种查询处置 | A.4；S9.1；T-AD-04…07 |
+| 86  | Medium | 可见性规则被自身声明违反                                                                                                                                 | `ServiceControlOps` 与 `ClientSetupArgs.service_control` 收窄为 `pub(crate)`（参数含 crate-private 的 `CoreModeReconciler`）；`CoreRequestProvider` 随 #85 消失；A.6 重写                | A.6                   |
+| 87  | Low    | 编辑残留（已删消息、`run()` 返回类型、backend `status()` 名、Exit 测试清单）                                                                             | 定点清扫；Exit 补 T-RV-16 与 T-AD-01…03                                                                                                                                                  | 多处                  |
 
 > 对 #9 的一点澄清：审查说"`ConfigRevision` 比 `RevisionId` 多了 `source_hash` 和 `runtime_path`"——这是拿 `ConfigRevision` 与 `RevisionId` 比。原文 RQ-02 里"多一个 `runtime_path`"是拿 `ConfigRevision` 与 **`ConfigRevisionInfo`** 比，那句本身成立。**但结论一致**：原 T-RV-03 把两个不同的转换混成一句，断言不成立，必须拆开。已按建议拆分。
 
@@ -385,16 +394,7 @@ RefreshStatus {
 RefreshHint,
 ```
 
-`CoreActorError`（八审要求的明确回复类型）：
-
-```rust
-pub enum CoreActorError {
-    StaleOperation,
-    NoBackend { last_error: Arc<CoreBackendError> },
-    Backend(Arc<CoreBackendError>),
-    ShuttingDown,
-}
-```
+`CoreActorError` 的**定义见 A.1b**（含 `NotRunning` 变体与 `thiserror` 派生）。
 
 **为什么 hint 用 `cast`：** 它没有返回值需求（结果通过 watch 到达），也就不该占用调用方的等待。丢弃是安全的——丢弃的前提正是"有操作在飞"，而那个操作的提交马上就会发布。
 
@@ -549,14 +549,7 @@ const RECOVERY_EXHAUSTED_PREFIX: &str = "core kept crashing; restart budget exha
 
 **（a）注入式 degradation sink + 具体生产实现。** 既有 `UiEventSink`（`APP/client/event_sink.rs:11-31`）只有 `state_changed` / `notice_message` / `update_systray*`，**没有** degradation 通道，不要往里塞。事实 A23f 还确认了：`Degradation` 是挂在 **mutation 响应体**上的字段（前端在 `provider/index.tsx:46-53` 从 mutation 结果里取 `degradations` 数组），**没有现成的推送通道可继承**——而 `core_recovery_exhausted` 是无人调用时自发产生的事件。
 
-```rust
-/// CoreActor 向应用层发布的核心降级事件。
-/// 刻意只有一个方法：5a 只需要 `core_recovery_exhausted` 一种。
-#[cfg_attr(test, mockall::automock)]
-pub trait CoreDegradationSink: Send + Sync + 'static {
-    fn publish(&self, degradation: crate::client::runtime::Degradation);
-}
-```
+`CoreDegradationSink` 的**声明见 A.1**（单方法、可 mock）。
 
 **完整 DTO 取值**（复用既有 `Degradation`，`APP/client/runtime.rs:448-470`，四个字段全部定死）：
 
@@ -682,16 +675,7 @@ pub struct CoreStatusView {
 
 **正确做法：请求在替换 guard 内、替换时刻才解析。** Updater 只携带**目标核类型**，另注入一个窄 provider：
 
-```rust
-/// 在替换时刻解析"当前意图"的窄接口。实现由 facade 提供，内部读 typed 快照 + 路径工厂；
-/// Updater 因此既不认识 `ApplicationClient` 也不认识路径细节。
-#[cfg_attr(test, mockall::automock)]
-#[async_trait]
-pub(crate) trait CoreRequestProvider: Send + Sync + 'static {
-    /// 返回**此刻实际在跑**的运行请求（由 actor 拥有，见 A.4）。
-    async fn running(&self) -> Result<Option<CoreRequest>, CoreActorError>;
-}
-```
+**改用守卫消息，不引入 trait**（round-11 裁定）：`RunningIdentity { operation, reply }` + `CoreClient::running(&guard)`，定义见 **A.4**。
 
 **可见性约定（round-8 #4）：** 5a 新增的实现面统一 `pub(crate)`——`CoreRequest` / `CoreStatusView` / `BackendObservation` / `FaithfulLifecycle` / `CoreBackend` / `BackendSlot` / `CoreActorError` / `CoreRequestFactory` / `CoreBinaryResolver` / `CoreModeReconciler`。只有 `CoreClient`、`CoreOperationGuard`、`CoreDegradationSink`、`ServiceControlOps` 需要 `pub`（前二者被 client 层引用，后二者是注入点）。
 
@@ -1054,17 +1038,7 @@ impl NyanpasuClient {
 
 **可注入的控制 seam `ServiceControlOps`（round-6 #9 / round-7 #5）。** 不能靠真的执行 OS service 命令来制造控制失败，因此把四个控制函数抽成窄 trait 并**接入对象图**：
 
-```rust
-/// service 控制操作的可测边界。生产实现就是现有的 runas / sudo 调用。
-#[cfg_attr(test, mockall::automock)]
-#[async_trait]
-pub trait ServiceControlOps: Send + Sync + 'static {
-    async fn install(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
-    async fn start(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
-    async fn stop(&self) -> anyhow::Result<()>;
-    async fn restart(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
-}
-```
+`ServiceControlOps` 的**声明见 A.1**（四个方法；`pub(crate)`，因为参数含 crate-private 的 `CoreModeReconciler`——见 A.6）。
 
 注入链（**四处都要改**）：
 
@@ -1120,7 +1094,7 @@ ipc::update_core(core_type)                                   ← Tauri 命令�
   → NyanpasuClient::update_core(core_type)                    ← facade 领域方法
     → UpdaterManager::update_core(&core_type, core, provider) ← 两个参数，**都不存入 manager**
       → UpdaterBuilder::set_core(core).set_request_provider(provider).build()
-        → Updater { core, requests: Arc<dyn CoreRequestProvider>, .. }
+        → Updater { core, .. }                          ← 只需 CoreClient；运行身份经 A.4 的守卫消息查询
 ```
 
 **逐点签名（四处，全部要改）：**
@@ -1152,7 +1126,7 @@ impl NyanpasuClient {
 }
 
 // 2) APP/core/updater/mod.rs:222
-pub async fn update_core(&mut self, core_type: &ClashCore, core: CoreClient, provider: Arc<dyn CoreRequestProvider>) -> Result<usize>
+pub async fn update_core(&mut self, core_type: &ClashCore, core: CoreClient) -> Result<usize>
 
 // 3) APP/core/updater/instance.rs — builder 新增字段与 setter
 pub(super) struct UpdaterBuilder {
@@ -1162,11 +1136,11 @@ pub(super) struct UpdaterBuilder {
     artifact: Option<String>,
     tag: Option<CoreTypeMeta>,
     core: Option<CoreClient>,        // 新增
-    requests: Option<Arc<dyn CoreRequestProvider>>,   // round-9 #2：provider 而非预构造 request
+    // round-11：不再需要 provider 字段——运行身份由 `CoreClient::running(&guard)` 查询
 }
 impl UpdaterBuilder {
     pub fn set_core(mut self, core: CoreClient) -> Self { self.core = Some(core); self }
-    pub fn set_request_provider(mut self, p: Arc<dyn CoreRequestProvider>) -> Self { self.requests = Some(p); self }
+    // round-11：`set_request_provider` 删除
     // build() 里 `core` 缺失时按既有风格 bail
 }
 
@@ -1175,7 +1149,7 @@ pub(super) struct Updater {
     // ...既有字段不动...
     core: CoreClient,
     /// 在**替换时刻**解析请求（round-9 #2）——不是 `update_core()` 调用时刻。
-    requests: Arc<dyn CoreRequestProvider>,
+    // round-11：无额外字段——`core: CoreClient` 已足够
 }
 
 async fn replace_core(&self) -> anyhow::Result<()> {
@@ -1186,25 +1160,22 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 
     // **在 guard 内解析当前意图**（round-9 #2）——下载可能已经跑了几分钟，
     // 期间用户可能换核，因此绝不能用 `update_core()` 调用时刻的快照。
-    // **查 actor 拥有的运行身份**（A.4）——不读 typed desired：typed 快照在 legacy
-    // `change_core` 的重播窗口内可能仍是旧核，而 actor 记的是最后一次成功提交的
-    // `CoreRequest`，也就是真正在跑的那个。
-    let running = self.requests.running().await?;
-    let replacing_running_core = running
-        .as_ref()
-        .is_some_and(|r| r.core_type == (&self.core_type).into());
+    // **查 actor 拥有的运行身份**（A.4 的守卫消息）——不读 typed desired：typed 快照在
+    // legacy `change_core` 的重播窗口内可能仍是旧核。三种处置见 A.4 末表。
+    let running = self.core.running(&operation).await?;   // Err ⇒ 直接中止替换
+    let restart_target = running
+        .filter(|r| r.core_type == (&self.core_type).into());
 
-    if replacing_running_core {
+    if restart_target.is_some() {
         tracing::debug!("stopping core to replace");
         self.core.stop(&operation).await?;             // 取代 lifecycle.stop_core()
     }
 
     /* 现有的下载 / 校验 / 复制二进制逻辑逐字不动 */
 
-    if replacing_running_core {
+    if let Some(request) = restart_target.as_ref() {
         self.dispatch_state(UpdaterState::Restarting);
         // 用**刚才查到的**运行身份重启（同一个核、同一份路径）。
-        let request = running.as_ref().expect("checked by replacing_running_core");
         self.core.run(&operation, request).await?;   // 取代 lifecycle.run_core_from()
     }
     Ok(())
@@ -1308,6 +1279,10 @@ async fn replace_core(&self) -> anyhow::Result<()> {
 | T-AD-01 | **换核成功路径请求的是新核**：走 `check_and_promote(_, 新核, _)` → `restart()` → 断言 backend 收到的 `CoreRequest.core_type` 是**新核**（而非 typed 快照里的旧核）                                                                                                                                                                                                                                                                                                                                               |
 | T-AD-02 | **回滚路径请求的是旧核**：新核 `restart()` 失败 → 回滚分支覆写 `target_core` 为恢复后的核 → 断言第二次 `run` 的 `core_type` 是**旧核**                                                                                                                                                                                                                                                                                                                                                                           |
 | T-AD-03 | **纯 restart 回落 typed**：未经 `check_and_promote` 的 `restart()`（`restart_sidecar` 路径）→ 用 typed 快照的 `core` 构造请求                                                                                                                                                                                                                                                                                                                                                                                    |
+| T-AD-04 | **`SetBackend` 后运行身份清空**（A.4）：`Run` 成功 → `running == Some` → `SetBackend` 换槽 → `running(&guard)` 返回 **`Ok(None)`**（旧 backend 已 drop，身份失效），Updater 因此只换二进制、不停不启                                                                                                                                                                                                                                                                                                             |
+| T-AD-05 | **`Failed` 槽位查询**：换槽构造失败 → 槽位 `Failed` → `running(&guard)` 返回 **`Err(NoBackend{..})`** → Updater **中止替换**并上抛该错误（**不**回退 typed desired）                                                                                                                                                                                                                                                                                                                                             |
+| T-AD-06 | **观察到终止态后清空**（round-11 NEW-1）：`Run` 成功 → 提交一次 `lifecycle == Stopped` 的观察（模拟核崩溃）→ `running(&guard)` 返回 `Ok(None)`，不再是陈旧的旧身份                                                                                                                                                                                                                                                                                                                                               |
+| T-AD-07 | **未持 guard 查询被拒**：用错误 / 过期的 `OperationId` 发 `RunningIdentity` → `Err(StaleOperation)`，且 actor **不读** `state.running`                                                                                                                                                                                                                                                                                                                                                                           |
 | T-BK-08 | **换槽后目录锁可重新获取**（D2 协议回归钉）。**必须走 Local → Service → Local**，不能用同模式换槽：同模式 `SetBackend` 的行为未定义，合理实现可以直接 no-op，那样测试会在什么都没释放的情况下通过（假阳性）。断言两点：(a) 第二次 Local 的 `CoreManager` 构造**成功**（不出现 `Error::RuntimeDirectoryOwned`）；(b) backend **身份确实变了**——用 `LocalBackend` 里递增的构造计数器（或 `Arc::ptr_eq` 判否）证明是新实例而非复用。等效替代：直接 consume/drop 第一个 `LocalBackend` 再在同一 `runtime_dir` 上重建 |
 | T-BK-09 | **无 backend 失败态**：让替换构造失败 → 槽位为 **`Some(BackendSlot::Failed { error })`**（不是 `None`——`None` 只在换槽**瞬态**出现）→ mutation 返回 `CoreActorError::NoBackend { last_error }`（`Arc` 克隆自槽位）；`status()` 经 watch 仍可读且 `state == Stopped`；随后一次成功的 `SetBackend` 能恢复                                                                                                                                                                                                          |
 | T-BK-10 | **`service_needs_stop` 表驱动**（对应 R5d）：遍历 `CoreStateDetail` **全部 6 个变体** —— `Stopped` → `false`；`Starting` / `Running` / `Restarting` / `Switching` / `Stopping` → `true`；外加 `detail == None` → `true`（fail-safe）。共 7 个用例，用表驱动写法保证新增变体时会因不穷尽而被发现                                                                                                                                                                                                                  |
@@ -1448,7 +1423,7 @@ task.md A-Exit 三条：
 | Exit                                                                                              | 交付步骤    | 验证                                                                                                                                                                               |
 | ------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | operation 测试：FIFO / 等待取消 / 刚获批取消 / stale release / wrong-id mutation / shutdown drain | S5、S6、S12 | T-OP-01…06 全绿                                                                                                                                                                    |
-| Local/Service 基本生命周期 parity 测试                                                            | S3、S12     | T-BK-01…13 全绿，其中 **T-BK-01 必须是真实 Local/Service 双端**（S12.1 探针核 + S12.2 IPC harness），不接受 TestBackend 顶替                                                       |
+| Local/Service 基本生命周期 parity 测试                                                            | S3、S12     | T-BK-01…13 全绿；生产适配器由 **T-AD-01…03** 覆盖，其中 **T-BK-01 必须是真实 Local/Service 双端**（S12.1 探针核 + S12.2 IPC harness），不接受 TestBackend 顶替                     |
 | legacy core 生命周期不再被新调用点使用                                                            | S9、S10     | `rg 'begin_lifecycle\|lifecycle_lock\|_with_lease' backend/tauri/src` 为 0；`CoreManager::global()` 的**生产代码**命中仅剩 `feat.rs:392`（macOS DNS，带 allowlist 标记，owner=5c） |
 | 既有 lease 调用点与并发契约不回归                                                                 | S7、S12     | **T-SM-01**（6 个测试替身适配后既有 lease 测试全绿）、**T-SM-02**（三层嵌套顺序不变式回归钉）                                                                                      |
 
@@ -1463,7 +1438,7 @@ roadmap §6.1 附加项：
 | 不实现 TTL / auto-steal / watchdog                           | S5；`rg 'ttl\|auto_steal\|watchdog' backend/tauri/src/core/actor` 为 0                                                                                                                                                                                |
 | actor 无第二层恢复，只**发布一次** `core_recovery_exhausted` | S3(D5) + S10（删两条裸线程路径） + T-BK-05/06/07                                                                                                                                                                                                      |
 | A3 兼容 seam 保留，旧 trait 名不扩散                         | S7；新代码里 `CoreLifecycle*` 只出现在适配 impl 中                                                                                                                                                                                                    |
-| RQ-02 / RQ-04 已作答                                         | 本计划 §2 + **§2.1（读/写模型，含 2.1.6 合流与 2.1.7 接线）**；测试 **T-RV-01…15**（06 两种刷新形态；09 UI 最终一致 + 只发一次；10 读的活性；11/12 瞬态与关停发布；13 外部 apply 例外；14 hint 合流；15 Updater 换核竞态），RQ-04 由 **T-OP-07** 覆盖 |
+| RQ-02 / RQ-04 已作答                                         | 本计划 §2 + **§2.1（读/写模型，含 2.1.6 合流与 2.1.7 接线）**；测试 **T-RV-01…16**（06 两种刷新形态；09 UI 最终一致 + 只发一次；10 读的活性；11/12 瞬态与关停发布；13 外部 apply 例外；14 hint 合流；15 Updater 换核竞态），RQ-04 由 **T-OP-07** 覆盖 |
 
 ---
 
@@ -1537,12 +1512,7 @@ pub(crate) enum FaithfulLifecycle {
     Stopping,
 }
 
-pub(crate) enum CoreActorError {
-    StaleOperation,
-    NoBackend { last_error: Arc<CoreBackendError> },
-    Backend(Arc<CoreBackendError>),
-    ShuttingDown,
-}
+// `CoreActorError` / `CoreBackendError` / `OperationError` 的定义见 A.1b
 
 // APP/core/actor/backend.rs
 pub(crate) enum CoreBackend {
@@ -1564,17 +1534,11 @@ pub trait CoreDegradationSink: Send + Sync + 'static {
     fn publish(&self, degradation: crate::client::runtime::Degradation);
 }
 #[async_trait]
-pub trait ServiceControlOps: Send + Sync + 'static {
+pub(crate) trait ServiceControlOps: Send + Sync + 'static {
     async fn install(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
     async fn start(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
     async fn stop(&self) -> anyhow::Result<()>;
     async fn restart(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()>;
-}
-/// 供 Updater 在替换时刻查询**当前实际运行身份**（不是 typed desired，见 A.4）。
-#[async_trait]
-pub trait CoreRequestProvider: Send + Sync + 'static {
-    async fn running(&self) -> Result<Option<CoreRequest>, CoreActorError>;
-}
 
 // APP/core/actor/mod.rs
 pub(crate) struct CoreActorArgs {
@@ -1630,6 +1594,72 @@ pub(crate) struct CoreModeReconciler {
 }
 ```
 
+### A.1b 错误类型（round-11 #77：此前被引用但从未定义）
+
+```rust
+// APP/core/actor/backend.rs —— backend 层错误
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CoreBackendError {
+    /// Local：`nyanpasu_core_manager::Error` 的全部变体（含 RevisionConflict / Quarantined / StartupTimeout…）
+    #[error("local core manager: {0}")]
+    Local(#[from] nyanpasu_core_manager::Error),
+    /// Service：`nyanpasu_ipc::client::ClientError`（含 error_kind 字符串）
+    #[error("service ipc: {0}")]
+    Service(#[from] nyanpasu_ipc::client::ClientError),
+    /// 探针核 / 二进制解析失败（`CoreBinaryResolver` 或 `CoreRequestFactory` 的取值阶段）
+    #[error("core binary: {0}")]
+    Binary(#[source] anyhow::Error),
+    /// backend 构造失败（`CoreManager::new` / `Client::new`），用于 `BackendSlot::Failed`
+    #[error("backend construction: {0}")]
+    Construct(#[source] anyhow::Error),
+}
+
+// APP/core/actor/gate.rs —— operation gate 的错误
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum OperationError {
+    /// 等待 operation 超时（`CORE_ACQUIRE_TIMEOUT`，RQ-04）
+    #[error("timed out acquiring the core operation")]
+    AcquireTimeout,
+    /// actor 已关停，waiter 被拒
+    #[error("core actor is shutting down")]
+    ShuttingDown,
+}
+
+// APP/core/actor/types.rs —— actor 对外的统一错误
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CoreActorError {
+    #[error("operation id does not match the active operation")]
+    StaleOperation,
+    #[error("no core backend is available: {last_error}")]
+    NoBackend { last_error: Arc<CoreBackendError> },
+    #[error(transparent)]
+    Backend(Arc<CoreBackendError>),
+    #[error("core actor is shutting down")]
+    ShuttingDown,
+    /// `RunningIdentity` 专用：槽位可用但**没有任何已提交的运行身份**（A.4）。
+    /// 与 `NoBackend` 区分开：那是 backend 坏了，这是"当前没核在跑"。
+    #[error("no core is currently running")]
+    NotRunning,
+}
+```
+
+**可转换性（round-11 #77 明确要求核对）**：三个枚举都 `#[derive(Debug, thiserror::Error)]`，因此都实现 `std::error::Error + Send + Sync + 'static`，于是 `anyhow::Error: From<CoreActorError>` 自动成立——Updater 里的 `self.core.running(&operation).await?` 能直接 `?` 进 `anyhow::Result`。`Arc<CoreBackendError>` 在 `#[error(transparent)]` 下要求 `Arc<E>: Error`，标准库对 `Arc<T: Error>` **没有** blanket impl，因此 `Backend` 变体改用显式 `#[error("{0}")]` 并让字段保持 `Arc<CoreBackendError>`（`Display` 走 `Deref`）——**实施时以 `cargo check` 为准，若 `transparent` 不通过就用 `#[error("{0}")]`**。
+
+### A.1c 模块树与可见性（round-11 #77）
+
+```rust
+// APP/core/actor/mod.rs
+pub(crate) mod backend;    // CoreBackend / BackendSlot / CoreBackendError / Local/Service/Test
+pub(crate) mod types;      // CoreRequest / CoreStatusView / BackendObservation / FaithfulLifecycle / CoreActorError
+pub(crate) mod request;    // CoreRequestFactory / CoreBinaryResolver
+mod error_kind;            // R0 过渡映射（S4），仅本模块内使用
+mod gate;                  // OperationGate / OperationError
+
+pub(crate) use gate::{OperationError, OperationGate};   // 供 actor 主体使用
+```
+
+`gate.rs` 内 `OperationGate` 及其成员声明为 `pub(super)`（父模块 `actor` 可见即可，不外泄到 `crate`）；`OperationError` 需要出现在 `CoreClient::begin_operation` 的返回类型里，因此 `pub(crate)` 并在 `mod.rs` 重导出。**没有 `pub mod client`** —— typed client 在 `APP/client/core.rs`。
+
 ### A.2 `ClientSetupArgs` 的新增字段
 
 ```rust
@@ -1638,7 +1668,7 @@ pub struct ClientSetupArgs {
     pub core: Option<Arc<dyn CoreLifecyclePort>>,   // None = 生产（内部构造）；Some = 测试注入
     pub binary_resolver: Arc<dyn CoreBinaryResolver>,
     pub degradation: Arc<dyn CoreDegradationSink>,
-    pub service_control: Arc<dyn ServiceControlOps>,
+    pub(crate) service_control: Arc<dyn ServiceControlOps>,   // 见 A.6：随 trait 收窄
 }
 ```
 
@@ -1657,18 +1687,61 @@ pub struct ClientSetupArgs {
 
 > watch 通道与 `hint_pending` **都在第 5 步内部创建**，两端同源，不存在"某一侧忘了拿"的可能。
 
-### A.4 运行身份归 actor（round-10 #71 与 NEW-1）
+### A.4 运行身份归 actor（round-10 #71 / NEW-1；round-11 简化）
 
-**问题**：typed desired 快照**不等于**当前实际在跑的核。`change_core` 只在 legacy `Config::verge().draft()` 里改核，`lease.restart()` 之后才 `apply()`，typed 重播更晚（`APP/client/rebuild.rs:299-317`；`APP/bridge/verge.rs:257-303`）。在 `restart()` 那一刻读 typed 快照会拿到**旧核**——v10 的适配器正是这么写的，因此会在换新核的事务里重启**旧核**。
+**问题**：typed desired 快照**不等于**当前实际在跑的核。`change_core` 只在 legacy `Config::verge().draft()` 里改核，`lease.restart()` 之后才 `apply()`，typed 重播更晚（`APP/client/rebuild.rs:299-317`；`APP/bridge/verge.rs:257-303`）。在 `restart()` 那一刻读 typed 快照会拿到**旧核**——v10 的适配器正是这么写的，会在换新核的事务里重启**旧核**。
 
 **两条互补的修法：**
 
-| 谁                   | 需要哪种身份                    | 怎么拿                                                                                                                                                                                                                                        |
-| -------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| lease 的 `restart()` | **本事务要运行的核**（desired） | `check_and_promote(candidate, target_core, product)` **已经收到** `target_core`——lease 把它记在自身，随后的 `restart()` 消费它；回滚分支用恢复后的核**覆写**它。只有"纯 restart、无 promote"的流程（如 `restart_sidecar`）才回落到 typed 快照 |
-| Updater 的替换步骤   | **当前实际在跑的核**（actual）  | 查 actor：`CoreRequestProvider::running()` → 返回 `state.running`（最后一次成功提交的 `CoreRequest`）。**不读 typed desired**                                                                                                                 |
+| 谁                   | 需要哪种身份                    | 怎么拿                                                                                                                                                                                                                           |
+| -------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| lease 的 `restart()` | **本事务要运行的核**（desired） | `check_and_promote(candidate, target_core, product)` **已经收到** `target_core`——lease 记在自身，随后的 `restart()` 消费；回滚分支用恢复后的核**覆写**。只有"纯 restart、无 promote"的流程（`restart_sidecar`）才回落 typed 快照 |
+| Updater 的替换步骤   | **当前实际在跑的核**（actual）  | 守卫消息 `RunningIdentity`（下）。**不读 typed desired**                                                                                                                                                                         |
 
-actor 侧规则：每次 `Run` **成功提交**时把该次 `CoreRequest` 写入 `state.running`；`Stop` / shutdown 成功后置 `None`；`SetBackend` 换槽**不改**它（是否在跑由随后的 `Run` 决定）。
+**不引入 `CoreRequestProvider` 抽象**（round-11 裁定）：它既要带 `OperationId` 又只有一个实现，多一层 trait 只是把守卫语义藏起来。直接用消息 + client 方法：
+
+```rust
+// CoreActorMessage 增加（守卫消息，与其它 mutation 同等准入）
+RunningIdentity {
+    operation: OperationId,
+    reply: RpcReplyPort<Result<Option<CoreRequest>, CoreActorError>>,
+},
+```
+
+```rust
+// APP/client/core.rs
+impl CoreClient {
+    /// 查询**当前已提交的运行身份**。必须持 guard——它与 mutation 同属一个事务，
+    /// 否则查到的结果可能在使用前就被别人改掉。
+    /// `Ok(None)` = 当前没有核在跑（不是错误）；`Err(NoBackend)` = 槽位坏了。
+    pub(crate) async fn running(
+        &self,
+        operation: &CoreOperationGuard,
+    ) -> Result<Option<CoreRequest>, CoreActorError>;
+}
+```
+
+**`state.running` 的生命周期（round-11 NEW-1 逐条封口）：**
+
+| 事件                                                     | `state.running` 的变化     | 理由                                                                            |
+| -------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
+| `Run` **成功提交**                                       | `= Some(该次 CoreRequest)` | 这是唯一的赋值点：已提交 ⇒ 确实跑起来了                                         |
+| `Run` **失败**（含 Service start 后刷新失败）            | **不变**（失败不写）       | 失败没有产生新的运行事实                                                        |
+| `Stop` / `shutdown` 成功                                 | `= None`                   | 明确停了                                                                        |
+| `SetBackend`（换槽）                                     | `= None`                   | 旧 backend 已 shutdown 并 drop，**旧身份立即失效**；新身份要等下一次 `Run` 提交 |
+| 槽位变成 `Failed`                                        | `= None`                   | 没有 backend 就没有运行身份                                                     |
+| 提交的观察显示**终止态**（`FaithfulLifecycle::Stopped`） | `= None`                   | 核崩了/被外部停了——`running` 必须跟着失效，否则会陈旧                           |
+
+> 最后一行是 NEW-1 点名的"runtime 崩溃后仍陈旧"的封口：`commit()` 在写缓存的同时检查 `observation.lifecycle`，若是 `Stopped` 就清空 `running`。因此 `running` 的含义严格是"**最后一次成功提交、且此后未被观察为停止**的运行身份"。
+
+**查询结果的三种处置（Updater 侧）：**
+
+| 返回                                         | Updater 行为                                                                                                                |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `Ok(Some(req))` 且 `req.core_type` == 目标核 | 停核 → 换二进制 → 用**同一个 `req`** 重启                                                                                   |
+| `Ok(Some(req))` 且 `req.core_type` != 目标核 | 不停不启，只换二进制（用户在跑的是别的核）                                                                                  |
+| `Ok(None)`                                   | 不停不启，只换二进制——**当前没核在跑，这是正常路径**（与 legacy 行为一致：legacy 的 `stop_core` 在无 instance 时直接 `Ok`） |
+| `Err(NoBackend{..})` / `Err(_)`              | **中止替换**并上抛该错误。**不回退到 typed desired**                                                                        |
 
 ### A.5 合成观察的完整取值（round-10 NEW-2）
 
@@ -1685,8 +1758,9 @@ actor 侧规则：每次 `Run` **成功提交**时把该次 `CoreRequest` 写入
 ### A.6 可见性规则（round-10 NEW-3）
 
 - **`pub(crate)`**：全部实现类型与其字段——`CoreRequest`、`CoreStatusView`、`BackendObservation`、`FaithfulLifecycle`、`CoreActorError`、`CoreBackend`、`BackendSlot`、`CoreActorMessage`、`CoreActorArgs`、`CoreActorState`、`CoreClientArgs`、`CoreRequestFactory`、`CoreModeReconciler`；
-- **`pub`**：只有出现在**公开签名**里的注入 trait——`CoreBinaryResolver`、`CoreDegradationSink`、`ServiceControlOps`、`CoreRequestProvider`（它们是 `ClientSetupArgs` 的字段类型）；
-- `CoreClient` / `CoreOperationGuard` 本身 `pub`，但**返回 crate-private 类型的方法一律 `pub(crate)`**（`status()`、`refresh_status()`、`run()` 等）。仅 `hint_refresh()` 这类无 crate-private 类型出现在签名中的方法可以 `pub`。
+- **`pub`**：`CoreBinaryResolver`、`CoreDegradationSink`——它们的方法签名里**不出现** crate-private 类型（前者收 `CoreType`、返 `Utf8PathBuf`；后者收 `Degradation`），因此可以保持 `pub`；
+- **`pub(crate)`（round-11 #82 收窄）**：`ServiceControlOps` 的方法收 `CoreModeReconciler`（crate-private），因此 trait 与 `ClientSetupArgs.service_control` 字段一并收窄为 `pub(crate)`。`CoreRequestProvider` 已随 A.4 删除，其可见性冲突自然消失；
+- `CoreClient` / `CoreOperationGuard` 本身 `pub`，但**返回或接收 crate-private 类型的方法一律 `pub(crate)`**（`status()`、`refresh_status()`、`running()`、`run()` 等）；仅 `hint_refresh()`（无参无返）可 `pub`；
 
 > 判定口径：**一个类型的可见性必须 ≥ 它出现的最宽签名的可见性**。实施时按此逐个检查，不要凭直觉。
 

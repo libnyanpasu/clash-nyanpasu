@@ -1,6 +1,6 @@
 # PR-5 — CoreActor 迁移简化任务
 
-关联设计：`pr5-coreactor-simplified-design.md`
+关联设计：`design.md`（同目录）
 
 ## 0. 全局约束
 
@@ -31,6 +31,11 @@
 - [ ] `backend/Cargo.toml` 加 `exclude = ["nyanpasu-runtime"]`；utils/ipc/core-manager/core-metadata 使用 submodule path。
 - [ ] 删除旧 git patch/source 注释；更新 Cargo.lock。
 - [ ] 记录发布二进制体积变化。
+
+> **leader 裁定 D1=A（2026-08-02）**：上面第一条只切 `nyanpasu-utils` / `nyanpasu-ipc` 两条 path 依赖。
+> `nyanpasu-core-manager` / `nyanpasu-core-metadata`（以及 `clash-api`）推迟到 **PR-5a 的首个真实消费者**再加 workspace 条目。
+> 理由：无人引用的 `[workspace.dependencies]` 条目不会进入 Cargo.lock 解析图，属死文本（CLAUDE.md §2）；`nyanpasu-core-metadata` 本就随 ipc v2 **传递**进 lock；且这样能让依赖与体积增量完全可归因于这一次切换。
+> 这是对该行"四个 crate"措辞的**有意偏离**，已记录在案。实施计划：`docs/superpowers/plans/2026-08-01-pr5-pre.md`。
 
 ### P2 — ServiceCompat
 
@@ -103,7 +108,7 @@
 **Exit**
 
 - `rg 'rebuild_gate|clash_patch_gate|RunningConfigPatchPort|LegacyRunningConfigPatchBridge'` 为 0；
-- apply parity：Patched/Reloaded/Restarted/Switched/RolledBack/Warning；
+- apply parity：**Noop**/Patched/Reloaded/Restarted/Switched/RolledBack —— `Warning` 是与 outcome **正交的标志位**，不是第七个分支，必须与上述任一 outcome 组合验证；
 - change-core rollback 测试断言 desired=new、Promoted=new、Applied=old；
 - 两个并发 rebuild 不重叠，后一个在 `OperationGate` FIFO 后读取最新 snapshot。
 

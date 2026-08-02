@@ -1,13 +1,25 @@
 # PR-5c 实施计划 — 状态/日志、运行模式、macOS DNS、residual 清理
 
 **日期：** 2026-08-02
-**版本：** v1（首版，待双审）
+**版本：** v2（leader 裁定 D1–D3 = A、§7 两条分别处置；D4 归用户，不阻塞定稿）
 **分支基线：** `refactor/core-manager-actor` @ `899b069f5`（PR-5b 阶段门已关闭：实施 7 提交 + 修复 8 提交，467 passed / 1 ignored）
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/task.md` 卡 C1–C4（`:115-160`）+ 文末最终删除清单
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.3
 **平台：** Windows 11 / PowerShell
 
 > **全部事实读自 `899b069f5` 的工作树**（5b 落地后）。凡是「卡上写了但代码里不存在」的项，一律照实记为 no-op，**不为了删它而先造出来**——这是 5b 的既定做法（B3 的 `ControllerBinding` 先例）。
+
+**v2 修订索引（leader 裁定）：**
+
+| 项   | 结论                                                                                       | 落点            |
+| ---- | ------------------------------------------------------------------------------------------ | --------------- |
+| D1   | **裁定 A：只删不建**；并**显式记录卡面项的收窄理由**（原意、失效前提、将来要重解的两件事） | §2 D1           |
+| D2   | **裁定 A**：`initial(mode)` 加参、删 `impl Default for RunType`                            | §2 D2、A.1、A.2 |
+| D3   | **裁定 A**：RAII 挂 actor state；**明写不覆盖强杀**，兜底去向 PR-6                         | §2 D3、A.3、§10 |
+| D4   | **归用户**，两条路径写法保留；**不阻塞定稿与实施开始**，仅在出口判据处需要答案             | §2 D4           |
+| §7 ① | `install_service` 不 reconcile 是**有意**——加注释，不改行为                                | §7 ①、S7        |
+| §7 ② | `uninstall_service` 绕 facade 是**缺陷**——S7 改走 facade + reconcile；**不违反 C2**        | §7 ②、S7        |
+| 事实 | F6 精确化（`dist/` 命中是构建产物）；新增 F32（ledger bug **不跨文件**，修复范围限于一处） | F6、F32         |
 
 ---
 
@@ -200,7 +212,9 @@ Exit 要三个 smoke，其中 smoke 3 是 macOS 的 TUN 开关与 DNS 恢复，*
 
 F10 已证「reconcile 走 guard」满足，F14 已证 `set_backend` 是现有名字。本步只做**命名与调用面对齐**：facade 暴露显式 `set_mode` / `reconcile_mode`，内部转 `set_backend`；install/update/uninstall 保持独立 controller **不迁入 actor**（卡上明令）。
 
-**顺带处理 F16 的两处不对称**（`uninstall_service` 绕过 facade、`install_service` 不 reconcile）：**先向 leader 报告，不擅自改**——它们可能是有意的（见 §6）。
+**F16 的两处不对称按 §7 的裁定分别处置**：① `install_service` 不 reconcile 是**有意**的，只加一行注释说明、不改行为；② `uninstall_service` 是**缺陷**，改为经 facade（`client.uninstall_service()`）并在其中调 `reconcile_service_mode`，与 stop/restart 同形。**这不违反 C2**——C2 禁的是「迁入 CoreActor」，facade 不是 actor（§7 ② 有详述）。
+
+**验证：** `rg 'service::control::uninstall_service' backend/tauri/src/ipc.rs` 为 0（改走 facade）；`install_service` 行为**零变化**（只多一行注释）。
 
 ### S8 — 门禁
 
@@ -317,15 +331,15 @@ pnpm lint:architecture-ledger
 
 ## 10. 明确 out-of-scope（登记去向）
 
-| 项                                                                | 去向                                  |
-| ----------------------------------------------------------------- | ------------------------------------- |
-| `UpdaterManager::global()` 本体                                   | **PR-6d**（F26：core 耦合已收敛）     |
-| `ProxiesGuard` / `Handle` / `Sysopt` / `WindowManager` / `Hotkey` | 各自 owner PR                         |
-| `core/clash/ws.rs` 四条流与前端消费面                             | **不动**（F5：活的日志通路）          |
-| `backend/tauri/src/logging/` 死模块                               | 与本阶段无关，登记待清（PR-7）        |
-| 启动时检测并恢复残留 DNS 覆写                                     | **PR-6**（本阶段的 guard 不覆盖强杀） |
-| `attach_core_port`                                                | **不存在**（F25），C4 该项记为 no-op  |
-| `pending_run_type`                                                | **不存在**（F9），C2 该项记为 no-op   |
+| 项                                                                | 去向                                                    |
+| ----------------------------------------------------------------- | ------------------------------------------------------- |
+| `UpdaterManager::global()` 本体                                   | **PR-6d**（F26：core 耦合已收敛）                       |
+| `ProxiesGuard` / `Handle` / `Sysopt` / `WindowManager` / `Hotkey` | 各自 owner PR                                           |
+| `core/clash/ws.rs` 四条流与前端消费面                             | **不动**（F5：活的日志通路）                            |
+| `backend/tauri/src/logging/` 死模块                               | 与本阶段无关，登记待清（PR-7）                          |
+| 启动时检测并恢复残留 DNS 覆写（**强杀 / 断电后的兜底**）          | **PR-6**——D3=A 的 RAII 明确不覆盖强杀，这是独立的一件事 |
+| `attach_core_port`                                                | **不存在**（F25），C4 该项记为 no-op                    |
+| `pending_run_type`                                                | **不存在**（F9），C2 该项记为 no-op                     |
 
 ---
 

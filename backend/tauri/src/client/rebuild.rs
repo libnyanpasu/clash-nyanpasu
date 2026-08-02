@@ -244,7 +244,7 @@ impl NyanpasuClient {
             .inner
             .runtime_revisions
             .allocate()
-            .map_err(ClientError::Anyhow)?;
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         let (app, clash) = Self::legacy_regen_inputs()?;
         let profiles = self.inner.profiles.get().await?;
         self.regenerate_runtime_with(lease, revision, profiles, clash, app)
@@ -312,11 +312,14 @@ impl NyanpasuClient {
         patch.core = Some(typed_core);
         self.inner.application.patch(patch).await?;
 
+        // Revision exhaustion is an invariant violation, not a recoverable
+        // runtime degradation: the operation guard serializes one allocation per
+        // transaction and u64 space cannot be exhausted by a valid execution.
         let revision = self
             .inner
             .runtime_revisions
             .allocate()
-            .map_err(ClientError::Anyhow)?;
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         let promoted = match self
             .regenerate_runtime_at_revision(&mut *lease, revision)
             .await
@@ -436,7 +439,7 @@ impl NyanpasuClient {
             .inner
             .runtime_revisions
             .allocate()
-            .map_err(ClientError::Anyhow)?;
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         // TODO(actor-migration): boot fallback reads the legacy clash mapping
         // directly (same source the old resolve.rs fallback used).
         // Remove when: PR-6 migrates boot/resolve onto typed clients.

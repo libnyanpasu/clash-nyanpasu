@@ -21,18 +21,24 @@ pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
 
 pub(crate) struct RuntimeRevisionAllocator(AtomicU64);
 
+#[derive(Debug, thiserror::Error)]
+#[error("runtime revision space exhausted")]
+pub(crate) struct RuntimeRevisionExhausted;
+
 impl RuntimeRevisionAllocator {
     pub(crate) fn new() -> Self {
         Self(AtomicU64::new(0))
     }
 
-    pub(crate) fn allocate(&self) -> anyhow::Result<RuntimeRevision> {
+    pub(crate) fn allocate(
+        &self,
+    ) -> std::result::Result<RuntimeRevision, RuntimeRevisionExhausted> {
         let previous = self
             .0
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
             })
-            .map_err(|_| anyhow::anyhow!("runtime revision space exhausted"))?;
+            .map_err(|_| RuntimeRevisionExhausted)?;
         Ok(RuntimeRevision(previous + 1))
     }
 }
@@ -396,6 +402,15 @@ mod tests {
         assert_eq!(first.get(), 1);
         assert_eq!(second.get(), 2);
         assert!(second > first);
+    }
+
+    #[test]
+    fn runtime_revision_exhaustion_is_typed_as_an_invariant_failure() {
+        let allocator = RuntimeRevisionAllocator(AtomicU64::new(u64::MAX));
+        assert!(matches!(
+            allocator.allocate(),
+            Err(RuntimeRevisionExhausted)
+        ));
     }
 
     #[test]

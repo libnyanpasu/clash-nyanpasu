@@ -1002,7 +1002,21 @@ impl NyanpasuClient {
             .collect();
 
         if report.affects_current {
-            let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+            let mut lease = match self.inner.core.begin().await {
+                Ok(lease) => lease,
+                Err(error) => {
+                    let degradation = Self::core_operation_unavailable(error.to_string());
+                    tracing::warn!(
+                        phase = ?degradation.phase,
+                        code = %degradation.code,
+                        retryable = degradation.retryable,
+                        message = %degradation.message,
+                        "post-commit core operation could not be acquired (degraded)",
+                    );
+                    degradations.push(degradation);
+                    return Ok(degradations);
+                }
+            };
             let (result, mut runtime_degradations) =
                 self.rebuild_pipeline_with_lease(&mut *lease).await;
             result?;
@@ -1355,7 +1369,7 @@ impl NyanpasuClient {
             .inner
             .runtime_revisions
             .allocate()
-            .map_err(ClientError::Anyhow)?;
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         let bytes = tokio::fs::read(self.inner.runtime_paths.product())
             .await
             .map_err(ClientError::Io)?;
@@ -1454,6 +1468,32 @@ impl NyanpasuClient {
             message,
             retryable: true,
         }
+    }
+
+    fn core_operation_unavailable(message: String) -> runtime::Degradation {
+        Self::runtime_degradation(
+            runtime::DegradationPhase::CoreLifecycle,
+            "core_operation_unavailable",
+            message,
+        )
+    }
+
+    fn is_runtime_revision_exhaustion(error: &ClientError) -> bool {
+        matches!(
+            error,
+            ClientError::Anyhow(source) if source.is::<runtime::RuntimeRevisionExhausted>()
+        )
+    }
+
+    fn publish_background_degradation(&self, degradation: runtime::Degradation) {
+        tracing::warn!(
+            phase = ?degradation.phase,
+            code = %degradation.code,
+            retryable = degradation.retryable,
+            message = %degradation.message,
+            "background-driven rebuild failed (degraded)",
+        );
+        self.inner.degradation.publish(degradation);
     }
 
     fn rebuild_failure_degradation(
@@ -1557,7 +1597,7 @@ impl NyanpasuClient {
     ) {
         let revision = match self.inner.runtime_revisions.allocate() {
             Ok(revision) => revision,
-            Err(error) => return (Err(ClientError::Anyhow(error)), Vec::new()),
+            Err(error) => return (Err(ClientError::Anyhow(error.into())), Vec::new()),
         };
         let promoted = match self.regenerate_runtime_at_revision(lease, revision).await {
             Ok(promoted) => promoted,
@@ -1641,9 +1681,28 @@ impl NyanpasuClient {
     }
 
     async fn rebuild_running_config_in_background(&self) -> Result<()> {
-        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        let mut lease = match self.inner.core.begin().await {
+            Ok(lease) => lease,
+            Err(error) => {
+                self.publish_background_degradation(Self::core_operation_unavailable(
+                    error.to_string(),
+                ));
+                return Ok(());
+            }
+        };
         let (report, degradations) = self.rebuild_pipeline_with_lease(&mut *lease).await;
-        report?;
+        if let Err(error) = report {
+            if Self::is_runtime_revision_exhaustion(&error) {
+                return Err(error);
+            }
+            for degradation in degradations {
+                self.publish_background_degradation(degradation);
+            }
+            self.publish_background_degradation(Self::core_operation_unavailable(
+                error.to_string(),
+            ));
+            return Ok(());
+        }
         if degradations.is_empty() {
             drop(lease);
             self.inner.ui_sink.refresh_clash();
@@ -1651,14 +1710,7 @@ impl NyanpasuClient {
             return Ok(());
         }
         for degradation in degradations {
-            tracing::warn!(
-                phase = ?degradation.phase,
-                code = %degradation.code,
-                retryable = degradation.retryable,
-                message = %degradation.message,
-                "background-driven rebuild failed (degraded)",
-            );
-            self.inner.degradation.publish(degradation);
+            self.publish_background_degradation(degradation);
         }
         Ok(())
     }
@@ -1678,7 +1730,7 @@ impl NyanpasuClient {
             .inner
             .runtime_revisions
             .allocate()
-            .map_err(ClientError::Anyhow)?;
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         self.regenerate_runtime_at_revision(lease, revision)
             .await
             .map_err(Into::into)
@@ -2040,6 +2092,84 @@ mod tests {
     struct ExemptRestartCore;
 
     struct ExemptRestartLease;
+
+    struct ExemptCheckCore;
+
+    struct ExemptCheckLease;
+
+    struct BeginFailureCore;
+
+    #[async_trait]
+    impl CoreLifecyclePort for BeginFailureCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            anyhow::bail!("scripted acquire timeout")
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecyclePort for ExemptCheckCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            Ok(Box::new(ExemptCheckLease))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used by the exempt check test")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for ExemptCheckLease {
+        async fn check_and_promote(
+            &mut self,
+            _candidate: &runtime::CandidateFile,
+            _target_core: nyanpasu_config::application::ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
+            Err(core_bridge::CheckAndPromoteFailure::Actor(
+                crate::core::actor::types::CoreActorError::StaleOperation,
+            ))
+        }
+
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Err(crate::core::actor::types::CoreActorError::StaleOperation)
+        }
+
+        async fn apply_promoted(
+            &mut self,
+            _snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Err(crate::core::actor::types::CoreActorError::StaleOperation)
+        }
+
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            Err(core_bridge::RestartFailure::Actor(
+                crate::core::actor::types::CoreActorError::StaleOperation,
+            ))
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
 
     #[async_trait]
     impl CoreLifecyclePort for ExemptRestartCore {
@@ -3660,6 +3790,83 @@ mod tests {
     }
 
     #[test]
+    fn background_acquire_and_pipeline_errors_reach_the_degradation_sink() {
+        fn client_with_sink(
+            dir: &TempDir,
+            core: Arc<dyn CoreLifecyclePort>,
+        ) -> (
+            NyanpasuClient,
+            tokio::sync::mpsc::UnboundedReceiver<runtime::Degradation>,
+        ) {
+            let (degradation_tx, degradation_rx) = tokio::sync::mpsc::unbounded_channel();
+            let mut args = test_client_args_with_lifecycle(dir, core);
+            args.degradation = Arc::new(NotifyingCoreDegradationSink(degradation_tx));
+            (
+                NyanpasuClient::try_new_with_args(args).unwrap(),
+                degradation_rx,
+            )
+        }
+
+        for (core, expected_message) in [
+            (
+                Arc::new(BeginFailureCore) as Arc<dyn CoreLifecyclePort>,
+                "acquire timeout",
+            ),
+            (
+                Arc::new(ExemptCheckCore) as Arc<dyn CoreLifecyclePort>,
+                "operation id does not match",
+            ),
+        ] {
+            let dir = tempdir().unwrap();
+            let (client, mut degradation_rx) = client_with_sink(&dir, core);
+            tauri::async_runtime::block_on(async {
+                client.rebuild_coordinator().notifier().request_rebuild();
+                let degradation =
+                    tokio::time::timeout(Duration::from_secs(2), degradation_rx.recv())
+                        .await
+                        .expect("background error must publish without polling sleeps")
+                        .expect("degradation sink must stay connected");
+                assert_eq!(degradation.phase, runtime::DegradationPhase::CoreLifecycle);
+                assert_eq!(degradation.code, "core_operation_unavailable");
+                assert!(degradation.retryable);
+                assert!(degradation.message.contains(expected_message));
+            });
+        }
+    }
+
+    #[test]
+    fn profile_commit_acquire_failure_is_committed_degraded() {
+        let dir = tempdir().unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            Arc::new(BeginFailureCore),
+        ))
+        .unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let outcome = client
+                .create_profile(minimal_file_profile_request(), Some("proxies: []".into()))
+                .await
+                .unwrap();
+            assert!(matches!(
+                outcome,
+                runtime::MutationOutcome::CommittedDegraded { .. }
+            ));
+            assert_eq!(outcome.degradations().len(), 1);
+            assert_eq!(
+                outcome.degradations()[0].phase,
+                runtime::DegradationPhase::CoreLifecycle
+            );
+            assert_eq!(outcome.degradations()[0].code, "core_operation_unavailable");
+            assert!(outcome.degradations()[0].retryable);
+            assert_eq!(
+                client.get_profiles().await.unwrap().current.as_ref(),
+                Some(outcome.value())
+            );
+        });
+    }
+
+    #[test]
     fn legacy_regeneration_path_still_errors_on_rebuild_failure() {
         let dir = tempdir().unwrap();
         let mut core = MockRunningCoreBridge::new();
@@ -3806,21 +4013,6 @@ mod tests {
 
     #[test]
     fn change_core_acquire_failure_does_not_commit_desired_core() {
-        struct BeginFailureCore;
-
-        #[async_trait]
-        impl CoreLifecyclePort for BeginFailureCore {
-            async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
-                anyhow::bail!("scripted acquire timeout")
-            }
-
-            async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
-                anyhow::bail!("status is not used")
-            }
-
-            async fn on_profile_change(&self) {}
-        }
-
         let dir = tempdir().unwrap();
         let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
             &dir,

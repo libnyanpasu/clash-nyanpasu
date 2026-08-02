@@ -136,6 +136,11 @@ impl CoreClient {
         self.inner.status_rx.borrow().clone()
     }
 
+    #[cfg(test)]
+    pub(crate) fn subscribe_status(&self) -> watch::Receiver<CoreStatusView> {
+        self.inner.status_rx.clone()
+    }
+
     pub(crate) async fn begin_operation(&self) -> Result<CoreOperationGuard, OperationError> {
         let mut operation = CoreOperationGuard::pending(self.clone(), self.allocate_operation_id());
         operation.acquire().await?;
@@ -456,7 +461,7 @@ impl CoreLifecycleLease for CoreLeaseAdapter {
     }
 
     async fn restart(&mut self) -> anyhow::Result<()> {
-        let core = match self.target_core {
+        let core = match self.target_core.take() {
             Some(core) => core,
             None => self.application.get().await?.state.core,
         };
@@ -485,7 +490,12 @@ async fn apply_config_from(product: &camino::Utf8Path) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::{
+        future::{Future, poll_fn},
+        pin::Pin,
+        sync::Mutex,
+        task::Poll,
+    };
 
     use camino::Utf8PathBuf;
     use nyanpasu_ipc::api::status::{ConfigRevisionInfo, CoreState};
@@ -537,6 +547,14 @@ mod tests {
         client.running(&operation).await.unwrap().unwrap()
     }
 
+    async fn poll_once_pending<F: Future>(mut future: Pin<&mut F>) {
+        poll_fn(|context| {
+            assert!(future.as_mut().poll(context).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+    }
+
     fn observation(
         state: CoreState,
         lifecycle: FaithfulLifecycle,
@@ -585,12 +603,24 @@ mod tests {
     }
 
     async fn test_client(initial: BackendObservation) -> TestClient {
-        test_client_with_replace_barrier(initial, None).await
+        test_client_with_options(initial, None, false).await
     }
 
     async fn test_client_with_replace_barrier(
         initial: BackendObservation,
         replace_barrier: Option<ReplaceBarrier>,
+    ) -> TestClient {
+        test_client_with_options(initial, replace_barrier, false).await
+    }
+
+    async fn test_client_with_scripted_replacement(initial: BackendObservation) -> TestClient {
+        test_client_with_options(initial, None, true).await
+    }
+
+    async fn test_client_with_options(
+        initial: BackendObservation,
+        replace_barrier: Option<ReplaceBarrier>,
+        scripted_replacement: bool,
     ) -> TestClient {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
@@ -612,12 +642,16 @@ mod tests {
             requests: requests.clone(),
             degradation: sink.clone(),
         };
-        let slot = BackendSlot::Ready(CoreBackend::Test(backend.clone()));
-        let client = match replace_barrier {
-            Some(barrier) => {
-                CoreClient::new_with_backend_and_replace_barrier(args, slot, barrier).await
+        let client = if scripted_replacement {
+            CoreClient::new_with_reconciled_backend(args, backend.clone()).await
+        } else {
+            let slot = BackendSlot::Ready(CoreBackend::Test(backend.clone()));
+            match replace_barrier {
+                Some(barrier) => {
+                    CoreClient::new_with_backend_and_replace_barrier(args, slot, barrier).await
+                }
+                None => CoreClient::new_with_backend(args, slot).await,
             }
-            None => CoreClient::new_with_backend(args, slot).await,
         }
         .unwrap();
         TestClient {
@@ -687,6 +721,39 @@ mod tests {
         tokio::task::yield_now().await;
         active.release().await;
         let third = test.client.begin_operation().await.unwrap();
+        third.release().await;
+    }
+
+    #[tokio::test]
+    async fn dropping_a_waiting_begin_operation_allows_the_next_waiter() {
+        let test = test_client(stopped(None)).await;
+        let first = test.client.begin_operation().await.unwrap();
+        let mut second = Box::pin(test.client.begin_operation());
+        poll_once_pending(second.as_mut()).await;
+        let mut third = Box::pin(test.client.begin_operation());
+        poll_once_pending(third.as_mut()).await;
+        test.client.refresh_status(&first).await.unwrap();
+
+        drop(second);
+        drop(first);
+        let third = third.await.unwrap();
+        third.release().await;
+    }
+
+    #[tokio::test]
+    async fn dropping_a_just_granted_operation_guard_releases_the_next_waiter() {
+        let test = test_client(stopped(None)).await;
+        let first = test.client.begin_operation().await.unwrap();
+        let mut second = Box::pin(test.client.begin_operation());
+        poll_once_pending(second.as_mut()).await;
+        let mut third = Box::pin(test.client.begin_operation());
+        poll_once_pending(third.as_mut()).await;
+        test.client.refresh_status(&first).await.unwrap();
+
+        drop(first);
+        let second = second.await.unwrap();
+        drop(second);
+        let third = third.await.unwrap();
         third.release().await;
     }
 
@@ -984,6 +1051,27 @@ mod tests {
         assert!(test.client.running(&operation).await.unwrap().is_none());
         operation.release().await;
         test.client.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn failed_replacement_preserves_run_type_until_a_real_backend_commits() {
+        let test = test_client_with_scripted_replacement(running(1)).await;
+        let operation = test.client.begin_operation().await.unwrap();
+        test.backend.fail_next_replace();
+
+        assert!(
+            test.client
+                .set_backend(&operation, RunType::Service)
+                .await
+                .is_err()
+        );
+        assert_eq!(test.client.status().run_type, RunType::Normal);
+
+        test.client
+            .set_backend(&operation, RunType::Service)
+            .await
+            .unwrap();
+        assert_eq!(test.client.status().run_type, RunType::Service);
     }
 
     #[tokio::test]

@@ -165,14 +165,18 @@ impl CoreActorState {
             .ok_or(CoreActorError::StaleOperation)
     }
 
-    fn commit(&mut self, mut observation: BackendObservation) {
+    fn commit(&mut self, observation: BackendObservation) {
         self.evaluate_recovery_latch(&observation.lifecycle);
         if matches!(observation.lifecycle, FaithfulLifecycle::Stopped { .. }) {
             self.running = None;
         }
-        observation.view.run_type = self.mode;
         self.observed = observation;
         self.status_tx.send_replace(self.observed.view.clone());
+    }
+
+    fn commit_backend(&mut self, mut observation: BackendObservation) {
+        observation.view.run_type = self.mode;
+        self.commit(observation);
     }
 
     fn evaluate_recovery_latch(&mut self, lifecycle: &FaithfulLifecycle) {
@@ -237,7 +241,7 @@ impl CoreActorState {
                 let observation = backend.observe_status().await;
                 self.backend = Some(BackendSlot::Ready(backend));
                 match observation {
-                    Ok(observation) => self.commit(observation),
+                    Ok(observation) => self.commit_backend(observation),
                     Err(error) => return Err(CoreActorError::Backend(Arc::new(error))),
                 }
                 if let Some(error) = shutdown_error {
@@ -401,7 +405,7 @@ impl Actor for CoreActor {
                 let result = match result {
                     Ok(observation) => {
                         state.running = Some(request);
-                        state.commit(observation);
+                        state.commit_backend(observation);
                         Ok(())
                     }
                     Err(error) => Err(error),
@@ -419,7 +423,7 @@ impl Actor for CoreActor {
                 let result = match result {
                     Ok(observation) => {
                         state.running = None;
-                        state.commit(observation);
+                        state.commit_backend(observation);
                         Ok(())
                     }
                     Err(error) => Err(error),
@@ -436,7 +440,7 @@ impl Actor for CoreActor {
                 };
                 let result = match result {
                     Ok(observation) => {
-                        state.commit(observation);
+                        state.commit_backend(observation);
                         Ok(())
                     }
                     Err(error) => Err(error),
@@ -463,7 +467,7 @@ impl Actor for CoreActor {
                     Err(error) => Err(error),
                 };
                 if let Ok(observation) = &result {
-                    state.commit(observation.clone());
+                    state.commit_backend(observation.clone());
                 }
                 let _ = reply.send(result);
             }
@@ -475,7 +479,7 @@ impl Actor for CoreActor {
                         Err(error) => Err(error),
                     };
                     match result {
-                        Ok(observation) => state.commit(observation),
+                        Ok(observation) => state.commit_backend(observation),
                         Err(error) => tracing::debug!(%error, "core status refresh hint failed"),
                     }
                 }

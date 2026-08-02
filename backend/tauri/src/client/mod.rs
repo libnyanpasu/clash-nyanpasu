@@ -2024,6 +2024,15 @@ mod tests {
     }
 
     #[derive(Default)]
+    struct RecordingCoreDegradationSink(StdMutex<Vec<runtime::Degradation>>);
+
+    impl crate::core::actor::backend::CoreDegradationSink for RecordingCoreDegradationSink {
+        fn publish(&self, degradation: runtime::Degradation) {
+            self.0.lock().unwrap().push(degradation);
+        }
+    }
+
+    #[derive(Default)]
     struct NoopServiceControlOps;
 
     #[async_trait]
@@ -2183,6 +2192,74 @@ mod tests {
         (core, requests)
     }
 
+    pub(crate) async fn actor_backed_test_client(
+        dir: &TempDir,
+        backend: crate::core::actor::backend::TestBackend,
+        degradation: Arc<dyn crate::core::actor::backend::CoreDegradationSink>,
+    ) -> NyanpasuClient {
+        let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let ports = Arc::new(SessionPortResolver::default());
+        ports.resolve(&ClashConfig::default()).unwrap();
+        let file_service = Arc::new(ProfileFileService::new(
+            paths.clone(),
+            ports.clone() as Arc<dyn SelfProxyPortSource>,
+        ));
+        let rebuild = rebuild::RebuildCoordinator::new();
+        let profiles = profiles::ProfilesClient::new(
+            temp_config_path(dir, "profiles.yaml"),
+            file_service.clone() as Arc<dyn ProfileFsPort>,
+            file_service.clone() as Arc<dyn SubscriptionFetcher>,
+            file_service.clone() as Arc<dyn ProfileMaterializationPort>,
+            Arc::new(rebuild.notifier()),
+        )
+        .await
+        .unwrap();
+        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let requests = crate::core::actor::request::CoreRequestFactory::new(
+            &paths,
+            runtime_paths.clone(),
+            test_binary_resolver(dir),
+        )
+        .unwrap();
+        let core_client = CoreClient::new_with_reconciled_backend(
+            core::CoreClientArgs {
+                mode: crate::core::RunType::Normal,
+                requests: requests.clone(),
+                degradation,
+            },
+            backend,
+        )
+        .await
+        .unwrap();
+        let core = Arc::new(core::CoreLifecycleAdapter::new(
+            core_client.clone(),
+            application.clone(),
+            requests.clone(),
+        ));
+        NyanpasuClient::with_parts(
+            application,
+            session_state,
+            clash_config,
+            profiles,
+            file_service.clone() as Arc<dyn ProfileFsPort>,
+            ports,
+            paths.app_profiles_dir(),
+            runtime_paths,
+            Arc::new(crate::client::event_sink::NoopUiEventSink),
+            core_client,
+            core,
+            requests,
+            test_service_control(),
+            Arc::new(NoopRunningConfigPatchPort),
+            Arc::new(NoopSystemDnsCache),
+            crate::client::runtime::new_runtime_lifecycle_store()
+                .await
+                .unwrap(),
+            rebuild,
+        )
+    }
+
     async fn service_facade(
         dir: &TempDir,
         enable_service: bool,
@@ -2267,6 +2344,42 @@ mod tests {
                 lifecycle: crate::core::actor::types::FaithfulLifecycle::Running,
             },
         )
+    }
+
+    #[tokio::test]
+    async fn core_status_facade_refreshes_stale_state_and_publishes_degradation_once() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let degradation = Arc::new(RecordingCoreDegradationSink::default());
+        let client = actor_backed_test_client(&dir, backend.clone(), degradation.clone()).await;
+        let mut status = client.inner.core_client.subscribe_status();
+        status.borrow_and_update();
+        let reason = "core kept crashing; restart budget exhausted\nfacade".to_owned();
+        backend.set_observation(crate::core::actor::types::BackendObservation {
+            view: crate::core::actor::types::CoreStatusView {
+                state: nyanpasu_ipc::api::status::CoreState::Stopped(Some(reason.clone())),
+                state_changed_at: 2,
+                run_type: crate::core::RunType::Normal,
+                revision: None,
+                recovery_exhausted: true,
+            },
+            lifecycle: crate::core::actor::types::FaithfulLifecycle::Stopped {
+                reason: Some(reason),
+            },
+        });
+
+        assert!(matches!(
+            client.core_status().0,
+            std::borrow::Cow::Owned(nyanpasu_ipc::api::status::CoreState::Running)
+        ));
+        status.changed().await.unwrap();
+        assert!(matches!(
+            client.core_status().0,
+            std::borrow::Cow::Owned(nyanpasu_ipc::api::status::CoreState::Stopped(Some(_)))
+        ));
+        status.changed().await.unwrap();
+        assert_eq!(degradation.0.lock().unwrap().len(), 1);
+        client.shutdown().await;
     }
 
     #[derive(Default)]
@@ -2741,7 +2854,7 @@ mod tests {
         test_client_args_with_lifecycle(dir, test_core_port(core))
     }
 
-    fn minimal_file_profile_request() -> NewProfileRequest {
+    pub(crate) fn minimal_file_profile_request() -> NewProfileRequest {
         NewProfileRequest {
             metadata: ProfileMetadata {
                 name: "t".into(),

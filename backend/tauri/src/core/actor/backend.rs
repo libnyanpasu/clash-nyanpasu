@@ -48,10 +48,13 @@ pub(crate) struct TestBackend {
 struct TestBackendState {
     observation: std::sync::Mutex<BackendObservation>,
     observe_calls: std::sync::atomic::AtomicUsize,
+    check_calls: std::sync::atomic::AtomicUsize,
     run_calls: std::sync::atomic::AtomicUsize,
+    run_requests: std::sync::Mutex<Vec<CoreRequest>>,
     shutdown_calls: std::sync::atomic::AtomicUsize,
     fail_observe: std::sync::atomic::AtomicBool,
     fail_run: std::sync::atomic::AtomicBool,
+    fail_run_action: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
     fail_replace: std::sync::atomic::AtomicBool,
     run_barrier: std::sync::Mutex<Option<TestRunBarrier>>,
 }
@@ -105,10 +108,13 @@ impl TestBackend {
             state: Arc::new(TestBackendState {
                 observation: std::sync::Mutex::new(observation),
                 observe_calls: std::sync::atomic::AtomicUsize::new(0),
+                check_calls: std::sync::atomic::AtomicUsize::new(0),
                 run_calls: std::sync::atomic::AtomicUsize::new(0),
+                run_requests: std::sync::Mutex::new(Vec::new()),
                 shutdown_calls: std::sync::atomic::AtomicUsize::new(0),
                 fail_observe: std::sync::atomic::AtomicBool::new(false),
                 fail_run: std::sync::atomic::AtomicBool::new(false),
+                fail_run_action: std::sync::Mutex::new(None),
                 fail_replace: std::sync::atomic::AtomicBool::new(false),
                 run_barrier: std::sync::Mutex::new(None),
             }),
@@ -129,6 +135,11 @@ impl TestBackend {
         self.state
             .fail_run
             .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    pub(crate) fn fail_next_run_with(&self, action: impl FnOnce() + Send + 'static) {
+        *self.state.fail_run_action.lock().unwrap() = Some(Box::new(action));
+        self.fail_next_run();
     }
 
     pub(crate) fn fail_next_replace(&self) {
@@ -168,6 +179,16 @@ impl TestBackend {
         self.state
             .run_calls
             .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub(crate) fn check_calls(&self) -> usize {
+        self.state
+            .check_calls
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub(crate) fn run_requests(&self) -> Vec<CoreRequest> {
+        self.state.run_requests.lock().unwrap().clone()
     }
 
     pub(crate) fn shutdown_calls(&self) -> usize {
@@ -227,7 +248,11 @@ impl CoreBackend {
                     .await?;
             }
             #[cfg(test)]
-            Self::Test(_) => {}
+            Self::Test(test) => {
+                test.state
+                    .check_calls
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+            }
         }
         Ok(())
     }
@@ -261,11 +286,19 @@ impl CoreBackend {
                 test.state
                     .run_calls
                     .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                test.state
+                    .run_requests
+                    .lock()
+                    .unwrap()
+                    .push(request.clone());
                 if test
                     .state
                     .fail_run
                     .swap(false, std::sync::atomic::Ordering::AcqRel)
                 {
+                    if let Some(action) = test.state.fail_run_action.lock().unwrap().take() {
+                        action();
+                    }
                     return Err(CoreBackendError::Construct(anyhow::anyhow!(
                         "scripted run failure"
                     )));
@@ -828,6 +861,32 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    fn transport_available() -> bool {
+        true
+    }
+
+    #[cfg(unix)]
+    fn transport_available() -> bool {
+        static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *AVAILABLE.get_or_init(|| {
+            let probe = format!("/var/run/.nyanpasu-ipc-probe-{}", std::process::id());
+            match std::fs::File::create(&probe) {
+                Ok(_) => {
+                    let _ = std::fs::remove_file(&probe);
+                    true
+                }
+                Err(error) => {
+                    eprintln!(
+                        "skipping core actor unix socket tests: /var/run is not writable \
+                         ({error}); run as root for unix socket coverage"
+                    );
+                    false
+                }
+            }
+        })
+    }
+
     fn spawn_harness(harness: Harness) -> (String, tokio::sync::oneshot::Sender<()>) {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let placeholder = format!(
@@ -853,12 +912,14 @@ mod tests {
             .with_state(harness);
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
-            axum::serve(IpcListener(listener, path), router)
+            axum::serve(IpcListener(listener, path.clone()), router)
                 .with_graceful_shutdown(async move {
                     let _ = shutdown_rx.await;
                 })
                 .await
                 .unwrap();
+            #[cfg(unix)]
+            let _ = std::fs::remove_file(path);
         });
         (placeholder, shutdown_tx)
     }
@@ -1063,6 +1124,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_and_service_backends_have_real_lifecycle_parity() {
+        if !transport_available() {
+            return;
+        }
         let dir = tempfile::tempdir().unwrap();
         let probe =
             Utf8PathBuf::from_path_buf(fake_core::require_probe_bin_path().unwrap()).unwrap();
@@ -1104,6 +1168,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn service_run_suppresses_only_not_started_stop_races() {
+        if !transport_available() {
+            return;
+        }
         let dir = tempfile::tempdir().unwrap();
         let factory = test_factory(&dir, Utf8PathBuf::from("unused"));
         let request = factory.for_product(ClashCore::Mihomo).unwrap();
@@ -1126,6 +1193,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn service_run_and_refresh_relearn_revision() {
+        if !transport_available() {
+            return;
+        }
         let dir = tempfile::tempdir().unwrap();
         let factory = test_factory(&dir, Utf8PathBuf::from("unused"));
         let request = factory.for_product(ClashCore::Mihomo).unwrap();

@@ -1,7 +1,7 @@
 # PR-5b 实施计划 — 单一 runtime apply 管线
 
 **日期：** 2026-08-02
-**版本：** v5（三轮复审 REJECT 后修订：NH4–NH9 + 五处机械修；**D1–D5 全裁 A** 不重开）
+**版本：** v6（四轮复审后定稿：NH4–NH9 + H1–H3 + 三项 Medium；**D1–D5 全裁 A** 不重开）
 **分支基线：** `refactor/core-manager-actor` @ `9727ef1d4`（PR-5a 阶段门已关闭：`ae4e0f288` + `6a3878bba` + `5277482a5` + `9727ef1d4`）
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/task.md` 卡 B1–B4；`design.md` §6–§8
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.2；必答项 §6.4 **RQ-01 / RQ-03**
@@ -57,6 +57,28 @@
 | C1 残留  | T-B4-05 补 `value` 三字段断言                                                                   | §6.3 T-B4-05                      |
 | M10 残留 | parity 改测**真实转换层**；`TestBackend` 不得冒充 parity                                        | §3.2                              |
 | 陈旧 ×6  | D1 两处 / D5 一处 / S4 实参 / S6 箭头 / S7「两条」/「其余 8 处」                                | 各处就地                          |
+
+**v5 修订索引（三轮复审 REJECT：NH4–NH9 + 四项机械修）：**
+
+| 项      | 结论                                                                                               | 落点                    |
+| ------- | -------------------------------------------------------------------------------------------------- | ----------------------- |
+| NH4     | `CoreActorError` 加 `LifecycleInvariant(_)`（双 kind）；豁免 (b) 写成可 `matches!` 的规则          | F43、§2.3、A.1          |
+| NH5     | §2.2 拆出 E-a / E-b 发布中止行块；四处 categorical 表述改**引用** §2.3                             | §2.2、§2.1、I-B、S6     |
+| NH6     | T-PC-04 拆 04a / 04b；新增 T-PC-12 豁免边界分类测试                                                | §6.2                    |
+| NH7     | 行 7 拆 7a / 7b / 7c；report 段落排除 7a（`RolledBack` **有** `CoreApplyData`）                    | §2.2                    |
+| NH8     | `NoBackend` 独立成行 6b（`core_backend_unavailable`）                                              | §2.2、S6、§2.3          |
+| NH9     | 新函数改名 `runtime_outcome_from_apply_data`；既有同名函数**不动**、引用处写全限定名               | F44、A.5、§3.2、T-AP-13 |
+| 机械 ×4 | A.6 表格归位（两 code 复位）／陈旧 `Ok(None)` 形消除／T-AP-13 删 TestBackend 前置／D1 删已裁条件句 | 各处就地                |
+
+**v6 修订索引（四轮复审 REJECT：H1–H3 + 三项 Medium）：**
+
+| 项   | 结论                                                                                               | 落点                                     |
+| ---- | -------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| H1   | 同款 categorical 措辞另三处改引用；**用 grep 收口该措辞类**（第四次同形残留）                      | §2.1 边界定义、入口表、S6 流程、I-A 首句 |
+| H2   | `CheckAndPromoteError` **只覆盖 check + 文件工作**；发布类错误以**裸 `CoreActorError`** 逃回编排层 | F45、D3 措辞、A.1b doc                   |
+| H3   | 新增 **A.7 有序分类器**——`Backend(_)` 必须过它才能定行；每条判据锚到真实类型化谓词                 | F46/F47/F48、A.7、§2.3                   |
+| M ×3 | T-PC-12 进出口与提交切分／T-AP-11/12 补 report 值断言／S4 的「第 7 行」改 7b                       | §7、§9、§6.1、S4                         |
+| 索引 | 补齐 v5 与 v6 两张索引表（v5 那张原押后，现并入本版）                                              | 本表与上表                               |
 
 ---
 
@@ -460,7 +482,7 @@ begin_operation()  →  分配 revision  →  读 typed snapshots  →  build �
 | 存在                    | `Some(..)`                 | 正常 CAS，防刷新竞态——这是 5a RQ-02 讨论的情形                                                                                                                                                                                               |
 | **缺失**                | **`None`**（无条件 apply） | **核处于停止态时天然没有 revision**。upstream 在 CAS 比较**之前**就因 `ctrl.current == None` 返回 `Error::NotStarted`（F36），所以传什么 `expected` 都不影响结果；此时返回 `Err` 反而与 §2.2「停止核给 `core_not_running` degraded」直接矛盾 |
 
-> v2 写「`expected` 为 `None` 即不变量破坏，返回 `Err`」是错的。5a 的 RQ-02 注解讨论的是**刷新竞态**下要不要带 CAS，不是停止核；本条是对它的**细化**，不是推翻——有 revision 时依旧一律 `Some`。backend 返回的 `NotStarted` 按 §2.2 第 7 行映射为 `core_not_running` degradation。
+> v2 写「`expected` 为 `None` 即不变量破坏，返回 `Err`」是错的。5a 的 RQ-02 注解讨论的是**刷新竞态**下要不要带 CAS，不是停止核；本条是对它的**细化**，不是推翻——有 revision 时依旧一律 `Some`。backend 返回的 `NotStarted` 按 §2.2 第 **7b** 行映射（A.7 的分类器第 2 顺位）为 `core_not_running` degradation。
 
 按 D3=A **删除 `apply_candidate`**。
 
@@ -642,8 +664,8 @@ pnpm lint:architecture-ledger
 | T-AP-05/06 | `Reloaded` 无/有 warning                    | 同上形态                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | T-AP-07/08 | `Restarted` 无/有 warning                   | 同上形态                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | T-AP-09/10 | `Switched` 无/有 warning                    | 同上形态                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| T-AP-11    | `RolledBack` 无 warning                     | Applied **不推进**；`CommittedDegraded`；恰 1 条 `CoreRollback`                                                                                                                                                                                                                                                                                                                                                                                                           |
-| T-AP-12    | `RolledBack` + warning                      | Applied 不推进；**2 条** degradation（`CoreRollback` + durability）                                                                                                                                                                                                                                                                                                                                                                                                       |
+| T-AP-11    | `RolledBack` 无 warning                     | Applied **不推进**；`CommittedDegraded`；恰 1 条 `CoreRollback`；**并断言 report 值**：`value.outcome == RolledBack`（**不是 `NotApplied`**——§2.2 行 7a 的例外）、`value.desired_revision` = 本次分配的 revision、`value.applied_revision` = 旧值                                                                                                                                                                                                                         |
+| T-AP-12    | `RolledBack` + warning                      | Applied 不推进；**2 条** degradation（`CoreRollback` + durability）；report 值断言同 T-AP-11                                                                                                                                                                                                                                                                                                                                                                              |
 | T-AP-13    | Local / Service 双后端对同一 outcome 同映射 | **不比共用的 mapper**（M10）——parity 的价值全在各后端的转换层。Local 侧**直接在模块内单测既有的 `core::actor::backend::map_apply_outcome`**（喂 manager `ApplyOutcome` fixtures → `CoreApplyData`；`:975`/`:986` 已有两个测试可扩），Service 侧走 IPC harness 解码（套 `transport_available()`，F24）；两侧 `CoreApplyData` 逐字段相等。**不需要 `TestBackend` 前置**——M10 由此彻底关闭。注意它与新增的 `runtime_outcome_from_apply_data` 是**两个不同函数**（NH9 / F44） |
 
 ### 6.2 post-commit 失败矩阵（RQ-01；§2.2 的七项）
@@ -712,7 +734,7 @@ pnpm lint:architecture-ledger
 | apply parity：Noop/Patched/Reloaded/Restarted/Switched/RolledBack；Warning 正交                    | S4、S7   | T-AP-01…13 全绿（12 格 + 双后端） |
 | change-core rollback 断言 desired=new、Promoted=new、Applied=old                                   | S6       | T-B4-01                           |
 | 两个并发 rebuild 不重叠，后一个读最新 snapshot                                                     | S3       | T-B2-01                           |
-| RQ-01 已作答（含 §2.4 的**四类**投递上下文）                                                       | §2       | T-PC-01…11                        |
+| RQ-01 已作答（含 §2.4 的**四类**投递上下文与 §2.3 的两条豁免）                                     | §2       | T-PC-01…12                        |
 | RQ-03 已作答（含 R1 的 `Started` 与 C1 的 `NotApplied` 两个非 apply 终态）                         | §3       | T-AP-01…13 + T-B4-03 / T-B4-05    |
 
 ---
@@ -740,7 +762,7 @@ pnpm lint:architecture-ledger
 2. `feat(core): own promoted and applied state in CoreActor` —— S2 + T-LC；
 3. `refactor(client): replace rebuild_gate with the core operation guard` —— S3 + T-B2；
 4. `feat(core): route promoted apply through the core backend` —— S4 + S7 + T-AP；
-5. `refactor(client): delete the api-first patch and compensation layer` —— S5 + T-PC-01…08、T-PC-10/11；
+5. `refactor(client): delete the api-first patch and compensation layer` —— S5 + T-PC-01…08、T-PC-10/11、**T-PC-12**（豁免边界分类测试随 §2.3 的规则一起落地）；
 6. `feat(client): publish background rebuild degradations to the core sink` —— §2.4 的两项动作 + T-PC-09；
 7. `refactor(client): make change_core a commit-first mutation` —— S6 + T-B4 + S8 + S9。
 

@@ -1,7 +1,7 @@
 # PR-5c 实施计划 — 状态/日志、运行模式、macOS DNS、residual 清理
 
 **日期：** 2026-08-02
-**版本：** v3（leader 裁定 D1–D3 = A、§7 两条分别处置；**用户裁定 D4 = 路径乙**，CI 能力边界已核实并写明）
+**版本：** v4（对抗审 38/100 九条 BLOCKING 后重做：C2/C3 补设计（附录 B）+ 测试矩阵与契约归属重审 + ledger 精确值 + smoke 门禁）
 **分支基线：** `refactor/core-manager-actor` @ `899b069f5`（PR-5b 阶段门已关闭：实施 7 提交 + 修复 8 提交，467 passed / 1 ignored）
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/task.md` 卡 C1–C4（`:115-160`）+ 文末最终删除清单
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.3
@@ -24,6 +24,22 @@
 | §7 ①    | `install_service` 不 reconcile 是**有意**——加注释，不改行为                                                                                                                                      | §7 ①、S7        |
 | §7 ②    | `uninstall_service` 绕 facade 是**缺陷**——S7 改走 facade + reconcile；**不违反 C2**                                                                                                              | §7 ②、S7        |
 | 事实    | F6 精确化（`dist/` 命中是构建产物）；新增 F32（ledger bug **不跨文件**，修复范围限于一处）                                                                                                       | F6、F32         |
+
+**v4 修订索引（对抗审 REJECT 38/100 → 九条 BLOCKING + leader 认错两条）：**
+
+| 项           | 结论                                                                                                                                                                                                                         | 落点              |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| C2 设计      | **附录 B.1**：探针提成注入式 port（`status()` + 纯函数兼容门，**不用发明**）；**九处调用点逐一点名**（含今天缺的 uninstall 后 / update 后）；修 reconciler 提前返回以打通 **Service→Normal**；**S6′/S7′ 先建后删、双轨等价** | B.0/B.1、S6′、S7′ |
+| C3 设计      | **附录 B.2**：macOS-only 注入式 `MacosDnsPort`；TUN 数据走**独立守卫消息**不扩 `CoreRequest`；**恢复拆两类**（主路径 await / `Drop` 只记日志）；**Service 控制动作前先拆 DNS**                                               | B.2、S4           |
+| D3 修正      | RAII 形态**不可实施**（`Drop` 不能 await 而 Service 恢复走异步 IPC）→ 主路径显式 await，`Drop` 作 bug 指示器。**leader 补的理由**：半个兜底恰在开发者最常跑的 Local 生效，会**反向选择**地把主路径 bug 藏到生产              | B.2.3             |
+| Local 退出码 | 上游 `set_dns` **丢弃 `ExitStatus`** → 裁定**写回后读回校验**；**必须语义（地址集合）比较**否则假失败比不校验更糟；失败进 degradation；**T-DNS-04 走真实适配器**；TOCTOU 明确不在范围                                        | B.2.5、T-DNS-04   |
+| F17 移除     | `KILL_FLAG` weak CAS 与 T-SVC-01 **整个移除**——CAS 只为终止轮询而存在，同一步就删线程；**先例不适用**（那次修的是保留的代码）                                                                                                | S6′ 注、§4        |
+| §5 重审      | **签名只保证「值可得」与「类型在此平台不存在」**；凡「不会去做某事」一律改归测试 / 门禁 / `rg`。「不读全局」改归 **ledger 门禁**（计数可数）                                                                                 | §5 全节           |
+| §4 自检      | 第三列**逐条当断言验证**；五条验不过的改写或移除**并交代理由**；具名例外 + **测试改名**                                                                                                                                      | §4 全节           |
+| ledger       | **精确值**（`config_calls` 102→105、`service_globals` 58→61，含分解）+ **两段式**（先实测再比对）+ 最终 `--write-snapshot` 单独成 commit + **marker 待定项强制二选一**                                                       | S1、S8            |
+| smoke        | **补齐三项**（v1/v2 都漏）+ fixed-port 具名 + **smoke 2 依赖 update 后的 probe**（C2 迁移不全会打断它而 grep 全绿）                                                                                                          | S8.2              |
+| S1 修法      | **三态扫描器** + **两个被否方案连同理由** + **同一筛查方法复验**（发现它的方法也验收它）                                                                                                                                     | S1                |
+| 事实         | F32b（**两个文件**，`candy.rs` 零影响是潜伏盲区）、F35（`IPC_STATE` 初值致 bootstrap **恒判 Normal**，新设计顺手修掉**既有**缺陷）、F36（探针两半已存在）                                                                    | F32b、B.0         |
 
 ---
 
@@ -89,18 +105,19 @@
 
 ### 1.4 C4 —— residual 与 ledger
 
-| ID  | 事实                                                                                                                                                                                                                                                                                                                                                           | 锚点                                                                   |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| F25 | **`attach_core_port` 不存在**——全仓零命中。C4 该项是 **no-op**                                                                                                                                                                                                                                                                                                 | 全仓 grep                                                              |
-| F26 | Updater 的 core 耦合**已经是收敛形态**：`CoreClient` 按调用传入（`update_core(&core_type, core)`），manager 本身不持有；唯一残留是 `client/mod.rs:562` 那行 `UpdaterManager::global()`                                                                                                                                                                         | `core/updater/mod.rs:223`；`client/mod.rs:558-567`                     |
-| F27 | **两个文件已完全失去调用者**：`core/manager.rs`（84 行，`grant_permission` / `escape` 均零调用）与 `core/state.rs`（233 行，`#![allow(dead_code)]`）                                                                                                                                                                                                           | 见左 + `core/mod.rs:8,20`                                              |
-| F28 | `core/clash/core.rs`（481 行）**约 75% 已死**：`enum Instance` 及其整个 impl、`CoreManager.instance` 字段、`CoreManager::status`。**活的只有** `RunType`、`find_binary_path`、`change_default_network_dns`                                                                                                                                                     | `core/clash/core.rs:80-368`、`:387-402`                                |
-| F29 | 删掉 `manager.rs` 与 `Instance` 后，`find_binary_path` 只剩**一个**活调用者 `utils/dirs.rs:345`；且 `setup.rs:90-103` 已有可注入的替代 `OsCoreBinaryResolver`                                                                                                                                                                                                  | 见左                                                                   |
-| F30 | ledger 现值：`config_calls` 102、`service_globals` 58、`migration_markers` 15、`legacy_dto_refs` 299、`test_real_dirs` 0；gate 当前为绿                                                                                                                                                                                                                        | `scripts/architecture-ledger.snapshot.json`                            |
-| F31 | **ledger 有 bug：`core/clash/core.rs` 第 52 行起全部对 ledger 不可见。** 块注释追踪器在 `:51` 的 doc 注释里看到字面量 `/core/*` 就置 `inBlockComment = true`，而该文件**全文没有 `*/`**（实测 0 处）。后果：`Logger::global()` 实际 4 处只报 1 处、`config_calls` 少算约 3 处                                                                                  | `scripts/architecture-ledger.ts:493-507`；`core/clash/core.rs:51`      |
-| F32 | **该 bug 的损害限于这一个文件**：`inBlockComment` 声明在**逐文件处理函数体内**（`:485`），每个文件重新初始化为 `false`，**不跨文件泄漏**。因此修复范围就是这一处逻辑，**不需要扩大到全仓复查**                                                                                                                                                                 | `scripts/architecture-ledger.ts:485`                                   |
-| F33 | **CI 有 macOS runner 且会在 PR 上跑后端测试**：`ci.yml` 的 `test_unit` 作业矩阵含 `macos-latest`，触发条件是 `pull_request` 到 `main` / `dev` / `release-*`，执行 `pnpm test` → `run-p test:*` → `test:backend` = `cargo test --all-features`。因此 **`#[cfg(target_os = "macos")]` 门控的单测会在 CI 上真实运行**                                             | `.github/workflows/ci.yml:201-215,303-304`；`package.json:40,42`       |
-| F34 | **但没有任何作业能跑 smoke 3 本身**：全部 workflow 内只有一处测试调用（`ci.yml:304`），**没有任何作业启动应用**；而 TUN 需要签名的系统/网络扩展 + root，DNS 覆写路径还要经 `osascript` 提权（`client/system_dns.rs:41-49`）——GitHub 托管的 macOS runner **无法安装/批准网络扩展，也无法非交互提权**。`ci.yml:115` 自己留着 `TODO: support test cross-platform` | `.github/workflows/ci.yml`（全仓仅 `:304` 一处测试调用）；`ci.yml:115` |
+| ID   | 事实                                                                                                                                                                                                                                                                                                                                                           | 锚点                                                                   |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| F25  | **`attach_core_port` 不存在**——全仓零命中。C4 该项是 **no-op**                                                                                                                                                                                                                                                                                                 | 全仓 grep                                                              |
+| F26  | Updater 的 core 耦合**已经是收敛形态**：`CoreClient` 按调用传入（`update_core(&core_type, core)`），manager 本身不持有；唯一残留是 `client/mod.rs:562` 那行 `UpdaterManager::global()`                                                                                                                                                                         | `core/updater/mod.rs:223`；`client/mod.rs:558-567`                     |
+| F27  | **两个文件已完全失去调用者**：`core/manager.rs`（84 行，`grant_permission` / `escape` 均零调用）与 `core/state.rs`（233 行，`#![allow(dead_code)]`）                                                                                                                                                                                                           | 见左 + `core/mod.rs:8,20`                                              |
+| F28  | `core/clash/core.rs`（481 行）**约 75% 已死**：`enum Instance` 及其整个 impl、`CoreManager.instance` 字段、`CoreManager::status`。**活的只有** `RunType`、`find_binary_path`、`change_default_network_dns`                                                                                                                                                     | `core/clash/core.rs:80-368`、`:387-402`                                |
+| F29  | 删掉 `manager.rs` 与 `Instance` 后，`find_binary_path` 只剩**一个**活调用者 `utils/dirs.rs:345`；且 `setup.rs:90-103` 已有可注入的替代 `OsCoreBinaryResolver`                                                                                                                                                                                                  | 见左                                                                   |
+| F30  | ledger 现值：`config_calls` 102、`service_globals` 58、`migration_markers` 15、`legacy_dto_refs` 299、`test_real_dirs` 0；gate 当前为绿                                                                                                                                                                                                                        | `scripts/architecture-ledger.snapshot.json`                            |
+| F31  | **ledger 有 bug：`core/clash/core.rs` 第 52 行起全部对 ledger 不可见。** 块注释追踪器在 `:51` 的 doc 注释里看到字面量 `/core/*` 就置 `inBlockComment = true`，而该文件**全文没有 `*/`**（实测 0 处）。后果：`Logger::global()` 实际 4 处只报 1 处、`config_calls` 少算约 3 处                                                                                  | `scripts/architecture-ledger.ts:493-507`；`core/clash/core.rs:51`      |
+| F32  | **该 bug 的损害限于逐文件**：`inBlockComment` 声明在**逐文件处理函数体内**（`:485`），每文件重置、**不跨文件泄漏**。因此修复范围就是这一处逻辑，**不需要全仓复查**                                                                                                                                                                                             | `scripts/architecture-ledger.ts:485`                                   |
+| F32b | **同一模式命中的是两个文件，不是一个**（逐文件比对 `/*` 与 `*/` 计数，双方独立筛查结果一致）：`core/clash/core.rs:51`（doc 注释里的 `` `/core/*` ``，51 行后全灭）与 `utils/candy.rs:12`（glob 串 `"{}/*.{}.app.log"`，13–143 行不可见）。**但 `candy.rs` 被隐藏区内 ledger 关心的四类计数全为 0**，**不参与基线修正**——它是**潜伏盲区**而非现存偏差           | `core/clash/core.rs:51`；`utils/candy.rs:12`                           |
+| F33  | **CI 有 macOS runner 且会在 PR 上跑后端测试**：`ci.yml` 的 `test_unit` 作业矩阵含 `macos-latest`，触发条件是 `pull_request` 到 `main` / `dev` / `release-*`，执行 `pnpm test` → `run-p test:*` → `test:backend` = `cargo test --all-features`。因此 **`#[cfg(target_os = "macos")]` 门控的单测会在 CI 上真实运行**                                             | `.github/workflows/ci.yml:201-215,303-304`；`package.json:40,42`       |
+| F34  | **但没有任何作业能跑 smoke 3 本身**：全部 workflow 内只有一处测试调用（`ci.yml:304`），**没有任何作业启动应用**；而 TUN 需要签名的系统/网络扩展 + root，DNS 覆写路径还要经 `osascript` 提权（`client/system_dns.rs:41-49`）——GitHub 托管的 macOS runner **无法安装/批准网络扩展，也无法非交互提权**。`ci.yml:115` 自己留着 `TODO: support test cross-platform` | `.github/workflows/ci.yml`（全仓仅 `:304` 一处测试调用）；`ci.yml:115` |
 
 ---
 
@@ -197,7 +214,33 @@ DNS 覆写今天与 start/stop **完全无序**（F22），且**退出不恢复*
 
 **为什么必须最先做**：本阶段要删的正是这个文件的大部分。若 bug 不修，删除后的 ledger 差异会**比真实清理小**，`byKey` 对不上，无法用「差异恰好是这些」做判据——判据本身失效。
 
-**改法**：`inBlockComment` 每文件重置（`:485`），并让块注释检测跳过**行注释内**的 `/*`。
+**改法：单趟三态扫描器。** 一个扫描器同时持有三种状态（字符串 / 行注释 / 块注释），每个位置只按**当前状态**决定动作：
+
+| 当前状态     | 遇到 `/*`                  | 遇到 `//`                  | 遇到 `*/`      |
+| ------------ | -------------------------- | -------------------------- | -------------- |
+| 普通代码     | 进块注释                   | 进行注释（本行剩余全忽略） | 无意义，照原样 |
+| **字符串内** | **忽略**                   | **忽略**                   | 忽略           |
+| **行注释内** | **忽略**（本行剩余全忽略） | 忽略                       | 忽略           |
+| **块注释内** | 忽略                       | **忽略**                   | 出块注释       |
+
+它同时解决两个触发点：`candy.rs` 的 `/*` 在**字符串**里被忽略；`core.rs:51` 的 `/core/*` 在 **`///` 行注释**里被忽略——**与反引号无关**，因为 `///` 本身就是行注释，扫描器根本不需要认识 markdown。
+
+**这是标准词法扫描，不是为这两个文件特调的启发式**——「为什么不是特调」本身就是这条修法的正当性：它天然覆盖**将来任何新写法**（新加的 glob 串、doc 注释里的路径示例等），而特调规则只挡住已知的两个。
+
+**两个被否掉的方案，连同理由一并记下（否则下一个人会重新提一遍）：**
+
+| 方案                                             | 为什么否                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **先剥字符串字面量**（复用 `:202` 已有的那两行） | **只修得了 `candy.rs`。** 那两行只处理 `"…"` 与 `'…'`，而 `core.rs:51` 的 `/core/*` 在 `///` 注释里、用 markdown 反引号包着，**根本不在任何 Rust 字符串内**。净效果是**修好零影响的那个、漏掉真正污染基线的那个**                                                                                                                                                                                                                          |
+| **先剥行注释、再扫块注释**                       | **引入一个静默且难以归因的定时缺陷。** `stripLineComment`（`:261-280`）跟踪引号但**不感知块注释**，于是块注释内一行 `参考 http://example.com  */` 会在 `//` 处截断、**把 `*/` 一起删掉**，块状态从此卡死——**正是我们要修的 bug 换了个成因**。实测该模式**今日全仓 0 命中**，所以它是**潜在**而非现存缺陷；这不削弱结论反而加强它：**发作时的症状是「ledger 数字莫名变小」，而触发它的改动（加一行带 URL 的注释）看起来与 ledger 毫无关系** |
+
+**修完必须用同一方法全仓复验**（发现它的方法也用来验收它）：
+
+```bash
+for f in $(find backend/tauri/src -name '*.rs'); do   o=$(grep -o '/\*' "$f" | wc -l); c=$(grep -o '\*/' "$f" | wc -l);   [ "$o" != "$c" ] && echo "$f open=$o close=$c"; done
+```
+
+修复后该命令仍会列出那两个文件（**源码里的不平衡是事实，不是要改的东西**），但**扫描器不应再因此丢行**——判据是上面的基线数字，不是这条命令的输出为空。**这条命令记进计划，作为将来低成本复查手段。**
 
 **验证（两段式，**先实测再比对**）：**
 
@@ -244,17 +287,25 @@ DNS 覆写今天与 start/stop **完全无序**（F22），且**退出不恢复*
 
 **验证：** `rg 'CoreManager' backend/tauri/src` 为 0；`cargo check`。
 
-### S6 — C2：删 5 s 轮询线程与三个 statics
+### S6′ — C2：**先建**——探针 + 九处调用点 + Service→Normal 缺口
 
-按 D2=A 先给 `CoreStatusView::initial(mode)` 加参数，切断 `RunType::default()` 这条阻塞（F13）。然后删 `core/service/ipc.rs` 的 `IPC_STATE` / `KILL_FLAG` / `HEALTH_CHECK_RUNNING`、`spawn_health_check` 与 4 处 spawn（F11）、`on_ipc_state_changed` 的 detached 线程。
+**本步不删任何东西**（轮询线程仍在跑，双轨等价）。按 D2=A 先给 `CoreStatusView::initial(mode)` 加参数，切断 `RunType::default()` 这条阻塞（F13）；建 `ServiceProbe`（B.1.1）；接上 B.1.2 的**九处**调用点；修 B.1.3 的 Service→Normal 缺口。**详见附录 B.1。**
+
+> **`RunType::default()` 的调用点共五处**（两次筛查合并才完整）：`core/actor/types.rs:48`（D2 主目标）、`core/clash/core.rs:409`（macOS DNS 分叉，随 S4 迁走）、`core/clash/core.rs:399`（`CoreManager::status` 内，随 S5 删）、`client/core.rs:1211`（**测试**，§4 具名例外）、`client/process_core_bridge.rs:251`（**注释里的警告**，删后悬空，S5 顺手清理或改写）。**删符号时须按生产 / 测试 / 注释三类各筛一遍**——只筛生产会漏掉让门禁误触发的测试，只筛代码会留下警告不存在之物的悬空注释。
 
 `get_ipc_state()` 的 5 处生产读（F12）改为：模式判定统一走 actor 的 `state.mode` / `CoreClient::status().run_type`。
 
-**同时修 F17 的 weak CAS**（`control.rs:274` → strong），与 PR-5-pre 的同类修复一致。
+> **F17 / T-SVC-01 已整个移除**（leader 裁定）：`KILL_FLAG` 的 weak CAS 唯一存在理由就是终止轮询线程，而 **S7′ 同批就删掉那个线程**——PR-5-pre 的先例不适用，**那次修的是保留的代码，这次是同一步就删的代码**。
 
-**验证：** `rg 'IPC_STATE|KILL_FLAG|HEALTH_CHECK_RUNNING|spawn_health_check|get_ipc_state' backend/tauri/src` 为 0。
+**验证：** 九处调用点各有一例测试（T-MODE-02）；T-PROBE-01/02 绿；**此步 `IPC_STATE` 等仍应存在**——归零判据在 S7′。
 
-### S7 — C2：`set_mode` / `reconcile_mode` 的显式化
+### S7′ — C2：**后删**——轮询线程与三个 statics
+
+确认 S6′ 的九处都走新路径后，**再**删 `core/service/ipc.rs` 的 `IPC_STATE` / `KILL_FLAG` / `HEALTH_CHECK_RUNNING`、`spawn_health_check` 与 4 处 spawn（F11）、`on_ipc_state_changed` 的 detached 线程，以及 `service/mod.rs:18-29` 的忙等。
+
+**验证：** `rg 'IPC_STATE|KILL_FLAG|HEALTH_CHECK_RUNNING|spawn_health_check|get_ipc_state' backend/tauri/src` 为 0；**smoke 2 必须在此步之后跑**（S8.2 已说明它为什么最容易被这一步打断）。
+
+### S7″ — C2：facade 显式 API 与 uninstall 归位（可与 S6′ 同批，须在 S7′ 之前或同时）
 
 F10 已证「reconcile 走 guard」满足，F14 已证 `set_backend` 是现有名字。本步只做**命名与调用面对齐**：facade 暴露显式 `set_mode` / `reconcile_mode`，内部转 `set_backend`；install/update/uninstall 保持独立 controller **不迁入 actor**（卡上明令）。
 

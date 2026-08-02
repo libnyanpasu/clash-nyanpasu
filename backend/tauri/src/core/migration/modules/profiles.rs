@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::super::{Ctx, MigrationStep, ModuleMigrator};
 use once_cell::sync::Lazy;
 use semver::Version;
@@ -296,7 +298,30 @@ fn str_value(v: &Value) -> Option<&str> {
     v.as_str()
 }
 
-fn migrate_item(item: Mapping) -> Result<Mapping, CleanSchemaError> {
+fn filter_dangling_transform_targets(
+    targets: &[Value],
+    item_uids: &HashSet<String>,
+    owner: &str,
+) -> Vec<Value> {
+    targets
+        .iter()
+        .filter(|target| {
+            let Some(uid) = target.as_str() else {
+                return true;
+            };
+            if item_uids.contains(uid) {
+                return true;
+            }
+            eprintln!(
+                "profiles/clean_schema ignored dangling legacy transform reference: owner={owner}, target={uid}"
+            );
+            false
+        })
+        .cloned()
+        .collect()
+}
+
+fn migrate_item(item: Mapping, item_uids: &HashSet<String>) -> Result<Mapping, CleanSchemaError> {
     let uid = item
         .get("uid")
         .and_then(str_value)
@@ -359,10 +384,15 @@ fn migrate_item(item: Mapping) -> Result<Mapping, CleanSchemaError> {
         }
     }
 
+    let transform_owner = format!("config:{uid}");
     let transforms = match (item.get("chain"), item.get("chains")) {
         (Some(_), Some(_)) => return Err(fail("chain", "both `chain` and alias `chains` present")),
         (Some(v), None) | (None, Some(v)) => match v {
-            Value::Sequence(seq) => Some(seq.clone()),
+            Value::Sequence(seq) => Some(filter_dangling_transform_targets(
+                seq,
+                item_uids,
+                &transform_owner,
+            )),
             Value::Null => None,
             _ => return Err(fail("chain", "chain must be a sequence")),
         },
@@ -475,7 +505,7 @@ fn migrate_item(item: Mapping) -> Result<Mapping, CleanSchemaError> {
             let mut config = Mapping::new();
             config.insert("type".into(), "file".into());
             config.insert("source".into(), Value::Mapping(source));
-            if let Some(transforms) = transforms {
+            if let Some(transforms) = transforms.filter(|targets| !targets.is_empty()) {
                 config.insert("transforms".into(), Value::Sequence(transforms));
             }
             out.insert("type".into(), "config".into());
@@ -662,11 +692,15 @@ fn migrate_clean_schema(doc: Mapping) -> Result<Mapping, CleanSchemaError> {
         }
     };
 
+    let item_uids: HashSet<String> = items
+        .iter()
+        .filter_map(|item| item.get("uid").and_then(str_value).map(str::to_owned))
+        .collect();
     let mut new_items: Vec<Value> = Vec::with_capacity(items.len() + 1);
     let mut uids: Vec<String> = Vec::with_capacity(items.len());
     let mut direct_file_config: Vec<String> = Vec::new();
     for item in items {
-        let migrated = migrate_item(item)?;
+        let migrated = migrate_item(item, &item_uids)?;
         let uid = migrated["uid"]
             .as_str()
             .expect("set by migrate_item")
@@ -759,7 +793,10 @@ fn migrate_clean_schema(doc: Mapping) -> Result<Mapping, CleanSchemaError> {
         None | Some(Value::Null) => {}
         Some(Value::Sequence(seq)) if seq.is_empty() => {}
         Some(Value::Sequence(seq)) => {
-            out.insert("global_transforms".into(), Value::Sequence(seq.clone()));
+            let targets = filter_dangling_transform_targets(seq, &item_uids, "global");
+            if !targets.is_empty() {
+                out.insert("global_transforms".into(), Value::Sequence(targets));
+            }
         }
         Some(_) => {
             return Err(CleanSchemaError::new(
@@ -1027,8 +1064,21 @@ items:
         serde_yaml::from_str(yaml).unwrap()
     }
 
+    fn migrate_item_for_test(item: Mapping) -> Result<Mapping, CleanSchemaError> {
+        let mut item_uids = HashSet::new();
+        if let Some(uid) = item.get("uid").and_then(str_value) {
+            item_uids.insert(uid.to_owned());
+        }
+        for key in ["chain", "chains"] {
+            if let Some(targets) = item.get(key).and_then(Value::as_sequence) {
+                item_uids.extend(targets.iter().filter_map(str_value).map(str::to_owned));
+            }
+        }
+        migrate_item(item, &item_uids)
+    }
+
     fn migrated(yaml: &str) -> Mapping {
-        migrate_item(item(yaml)).unwrap()
+        migrate_item_for_test(item(yaml)).unwrap()
     }
 
     fn yaml_eq(actual: &Mapping, expected: &str) {
@@ -1096,7 +1146,7 @@ config:
 
     #[test]
     fn remote_option_null_fails_explicitly() {
-        let err = migrate_item(item(
+        let err = migrate_item_for_test(item(
             "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: null\n",
         ))
         .unwrap_err();
@@ -1119,24 +1169,24 @@ config:
 
     #[test]
     fn remote_failures_carry_uid_and_field() {
-        let err =
-            migrate_item(item("uid: r1\ntype: remote\nname: A\nfile: r1.yaml\n")).unwrap_err();
+        let err = migrate_item_for_test(item("uid: r1\ntype: remote\nname: A\nfile: r1.yaml\n"))
+            .unwrap_err();
         assert_eq!(err.uid.as_deref(), Some("r1"));
         assert_eq!(err.field_path, "url");
 
-        let err = migrate_item(item(
+        let err = migrate_item_for_test(item(
             "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {update_interval: 0}\n",
         ))
         .unwrap_err();
         assert_eq!(err.field_path, "option.update_interval");
 
-        let err = migrate_item(item(
+        let err = migrate_item_for_test(item(
             "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {bogus: 1}\n",
         ))
         .unwrap_err();
         assert_eq!(err.field_path, "option.bogus");
 
-        let err = migrate_item(item(
+        let err = migrate_item_for_test(item(
             "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\nwhatever: 1\n",
         ))
         .unwrap_err();
@@ -1180,7 +1230,7 @@ config:
 "#,
         );
         // 相对 target 显式失败
-        let err = migrate_item(item(
+        let err = migrate_item_for_test(item(
             "uid: l1\ntype: local\nname: L\nfile: l1.yaml\nsymlinks: not/absolute.yaml\n",
         ))
         .unwrap_err();
@@ -1230,7 +1280,7 @@ transform:
         let option = source["option"].as_mapping().unwrap();
         assert_eq!(option["self_proxy"], Value::Bool(true)); // R5 absent 语义
 
-        let err = migrate_item(item(
+        let err = migrate_item_for_test(item(
             "uid: l1\ntype: local\nname: L\nfile: https://e.com/sub.yaml\nsymlinks: /outside/real.yaml\n",
         ))
         .unwrap_err();
@@ -1246,20 +1296,21 @@ transform:
     #[test]
     fn item_failures_for_non_remote_kinds() {
         // merge/script 不允许 chain(R8 → 未知键)
-        let err = migrate_item(item(
+        let err = migrate_item_for_test(item(
             "uid: m1\ntype: merge\nname: M\nfile: m1.yaml\nchain: []\n",
         ))
         .unwrap_err();
         assert_eq!(err.field_path, "chain");
         // 未知 type(R1)
-        let err = migrate_item(item("uid: x\ntype: banana\nname: X\nfile: x.yaml\n")).unwrap_err();
+        let err = migrate_item_for_test(item("uid: x\ntype: banana\nname: X\nfile: x.yaml\n"))
+            .unwrap_err();
         assert_eq!(err.field_path, "type");
         // 路径穿越(R3)
-        let err =
-            migrate_item(item("uid: l1\ntype: local\nname: L\nfile: ../up.yaml\n")).unwrap_err();
+        let err = migrate_item_for_test(item("uid: l1\ntype: local\nname: L\nfile: ../up.yaml\n"))
+            .unwrap_err();
         assert_eq!(err.field_path, "file");
         // chain 与 chains 同存(R8)
-        let err = migrate_item(item(
+        let err = migrate_item_for_test(item(
             "uid: l1\ntype: local\nname: L\nfile: l1.yaml\nchain: []\nchains: []\n",
         ))
         .unwrap_err();
@@ -1344,6 +1395,43 @@ items:
     }
 
     #[test]
+    fn dangling_legacy_transform_targets_are_filtered_in_all_scopes() {
+        let doc = r#"chain: [t1, missing-global, t1]
+items:
+- uid: l1
+  type: local
+  name: Local
+  file: l1.yaml
+  chain: [missing-local, t1]
+- uid: r1
+  type: remote
+  name: Remote
+  file: r1.yaml
+  url: https://example.com
+  chains: [t1, missing-remote]
+- uid: t1
+  type: merge
+  name: Transform
+  file: t1.yaml
+"#;
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["global_transforms"], item("x: [t1, t1]")["x"]);
+
+        let items = out["items"].as_sequence().unwrap();
+        let local = items
+            .iter()
+            .find(|item| item["uid"].as_str() == Some("l1"))
+            .unwrap();
+        assert_eq!(local["config"]["transforms"], item("x: [t1]")["x"]);
+        let remote = items
+            .iter()
+            .find(|item| item["uid"].as_str() == Some("r1"))
+            .unwrap();
+        assert_eq!(remote["config"]["transforms"], item("x: [t1]")["x"]);
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
     fn valid_carries_verbatim() {
         let doc = "valid: [dns, tun]\nitems: []\n";
         let out = migrate_clean_schema(item(doc)).unwrap();
@@ -1386,6 +1474,36 @@ items:
     }
 
     #[test]
+    fn clean_schema_run_prunes_dangling_global_transforms() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        let legacy = r#"current: [l1]
+chain: [mz6Qo0SW3P1D, m61x700ZoTpv, my3iK4i9abgA]
+items:
+- uid: l1
+  type: local
+  name: Local
+  file: l1.yaml
+"#;
+        std::fs::write(&path, legacy).unwrap();
+
+        run_clean_schema(&mut ctx).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("yaml.bak")).unwrap(),
+            legacy
+        );
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let profiles: nyanpasu_config::profile::Profiles = serde_yaml::from_str(&raw).unwrap();
+        profiles.validate().unwrap();
+        assert!(profiles.global_transforms.is_empty());
+        assert_eq!(profiles.items.len(), 1);
+
+        run_clean_schema(&mut ctx).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+    }
+
+    #[test]
     fn clean_schema_with_null_current_baselines_to_head_and_is_noop() {
         let (_temp, mut ctx) = temp_ctx();
         let path = ctx.profiles_path();
@@ -1413,10 +1531,17 @@ items:
     fn clean_schema_run_failure_leaves_file_untouched() {
         let (_temp, mut ctx) = temp_ctx();
         let path = ctx.profiles_path();
-        // 引用不存在 transform 的 chain → validate 失败
-        let bad = "chain: [ghost]\nitems: []\n";
+        // 引用存在但不是 transform 的 chain 仍由新领域模型拒绝
+        let bad = r#"chain: [l1]
+items:
+- uid: l1
+  type: local
+  name: Local
+  file: l1.yaml
+"#;
         std::fs::write(&path, bad).unwrap();
-        assert!(run_clean_schema(&mut ctx).is_err());
+        let err = run_clean_schema(&mut ctx).unwrap_err();
+        assert!(err.to_string().contains("TransformTargetNotTransform"));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), bad);
     }
 

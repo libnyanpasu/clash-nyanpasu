@@ -143,6 +143,8 @@ local/remote.chain     →  ConfigDefinition::File.transforms: Vec<ProfileId>
 
 类型约束通过引用验证在加载和事务提交时强制执行，不再是运行时 try_from 失败的静默丢弃。
 
+**旧数据迁移兼容：** 旧版本删除 Profile 时可能遗留指向已删除 uid 的顶层或 scoped chain；旧运行时的 `convert_uids_to_scripts` 会跳过这些悬空引用。Rev3 迁移仅过滤 `items` 中不存在的 chain uid，并记录被过滤的 owner/uid；其余引用保持原顺序和重复项。uid 存在但不是 Transform 时仍由新模型校验拒绝，迁移后的加载与事务提交也继续执行严格引用校验。
+
 ### 4.3 `Merge` → `Overlay`
 
 **现状：** `Profile::Merge` / `ProfileItemType::Merge`，`ChainTypeWrapper::Merge(Mapping)`，通过 `ChainTypeWrapper::try_from(&Profile)` 加载。

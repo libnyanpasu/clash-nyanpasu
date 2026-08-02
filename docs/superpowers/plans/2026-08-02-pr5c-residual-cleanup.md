@@ -295,3 +295,59 @@ pnpm lint:architecture-ledger
 | smoke 1（Local patch/restart/core-switch rollback）             | S5       | 手工执行并把结论写进 PR 描述                                                          |
 
 > **smoke 2 与 smoke 3 已随 C2/C3 移交 PR-5d**。smoke 2 验的是 v1→v2 服务升级（C2 的真正验收点），smoke 3 验的是 macOS TUN/DNS（C3）——两者都不在本阶段的改动面上。**D4 的用户裁定（smoke 3 记为未本地验证且不可由 CI 覆盖）随 smoke 3 一起移交**，因此**本阶段不再被它阻塞**。
+
+---
+
+## 10. 移交 PR-5d 的事实清单（**不属本阶段，勿作本阶段依据**）
+
+> 这些事实是 C2/C3 的调查产物，**在本阶段既不成立为依据、也不该被删掉**。此处只留**索引与一句话摘要**；**全文见 `git show 5a02a1727:docs/superpowers/plans/2026-08-02-pr5c-residual-cleanup.md`**（v4 终态，含完整表格与附录 B 的全部设计）。5d 文档建好后从那里搬运。
+>
+> **不在此处内联全文**，是为了避免它们被误读成本阶段的判据——这正是拆分要解决的问题。
+
+**C2 运行模式（F9–F17）**
+
+| ID  | 一句话                                                                                              |
+| --- | --------------------------------------------------------------------------------------------------- |
+| F9  | `pending_run_type` 在 Rust 源码中**不存在**（仅设计文档命中）→ 卡面该项是 no-op                     |
+| F10 | 「reconcile 走 `CoreOperationGuard`」**已满足**（`request.rs:87`）                                  |
+| F11 | 5 s 轮询与三个 statics 全在 `service/ipc.rs`；`spawn_health_check` **4 处 spawn**                   |
+| F12 | `get_ipc_state()` **5 处生产读**（含 `RunType::default()` 内那处）                                  |
+| F13 | `RunType::default()` 读两个 global 且被 `CoreStatusView::initial()` 调用——**删 statics 的主阻塞点** |
+| F14 | `set_backend` **生产调用点恰好一个**；**不存在 `set_mode`**                                         |
+| F15 | `ServiceControlOps` 只有 install/start/stop/restart；**update / uninstall 不在 trait 上**           |
+| F16 | `uninstall_service` **绕过 facade**；`install_service` **不 reconcile**（两处不对称，性质不同）     |
+| F17 | `KILL_FLAG` 的 stop 路径用 **weak CAS**——但它随轮询线程一起删，**不单独修**                         |
+
+**C3 macOS DNS（F18–F24）**
+
+| ID  | 一句话                                                                           |
+| --- | -------------------------------------------------------------------------------- |
+| F18 | `MacosDnsGuard` **不存在**（仅两条「等 PR-5c 建它」的注释）                      |
+| F19 | 真正的覆写代码是 `CoreManager::change_default_network_dns` + `previous_dns` 状态 |
+| F20 | 它读两个 global，且 **Service / Local 双路径在此分叉**                           |
+| F21 | **IPC `set_dns` 已上线**（端点 + wire golden 均在）                              |
+| F22 | **DNS 与 start/stop 今天毫无保序**；**走 restart 的路径根本不碰 DNS**；失败被吞  |
+| F23 | **退出不恢复 DNS**——覆写跨崩溃/退出泄漏（**5c 之前就存在的缺陷**）               |
+| F24 | `SystemDnsCache` 只管 flush，**与 TUN 的 DNS 覆写生命周期无关**，勿混淆          |
+
+**smoke / CI（F33–F36）**
+
+| ID  | 一句话                                                                                                  |
+| --- | ------------------------------------------------------------------------------------------------------- |
+| F33 | CI **有** macOS runner 且在 PR 上跑 `cargo test --all-features` → cfg 门控单测真实运行                  |
+| F34 | **但没有任何作业能跑 smoke 3**——无作业启动应用；TUN 需签名扩展 + root，**能力边界非配置缺失**           |
+| F35 | `IPC_STATE` 初值 `Disconnected` + bootstrap 先读 → **今天 bootstrap 恒判 `Normal`**，靠首次轮询异步纠正 |
+| F36 | **探针两半已存在**：`control::status()` + 纯函数 `target_ipc_state()`；`health_check` = 两半 + 循环     |
+
+**另需搬运**：附录 B 全部设计（C2 探针与九处调用点、C3 适配器与恢复拆分）、D2 / D3 / D4 三项裁定及其理由、以及第二轮对抗审的 **#2–#6 五条 BLOCKING**（不可线性化、`health_check` 的警告职责、拆 DNS 的守卫跨度与 `reconcile` 死锁、读路径同样不检查退出码、适配器接线不全）——**它们是审查者送的免费设计输入，5d 起草时直接作为已知待解问题**。
+
+---
+
+## 11. 修订索引
+
+| 版本  | 变化                                                                                                                                                                    |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1–v4 | C1–C4 全范围的四轮迭代（两轮对抗审 38 / 43 分，16 条 BLOCKING 几乎全在 C2/C3）。**终态见 `5a02a1727`**                                                                  |
+| v5    | **用户裁定拆分**：整文件重写为纯删除计划；C2/C3/D2/D3/D4/附录 B/smoke 2/smoke 3 移交 PR-5d；ledger 预期按收窄范围重算；修 #7 的四条门禁错误；事实编号保持原号、空缺可见 |
+
+> v1–v4 的逐版索引表**已随重写移除**：它们索引的是一份不同范围的文档，留在这里只会让读者去找不存在的小节。**版本沿革见 git 历史与上表。**

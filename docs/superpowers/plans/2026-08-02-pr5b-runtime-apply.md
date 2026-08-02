@@ -1,7 +1,7 @@
 # PR-5b 实施计划 — 单一 runtime apply 管线
 
 **日期：** 2026-08-02
-**版本：** v3.1（codex 对抗审 REJECT 后修订：C1–C3 / H4–H8 / M9–M12 / L13 全部处理；**D1–D5 全裁 A** 不重开；leader 确认 ①CandidateFile 不迁 ②H7 摘包裹器，并补 F38/F39 镜像链路论证）
+**版本：** v4（复审 REJECT 后修订：NH1–NH3 + C1/M10 残留 + 六处陈旧文本；**D1–D5 全裁 A** 不重开）
 **分支基线：** `refactor/core-manager-actor` @ `9727ef1d4`（PR-5a 阶段门已关闭：`ae4e0f288` + `6a3878bba` + `5277482a5` + `9727ef1d4`）
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/task.md` 卡 B1–B4；`design.md` §6–§8
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.2；必答项 §6.4 **RQ-01 / RQ-03**
@@ -46,6 +46,17 @@
 | M11 | 必删测试清单补 5 条                                                                     | §6.4                                |
 | M12 | S3 顺序自相矛盾——统一为**先分配 revision**                                              | S3                                  |
 | L13 | F10 措辞收窄                                                                            | F10                                 |
+
+**v4 修订索引（复审 REJECT：3 High + 2 残留 + 6 处陈旧文本）：**
+
+| 项       | 结论                                                                                            | 落点                              |
+| -------- | ----------------------------------------------------------------------------------------------- | --------------------------------- |
+| NH1      | `RunningIdentity` reply 扩为 **(身份, `FaithfulLifecycle`) 原子守卫联合读**；真值表改读忠实六态 | F40、S6 真值表、A.2、A.3、T-B4-06 |
+| NH2      | lease seam 声明**类型化** `CheckAndPromoteError { phase, source }`；相位由构造位置打标签        | F41、A.1b、S2 分工表              |
+| NH3      | I-A 加两条豁免；§2.2 第 4 行拆 4a/4b；分裂窗口诚实记录 + 自愈论证，**不加二层恢复**             | F42、§2.2、§2.3、A.6 注           |
+| C1 残留  | T-B4-05 补 `value` 三字段断言                                                                   | §6.3 T-B4-05                      |
+| M10 残留 | parity 改测**真实转换层**；`TestBackend` 不得冒充 parity                                        | §3.2                              |
+| 陈旧 ×6  | D1 两处 / D5 一处 / S4 实参 / S6 箭头 / S7「两条」/「其余 8 处」                                | 各处就地                          |
 
 ---
 
@@ -136,6 +147,9 @@
 | F37  | `CoreBackend::apply` 的 `Test` 分支是 **`unreachable!("test backend does not implement apply")`**——`TestBackend` 今天根本无法脚本化 apply（M10 的根因）                                                                                                                                                                                                                                                                                                                                                                                    | `core/actor/backend.rs:369`                                                                                                                                      |
 | F38  | **typed → legacy 的镜像由 state actor 的提交路径自动维护，与任何包裹器无关**：`ApplicationActor::commit` 每次 typed 提交都走 `prepare_replace`（内含 `bridge.prepare(&next)`）→ `manager.upsert` 持久化 → **`mirror.apply()`**；条件替换路径的 `Replaced` 分支同样调 `mirror.apply()`。投影函数 `apply_app_config_to_legacy_verge` **含 `clash_core`**（`draft.clash_core = Some(yaml_convert(snap.core)?)`）。`Patch` 消息也汇入同一个 `commit`。**`fn apply(self: Box<Self>)` 返回 unit——镜像不可失败**，因此不引入新的 degradation 路径 | `state/application.rs:75-87`（commit）、`:101-103`（条件替换）、`:140-150`（Patch→commit）；`bridge/verge.rs:678`（clash_core 投影）、`:149-152`（`apply` 签名） |
 | F39  | change_core 之后仍在读 legacy `clash_core` 的残余读者共 4 处：托盘两处、`feat.rs` 的核心选择、clash core 模块一处。它们读的是 F38 那条镜像，**B4 之后由 typed 提交自动刷新**                                                                                                                                                                                                                                                                                                                                                               | `core/tray/mod.rs:167,336`；`feat.rs:379`；`core/clash/core.rs:98`                                                                                               |
+| F40  | **`CoreStatusView.state` 是二值投影，不能用来判「核在不在跑」**：`map_local_status` 的 `lifecycle` 忠实保留六态，但 `state` 把 `Running`/`Switching`/**`Stopping`** 压成 `CoreState::Running`，把 `Stopped` 之外的其余（**`Starting`**/**`Restarting`**）落进兜底 `_ => Stopped(None)`。即 **Starting→Stopped、Restarting→Stopped、Stopping→Running 三个分支会被反转**（NH1 的根因）                                                                                                                                                       | `core/actor/backend.rs:438-457`（`:445-447` 兜底、`:450-452` 三态归 Running）；`types.rs:20`                                                                     |
+| F41  | lease seam 的 `check_and_promote` 返回 **`anyhow::Result<[u8; 32]>`**——一个**未分化**的错误类型，**不携带任何相位信息**。v3 说「anyhow 天然区分 check 与 promote」是**错的**：知道相位的是 adapter 里的**构造位置**，不是错误值本身；照 v3 写下去，`runtime_check_failed` / `runtime_promote_failed` 的区分只能靠嗅探错误字符串（NH2 的根因）                                                                                                                                                                                              | `client/core_bridge.rs:48-58`                                                                                                                                    |
+| F42  | promote 是**先写后验**：`restore_product` 写入产物后才读回比对哈希（`core.rs:421` 写、`:422-427` 验）。因此「产物已是新值、Promoted 仍是旧值」的分裂窗口**今天的代码里就存在**，不是 5b 引入的（NH3 的根因之一）                                                                                                                                                                                                                                                                                                                           | `client/core.rs:405-428`                                                                                                                                         |
 
 ---
 
@@ -162,23 +176,35 @@
 
 `P` 列 = 该失败发生在分界线之前（`pre`）还是之后（`post`）。`post` 一律映射为 `Degradation { phase, code, retryable }` 并经 `MutationOutcome::from_parts` 变成 `CommittedDegraded`。
 
-| #   | 失败                       | 触发点                                                             | P       | commit-first 入口的结果                                                                                                                                                                                                               | 无-commit 入口的结果 |
-| --- | -------------------------- | ------------------------------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 1   | **operation acquire 超时** | `begin_operation()` 等待 `CORE_ACQUIRE_TIMEOUT`（F6）              | **pre** | `Err(OperationError::AcquireTimeout)`——**guard 在 desired commit 之前取得**（见 S3 的顺序约束），因此永远是 pre                                                                                                                       | `Err`                |
-| 2   | **build 失败**             | `regenerate_runtime_with` 的 `spawn_blocking` 构建段               | post    | `phase = RuntimeBuild`、`code = "runtime_build_failed"`、`retryable = true`                                                                                                                                                           | `Err`                |
-| 3   | **check 失败**             | `CoreBackend::check`（dry-run）                                    | post    | `phase = RuntimeCheck`、`code = "runtime_check_failed"`、`retryable = true`                                                                                                                                                           | `Err`                |
-| 4   | **promote 失败**           | candidate 哈希不符 / `restore_product` 写失败 / promote 后校验不符 | post    | `phase = RuntimePromote`、`code = "runtime_promote_failed"`、`retryable = true`；**Promoted 不推进，产物保持旧值**                                                                                                                    | `Err`                |
-| 5   | **revision 冲突**          | `CoreBackend::apply` 的 CAS（`Error::RevisionConflict`）           | post    | `phase = RuntimeApply`、`code = "revision_conflict"`、`retryable = true`；**Applied 不变**，下一次 rebuild 会带新 revision 重试                                                                                                       | `Err`                |
-| 6   | **IPC 连接丢失**           | Service backend 的传输错误（`ClientError`）                        | post    | `phase = RuntimeApply`、`code = "core_transport_lost"`、`retryable = true`；**Applied 不变**                                                                                                                                          | `Err`                |
-| 7   | **apply error**            | `CoreApplyData.outcome == RolledBack`，或 backend 返回 `Err`       | post    | `RolledBack` → `phase = CoreRollback`、`code = "core_rollback"`、`retryable = true`；核未运行（F27）→ `code = "core_not_running"`；其它 apply 错误 → `phase = RuntimeApply`、`code = "runtime_apply_failed"`。三者 **Applied 均不变** | `Err`                |
+| #   | 失败                       | 触发点                                                                   | P       | commit-first 入口的结果                                                                                                                                                                                                               | 无-commit 入口的结果 |
+| --- | -------------------------- | ------------------------------------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1   | **operation acquire 超时** | `begin_operation()` 等待 `CORE_ACQUIRE_TIMEOUT`（F6）                    | **pre** | `Err(OperationError::AcquireTimeout)`——**guard 在 desired commit 之前取得**（见 S3 的顺序约束），因此永远是 pre                                                                                                                       | `Err`                |
+| 2   | **build 失败**             | `regenerate_runtime_with` 的 `spawn_blocking` 构建段                     | post    | `phase = RuntimeBuild`、`code = "runtime_build_failed"`、`retryable = true`                                                                                                                                                           | `Err`                |
+| 3   | **check 失败**             | `CoreBackend::check`（dry-run）                                          | post    | `phase = RuntimeCheck`、`code = "runtime_check_failed"`、`retryable = true`                                                                                                                                                           | `Err`                |
+| 4a  | **promote 前置失败**       | candidate 哈希不符 / `check` 后文件被改 / `restore_product` 写入本身失败 | post    | `phase = RuntimePromote`、`code = "runtime_promote_failed"`、`retryable = true`；**产物保持旧值**——原保证仍然成立                                                                                                                     | `Err`                |
+| 4b  | **写后校验 / 发布失败**    | `restore_product` 已写入后：读回哈希不符，或 `PublishPromoted` 被拒      | post    | 同 4a 的 phase 与 code（**message 区分**）；**产物已是新值、Promoted 仍是旧值**——见下方分裂窗口说明                                                                                                                                   | `Err`                |
+| 5   | **revision 冲突**          | `CoreBackend::apply` 的 CAS（`Error::RevisionConflict`）                 | post    | `phase = RuntimeApply`、`code = "revision_conflict"`、`retryable = true`；**Applied 不变**，下一次 rebuild 会带新 revision 重试                                                                                                       | `Err`                |
+| 6   | **IPC 连接丢失**           | Service backend 的传输错误（`ClientError`）                              | post    | `phase = RuntimeApply`、`code = "core_transport_lost"`、`retryable = true`；**Applied 不变**                                                                                                                                          | `Err`                |
+| 7   | **apply error**            | `CoreApplyData.outcome == RolledBack`，或 backend 返回 `Err`             | post    | `RolledBack` → `phase = CoreRollback`、`code = "core_rollback"`、`retryable = true`；核未运行（F27）→ `code = "core_not_running"`；其它 apply 错误 → `phase = RuntimeApply`、`code = "runtime_apply_failed"`。三者 **Applied 均不变** | `Err`                |
 
 > **第八项（D5=A 引入，不在 RQ-01 原列表内）**：停止态 `change_core` 的 `restart()` 失败。desired 早已提交，故同样是 `post`——`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied 不推进（§3.1 的 `Started` 行、T-B4-05）。用 `CoreLifecycle` 而非 `RuntimeApply`：失败发生在核**生命周期**上，不是在配置应用上，与 5a 的 `core_recovery_exhausted` 同相。
 
 > **上表每一行的 `report` 取值（C1）**：`MutationOutcome` 的两个变体都要求 `value: T`（F31），所以 post-commit 失败也得给出一个诚实的 report。第 2–7 行**都没有发生任何终态动作**——既没有 `CoreApplyData`，也没有启核——因此一律取 **`RuntimeApplyOutcome::NotApplied`**，`applied_revision = None`，「为什么」由 degradations 承载。**不得**拿 `RolledBack` 或 `Started` 顶替：前者宣称「旧配置正在跑且是 apply 主动回滚的」，后者宣称「核被启起来了」，在 build / check / promote / 传输失败时两者都是假话。`desired_revision` 始终填本次分配的 revision（它确实分配了）。
 
+> **4b 的分裂窗口：诚实记录，不加第二套回滚（NH3 ②）**
+>
+> 产物先落盘、`PublishPromoted` 后到，中间任何失败都会留下「产物 = 新、Promoted = 旧」的分裂。**这个窗口今天的代码里就有**——`restore_product` 写完才读回比对（F42：`core.rs:421` 写、`:422-427` 验），**不是 5b 引入的**。
+>
+> **它是自愈的**：Promoted 只是读模型，产物才是核实际加载的文件；下一次 rebuild（coalesce worker 的脏重建，或任何后续事务）会重新走 build→check→promote 并重新发布，两者随即收敛。窗口期内的可观测后果是「runtime 读 IPC 返回的快照比磁盘产物旧一拍」，不会让核加载到错误配置。
+>
+> **明确不做**：不加产物回滚、不加二段提交、不加补偿事务——B 范围明令禁止二层恢复（§0），而为一个自愈窗口引入一套恢复机制，恰恰是 5a 已经裁掉的那类复杂度。4a 与 4b 共用 `runtime_promote_failed`，靠 `message` 区分是哪一侧。
+
 ### 2.3 三条不变量
 
-- **I-A（不撒谎）**：desired 已提交时**绝不**返回 `Err`——只返回 `CommittedDegraded`；
+- **I-A（不撒谎）**：desired 已提交时**绝不**返回 `Err`——只返回 `CommittedDegraded`。**两条显式豁免（NH3 ①）**：
+  - **(a) 进程正在关停**（`CoreActorError::ShuttingDown`）：teardown 期没有任何读者会去渲染一个 degraded 结果，返回 `Err` 是诚实的；把它包成 `CommittedDegraded` 只是制造一个没人看的假成功；
+  - **(b) 不变量破坏**（`StaleOperation`、Promoted 单调性拒绝）：**这些只可能是 bug**——守卫串行化 + 单事务单次分配之下，陈旧 operation 与非递增 revision 都不该发生。**bug 必须响亮失败**（`Err` + 错误级日志）；包装成 degradation 等于把实现缺陷伪装成一次「运行时小故障」，让它长期潜伏。
+  - 两条豁免都**不适用于**真实的运行时失败（build / check / promote / apply / 传输）——那些一律 degraded。
 - **I-B（不静默）**：任何 `post` 失败**必须**产出至少一条 `Degradation`，不允许只写日志；
 - **I-C（状态单调）**：`post` 失败不得回退已经推进的 Promoted；Applied 只在 backend 确认采纳新 revision 时才推进（§3）。
 
@@ -252,7 +278,7 @@ I-B 说「不允许只写日志」，但 rebuild 管线有**四类**调用上下
 
 矩阵是 **6 × 2 = 12 个组合**（六个 outcome × warning 有/无），每个组合都要断言三件事：Applied 是否推进、返回的 `MutationOutcome` 变体、degradation 列表内容。测试编号 T-AP-01…12（§6）。
 
-**双后端 parity**：Local 与 Service 对同一 outcome 必须产出同一映射结果。Local 侧由 `TestBackend` 脚本化 `CoreApplyData`；Service 侧沿用 5a 的 IPC harness，**并套 `transport_available()` 守卫**（F24）。
+**双后端 parity（M10 残留已修）**：Local 与 Service 对同一 outcome 必须产出同一结果，而 parity 的价值全在**后端各自的转换层**，不在共用的 mapper。因此：**Local 侧直接单测真实的 manager-outcome → `CoreApplyData` 转换函数**（喂 manager 的 `ApplyOutcome` fixtures），**Service 侧走 IPC harness 解码**（套 `transport_available()` 守卫，F24），两侧得到的 `CoreApplyData` 逐字段相等后再各自过 `map_apply_outcome`。**`TestBackend` 的脚本化 apply 只服务 actor 层测试，不得冒充 parity**——用它喂 `CoreApplyData` 等于把两个后端的转换层双双旁路掉（F37 说明它今天还是 `unreachable!`，须先补）。
 
 ---
 
@@ -262,10 +288,10 @@ I-B 说「不允许只写日志」，但 rebuild 管线有**四类**调用上下
 
 B1 要把 Promoted/Applied 搬进 actor，但 `RuntimeSnapshot` / `RuntimeRevision` / `RuntimeLifecycleState` 现在住在 `client/runtime.rs`（F11 邻域）。
 
-- **裁定 A**：把 `RuntimeRevision` / `RuntimeSnapshot` / `RuntimeSnapshotData` / `RuntimeLifecycleState` **以及 `CandidateFile`** 移到 **`core/actor/runtime.rs`**（新文件）。理由：所有权跟着数据走；actor 反向依赖 `client::` 是层次倒置。
+- **裁定 A**：把 `RuntimeRevision` / `RuntimeSnapshot` / `RuntimeSnapshotData` / `RuntimeLifecycleState` 移到 **`core/actor/runtime.rs`**（新文件）。理由：所有权跟着数据走；actor 反向依赖 `client::` 是层次倒置。（**`CandidateFile` 原也在此列，v3 起不再迁移**——见下方 v3 后记。）
 - **选项 B（未采纳）**：类型不动，actor 直接 `use crate::client::runtime::*`。改动小，但让 `core::actor` 依赖 `client`，与 5a 建立的方向相反。
 
-> **L1 修正**：v1 曾把 `CandidateFile` 留在 `client/runtime.rs`，同时让 A.2 的 `CheckAndPromote` 消息携带它——那正是 D1=A 要消灭的反向依赖。`CandidateFile` 必须同迁。迁后方向是 **client 构造 → actor 消费**，即 `client → core`，正确。
+> **L1 修正（已被 v3 后记取代，保留以存档决策脉络）**：v1 曾把 `CandidateFile` 留在 `client/runtime.rs`，同时让 A.2 的 `CheckAndPromote` 消息携带它——那确实是 D1=A 要消灭的反向依赖。**但 C2 换掉了那条消息，前提随之消失**，最终结论见下方 v3 后记：不迁。
 >
 > **L2 修正**：`RuntimeRevisionAllocator` **不迁**，留在 `client/runtime.rs`。它是 **ID 源泉**（一个 `AtomicU64`），不是 lifecycle 状态；迁入 actor 会逼出一条 `AllocateRevision` 守卫消息和一次多余的 round-trip，而单调性本来就由 actor 在 promote 时校验（T-LC-01 已钉）。它 `use` 迁走的 `RuntimeRevision`，方向仍是 client → core。**A.1 / A.2 / A.3 / S1 / S2 / S3 五处已按此对齐。**
 >
@@ -302,7 +328,7 @@ L3 让我审计 `restart()` 残余，审出一条 v1 漏掉的语义差（F26/F2
 
 若 B4 无条件改走 `ApplyPromoted`，「停止态下切核」会从「切完并启动」变成「切完但失败」，这是 B4 卡没有授权的行为回归。
 
-- **裁定 A：按 5a 的 `RunningIdentity` 分支**。`Ok(Some(_))`（在跑）→ `ApplyPromoted` 承载切换（`Switched`）；`Ok(None)`（已停）→ 走 `restart()` 启新核，**与今天逐字同行为**；`Err(NoBackend)` → 按 §2.2 第 6 行 degraded。`RuntimeApplyReport.outcome` 用**本仓自有**枚举 `RuntimeApplyOutcome`（镜像 upstream 六个变体 + `Started`）。
+- **裁定 A：按 `RunningIdentity` 分支**。**判据是「身份 + 忠实六态」的原子守卫联合读**（NH1；`Ok(None)` 单独看**不等于**核已停止，二值 `CoreStatusView.state` 更会把三个分支判反——真值表见 S6）。在跑 → `ApplyPromoted` 承载切换（`Switched`）；已停 → `restart()` 启新核，**与今天逐字同行为**；后端不可用 → 按 §2.2 第 6 行 degraded。`RuntimeApplyReport.outcome` 用**本仓自有**枚举 `RuntimeApplyOutcome`（镜像 upstream 六变体 + `Started` + `NotApplied`，共八个）。
 - **选项 B（未采纳）**：无条件 apply，停止态切核返回 degraded。更简单，但改用户可见行为，且 `Started` 这个真实状态在 wire 上无处表达。
 
 **leader 裁定 A（2026-08-02），四条理由：** ①前提经独立核实——`apply.rs` doc 原文「The core must already be running: apply never starts one」；②选项 B 未经 B4 卡授权就改用户可见行为，违反迁移政策；③`Ok(None)` → `restart()` 与今天逐字同行为，且与 5a updater 的 `Ok(None)` 先例不冲突——两者各自保留各自的 legacy 行为（updater 停止态换二进制**不**启动，change_core 停止态切核**启动**）；④`Started` 第七变体是诚实建模，把 `Ok(None)` 分支映射成 `Switched` 是撒谎（apply 根本没承载它）。
@@ -336,12 +362,14 @@ L3 让我审计 `restart()` 残余，审出一条 v1 漏掉的语义差（F26/F2
 - `CoreActorState` 增 `lifecycle: RuntimeLifecycleState`、`lifecycle_tx: watch::Sender<RuntimeLifecycleState>`。**不增 `revisions`**（L2：allocator 留 client 侧）；
 - 新增**三条守卫消息** `PublishPromoted` / `ApplyPromoted` / `PublishApplied`（见 A.2，全部校验 active `OperationId`）。**actor 只做 lifecycle 簿记，不碰文件**——这是 C2 的裁定：
 
-  | 谁做什么                                          | 在哪                                                                                                        | 理由                                                                                                                                                                             |
-  | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | 建 candidate、比对哈希、`check`、原子晋升产物文件 | **client 侧 lease adapter**（沿用今天 `regenerate_runtime_with` 的顺序，`check` 走 5a 已有的 `Check` 消息） | 快照的全部输入都在 client 侧（F32）；错误面留在 `anyhow` / `ClientError`，**天然区分 `RuntimeCheck` 与 `RuntimePromote` 两个相位**——塞进 `CoreActorError` 四变体反而丢掉这个区分 |
-  | 单调性校验 + 状态提交 + watch 发布                | **actor**（`PublishPromoted`）                                                                              | actor 是 lifecycle 的**单一写者与读模型**，这正是 B1 的实质                                                                                                                      |
+  | 谁做什么                                          | 在哪                                                                                                        | 理由                                                                                                                                                                                                            |
+  | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | 建 candidate、比对哈希、`check`、原子晋升产物文件 | **client 侧 lease adapter**（沿用今天 `regenerate_runtime_with` 的顺序，`check` 走 5a 已有的 `Check` 消息） | 快照的全部输入都在 client 侧（F32）。**相位区分靠新增的类型化错误 `CheckAndPromoteError`（NH2）**，不是靠 `anyhow`——v3 说「anyhow 天然区分」是错的，今天 seam 只有一个未分化的 `anyhow::Result<[u8;32]>`（F41） |
+  | 单调性校验 + 状态提交 + watch 发布                | **actor**（`PublishPromoted`）                                                                              | actor 是 lifecycle 的**单一写者与读模型**，这正是 B1 的实质                                                                                                                                                     |
 
   > v2 的 `CheckAndPromote { operation, request, candidate, reply -> Arc<RuntimeSnapshot> }` **在类型上就不可实现**：actor 拿不到 revision、`RuntimeSnapshotData`、解析后的 config、target core、产物字节中的任何一个（F32），却承诺返回由它们构成的快照。
+
+  **lease seam 的类型化错误（NH2 裁定）**：`check_and_promote` 的返回类型由 `anyhow::Result<[u8; 32]>` 改为 `Result<[u8; 32], CheckAndPromoteError>`（A.1b 声明）。相位标签由 **adapter 内的构造位置**打——它确切知道自己停在哪一步；编排层只按 `phase` 查表映射 degradation code，**不做字符串嗅探**。只要两个相位，不引入更大的错误分类学。
 
 - **推进决策与 wire 表示拆分（C3）**：
   - **推进决策**：`core/actor` 内一个**纯谓词** `advances_applied(outcome: ApplyOutcomeKind) -> bool`；`ApplyPromoted` 处理器在提交前调它——这是 **apply 路径唯一的推进点**；
@@ -390,7 +418,7 @@ begin_operation()  →  分配 revision  →  读 typed snapshots  →  build �
 
 `ApplyPromoted`（A.2）内部调 `CoreBackend::apply`（F3）；**推进决策在 actor 内**由纯谓词 `advances_applied(outcome)` 做出（C3），成功推进后发布 `lifecycle_tx`。
 
-`CoreLeaseAdapter::apply_promoted` 改为调 `core.apply_promoted(&guard, &request, expected)`；**删除 `apply_config_from`**（F10）。
+`CoreLeaseAdapter::apply_promoted` 改为调 `core.apply_promoted(&guard, &request, expected, snapshot)`（四个实参，与 A.3 的声明一致）；**删除 `apply_config_from`**（F10）。
 
 **`expected` 的取值规则（H8 改写了 v2 的规则）：**
 
@@ -442,7 +470,7 @@ guard → typed desired commit（ClashConfigClient::patch）→ 统一 rebuild �
 ```text
 guard → ApplicationClient::patch(core = new)   ← desired 提交，此后一律 degraded
       → 统一 rebuild（新核）→ check → 晋升产物 → PublishPromoted   （C2：文件工作在 client）
-      → 核在跑吗？（H5：不能只看 RunningIdentity）
+      → RunningIdentity → (身份, FaithfulLifecycle) 原子守卫联合读        （NH1）
           在跑        → ApplyPromoted          ← apply 内部承载切核（Switched）
                          actor 内 advances_applied() 决定推进（C3）
           已停        → restart()              ← 核本来就停着：启新核，与今天同行为
@@ -450,7 +478,8 @@ guard → ApplicationClient::patch(core = new)   ← desired 提交，此后一�
                          Err → CommittedDegraded(CoreLifecycle /
                                  core_start_failed)，Applied 不推进  （R1）
           无后端      → §2.2 第 6 行 degraded
-      → map_apply_outcome() 只产 report + degradations（C3：wire 表示的唯一决策点）
+        注：只有「在跑」这条走 map_apply_outcome()（C3：wire 表示的唯一决策点）；
+            「已停」两侧与各类失败由 S7 直接构造 report（Started / NotApplied）。
 ```
 
 **删除**：legacy `Config::verge().draft()/apply()/discard()`、回滚重建、`restore_product` 调用、回滚分支里的两次 old-core restart、`RuntimeTransactionSnapshot`（连类型一起删——change_core 是它唯一的使用者）。
@@ -461,16 +490,19 @@ guard → ApplicationClient::patch(core = new)   ← desired 提交，此后一�
 
 `state.running` 是**身份缓存**，恒初始化为 `None`，只有 GUI 发过 `Run` 才填充；而 `pre_start` 会 `observe_status()`，所以进程启动后 attach 到一个**已在运行**的 Service 核完全可能（F33）。此时 `RunningIdentity` 返回 `Ok(None)` 但核**正在跑**——照 v2 的写法会对一个运行中的核走 `restart()`，把用户的连接全部打断。
 
-**判定必须同时看身份与观察态：**
+**判据必须读忠实六态，不能读 `CoreStatusView.state`（NH1）**：后者是二值投影，`Starting`/`Restarting` 被压成 `Stopped`、`Stopping` 被压成 `Running`（F40）——直接用它会把下表**三个分支判反**。这与 5a 规划期裁过的 wire 塌缩是同一类问题，只是换了场景。
 
-| `RunningIdentity` | watch 观察态                                    | 分支        | 理由                                          |
-| ----------------- | ----------------------------------------------- | ----------- | --------------------------------------------- |
-| `Ok(Some(_))`     | 任意                                            | **apply**   | 本进程启的核，身份已知                        |
-| `Ok(None)`        | **Running / Starting / Restarting / Switching** | **apply**   | attach 到的运行核——apply 能承载切换，不该重启 |
-| `Ok(None)`        | **Stopped / Stopping**                          | **restart** | 真的停着，D5=A 的启核分支                     |
-| `Err(NoBackend)`  | —                                               | degraded    | §2.2 第 6 行                                  |
+**裁定：`RunningIdentity` 的 reply 扩为一次原子守卫读**，返回 `(Option<CoreRequest>, FaithfulLifecycle)`——身份与忠实生命周期在**同一个 mailbox 轮次内**取齐，杜绝两次查询之间的撕裂读（A.2 已改声明）。真值表从这个联合值取：
 
-> 观察态从 `CoreClient::status()` 读（同步 watch 克隆，零 mailbox，5a 已有）。**先取 guard 再读**，所以读到的观察态不会被并发操作改写。attach 场景由 **T-B4-06** 钉住。
+| 身份      | `FaithfulLifecycle`                                 | 分支        | 理由                                                                                   |
+| --------- | --------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------- |
+| `Some(_)` | 任意                                                | **apply**   | 本进程启的核，身份已知                                                                 |
+| `None`    | `Running` / `Starting` / `Restarting` / `Switching` | **apply**   | 核在跑或正在起来——apply 能承载切换，不该重启                                           |
+| `None`    | `Stopped { .. }`                                    | **restart** | 真的停着，D5=A 的启核分支                                                              |
+| `None`    | `Stopping`                                          | **restart** | 正在停——等它停稳后启新核；**注意二值投影会把它读成 `Running`**，这正是必须读六态的原因 |
+| —         | 后端不可用（`Err(NoBackend)`）                      | degraded    | §2.2 第 6 行                                                                           |
+
+> **先取 guard 再读**，所以联合读到的值不会被并发操作改写。attach 场景与三个过渡态由 **T-B4-06** 钉住（`Starting` / `Restarting` / `Stopping` 各至少一例断言分支方向——这三例正是二值投影会判反的那三个）。
 
 #### `restart()` 残余审计（L3）与 F8 的重新表述
 
@@ -500,7 +532,7 @@ v2 写「外层 `run_legacy_verge_mutation` 的 typed 重播保留（PR-7a 才�
 - 类型装不下：包裹器签名是 `Fut: Future<Output = anyhow::Result<()>>` → `ClientResult<()>`（F35），承不住 `MutationOutcome<RuntimeApplyReport>`；
 - **还会违 I-A**：它在 `mutate()` 成功后仍要做 legacy restore / 投影刷新 / typed patch plan / finalize，这些**发生在 typed commit 之后**却一律返回普通 `Err`——用户会看到「切核失败」而磁盘上核已经换了。
 
-**做法**：`change_clash_core` 命令直接调 `client.change_core(core)`，返回 `MutationOutcome<RuntimeApplyReport>`；`LegacyVergeBridge` 参数从该命令签名移除。**其余 8 处 `run_legacy_verge_mutation` 调用点一律不动**（它们确实还在写 legacy verge），包裹器本身也不改签名——不为一个即将退场的调用点去泛化一个即将删除的 compat 包裹器。
+**做法**：`change_clash_core` 命令直接调 `client.change_core(core)`，返回 `MutationOutcome<RuntimeApplyReport>`；`LegacyVergeBridge` 参数从该命令签名移除。**其余 7 处 `run_legacy_verge_mutation` 调用点一律不动**（今天共 8 处，含 `change_clash_core` 自身）（它们确实还在写 legacy verge），包裹器本身也不改签名——不为一个即将退场的调用点去泛化一个即将删除的 compat 包裹器。
 
 **「摘掉之后，残余的 legacy 读者谁来喂？」——F38 / F39 预先钉死这条**（leader 独立核验，v3.1 记入）：
 
@@ -524,7 +556,7 @@ v2 写「外层 `run_legacy_verge_mutation` 的 typed 重播保留（PR-7a 才�
 
 新增纯函数 `map_apply_outcome(data: &CoreApplyData, promoted_revision: u64) -> (RuntimeApplyReport, Vec<Degradation>)`。**它的契约按 C3 改述：它是「wire 表示」的唯一决策点，不再是「Applied 是否推进」的决策点**——后者由 actor 内的纯谓词 `advances_applied(outcome)` 独占（S2 / S4）。两者读同一个 `outcome`：一个决定 actor 状态、一个决定给前端看什么，职责不重叠。§3 的 12 格 parity 矩阵仍全部由 `map_apply_outcome` 决定，测试直接打它。
 
-**两条不经过它的路径**（都没有 `CoreApplyData`，由 S5/S6 直接构造报告）：
+**三条不经过它的路径**（都没有 `CoreApplyData`，由 S5/S6 直接构造报告）：
 
 | 路径                                                    | report                                                   | degradations                          |
 | ------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------- |
@@ -601,19 +633,19 @@ pnpm lint:architecture-ledger
 
 ### 6.3 B1/B2/B4 结构测试
 
-| ID      | 断言                                                                                                                                                                                                                                                                                                                |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-LC-01 | Promoted 推进拒绝非递增 revision（迁自 F14 的 `publish_promoted` 校验）                                                                                                                                                                                                                                             |
-| T-LC-02 | Applied 推进要求存在 Promoted 且 `identity_eq`（迁自 `publish_applied` 校验）                                                                                                                                                                                                                                       |
-| T-LC-03 | `lifecycle()` 是同步 watch 克隆，慢 `Run` 阻塞期间**立即返回**（沿用 5a 的活性性质）                                                                                                                                                                                                                                |
-| T-B2-01 | **两个并发 rebuild 不重叠**，后一个在 `OperationGate` FIFO 之后**读取最新 snapshot**（Exit 判据原文）                                                                                                                                                                                                               |
-| T-B2-02 | **三处** gate→begin 例外都在 guard 内构建快照 / candidate（H4 纠正了 F12）：`promote_default_runtime_config`、`promote_existing_runtime_product`、`start_promoted_runtime`。三例**分别断言不合并**——`start_promoted_runtime` 那例必须构造「读到旧 Promoted → 在 begin 上排队 → 启动新产物」的竞态窗口并证明它已关闭 |
-| T-B4-01 | change-core `RolledBack`：desired = **新核**、Promoted = **新配置**、Applied = **旧值**（Exit 判据原文）                                                                                                                                                                                                            |
-| T-B4-02 | change-core 成功（**核在跑**）：三者一致推进；`RuntimeApplyReport.outcome == Switched`；**全程零次 `restart()`**——切核由 `apply` 承载（L3 的真实语义）                                                                                                                                                              |
-| T-B4-03 | change-core（**核已停**，D5=A 分支）：`RunningIdentity` 返回 `Ok(None)` → 恰好一次 `restart()`，且该次 Run 请求用的是**本次 promote 的新核**（`target_core.take()` 消费的正是它，F8 重述）；`outcome == Started`                                                                                                    |
-| T-B4-04 | `restart()` 的 `target_core` 一次性消费：同一 lease 内第二次 `restart()` 落回 typed 快照而非重用陈旧目标（把 F8 的机制本身钉住，与 change_core 流程解耦）                                                                                                                                                           |
-| T-B4-05 | change-core 停止态分支的**失败侧**（R1）：`restart()` 失败 → `CommittedDegraded`，`phase = CoreLifecycle` / `code = "core_start_failed"`；desired = 新核（已提交）、Promoted = 新配置、**Applied 不推进**                                                                                                           |
-| T-B4-06 | **attach 到运行中的 Service 核**（H5）：`pre_start` 观察到 `Running` 但 `state.running == None`，此时 change_core **必须走 apply 分支**（`outcome == Switched`）、**零次 `restart()`**。这是 v2 会打断用户连接的那条路径                                                                                            |
+| ID      | 断言                                                                                                                                                                                                                                                                                                                                                                          |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-LC-01 | Promoted 推进拒绝非递增 revision（迁自 F14 的 `publish_promoted` 校验）                                                                                                                                                                                                                                                                                                       |
+| T-LC-02 | Applied 推进要求存在 Promoted 且 `identity_eq`（迁自 `publish_applied` 校验）                                                                                                                                                                                                                                                                                                 |
+| T-LC-03 | `lifecycle()` 是同步 watch 克隆，慢 `Run` 阻塞期间**立即返回**（沿用 5a 的活性性质）                                                                                                                                                                                                                                                                                          |
+| T-B2-01 | **两个并发 rebuild 不重叠**，后一个在 `OperationGate` FIFO 之后**读取最新 snapshot**（Exit 判据原文）                                                                                                                                                                                                                                                                         |
+| T-B2-02 | **三处** gate→begin 例外都在 guard 内构建快照 / candidate（H4 纠正了 F12）：`promote_default_runtime_config`、`promote_existing_runtime_product`、`start_promoted_runtime`。三例**分别断言不合并**——`start_promoted_runtime` 那例必须构造「读到旧 Promoted → 在 begin 上排队 → 启动新产物」的竞态窗口并证明它已关闭                                                           |
+| T-B4-01 | change-core `RolledBack`：desired = **新核**、Promoted = **新配置**、Applied = **旧值**（Exit 判据原文）                                                                                                                                                                                                                                                                      |
+| T-B4-02 | change-core 成功（**核在跑**）：三者一致推进；`RuntimeApplyReport.outcome == Switched`；**全程零次 `restart()`**——切核由 `apply` 承载（L3 的真实语义）                                                                                                                                                                                                                        |
+| T-B4-03 | change-core（**核已停**，D5=A 分支）：`RunningIdentity` 返回 `Ok(None)` → 恰好一次 `restart()`，且该次 Run 请求用的是**本次 promote 的新核**（`target_core.take()` 消费的正是它，F8 重述）；`outcome == Started`                                                                                                                                                              |
+| T-B4-04 | `restart()` 的 `target_core` 一次性消费：同一 lease 内第二次 `restart()` 落回 typed 快照而非重用陈旧目标（把 F8 的机制本身钉住，与 change_core 流程解耦）                                                                                                                                                                                                                     |
+| T-B4-05 | change-core 停止态分支的**失败侧**（R1）：`restart()` 失败 → `CommittedDegraded`，`phase = CoreLifecycle` / `code = "core_start_failed"`；desired = 新核（已提交）、Promoted = 新配置、**Applied 不推进**。**并断言 report 值**（C1 残留）：`value.outcome == NotApplied`、`value.applied_revision == None`、`value.desired_revision == ` 本次分配的 revision                 |
+| T-B4-06 | **attach 场景 + 三个过渡态**（H5 / NH1）：(a) `pre_start` 观察到 `Running` 但 `state.running == None` → change_core **必须走 apply**（`outcome == Switched`）、**零次 `restart()`**；(b) `Starting`、(c) `Restarting`、(d) `Stopping` 各一例，断言分支方向。**(b)(c)(d) 正是二值 `CoreStatusView.state` 会判反的三个**（F40），所以它们同时也是「判据确实读了忠实六态」的证明 |
 
 ### 6.4 回归（期望零改动通过）
 
@@ -683,17 +715,17 @@ pnpm lint:architecture-ledger
 
 ## 10. 明确 out-of-scope（登记去向）
 
-| 项                                                                                                           | 去向                                                 |
-| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| watch snapshot 的状态投影扩展、100 条 `LogFrame` ring                                                        | **PR-5c / C1**                                       |
-| `set_mode` / `reconcile_mode`、删 5 s 轮询与 statics                                                         | **PR-5c / C2**                                       |
-| macOS DNS 归入 actor                                                                                         | **PR-5c / C3**                                       |
-| `feat::patch_clash_with_rebuild` 的 sysproxy/systray/locale 后效                                             | **PR-6e**                                            |
-| `on_profile_change` 的连接中断服务                                                                           | **PR-6**                                             |
-| `UpdaterManager::global()`                                                                                   | **PR-6d**                                            |
-| `run_legacy_verge_mutation` 的 typed 重播（**其余 8 处调用点**；`change_clash_core` 那处 H7 已在本阶段摘除） | **PR-7a**                                            |
-| `feat.rs:79` 的 `change_clash_mode` 裸 `put_configs`                                                         | **PR-6**（不在本阶段的 apply 管线内）                |
-| `ControllerBinding` / `config_patch_from_mapping`                                                            | **不存在**（F20）；B3 卡该两项记为 no-op，不新造再删 |
+| 项                                                                                                                        | 去向                                                 |
+| ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| watch snapshot 的状态投影扩展、100 条 `LogFrame` ring                                                                     | **PR-5c / C1**                                       |
+| `set_mode` / `reconcile_mode`、删 5 s 轮询与 statics                                                                      | **PR-5c / C2**                                       |
+| macOS DNS 归入 actor                                                                                                      | **PR-5c / C3**                                       |
+| `feat::patch_clash_with_rebuild` 的 sysproxy/systray/locale 后效                                                          | **PR-6e**                                            |
+| `on_profile_change` 的连接中断服务                                                                                        | **PR-6**                                             |
+| `UpdaterManager::global()`                                                                                                | **PR-6d**                                            |
+| `run_legacy_verge_mutation` 的 typed 重播（**其余 7 处调用点**；今天共 8 处，`change_clash_core` 那处 H7 已在本阶段摘除） | **PR-7a**                                            |
+| `feat.rs:79` 的 `change_clash_mode` 裸 `put_configs`                                                                      | **PR-6**（不在本阶段的 apply 管线内）                |
+| `ControllerBinding` / `config_patch_from_mapping`                                                                         | **不存在**（F20）；B3 卡该两项记为 no-op，不新造再删 |
 
 ---
 
@@ -725,12 +757,35 @@ pub(crate) lifecycle_tx: watch::Sender<RuntimeLifecycleState>,
 pub(crate) lifecycle_tx: watch::Sender<RuntimeLifecycleState>,
 ```
 
+### A.1b lease seam 的类型化错误（NH2）
+
+```rust
+// client/core_bridge.rs —— 取代今天未分化的 anyhow::Result<[u8; 32]>（F41）
+#[derive(Debug)]
+pub(crate) enum CheckAndPromotePhase {
+    Check,
+    Promote,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{phase:?} failed: {source:#}")]
+pub(crate) struct CheckAndPromoteError {
+    pub(crate) phase: CheckAndPromotePhase,
+    pub(crate) source: anyhow::Error,
+}
+
+// trait 签名相应改为：
+//   async fn check_and_promote(..) -> Result<[u8; 32], CheckAndPromoteError>;
+// 相位由 adapter 内的构造位置打标签——它确切知道自己停在哪一步；
+// 编排层按 phase 查 A.6 的 code，不做字符串嗅探。只要两个相位。
+```
+
 ### A.2 新增消息（三条，全部守卫消息）
 
 ```rust
 /// C2：actor 只做 lifecycle 簿记。candidate 建立、哈希比对、check、产物原子晋升
 /// 全部留在 client 侧 lease adapter —— 快照的输入本来就只在那里（F32），
-/// 且 anyhow/ClientError 天然区分 RuntimeCheck 与 RuntimePromote 两个相位。
+/// 相位区分靠 A.1b 的类型化 CheckAndPromoteError（NH2），不是靠 anyhow。
 PublishPromoted {
     operation: OperationId,
     snapshot: Arc<RuntimeSnapshot>,          // client 已建好并已晋升产物
@@ -750,6 +805,13 @@ PublishApplied {
     snapshot: Arc<RuntimeSnapshot>,
     reply: RpcReplyPort<Result<(), CoreActorError>>,   // 要求存在 Promoted 且 identity_eq
 },
+/// NH1：5a 的 RunningIdentity 的 reply 由 Option<CoreRequest> 扩为联合值——
+/// 身份与忠实六态必须在同一个 mailbox 轮次内取齐，否则两次查询之间会撕裂读；
+/// 且 CoreStatusView.state 是二值投影，单独用它会把 Starting/Restarting/Stopping 判反（F40）。
+RunningIdentity {
+    operation: OperationId,
+    reply: RpcReplyPort<Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError>>,
+},
 // L5：不加 LifecycleSnapshot 诊断消息。lifecycle_tx 在处理函数内、reply 之前发布
 // （F30 的时序），所以 await reply 后读 lifecycle() 已经确定性可见。
 ```
@@ -766,6 +828,9 @@ pub(crate) fn advances_applied(outcome: ApplyOutcomeKind) -> bool;
 ```rust
 // CoreClient 新增
 pub(crate) fn lifecycle(&self) -> RuntimeLifecycleState;          // 同步 watch 克隆
+// NH1：5a 的 running(&guard) 返回类型随 A.2 一起加宽
+pub(crate) async fn running(&self, op: &CoreOperationGuard)
+    -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError>;
 pub(crate) async fn publish_promoted(&self, op: &CoreOperationGuard, snapshot: Arc<RuntimeSnapshot>)
     -> Result<(), CoreActorError>;
 pub(crate) async fn publish_applied(&self, op: &CoreOperationGuard, snapshot: Arc<RuntimeSnapshot>)
@@ -831,16 +896,22 @@ pub(crate) fn map_apply_outcome(
 
 ### A.6 degradation code 常量表（§2.2 / §3 引用）
 
-| code                              | phase            | retryable |
-| --------------------------------- | ---------------- | --------- |
-| `runtime_build_failed`            | `RuntimeBuild`   | true      |
-| `runtime_check_failed`            | `RuntimeCheck`   | true      |
-| `runtime_promote_failed`          | `RuntimePromote` | true      |
-| `revision_conflict`               | `RuntimeApply`   | true      |
-| `core_transport_lost`             | `RuntimeApply`   | true      |
-| `core_backend_unavailable`        | `RuntimeApply`   | true      |
-| `runtime_apply_failed`            | `RuntimeApply`   | true      |
-| `core_not_running`                | `RuntimeApply`   | true      |
-| `core_start_failed`               | `CoreLifecycle`  | true      |
-| `core_rollback`                   | `CoreRollback`   | true      |
-| `core_apply_durability_uncertain` | `RuntimeApply`   | false     |
+| code                       | phase            | retryable |
+| -------------------------- | ---------------- | --------- |
+| `runtime_build_failed`     | `RuntimeBuild`   | true      |
+| `runtime_check_failed`     | `RuntimeCheck`   | true      |
+| `runtime_promote_failed`   | `RuntimePromote` | true      |
+| `revision_conflict`        | `RuntimeApply`   | true      |
+| `core_transport_lost`      | `RuntimeApply`   | true      |
+| `core_backend_unavailable` | `RuntimeApply`   | true      |
+| `runtime_apply_failed`     | `RuntimeApply`   | true      |
+| `core_not_running`         | `RuntimeApply`   | true      |
+| `core_start_failed`        | `CoreLifecycle`  | true      |
+
+> **actor 发布失败的归类（NH3 ③）——本表不新增 code**：
+>
+> - `PublishPromoted` 因**单调性**被拒 → 不是 degradation，按 I-A 豁免 (b) 处理为 `Err` + 错误日志。守卫串行 + 单事务单次分配之下，非递增 revision 只可能是 bug；
+> - `PublishPromoted` / `PublishApplied` 遇 `ShuttingDown` → 按 I-A 豁免 (a) 处理为 `Err`；
+> - 写后校验失败（§2.2 第 4b 行）→ 复用 `runtime_promote_failed`，`message` 注明是「产物已写、发布未成」侧。
+>   | `core_rollback` | `CoreRollback` | true |
+>   | `core_apply_durability_uncertain` | `RuntimeApply` | false |

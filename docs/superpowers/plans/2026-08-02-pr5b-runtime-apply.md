@@ -161,14 +161,14 @@
 
 **分界线是「typed desired state 是否已经提交」**，不是「操作是否已经开始」。
 
-- `ApplicationClient::patch` / `ClashConfigClient::patch` 返回 `Ok` 的那一刻起，用户意图已经持久化 → 此后任何失败都**不得**表现为普通 `Err`（否则 UI 会显示「失败」而磁盘上已经变了）；
+- `ApplicationClient::patch` / `ClashConfigClient::patch` 返回 `Ok` 的那一刻起，用户意图已经持久化 → 此后的失败**除 §2.3 的 E-a / E-b 两条豁免外**都不得表现为普通 `Err`（否则 UI 会显示「失败」而磁盘上已经变了）；
 - 在此之前的任何失败，desired 未动，返回 `Err` 是诚实的。
 
 因此 5b 的三类入口有不同的分界位置：
 
 | 入口                                                                                                                         | 有无 desired commit           | 分界                                                                                                                                                    |
 | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `patch_running_config`（B3）、`change_core`（B4）                                                                            | **有**，且在最前              | commit 之后全部 degraded                                                                                                                                |
+| `patch_running_config`（B3）、`change_core`（B4）                                                                            | **有**，且在最前              | commit 之后**除 §2.3 两条豁免外**全部 degraded                                                                                                          |
 | `rebuild_running_config`（**后台脏重建**，`RebuildCoordinator` worker）                                                      | 无（响应更早的 commit）       | **除 §2.3 两条豁免外全部 degraded**——commit 早已发生，此处只是迟到的副作用；投递走 sink，见 §2.4                                                        |
 | `rebuild_running_config`（**`enhance_profiles` 命令**，F34 ③）                                                               | 无（doc 明写无前置 commit）   | **全部 `Err`**——命令 doc 原文「there is no prior state commit, so a failure is a plain error」                                                          |
 | `regenerate_and_apply_for_legacy` / `regenerate_and_restart_for_legacy`（**legacy 重播**，F34 ④）                            | 无（legacy draft 尚未 apply） | **全部 `Err`**——调用方 `feat::*` 靠 `Err` 触发 `Config::verge().discard()`；`RolledBack` 也必须映射成 `Err`，否则 legacy draft 会被误当成功而 `apply()` |
@@ -217,7 +217,7 @@
 
 ### 2.3 三条不变量
 
-- **I-A（不撒谎）**：desired 已提交时**绝不**返回 `Err`——只返回 `CommittedDegraded`。**两条显式豁免（NH3 ①）**：
+- **I-A（不撒谎）**：desired 已提交时，**除下列两条豁免外绝不**返回 `Err`——只返回 `CommittedDegraded`。**两条显式豁免（NH3 ① / NH4）**：
   - **(a) 进程正在关停**（`CoreActorError::ShuttingDown`）：teardown 期没有任何读者会去渲染一个 degraded 结果，返回 `Err` 是诚实的；把它包成 `CommittedDegraded` 只是制造一个没人看的假成功；
   - **(b) 不变量破坏**：**这些只可能是 bug**——守卫串行化 + 单事务单次分配之下，陈旧 operation 与非递增 revision 都不该发生。**bug 必须响亮失败**（`Err` + 错误级日志）；包装成 degradation 等于把实现缺陷伪装成一次「运行时小故障」，让它长期潜伏。
 
@@ -497,7 +497,7 @@ guard → typed desired commit（ClashConfigClient::patch）→ 统一 rebuild �
 新形态（对比 F19 的三分支回滚）：
 
 ```text
-guard → ApplicationClient::patch(core = new)   ← desired 提交，此后一律 degraded
+guard → ApplicationClient::patch(core = new)   ← desired 提交；此后除 §2.3 的 E-a/E-b 外一律 degraded
       → 统一 rebuild（新核）→ check → 晋升产物 → PublishPromoted   （C2：文件工作在 client）
       → RunningIdentity → (身份, FaithfulLifecycle) 原子守卫联合读        （NH1）
           在跑        → ApplyPromoted          ← apply 内部承载切核（Switched）

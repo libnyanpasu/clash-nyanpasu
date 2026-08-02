@@ -25,8 +25,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::{
     core_bridge::{
-        CheckAndPromoteFailure, CoreLifecycleLease, CoreLifecyclePort, CoreStatusSnapshot,
-        restore_product,
+        CheckAndPromoteError, CheckAndPromoteFailure, CheckAndPromotePhase, CoreLifecycleLease,
+        CoreLifecyclePort, CoreStatusSnapshot, RestartFailure, restore_product,
     },
     runtime::{CandidateFile, RuntimePaths},
 };
@@ -264,40 +264,63 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
         target_core: ClashCore,
         product: &Utf8Path,
     ) -> Result<[u8; 32], CheckAndPromoteFailure> {
-        let result: anyhow::Result<[u8; 32]> = async {
-            anyhow::ensure!(
-                product == self.runtime_paths.product(),
-                "product path must match the lifecycle adapter runtime product"
-            );
-            let bytes = tokio::fs::read(candidate.path()).await?;
-            let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
-            anyhow::ensure!(
-                candidate_hash == candidate.bytes_sha256(),
-                "candidate config hash changed before check"
-            );
-
-            self.run_check(candidate.path()).await?;
-
-            let after = tokio::fs::read(candidate.path().as_std_path()).await?;
-            if after != bytes {
-                anyhow::bail!("candidate config changed between check and promote");
-            }
-            let after_hash: [u8; 32] = sha2::Sha256::digest(&after).into();
-            if after_hash != candidate.bytes_sha256() {
-                anyhow::bail!("candidate config hash changed before promotion");
-            }
-
-            restore_product(product.as_std_path(), &bytes).await?;
-            let promoted = tokio::fs::read(product.as_std_path()).await?;
-            let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
-            if promoted_hash != candidate.bytes_sha256() {
-                anyhow::bail!("promoted runtime product hash does not match candidate");
-            }
-            self.state.target_core = target_core;
-            Ok(promoted_hash)
+        if product != self.runtime_paths.product() {
+            return Err(process_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("product path must match the lifecycle adapter runtime product"),
+            ));
         }
-        .await;
-        result.map_err(Into::into)
+        let bytes = tokio::fs::read(candidate.path()).await.map_err(|error| {
+            process_operation_error(CheckAndPromotePhase::Promote, error.into())
+        })?;
+        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
+        if candidate_hash != candidate.bytes_sha256() {
+            return Err(process_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("candidate config hash changed before check"),
+            ));
+        }
+
+        self.run_check(candidate.path())
+            .await
+            .map_err(|error| process_operation_error(CheckAndPromotePhase::Check, error))?;
+
+        let after = tokio::fs::read(candidate.path().as_std_path())
+            .await
+            .map_err(|error| {
+                process_operation_error(CheckAndPromotePhase::Promote, error.into())
+            })?;
+        if after != bytes {
+            return Err(process_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("candidate config changed between check and promote"),
+            ));
+        }
+        let after_hash: [u8; 32] = sha2::Sha256::digest(&after).into();
+        if after_hash != candidate.bytes_sha256() {
+            return Err(process_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("candidate config hash changed before promotion"),
+            ));
+        }
+
+        restore_product(product.as_std_path(), &bytes)
+            .await
+            .map_err(|error| process_operation_error(CheckAndPromotePhase::Promote, error))?;
+        let promoted = tokio::fs::read(product.as_std_path())
+            .await
+            .map_err(|error| {
+                process_operation_error(CheckAndPromotePhase::Promote, error.into())
+            })?;
+        let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
+        if promoted_hash != candidate.bytes_sha256() {
+            return Err(process_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("promoted runtime product hash does not match candidate"),
+            ));
+        }
+        self.state.target_core = target_core;
+        Ok(promoted_hash)
     }
 
     async fn apply_promoted(
@@ -328,13 +351,15 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
         Ok((None, lifecycle))
     }
 
-    async fn restart(&mut self) -> anyhow::Result<()> {
-        self.stop_inner().await?;
+    async fn restart(&mut self) -> Result<(), RestartFailure> {
+        self.stop_inner().await.map_err(RestartFailure::Operation)?;
 
         let product = self.runtime_paths.product().to_owned();
         // Never invent a placeholder product — promote/seed must write real bytes.
         if !product.as_std_path().is_file() {
-            anyhow::bail!("runtime product is missing; cannot restart");
+            return Err(RestartFailure::Operation(anyhow::anyhow!(
+                "runtime product is missing; cannot restart"
+            )));
         }
 
         // Atomic snapshot: one lock covers start-mode pop + ports/apply fields so
@@ -342,15 +367,27 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
         let (start_exit, policy) = self.take_restart_policy();
 
         if let Some(code) = start_exit {
-            return self.spawn_immediate_start_exit(&product, code).await;
+            return self
+                .spawn_immediate_start_exit(&product, code)
+                .await
+                .map_err(RestartFailure::Operation);
         }
 
-        self.spawn_long_running(&product, &policy).await
+        self.spawn_long_running(&product, &policy)
+            .await
+            .map_err(RestartFailure::Operation)
     }
 
     async fn stop(&mut self) -> anyhow::Result<()> {
         self.stop_inner().await
     }
+}
+
+fn process_operation_error(
+    phase: CheckAndPromotePhase,
+    source: anyhow::Error,
+) -> CheckAndPromoteFailure {
+    CheckAndPromoteFailure::Operation(CheckAndPromoteError { phase, source })
 }
 
 impl ProcessCoreLifecycleLease {

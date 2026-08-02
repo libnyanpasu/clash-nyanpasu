@@ -24,6 +24,9 @@ pub(crate) enum CheckAndPromoteFailure {
 #[cfg(test)]
 impl From<anyhow::Error> for CheckAndPromoteFailure {
     fn from(source: anyhow::Error) -> Self {
+        // Test doubles use this convenience only for failures that occur before
+        // promotion. Production adapters must tag Check/Promote at the exact
+        // construction site instead of relying on this default.
         Self::Operation(CheckAndPromoteError {
             phase: CheckAndPromotePhase::Check,
             source,
@@ -42,6 +45,14 @@ pub(crate) enum CheckAndPromotePhase {
 pub(crate) struct CheckAndPromoteError {
     pub(crate) phase: CheckAndPromotePhase,
     pub(crate) source: anyhow::Error,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum RestartFailure {
+    #[error(transparent)]
+    Actor(CoreActorError),
+    #[error(transparent)]
+    Operation(anyhow::Error),
 }
 
 #[allow(dead_code)]
@@ -93,7 +104,7 @@ pub trait CoreLifecycleLease: Send {
         &mut self,
         snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
     ) -> Result<CoreApplyData, CoreActorError>;
-    async fn restart(&mut self) -> anyhow::Result<()>;
+    async fn restart(&mut self) -> Result<(), RestartFailure>;
     #[allow(dead_code)]
     async fn stop(&mut self) -> anyhow::Result<()>;
 }
@@ -187,7 +198,7 @@ impl CoreLifecycleLease for ActorBackedTestCoreLifecycleLease {
         Ok(data)
     }
 
-    async fn restart(&mut self) -> anyhow::Result<()> {
+    async fn restart(&mut self) -> Result<(), RestartFailure> {
         self.inner.restart().await
     }
 
@@ -213,8 +224,7 @@ pub(crate) fn test_apply_data(
     }
 }
 
-/// Atomically write known-good product bytes back: the sole promote path and
-/// the change-core last-resort rollback path.
+/// Atomically write known-good product bytes into the runtime product path.
 pub(crate) async fn restore_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     if let Some(parent) = product.parent() {
         tokio::fs::create_dir_all(parent).await?;

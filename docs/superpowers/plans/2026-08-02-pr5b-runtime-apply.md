@@ -262,7 +262,7 @@
 
 > **E-a / E-b 与第 4b 行的区别**：三者都可能发生在「产物已写入」之后，终态也都是产物新 / Promoted 旧。区别**只在错误类型**——4b 是真实的运行时失败（读回哈希不符），E-a / E-b 匹配豁免规则。实施者按 `matches!` 分流，不靠推断失败位置。
 
-> **第八项（D5=A 引入，不在 RQ-01 原列表内）**：停止态 `change_core` 的 `restart()` 失败。desired 早已提交，故同样是 `post`——`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied 不推进（§3.1 的 `Started` 行、T-B4-05）。**它不过 A.7 的分类器**——A.7 只管 apply 路径，见其作用域声明。用 `CoreLifecycle` 而非 `RuntimeApply`：失败发生在核**生命周期**上，不是在配置应用上，与 5a 的 `core_recovery_exhausted` 同相。
+> **第八项（D5=A 引入，不在 RQ-01 原列表内）**：停止态 `change_core` 的 `restart()` 失败。`restart()` 以 A.1b 的 `RestartFailure` 保留来源；必须先按 §2.3 分流：`Actor(StaleOperation | LifecycleInvariant(_) | ShuttingDown)` 返回普通 `Err`，不产 degradation；其余 `Actor(_)` 与 `Operation(_)` 才落本行。desired 早已提交，故非豁免失败同样是 `post`——`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied 不推进（§3.1 的 `Started` 行、T-B4-05）。**它不过 A.7 的分类器**——A.7 只管 apply 路径，见其作用域声明。用 `CoreLifecycle` 而非 `RuntimeApply`：失败发生在核**生命周期**上，不是在配置应用上，与 5a 的 `core_recovery_exhausted` 同相。
 
 > **上表各行的 `report` 取值（C1，按 NH7 修正）**：`MutationOutcome` 的两个变体都要求 `value: T`（F31），所以 post-commit 失败也得给出一个诚实的 report。**第 2、3、4a、4b、5、6a、6b、7b、7c 行**都**没有发生任何终态动作**——既没有 `CoreApplyData`，也没有启核——因此一律取 **`RuntimeApplyOutcome::NotApplied`**、`applied_revision = None`，「为什么」由 degradations 承载。**唯一的例外是第 7a 行**：`RolledBack` **是有 `CoreApplyData` 的**，旧配置确实在跑、这是 apply 主动做出的真实终态动作，所以它的 report 就是 `RolledBack`（与 §3.1 的映射一致）——v4 把它一并归进 `NotApplied` 是错的。**E-a / E-b 两类没有 report**（返回 `Err`，不构造 `MutationOutcome`）。`desired_revision` 始终填本次分配的 revision。
 
@@ -354,7 +354,7 @@ I-B 说「不允许只写日志」，但 rebuild 管线有**四类**调用上下
 
 前六格逐一映射到 `RuntimeApplyOutcome` 的同名变体（A.4）。第七行 `Started` **不由 `apply` 产出**——它是 D5=A 的停止态启核路径直接构造的，**不进 `runtime_outcome_from_apply_data`**，因此不进 §3.2 的 12 格 parity 矩阵；但它是一个真实终态，Applied 推进规则必须在这张表上说清。
 
-**`Started` 路径的失败侧（R1）**：停止态分支的 `restart()` 失败时，desired 早已提交（§2.1），因此**走 §2.2 的 post-commit 路径**——返回 `CommittedDegraded`，`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied **不推进**。成功侧由 **T-B4-03** 钉住，失败侧由 **T-B4-05** 钉住（§6.3）。
+**`Started` 路径的失败侧（R1）**：停止态分支的 `restart()` 失败时，先保留 `RestartFailure` 的来源并应用 §2.3；三类 actor 豁免返回普通 `Err`。其余失败因 desired 已提交（§2.1）而**走 §2.2 的 post-commit 路径**——返回 `CommittedDegraded`，`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied **不推进**。成功侧由 **T-B4-03** 钉住，失败两臂由 **T-B4-05** 钉住（§6.3）。
 
 **Warning 的处理（与上表正交）：**
 
@@ -739,7 +739,7 @@ pnpm lint:architecture-ledger
 ### 6.3 B1/B2/B4 结构测试
 
 | ID      | 断言                                                                                                                                                                                                                                                                                                                                                                          |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | T-LC-01 | Promoted 推进拒绝非递增 revision（迁自 F14 的 `publish_promoted` 校验）                                                                                                                                                                                                                                                                                                       |
 | T-LC-02 | Applied 推进要求存在 Promoted 且 `identity_eq`（迁自 `publish_applied` 校验）                                                                                                                                                                                                                                                                                                 |
 | T-LC-03 | `lifecycle()` 是同步 watch 克隆，慢 `Run` 阻塞期间**立即返回**（沿用 5a 的活性性质）                                                                                                                                                                                                                                                                                          |
@@ -749,7 +749,7 @@ pnpm lint:architecture-ledger
 | T-B4-02 | change-core 成功（**核在跑**）：三者一致推进；`RuntimeApplyReport.outcome == Switched`；**全程零次 `restart()`**——切核由 `apply` 承载（L3 的真实语义）                                                                                                                                                                                                                        |
 | T-B4-03 | change-core（**核已停**，D5=A 分支）：`RunningIdentity` 返回 `Ok((None, FaithfulLifecycle::Stopped { .. }))` → 恰好一次 `restart()`，且该次 Run 请求用的是**本次 promote 的新核**（`target_core.take()` 消费的正是它，F8 重述）；`outcome == Started`                                                                                                                         |
 | T-B4-04 | `restart()` 的 `target_core` 一次性消费：同一 lease 内第二次 `restart()` 落回 typed 快照而非重用陈旧目标（把 F8 的机制本身钉住，与 change_core 流程解耦）                                                                                                                                                                                                                     |
-| T-B4-05 | change-core 停止态分支的**失败侧**（R1）：`restart()` 失败 → `CommittedDegraded`，`phase = CoreLifecycle` / `code = "core_start_failed"`；desired = 新核（已提交）、Promoted = 新配置、**Applied 不推进**。**并断言 report 值**（C1 残留）：`value.outcome == NotApplied`、`value.applied_revision == None`、`value.desired_revision == ` 本次分配的 revision                 |
+| T-B4-05 | change-core 停止态分支的**失败侧**（R1）分两臂：① `Actor(StaleOperation                                                                                                                                                                                                                                                                                                       | LifecycleInvariant(\_) | ShuttingDown)`按 §2.3 返回普通`Err`、零 degradation；②真实 backend/operation 失败 → `CommittedDegraded`，`phase = CoreLifecycle`/`code = "core_start_failed"`；desired = 新核（已提交）、Promoted = 新配置、**Applied 不推进**。②并断言 report 三字段，含 `desired_revision ==` 本次分配的 revision |
 | T-B4-06 | **attach 场景 + 三个过渡态**（H5 / NH1）：(a) `pre_start` 观察到 `Running` 但 `state.running == None` → change_core **必须走 apply**（`outcome == Switched`）、**零次 `restart()`**；(b) `Starting`、(c) `Restarting`、(d) `Stopping` 各一例，断言分支方向。**(b)(c)(d) 正是二值 `CoreStatusView.state` 会判反的三个**（F40），所以它们同时也是「判据确实读了忠实六态」的证明 |
 
 ### 6.4 回归（期望零改动通过）
@@ -909,8 +909,18 @@ pub(crate) struct CheckAndPromoteError {
     pub(crate) source: anyhow::Error,
 }
 
+/// restart seam 保留 actor 错误身份，避免 §2.3 豁免被 anyhow 擦除。
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum RestartFailure {
+    #[error(transparent)]
+    Actor(CoreActorError),
+    #[error(transparent)]
+    Operation(anyhow::Error),
+}
+
 // trait 签名：
 //   async fn check_and_promote(..) -> Result<[u8; 32], CheckAndPromoteFailure>;
+//   async fn restart(&mut self) -> Result<(), RestartFailure>;
 //
 // 编排层分流（**穷尽派发表；照此实现，不要自由发挥**）：
 //

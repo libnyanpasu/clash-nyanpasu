@@ -17,7 +17,7 @@ use super::{
     ApplicationClient, CoreLifecycleLease, CoreLifecyclePort, RuntimePaths,
     core_bridge::{
         CheckAndPromoteError, CheckAndPromoteFailure, CheckAndPromotePhase, CoreStatusSnapshot,
-        restore_product,
+        RestartFailure, restore_product,
     },
     runtime::CandidateFile,
 };
@@ -565,13 +565,26 @@ impl CoreLifecycleLease for CoreLeaseAdapter {
         unreachable!("bounded apply retry loop always returns")
     }
 
-    async fn restart(&mut self) -> anyhow::Result<()> {
+    async fn restart(&mut self) -> Result<(), RestartFailure> {
         let core = match self.target_core.take() {
             Some(core) => core,
-            None => self.application.get().await?.state.core,
+            None => {
+                self.application
+                    .get()
+                    .await
+                    .map_err(|error| RestartFailure::Operation(error.into()))?
+                    .state
+                    .core
+            }
         };
-        let request = self.requests.for_product(core)?;
-        self.core.run(&self.guard, &request).await?;
+        let request = self
+            .requests
+            .for_product(core)
+            .map_err(|error| RestartFailure::Operation(error.into()))?;
+        self.core
+            .run(&self.guard, &request)
+            .await
+            .map_err(RestartFailure::Actor)?;
         Ok(())
     }
 

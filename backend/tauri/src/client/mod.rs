@@ -1401,7 +1401,10 @@ impl NyanpasuClient {
         let promoted = self.promoted_runtime().await.ok_or_else(|| {
             ClientError::Custom("cannot start core without a promoted runtime".into())
         })?;
-        lease.restart().await.map_err(ClientError::Anyhow)?;
+        lease
+            .restart()
+            .await
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         lease
             .publish_applied(promoted)
             .await
@@ -1974,8 +1977,11 @@ mod tests {
             Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
         }
 
-        async fn restart(&mut self) -> anyhow::Result<()> {
-            self.inner.restart_core().await
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            self.inner
+                .restart_core()
+                .await
+                .map_err(core_bridge::RestartFailure::Operation)
         }
 
         async fn stop(&mut self) -> anyhow::Result<()> {
@@ -2029,6 +2035,70 @@ mod tests {
     struct PromoteFailureLease {
         failure: PromoteFailurePoint,
         check_calls: Arc<AtomicUsize>,
+    }
+
+    struct ExemptRestartCore;
+
+    struct ExemptRestartLease;
+
+    #[async_trait]
+    impl CoreLifecyclePort for ExemptRestartCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            Ok(Box::new(ExemptRestartLease))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used by the exempt restart test")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for ExemptRestartLease {
+        async fn check_and_promote(
+            &mut self,
+            candidate: &runtime::CandidateFile,
+            _target_core: nyanpasu_config::application::ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
+            Ok(candidate.bytes_sha256())
+        }
+
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((
+                None,
+                crate::core::actor::types::FaithfulLifecycle::Stopped { reason: None },
+            ))
+        }
+
+        async fn apply_promoted(
+            &mut self,
+            _snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Err(crate::core::actor::types::CoreActorError::StaleOperation)
+        }
+
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            Err(core_bridge::RestartFailure::Actor(
+                crate::core::actor::types::CoreActorError::StaleOperation,
+            ))
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
     }
 
     #[async_trait]
@@ -2120,7 +2190,7 @@ mod tests {
             Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
         }
 
-        async fn restart(&mut self) -> anyhow::Result<()> {
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
             Ok(())
         }
 
@@ -2237,7 +2307,7 @@ mod tests {
             Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
         }
 
-        async fn restart(&mut self) -> anyhow::Result<()> {
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
             Ok(())
         }
 
@@ -2321,8 +2391,11 @@ mod tests {
             Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
         }
 
-        async fn restart(&mut self) -> anyhow::Result<()> {
-            self.inner.restart_core().await
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            self.inner
+                .restart_core()
+                .await
+                .map_err(core_bridge::RestartFailure::Operation)
         }
 
         async fn stop(&mut self) -> anyhow::Result<()> {
@@ -4035,6 +4108,30 @@ mod tests {
             nyanpasu_config::application::ClashCore::ClashRs
         );
         assert!(lifecycle.applied.is_none());
+    }
+
+    #[test]
+    fn change_core_stopped_exempt_restart_failure_returns_plain_error() {
+        let dir = tempdir().unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            Arc::new(ExemptRestartCore),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let error = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .expect_err("stale operation must stay a plain error");
+
+            let ClientError::Anyhow(error) = error else {
+                panic!("stale operation must stay an actor-backed error");
+            };
+            assert!(matches!(
+                error.downcast_ref(),
+                Some(crate::core::actor::types::CoreActorError::StaleOperation)
+            ));
+        });
     }
 
     #[tokio::test]

@@ -194,8 +194,8 @@ impl NyanpasuClient {
     /// Legacy-draft snapshot -> typed build inputs for the regeneration bridge.
     // FIXME(actor-migration): legacy-draft-aware input assembly for BC callers.
     // Legacy Config::generate() read Config::{verge,clash}().latest() — including
-    // uncommitted drafts. Legacy side-effect writers (feat::patch_clash /
-    // patch_verge tun+service paths, CoreManager::change_core) draft first and
+    // uncommitted drafts. Legacy side-effect writers (feat::patch_clash and
+    // patch_verge tun+service paths) draft first and
     // only reseed typed actors after the mutation commits, so regenerating from
     // typed snapshots would run one step behind (stale ports/secret/core).
     // Convert legacy latest() via the reseed converters instead — without
@@ -222,8 +222,8 @@ impl NyanpasuClient {
         Ok((app, clash))
     }
 
-    /// Regeneration entry for legacy bridge callers (`CoreManager::update_config`,
-    /// `feat::patch_clash`/`patch_verge` side-effect paths, `change_core`).
+    /// Regeneration entry for legacy bridge callers (`CoreManager::update_config`
+    /// and `feat::patch_clash`/`patch_verge` side-effect paths).
     /// Profiles come from the typed actor only; their legacy IPC writers moved
     /// onto the facade in T08 and the legacy profile code was removed in T10.
     #[allow(dead_code)]
@@ -272,7 +272,10 @@ impl NyanpasuClient {
     pub(crate) async fn regenerate_and_restart_for_legacy(&self) -> Result<()> {
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.regenerate_for_legacy_inner(&mut *lease).await?;
-        lease.restart().await.map_err(ClientError::Anyhow)?;
+        lease
+            .restart()
+            .await
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         lease
             .publish_applied(promoted)
             .await
@@ -385,12 +388,21 @@ impl NyanpasuClient {
         }
 
         if let Err(error) = lease.restart().await {
+            let message = match error {
+                super::core_bridge::RestartFailure::Actor(error)
+                    if Self::actor_error_is_post_commit_exempt(&error) =>
+                {
+                    return Err(Self::post_commit_actor_error(error));
+                }
+                super::core_bridge::RestartFailure::Actor(error) => error.to_string(),
+                super::core_bridge::RestartFailure::Operation(error) => error.to_string(),
+            };
             return Ok(crate::client::runtime::MutationOutcome::from_parts(
                 Self::not_applied_report(revision),
                 vec![Self::runtime_degradation(
                     crate::client::runtime::DegradationPhase::CoreLifecycle,
                     "core_start_failed",
-                    error.to_string(),
+                    message,
                 )],
             ));
         }

@@ -299,37 +299,18 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
         result.map_err(Into::into)
     }
 
-    async fn apply_candidate(
-        &mut self,
-        candidate: &CandidateFile,
-        target_core: ClashCore,
-    ) -> anyhow::Result<()> {
-        let bytes = tokio::fs::read(candidate.path()).await?;
-        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
-        anyhow::ensure!(
-            candidate_hash == candidate.bytes_sha256(),
-            "candidate config hash changed before check"
-        );
-        self.run_check(candidate.path()).await?;
-        let after = tokio::fs::read(candidate.path()).await?;
-        anyhow::ensure!(
-            after == bytes,
-            "candidate config changed between check and apply"
-        );
-        self.state.target_core = target_core;
-        self.put_configs(candidate.path().as_str()).await
-    }
-
     async fn apply_promoted(
         &mut self,
         snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
     ) -> Result<CoreApplyData, crate::core::actor::types::CoreActorError> {
         let product = self.runtime_paths.product().to_owned();
-        self.put_configs(product.as_str()).await.map_err(|error| {
-            crate::core::actor::types::CoreActorError::Backend(Arc::new(
-                crate::core::actor::backend::CoreBackendError::Construct(error),
-            ))
-        })?;
+        self.apply_runtime_config(product.as_str())
+            .await
+            .map_err(|error| {
+                crate::core::actor::types::CoreActorError::Backend(Arc::new(
+                    crate::core::actor::backend::CoreBackendError::Construct(error),
+                ))
+            })?;
         Ok(super::core_bridge::test_apply_data(&snapshot))
     }
 
@@ -427,13 +408,13 @@ impl ProcessCoreLifecycleLease {
         }
     }
 
-    async fn put_configs(&mut self, config_path: &str) -> anyhow::Result<()> {
+    async fn apply_runtime_config(&mut self, config_path: &str) -> anyhow::Result<()> {
         self.ensure_core_running()?;
         let http_port = self
             .state
             .http_port
             .expect("http_port present after ensure_core_running");
-        match put_configs_direct(http_port, config_path).await {
+        match apply_runtime_config_direct(http_port, config_path).await {
             Ok(()) => Ok(()),
             Err(error) => {
                 // Child may die between ensure and I/O completion. Re-reap under
@@ -657,7 +638,7 @@ fn accept_ready_or_child_exit(
 
 /// Exact HTTP PUT /configs against the adapter-owned fake-core port.
 /// Does not use production Clash API clients.
-async fn put_configs_direct(http_port: u16, config_path: &str) -> anyhow::Result<()> {
+async fn apply_runtime_config_direct(http_port: u16, config_path: &str) -> anyhow::Result<()> {
     let body = serde_json::json!({ "path": config_path }).to_string();
     let request = format!(
         "PUT /configs HTTP/1.1\r\n\

@@ -12,13 +12,9 @@ use std::{
 use camino::{Utf8Path, Utf8PathBuf};
 use nyanpasu_ipc::api::core::apply::{ApplyOutcomeKind, CoreApplyData};
 use serde::{Deserialize, Serialize};
-use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
 
-use crate::{
-    core::actor::runtime::{RuntimeRevision, RuntimeSnapshot},
-    utils::path::PathResolver,
-};
+use crate::{core::actor::runtime::RuntimeRevision, utils::path::PathResolver};
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
@@ -45,75 +41,6 @@ impl RuntimeRevisionAllocator {
 pub struct RuntimeTransactionSnapshot {
     pub product: Option<Vec<u8>>,
     pub lifecycle: crate::core::actor::runtime::RuntimeLifecycleState,
-}
-
-/// Compensation for an API-first patch is planned from the last successfully
-/// applied runtime snapshot. The plan is intentionally independent of the
-/// core's patch transport semantics.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PatchCompensationPlan {
-    expected_applied_revision: RuntimeRevision,
-    ops: Vec<PatchCompensationOp>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PatchCompensationOp {
-    Set {
-        key: String,
-        value: serde_yaml::Value,
-    },
-    Remove {
-        key: String,
-    },
-}
-
-impl PatchCompensationPlan {
-    pub(crate) fn expected_applied_revision(&self) -> RuntimeRevision {
-        self.expected_applied_revision
-    }
-
-    #[cfg(test)]
-    pub(crate) fn ops(&self) -> &[PatchCompensationOp] {
-        &self.ops
-    }
-
-    pub(crate) fn fence_matches(&self, applied: Option<&RuntimeSnapshot>) -> bool {
-        applied.is_some_and(|snapshot| snapshot.revision == self.expected_applied_revision)
-    }
-}
-
-pub(crate) fn compensation_for(
-    patch: &Mapping,
-    applied: Option<&RuntimeSnapshot>,
-) -> Option<PatchCompensationPlan> {
-    let applied = applied?;
-    if patch.is_empty() {
-        return None;
-    }
-
-    let ops = patch
-        .keys()
-        .map(|key| match applied.config.get(key) {
-            Some(value) => PatchCompensationOp::Set {
-                key: key
-                    .as_str()
-                    .expect("clash patch keys must be YAML strings")
-                    .to_owned(),
-                value: value.clone(),
-            },
-            None => PatchCompensationOp::Remove {
-                key: key
-                    .as_str()
-                    .expect("clash patch keys must be YAML strings")
-                    .to_owned(),
-            },
-        })
-        .collect();
-
-    Some(PatchCompensationPlan {
-        expected_applied_revision: applied.revision,
-        ops,
-    })
 }
 
 #[derive(Debug, Clone)]
@@ -464,12 +391,7 @@ pub enum DegradationPhase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-
-    use nyanpasu_config::application::ClashCore;
     use nyanpasu_ipc::api::status::ConfigRevisionInfo;
-
-    use crate::{core::actor::runtime::RuntimeSnapshotData, enhance::PostProcessingOutput};
 
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
@@ -634,83 +556,6 @@ mod tests {
         );
         assert_eq!(degraded_json["degradations"][0]["phase"], "runtime_build");
         assert_eq!(degraded_json["degradations"][0]["retryable"], true);
-    }
-
-    fn applied_snapshot(revision: u64, config: Mapping) -> RuntimeSnapshot {
-        RuntimeSnapshot::from_data(
-            RuntimeRevision(revision),
-            ClashCore::default(),
-            Arc::from([]),
-            RuntimeSnapshotData {
-                config,
-                exists_keys: Vec::new(),
-                postprocessing_output: PostProcessingOutput::default(),
-            },
-        )
-    }
-
-    #[test]
-    fn compensation_plan_emits_set_and_remove_for_each_patch_key() {
-        let mut applied_config = Mapping::new();
-        applied_config.insert("mode".into(), "rule".into());
-        applied_config.insert("allow-lan".into(), false.into());
-        let applied = applied_snapshot(7, applied_config);
-
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        patch.insert("ipv6".into(), true.into());
-
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-        assert_eq!(plan.expected_applied_revision(), RuntimeRevision(7));
-        assert_eq!(
-            plan.ops.as_slice(),
-            &[
-                PatchCompensationOp::Set {
-                    key: "mode".into(),
-                    value: "rule".into(),
-                },
-                PatchCompensationOp::Remove { key: "ipv6".into() },
-            ]
-        );
-    }
-
-    #[test]
-    fn compensation_plan_is_absent_without_applied_or_patch() {
-        let applied = applied_snapshot(7, Mapping::new());
-        assert!(compensation_for(&Mapping::new(), Some(&applied)).is_none());
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        assert!(compensation_for(&patch, None).is_none());
-    }
-
-    #[test]
-    fn compensation_plan_fence_accepts_matching_revision_and_rejects_conflict() {
-        let applied = applied_snapshot(7, Mapping::new());
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-
-        assert!(plan.fence_matches(Some(&applied)));
-        assert!(!plan.fence_matches(Some(&applied_snapshot(8, Mapping::new()))));
-        assert!(!plan.fence_matches(None));
-    }
-
-    #[test]
-    fn compensation_plan_preserves_old_applied_values() {
-        let mut config = Mapping::new();
-        config.insert("mode".into(), "rule".into());
-        let applied = applied_snapshot(3, config);
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-        assert_eq!(
-            plan.ops.as_slice(),
-            &[PatchCompensationOp::Set {
-                key: "mode".into(),
-                value: "rule".into(),
-            }]
-        );
     }
 
     fn temp_runtime_paths(dir: &tempfile::TempDir) -> RuntimePaths {

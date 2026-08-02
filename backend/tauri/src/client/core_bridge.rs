@@ -44,22 +44,6 @@ pub(crate) struct CheckAndPromoteError {
     pub(crate) source: anyhow::Error,
 }
 
-/// Narrow boundary for API-first updates to the running core configuration.
-#[cfg_attr(test, mockall::automock)]
-#[async_trait]
-pub trait RunningConfigPatchPort: Send + Sync + 'static {
-    async fn patch(&self, patch: &serde_yaml::Mapping) -> anyhow::Result<()>;
-}
-
-pub struct LegacyRunningConfigPatchBridge;
-
-#[async_trait]
-impl RunningConfigPatchPort for LegacyRunningConfigPatchBridge {
-    async fn patch(&self, patch: &serde_yaml::Mapping) -> anyhow::Result<()> {
-        crate::core::clash::api::patch_configs(patch).await
-    }
-}
-
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct CoreStatusSnapshot {
@@ -111,21 +95,6 @@ pub trait CoreLifecycleLease: Send {
     ) -> Result<(), crate::core::actor::types::CoreActorError> {
         Ok(())
     }
-    // TODO(actor-migration): compatibility bridge for the API-first compensation layer.
-    // Reason: lifecycle ownership moves before the mandated compensation deletion commit.
-    // Remove when: commit 5 deletes the API-first patch and compensation layer.
-    async fn restore_applied(
-        &mut self,
-        _snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
-    ) -> Result<(), crate::core::actor::types::CoreActorError> {
-        Ok(())
-    }
-    /// Check and apply exact candidate bytes without promoting them to product.
-    async fn apply_candidate(
-        &mut self,
-        candidate: &CandidateFile,
-        target_core: ClashCore,
-    ) -> anyhow::Result<()>;
     async fn apply_promoted(
         &mut self,
         snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
@@ -152,8 +121,8 @@ impl ActorBackedTestCoreLifecyclePort {
 #[async_trait]
 impl CoreLifecyclePort for ActorBackedTestCoreLifecyclePort {
     async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
-        let operation = self.core.begin_operation().await?;
         let inner = self.inner.begin().await?;
+        let operation = self.core.begin_operation().await?;
         Ok(Box::new(ActorBackedTestCoreLifecycleLease {
             inner,
             core: self.core.clone(),
@@ -213,22 +182,6 @@ impl CoreLifecycleLease for ActorBackedTestCoreLifecycleLease {
     ) -> Result<(), crate::core::actor::types::CoreActorError> {
         self.inner.restore_promoted(snapshot.clone()).await?;
         self.core.restore_promoted(&self.operation, snapshot).await
-    }
-
-    async fn restore_applied(
-        &mut self,
-        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
-    ) -> Result<(), crate::core::actor::types::CoreActorError> {
-        self.inner.restore_applied(snapshot.clone()).await?;
-        self.core.restore_applied(&self.operation, snapshot).await
-    }
-
-    async fn apply_candidate(
-        &mut self,
-        candidate: &CandidateFile,
-        target_core: ClashCore,
-    ) -> anyhow::Result<()> {
-        self.inner.apply_candidate(candidate, target_core).await
     }
 
     async fn apply_promoted(

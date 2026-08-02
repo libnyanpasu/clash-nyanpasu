@@ -131,20 +131,6 @@ pub async fn get_group_delay(group: String, url: Option<String>) -> Result<HashM
     Ok(resp)
 }
 
-/// PUT /configs
-/// path 是绝对路径
-#[instrument]
-pub async fn put_configs(config_path: &str) -> Result<()> {
-    let path = "/configs";
-
-    let mut data = HashMap::new();
-    data.insert("path", config_path);
-
-    let _ = perform_request((Method::PUT, path, Data(data))).await?;
-
-    Ok(())
-}
-
 /// PATCH /configs
 #[instrument]
 pub async fn patch_configs(config: &Mapping) -> Result<()> {

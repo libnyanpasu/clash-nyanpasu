@@ -248,6 +248,7 @@ impl NyanpasuClient {
         let profiles = self.inner.profiles.get().await?;
         self.regenerate_runtime_with(lease, revision, profiles, clash, app)
             .await
+            .map_err(Into::into)
     }
 
     pub(crate) async fn regenerate_and_apply_for_legacy(&self) -> Result<()> {
@@ -894,14 +895,6 @@ mod tests {
         ) -> std::result::Result<[u8; 32], crate::client::core_bridge::CheckAndPromoteFailure>
         {
             Ok(candidate.bytes_sha256())
-        }
-
-        async fn apply_candidate(
-            &mut self,
-            _candidate: &crate::client::runtime::CandidateFile,
-            _target_core: ClashCore,
-        ) -> anyhow::Result<()> {
-            Ok(())
         }
 
         async fn apply_promoted(

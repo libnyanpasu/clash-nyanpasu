@@ -229,22 +229,6 @@ impl CoreClient {
         .await
     }
 
-    // TODO(actor-migration): compatibility bridge for the API-first compensation layer.
-    // Reason: lifecycle ownership moves before the mandated compensation deletion commit.
-    // Remove when: commit 5 deletes the API-first patch and compensation layer.
-    pub(crate) async fn restore_applied(
-        &self,
-        operation: &CoreOperationGuard,
-        snapshot: Arc<RuntimeSnapshot>,
-    ) -> Result<(), CoreActorError> {
-        self.call(|reply| CoreActorMessage::RestoreApplied {
-            operation: operation.id(),
-            snapshot,
-            reply,
-        })
-        .await
-    }
-
     pub(crate) async fn apply_promoted(
         &self,
         operation: &CoreOperationGuard,
@@ -447,8 +431,6 @@ impl CoreLifecycleAdapter {
 #[async_trait]
 impl CoreLifecyclePort for CoreLifecycleAdapter {
     async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
-        // Lock order: clash_patch_gate -> OperationGate. Patch transactions keep
-        // this order until the API-first patch layer is removed later in PR-5b.
         let guard = self.core.begin_operation().await?;
         Ok(Box::new(CoreLeaseAdapter {
             guard,
@@ -571,40 +553,6 @@ impl CoreLifecycleLease for CoreLeaseAdapter {
         self.core.restore_promoted(&self.guard, snapshot).await
     }
 
-    // TODO(actor-migration): compatibility bridge for the API-first compensation layer.
-    // Reason: lifecycle ownership moves before the mandated compensation deletion commit.
-    // Remove when: commit 5 deletes the API-first patch and compensation layer.
-    async fn restore_applied(
-        &mut self,
-        snapshot: Arc<RuntimeSnapshot>,
-    ) -> Result<(), CoreActorError> {
-        self.core.restore_applied(&self.guard, snapshot).await
-    }
-
-    async fn apply_candidate(
-        &mut self,
-        candidate: &CandidateFile,
-        target_core: ClashCore,
-    ) -> anyhow::Result<()> {
-        use sha2::Digest as _;
-
-        let bytes = tokio::fs::read(candidate.path()).await?;
-        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
-        anyhow::ensure!(
-            candidate_hash == candidate.bytes_sha256(),
-            "candidate config hash changed before check"
-        );
-        let mut request = self.requests.for_product(target_core)?;
-        request.config_path = candidate.path().to_owned();
-        self.core.check(&self.guard, &request).await?;
-        let after = tokio::fs::read(candidate.path()).await?;
-        anyhow::ensure!(
-            after == bytes,
-            "candidate config changed between check and apply"
-        );
-        apply_config_from(candidate.path()).await
-    }
-
     async fn apply_promoted(
         &mut self,
         snapshot: Arc<RuntimeSnapshot>,
@@ -673,18 +621,6 @@ fn is_apply_transport_failure(error: &crate::core::actor::backend::CoreBackendEr
                 | nyanpasu_ipc::client::ClientError::HttpStatus { .. }
         )
     )
-}
-
-async fn apply_config_from(product: &camino::Utf8Path) -> anyhow::Result<()> {
-    for attempt in 0..5 {
-        match crate::core::clash::api::put_configs(product.as_str()).await {
-            Ok(()) => break,
-            Err(error) if attempt < 4 => log::info!(target: "app", "{error:?}"),
-            Err(error) => return Err(error),
-        }
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -113,14 +113,6 @@ pub(crate) enum CoreActorMessage {
         snapshot: Option<Arc<RuntimeSnapshot>>,
         reply: RpcReplyPort<Result<(), CoreActorError>>,
     },
-    // TODO(actor-migration): compatibility bridge for the API-first compensation layer.
-    // Reason: lifecycle ownership moves before the mandated compensation deletion commit.
-    // Remove when: commit 5 deletes the API-first patch and compensation layer.
-    RestoreApplied {
-        operation: OperationId,
-        snapshot: Arc<RuntimeSnapshot>,
-        reply: RpcReplyPort<Result<(), CoreActorError>>,
-    },
     Run {
         operation: OperationId,
         request: CoreRequest,
@@ -521,17 +513,6 @@ impl Actor for CoreActor {
             } => {
                 let result = state.validate_operation(operation).map(|()| {
                     state.lifecycle.promoted = snapshot;
-                    state.lifecycle_tx.send_replace(state.lifecycle.clone());
-                });
-                let _ = reply.send(result);
-            }
-            CoreActorMessage::RestoreApplied {
-                operation,
-                snapshot,
-                reply,
-            } => {
-                let result = state.validate_operation(operation).map(|()| {
-                    state.lifecycle.applied = Some(snapshot);
                     state.lifecycle_tx.send_replace(state.lifecycle.clone());
                 });
                 let _ = reply.send(result);

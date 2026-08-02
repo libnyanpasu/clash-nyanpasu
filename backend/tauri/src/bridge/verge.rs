@@ -730,10 +730,9 @@ mod tests {
     use super::*;
     use crate::{
         client::{
-            ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet,
-            LegacyRunningConfigPatchBridge, LegacyVergeDomain, MockRunningCoreBridge,
-            NoopUiEventSink, NyanpasuClient, test_binary_resolver, test_degradation_sink,
-            test_service_control,
+            ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet, LegacyVergeDomain,
+            MockRunningCoreBridge, NoopUiEventSink, NyanpasuClient, test_binary_resolver,
+            test_degradation_sink, test_service_control,
         },
         config::{
             IClashTemp,
@@ -1083,7 +1082,6 @@ mod tests {
             binary_resolver: test_binary_resolver(dir),
             degradation: test_degradation_sink(),
             service_control: test_service_control(),
-            clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
         })
         .expect("client should construct with typed config actors");

@@ -438,7 +438,7 @@ pub struct PatchRuntimeConfig {
 pub async fn patch_clash_config(
     client: State<'_, NyanpasuClient>,
     payload: PatchRuntimeConfig,
-) -> Result {
+) -> Result<crate::client::runtime::MutationOutcome<crate::client::runtime::RuntimeApplyReport>> {
     // Explicit-field whitelist so future DTO fields never auto-leak into logs.
     tracing::debug!(
         allow_lan = ?payload.allow_lan,
@@ -453,8 +453,7 @@ pub async fn patch_clash_config(
         _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
     };
 
-    client.patch_running_config(mapping).await?;
-    Ok(())
+    Ok(client.patch_running_config(mapping).await?)
 }
 
 #[tauri::command]

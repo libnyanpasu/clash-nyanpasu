@@ -109,23 +109,23 @@
 >
 > **若将来真要做核进程日志**，需要重新设计两件事：**数据源**（Local 模式下核的 stdout/stderr 从哪采——`Instance::start` 那条路已死；Service 模式可用 `/ws/events`，但两者不对称）与**消费者**（今天前端只消费 WS 通路）。**这不是「漏了」，是「查证后主动收窄」**——记录在此，后来者不必重新发现一遍。
 
-### D2 —— C2 删 statics 的**前置**：`RunType::default()` 怎么办
+### D2 —— C2 删 statics 的**前置**：`RunType::default()` 怎么办 —— **裁定 A**
 
 `RunType::default()` 读 `Config::verge()` + `get_ipc_state()`（F13），而它被 `CoreStatusView::initial()` 调用——**只要它还在，`IPC_STATE` 就删不掉**。
 
-- **推荐 A：给 `CoreStatusView::initial(mode: RunType)` 加参数**，由 `pre_start` 传入 `args.mode`（actor 本来就有 `mode` 字段）。`RunType::default()` 随 `core/clash/core.rs` 一起删。理由：actor 的初始快照本来就该用注入的 mode，而不是回头读全局。
-- **选项 B**：保留 `RunType::default()` 但改为不读 global（返回 `Normal`）。改动更小，但留下一个语义可疑的 `Default`。
+- **裁定 A：给 `CoreStatusView::initial(mode: RunType)` 加参数**，由 `pre_start` 传入 `args.mode`（actor 本来就有 `mode` 字段）。`RunType::default()` 随 `core/clash/core.rs` 一起删。理由：actor 的初始快照本来就该用注入的 mode，而不是回头读全局。
+- **选项 B（未采纳）**：保留 `RunType::default()` 但改为不读 global（返回 `Normal`）。改动更小，但留下一个语义可疑的 `Default`。
 
-**推荐 A。**
+**leader 裁定 A**：这正是整个迁移的方向——依赖显式传入而不是从全局捞。`RunType::default()` 读两个 global 却被 `CoreStatusView::initial()` 调用，是典型的隐藏依赖。
 
-### D3 —— C3 的 `MacosDnsGuard` 放在 actor 的哪一层
+### D3 —— C3 的 `MacosDnsGuard` 放在 actor 的哪一层 —— **裁定 A**
 
 DNS 覆写今天与 start/stop **完全无序**（F22），且**退出不恢复**（F23）。要「保序」就得定义与哪些事件保序。
 
-- **推荐 A：RAII guard 挂在 actor state 上**，`Drop`/`shutdown` 时恢复。顺序契约：`Run` 成功后启用、`Stop` 之前恢复、`Shutdown` 必恢复。
-- **选项 B**：只做显式 enable/disable 两条守卫消息，不做 RAII。更简单但**恢复不了崩溃路径**（虽然 RAII 也救不了 SIGKILL，见风险表）。
+- **裁定 A：RAII guard 挂在 actor state 上**，`Drop`/`shutdown` 时恢复。顺序契约：`Run` 成功后启用、`Stop` 之前恢复、`Shutdown` 必恢复。
+- **选项 B（未采纳）**：只做显式 enable/disable 两条守卫消息，不做 RAII。更简单但**恢复不了崩溃路径**（虽然 RAII 也救不了 SIGKILL，见风险表）。
 
-**推荐 A**，并在计划里写明它**不能**覆盖强杀。
+**leader 裁定 A**，并**特别赞成「明写不覆盖强杀」**：RAII 在 SIGKILL / 任务管理器结束进程时根本不会运行，如实写明比假装覆盖全部退出路径诚实得多——与 5b 学到的「诚实降级比强行自洽好」是同一条。**覆盖强杀是独立的一件事**（启动时检测并清理残留覆写），**不在 5c 范围**，去向见 §10。
 
 ### D4 —— smoke 3（macOS TUN/DNS）本机跑不了：两条路径，**不替用户选**
 
@@ -268,12 +268,26 @@ pnpm lint:architecture-ledger
 
 ---
 
-## 7. 需 leader 确认的两处既有不对称（**我不擅自改**）
+## 7. 两处既有不对称 —— leader 已裁，分别处置
 
-1. **`install_service` 不调 `reconcile_service_mode`**（F16），而 start/stop/restart 三者都调。若是有意（装完还没起服务、无可 reconcile），计划里加一句说明；若是漏，S7 补上。
-2. **`uninstall_service` 完全绕过 `NyanpasuClient`**（`ipc.rs:933-935` 直调），是唯一一个不走 facade 的 service 命令。它与 §0「保持独立 controller」是否冲突，请裁定。
+§6 的量词复核抓出这两条，性质**不同**，不能当成一类：
 
----
+### ① `install_service` 不调 `reconcile_service_mode` —— **有意，加说明即可，不改行为**
+
+裁定理由：**装服务不等于起服务**——运行中的后端没有发生变化，**没有可 reconcile 的对象**；模式会在服务真正启动时被拾起（start/stop/restart 三处都调了 `reconcile_service_mode`）。
+
+**动作**：在 `client/mod.rs:504-510` 加一行注释说明该不对称是有意的，**不改行为、不加调用**。
+
+### ② `uninstall_service` 绕过 `NyanpasuClient` —— **是缺陷，S7 补上**
+
+`ipc.rs:933-935` 直接调 `service::control::uninstall_service()`，而同组的 `install_service`（`ipc.rs:926-928`）走的是 `client.install_service()`。两条理由：
+
+1. **违反 CLAUDE.md §12**——Tauri 命令应是薄适配器，不直接调具体 controller；
+2. **实质风险**：核正在 **Service 模式运行**时卸载服务，会让当前后端失效，**此时不 reconcile 是真缺口**，不只是架构洁癖。
+
+**动作**：S7 把它改为经 facade（`client.uninstall_service()`），并在其中调 `reconcile_service_mode`——与 stop/restart 同形。
+
+> **它不与卡面 C2 冲突**：C2 说的是「install/update/uninstall 保持独立 concrete controller、**不迁入 CoreActor**」。**经由 facade 调用具体 controller 完全符合该约束——facade 不是 actor。** 这句话要留着，否则复审者会以为 S7 违了卡。
 
 ## 8. 风险与回滚
 

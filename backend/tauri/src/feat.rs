@@ -325,7 +325,15 @@ where
     match run().await {
         Ok(rebuilt) => {
             Config::clash().apply();
-            Config::clash().data().save_config()?;
+            // TODO(actor-migration): legacy clash persistence is best-effort now that the typed
+            // store is the source of truth after the rebuild succeeds.
+            // Remove when: all remaining Config::clash() readers migrate to the typed store.
+            if let Err(error) = Config::clash().data().save_config() {
+                log::error!(
+                    target: "app",
+                    "failed to persist best-effort legacy clash mirror: {error:#}"
+                );
+            }
             Ok(rebuilt)
         }
         Err(err) => {

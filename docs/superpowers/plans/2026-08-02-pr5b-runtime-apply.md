@@ -315,6 +315,8 @@ I-B 说「不允许只写日志」，但 rebuild 管线有**四类**调用上下
 
 > ④ 为什么不 degrade：`enhance_profiles` 的命令 doc 原文就是「there is no prior state commit, so a failure is a plain error」；legacy 重播的调用方（`feat::patch_verge` / `patch_clash` 等）**靠 `Err` 触发 `Config::verge().discard()`**——把失败包装成 `CommittedDegraded` 会让 legacy draft 被误当成功而 `apply()`，在磁盘上留下一份从未生效的配置。**`RolledBack` 在 ④ 里也必须映射成 `Err`**（它意味着新配置没生效），这是 ④ 与 ①②③ 的关键差异。
 
+> ④ 只约束 **rebuild 本身的失败**。`patch_clash_with_rebuild` 的 rebuild 已成功返回后，typed store 与运行时结果已经成为事实；随后 `Config::clash().apply()` 的 legacy mirror 持久化若失败，只能写 error log 并保留成功返回。让 `save_config` 的 `Err` 翻转整个调用会同时撒两个谎：typed commit / rebuild 结果已经成立，却向 caller 报整个操作失败；而且 draft 已经 apply，`?` 也不会走失败分支的 `discard()`。该持久化在 typed store 成为 source of truth 后明确为 best-effort，待剩余 legacy reader 迁走时删除。
+
 **因此管线要拆成「内部」与「公共包装」两层：**
 
 ```text

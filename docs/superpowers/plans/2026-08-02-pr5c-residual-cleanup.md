@@ -34,16 +34,16 @@
 
 ### 1.1 C1 —— 状态与日志
 
-| ID  | 事实                                                                                                                                                                                                                       | 锚点                                                        |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| F1  | **「status read 不走 mailbox RPC」在 5a/5b 已经满足**：`CoreClient::status()` 是 `status_rx.borrow().clone()`，零 mailbox；`lifecycle()` 同理。C1 该项**已达成**，本阶段只需核对不回退                                     | `client/core.rs:146-148`、`:150-152`                        |
-| F2  | `RefreshStatus` 守卫消息的**生产调用点为零**（16 处全在 `client/core.rs` 测试内）；`RefreshHint` 唯一生产调用点是 `NyanpasuClient::core_status`                                                                            | `client/core.rs:165-174`；`client/mod.rs:483`               |
-| F3  | **`Logger` global 的三个写入者全部不可达**：它们都在 `Instance::start` 内，而 `Instance::try_new` **零调用点**、`CoreManager.instance` 初始化为 `None` 后**从未被赋值**。因此 `get_clash_logs` 今天**恒返回空** `VecDeque` | `core/clash/core.rs:186,191,200`、`:94`、`:381`             |
-| F4  | `Logger` 本身**已经是 100 条 ring**（`VecDeque` + `LOGS_QUEUE_LEN = 100`，超限 `pop_front`）；`clear_log` 零调用点                                                                                                         | `core/logger.rs:5,7-36`、`:32`                              |
-| F5  | **活的日志通路是 clash WS**：`core/clash/ws.rs` 的四条流（logs/traffic/memory/connections），`ClashWsHistory.logs` 上限 **1024**，经 `ClashWsEvent` 发到前端并被 `use-clash-logs.ts` 消费                                  | `core/clash/ws.rs:24,215,246,199-210`；`clash/mod.rs:46-52` |
-| F6  | **`get_clash_logs` 没有任何前端消费者**：`frontend/interface/src` 与 `frontend/nyanpasu/src` 内只命中 binding 定义本身；日志页走的是 WS 通路                                                                               | `ipc.rs:522-526`；`bindings.ts:31-32`                       |
-| F7  | **`LogFrame` 类型在 tauri crate 内不存在**；service 侧的 `/ws/events`（`EventStream` / `inspect_logs` / `retrieve_logs`）在 IPC crate 里有，但 **tauri 侧零消费**                                                          | `nyanpasu_ipc/src/client/shortcuts.rs:73,82,110`            |
-| F8  | `backend/tauri/src/logging/` 整个模块**由构造即死**：`#![allow(dead_code)]` + `setup.rs:68` 的 `setup()` 调用被注释掉                                                                                                      | `logging/mod.rs:1`；`setup.rs:68`                           |
+| ID  | 事实                                                                                                                                                                                                                                                                                                    | 锚点                                                        |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| F1  | **「status read 不走 mailbox RPC」在 5a/5b 已经满足**：`CoreClient::status()` 是 `status_rx.borrow().clone()`，零 mailbox；`lifecycle()` 同理。C1 该项**已达成**，本阶段只需核对不回退                                                                                                                  | `client/core.rs:146-148`、`:150-152`                        |
+| F2  | `RefreshStatus` 守卫消息的**生产调用点为零**（16 处全在 `client/core.rs` 测试内）；`RefreshHint` 唯一生产调用点是 `NyanpasuClient::core_status`                                                                                                                                                         | `client/core.rs:165-174`；`client/mod.rs:483`               |
+| F3  | **`Logger` global 的三个写入者全部不可达**：它们都在 `Instance::start` 内，而 `Instance::try_new` **零调用点**、`CoreManager.instance` 初始化为 `None` 后**从未被赋值**。因此 `get_clash_logs` 今天**恒返回空** `VecDeque`                                                                              | `core/clash/core.rs:186,191,200`、`:94`、`:381`             |
+| F4  | `Logger` 本身**已经是 100 条 ring**（`VecDeque` + `LOGS_QUEUE_LEN = 100`，超限 `pop_front`）；`clear_log` 零调用点                                                                                                                                                                                      | `core/logger.rs:5,7-36`、`:32`                              |
+| F5  | **活的日志通路是 clash WS**：`core/clash/ws.rs` 的四条流（logs/traffic/memory/connections），`ClashWsHistory.logs` 上限 **1024**，经 `ClashWsEvent` 发到前端并被 `use-clash-logs.ts` 消费                                                                                                               | `core/clash/ws.rs:24,215,246,199-210`；`clash/mod.rs:46-52` |
+| F6  | **`get_clash_logs` 没有任何前端消费者**：源码侧命中共 2 处，**全在 `frontend/interface/src/ipc/bindings.ts` 的 binding 定义自身**（声明 + invoke）；另有 2 处在 `frontend/interface/dist/`，那是同一文件的**构建产物**，不是消费者。日志页走的是 WS 通路（F5）。**复审时请勿把 `dist/` 命中当成使用者** | `ipc.rs:522-526`；`bindings.ts:31-32`                       |
+| F7  | **`LogFrame` 类型在 tauri crate 内不存在**；service 侧的 `/ws/events`（`EventStream` / `inspect_logs` / `retrieve_logs`）在 IPC crate 里有，但 **tauri 侧零消费**                                                                                                                                       | `nyanpasu_ipc/src/client/shortcuts.rs:73,82,110`            |
+| F8  | `backend/tauri/src/logging/` 整个模块**由构造即死**：`#![allow(dead_code)]` + `setup.rs:68` 的 `setup()` 调用被注释掉                                                                                                                                                                                   | `logging/mod.rs:1`；`setup.rs:68`                           |
 
 ### 1.2 C2 —— 运行模式
 
@@ -82,12 +82,13 @@
 | F29 | 删掉 `manager.rs` 与 `Instance` 后，`find_binary_path` 只剩**一个**活调用者 `utils/dirs.rs:345`；且 `setup.rs:90-103` 已有可注入的替代 `OsCoreBinaryResolver`                                                                                                                 | 见左                                                              |
 | F30 | ledger 现值：`config_calls` 102、`service_globals` 58、`migration_markers` 15、`legacy_dto_refs` 299、`test_real_dirs` 0；gate 当前为绿                                                                                                                                       | `scripts/architecture-ledger.snapshot.json`                       |
 | F31 | **ledger 有 bug：`core/clash/core.rs` 第 52 行起全部对 ledger 不可见。** 块注释追踪器在 `:51` 的 doc 注释里看到字面量 `/core/*` 就置 `inBlockComment = true`，而该文件**全文没有 `*/`**（实测 0 处）。后果：`Logger::global()` 实际 4 处只报 1 处、`config_calls` 少算约 3 处 | `scripts/architecture-ledger.ts:493-507`；`core/clash/core.rs:51` |
+| F32 | **该 bug 的损害限于这一个文件**：`inBlockComment` 声明在**逐文件处理函数体内**（`:485`），每个文件重新初始化为 `false`，**不跨文件泄漏**。因此修复范围就是这一处逻辑，**不需要扩大到全仓复查**                                                                                | `scripts/architecture-ledger.ts:485`                              |
 
 ---
 
 ## 2. 需 leader 裁定的决策点
 
-### D1 —— C1 的「100 条 `LogFrame` ring」到底建不建
+### D1 —— C1 的「100 条 `LogFrame` ring」到底建不建 —— **裁定 A（只删不建）**
 
 卡上写「actor 维护 100 条 `LogFrame` ring；`get_clash_logs` 从 raw 渲染」。但三条事实叠加后，这件事的性质变了：
 
@@ -98,11 +99,15 @@
 
 三条路：
 
-- **推荐 A：只删不建。** 删 `Logger` global 与三个不可达写入者；`get_clash_logs` 保留命令与 wire（避免 bindings 变化），内部改为返回空并标 `#[deprecated]` 注释，去向记 PR-6/7。理由：为一个**没有消费者**的命令建一条**只在 Service 模式有数据**的新通路，是 CLAUDE.md §2 的推测性构建；日志能力今天由 WS 通路实际承担。
-- **选项 B：删 `Logger`，同时删 `get_clash_logs` 命令与 binding。** 更彻底，但**会改 bindings**（少一个命令），需要确认前端确实无人调用（F6 已证）——代价是本阶段多一处 wire 变化。
-- **选项 C：照卡建 ring + 接 `/ws/events`。** 完整实现卡面，但引入「Local 模式无日志」的不对称，且服务对象不存在。**不推荐**。
+- **裁定 A：只删不建。** 删 `Logger` global 与三个不可达写入者；`get_clash_logs` 保留命令与 wire（避免 bindings 变化），内部改为返回空并标注去向。理由：为一个**没有消费者**的命令建一条**只在 Service 模式有数据**的新通路，是 CLAUDE.md §2 的推测性构建；日志能力今天由 WS 通路实际承担。
+- **选项 B（未采纳）：删 `Logger`，同时删 `get_clash_logs` 命令与 binding。** 更彻底，但**会改 bindings**（少一个命令），需要确认前端确实无人调用（F6 已证）——代价是本阶段多一处 wire 变化。
+- **选项 C（未采纳）：照卡建 ring + 接 `/ws/events`。** 完整实现卡面，但引入「Local 模式无日志」的不对称，且服务对象不存在。**不推荐**。
 
-**推荐 A。** 若裁 B，S? 增加一条 bindings 差异；若裁 C，需先回答「Local 模式的 frames 从哪来」。
+> **卡面项的收窄必须留痕（leader 要求，不允许静默丢弃）：**
+>
+> task.md 卡 C1 写「actor 维护 100 条 `LogFrame` ring；`get_clash_logs` 从 raw 渲染」，其**原意是让核进程日志走 actor**。该原意的前提是「这条日志路径是活的」——**经核实不成立**（F3：写入者不可达；F6：命令无消费者；F4：ring 本身早已存在）。因此本阶段**只删不建**。
+>
+> **若将来真要做核进程日志**，需要重新设计两件事：**数据源**（Local 模式下核的 stdout/stderr 从哪采——`Instance::start` 那条路已死；Service 模式可用 `/ws/events`，但两者不对称）与**消费者**（今天前端只消费 WS 通路）。**这不是「漏了」，是「查证后主动收窄」**——记录在此，后来者不必重新发现一遍。
 
 ### D2 —— C2 删 statics 的**前置**：`RunType::default()` 怎么办
 

@@ -591,18 +591,33 @@ mod tests {
     }
 
     #[test]
-    fn legacy_persistence_failure_cannot_flip_successful_rebuild_to_error() {
+    fn legacy_persistence_is_attempted_and_failure_is_swallowed() {
         let mirror_applied = Cell::new(false);
-        let outcome: Result<&str> = Ok(finish_successful_clash_rebuild(
+        let persist_invoked = Cell::new(false);
+        let injected_failure_produced = Cell::new(false);
+        let rebuilt = finish_successful_clash_rebuild(
             "typed commit and rebuild succeeded",
             || mirror_applied.set(true),
-            || anyhow::bail!("injected legacy save failure"),
-        ));
+            || {
+                persist_invoked.set(true);
+                let failure: Result<()> = Err(anyhow::anyhow!("injected legacy save failure"));
+                injected_failure_produced.set(failure.is_err());
+                failure
+            },
+        );
 
         assert!(
             mirror_applied.get(),
             "the in-memory mirror must still apply"
         );
-        assert!(matches!(outcome, Ok("typed commit and rebuild succeeded")));
+        assert!(
+            persist_invoked.get(),
+            "legacy persistence must be attempted"
+        );
+        assert!(
+            injected_failure_produced.get(),
+            "the injected persistence failure must be produced and consumed"
+        );
+        assert_eq!(rebuilt, "typed commit and rebuild succeeded");
     }
 }

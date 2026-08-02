@@ -4,24 +4,24 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 102,
+      "total": 105,
       "byKey": {
-        "Config::verge()": 76,
-        "Config::clash()": 26
+        "Config::verge()": 78,
+        "Config::clash()": 27
       }
     },
     "service_globals": {
-      "total": 58,
+      "total": 61,
       "byKey": {
         "ProxiesGuard::global()": 14,
         "Handle::global()": 11,
         "Self::global()": 9,
         "Sysopt::global()": 8,
         "WindowManager::global()": 8,
+        "Logger::global()": 4,
         "Hotkey::global()": 3,
         "UpdaterManager::global()": 3,
-        "CoreManager::global()": 1,
-        "Logger::global()": 1
+        "CoreManager::global()": 1
       }
     },
     "migration_markers": {

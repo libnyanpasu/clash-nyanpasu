@@ -479,23 +479,15 @@ export function scanFile(
   const lines = source.split(/\r?\n/);
   const testMask = testLineMask(lines, isDedicatedTestPath(relPath));
 
-  // Block-comment strip is best-effort; migration TODOs live in // comments
-  // and must remain visible, so only line-level // stripping is applied for
-  // code-like metrics, while migration markers scan the raw line.
   let inBlockComment = false;
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const lineNo = i + 1;
 
-    // Track /* */ so code metrics ignore commented-out call sites.
     let code = "";
+    let stringDelimiter = "";
     for (let j = 0; j < raw.length; j++) {
-      if (!inBlockComment && raw[j] === "/" && raw[j + 1] === "*") {
-        inBlockComment = true;
-        j++;
-        continue;
-      }
       if (inBlockComment) {
         if (raw[j] === "*" && raw[j + 1] === "/") {
           inBlockComment = false;
@@ -503,9 +495,32 @@ export function scanFile(
         }
         continue;
       }
+
+      if (stringDelimiter) {
+        code += raw[j];
+        if (raw[j] === "\\" && j + 1 < raw.length) {
+          code += raw[++j];
+        } else if (raw[j] === stringDelimiter) {
+          stringDelimiter = "";
+        }
+        continue;
+      }
+
+      if (raw[j] === '"' || raw[j] === "'") {
+        stringDelimiter = raw[j];
+        code += raw[j];
+        continue;
+      }
+      if (raw[j] === "/" && raw[j + 1] === "/") {
+        break;
+      }
+      if (raw[j] === "/" && raw[j + 1] === "*") {
+        inBlockComment = true;
+        j++;
+        continue;
+      }
       code += raw[j];
     }
-    code = stripLineComment(code);
 
     for (const m of matchAll(CONFIG_CALL_RE, code)) {
       record(buckets.configCalls, `Config::${m.groups[0]}()`, {

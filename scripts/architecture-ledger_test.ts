@@ -493,6 +493,38 @@ fn x() {}
   assertEquals(buckets.migrationMarkers.total, 1);
 });
 
+Deno.test("scanFile: comment delimiters in strings and line comments do not hide code", () => {
+  const buckets = createBuckets();
+  const source = `
+const GLOB: &str = "{}/*.{}.app.log";
+let _ = Config::verge();
+/// Service endpoint: /core/*
+let _ = CoreManager::global();
+/* Reference: http://example.com
+*/
+let _: IVerge;
+`;
+  scanFile("backend/tauri/src/comment_contexts.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 1);
+  assertEquals(buckets.serviceGlobals.total, 1);
+  assertEquals(buckets.legacyDtos.total, 1);
+});
+
+Deno.test("scanFile: core.rs fragment after /core/* remains visible", () => {
+  const buckets = createBuckets();
+  const source = `
+/// \`RunType::Service\` sends requests to \`/core/*\` through \`Instance::Service\`.
+fn start() {
+    Logger::global().set_log("stdout".to_owned());
+    Logger::global().set_log("stderr".to_owned());
+    Logger::global().set_log("error".to_owned());
+}
+`;
+  scanFile("backend/tauri/src/core/clash/core.rs", source, buckets);
+  assertEquals(buckets.serviceGlobals.total, 3);
+  assertEquals(buckets.serviceGlobals.byKey.get("Logger::global()"), 3);
+});
+
 Deno.test("scanFile: fn definitions of denylist helpers are not hits", () => {
   const buckets = createBuckets();
   const source = `

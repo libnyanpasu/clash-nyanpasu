@@ -255,14 +255,16 @@ impl NyanpasuClient {
         // cannot replace the product between the two steps.
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.regenerate_for_legacy_inner(&mut *lease).await?;
-        lease
-            .apply_promoted(self.inner.runtime_paths.product())
+        let data = lease
+            .apply_promoted(promoted)
             .await
-            .map_err(ClientError::Anyhow)?;
-        lease
-            .publish_applied(promoted)
-            .await
-            .map_err(|error| ClientError::Anyhow(error.into()))
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
+        if data.outcome == nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::RolledBack {
+            return Err(ClientError::Custom(
+                "runtime apply rolled back to the previous configuration".into(),
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) async fn regenerate_and_restart_for_legacy(&self) -> Result<()> {
@@ -459,7 +461,7 @@ impl NyanpasuClient {
         if let Err(error) = candidate.cleanup().await {
             tracing::warn!(%error, "failed to remove candidate config");
         }
-        checked.map_err(ClientError::Anyhow)?;
+        checked.map_err(|error| ClientError::Anyhow(error.into()))?;
         lease
             .publish_promoted(snapshot)
             .await
@@ -889,7 +891,8 @@ mod tests {
             candidate: &crate::client::runtime::CandidateFile,
             _target_core: ClashCore,
             _product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
+        ) -> std::result::Result<[u8; 32], crate::client::core_bridge::CheckAndPromoteFailure>
+        {
             Ok(candidate.bytes_sha256())
         }
 
@@ -901,8 +904,14 @@ mod tests {
             Ok(())
         }
 
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            Ok(())
+        async fn apply_promoted(
+            &mut self,
+            snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok(crate::client::core_bridge::test_apply_data(&snapshot))
         }
 
         async fn restart(&mut self) -> anyhow::Result<()> {

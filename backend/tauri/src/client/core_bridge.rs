@@ -9,7 +9,40 @@ use super::runtime::CandidateFile;
 use async_trait::async_trait;
 use camino::Utf8Path;
 use nyanpasu_config::application::ClashCore;
-use nyanpasu_ipc::api::status::CoreState;
+use nyanpasu_ipc::api::{core::apply::CoreApplyData, status::CoreState};
+
+use crate::core::actor::types::CoreActorError;
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CheckAndPromoteFailure {
+    #[error(transparent)]
+    Actor(CoreActorError),
+    #[error(transparent)]
+    Operation(CheckAndPromoteError),
+}
+
+#[cfg(test)]
+impl From<anyhow::Error> for CheckAndPromoteFailure {
+    fn from(source: anyhow::Error) -> Self {
+        Self::Operation(CheckAndPromoteError {
+            phase: CheckAndPromotePhase::Check,
+            source,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CheckAndPromotePhase {
+    Check,
+    Promote,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{phase:?} failed: {source:#}")]
+pub(crate) struct CheckAndPromoteError {
+    pub(crate) phase: CheckAndPromotePhase,
+    pub(crate) source: anyhow::Error,
+}
 
 /// Narrow boundary for API-first updates to the running core configuration.
 #[cfg_attr(test, mockall::automock)]
@@ -56,7 +89,7 @@ pub trait CoreLifecycleLease: Send {
         candidate: &CandidateFile,
         target_core: ClashCore,
         product: &Utf8Path,
-    ) -> anyhow::Result<[u8; 32]>;
+    ) -> Result<[u8; 32], CheckAndPromoteFailure>;
     async fn publish_promoted(
         &mut self,
         _snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
@@ -93,10 +126,146 @@ pub trait CoreLifecycleLease: Send {
         candidate: &CandidateFile,
         target_core: ClashCore,
     ) -> anyhow::Result<()>;
-    async fn apply_promoted(&mut self, product: &Utf8Path) -> anyhow::Result<()>;
+    async fn apply_promoted(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<CoreApplyData, CoreActorError>;
     async fn restart(&mut self) -> anyhow::Result<()>;
     #[allow(dead_code)]
     async fn stop(&mut self) -> anyhow::Result<()>;
+}
+
+#[cfg(test)]
+pub(crate) struct ActorBackedTestCoreLifecyclePort {
+    inner: Arc<dyn CoreLifecyclePort>,
+    core: super::core::CoreClient,
+}
+
+#[cfg(test)]
+impl ActorBackedTestCoreLifecyclePort {
+    pub(crate) fn new(inner: Arc<dyn CoreLifecyclePort>, core: super::core::CoreClient) -> Self {
+        Self { inner, core }
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl CoreLifecyclePort for ActorBackedTestCoreLifecyclePort {
+    async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+        let operation = self.core.begin_operation().await?;
+        let inner = self.inner.begin().await?;
+        Ok(Box::new(ActorBackedTestCoreLifecycleLease {
+            inner,
+            core: self.core.clone(),
+            operation,
+        }))
+    }
+
+    async fn status(&self) -> anyhow::Result<CoreStatusSnapshot> {
+        self.inner.status().await
+    }
+
+    async fn on_profile_change(&self) {
+        self.inner.on_profile_change().await;
+    }
+}
+
+#[cfg(test)]
+struct ActorBackedTestCoreLifecycleLease {
+    inner: Box<dyn CoreLifecycleLease>,
+    core: super::core::CoreClient,
+    operation: super::core::CoreOperationGuard,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl CoreLifecycleLease for ActorBackedTestCoreLifecycleLease {
+    async fn check_and_promote(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+        product: &Utf8Path,
+    ) -> Result<[u8; 32], CheckAndPromoteFailure> {
+        self.inner
+            .check_and_promote(candidate, target_core, product)
+            .await
+    }
+
+    async fn publish_promoted(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        self.inner.publish_promoted(snapshot.clone()).await?;
+        self.core.publish_promoted(&self.operation, snapshot).await
+    }
+
+    async fn publish_applied(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        self.inner.publish_applied(snapshot.clone()).await?;
+        self.core.publish_applied(&self.operation, snapshot).await
+    }
+
+    async fn restore_promoted(
+        &mut self,
+        snapshot: Option<Arc<crate::core::actor::runtime::RuntimeSnapshot>>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        self.inner.restore_promoted(snapshot.clone()).await?;
+        self.core.restore_promoted(&self.operation, snapshot).await
+    }
+
+    async fn restore_applied(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        self.inner.restore_applied(snapshot.clone()).await?;
+        self.core.restore_applied(&self.operation, snapshot).await
+    }
+
+    async fn apply_candidate(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+    ) -> anyhow::Result<()> {
+        self.inner.apply_candidate(candidate, target_core).await
+    }
+
+    async fn apply_promoted(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<CoreApplyData, CoreActorError> {
+        let data = self.inner.apply_promoted(snapshot.clone()).await?;
+        if crate::core::actor::runtime::advances_applied(data.outcome) {
+            self.core.publish_applied(&self.operation, snapshot).await?;
+        }
+        Ok(data)
+    }
+
+    async fn restart(&mut self) -> anyhow::Result<()> {
+        self.inner.restart().await
+    }
+
+    async fn stop(&mut self) -> anyhow::Result<()> {
+        self.inner.stop().await
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_apply_data(
+    snapshot: &crate::core::actor::runtime::RuntimeSnapshot,
+) -> CoreApplyData {
+    CoreApplyData {
+        outcome: nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::Reloaded,
+        revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+            epoch: 1,
+            generation: snapshot.revision.get(),
+            source_hash: String::new(),
+            effective_hash: String::new(),
+        },
+        warning: None,
+        failed_apply: None,
+    }
 }
 
 /// Atomically write known-good product bytes back: the sole promote path and

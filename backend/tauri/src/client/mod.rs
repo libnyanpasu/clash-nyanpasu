@@ -313,13 +313,26 @@ impl NyanpasuClient {
                 degradation,
             })
             .await?;
-            let core = core.unwrap_or_else(|| {
-                Arc::new(core::CoreLifecycleAdapter::new(
+            let core = match core {
+                Some(core) => {
+                    #[cfg(test)]
+                    {
+                        Arc::new(core_bridge::ActorBackedTestCoreLifecyclePort::new(
+                            core,
+                            core_client.clone(),
+                        )) as Arc<dyn CoreLifecyclePort>
+                    }
+                    #[cfg(not(test))]
+                    {
+                        core
+                    }
+                }
+                None => Arc::new(core::CoreLifecycleAdapter::new(
                     core_client.clone(),
                     application.clone(),
                     requests.clone(),
-                )) as Arc<dyn CoreLifecyclePort>
-            });
+                )) as Arc<dyn CoreLifecyclePort>,
+            };
 
             // Eager session port resolution: the core is not running yet,
             // so probing strategies is race-free (design §19.2 caller duty).
@@ -1373,7 +1386,7 @@ impl NyanpasuClient {
         if let Err(error) = candidate.cleanup().await {
             tracing::warn!(%error, "failed to remove existing-product candidate config");
         }
-        checked.map_err(ClientError::Anyhow)?;
+        checked.map_err(|error| ClientError::Anyhow(error.into()))?;
         lease
             .publish_promoted(snapshot.clone())
             .await
@@ -1487,12 +1500,15 @@ impl NyanpasuClient {
                         .map_err(anyhow::Error::from)?;
                     if restart {
                         lease.restart().await?;
+                        lease.publish_applied(snapshot.clone()).await?;
                     } else {
-                        lease
-                            .apply_promoted(client.inner.runtime_paths.product())
-                            .await?;
+                        let data = lease.apply_promoted(snapshot.clone()).await?;
+                        anyhow::ensure!(
+                            data.outcome
+                                != nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::RolledBack,
+                            "runtime apply rolled back to the previous configuration"
+                        );
                     }
-                    lease.publish_applied(snapshot.clone()).await?;
                     Ok::<_, anyhow::Error>(snapshot)
                 };
                 match operation.await {
@@ -1522,14 +1538,15 @@ impl NyanpasuClient {
     pub async fn rebuild_running_config(&self) -> Result<()> {
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.regenerate_runtime_inner(&mut *lease).await?;
-        lease
-            .apply_promoted(self.inner.runtime_paths.product())
-            .await
-            .map_err(ClientError::Anyhow)?;
-        lease
-            .publish_applied(promoted)
+        let data = lease
+            .apply_promoted(promoted)
             .await
             .map_err(|error| ClientError::Anyhow(error.into()))?;
+        if data.outcome == nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::RolledBack {
+            return Err(ClientError::Custom(
+                "runtime apply rolled back to the previous configuration".into(),
+            ));
+        }
         drop(lease);
         self.inner.ui_sink.refresh_clash();
         // 用户决策 2026-07-06:所有 rebuild 统一触发(选项默认 false 门控)。
@@ -1631,7 +1648,7 @@ impl NyanpasuClient {
         if let Err(error) = candidate.cleanup().await {
             tracing::warn!(%error, "failed to remove candidate config");
         }
-        checked.map_err(ClientError::Anyhow)?;
+        checked.map_err(|error| ClientError::Anyhow(error.into()))?;
         lease
             .publish_promoted(snapshot.clone())
             .await
@@ -1781,7 +1798,7 @@ mod tests {
             candidate: &runtime::CandidateFile,
             target_core: nyanpasu_config::application::ClashCore,
             _product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
             self.inner.check_and_promote(candidate, target_core).await?;
             Ok(candidate.bytes_sha256())
         }
@@ -1794,8 +1811,19 @@ mod tests {
             self.inner.check_and_promote(candidate, target_core).await
         }
 
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            self.inner.apply_config().await
+        async fn apply_promoted(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            self.inner.apply_config().await.map_err(|error| {
+                crate::core::actor::types::CoreActorError::Backend(Arc::new(
+                    crate::core::actor::backend::CoreBackendError::Construct(error),
+                ))
+            })?;
+            Ok(core_bridge::test_apply_data(&snapshot))
         }
 
         async fn restart(&mut self) -> anyhow::Result<()> {
@@ -1895,13 +1923,15 @@ mod tests {
             candidate: &runtime::CandidateFile,
             _target_core: nyanpasu_config::application::ClashCore,
             _product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
             let call = self.state.check_calls.fetch_add(1, Ordering::SeqCst);
             let active = self.state.active_checks.fetch_add(1, Ordering::SeqCst) + 1;
             self.state
                 .max_active_checks
                 .fetch_max(active, Ordering::SeqCst);
-            let bytes = tokio::fs::read(candidate.path()).await?;
+            let bytes = tokio::fs::read(candidate.path())
+                .await
+                .map_err(anyhow::Error::from)?;
             self.state.candidates.lock().unwrap().push(bytes);
             if call == 0 {
                 if let Some(tx) = self.state.first_check_entered_tx.lock().unwrap().take() {
@@ -1924,8 +1954,14 @@ mod tests {
             Ok(())
         }
 
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            Ok(())
+        async fn apply_promoted(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok(core_bridge::test_apply_data(&snapshot))
         }
 
         async fn restart(&mut self) -> anyhow::Result<()> {
@@ -1980,7 +2016,7 @@ mod tests {
             candidate: &runtime::CandidateFile,
             target_core: nyanpasu_config::application::ClashCore,
             _product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
             self.inner.check_and_promote(candidate, target_core).await?;
             Ok(candidate.bytes_sha256())
         }
@@ -1993,8 +2029,19 @@ mod tests {
             self.inner.check_and_promote(candidate, target_core).await
         }
 
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            self.inner.apply_config().await
+        async fn apply_promoted(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            self.inner.apply_config().await.map_err(|error| {
+                crate::core::actor::types::CoreActorError::Backend(Arc::new(
+                    crate::core::actor::backend::CoreBackendError::Construct(error),
+                ))
+            })?;
+            Ok(core_bridge::test_apply_data(&snapshot))
         }
 
         async fn restart(&mut self) -> anyhow::Result<()> {
@@ -2486,8 +2533,10 @@ mod tests {
             candidate: &runtime::CandidateFile,
             _target_core: nyanpasu_config::application::ClashCore,
             product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
-            let bytes = tokio::fs::read(candidate.path()).await?;
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
+            let bytes = tokio::fs::read(candidate.path())
+                .await
+                .map_err(anyhow::Error::from)?;
             core_bridge::restore_product(product.as_std_path(), &bytes).await?;
             self.checked.push(bytes);
             Ok(candidate.bytes_sha256())
@@ -2503,9 +2552,15 @@ mod tests {
             Ok(())
         }
 
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
+        async fn apply_promoted(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
             self.apply_calls += 1;
-            Ok(())
+            Ok(core_bridge::test_apply_data(&snapshot))
         }
 
         async fn restart(&mut self) -> anyhow::Result<()> {
@@ -2530,14 +2585,16 @@ mod tests {
             candidate: &runtime::CandidateFile,
             _target_core: nyanpasu_config::application::ClashCore,
             product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
             if let Some(sender) = self.check_entered.take() {
                 let _ = sender.send(());
             }
             if let Some(receiver) = self.release_check.take() {
                 let _ = receiver.await;
             }
-            let bytes = tokio::fs::read(candidate.path()).await?;
+            let bytes = tokio::fs::read(candidate.path())
+                .await
+                .map_err(anyhow::Error::from)?;
             core_bridge::restore_product(product.as_std_path(), &bytes).await?;
             Ok(candidate.bytes_sha256())
         }
@@ -2556,8 +2613,14 @@ mod tests {
             Ok(())
         }
 
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            Ok(())
+        async fn apply_promoted(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok(core_bridge::test_apply_data(&snapshot))
         }
 
         async fn restart(&mut self) -> anyhow::Result<()> {

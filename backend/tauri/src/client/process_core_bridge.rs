@@ -19,12 +19,15 @@ use fake_core::{
     FakeCoreCommand, ReadyBarrier, ReadyConnection, ScopedChild, env_keys, require_bin_path,
 };
 use nyanpasu_config::application::ClashCore;
-use nyanpasu_ipc::api::status::CoreState;
+use nyanpasu_ipc::api::{core::apply::CoreApplyData, status::CoreState};
 use sha2::Digest;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::{
-    core_bridge::{CoreLifecycleLease, CoreLifecyclePort, CoreStatusSnapshot, restore_product},
+    core_bridge::{
+        CheckAndPromoteFailure, CoreLifecycleLease, CoreLifecyclePort, CoreStatusSnapshot,
+        restore_product,
+    },
     runtime::{CandidateFile, RuntimePaths},
 };
 
@@ -259,37 +262,41 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
         candidate: &CandidateFile,
         target_core: ClashCore,
         product: &Utf8Path,
-    ) -> anyhow::Result<[u8; 32]> {
-        anyhow::ensure!(
-            product == self.runtime_paths.product(),
-            "product path must match the lifecycle adapter runtime product"
-        );
-        let bytes = tokio::fs::read(candidate.path()).await?;
-        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
-        anyhow::ensure!(
-            candidate_hash == candidate.bytes_sha256(),
-            "candidate config hash changed before check"
-        );
+    ) -> Result<[u8; 32], CheckAndPromoteFailure> {
+        let result: anyhow::Result<[u8; 32]> = async {
+            anyhow::ensure!(
+                product == self.runtime_paths.product(),
+                "product path must match the lifecycle adapter runtime product"
+            );
+            let bytes = tokio::fs::read(candidate.path()).await?;
+            let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
+            anyhow::ensure!(
+                candidate_hash == candidate.bytes_sha256(),
+                "candidate config hash changed before check"
+            );
 
-        self.run_check(candidate.path()).await?;
+            self.run_check(candidate.path()).await?;
 
-        let after = tokio::fs::read(candidate.path().as_std_path()).await?;
-        if after != bytes {
-            anyhow::bail!("candidate config changed between check and promote");
-        }
-        let after_hash: [u8; 32] = sha2::Sha256::digest(&after).into();
-        if after_hash != candidate.bytes_sha256() {
-            anyhow::bail!("candidate config hash changed before promotion");
-        }
+            let after = tokio::fs::read(candidate.path().as_std_path()).await?;
+            if after != bytes {
+                anyhow::bail!("candidate config changed between check and promote");
+            }
+            let after_hash: [u8; 32] = sha2::Sha256::digest(&after).into();
+            if after_hash != candidate.bytes_sha256() {
+                anyhow::bail!("candidate config hash changed before promotion");
+            }
 
-        restore_product(product.as_std_path(), &bytes).await?;
-        let promoted = tokio::fs::read(product.as_std_path()).await?;
-        let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
-        if promoted_hash != candidate.bytes_sha256() {
-            anyhow::bail!("promoted runtime product hash does not match candidate");
+            restore_product(product.as_std_path(), &bytes).await?;
+            let promoted = tokio::fs::read(product.as_std_path()).await?;
+            let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
+            if promoted_hash != candidate.bytes_sha256() {
+                anyhow::bail!("promoted runtime product hash does not match candidate");
+            }
+            self.state.target_core = target_core;
+            Ok(promoted_hash)
         }
-        self.state.target_core = target_core;
-        Ok(promoted_hash)
+        .await;
+        result.map_err(Into::into)
     }
 
     async fn apply_candidate(
@@ -313,12 +320,17 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
         self.put_configs(candidate.path().as_str()).await
     }
 
-    async fn apply_promoted(&mut self, product: &Utf8Path) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            product == self.runtime_paths.product(),
-            "product path must match the lifecycle adapter runtime product"
-        );
-        self.put_configs(product.as_str()).await
+    async fn apply_promoted(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<CoreApplyData, crate::core::actor::types::CoreActorError> {
+        let product = self.runtime_paths.product().to_owned();
+        self.put_configs(product.as_str()).await.map_err(|error| {
+            crate::core::actor::types::CoreActorError::Backend(Arc::new(
+                crate::core::actor::backend::CoreBackendError::Construct(error),
+            ))
+        })?;
+        Ok(super::core_bridge::test_apply_data(&snapshot))
     }
 
     async fn restart(&mut self) -> anyhow::Result<()> {
@@ -767,6 +779,24 @@ mod tests {
             .unwrap();
     }
 
+    async fn promoted_snapshot(
+        adapter: &ProcessCoreLifecycleAdapter,
+    ) -> Arc<crate::core::actor::runtime::RuntimeSnapshot> {
+        let product_bytes = tokio::fs::read(adapter.runtime_paths().product())
+            .await
+            .unwrap();
+        Arc::new(crate::core::actor::runtime::RuntimeSnapshot::from_data(
+            crate::core::actor::runtime::RuntimeRevision(1),
+            ClashCore::default(),
+            Arc::from(product_bytes),
+            crate::core::actor::runtime::RuntimeSnapshotData {
+                config: Default::default(),
+                exists_keys: Vec::new(),
+                postprocessing_output: Default::default(),
+            },
+        ))
+    }
+
     fn process_exists(pid: u32) -> bool {
         #[cfg(target_os = "linux")]
         {
@@ -1183,8 +1213,9 @@ mod tests {
 
             {
                 let mut lease = env_b.adapter.begin().await.unwrap();
+                let promoted = promoted_snapshot(&env_b.adapter).await;
                 lease
-                    .apply_promoted(env_b.adapter.runtime_paths().product())
+                    .apply_promoted(promoted)
                     .await
                     .expect("B apply still works after A stop");
                 lease.stop().await.unwrap();
@@ -1392,10 +1423,11 @@ mod tests {
 
         {
             let mut lease = env.adapter.begin().await.unwrap();
+            let promoted = promoted_snapshot(&env.adapter).await;
             // Apply itself must reap under the lease and return the stable error
             // (no sleep-based wait for process death — I/O failure + try_wait).
             let err = lease
-                .apply_promoted(env.adapter.runtime_paths().product())
+                .apply_promoted(promoted)
                 .await
                 .expect_err("apply must refuse after child exit");
             let msg = format!("{err:#}");

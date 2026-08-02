@@ -10,6 +10,7 @@ use std::{
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
+use nyanpasu_ipc::api::core::apply::{ApplyOutcomeKind, CoreApplyData};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
@@ -300,6 +301,70 @@ fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
         .map_err(|path| anyhow::anyhow!("runtime path is not UTF-8: {}", path.display()))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeApplyOutcome {
+    Noop,
+    Patched,
+    Reloaded,
+    Restarted,
+    Switched,
+    RolledBack,
+    Started,
+    NotApplied,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct RuntimeApplyReport {
+    pub outcome: RuntimeApplyOutcome,
+    pub desired_revision: u64,
+    pub applied_revision: Option<u64>,
+}
+
+pub(crate) fn runtime_outcome_from_apply_data(
+    data: &CoreApplyData,
+    promoted_revision: u64,
+) -> (RuntimeApplyReport, Vec<Degradation>) {
+    let outcome = match data.outcome {
+        ApplyOutcomeKind::Noop => RuntimeApplyOutcome::Noop,
+        ApplyOutcomeKind::Patched => RuntimeApplyOutcome::Patched,
+        ApplyOutcomeKind::Reloaded => RuntimeApplyOutcome::Reloaded,
+        ApplyOutcomeKind::Restarted => RuntimeApplyOutcome::Restarted,
+        ApplyOutcomeKind::Switched => RuntimeApplyOutcome::Switched,
+        ApplyOutcomeKind::RolledBack => RuntimeApplyOutcome::RolledBack,
+    };
+    let mut degradations = Vec::new();
+    let applied_revision = if data.outcome == ApplyOutcomeKind::RolledBack {
+        degradations.push(Degradation {
+            phase: DegradationPhase::CoreRollback,
+            code: "core_rollback".into(),
+            message: data.failed_apply.clone().unwrap_or_else(|| {
+                "the new runtime was rejected and the previous revision restored".into()
+            }),
+            retryable: true,
+        });
+        Some(data.revision.generation)
+    } else {
+        Some(promoted_revision)
+    };
+    if let Some(warning) = data.warning.as_ref() {
+        degradations.push(Degradation {
+            phase: DegradationPhase::RuntimeApply,
+            code: "core_apply_durability_uncertain".into(),
+            message: warning.clone(),
+            retryable: false,
+        });
+    }
+    (
+        RuntimeApplyReport {
+            outcome,
+            desired_revision: promoted_revision,
+            applied_revision,
+        },
+        degradations,
+    )
+}
+
 /// Public mutation wire (PR-4S S08 / plan §12): state is committed first; post-
 /// commit side-effect failures degrade instead of erroring.
 ///
@@ -402,6 +467,7 @@ mod tests {
     use std::sync::Arc;
 
     use nyanpasu_config::application::ClashCore;
+    use nyanpasu_ipc::api::status::ConfigRevisionInfo;
 
     use crate::{core::actor::runtime::RuntimeSnapshotData, enhance::PostProcessingOutput};
 
@@ -452,6 +518,87 @@ mod tests {
             "extend_degradations with extra must be CommittedDegraded"
         );
         assert_eq!(merged.degradations()[0].code, "cleanup_deferred");
+    }
+
+    #[test]
+    fn apply_outcome_wire_matrix_covers_six_outcomes_with_and_without_warning() {
+        let outcomes = [
+            (ApplyOutcomeKind::Noop, RuntimeApplyOutcome::Noop, true),
+            (
+                ApplyOutcomeKind::Patched,
+                RuntimeApplyOutcome::Patched,
+                true,
+            ),
+            (
+                ApplyOutcomeKind::Reloaded,
+                RuntimeApplyOutcome::Reloaded,
+                true,
+            ),
+            (
+                ApplyOutcomeKind::Restarted,
+                RuntimeApplyOutcome::Restarted,
+                true,
+            ),
+            (
+                ApplyOutcomeKind::Switched,
+                RuntimeApplyOutcome::Switched,
+                true,
+            ),
+            (
+                ApplyOutcomeKind::RolledBack,
+                RuntimeApplyOutcome::RolledBack,
+                false,
+            ),
+        ];
+
+        for (apply_outcome, runtime_outcome, advances) in outcomes {
+            for warning in [None, Some("directory sync uncertain".to_owned())] {
+                let data = CoreApplyData {
+                    outcome: apply_outcome,
+                    revision: ConfigRevisionInfo {
+                        epoch: 7,
+                        generation: 41,
+                        source_hash: "source".into(),
+                        effective_hash: "effective".into(),
+                    },
+                    warning: warning.clone(),
+                    failed_apply: (apply_outcome == ApplyOutcomeKind::RolledBack)
+                        .then(|| "new config rejected".into()),
+                };
+                let (report, degradations) = runtime_outcome_from_apply_data(&data, 42);
+                let outcome = MutationOutcome::from_parts(report, degradations);
+
+                assert_eq!(
+                    crate::core::actor::runtime::advances_applied(apply_outcome),
+                    advances
+                );
+                assert_eq!(outcome.value().outcome, runtime_outcome);
+                assert_eq!(outcome.value().desired_revision, 42);
+                assert_eq!(
+                    outcome.value().applied_revision,
+                    if advances { Some(42) } else { Some(41) }
+                );
+                let expected_degradations = usize::from(!advances) + usize::from(warning.is_some());
+                assert_eq!(outcome.degradations().len(), expected_degradations);
+                assert_eq!(
+                    matches!(outcome, MutationOutcome::Applied { .. }),
+                    expected_degradations == 0
+                );
+                if !advances {
+                    assert_eq!(
+                        outcome.degradations()[0].phase,
+                        DegradationPhase::CoreRollback
+                    );
+                    assert_eq!(outcome.degradations()[0].code, "core_rollback");
+                }
+                if warning.is_some() {
+                    let durability = outcome.degradations().last().unwrap();
+                    assert_eq!(durability.phase, DegradationPhase::RuntimeApply);
+                    assert_eq!(durability.code, "core_apply_durability_uncertain");
+                    assert!(!durability.retryable);
+                }
+            }
+        }
     }
 
     #[test]

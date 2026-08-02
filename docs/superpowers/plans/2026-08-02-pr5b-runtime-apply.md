@@ -178,6 +178,8 @@
 | F46  | **`Backend(_)` 是一个未分化的口袋**：`CoreBackendError` 有四支 `Local` / `Service` / `Binary` / `Construct`，而 `backend_error()` 把**全部**裹进 `CoreActorError::Backend`。revision 冲突、not-started、传输丢失**全藏在这一支里面**——没有有序判据，§2.2 的第 5 行与 7b 会掉进 7c 兜底，6a 与 7c 互相歧义（H3 的根因）                                                                                                                                                                                                                     | `core/actor/backend.rs:593-603`；`core/actor/mod.rs:297-299`                                                                                                     |
 | F47  | **Local 侧有类型化谓词**：`nyanpasu_core_manager::Error::RevisionConflict { .. }`（`error.rs:44`）与 `Error::NotStarted`（`error.rs:11`）。注意 `NotStarted` 是 **`Err` 而非 outcome**——`manager/apply.rs:26` 的 `.ok_or(Error::NotStarted)?` 与 `:28` 的 `return Err(Error::NotStarted)` 都走错误通道                                                                                                                                                                                                                                     | `crates/nyanpasu-core-manager/src/error.rs:11,44`；`manager/apply.rs:26,28`                                                                                      |
 | F48  | **Service 侧的分类键是 `error_kind: Option<String>`，不是 `code`**：`ClientError::Server` 同时带 `code: ResponseCode` 与 `error_kind: Option<String>`，而**后者才是 R0 收敛出来的那个字段**（对照 `api::error_kind::{NOT_STARTED, REVISION_CONFLICT, …}` 字符串常量）。另：`ClientError` **共七支**（`BuildClient` / `Request` / `HttpStatus` / `Decode` / `Server` / `EmptyData` / `WebSocket`）**且标了 `#[non_exhaustive]`**——分类器必须有兜底                                                                                          | `nyanpasu_ipc/src/client/mod.rs:23-62`；`api/mod.rs:40,45`                                                                                                       |
+| F49  | **停止态 `restart()` 的失败也是 `Backend(_)`**：`Run` 处理器是 `backend.run(&request).await.map_err(backend_error)`，而 `backend_error()` 把它包成 `CoreActorError::Backend`——与 apply 路径的失败**在类型上无法区分**（A.7 作用域漏洞的根因）                                                                                                                                                                                                                                                                                              | `core/actor/mod.rs:400`、`:297-299`                                                                                                                              |
+| F50  | **`start` / `stop` / `restart` 不带 `error_kind`**：submodule 明写它们「predate `error_kind` 并继续返回 `anyhow::Error`」，只有 S8 新增的那批操作才填充该字段；而 `error_kind` 缺失的语义是「**not classified**，never no error」。因此 Service 侧启核失败的 `error_kind` **恒为 `None`**，A.7 第 4 行会**确定性地**把它判成 `Other` → 行 7c——这不是概率问题                                                                                                                                                                               | `nyanpasu-runtime/.../manager_bridge.rs:47-52`；`nyanpasu_ipc/src/api/mod.rs:35-37`                                                                              |
 
 ---
 
@@ -229,7 +231,7 @@
 
 > **E-a / E-b 与第 4b 行的区别**：三者都可能发生在「产物已写入」之后，终态也都是产物新 / Promoted 旧。区别**只在错误类型**——4b 是真实的运行时失败（读回哈希不符），E-a / E-b 匹配豁免规则。实施者按 `matches!` 分流，不靠推断失败位置。
 
-> **第八项（D5=A 引入，不在 RQ-01 原列表内）**：停止态 `change_core` 的 `restart()` 失败。desired 早已提交，故同样是 `post`——`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied 不推进（§3.1 的 `Started` 行、T-B4-05）。用 `CoreLifecycle` 而非 `RuntimeApply`：失败发生在核**生命周期**上，不是在配置应用上，与 5a 的 `core_recovery_exhausted` 同相。
+> **第八项（D5=A 引入，不在 RQ-01 原列表内）**：停止态 `change_core` 的 `restart()` 失败。desired 早已提交，故同样是 `post`——`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied 不推进（§3.1 的 `Started` 行、T-B4-05）。**它不过 A.7 的分类器**——A.7 只管 apply 路径，见其作用域声明。用 `CoreLifecycle` 而非 `RuntimeApply`：失败发生在核**生命周期**上，不是在配置应用上，与 5a 的 `core_recovery_exhausted` 同相。
 
 > **上表各行的 `report` 取值（C1，按 NH7 修正）**：`MutationOutcome` 的两个变体都要求 `value: T`（F31），所以 post-commit 失败也得给出一个诚实的 report。**第 2、3、4a、4b、5、6a、6b、7b、7c 行**都**没有发生任何终态动作**——既没有 `CoreApplyData`，也没有启核——因此一律取 **`RuntimeApplyOutcome::NotApplied`**、`applied_revision = None`，「为什么」由 degradations 承载。**唯一的例外是第 7a 行**：`RolledBack` **是有 `CoreApplyData` 的**，旧配置确实在跑、这是 apply 主动做出的真实终态动作，所以它的 report 就是 `RolledBack`（与 §3.1 的映射一致）——v4 把它一并归进 `NotApplied` 是错的。**E-a / E-b 两类没有 report**（返回 `Err`，不构造 `MutationOutcome`）。`desired_revision` 始终填本次分配的 revision。
 
@@ -263,7 +265,7 @@
 - **I-B（不静默）**：**除本节两条豁免外**，任何 `post` 失败**必须**产出至少一条 `Degradation`，不允许只写日志（豁免类改为 `Err` + 错误级日志，同样不静默）；
 - **I-C（状态单调）**：`post` 失败不得回退已经推进的 Promoted；Applied 只在 backend 确认采纳新 revision 时才推进（§3）。
 
-> 与 `CoreActorError` 的关系：`StaleOperation` / `LifecycleInvariant(_)` / `ShuttingDown` 走上面的 `matches!` 豁免规则，**不映射 degradation**；`NoBackend` 按 §2.2 第 **6b** 行处理（`core_backend_unavailable`）；**`Backend(_)` 不是单一去向**——它是个未分化口袋（F46），必须过 **A.7 的有序分类器**才能定到第 5 / 6a / 7b / 7c 行。**后两者永不豁免。**
+> 与 `CoreActorError` 的关系：`StaleOperation` / `LifecycleInvariant(_)` / `ShuttingDown` 走上面的 `matches!` 豁免规则，**不映射 degradation**；`NoBackend` 按 §2.2 第 **6b** 行处理（`core_backend_unavailable`）；**apply 路径上的 `Backend(_)` 不是单一去向**——它是个未分化口袋（F46），必须过 **A.7 的有序分类器**才能定到第 5 / 6a / 7b / 7c 行；**生命周期路径（停止态 `restart()`）的 `Backend(_)` 不过 A.7**，直接落 restart-failure 行（见 §2.2 第八项）。**后两者永不豁免。**
 
 ### 2.4 degradation 投递到哪里（I-B 对**无 caller 的入口**如何满足）
 
@@ -977,7 +979,11 @@ pub(crate) fn runtime_outcome_from_apply_data(
 
 ### A.7 `Backend(_)` 的有序分类器（H3；**唯一实现处**）
 
-`CoreActorError::Backend(_)` 是个口袋：revision 冲突、not-started、传输丢失全在里面（F46）。**按顺序**匹配，第一个命中即返回；分类器**只有一处实现**，各调用点一律调它，不得复制判据。
+**作用域（先读这条）：A.7 只分类 apply 路径上的 `Backend(_)`。** 生命周期路径（D5 停止态分支的 `restart()`）的失败**不过 A.7**，直接落 §2.2 的 restart-failure 行（`CoreLifecycle` / `core_start_failed`，R1 裁定、T-B4-05 钉住）。
+
+> **为什么必须显式圈作用域**：两条路径的失败**在类型上完全同形**——`Run` 与 apply 一样经 `backend_error()` 包成 `Backend(_)`（F49）。而 Service 侧的启核失败 `error_kind` **恒为 `None`**（`start`/`stop`/`restart` 早于 `error_kind` 引入，F50），A.7 第 4 行会确定性地把它判成 `Other` → 行 7c → `runtime_apply_failed`，**与 R1 裁定的 `core_start_failed` 直接冲突**。靠判据本身分不开，只能靠调用点的路径归属。
+
+`CoreActorError::Backend(_)`（apply 路径）是个口袋：revision 冲突、not-started、传输丢失全在里面（F46）。
 
 ```rust
 // core/actor/backend.rs —— 与 CoreBackendError 同模块（它最清楚自己的内部结构）
@@ -999,6 +1005,8 @@ pub(crate) fn classify_backend_failure(error: &CoreBackendError) -> BackendFailu
 | 4    | `Other` → 行 7c           | 其余 `Error` 变体                                                                   | `Server` 带其它/缺失 `error_kind`；**以及 `#[non_exhaustive]` 的未来新变体**                                                  |
 
 `CoreBackendError::Binary` / `Construct` 一律归 `Other`（行 7c）。
+
+> **第 4 行的 `error_kind: None` 读作「未分类」而不是「无错误」**（`api/mod.rs:35-37` 原文「Absent means "not classified", never "no error"」）。所以在 **apply 路径内**把未分类归 7c 是对的；但正因为「未分类」这个集合同时装着生命周期那批失败（F50），**作用域声明是必需的**——否则 7c 会把启核失败一并吞掉。
 
 > **两处对裁定输入的修正（我逐一核过源码）：**
 >

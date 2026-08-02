@@ -847,6 +847,7 @@ pub(crate) struct RuntimeLifecycleState {
 // 它 `use crate::core::actor::runtime::RuntimeRevision`。actor 不持有 allocator。
 
 // core/actor/types.rs —— 扩 5a 的 CoreActorError（NH4；加法式，5a 四变体不动）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]   // 无字段枚举，四者皆成立；{0:?} 需要 Debug
 pub(crate) enum LifecycleInvariantKind {
     /// PublishPromoted 的 revision 未严格递增
     PromotedRegression,
@@ -875,14 +876,19 @@ pub(crate) lifecycle_tx: watch::Sender<RuntimeLifecycleState>,
 /// check 阶段本身是一次 actor 调用（F51），所以 actor 错误必然会出现在这个 seam 上；
 /// 把它压进下面的两相位类型，会让 ShuttingDown / StaleOperation 失去豁免资格、
 /// 让 NoBackend 被导向行 3 而不是行 6b。
+/// 注：本类型**不能** Clone/Copy——两臂都装着不可克隆的错误值；只给 Debug + Error。
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum CheckAndPromoteFailure {
     /// 原样透出，不被改写。派发见下方的穷尽派发表（**不经 A.7**——它签名是
     /// &CoreBackendError，装不下 CoreActorError，且作用域是 apply 路径）。
+    #[error(transparent)]
     Actor(CoreActorError),
     /// 本 seam 自己的失败，仍然**恰好两相位**（NH2 的分类学不扩大）。
+    #[error(transparent)]
     Operation(CheckAndPromoteError),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]   // 无字段枚举；CheckAndPromoteError 的 {phase:?} 需要 Debug
 pub(crate) enum CheckAndPromotePhase {
     Check,      // → §2.2 行 3
     Promote,    // → §2.2 行 4a / 4b（写前 / 写后，按构造位置区分）

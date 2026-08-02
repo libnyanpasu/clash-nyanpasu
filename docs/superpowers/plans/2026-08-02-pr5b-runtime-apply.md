@@ -876,7 +876,8 @@ pub(crate) lifecycle_tx: watch::Sender<RuntimeLifecycleState>,
 /// 把它压进下面的两相位类型，会让 ShuttingDown / StaleOperation 失去豁免资格、
 /// 让 NoBackend 被导向行 3 而不是行 6b。
 pub(crate) enum CheckAndPromoteFailure {
-    /// 原样透出，§2.3 的 matches! 与 A.7 直接可判。
+    /// 原样透出，不被改写。派发见下方的穷尽派发表（**不经 A.7**——它签名是
+    /// &CoreBackendError，装不下 CoreActorError，且作用域是 apply 路径）。
     Actor(CoreActorError),
     /// 本 seam 自己的失败，仍然**恰好两相位**（NH2 的分类学不扩大）。
     Operation(CheckAndPromoteError),

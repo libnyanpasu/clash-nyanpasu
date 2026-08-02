@@ -811,7 +811,7 @@ mod tests {
                 .start_promoted_runtime()
                 .await
                 .expect("seed apply/start");
-            let before = client.runtime_lifecycle_state().await;
+            let before = client.inner.core_client.lifecycle();
             assert!(before.promoted.is_some());
             assert!(before.applied.is_some());
             assert!(
@@ -845,7 +845,7 @@ mod tests {
                 "product must stay unchanged on check fail"
             );
 
-            let after = client.runtime_lifecycle_state().await;
+            let after = client.inner.core_client.lifecycle();
             assert!(
                 after
                     .promoted
@@ -922,7 +922,7 @@ mod tests {
                 .start_promoted_runtime()
                 .await
                 .expect("start old applied");
-            let before = client.runtime_lifecycle_state().await;
+            let before = client.inner.core_client.lifecycle();
             assert!(
                 before
                     .applied
@@ -955,7 +955,7 @@ mod tests {
                 "unexpected error: {rendered}"
             );
 
-            let after = client.runtime_lifecycle_state().await;
+            let after = client.inner.core_client.lifecycle();
             let promoted = after
                 .promoted
                 .expect("Promoted must advance after successful check/promote");
@@ -1260,7 +1260,7 @@ mod tests {
                 "unexpected change_core error: {rendered}"
             );
 
-            let after = client.runtime_lifecycle_state().await;
+            let after = client.inner.core_client.lifecycle();
             let promoted = after
                 .promoted
                 .expect("rollback must leave Promoted published");

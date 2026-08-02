@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_ipc::api::core::apply::ApplyOutcomeKind;
 use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
 
@@ -67,4 +68,8 @@ impl RuntimeSnapshot {
 pub(crate) struct RuntimeLifecycleState {
     pub(crate) promoted: Option<Arc<RuntimeSnapshot>>,
     pub(crate) applied: Option<Arc<RuntimeSnapshot>>,
+}
+
+pub(crate) fn advances_applied(outcome: ApplyOutcomeKind) -> bool {
+    !matches!(outcome, ApplyOutcomeKind::RolledBack)
 }

@@ -10,12 +10,15 @@ use std::{
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::sync::watch;
 
+use nyanpasu_ipc::api::{core::apply::CoreApplyData, status::RevisionIdInfo};
+
 use self::{
     backend::{BackendSlot, CoreBackend, CoreBackendError, CoreDegradationSink},
     request::CoreRequestFactory,
+    runtime::{RuntimeLifecycleState, RuntimeSnapshot, advances_applied},
     types::{
         BackendObservation, CoreActorError, CoreRequest, CoreStatusView, FaithfulLifecycle,
-        is_recovery_exhausted,
+        LifecycleInvariantKind, is_recovery_exhausted,
     },
 };
 pub(crate) use gate::OperationError;
@@ -36,6 +39,7 @@ pub(crate) struct CoreActorArgs {
     pub(crate) requests: CoreRequestFactory,
     pub(crate) degradation: Arc<dyn CoreDegradationSink>,
     pub(crate) status_tx: watch::Sender<CoreStatusView>,
+    pub(crate) lifecycle_tx: watch::Sender<RuntimeLifecycleState>,
     pub(crate) hint_pending: Arc<AtomicBool>,
     #[cfg(test)]
     pub(crate) backend: Option<BackendSlot>,
@@ -52,6 +56,8 @@ pub(crate) struct CoreActorState {
     pub(crate) observed: BackendObservation,
     pub(crate) running: Option<CoreRequest>,
     pub(crate) status_tx: watch::Sender<CoreStatusView>,
+    pub(crate) lifecycle: RuntimeLifecycleState,
+    pub(crate) lifecycle_tx: watch::Sender<RuntimeLifecycleState>,
     pub(crate) hint_pending: Arc<AtomicBool>,
     pub(crate) recovery_exhausted_published: bool,
     pub(crate) degradation: Arc<dyn CoreDegradationSink>,
@@ -81,6 +87,40 @@ pub(crate) enum CoreActorMessage {
         request: CoreRequest,
         reply: RpcReplyPort<Result<(), CoreActorError>>,
     },
+    PublishPromoted {
+        operation: OperationId,
+        snapshot: Arc<RuntimeSnapshot>,
+        reply: RpcReplyPort<Result<(), CoreActorError>>,
+    },
+    ApplyPromoted {
+        operation: OperationId,
+        request: CoreRequest,
+        expected: Option<RevisionIdInfo>,
+        snapshot: Arc<RuntimeSnapshot>,
+        reply: RpcReplyPort<Result<CoreApplyData, CoreActorError>>,
+    },
+    PublishApplied {
+        operation: OperationId,
+        snapshot: Arc<RuntimeSnapshot>,
+        reply: RpcReplyPort<Result<(), CoreActorError>>,
+    },
+    // TODO(actor-migration): compatibility bridge for the pre-B4 deep rollback.
+    // Reason: the required commit split moves lifecycle ownership before deleting change_core's
+    // rollback path, whose regression tests must remain until that deletion surface is removed.
+    // Remove when: commit 7 makes change_core a commit-first mutation.
+    RestorePromoted {
+        operation: OperationId,
+        snapshot: Option<Arc<RuntimeSnapshot>>,
+        reply: RpcReplyPort<Result<(), CoreActorError>>,
+    },
+    // TODO(actor-migration): compatibility bridge for the API-first compensation layer.
+    // Reason: lifecycle ownership moves before the mandated compensation deletion commit.
+    // Remove when: commit 5 deletes the API-first patch and compensation layer.
+    RestoreApplied {
+        operation: OperationId,
+        snapshot: Arc<RuntimeSnapshot>,
+        reply: RpcReplyPort<Result<(), CoreActorError>>,
+    },
     Run {
         operation: OperationId,
         request: CoreRequest,
@@ -106,7 +146,7 @@ pub(crate) enum CoreActorMessage {
     RefreshHint,
     RunningIdentity {
         operation: OperationId,
-        reply: RpcReplyPort<Result<Option<CoreRequest>, CoreActorError>>,
+        reply: RpcReplyPort<Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError>>,
     },
     Shutdown(RpcReplyPort<()>),
 }
@@ -164,6 +204,38 @@ impl CoreActorState {
             .is_active(operation)
             .then_some(())
             .ok_or(CoreActorError::StaleOperation)
+    }
+
+    fn publish_promoted(&mut self, snapshot: Arc<RuntimeSnapshot>) -> Result<(), CoreActorError> {
+        if self
+            .lifecycle
+            .promoted
+            .as_ref()
+            .is_some_and(|current| snapshot.revision <= current.revision)
+        {
+            return Err(CoreActorError::LifecycleInvariant(
+                LifecycleInvariantKind::PromotedRegression,
+            ));
+        }
+        self.lifecycle.promoted = Some(snapshot);
+        self.lifecycle_tx.send_replace(self.lifecycle.clone());
+        Ok(())
+    }
+
+    fn publish_applied(&mut self, snapshot: Arc<RuntimeSnapshot>) -> Result<(), CoreActorError> {
+        let Some(promoted) = self.lifecycle.promoted.as_ref() else {
+            return Err(CoreActorError::LifecycleInvariant(
+                LifecycleInvariantKind::AppliedWithoutPromoted,
+            ));
+        };
+        if !promoted.identity_eq(&snapshot) {
+            return Err(CoreActorError::LifecycleInvariant(
+                LifecycleInvariantKind::AppliedWithoutPromoted,
+            ));
+        }
+        self.lifecycle.applied = Some(snapshot);
+        self.lifecycle_tx.send_replace(self.lifecycle.clone());
+        Ok(())
     }
 
     fn commit(&mut self, observation: BackendObservation) {
@@ -355,6 +427,8 @@ impl Actor for CoreActor {
             observed,
             running: None,
             status_tx: args.status_tx,
+            lifecycle: RuntimeLifecycleState::default(),
+            lifecycle_tx: args.lifecycle_tx,
             hint_pending: args.hint_pending,
             recovery_exhausted_published: false,
             degradation: args.degradation,
@@ -389,6 +463,77 @@ impl Actor for CoreActor {
                     },
                     Err(error) => Err(error),
                 };
+                let _ = reply.send(result);
+            }
+            CoreActorMessage::PublishPromoted {
+                operation,
+                snapshot,
+                reply,
+            } => {
+                let result = state
+                    .validate_operation(operation)
+                    .and_then(|()| state.publish_promoted(snapshot));
+                let _ = reply.send(result);
+            }
+            CoreActorMessage::ApplyPromoted {
+                operation,
+                request,
+                expected,
+                snapshot,
+                reply,
+            } => {
+                let result = match state.validate_operation(operation) {
+                    Ok(()) => match state.backend() {
+                        Ok(backend) => backend
+                            .apply(&request, expected)
+                            .await
+                            .map_err(backend_error),
+                        Err(error) => Err(error),
+                    },
+                    Err(error) => Err(error),
+                };
+                let result = match result {
+                    Ok(data) => {
+                        if advances_applied(data.outcome) {
+                            state.publish_applied(snapshot).map(|()| data)
+                        } else {
+                            Ok(data)
+                        }
+                    }
+                    Err(error) => Err(error),
+                };
+                let _ = reply.send(result);
+            }
+            CoreActorMessage::PublishApplied {
+                operation,
+                snapshot,
+                reply,
+            } => {
+                let result = state
+                    .validate_operation(operation)
+                    .and_then(|()| state.publish_applied(snapshot));
+                let _ = reply.send(result);
+            }
+            CoreActorMessage::RestorePromoted {
+                operation,
+                snapshot,
+                reply,
+            } => {
+                let result = state.validate_operation(operation).map(|()| {
+                    state.lifecycle.promoted = snapshot;
+                    state.lifecycle_tx.send_replace(state.lifecycle.clone());
+                });
+                let _ = reply.send(result);
+            }
+            CoreActorMessage::RestoreApplied {
+                operation,
+                snapshot,
+                reply,
+            } => {
+                let result = state.validate_operation(operation).map(|()| {
+                    state.lifecycle.applied = Some(snapshot);
+                    state.lifecycle_tx.send_replace(state.lifecycle.clone());
+                });
                 let _ = reply.send(result);
             }
             CoreActorMessage::Run {
@@ -487,7 +632,9 @@ impl Actor for CoreActor {
             }
             CoreActorMessage::RunningIdentity { operation, reply } => {
                 let result = match state.validate_operation(operation) {
-                    Ok(()) => state.backend().map(|_| state.running.clone()),
+                    Ok(()) => state
+                        .backend()
+                        .map(|_| (state.running.clone(), state.observed.lifecycle.clone())),
                     Err(error) => Err(error),
                 };
                 let _ = reply.send(result);

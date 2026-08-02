@@ -46,19 +46,6 @@ pub struct RuntimeTransactionSnapshot {
     pub lifecycle: crate::core::actor::runtime::RuntimeLifecycleState,
 }
 
-/// Facade-held runtime lifecycle store. It is instance-owned and non-persistent:
-/// writers are serialized by `rebuild_gate`, while runtime IPC reads clone the
-/// Promoted snapshot. With no subscribers, a plain RwLock keeps lifecycle writes
-/// infallible after product promotion or a successful core apply/restart.
-pub type RuntimeLifecycleStore =
-    tokio::sync::RwLock<crate::core::actor::runtime::RuntimeLifecycleState>;
-
-pub async fn new_runtime_lifecycle_store() -> anyhow::Result<RuntimeLifecycleStore> {
-    Ok(tokio::sync::RwLock::new(
-        crate::core::actor::runtime::RuntimeLifecycleState::default(),
-    ))
-}
-
 /// Compensation for an API-first patch is planned from the last successfully
 /// applied runtime snapshot. The plan is intentionally independent of the
 /// core's patch transport semantics.

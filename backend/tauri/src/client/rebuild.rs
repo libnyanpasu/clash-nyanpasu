@@ -261,7 +261,10 @@ impl NyanpasuClient {
             .apply_promoted(self.inner.runtime_paths.product())
             .await
             .map_err(ClientError::Anyhow)?;
-        self.publish_applied(promoted).await
+        lease
+            .publish_applied(promoted)
+            .await
+            .map_err(|error| ClientError::Anyhow(error.into()))
     }
 
     pub(crate) async fn regenerate_and_restart_for_legacy(&self) -> Result<()> {
@@ -269,7 +272,10 @@ impl NyanpasuClient {
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.regenerate_for_legacy_inner(&mut *lease).await?;
         lease.restart().await.map_err(ClientError::Anyhow)?;
-        self.publish_applied(promoted).await
+        lease
+            .publish_applied(promoted)
+            .await
+            .map_err(|error| ClientError::Anyhow(error.into()))
     }
 
     /// Core-switch transaction (spec §5.4 / S03). The WHOLE
@@ -291,7 +297,7 @@ impl NyanpasuClient {
         };
         let transaction = crate::client::runtime::RuntimeTransactionSnapshot {
             product,
-            lifecycle: self.runtime_lifecycle_state().await,
+            lifecycle: self.inner.core_client.lifecycle(),
         };
 
         // TODO(actor-migration): core selection still drafts the legacy verge.
@@ -319,7 +325,10 @@ impl NyanpasuClient {
                     tracing::error!(%error, "failed to persist verge after core switch");
                 }
                 // Successful apply/restart advances Applied (promoted already set).
-                self.publish_applied(new_snapshot).await
+                lease
+                    .publish_applied(new_snapshot)
+                    .await
+                    .map_err(|error| ClientError::Anyhow(error.into()))
             }
             Err(new_core_error) => {
                 tracing::error!("failed to change core: {new_core_error:?}");
@@ -338,7 +347,10 @@ impl NyanpasuClient {
                             ))));
                         }
                         // 6. Old core started → Applied tracks the rollback snapshot.
-                        self.publish_applied(rollback_snapshot).await?;
+                        lease
+                            .publish_applied(rollback_snapshot)
+                            .await
+                            .map_err(|error| ClientError::Anyhow(error.into()))?;
                         Err(ClientError::Anyhow(new_core_error))
                     }
                     Err(rebuild_error) => {
@@ -371,8 +383,10 @@ impl NyanpasuClient {
                         // 4. Product is authoritative → restore Promoted with it.
                         // New-core restart never advanced Applied, but pre-transaction
                         // Promoted may still be ahead of Applied (promote-ok / apply-fail).
-                        self.restore_promoted(transaction.lifecycle.promoted.clone())
-                            .await?;
+                        lease
+                            .restore_promoted(transaction.lifecycle.promoted.clone())
+                            .await
+                            .map_err(|error| ClientError::Anyhow(error.into()))?;
                         // 5. Start old core on the restored product.
                         if let Err(restart_error) = lease.restart().await {
                             // 7. Applied keeps the pre-transaction snapshot; core is
@@ -387,7 +401,10 @@ impl NyanpasuClient {
                         // Applied must track the restored Promoted (including the
                         // Promoted > Applied case). Skip when Promoted was unknown.
                         if let Some(restored) = transaction.lifecycle.promoted.clone() {
-                            self.publish_applied(restored).await?;
+                            lease
+                                .publish_applied(restored)
+                                .await
+                                .map_err(|error| ClientError::Anyhow(error.into()))?;
                         }
                         // selected_core was restored via discard() before rebuild.
                         Err(ClientError::Anyhow(new_core_error.context(format!(
@@ -448,7 +465,10 @@ impl NyanpasuClient {
             tracing::warn!(%error, "failed to remove candidate config");
         }
         checked.map_err(ClientError::Anyhow)?;
-        self.publish_promoted(snapshot).await
+        lease
+            .publish_promoted(snapshot)
+            .await
+            .map_err(|error| ClientError::Anyhow(error.into()))
     }
 }
 
@@ -1058,7 +1078,7 @@ mod tests {
 
         // No prior Promoted/Applied before change_core — product restore must
         // clear the new-core publish left by regenerate_for_legacy_inner.
-        let pre = tauri::async_runtime::block_on(client.runtime_lifecycle_state());
+        let pre = client.inner.core_client.lifecycle();
         assert!(pre.promoted.is_none());
         assert!(pre.applied.is_none());
 
@@ -1076,7 +1096,7 @@ mod tests {
 
         // S03: after product restore, Promoted is the pre-transaction snapshot
         // (None here) — never the new-core publish.
-        let lifecycle = tauri::async_runtime::block_on(client.runtime_lifecycle_state());
+        let lifecycle = client.inner.core_client.lifecycle();
         assert!(
             lifecycle.promoted.is_none(),
             "product restore after rollback-rebuild failure must restore Promoted; \
@@ -1174,7 +1194,7 @@ mod tests {
                 "seed product must be P2"
             );
 
-            let before = client.runtime_lifecycle_state().await;
+            let before = client.inner.core_client.lifecycle();
             let before_promoted = before.promoted.expect("Promoted=P2");
             let before_applied = before.applied.expect("Applied=P1");
             assert!(
@@ -1201,7 +1221,7 @@ mod tests {
                 "deep product restore must rewrite injected product to P2"
             );
 
-            let after = client.runtime_lifecycle_state().await;
+            let after = client.inner.core_client.lifecycle();
             let after_promoted = after.promoted.expect("restored Promoted=P2");
             let after_applied = after
                 .applied
@@ -1255,7 +1275,7 @@ mod tests {
         );
         assert!(result.is_err());
 
-        let lifecycle = tauri::async_runtime::block_on(client.runtime_lifecycle_state());
+        let lifecycle = client.inner.core_client.lifecycle();
         let promoted = lifecycle.promoted.expect("rollback must leave Promoted");
         let applied = lifecycle
             .applied
@@ -1353,7 +1373,7 @@ mod tests {
         tauri::async_runtime::block_on(client.promote_default_runtime_config())
             .expect("default fallback promote");
 
-        let lifecycle = tauri::async_runtime::block_on(client.runtime_lifecycle_state());
+        let lifecycle = client.inner.core_client.lifecycle();
         assert!(
             lifecycle.promoted.is_some(),
             "fallback must publish Promoted"

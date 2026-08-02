@@ -1,6 +1,9 @@
 //! Core lifecycle port (S04): exclusive lease over check/promote/apply/restart/stop.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use super::runtime::CandidateFile;
 use async_trait::async_trait;
@@ -54,6 +57,36 @@ pub trait CoreLifecycleLease: Send {
         target_core: ClashCore,
         product: &Utf8Path,
     ) -> anyhow::Result<[u8; 32]>;
+    async fn publish_promoted(
+        &mut self,
+        _snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        Ok(())
+    }
+    async fn publish_applied(
+        &mut self,
+        _snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        Ok(())
+    }
+    // TODO(actor-migration): compatibility bridge for the pre-B4 deep rollback.
+    // Reason: lifecycle ownership moves before the mandated change_core deletion commit.
+    // Remove when: commit 7 removes the deep rollback path.
+    async fn restore_promoted(
+        &mut self,
+        _snapshot: Option<Arc<crate::core::actor::runtime::RuntimeSnapshot>>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        Ok(())
+    }
+    // TODO(actor-migration): compatibility bridge for the API-first compensation layer.
+    // Reason: lifecycle ownership moves before the mandated compensation deletion commit.
+    // Remove when: commit 5 deletes the API-first patch and compensation layer.
+    async fn restore_applied(
+        &mut self,
+        _snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        Ok(())
+    }
     /// Check and apply exact candidate bytes without promoting them to product.
     async fn apply_candidate(
         &mut self,

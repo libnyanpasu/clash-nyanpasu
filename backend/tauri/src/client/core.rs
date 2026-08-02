@@ -9,6 +9,7 @@ use std::{
 use anyhow::Context as _;
 use async_trait::async_trait;
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_ipc::api::{core::apply::CoreApplyData, status::RevisionIdInfo};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::watch;
 
@@ -23,7 +24,10 @@ use crate::core::{
         CoreActor, CoreActorArgs, CoreActorMessage, OperationError, OperationId,
         backend::CoreDegradationSink,
         request::CoreRequestFactory,
-        types::{BackendObservation, CoreActorError, CoreRequest, CoreStatusView},
+        runtime::{RuntimeLifecycleState, RuntimeSnapshot},
+        types::{
+            BackendObservation, CoreActorError, CoreRequest, CoreStatusView, FaithfulLifecycle,
+        },
     },
 };
 
@@ -39,6 +43,7 @@ struct CoreClientInner {
     actor_ref: ActorRef<CoreActorMessage>,
     next_operation: AtomicU64,
     status_rx: watch::Receiver<CoreStatusView>,
+    lifecycle_rx: watch::Receiver<RuntimeLifecycleState>,
     hint_pending: Arc<AtomicBool>,
 }
 
@@ -101,6 +106,7 @@ impl CoreClient {
         #[cfg(test)] replacement_backend: Option<crate::core::actor::backend::TestBackend>,
     ) -> anyhow::Result<Self> {
         let (status_tx, status_rx) = watch::channel(CoreStatusView::initial());
+        let (lifecycle_tx, lifecycle_rx) = watch::channel(RuntimeLifecycleState::default());
         let hint_pending = Arc::new(AtomicBool::new(false));
         let actor_ref = Actor::spawn(
             None,
@@ -110,6 +116,7 @@ impl CoreClient {
                 requests: args.requests,
                 degradation: args.degradation,
                 status_tx,
+                lifecycle_tx,
                 hint_pending: hint_pending.clone(),
                 #[cfg(test)]
                 backend,
@@ -127,6 +134,7 @@ impl CoreClient {
                 actor_ref,
                 next_operation: AtomicU64::new(1),
                 status_rx,
+                lifecycle_rx,
                 hint_pending,
             }),
         })
@@ -134,6 +142,10 @@ impl CoreClient {
 
     pub(crate) fn status(&self) -> CoreStatusView {
         self.inner.status_rx.borrow().clone()
+    }
+
+    pub(crate) fn lifecycle(&self) -> RuntimeLifecycleState {
+        self.inner.lifecycle_rx.borrow().clone()
     }
 
     #[cfg(test)]
@@ -161,9 +173,84 @@ impl CoreClient {
     pub(crate) async fn running(
         &self,
         operation: &CoreOperationGuard,
-    ) -> Result<Option<CoreRequest>, CoreActorError> {
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError> {
         self.call(|reply| CoreActorMessage::RunningIdentity {
             operation: operation.id(),
+            reply,
+        })
+        .await
+    }
+
+    pub(crate) async fn publish_promoted(
+        &self,
+        operation: &CoreOperationGuard,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.call(|reply| CoreActorMessage::PublishPromoted {
+            operation: operation.id(),
+            snapshot,
+            reply,
+        })
+        .await
+    }
+
+    pub(crate) async fn publish_applied(
+        &self,
+        operation: &CoreOperationGuard,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.call(|reply| CoreActorMessage::PublishApplied {
+            operation: operation.id(),
+            snapshot,
+            reply,
+        })
+        .await
+    }
+
+    // TODO(actor-migration): compatibility bridge for the pre-B4 deep rollback.
+    // Reason: lifecycle ownership moves before the mandated change_core deletion commit.
+    // Remove when: commit 7 removes the deep rollback path.
+    pub(crate) async fn restore_promoted(
+        &self,
+        operation: &CoreOperationGuard,
+        snapshot: Option<Arc<RuntimeSnapshot>>,
+    ) -> Result<(), CoreActorError> {
+        self.call(|reply| CoreActorMessage::RestorePromoted {
+            operation: operation.id(),
+            snapshot,
+            reply,
+        })
+        .await
+    }
+
+    // TODO(actor-migration): compatibility bridge for the API-first compensation layer.
+    // Reason: lifecycle ownership moves before the mandated compensation deletion commit.
+    // Remove when: commit 5 deletes the API-first patch and compensation layer.
+    pub(crate) async fn restore_applied(
+        &self,
+        operation: &CoreOperationGuard,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.call(|reply| CoreActorMessage::RestoreApplied {
+            operation: operation.id(),
+            snapshot,
+            reply,
+        })
+        .await
+    }
+
+    pub(crate) async fn apply_promoted(
+        &self,
+        operation: &CoreOperationGuard,
+        request: &CoreRequest,
+        expected: Option<RevisionIdInfo>,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<CoreApplyData, CoreActorError> {
+        self.call(|reply| CoreActorMessage::ApplyPromoted {
+            operation: operation.id(),
+            request: request.clone(),
+            expected,
+            snapshot,
             reply,
         })
         .await
@@ -428,6 +515,40 @@ impl CoreLifecycleLease for CoreLeaseAdapter {
         Ok(promoted_hash)
     }
 
+    async fn publish_promoted(
+        &mut self,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.core.publish_promoted(&self.guard, snapshot).await
+    }
+
+    async fn publish_applied(
+        &mut self,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.core.publish_applied(&self.guard, snapshot).await
+    }
+
+    // TODO(actor-migration): compatibility bridge for the pre-B4 deep rollback.
+    // Reason: lifecycle ownership moves before the mandated change_core deletion commit.
+    // Remove when: commit 7 removes the deep rollback path.
+    async fn restore_promoted(
+        &mut self,
+        snapshot: Option<Arc<RuntimeSnapshot>>,
+    ) -> Result<(), CoreActorError> {
+        self.core.restore_promoted(&self.guard, snapshot).await
+    }
+
+    // TODO(actor-migration): compatibility bridge for the API-first compensation layer.
+    // Reason: lifecycle ownership moves before the mandated compensation deletion commit.
+    // Remove when: commit 5 deletes the API-first patch and compensation layer.
+    async fn restore_applied(
+        &mut self,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.core.restore_applied(&self.guard, snapshot).await
+    }
+
     async fn apply_candidate(
         &mut self,
         candidate: &CandidateFile,
@@ -509,8 +630,10 @@ mod tests {
             ReplaceBarrier,
             backend::{BackendSlot, CoreBackend, LocalBackend, TestBackend},
             request::CoreBinaryResolver,
-            types::FaithfulLifecycle,
+            runtime::{RuntimeRevision, RuntimeSnapshot, RuntimeSnapshotData},
+            types::{FaithfulLifecycle, LifecycleInvariantKind},
         },
+        enhance::PostProcessingOutput,
         utils::path::PathResolver,
     };
 
@@ -544,7 +667,7 @@ mod tests {
 
     async fn running_request(client: &CoreClient) -> CoreRequest {
         let operation = client.begin_operation().await.unwrap();
-        client.running(&operation).await.unwrap().unwrap()
+        client.running(&operation).await.unwrap().0.unwrap()
     }
 
     async fn poll_once_pending<F: Future>(mut future: Pin<&mut F>) {
@@ -665,6 +788,110 @@ mod tests {
 
     fn request(factory: &CoreRequestFactory, core: ClashCore) -> CoreRequest {
         factory.for_product(core).unwrap()
+    }
+
+    fn runtime_snapshot(revision: u64, core: ClashCore) -> Arc<RuntimeSnapshot> {
+        Arc::new(RuntimeSnapshot::from_data(
+            RuntimeRevision(revision),
+            core,
+            Arc::from([]),
+            RuntimeSnapshotData {
+                config: Default::default(),
+                exists_keys: Vec::new(),
+                postprocessing_output: PostProcessingOutput::default(),
+            },
+        ))
+    }
+
+    #[tokio::test]
+    async fn promoted_revision_must_advance_monotonically() {
+        let test = test_client(stopped(None)).await;
+        let operation = test.client.begin_operation().await.unwrap();
+        let snapshot = runtime_snapshot(1, ClashCore::Mihomo);
+        test.client
+            .publish_promoted(&operation, snapshot.clone())
+            .await
+            .unwrap();
+        let error = test
+            .client
+            .publish_promoted(&operation, snapshot.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            CoreActorError::LifecycleInvariant(LifecycleInvariantKind::PromotedRegression)
+        ));
+        assert!(Arc::ptr_eq(
+            test.client.lifecycle().promoted.as_ref().unwrap(),
+            &snapshot
+        ));
+    }
+
+    #[tokio::test]
+    async fn applied_requires_the_matching_promoted_snapshot() {
+        let test = test_client(stopped(None)).await;
+        let operation = test.client.begin_operation().await.unwrap();
+        let promoted = runtime_snapshot(1, ClashCore::Mihomo);
+        let other = runtime_snapshot(2, ClashCore::Mihomo);
+
+        let missing = test
+            .client
+            .publish_applied(&operation, promoted.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            missing,
+            CoreActorError::LifecycleInvariant(LifecycleInvariantKind::AppliedWithoutPromoted)
+        ));
+
+        test.client
+            .publish_promoted(&operation, promoted.clone())
+            .await
+            .unwrap();
+        let mismatched = test
+            .client
+            .publish_applied(&operation, other)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            mismatched,
+            CoreActorError::LifecycleInvariant(LifecycleInvariantKind::AppliedWithoutPromoted)
+        ));
+
+        test.client
+            .publish_applied(&operation, promoted.clone())
+            .await
+            .unwrap();
+        assert!(Arc::ptr_eq(
+            test.client.lifecycle().applied.as_ref().unwrap(),
+            &promoted
+        ));
+    }
+
+    #[tokio::test]
+    async fn lifecycle_read_remains_live_while_run_is_blocked() {
+        let test = test_client(stopped(None)).await;
+        let operation = test.client.begin_operation().await.unwrap();
+        let snapshot = runtime_snapshot(1, ClashCore::Mihomo);
+        test.client
+            .publish_promoted(&operation, snapshot.clone())
+            .await
+            .unwrap();
+        let (started, release) = test.backend.block_next_run();
+        let client = test.client.clone();
+        let request = request(&test.requests, ClashCore::Mihomo);
+        let run = tokio::spawn(async move {
+            let result = client.run(&operation, &request).await;
+            drop(operation);
+            result
+        });
+        started.await.unwrap();
+        assert!(Arc::ptr_eq(
+            test.client.lifecycle().promoted.as_ref().unwrap(),
+            &snapshot
+        ));
+        release.send(()).unwrap();
+        run.await.unwrap().unwrap();
     }
 
     #[tokio::test]
@@ -907,7 +1134,7 @@ mod tests {
         test.backend.set_observation(running(1));
         let request_b = request(&test.requests, ClashCore::ClashRs);
         test.client.run(&operation, &request_b).await.unwrap();
-        let actual = test.client.running(&operation).await.unwrap().unwrap();
+        let actual = test.client.running(&operation).await.unwrap().0.unwrap();
         assert_eq!(actual.core_type, CoreType::Clash(ClashCoreType::ClashRust));
     }
 
@@ -997,9 +1224,9 @@ mod tests {
             .run(&operation, &request(&test.requests, ClashCore::Mihomo))
             .await
             .unwrap();
-        assert!(test.client.running(&operation).await.unwrap().is_some());
+        assert!(test.client.running(&operation).await.unwrap().0.is_some());
         let _ = test.client.set_backend(&operation, RunType::Service).await;
-        assert!(test.client.running(&operation).await.unwrap().is_none());
+        assert!(test.client.running(&operation).await.unwrap().0.is_none());
     }
 
     #[tokio::test]
@@ -1048,7 +1275,7 @@ mod tests {
             .set_backend(&operation, RunType::Normal)
             .await
             .unwrap();
-        assert!(test.client.running(&operation).await.unwrap().is_none());
+        assert!(test.client.running(&operation).await.unwrap().0.is_none());
         operation.release().await;
         test.client.shutdown().await;
     }
@@ -1086,7 +1313,7 @@ mod tests {
         test.backend
             .set_observation(stopped(Some("crashed".to_owned())));
         test.client.refresh_status(&operation).await.unwrap();
-        assert!(test.client.running(&operation).await.unwrap().is_none());
+        assert!(test.client.running(&operation).await.unwrap().0.is_none());
     }
 
     #[tokio::test]

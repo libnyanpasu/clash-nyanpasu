@@ -180,6 +180,7 @@
 | F48  | **Service 侧的分类键是 `error_kind: Option<String>`，不是 `code`**：`ClientError::Server` 同时带 `code: ResponseCode` 与 `error_kind: Option<String>`，而**后者才是 R0 收敛出来的那个字段**（对照 `api::error_kind::{NOT_STARTED, REVISION_CONFLICT, …}` 字符串常量）。另：`ClientError` **共七支**（`BuildClient` / `Request` / `HttpStatus` / `Decode` / `Server` / `EmptyData` / `WebSocket`）**且标了 `#[non_exhaustive]`**——分类器必须有兜底                                                                                          | `nyanpasu_ipc/src/client/mod.rs:23-62`；`api/mod.rs:40,45`                                                                                                       |
 | F49  | **停止态 `restart()` 的失败也是 `Backend(_)`**：`Run` 处理器是 `backend.run(&request).await.map_err(backend_error)`，而 `backend_error()` 把它包成 `CoreActorError::Backend`——与 apply 路径的失败**在类型上无法区分**（A.7 作用域漏洞的根因）                                                                                                                                                                                                                                                                                              | `core/actor/mod.rs:400`、`:297-299`                                                                                                                              |
 | F50  | **`start` / `stop` / `restart` 不带 `error_kind`**：submodule 明写它们「predate `error_kind` 并继续返回 `anyhow::Error`」，只有 S8 新增的那批操作才填充该字段；而 `error_kind` 缺失的语义是「**not classified**，never no error」。因此 Service 侧启核失败的 `error_kind` **恒为 `None`**，A.7 第 4 行会**确定性地**把它判成 `Other` → 行 7c——这不是概率问题                                                                                                                                                                               | `nyanpasu-runtime/.../manager_bridge.rs:47-52`；`nyanpasu_ipc/src/api/mod.rs:35-37`                                                                              |
+| F51  | **check 阶段本身就是一次 actor 调用**：`CoreClient::check` 返回 `Result<(), CoreActorError>`，而 `check_and_promote` 内部正是 `self.core.check(&self.guard, &request).await?`。所以 seam 的错误面**必然**会遇到 `CoreActorError`——v6 那句「`CheckAndPromoteError` 永不承载 `CoreActorError`」在 check 阶段不可能成立（H2 残留的根因）                                                                                                                                                                                                      | `client/core.rs:172-176`、`:408`                                                                                                                                 |
 
 ---
 
@@ -365,7 +366,7 @@ B1 要求「CoreClient 通过 watch 暴露 lifecycle」。
 
 `apply_candidate`（F9）今天只被 `restore_applied_after_patch_failure` 使用，而后者随 B3 删除。
 
-- **裁定 A：一并删除** `apply_candidate`，`CoreLifecycleLease` 收敛到 4 个方法（`check_and_promote` / `apply_promoted` / `restart` / `stop`）。C2 之后 lease 的 `check_and_promote` **名字与文件工作都留在 client 侧**，且它**不发 `PublishPromoted`**——发布是编排层紧随其后的**独立一段**（H2；今天的实现本就如此，F45）。`restart` 因 F26 的两类残余调用者而**保留**（见 D5）。理由：删掉唯一调用者后 `apply_candidate` 就是死代码。
+- **裁定 A：一并删除** `apply_candidate`，`CoreLifecycleLease` 收敛到 4 个方法（`check_and_promote` / `apply_promoted` / `restart` / `stop`）。C2 之后 lease 的 `check_and_promote` **名字与文件工作都留在 client 侧**，且它**不发 `PublishPromoted`**，且其错误面是 A.1b 的**外层和** `CheckAndPromoteFailure`（actor 错误原样透出，H2 残留）——发布是编排层紧随其后的**独立一段**（H2；今天的实现本就如此，F45）。`restart` 因 F26 的两类残余调用者而**保留**（见 D5）。理由：删掉唯一调用者后 `apply_candidate` 就是死代码。
 - **选项 B（未采纳）**：保留备用。违反「不留无调用者的抽象」。
 
 ### D4 — `change_core` 的 wire 变化幅度 —— **裁定 A**
@@ -426,7 +427,7 @@ L3 让我审计 `restart()` 残余，审出一条 v1 漏掉的语义差（F26/F2
 
   > v2 的 `CheckAndPromote { operation, request, candidate, reply -> Arc<RuntimeSnapshot> }` **在类型上就不可实现**：actor 拿不到 revision、`RuntimeSnapshotData`、解析后的 config、target core、产物字节中的任何一个（F32），却承诺返回由它们构成的快照。
 
-  **lease seam 的类型化错误（NH2 裁定）**：`check_and_promote` 的返回类型由 `anyhow::Result<[u8; 32]>` 改为 `Result<[u8; 32], CheckAndPromoteError>`（A.1b 声明）。相位标签由 **adapter 内的构造位置**打——它确切知道自己停在哪一步；编排层只按 `phase` 查表映射 degradation code，**不做字符串嗅探**。只要两个相位，不引入更大的错误分类学。
+  **lease seam 的类型化错误（NH2 + H2 残留）**：`check_and_promote` 的返回类型由 `anyhow::Result<[u8; 32]>` 改为 `Result<[u8; 32], CheckAndPromoteFailure>`（A.1b）。**外层和把两类不同源的失败分开**——`Actor(_)` 原样透出（check 本身就是一次 actor 调用，F51），`Operation(_)` 才是本 seam 自己的两相位失败。相位标签由 **adapter 内的构造位置**打，编排层按臂分流、按 `phase` 查表，**不做字符串嗅探、不 downcast**。两相位分类学不扩大。
 
 - **推进决策与 wire 表示拆分（C3）**：
   - **推进决策**：`core/actor` 内一个**纯谓词** `advances_applied(outcome: ApplyOutcomeKind) -> bool`；`ApplyPromoted` 处理器在提交前调它——这是 **apply 路径唯一的推进点**；
@@ -828,14 +829,25 @@ pub(crate) lifecycle_tx: watch::Sender<RuntimeLifecycleState>,
 pub(crate) lifecycle_tx: watch::Sender<RuntimeLifecycleState>,
 ```
 
-### A.1b lease seam 的类型化错误（NH2）
+### A.1b lease seam 的类型化错误（NH2 + H2 残留）
 
 ```rust
 // client/core_bridge.rs —— 取代今天未分化的 anyhow::Result<[u8; 32]>（F41）
-#[derive(Debug)]
+
+/// 外层和：把**两类不同源**的失败分开（H2 残留）。
+/// check 阶段本身是一次 actor 调用（F51），所以 actor 错误必然会出现在这个 seam 上；
+/// 把它压进下面的两相位类型，会让 ShuttingDown / StaleOperation 失去豁免资格、
+/// 让 NoBackend 被导向行 3 而不是行 6b。
+pub(crate) enum CheckAndPromoteFailure {
+    /// 原样透出，§2.3 的 matches! 与 A.7 直接可判。
+    Actor(CoreActorError),
+    /// 本 seam 自己的失败，仍然**恰好两相位**（NH2 的分类学不扩大）。
+    Operation(CheckAndPromoteError),
+}
+
 pub(crate) enum CheckAndPromotePhase {
-    Check,
-    Promote,
+    Check,      // → §2.2 行 3
+    Promote,    // → §2.2 行 4a / 4b（写前 / 写后，按构造位置区分）
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -845,19 +857,19 @@ pub(crate) struct CheckAndPromoteError {
     pub(crate) source: anyhow::Error,
 }
 
-// trait 签名相应改为：
-//   async fn check_and_promote(..) -> Result<[u8; 32], CheckAndPromoteError>;
-// 相位由 adapter 内的构造位置打标签——它确切知道自己停在哪一步；
-// 编排层按 phase 查 A.6 的 code，不做字符串嗅探。只要两个相位。
+// trait 签名：
+//   async fn check_and_promote(..) -> Result<[u8; 32], CheckAndPromoteFailure>;
 //
-// **边界（H2，硬约束）**：本类型**只覆盖 check 与文件工作**（建 candidate、比对哈希、
-// 原子晋升产物）。它**永不承载 CoreActorError**——`PublishPromoted` 是编排层紧随其后
-// 的独立一段，把**裸 CoreActorError** 交回，由编排层直接套 §2.3 的 matches! 规则。
+// 编排层分流：
+//   Actor(e)     → 先过 §2.3 的 matches!（豁免则 Err），否则过 A.7 定行
+//   Operation(e) → 按 e.phase 映射行 3 / 4a / 4b，查 A.6 取 code
 //
-// 为什么必须分开：§2.3 声明「任何 CheckAndPromoteError 永不豁免」。若把发布塞进本类型，
-// ShuttingDown / StaleOperation / LifecycleInvariant(_) 就只剩三条路——裹成 Promote 被
-// 错误降级、靠 anyhow downcast（违反机械规则）、或另行逃逸（违反措辞）。三条都是击穿：
-// 方向与「真实失败被当成豁免」相反，是**真豁免被当成运行时失败**。
+// 相位仍由 adapter 内的构造位置打标签——它确切知道自己停在哪一步；
+// 编排层不做字符串嗅探，也不 downcast anyhow。
+//
+// **边界（H2）**：`CheckAndPromoteError`（内层）只承载本 seam 自己的失败——
+// candidate 文件工作与 check 的**非 actor** 部分。actor 侧的错误走 `Actor(_)` 臂，
+// 不被改写、不被降级、不丢豁免资格。`PublishPromoted` 同样在 seam 之外独立一段（F45）。
 ```
 
 ### A.2 新增消息（三条，全部守卫消息）

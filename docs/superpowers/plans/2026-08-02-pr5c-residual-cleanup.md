@@ -71,7 +71,7 @@
 | F1  | **「status read 不走 mailbox RPC」在 5a/5b 已经满足**：`CoreClient::status()` 是 `status_rx.borrow().clone()`，零 mailbox；`lifecycle()` 同理。C1 该项**已达成**，本阶段只需核对不回退                                                                                                                  | `client/core.rs:146-148`、`:150-152`                        |
 | F2  | `RefreshStatus` 守卫消息的**生产调用点为零**（16 处全在 `client/core.rs` 测试内）；`RefreshHint` 唯一生产调用点是 `NyanpasuClient::core_status`                                                                                                                                                         | `client/core.rs:165-174`；`client/mod.rs:483`               |
 | F3  | **`Logger` global 的三个写入者全部不可达**：它们都在 `Instance::start` 内，而 `Instance::try_new` **零调用点**、`CoreManager.instance` 初始化为 `None` 后**从未被赋值**。因此 `get_clash_logs` 今天**恒返回空** `VecDeque`                                                                              | `core/clash/core.rs:186,191,200`、`:94`、`:381`             |
-| F4  | `Logger` 本身**已经是 100 条 ring**（`VecDeque` + `LOGS_QUEUE_LEN = 100`，超限 `pop_front`）；`clear_log` 零调用点                                                                                                                                                                                      | `core/logger.rs:5,7-36`、`:32`                              |
+| F4  | `Logger` 本身**已经是 ring**，但**稳定在 101 条不是 100**：判据是 `if logs.len() > LOGS_QUEUE_LEN { pop_front() }` **之后**才 `push_back`——len 为 100 时不 pop、推入即 101，此后一 pop 一推稳定在 101。`clear_log` 零调用点。（**不影响 D1**：写入者仍不可达，队列恒为空）                              | `core/logger.rs:5,26-29`、`:32`                             |
 | F5  | **活的日志通路是 clash WS**：`core/clash/ws.rs` 的四条流（logs/traffic/memory/connections），`ClashWsHistory.logs` 上限 **1024**，经 `ClashWsEvent` 发到前端并被 `use-clash-logs.ts` 消费                                                                                                               | `core/clash/ws.rs:24,215,246,199-210`；`clash/mod.rs:46-52` |
 | F6  | **`get_clash_logs` 没有任何前端消费者**：源码侧命中共 2 处，**全在 `frontend/interface/src/ipc/bindings.ts` 的 binding 定义自身**（声明 + invoke）；另有 2 处在 `frontend/interface/dist/`，那是同一文件的**构建产物**，不是消费者。日志页走的是 WS 通路（F5）。**复审时请勿把 `dist/` 命中当成使用者** | `ipc.rs:522-526`；`bindings.ts:31-32`                       |
 | F7  | **`LogFrame` 类型在 tauri crate 内不存在**；service 侧的 `/ws/events`（`EventStream` / `inspect_logs` / `retrieve_logs`）在 IPC crate 里有，但 **tauri 侧零消费**                                                                                                                                       | `nyanpasu_ipc/src/client/shortcuts.rs:73,82,110`            |
@@ -113,7 +113,7 @@
 | F28  | `core/clash/core.rs`（481 行）**约 75% 已死**：`enum Instance` 及其整个 impl、`CoreManager.instance` 字段、`CoreManager::status`。**活的只有** `RunType`、`find_binary_path`、`change_default_network_dns`                                                                                                                                                     | `core/clash/core.rs:80-368`、`:387-402`                                |
 | F29  | 删掉 `manager.rs` 与 `Instance` 后，`find_binary_path` 只剩**一个**活调用者 `utils/dirs.rs:345`；且 `setup.rs:90-103` 已有可注入的替代 `OsCoreBinaryResolver`                                                                                                                                                                                                  | 见左                                                                   |
 | F30  | ledger 现值：`config_calls` 102、`service_globals` 58、`migration_markers` 15、`legacy_dto_refs` 299、`test_real_dirs` 0；gate 当前为绿                                                                                                                                                                                                                        | `scripts/architecture-ledger.snapshot.json`                            |
-| F31  | **ledger 有 bug：`core/clash/core.rs` 第 52 行起全部对 ledger 不可见。** 块注释追踪器在 `:51` 的 doc 注释里看到字面量 `/core/*` 就置 `inBlockComment = true`，而该文件**全文没有 `*/`**（实测 0 处）。后果：`Logger::global()` 实际 4 处只报 1 处、`config_calls` 少算约 3 处                                                                                  | `scripts/architecture-ledger.ts:493-507`；`core/clash/core.rs:51`      |
+| F31  | **ledger 有 bug：`core/clash/core.rs` 第 52–480 行（**该文件共 480 行**）全部对 ledger 不可见。** 块注释追踪器在 `:51` 的 doc 注释里看到字面量 `/core/*` 就置 `inBlockComment = true`，而该文件**全文没有 `*/`**（实测 0 处）。后果：`Logger::global()` 实际 4 处只报 1 处、`config_calls` 少算约 3 处                                                         | `scripts/architecture-ledger.ts:493-507`；`core/clash/core.rs:51`      |
 | F32  | **该 bug 的损害限于逐文件**：`inBlockComment` 声明在**逐文件处理函数体内**（`:485`），每文件重置、**不跨文件泄漏**。因此修复范围就是这一处逻辑，**不需要全仓复查**                                                                                                                                                                                             | `scripts/architecture-ledger.ts:485`                                   |
 | F32b | **同一模式命中的是两个文件，不是一个**（逐文件比对 `/*` 与 `*/` 计数，双方独立筛查结果一致）：`core/clash/core.rs:51`（doc 注释里的 `` `/core/*` ``，51 行后全灭）与 `utils/candy.rs:12`（glob 串 `"{}/*.{}.app.log"`，13–143 行不可见）。**但 `candy.rs` 被隐藏区内 ledger 关心的四类计数全为 0**，**不参与基线修正**——它是**潜伏盲区**而非现存偏差           | `core/clash/core.rs:51`；`utils/candy.rs:12`                           |
 | F33  | **CI 有 macOS runner 且会在 PR 上跑后端测试**：`ci.yml` 的 `test_unit` 作业矩阵含 `macos-latest`，触发条件是 `pull_request` 到 `main` / `dev` / `release-*`，执行 `pnpm test` → `run-p test:*` → `test:backend` = `cargo test --all-features`。因此 **`#[cfg(target_os = "macos")]` 门控的单测会在 CI 上真实运行**                                             | `.github/workflows/ci.yml:201-215,303-304`；`package.json:40,42`       |
@@ -208,9 +208,11 @@ DNS 覆写今天与 start/stop **完全无序**（F22），且**退出不恢复*
 
 > 每步给出编辑内容 → 验证 → 通过判据。已知坑沿用 5b：共享 target 的 kache 污染会造成本地 clippy 假红，用独立 `--target-dir` 复验再判定。
 
-### S1 — 先修 ledger 的块注释 bug（**必须最先做**）
+### S1 — 先修 ledger 的块注释**扫描器**（**必须最先做**）
 
-`scripts/architecture-ledger.ts:493-507` 的块注释追踪器把 `core/clash/core.rs:51` 的 `/core/*` 当成块注释开始，而该文件没有 `*/`，于是 **52–481 行整段对 ledger 不可见**（F31）。
+> **本步不叫「每文件重置」**：`inBlockComment` **本来就已经每文件重置**（F32），那不是缺陷所在。真正的缺陷是**扫描器不区分字符串 / 行注释 / 块注释三种上下文**——所以修的是扫描器本身。
+
+`scripts/architecture-ledger.ts:493-507` 的块注释追踪器把 `core/clash/core.rs:51` 的 `/core/*` 当成块注释开始，而该文件没有 `*/`，于是 **52–480 行整段对 ledger 不可见**（F31）。
 
 **为什么必须最先做**：本阶段要删的正是这个文件的大部分。若 bug 不修，删除后的 ledger 差异会**比真实清理小**，`byKey` 对不上，无法用「差异恰好是这些」做判据——判据本身失效。
 
@@ -328,15 +330,15 @@ pnpm lint:architecture-ledger
 
 **ledger 最终预期（对着 S1 的实测基线算，逐项）：**
 
-| key                 | 变化                                                                                                                  | 来源     |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------- | -------- |
-| `service_globals`   | **−5**：`Logger::global()` −4（S3 删整个 `logger.rs` + 三个写入者随 S5 走）、`CoreManager::global()` −1（S5）         | S3 / S5  |
-| `config_calls`      | **−3**：`core/clash/core.rs` 内 `Config::verge()` −2、`Config::clash()` −1（随 S5 删除该文件的死面与 macOS DNS 迁出） | S4 / S5  |
-| `legacy_dto_refs`   | **−3**：`core/state.rs` 内三处 `IVerge`（S2 删该文件）                                                                | S2       |
-| `migration_markers` | **−2**：`feat.rs:416` 的 DNS marker（S4 迁走后消失）、`service/ipc.rs:126` 的 run-mode marker（S7′ 删轮询后消失）     | S4 / S7′ |
-| `test_real_dirs`    | **0**（硬门禁，必须仍为 0）                                                                                           | ——       |
+| key                 | 变化                                                                                                                                                                | 来源          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| `service_globals`   | **−5**：`Logger::global()` −4（S3 删整个 `logger.rs` + 三个写入者随 S5 走）、`CoreManager::global()` −1（S5）                                                       | S3 / S5       |
+| `config_calls`      | **−3**：`core/clash/core.rs` 内 `Config::verge()` −2、`Config::clash()` −1（随 S5 删除该文件的死面与 macOS DNS 迁出）                                               | S4 / S5       |
+| `legacy_dto_refs`   | **−3**：`core/state.rs` 内三处 `IVerge`（S2 删该文件）                                                                                                              | S2            |
+| `migration_markers` | **−1**（净）：`feat.rs:416` 的 DNS marker −1（S4 迁走）、`service/ipc.rs:126` 的 run-mode marker −1（S7′ 删轮询）、**`get_clash_logs` 的兼容注记 +1**（见下方定夺） | S3 / S4 / S7′ |
+| `test_real_dirs`    | **0**（硬门禁，必须仍为 0）                                                                                                                                         | ——            |
 
-> **待定一项**：D1=A 后 `get_clash_logs` 内留的兼容注记**若写成 `TODO(actor-migration)` 会让 `migration_markers` +1**。**实施时二选一并在 PR 描述说明**：写成 marker（则最终预期为 −1）或写成普通注释（则 −2）。**不许实施时随手决定却不更新预期**——那会让「差异恰好是这些」当场失效。
+> **该项已定（不再留到实施时）**：D1=A 后 `get_clash_logs` 内的兼容注记**写成 `TODO(actor-migration)`**，因此 `migration_markers` 的净变化是 **−1**（`feat.rs:416` 与 `service/ipc.rs:126` 各 −1，新增 1）。**理由**：该命令在 D1=A 之后是「存在、恒返回空、去向待 PR-6/7 决定」——**这正是 marker 计数要表达的真实迁移欠账**。把它写成普通注释能让数字好看 −2，但那是**用少记欠账换指标**，与卡上「不以 `CoreManager::global() == 0` 作为硬指标」是同一种毛病。
 
 **最后一步**：逐项核对无误后 `pnpm architecture-ledger --write-snapshot`，**并把该 snapshot 变更单独成 commit**（与代码删除分开，便于回滚与归因）。
 

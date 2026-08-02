@@ -152,6 +152,7 @@
 | F42  | promote 是**先写后验**：`restore_product` 写入产物后才读回比对哈希（`core.rs:421` 写、`:422-427` 验）。因此「产物已是新值、Promoted 仍是旧值」的分裂窗口**今天的代码里就存在**，不是 5b 引入的（NH3 的根因之一）                                                                                                                                                                                                                                                                                                                           | `client/core.rs:405-428`                                                                                                                                         |
 | F43  | **`CoreActorError` 今天只有四个变体** `StaleOperation` / `NoBackend` / `Backend` / `ShuttingDown`——**没有任何不变量类变体**。因此 v4 的「豁免 (b) 靠类型区分」在代码里**没有落点**：实施者要么挪用 `StaleOperation`（语义是守卫身份不符，不是单调性），要么裹进 `Backend`（把 bug 伪装成后端故障）——两条路都退回 NH2 刚消灭的字符串嗅探（NH4 的根因）                                                                                                                                                                                      | `core/actor/types.rs:59-70`                                                                                                                                      |
 | F44  | **`map_apply_outcome` 这个名字已被占用**：`backend.rs:536` 的既有函数做的是 **manager `ApplyOutcome` → `CoreApplyData`**（Local 侧 wire DTO 转换），有 3 处引用（`:358` 生产、`:975`/`:986` 测试）。C3 要新增的函数方向**相反**（`CoreApplyData` → `RuntimeApplyOutcome`）却同名、且在相邻模块（NH9 的根因）                                                                                                                                                                                                                               | `core/actor/backend.rs:536`、`:358`、`:975`、`:986`                                                                                                              |
+| F45  | 今天的实现里 **check/晋升 与 发布本来就是分离的两段**：`check_and_promote` 在 `mod.rs:1678-1680` 完成并 `?` 出错误，`publish_promoted` 在 `:1685` **独立调用**。v5 的 D3 那句「`check_and_promote` **内部**发 `PublishPromoted`」是全文唯一与此矛盾的措辞（H2 的根因）                                                                                                                                                                                                                                                                     | `client/mod.rs:1678-1685`                                                                                                                                        |
 
 ---
 
@@ -337,7 +338,7 @@ B1 要求「CoreClient 通过 watch 暴露 lifecycle」。
 
 `apply_candidate`（F9）今天只被 `restore_applied_after_patch_failure` 使用，而后者随 B3 删除。
 
-- **裁定 A：一并删除** `apply_candidate`，`CoreLifecycleLease` 收敛到 4 个方法（`check_and_promote` / `apply_promoted` / `restart` / `stop`）。注意 C2 之后 lease 的 `check_and_promote` **名字与文件工作都留在 client 侧**，变的只是它内部改发 `PublishPromoted` 而非旧的簿记调用；`restart` 因 F26 的两类残余调用者而**保留**（见 D5）。理由：删掉唯一调用者后 `apply_candidate` 就是死代码。
+- **裁定 A：一并删除** `apply_candidate`，`CoreLifecycleLease` 收敛到 4 个方法（`check_and_promote` / `apply_promoted` / `restart` / `stop`）。C2 之后 lease 的 `check_and_promote` **名字与文件工作都留在 client 侧**，且它**不发 `PublishPromoted`**——发布是编排层紧随其后的**独立一段**（H2；今天的实现本就如此，F45）。`restart` 因 F26 的两类残余调用者而**保留**（见 D5）。理由：删掉唯一调用者后 `apply_candidate` 就是死代码。
 - **选项 B（未采纳）**：保留备用。违反「不留无调用者的抽象」。
 
 ### D4 — `change_core` 的 wire 变化幅度 —— **裁定 A**
@@ -821,6 +822,15 @@ pub(crate) struct CheckAndPromoteError {
 //   async fn check_and_promote(..) -> Result<[u8; 32], CheckAndPromoteError>;
 // 相位由 adapter 内的构造位置打标签——它确切知道自己停在哪一步；
 // 编排层按 phase 查 A.6 的 code，不做字符串嗅探。只要两个相位。
+//
+// **边界（H2，硬约束）**：本类型**只覆盖 check 与文件工作**（建 candidate、比对哈希、
+// 原子晋升产物）。它**永不承载 CoreActorError**——`PublishPromoted` 是编排层紧随其后
+// 的独立一段，把**裸 CoreActorError** 交回，由编排层直接套 §2.3 的 matches! 规则。
+//
+// 为什么必须分开：§2.3 声明「任何 CheckAndPromoteError 永不豁免」。若把发布塞进本类型，
+// ShuttingDown / StaleOperation / LifecycleInvariant(_) 就只剩三条路——裹成 Promote 被
+// 错误降级、靠 anyhow downcast（违反机械规则）、或另行逃逸（违反措辞）。三条都是击穿：
+// 方向与「真实失败被当成豁免」相反，是**真豁免被当成运行时失败**。
 ```
 
 ### A.2 新增消息（三条，全部守卫消息）

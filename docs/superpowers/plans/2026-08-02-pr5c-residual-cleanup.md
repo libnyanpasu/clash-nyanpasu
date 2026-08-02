@@ -85,16 +85,18 @@
 
 ### 1.4 C4 —— residual 与 ledger
 
-| ID  | 事实                                                                                                                                                                                                                                                                          | 锚点                                                              |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| F25 | **`attach_core_port` 不存在**——全仓零命中。C4 该项是 **no-op**                                                                                                                                                                                                                | 全仓 grep                                                         |
-| F26 | Updater 的 core 耦合**已经是收敛形态**：`CoreClient` 按调用传入（`update_core(&core_type, core)`），manager 本身不持有；唯一残留是 `client/mod.rs:562` 那行 `UpdaterManager::global()`                                                                                        | `core/updater/mod.rs:223`；`client/mod.rs:558-567`                |
-| F27 | **两个文件已完全失去调用者**：`core/manager.rs`（84 行，`grant_permission` / `escape` 均零调用）与 `core/state.rs`（233 行，`#![allow(dead_code)]`）                                                                                                                          | 见左 + `core/mod.rs:8,20`                                         |
-| F28 | `core/clash/core.rs`（481 行）**约 75% 已死**：`enum Instance` 及其整个 impl、`CoreManager.instance` 字段、`CoreManager::status`。**活的只有** `RunType`、`find_binary_path`、`change_default_network_dns`                                                                    | `core/clash/core.rs:80-368`、`:387-402`                           |
-| F29 | 删掉 `manager.rs` 与 `Instance` 后，`find_binary_path` 只剩**一个**活调用者 `utils/dirs.rs:345`；且 `setup.rs:90-103` 已有可注入的替代 `OsCoreBinaryResolver`                                                                                                                 | 见左                                                              |
-| F30 | ledger 现值：`config_calls` 102、`service_globals` 58、`migration_markers` 15、`legacy_dto_refs` 299、`test_real_dirs` 0；gate 当前为绿                                                                                                                                       | `scripts/architecture-ledger.snapshot.json`                       |
-| F31 | **ledger 有 bug：`core/clash/core.rs` 第 52 行起全部对 ledger 不可见。** 块注释追踪器在 `:51` 的 doc 注释里看到字面量 `/core/*` 就置 `inBlockComment = true`，而该文件**全文没有 `*/`**（实测 0 处）。后果：`Logger::global()` 实际 4 处只报 1 处、`config_calls` 少算约 3 处 | `scripts/architecture-ledger.ts:493-507`；`core/clash/core.rs:51` |
-| F32 | **该 bug 的损害限于这一个文件**：`inBlockComment` 声明在**逐文件处理函数体内**（`:485`），每个文件重新初始化为 `false`，**不跨文件泄漏**。因此修复范围就是这一处逻辑，**不需要扩大到全仓复查**                                                                                | `scripts/architecture-ledger.ts:485`                              |
+| ID  | 事实                                                                                                                                                                                                                                                                                                                                                           | 锚点                                                                   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| F25 | **`attach_core_port` 不存在**——全仓零命中。C4 该项是 **no-op**                                                                                                                                                                                                                                                                                                 | 全仓 grep                                                              |
+| F26 | Updater 的 core 耦合**已经是收敛形态**：`CoreClient` 按调用传入（`update_core(&core_type, core)`），manager 本身不持有；唯一残留是 `client/mod.rs:562` 那行 `UpdaterManager::global()`                                                                                                                                                                         | `core/updater/mod.rs:223`；`client/mod.rs:558-567`                     |
+| F27 | **两个文件已完全失去调用者**：`core/manager.rs`（84 行，`grant_permission` / `escape` 均零调用）与 `core/state.rs`（233 行，`#![allow(dead_code)]`）                                                                                                                                                                                                           | 见左 + `core/mod.rs:8,20`                                              |
+| F28 | `core/clash/core.rs`（481 行）**约 75% 已死**：`enum Instance` 及其整个 impl、`CoreManager.instance` 字段、`CoreManager::status`。**活的只有** `RunType`、`find_binary_path`、`change_default_network_dns`                                                                                                                                                     | `core/clash/core.rs:80-368`、`:387-402`                                |
+| F29 | 删掉 `manager.rs` 与 `Instance` 后，`find_binary_path` 只剩**一个**活调用者 `utils/dirs.rs:345`；且 `setup.rs:90-103` 已有可注入的替代 `OsCoreBinaryResolver`                                                                                                                                                                                                  | 见左                                                                   |
+| F30 | ledger 现值：`config_calls` 102、`service_globals` 58、`migration_markers` 15、`legacy_dto_refs` 299、`test_real_dirs` 0；gate 当前为绿                                                                                                                                                                                                                        | `scripts/architecture-ledger.snapshot.json`                            |
+| F31 | **ledger 有 bug：`core/clash/core.rs` 第 52 行起全部对 ledger 不可见。** 块注释追踪器在 `:51` 的 doc 注释里看到字面量 `/core/*` 就置 `inBlockComment = true`，而该文件**全文没有 `*/`**（实测 0 处）。后果：`Logger::global()` 实际 4 处只报 1 处、`config_calls` 少算约 3 处                                                                                  | `scripts/architecture-ledger.ts:493-507`；`core/clash/core.rs:51`      |
+| F32 | **该 bug 的损害限于这一个文件**：`inBlockComment` 声明在**逐文件处理函数体内**（`:485`），每个文件重新初始化为 `false`，**不跨文件泄漏**。因此修复范围就是这一处逻辑，**不需要扩大到全仓复查**                                                                                                                                                                 | `scripts/architecture-ledger.ts:485`                                   |
+| F33 | **CI 有 macOS runner 且会在 PR 上跑后端测试**：`ci.yml` 的 `test_unit` 作业矩阵含 `macos-latest`，触发条件是 `pull_request` 到 `main` / `dev` / `release-*`，执行 `pnpm test` → `run-p test:*` → `test:backend` = `cargo test --all-features`。因此 **`#[cfg(target_os = "macos")]` 门控的单测会在 CI 上真实运行**                                             | `.github/workflows/ci.yml:201-215,303-304`；`package.json:40,42`       |
+| F34 | **但没有任何作业能跑 smoke 3 本身**：全部 workflow 内只有一处测试调用（`ci.yml:304`），**没有任何作业启动应用**；而 TUN 需要签名的系统/网络扩展 + root，DNS 覆写路径还要经 `osascript` 提权（`client/system_dns.rs:41-49`）——GitHub 托管的 macOS runner **无法安装/批准网络扩展，也无法非交互提权**。`ci.yml:115` 自己留着 `TODO: support test cross-platform` | `.github/workflows/ci.yml`（全仓仅 `:304` 一处测试调用）；`ci.yml:115` |
 
 ---
 
@@ -139,20 +141,37 @@ DNS 覆写今天与 start/stop **完全无序**（F22），且**退出不恢复*
 
 **leader 裁定 A**，并**特别赞成「明写不覆盖强杀」**：RAII 在 SIGKILL / 任务管理器结束进程时根本不会运行，如实写明比假装覆盖全部退出路径诚实得多——与 5b 学到的「诚实降级比强行自洽好」是同一条。**覆盖强杀是独立的一件事**（启动时检测并清理残留覆写），**不在 5c 范围**，去向见 §10。
 
-### D4 —— smoke 3（macOS TUN/DNS）本机跑不了：两条路径，**不替用户选**
+### D4 —— smoke 3（macOS TUN/DNS）—— **用户裁定：路径乙（显式记为未本地验证）**
 
-Exit 要三个 smoke，其中 smoke 3 是 macOS 的 TUN 开关与 DNS 恢复，**本机是 Windows 11**。两条路径的**具体写法**如下，请用户择一：
+用户已裁路径乙。随之生效的硬前置是「**先核实 CI 是否真有能跑 TUN 的 macOS runner**」——**已核实，结论是分层的**：
 
-|               | **路径甲：找 mac 实机验**                                                                                                                                     | **路径乙：显式记为「未本地验证」移交 CI**                                                                                                                                                                     |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Exit 判据写法 | 「smoke 3 由 `<执行人>` 在 macOS `<版本>` 上执行，记录：TUN 开→`scutil --dns` 显示覆写生效；TUN 关→恢复原 DNS；应用退出→DNS 已恢复。三条截图或命令输出入 PR」 | 「smoke 3 **未在本地验证**（开发机为 Windows 11）。合并门改为：CI macOS runner 上跑 `<具体 job 名>`，断言 `<具体判据>`；**若 CI 无 macOS runner 或该 job 不存在，则本条降级为「已知未验证」并写入 PR 描述**」 |
-| 前置          | 需要一台能装本应用的 mac + 愿意跑的人                                                                                                                         | **需要先核实 CI 是否真有能跑 TUN 的 macOS runner**——不能假设                                                                                                                                                  |
-| 风险          | 人工步骤不可重复                                                                                                                                              | TUN 需要网络扩展权限，CI runner 未必给；若不给则本条实际等于「不验证」                                                                                                                                        |
-| 我的判断      | ——                                                                                                                                                            | **路径乙必须先做那次核实**，否则「移交 CI」会变成一句没有落点的话                                                                                                                                             |
+| 问题                    | 结论                           | 依据                                                                                                          |
+| ----------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| CI 有 macOS runner 吗？ | **有**，且会在 PR 上跑后端测试 | F33（`ci.yml` `test_unit` 矩阵含 `macos-latest`，`cargo test --all-features`）                                |
+| 它能跑 smoke 3 吗？     | **不能**                       | F34（全仓无任何作业启动应用；TUN 需签名网络扩展 + root，DNS 覆写还要 `osascript` 提权，托管 runner 都做不到） |
 
-**我不推荐哪一条**——这是用户对「合并前要多少验证」的偏好。但两条路径都要求：**smoke 3 的结论必须显式出现在 PR 描述里**，不允许沉默跳过。
+**因此按裁定的「若没有」分支处理：不写「移交 CI」，降级为「已知未验证风险」。** 但结论不是一句「没有 runner」——**CI 实际覆盖了一部分**，出口判据必须把覆盖面与未覆盖面分开写，否则会低估已有保障、也会模糊真实风险面。
 
-> smoke 2（Windows v1 daemon 升级到 v2 Service，拒绝升级时 fail-closed Local）**本机可跑但需真实服务环境**——它需要安装/卸载真实系统服务。S? 会给出具体步骤；若用户不愿在开发机装服务，同样适用上表的两条路径写法。
+#### smoke 3 的出口判据（照此写入 PR 描述）
+
+> **CI 覆盖的部分**：`#[cfg(target_os = "macos")]` 门控的 DNS guard 单测（T-DNS-01…04）**会在 CI 的 macOS runner 上真实编译并运行**（F33）——即 guard 的**建立/恢复顺序、失败降级**这些**逻辑**契约有自动化保障。
+>
+> **未验证的部分（已知风险，明确列出）**：以下**真实系统行为**未在任何环境验证——
+>
+> 1. 真实 TUN 开关是否按预期触发 DNS 覆写；
+> 2. 真实 `networksetup` / IPC `set_dns` 是否成功改写系统 DNS；
+> 3. 关闭 TUN 与正常退出应用后系统 DNS 是否**真的恢复**；
+> 4. Service 模式与 Local 模式两条 DNS 路径（F20）在真机上是否一致。
+>
+> **原因**：开发机为 Windows 11；CI 托管 macOS runner 无法安装/批准网络扩展、也无法非交互提权（F34）。
+>
+> **风险面**：DNS 覆写失败会导致 TUN 模式下解析异常；恢复失败会**在应用退出后仍留下被改写的系统 DNS**（该泄漏在 5c 之前就存在，见 F23，本阶段的 guard 缩小但不消除它——强杀路径仍不覆盖，兜底见 §10）。
+
+**共同硬要求**：**结论必须显式出现在 PR 描述里，不允许沉默跳过。**
+
+#### smoke 2（Windows v1 daemon 升级 → v2 Service；拒绝升级时 fail-closed Local）
+
+**本机可跑，因此不适用上面的降级路径——该跑就跑。** 它需要装/卸真实系统服务，步骤见 S8 的门禁清单之后。**若因环境原因当时跑不成，同样显式记录，不许默认通过。**
 
 ---
 

@@ -2,7 +2,7 @@ use crate::{
     bridge::verge::LegacyVergeBridge,
     client::{ClientError, NyanpasuClient},
     config::*,
-    core::{logger::Logger, storage::Storage, updater::ManifestVersionLatest, *},
+    core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat::{self, CopyEnvOption},
     utils::{candy, collect::EnvInfo, dirs, help, resolve},
@@ -522,7 +522,10 @@ pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result
 #[tauri::command]
 #[specta::specta]
 pub fn get_clash_logs() -> Result<VecDeque<String>> {
-    Ok(Logger::global().get_log())
+    // TODO(actor-migration): compatibility bridge for the legacy get_clash_logs command.
+    // Reason: its unreachable Logger data source was removed while the command wire remains stable.
+    // Remove when: PR-6/7 decides whether to replace or remove the command.
+    Ok(VecDeque::new())
 }
 
 #[tauri::command]

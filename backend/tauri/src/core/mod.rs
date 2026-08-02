@@ -4,7 +4,6 @@ pub mod connection_interruption;
 pub mod download;
 pub mod handle;
 pub mod hotkey;
-pub mod logger;
 pub mod pac;
 pub mod service;
 pub mod storage;

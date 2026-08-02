@@ -1,7 +1,6 @@
 use super::api;
 use crate::{
     config::{Config, nyanpasu::ClashCore},
-    core::logger::Logger,
     utils::dirs,
 };
 use anyhow::Result;
@@ -183,12 +182,10 @@ impl Instance {
                                             } else {
                                                 log::info!(target: "app", "[{core_type}]: {line}");
                                             }
-                                            Logger::global().set_log(line);
                                         }
                                         CommandEvent::Stderr(line) => {
                                             log::error!(target: "app", "[{core_type}]: {line}");
                                             err_buf.push(line.clone());
-                                            Logger::global().set_log(line);
                                         }
                                         CommandEvent::Error(e) => {
                                             log::error!(target: "app", "[{core_type}]: {e}");
@@ -197,7 +194,6 @@ impl Instance {
                                                 e,
                                                 err_buf.join("\n")
                                             ));
-                                            Logger::global().set_log(e);
                                             let _ = tx.send(Err(err)).await;
                                             stated_changed_at
                                                 .store(get_current_ts(), Ordering::Relaxed);

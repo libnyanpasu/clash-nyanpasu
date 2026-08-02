@@ -181,6 +181,7 @@
 | F49  | **停止态 `restart()` 的失败也是 `Backend(_)`**：`Run` 处理器是 `backend.run(&request).await.map_err(backend_error)`，而 `backend_error()` 把它包成 `CoreActorError::Backend`——与 apply 路径的失败**在类型上无法区分**（A.7 作用域漏洞的根因）                                                                                                                                                                                                                                                                                              | `core/actor/mod.rs:400`、`:297-299`                                                                                                                              |
 | F50  | **`start` / `stop` / `restart` 不带 `error_kind`**：submodule 明写它们「predate `error_kind` 并继续返回 `anyhow::Error`」，只有 S8 新增的那批操作才填充该字段；而 `error_kind` 缺失的语义是「**not classified**，never no error」。因此 Service 侧启核失败的 `error_kind` **恒为 `None`**，A.7 第 4 行会**确定性地**把它判成 `Other` → 行 7c——这不是概率问题                                                                                                                                                                               | `nyanpasu-runtime/.../manager_bridge.rs:47-52`；`nyanpasu_ipc/src/api/mod.rs:35-37`                                                                              |
 | F51  | **check 阶段本身就是一次 actor 调用**：`CoreClient::check` 返回 `Result<(), CoreActorError>`，而 `check_and_promote` 内部正是 `self.core.check(&self.guard, &request).await?`。所以 seam 的错误面**必然**会遇到 `CoreActorError`——v6 那句「`CheckAndPromoteError` 永不承载 `CoreActorError`」在 check 阶段不可能成立（H2 残留的根因）                                                                                                                                                                                                      | `client/core.rs:172-176`、`:408`                                                                                                                                 |
+| F52  | **`HttpStatus` 只在「回包不是格式良好的服务信封」时才产生**：客户端拿到非 2xx 后**先试着把 body 解成服务信封**，解得出且 `code != Ok` 走 `Server`；解不出才落 `HttpStatus`。即它意味着「对端根本没按本协议应答」                                                                                                                                                                                                                                                                                                                           | `nyanpasu_ipc/src/client/mod.rs:135-151`                                                                                                                         |
 
 ---
 
@@ -1009,14 +1010,24 @@ pub(crate) enum BackendFailureClass {
 pub(crate) fn classify_backend_failure(error: &CoreBackendError) -> BackendFailureClass;
 ```
 
-| 顺序 | 类                        | Local 判据（`CoreBackendError::Local`）                                             | Service 判据（`CoreBackendError::Service`）                                                                                   |
-| ---- | ------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `RevisionConflict` → 行 5 | `matches!(e, Error::RevisionConflict { .. })`（`error.rs:44`）                      | `Server { error_kind: Some(k), .. }` 且 `k == api::error_kind::REVISION_CONFLICT`（`api/mod.rs:45`）                          |
-| 2    | `NotRunning` → 行 7b      | `matches!(e, Error::NotStarted)`（`error.rs:11`；**它是 `Err` 不是 outcome**，F47） | 同上，`k == api::error_kind::NOT_STARTED`（`api/mod.rs:40`）                                                                  |
-| 3    | `TransportLost` → 行 6a   | **无类型化谓词——照实说明，见下**                                                    | `ClientError` 除 `Server` 外的**其余六支**（`BuildClient` / `Request` / `HttpStatus` / `Decode` / `EmptyData` / `WebSocket`） |
-| 4    | `Other` → 行 7c           | 其余 `Error` 变体                                                                   | `Server` 带其它/缺失 `error_kind`；**以及 `#[non_exhaustive]` 的未来新变体**                                                  |
+| 顺序 | 类                        | Local 判据（`CoreBackendError::Local`）                                             | Service 判据（`CoreBackendError::Service`）                                                                                               |
+| ---- | ------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `RevisionConflict` → 行 5 | `matches!(e, Error::RevisionConflict { .. })`（`error.rs:44`）                      | `Server { error_kind: Some(k), .. }` 且 `k == api::error_kind::REVISION_CONFLICT`（`api/mod.rs:45`）                                      |
+| 2    | `NotRunning` → 行 7b      | `matches!(e, Error::NotStarted)`（`error.rs:11`；**它是 `Err` 不是 outcome**，F47） | 同上，`k == api::error_kind::NOT_STARTED`（`api/mod.rs:40`）                                                                              |
+| 3    | `TransportLost` → 行 6a   | **无类型化谓词——照实说明，见下**                                                    | **没拿到格式良好的服务信封**的三支：`BuildClient` / `Request` / `WebSocket`，**外加 `HttpStatus`**（F52：它恰恰意味着对端没按本协议应答） |
+| 4    | `Other` → 行 7c           | 其余 `Error` 变体                                                                   | **拿到了信封但载荷不可用**：`Decode` / `EmptyData`；`Server` 带其它或缺失 `error_kind`；**以及 `#[non_exhaustive]` 的未来新变体**         |
 
 `CoreBackendError::Binary` / `Construct` 一律归 `Other`（行 7c）。
+
+> **Service 侧的判别原则（一句话）：我们有没有拿到一个格式良好的服务信封？**
+>
+> - **没拿到** → `TransportLost`：`BuildClient`（连都没建起来）、`Request`（发不出去 / 收不回来）、`WebSocket`、**`HttpStatus`**；
+> - **拿到了，但这次操作的载荷不可用** → `Other`：`Decode`（信封 OK、typed 载荷解不了）、`EmptyData`（信封 OK、没带数据）；
+> - **拿到了且是服务端分类过的错误** → 按 `error_kind` 走第 1 / 2 顺位，否则 `Other`。
+>
+> **`Decode` / `EmptyData` 归 `Other` 是对 v6 的修正**：连接成功了、服务也应答了，只是回包内容用不了——把它叫「传输丢失」是错的。这一错源自最初把它们列进传输类的那份清单。
+>
+> **`HttpStatus` 我归 `TransportLost`，理由**：它的产生条件不是「收到一个回应」而是「**收到的回应不是本协议的信封**」——客户端会先试解信封，解得出的走 `Server`，解不出才落 `HttpStatus`（F52）。所以它实际指向「请求没到达一个能按协议作答的服务」——反向代理挡了、端口错了、服务还没起监听——这更接近链路问题而非 apply 失败。**两行行为完全相同**（retryable=true、report=`NotApplied`），差别只在 degradation 的 code 字符串，即只影响诊断精度：调试者看到 `core_transport_lost` 会去查链路，看到 `runtime_apply_failed` 会去查配置，而前者才是对的方向。
 
 > **第 4 行的 `error_kind: None` 读作「未分类」而不是「无错误」**（`api/mod.rs:35-37` 原文「Absent means "not classified", never "no error"」）。所以在 **apply 路径内**把未分类归 7c 是对的；但正因为「未分类」这个集合同时装着生命周期那批失败（F50），**作用域声明是必需的**——否则 7c 会把启核失败一并吞掉。
 

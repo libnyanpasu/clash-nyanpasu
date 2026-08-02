@@ -1098,12 +1098,12 @@ pub(crate) enum BackendFailureClass {
 pub(crate) fn classify_apply_backend_failure(error: &CoreBackendError) -> BackendFailureClass;
 ```
 
-| 顺序 | 类                        | Local 判据（`CoreBackendError::Local`）                                             | Service 判据（`CoreBackendError::Service`）                                                                                               |
-| ---- | ------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `RevisionConflict` → 行 5 | `matches!(e, Error::RevisionConflict { .. })`（`error.rs:44`）                      | `Server { error_kind: Some(k), .. }` 且 `k == api::error_kind::REVISION_CONFLICT`（`api/mod.rs:45`）                                      |
-| 2    | `NotRunning` → 行 7b      | `matches!(e, Error::NotStarted)`（`error.rs:11`；**它是 `Err` 不是 outcome**，F47） | 同上，`k == api::error_kind::NOT_STARTED`（`api/mod.rs:40`）                                                                              |
-| 3    | `TransportLost` → 行 6a   | **无类型化谓词——照实说明，见下**                                                    | **没拿到格式良好的服务信封**的三支：`BuildClient` / `Request` / `WebSocket`，**外加 `HttpStatus`**（F52：它恰恰意味着对端没按本协议应答） |
-| 4    | `Other` → 行 7c           | 其余 `Error` 变体                                                                   | **拿到了信封但载荷不可用**：`Decode` / `EmptyData`；`Server` 带其它或缺失 `error_kind`；**以及 `#[non_exhaustive]` 的未来新变体**         |
+| 顺序 | 类                        | Local 判据（`CoreBackendError::Local`）                                             | Service 判据（`CoreBackendError::Service`）                                                           |
+| ---- | ------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 1    | `RevisionConflict` → 行 5 | `matches!(e, Error::RevisionConflict { .. })`（`error.rs:44`）                      | `Server { error_kind: Some(k), .. }` 且 `k == api::error_kind::REVISION_CONFLICT`（`api/mod.rs:45`）  |
+| 2    | `NotRunning` → 行 7b      | `matches!(e, Error::NotStarted)`（`error.rs:11`；**它是 `Err` 不是 outcome**，F47） | 同上，`k == api::error_kind::NOT_STARTED`（`api/mod.rs:40`）                                          |
+| 3    | `TransportLost` → 行 6a   | **本地管理器无此类——照实说明，见下**                                                | `BuildClient` / `Request` / `WebSocket` / `HttpStatus`                                                |
+| 4    | `Other` → 行 7c           | 其余 `Error` 变体                                                                   | `Decode` / `EmptyData`；`Server` 带其它或缺失 `error_kind`；**以及 `#[non_exhaustive]` 的未来新变体** |
 
 `CoreBackendError::Binary` / `Construct` 一律归 `Other`（行 7c）。
 

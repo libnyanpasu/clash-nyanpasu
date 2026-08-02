@@ -94,7 +94,7 @@ pub fn runtime_snapshot_data_from_artifact(
     profiles: &Profiles,
     core: ClashCore,
     builtin_enabled: bool,
-) -> anyhow::Result<crate::client::runtime::RuntimeSnapshotData> {
+) -> anyhow::Result<crate::core::actor::runtime::RuntimeSnapshotData> {
     let value = serde_yaml::to_value(&*artifact.final_config)
         .context("failed to serialize final config")?;
     let config: Mapping = value
@@ -110,7 +110,7 @@ pub fn runtime_snapshot_data_from_artifact(
     } else {
         Vec::new()
     };
-    Ok(crate::client::runtime::RuntimeSnapshotData {
+    Ok(crate::core::actor::runtime::RuntimeSnapshotData {
         config,
         exists_keys,
         postprocessing_output: map_postprocessing(&artifact.step_logs, profiles, &builtin_names),

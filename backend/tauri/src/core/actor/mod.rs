@@ -25,6 +25,7 @@ pub(crate) mod backend;
 mod error_kind;
 mod gate;
 pub(crate) mod request;
+pub(crate) mod runtime;
 pub(crate) mod types;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

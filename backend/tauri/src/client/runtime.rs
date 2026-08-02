@@ -5,32 +5,22 @@
 use std::{
     fs::OpenOptions,
     io::Write,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, SystemTime},
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
-use nyanpasu_config::application::ClashCore;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
 
-use crate::{enhance::PostProcessingOutput, utils::path::PathResolver};
+use crate::{
+    core::actor::runtime::{RuntimeRevision, RuntimeSnapshot},
+    utils::path::PathResolver,
+};
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RuntimeRevision(u64);
-
-impl RuntimeRevision {
-    pub fn get(self) -> u64 {
-        self.0
-    }
-}
 
 pub(crate) struct RuntimeRevisionAllocator(AtomicU64);
 
@@ -51,73 +41,22 @@ impl RuntimeRevisionAllocator {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RuntimeSnapshotData {
-    pub config: Mapping,
-    pub exists_keys: Vec<String>,
-    pub postprocessing_output: PostProcessingOutput,
-}
-
-#[derive(Debug, Clone)]
-pub struct RuntimeSnapshot {
-    pub revision: RuntimeRevision,
-    pub target_core: ClashCore,
-    pub product_sha256: [u8; 32],
-    product_bytes: Arc<[u8]>,
-    pub config: Mapping,
-    pub exists_keys: Vec<String>,
-    pub postprocessing_output: PostProcessingOutput,
-}
-
-impl RuntimeSnapshot {
-    pub(crate) fn from_data(
-        revision: RuntimeRevision,
-        target_core: ClashCore,
-        product_bytes: Arc<[u8]>,
-        data: RuntimeSnapshotData,
-    ) -> Self {
-        let product_sha256 = Sha256::digest(&product_bytes).into();
-        Self {
-            revision,
-            target_core,
-            product_sha256,
-            product_bytes,
-            config: data.config,
-            exists_keys: data.exists_keys,
-            postprocessing_output: data.postprocessing_output,
-        }
-    }
-
-    pub(crate) fn product_bytes(&self) -> &[u8] {
-        &self.product_bytes
-    }
-
-    pub(crate) fn identity_eq(&self, other: &Self) -> bool {
-        self.revision == other.revision
-            && self.target_core == other.target_core
-            && self.product_sha256 == other.product_sha256
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct RuntimeLifecycleState {
-    pub promoted: Option<Arc<RuntimeSnapshot>>,
-    pub applied: Option<Arc<RuntimeSnapshot>>,
-}
-
-#[derive(Debug, Clone)]
 pub struct RuntimeTransactionSnapshot {
     pub product: Option<Vec<u8>>,
-    pub lifecycle: RuntimeLifecycleState,
+    pub lifecycle: crate::core::actor::runtime::RuntimeLifecycleState,
 }
 
 /// Facade-held runtime lifecycle store. It is instance-owned and non-persistent:
 /// writers are serialized by `rebuild_gate`, while runtime IPC reads clone the
 /// Promoted snapshot. With no subscribers, a plain RwLock keeps lifecycle writes
 /// infallible after product promotion or a successful core apply/restart.
-pub type RuntimeLifecycleStore = tokio::sync::RwLock<RuntimeLifecycleState>;
+pub type RuntimeLifecycleStore =
+    tokio::sync::RwLock<crate::core::actor::runtime::RuntimeLifecycleState>;
 
 pub async fn new_runtime_lifecycle_store() -> anyhow::Result<RuntimeLifecycleStore> {
-    Ok(tokio::sync::RwLock::new(RuntimeLifecycleState::default()))
+    Ok(tokio::sync::RwLock::new(
+        crate::core::actor::runtime::RuntimeLifecycleState::default(),
+    ))
 }
 
 /// Compensation for an API-first patch is planned from the last successfully
@@ -473,6 +412,11 @@ pub enum DegradationPhase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    use nyanpasu_config::application::ClashCore;
+
+    use crate::{core::actor::runtime::RuntimeSnapshotData, enhance::PostProcessingOutput};
 
     #[test]
     fn runtime_revision_allocator_is_monotonic() {

@@ -16,6 +16,7 @@ mod system_dns;
 pub(crate) use self::application::ApplicationClient;
 use self::{clash_config::ClashConfigClient, session_state::SessionStateClient};
 use crate::{
+    core::actor::runtime as core_runtime,
     enhance::{
         EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
         runtime_snapshot_data_from_artifact,
@@ -1331,15 +1332,15 @@ impl NyanpasuClient {
         self.inner.ports.cached_ports()
     }
 
-    pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
+    pub async fn promoted_runtime(&self) -> Option<Arc<core_runtime::RuntimeSnapshot>> {
         self.inner.runtime.read().await.promoted.clone()
     }
 
-    pub(crate) async fn runtime_lifecycle_state(&self) -> runtime::RuntimeLifecycleState {
+    pub(crate) async fn runtime_lifecycle_state(&self) -> core_runtime::RuntimeLifecycleState {
         self.inner.runtime.read().await.clone()
     }
 
-    async fn publish_promoted(&self, snapshot: Arc<runtime::RuntimeSnapshot>) -> Result<()> {
+    async fn publish_promoted(&self, snapshot: Arc<core_runtime::RuntimeSnapshot>) -> Result<()> {
         let mut lifecycle = self.inner.runtime.write().await;
         if lifecycle
             .promoted
@@ -1356,7 +1357,7 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    async fn publish_applied(&self, snapshot: Arc<runtime::RuntimeSnapshot>) -> Result<()> {
+    async fn publish_applied(&self, snapshot: Arc<core_runtime::RuntimeSnapshot>) -> Result<()> {
         let mut lifecycle = self.inner.runtime.write().await;
         let Some(promoted) = lifecycle.promoted.as_ref() else {
             return Err(ClientError::Custom(
@@ -1375,7 +1376,7 @@ impl NyanpasuClient {
 
     async fn restore_promoted(
         &self,
-        promoted: Option<Arc<runtime::RuntimeSnapshot>>,
+        promoted: Option<Arc<core_runtime::RuntimeSnapshot>>,
     ) -> Result<()> {
         self.inner.runtime.write().await.promoted = promoted;
         Ok(())
@@ -1387,7 +1388,7 @@ impl NyanpasuClient {
 
     pub(crate) async fn promote_existing_runtime_product(
         &self,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<core_runtime::RuntimeSnapshot>> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
         let revision = self
             .inner
@@ -1400,11 +1401,11 @@ impl NyanpasuClient {
         let config: serde_yaml::Mapping =
             serde_yaml::from_slice(&bytes).map_err(ClientError::SerdeYaml)?;
         let app = self.get_app_config().await?;
-        let snapshot = Arc::new(runtime::RuntimeSnapshot::from_data(
+        let snapshot = Arc::new(core_runtime::RuntimeSnapshot::from_data(
             revision,
             app.core,
             Arc::from(bytes.clone()),
-            runtime::RuntimeSnapshotData {
+            core_runtime::RuntimeSnapshotData {
                 exists_keys: config
                     .keys()
                     .filter_map(serde_yaml::Value::as_str)
@@ -1445,10 +1446,10 @@ impl NyanpasuClient {
     async fn restore_applied_after_patch_failure(
         &self,
         lease: &mut dyn CoreLifecycleLease,
-        captured: runtime::RuntimeLifecycleState,
+        captured: core_runtime::RuntimeLifecycleState,
         compensation: runtime::PatchCompensationPlan,
         primary: String,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> anyhow::Result<Arc<core_runtime::RuntimeSnapshot>> {
         let current_applied = self.inner.runtime.read().await.applied.clone();
         let expected_revision = compensation.expected_applied_revision();
         if !compensation.fence_matches(current_applied.as_deref()) {
@@ -1597,7 +1598,7 @@ impl NyanpasuClient {
     async fn regenerate_runtime_inner(
         &self,
         lease: &mut dyn CoreLifecycleLease,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<core_runtime::RuntimeSnapshot>> {
         let revision = self
             .inner
             .runtime_revisions
@@ -1613,11 +1614,11 @@ impl NyanpasuClient {
     async fn regenerate_runtime_with(
         &self,
         lease: &mut dyn CoreLifecycleLease,
-        revision: runtime::RuntimeRevision,
+        revision: core_runtime::RuntimeRevision,
         profiles: Arc<Profiles>,
         clash: ClashConfig,
         app: NyanpasuAppConfig,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<core_runtime::RuntimeSnapshot>> {
         let resolved_ports = self
             .inner
             .ports
@@ -1627,7 +1628,7 @@ impl NyanpasuClient {
         let core = app.core;
         let builtin_enabled = app.enable_builtin_enhanced;
         let (data, yaml) = tokio::task::spawn_blocking(
-            move || -> anyhow::Result<(runtime::RuntimeSnapshotData, String)> {
+            move || -> anyhow::Result<(core_runtime::RuntimeSnapshotData, String)> {
                 let content = FsProfileContentSource::new(profiles_dir);
                 let scripts = EnhanceScriptRunner::new()?;
                 let input = RuntimeBuildInput {
@@ -1654,7 +1655,7 @@ impl NyanpasuClient {
         .map_err(|error| ClientError::Custom(format!("runtime build task failed: {error}")))?
         .map_err(ClientError::Anyhow)?;
         let product_bytes: Arc<[u8]> = Arc::from(yaml.into_bytes());
-        let snapshot = Arc::new(runtime::RuntimeSnapshot::from_data(
+        let snapshot = Arc::new(core_runtime::RuntimeSnapshot::from_data(
             revision,
             core,
             product_bytes.clone(),
@@ -3113,7 +3114,7 @@ mod tests {
     fn compensation_snapshot(
         client: &NyanpasuClient,
         config: serde_yaml::Mapping,
-    ) -> Arc<runtime::RuntimeSnapshot> {
+    ) -> Arc<core_runtime::RuntimeSnapshot> {
         let product_bytes = serde_yaml::to_string(&config).unwrap().into_bytes();
         compensation_snapshot_with_bytes(client, config, product_bytes)
     }
@@ -3122,15 +3123,15 @@ mod tests {
         client: &NyanpasuClient,
         config: serde_yaml::Mapping,
         product_bytes: Vec<u8>,
-    ) -> Arc<runtime::RuntimeSnapshot> {
+    ) -> Arc<core_runtime::RuntimeSnapshot> {
         let revision = tauri::async_runtime::block_on(async {
             client.inner.runtime_revisions.allocate().unwrap()
         });
-        Arc::new(runtime::RuntimeSnapshot::from_data(
+        Arc::new(core_runtime::RuntimeSnapshot::from_data(
             revision,
             nyanpasu_config::application::ClashCore::default(),
             Arc::from(product_bytes),
-            runtime::RuntimeSnapshotData {
+            core_runtime::RuntimeSnapshotData {
                 exists_keys: config
                     .keys()
                     .filter_map(serde_yaml::Value::as_str)
@@ -3163,7 +3164,7 @@ mod tests {
         std::fs::create_dir_all(client.runtime_product_path().parent().unwrap()).unwrap();
         std::fs::write(client.runtime_product_path(), p2_bytes).unwrap();
         tauri::async_runtime::block_on(async {
-            *client.inner.runtime.write().await = runtime::RuntimeLifecycleState {
+            *client.inner.runtime.write().await = core_runtime::RuntimeLifecycleState {
                 promoted: Some(promoted.clone()),
                 applied: Some(applied.clone()),
             };
@@ -3175,7 +3176,7 @@ mod tests {
             plan.ops(),
             [runtime::PatchCompensationOp::Remove { .. }]
         ));
-        let captured = runtime::RuntimeLifecycleState {
+        let captured = core_runtime::RuntimeLifecycleState {
             promoted: Some(promoted.clone()),
             applied: Some(applied.clone()),
         };
@@ -3226,7 +3227,7 @@ mod tests {
         std::fs::create_dir_all(client.runtime_product_path().parent().unwrap()).unwrap();
         std::fs::write(client.runtime_product_path(), p3_bytes).unwrap();
         tauri::async_runtime::block_on(async {
-            *client.inner.runtime.write().await = runtime::RuntimeLifecycleState {
+            *client.inner.runtime.write().await = core_runtime::RuntimeLifecycleState {
                 promoted: Some(current_promoted.clone()),
                 applied: Some(applied.clone()),
             };
@@ -3237,7 +3238,7 @@ mod tests {
         let mut lease = CompensationLease::default();
         let result = tauri::async_runtime::block_on(client.restore_applied_after_patch_failure(
             &mut lease,
-            runtime::RuntimeLifecycleState {
+            core_runtime::RuntimeLifecycleState {
                 promoted: Some(captured_promoted),
                 applied: Some(applied.clone()),
             },
@@ -3275,7 +3276,7 @@ mod tests {
         let mut lease = CompensationLease::default();
         let result = tauri::async_runtime::block_on(client.restore_applied_after_patch_failure(
             &mut lease,
-            runtime::RuntimeLifecycleState {
+            core_runtime::RuntimeLifecycleState {
                 promoted: Some(applied.clone()),
                 applied: Some(applied),
             },
@@ -3313,7 +3314,7 @@ mod tests {
                     client
                         .restore_applied_after_patch_failure(
                             &mut lease,
-                            runtime::RuntimeLifecycleState {
+                            core_runtime::RuntimeLifecycleState {
                                 promoted: Some(applied.clone()),
                                 applied: Some(applied),
                             },
@@ -3361,7 +3362,7 @@ mod tests {
         let mut lease = CompensationLease::default();
         let _ = tauri::async_runtime::block_on(client.restore_applied_after_patch_failure(
             &mut lease,
-            runtime::RuntimeLifecycleState {
+            core_runtime::RuntimeLifecycleState {
                 promoted: Some(applied.clone()),
                 applied: Some(applied.clone()),
             },

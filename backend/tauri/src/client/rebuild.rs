@@ -239,7 +239,7 @@ impl NyanpasuClient {
     pub(super) async fn regenerate_for_legacy_inner(
         &self,
         lease: &mut dyn crate::client::CoreLifecycleLease,
-    ) -> Result<std::sync::Arc<crate::client::runtime::RuntimeSnapshot>> {
+    ) -> Result<std::sync::Arc<crate::core::actor::runtime::RuntimeSnapshot>> {
         let revision = self
             .inner
             .runtime_revisions
@@ -420,11 +420,11 @@ impl NyanpasuClient {
                 .map_err(|error| ClientError::Custom(format!("serialize default: {error}")))?
         );
         let product_bytes: Arc<[u8]> = Arc::from(yaml.into_bytes());
-        let snapshot = Arc::new(crate::client::runtime::RuntimeSnapshot::from_data(
+        let snapshot = Arc::new(crate::core::actor::runtime::RuntimeSnapshot::from_data(
             revision,
             app.core,
             product_bytes.clone(),
-            crate::client::runtime::RuntimeSnapshotData {
+            crate::core::actor::runtime::RuntimeSnapshotData {
                 exists_keys: mapping
                     .keys()
                     .filter_map(serde_yaml::Value::as_str)

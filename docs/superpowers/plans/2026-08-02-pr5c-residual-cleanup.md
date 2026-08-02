@@ -199,7 +199,22 @@ DNS 覆写今天与 start/stop **完全无序**（F22），且**退出不恢复*
 
 **改法**：`inBlockComment` 每文件重置（`:485`），并让块注释检测跳过**行注释内**的 `/*`。
 
-**验证：** 修好后先跑一次 `pnpm architecture-ledger`，记录**真实基线**（预期 `service_globals` 58→61、`config_calls` 102→约 105）；这个新基线才是后续删除的比较基准。**本步单独成 commit 且单独更新一次 snapshot**，与后续删除的 delta 分开。
+**验证（两段式，**先实测再比对**）：**
+
+**第一段——立基线。** 修好后跑 `pnpm architecture-ledger`，**实测**新基线。预期修正如下（**精确值，我逐项数过被隐藏的行**）：
+
+| key                                  | 修正前  | 修正后         | 分解                                                                               |
+| ------------------------------------ | ------- | -------------- | ---------------------------------------------------------------------------------- |
+| `config_calls`                       | 102     | **105**        | `Config::verge()` 76→**78**（`core.rs` 藏 2）；`Config::clash()` 26→**27**（藏 1） |
+| `service_globals`                    | 58      | **61**         | `Logger::global()` 1→**4**（`core.rs` 藏 3）                                       |
+| `migration_markers`                  | 15      | **15**（不变） | 被隐藏区内 marker 数为 **0**                                                       |
+| `legacy_dto_refs` / `test_real_dirs` | 299 / 0 | **不变**       | 被隐藏区内为 0                                                                     |
+
+`candy.rs` 被隐藏的 13–143 行内，上述四类**全为 0**，**不参与基线修正**（F32b）。
+
+**若实测与上表不符，停下核查**——要么我的计数错了，要么修法漏了一处，两者都必须先弄清再往下走。
+
+**第二段——立判据。** 以**实测所得**的新基线（而非上表预期）为后续删除的比较基准，并**在本步单独 `--write-snapshot` 一次**。此后 S2–S7 的每一步删除都对着这个基线算差异。
 
 ### S2 — C4：删两个完全死掉的文件
 
@@ -260,9 +275,55 @@ pnpm architecture-ledger
 pnpm lint:architecture-ledger
 ```
 
-**ledger 预期**：以 **S1 修好后的新基线**为准（不是 F30 的 102/58/15）。`service_globals` 预期下降 `Logger`(4) + `CoreManager`(1)；`config_calls` 预期下降 `core/clash/core.rs` 内那几处；`test_real_dirs` **必须仍为 0**。
+**ledger 最终预期（对着 S1 的实测基线算，逐项）：**
+
+| key                 | 变化                                                                                                                  | 来源     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- | -------- |
+| `service_globals`   | **−5**：`Logger::global()` −4（S3 删整个 `logger.rs` + 三个写入者随 S5 走）、`CoreManager::global()` −1（S5）         | S3 / S5  |
+| `config_calls`      | **−3**：`core/clash/core.rs` 内 `Config::verge()` −2、`Config::clash()` −1（随 S5 删除该文件的死面与 macOS DNS 迁出） | S4 / S5  |
+| `legacy_dto_refs`   | **−3**：`core/state.rs` 内三处 `IVerge`（S2 删该文件）                                                                | S2       |
+| `migration_markers` | **−2**：`feat.rs:416` 的 DNS marker（S4 迁走后消失）、`service/ipc.rs:126` 的 run-mode marker（S7′ 删轮询后消失）     | S4 / S7′ |
+| `test_real_dirs`    | **0**（硬门禁，必须仍为 0）                                                                                           | ——       |
+
+> **待定一项**：D1=A 后 `get_clash_logs` 内留的兼容注记**若写成 `TODO(actor-migration)` 会让 `migration_markers` +1**。**实施时二选一并在 PR 描述说明**：写成 marker（则最终预期为 −1）或写成普通注释（则 −2）。**不许实施时随手决定却不更新预期**——那会让「差异恰好是这些」当场失效。
+
+**最后一步**：逐项核对无误后 `pnpm architecture-ledger --write-snapshot`，**并把该 snapshot 变更单独成 commit**（与代码删除分开，便于回滚与归因）。
 
 **bindings 预期**：按 D1 裁定——A 则**零变化**，B 则少一个 `getClashLogs`。
+
+---
+
+#### S8.2 —— 三项 smoke 门禁（**计划里必须有，v1/v2 都漏了**）
+
+对抗审点出：`plan:175-177` 说 smoke 2 的说明在 S8 之后，**但根本不存在**；S8 里 smoke 1、smoke 2、具名的 fixed-port 集成测试**三样都没有**。风险很实在——**C2 迁移不完整会正好打断 smoke 2，而上面列的 `rg` 门禁全会绿**。
+
+**smoke 1 —— Local 模式：patch / restart / core-switch rollback**
+
+| 步骤                                                  | 判据                                                                                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 关闭服务模式，确认 `core_status().run_type == Normal` | 状态面显示 Local                                                                               |
+| 改一项 clash 配置（如 `allow_lan`）并保存             | 配置生效；`MutationOutcome::Applied`；无 degradation                                           |
+| 手动重启核                                            | 核重新起来，Applied revision 推进                                                              |
+| 切核到不存在的二进制（人为制造失败）                  | 返回 `CommittedDegraded`；**desired = 新核、Applied = 旧值**（B4 的 rollback 语义，5b 已实现） |
+
+**smoke 2 —— Windows v1 daemon 自动升级到 v2 Service；拒绝升级时 fail-closed Local**
+
+**本机可跑（Windows 11），不适用 D4 的降级路径。** 需要装/卸真实系统服务，**须管理员权限**。
+
+| 步骤                                                     | 判据                                                                                   |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 装上 **v1** daemon，启用服务模式，启动应用               | 兼容门判定不通过 → **fail-closed 到 Local**；日志出现 `service daemon is incompatible` |
+| 应用触发自动升级（`init/mod.rs:238-259` 的版本比较路径） | `update_service()` 被调用；**升级后经 B.1.2 第 7 项的 probe 发现 v2**                  |
+| 升级完成后观察模式                                       | `run_type` 变为 `Service`；核在 Service 后端上运行                                     |
+| **拒绝升级**（手动跳过或让升级失败）                     | **仍停在 Local**，不得回退成「以为是 Service 却连不上」                                |
+
+> **这条最容易被 C2 打断**：第 2 步依赖「update 之后有人 probe」，而今天靠的是轮询。**若 S7′ 删了轮询而 B.1.2 第 7 项没接上，本条会挂而所有 `rg` 门禁全绿**——这正是「先建后删」和「九处点名」存在的理由。
+
+**smoke 3 —— macOS TUN/DNS**：见 §2 D4，**未在本地验证且不可由 CI 覆盖**，按那里的措辞写入 PR 描述与发布说明。
+
+**fixed-port 占用 —— 自动化集成测试，不单独手工 smoke**（卡上明令）。**须在 S8 里具名**：`pnpm test:backend` 中覆盖该场景的测试名，实施时填入并确认它真的跑到。
+
+> **三项 smoke 的共同要求**：**逐项在 PR 描述里给出结论**（通过 / 未通过 / 未执行及原因）。**不许沉默跳过**——smoke 2 若因无管理员权限或不愿在开发机装服务而没跑，**显式记录为「未执行」**，不得默认通过。
 
 ---
 

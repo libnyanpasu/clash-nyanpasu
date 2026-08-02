@@ -57,7 +57,6 @@ struct TestBackendState {
     shutdown_calls: std::sync::atomic::AtomicUsize,
     fail_observe: std::sync::atomic::AtomicBool,
     fail_run: std::sync::atomic::AtomicBool,
-    fail_run_action: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
     fail_replace: std::sync::atomic::AtomicBool,
     run_barrier: std::sync::Mutex<Option<TestRunBarrier>>,
 }
@@ -119,7 +118,6 @@ impl TestBackend {
                 shutdown_calls: std::sync::atomic::AtomicUsize::new(0),
                 fail_observe: std::sync::atomic::AtomicBool::new(false),
                 fail_run: std::sync::atomic::AtomicBool::new(false),
-                fail_run_action: std::sync::Mutex::new(None),
                 fail_replace: std::sync::atomic::AtomicBool::new(false),
                 run_barrier: std::sync::Mutex::new(None),
             }),
@@ -150,11 +148,6 @@ impl TestBackend {
         self.state
             .fail_run
             .store(true, std::sync::atomic::Ordering::Release);
-    }
-
-    pub(crate) fn fail_next_run_with(&self, action: impl FnOnce() + Send + 'static) {
-        *self.state.fail_run_action.lock().unwrap() = Some(Box::new(action));
-        self.fail_next_run();
     }
 
     pub(crate) fn fail_next_replace(&self) {
@@ -311,9 +304,6 @@ impl CoreBackend {
                     .fail_run
                     .swap(false, std::sync::atomic::Ordering::AcqRel)
                 {
-                    if let Some(action) = test.state.fail_run_action.lock().unwrap().take() {
-                        action();
-                    }
                     return Err(CoreBackendError::Construct(anyhow::anyhow!(
                         "scripted run failure"
                     )));

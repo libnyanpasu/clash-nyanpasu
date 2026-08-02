@@ -9,10 +9,7 @@ use std::{
 use anyhow::Context as _;
 use async_trait::async_trait;
 use nyanpasu_config::application::ClashCore;
-use nyanpasu_ipc::api::{
-    core::apply::{ApplyOutcomeKind, CoreApplyData},
-    status::RevisionIdInfo,
-};
+use nyanpasu_ipc::api::{core::apply::CoreApplyData, status::RevisionIdInfo};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::watch;
 
@@ -206,22 +203,6 @@ impl CoreClient {
         snapshot: Arc<RuntimeSnapshot>,
     ) -> Result<(), CoreActorError> {
         self.call(|reply| CoreActorMessage::PublishApplied {
-            operation: operation.id(),
-            snapshot,
-            reply,
-        })
-        .await
-    }
-
-    // TODO(actor-migration): compatibility bridge for the pre-B4 deep rollback.
-    // Reason: lifecycle ownership moves before the mandated change_core deletion commit.
-    // Remove when: commit 7 removes the deep rollback path.
-    pub(crate) async fn restore_promoted(
-        &self,
-        operation: &CoreOperationGuard,
-        snapshot: Option<Arc<RuntimeSnapshot>>,
-    ) -> Result<(), CoreActorError> {
-        self.call(|reply| CoreActorMessage::RestorePromoted {
             operation: operation.id(),
             snapshot,
             reply,
@@ -543,14 +524,10 @@ impl CoreLifecycleLease for CoreLeaseAdapter {
         self.core.publish_applied(&self.guard, snapshot).await
     }
 
-    // TODO(actor-migration): compatibility bridge for the pre-B4 deep rollback.
-    // Reason: lifecycle ownership moves before the mandated change_core deletion commit.
-    // Remove when: commit 7 removes the deep rollback path.
-    async fn restore_promoted(
+    async fn running_identity(
         &mut self,
-        snapshot: Option<Arc<RuntimeSnapshot>>,
-    ) -> Result<(), CoreActorError> {
-        self.core.restore_promoted(&self.guard, snapshot).await
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError> {
+        self.core.running(&self.guard).await
     }
 
     async fn apply_promoted(
@@ -633,7 +610,10 @@ mod tests {
     };
 
     use camino::Utf8PathBuf;
-    use nyanpasu_ipc::api::status::{ConfigRevisionInfo, CoreState};
+    use nyanpasu_ipc::api::{
+        core::apply::ApplyOutcomeKind,
+        status::{ConfigRevisionInfo, CoreState},
+    };
     use nyanpasu_utils::core::{ClashCoreType, CoreType};
     use tempfile::TempDir;
 
@@ -1436,7 +1416,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_target_restart_falls_back_to_the_rollback_core() {
+    async fn restart_consumes_transaction_target_once_then_uses_typed_core() {
         let test = test_client(stopped(None)).await;
         let application =
             crate::client::tests::test_application_client(&test._dir, ClashCore::Mihomo).await;
@@ -1457,22 +1437,18 @@ mod tests {
             )
             .await
             .unwrap();
-        test.backend.fail_next_run();
-        assert!(lease.restart().await.is_err());
-        lease
-            .check_and_promote(
-                &candidate,
-                ClashCore::Mihomo,
-                test.requests.runtime_paths().product(),
-            )
-            .await
-            .unwrap();
-        test.backend.set_observation(running(2));
+        lease.restart().await.unwrap();
         lease.restart().await.unwrap();
         drop(lease);
 
+        let requests = test.backend.run_requests();
+        assert_eq!(requests.len(), 2);
         assert_eq!(
-            running_request(&test.client).await.core_type,
+            requests[0].core_type,
+            CoreType::Clash(ClashCoreType::ClashRust)
+        );
+        assert_eq!(
+            requests[1].core_type,
             CoreType::Clash(ClashCoreType::Mihomo)
         );
     }

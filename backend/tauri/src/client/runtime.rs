@@ -38,12 +38,6 @@ impl RuntimeRevisionAllocator {
 }
 
 #[derive(Debug, Clone)]
-pub struct RuntimeTransactionSnapshot {
-    pub product: Option<Vec<u8>>,
-    pub lifecycle: crate::core::actor::runtime::RuntimeLifecycleState,
-}
-
-#[derive(Debug, Clone)]
 pub struct RuntimePaths {
     product: Utf8PathBuf,
     candidate_dir: Utf8PathBuf,

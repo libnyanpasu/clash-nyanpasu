@@ -11,7 +11,7 @@ use camino::Utf8Path;
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_ipc::api::{core::apply::CoreApplyData, status::CoreState};
 
-use crate::core::actor::types::CoreActorError;
+use crate::core::actor::types::{CoreActorError, CoreRequest, FaithfulLifecycle};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CheckAndPromoteFailure {
@@ -86,15 +86,9 @@ pub trait CoreLifecycleLease: Send {
     ) -> Result<(), crate::core::actor::types::CoreActorError> {
         Ok(())
     }
-    // TODO(actor-migration): compatibility bridge for the pre-B4 deep rollback.
-    // Reason: lifecycle ownership moves before the mandated change_core deletion commit.
-    // Remove when: commit 7 removes the deep rollback path.
-    async fn restore_promoted(
+    async fn running_identity(
         &mut self,
-        _snapshot: Option<Arc<crate::core::actor::runtime::RuntimeSnapshot>>,
-    ) -> Result<(), crate::core::actor::types::CoreActorError> {
-        Ok(())
-    }
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError>;
     async fn apply_promoted(
         &mut self,
         snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
@@ -176,12 +170,10 @@ impl CoreLifecycleLease for ActorBackedTestCoreLifecycleLease {
         self.core.publish_applied(&self.operation, snapshot).await
     }
 
-    async fn restore_promoted(
+    async fn running_identity(
         &mut self,
-        snapshot: Option<Arc<crate::core::actor::runtime::RuntimeSnapshot>>,
-    ) -> Result<(), crate::core::actor::types::CoreActorError> {
-        self.inner.restore_promoted(snapshot.clone()).await?;
-        self.core.restore_promoted(&self.operation, snapshot).await
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError> {
+        self.core.running(&self.operation).await
     }
 
     async fn apply_promoted(

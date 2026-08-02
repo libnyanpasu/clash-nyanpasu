@@ -104,15 +104,6 @@ pub(crate) enum CoreActorMessage {
         snapshot: Arc<RuntimeSnapshot>,
         reply: RpcReplyPort<Result<(), CoreActorError>>,
     },
-    // TODO(actor-migration): compatibility bridge for the pre-B4 deep rollback.
-    // Reason: the required commit split moves lifecycle ownership before deleting change_core's
-    // rollback path, whose regression tests must remain until that deletion surface is removed.
-    // Remove when: commit 7 makes change_core a commit-first mutation.
-    RestorePromoted {
-        operation: OperationId,
-        snapshot: Option<Arc<RuntimeSnapshot>>,
-        reply: RpcReplyPort<Result<(), CoreActorError>>,
-    },
     Run {
         operation: OperationId,
         request: CoreRequest,
@@ -504,17 +495,6 @@ impl Actor for CoreActor {
                 let result = state
                     .validate_operation(operation)
                     .and_then(|()| state.publish_applied(snapshot));
-                let _ = reply.send(result);
-            }
-            CoreActorMessage::RestorePromoted {
-                operation,
-                snapshot,
-                reply,
-            } => {
-                let result = state.validate_operation(operation).map(|()| {
-                    state.lifecycle.promoted = snapshot;
-                    state.lifecycle_tx.send_replace(state.lifecycle.clone());
-                });
                 let _ = reply.send(result);
             }
             CoreActorMessage::Run {

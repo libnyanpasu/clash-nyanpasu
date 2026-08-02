@@ -51,7 +51,6 @@ use nyanpasu_config::{
     runtime::executor::ResolvedPortBindings,
     state::{PersistentState, PersistentStatePatch},
 };
-use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
@@ -1613,12 +1612,7 @@ impl NyanpasuClient {
             self.clone(),
             patch,
             move |_restart| async move {
-                client
-                    .inner
-                    .clash_config
-                    .patch(desired)
-                    .await
-                    .map_err(anyhow::Error::from)?;
+                client.inner.clash_config.patch(desired).await?;
                 let (report, degradations) = client.rebuild_pipeline_with_lease(&mut *lease).await;
                 Ok(runtime::MutationOutcome::from_parts(
                     report.map_err(anyhow::Error::from)?,
@@ -1834,6 +1828,7 @@ mod tests {
         },
         state::window::{WindowLabel, WindowState},
     };
+    use sha2::{Digest, Sha256};
     use std::{
         collections::BTreeMap,
         sync::{
@@ -1965,6 +1960,18 @@ mod tests {
                 ))
             })?;
             Ok(core_bridge::test_apply_data(&snapshot))
+        }
+
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
         }
 
         async fn restart(&mut self) -> anyhow::Result<()> {
@@ -2101,6 +2108,18 @@ mod tests {
             Ok(core_bridge::test_apply_data(&snapshot))
         }
 
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
+        }
+
         async fn restart(&mut self) -> anyhow::Result<()> {
             Ok(())
         }
@@ -2206,6 +2225,18 @@ mod tests {
             Ok(core_bridge::test_apply_data(&snapshot))
         }
 
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
+        }
+
         async fn restart(&mut self) -> anyhow::Result<()> {
             Ok(())
         }
@@ -2276,6 +2307,18 @@ mod tests {
                 ))
             })?;
             Ok(core_bridge::test_apply_data(&snapshot))
+        }
+
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
         }
 
         async fn restart(&mut self) -> anyhow::Result<()> {
@@ -2700,19 +2743,39 @@ mod tests {
         )
     }
 
-    fn facade_backend() -> crate::core::actor::backend::TestBackend {
-        crate::core::actor::backend::TestBackend::new(
-            crate::core::actor::types::BackendObservation {
-                view: crate::core::actor::types::CoreStatusView {
-                    state: nyanpasu_ipc::api::status::CoreState::Running,
-                    state_changed_at: 1,
-                    run_type: crate::core::RunType::Normal,
-                    revision: None,
-                    recovery_exhausted: false,
-                },
-                lifecycle: crate::core::actor::types::FaithfulLifecycle::Running,
+    fn facade_observation(
+        lifecycle: crate::core::actor::types::FaithfulLifecycle,
+    ) -> crate::core::actor::types::BackendObservation {
+        let state = match lifecycle {
+            crate::core::actor::types::FaithfulLifecycle::Stopped { ref reason } => {
+                nyanpasu_ipc::api::status::CoreState::Stopped(reason.clone())
+            }
+            crate::core::actor::types::FaithfulLifecycle::Starting
+            | crate::core::actor::types::FaithfulLifecycle::Restarting => {
+                nyanpasu_ipc::api::status::CoreState::Stopped(None)
+            }
+            crate::core::actor::types::FaithfulLifecycle::Running
+            | crate::core::actor::types::FaithfulLifecycle::Switching
+            | crate::core::actor::types::FaithfulLifecycle::Stopping => {
+                nyanpasu_ipc::api::status::CoreState::Running
+            }
+        };
+        crate::core::actor::types::BackendObservation {
+            view: crate::core::actor::types::CoreStatusView {
+                state,
+                state_changed_at: 1,
+                run_type: crate::core::RunType::Normal,
+                revision: None,
+                recovery_exhausted: false,
             },
-        )
+            lifecycle,
+        }
+    }
+
+    fn facade_backend() -> crate::core::actor::backend::TestBackend {
+        crate::core::actor::backend::TestBackend::new(facade_observation(
+            crate::core::actor::types::FaithfulLifecycle::Running,
+        ))
     }
 
     #[tokio::test]
@@ -3649,6 +3712,376 @@ mod tests {
         assert_eq!(outcome.degradations().len(), 1);
         assert_eq!(outcome.degradations()[0].phase, phase);
         assert_eq!(outcome.degradations()[0].code, code);
+    }
+
+    fn scripted_apply(
+        outcome: nyanpasu_ipc::api::core::apply::ApplyOutcomeKind,
+        generation: u64,
+    ) -> nyanpasu_ipc::api::core::apply::CoreApplyData {
+        nyanpasu_ipc::api::core::apply::CoreApplyData {
+            outcome,
+            revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                epoch: 1,
+                generation,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            warning: None,
+            failed_apply: None,
+        }
+    }
+
+    #[test]
+    fn change_core_acquire_failure_does_not_commit_desired_core() {
+        struct BeginFailureCore;
+
+        #[async_trait]
+        impl CoreLifecyclePort for BeginFailureCore {
+            async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+                anyhow::bail!("scripted acquire timeout")
+            }
+
+            async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+                anyhow::bail!("status is not used")
+            }
+
+            async fn on_profile_change(&self) {}
+        }
+
+        let dir = tempdir().unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            Arc::new(BeginFailureCore),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let before = client.get_app_config().await.unwrap().core;
+            let error = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .unwrap_err();
+
+            assert!(error.to_string().contains("acquire timeout"));
+            assert_eq!(client.get_app_config().await.unwrap().core, before);
+        });
+    }
+
+    #[tokio::test]
+    async fn change_core_build_failure_commits_desired_and_reports_not_applied() {
+        let dir = tempdir().unwrap();
+        let client =
+            actor_backed_test_client(&dir, facade_backend(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        let uid = client
+            .add_profile(minimal_file_profile_request(), Some("proxies: [".into()))
+            .await
+            .unwrap()
+            .into_value();
+        let activation = client.activate_profile(Some(uid)).await.unwrap();
+        assert!(matches!(
+            activation,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            client.get_app_config().await.unwrap().core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        assert_not_applied_degradation(
+            &outcome,
+            0,
+            runtime::DegradationPhase::RuntimeBuild,
+            "runtime_build_failed",
+        );
+    }
+
+    #[test]
+    fn change_core_check_failure_commits_desired_without_promoting() {
+        let dir = tempdir().unwrap();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote()
+            .once()
+            .returning(|_, _| Err(anyhow::anyhow!("scripted change-core check failure")));
+        let client =
+            NyanpasuClient::try_new_with_args(test_profiles_client_args(&dir, Arc::new(core)))
+                .unwrap();
+        tauri::async_runtime::block_on(async {
+            let outcome = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                client.get_app_config().await.unwrap().core,
+                nyanpasu_config::application::ClashCore::ClashRs
+            );
+            assert_not_applied_degradation(
+                &outcome,
+                0,
+                runtime::DegradationPhase::RuntimeCheck,
+                "runtime_check_failed",
+            );
+            assert!(client.inner.core_client.lifecycle().promoted.is_none());
+        });
+    }
+
+    #[tokio::test]
+    async fn change_core_transport_loss_is_committed_degraded_and_preserves_applied() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        let old_applied = seed_active_runtime(&client).await;
+        let ipc = nyanpasu_ipc::client::Client::new("change-core-transport-test").unwrap();
+        for _ in 0..5 {
+            let source = ipc.http_client().get("::::").build().unwrap_err();
+            backend.push_apply_result(Err(crate::core::actor::backend::CoreBackendError::Service(
+                nyanpasu_ipc::client::ClientError::Request {
+                    operation: "apply",
+                    source,
+                },
+            )));
+        }
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert_not_applied_degradation(
+            &outcome,
+            old_applied.revision.get(),
+            runtime::DegradationPhase::RuntimeApply,
+            "core_transport_lost",
+        );
+        assert_eq!(
+            client.get_app_config().await.unwrap().core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        assert!(lifecycle.applied.unwrap().identity_eq(&old_applied));
+        assert!(lifecycle.promoted.unwrap().revision > old_applied.revision);
+    }
+
+    #[tokio::test]
+    async fn change_core_rolled_back_keeps_old_applied_without_application_rollback() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        let old_applied = seed_active_runtime(&client).await;
+        backend.push_apply_result(Ok(scripted_apply(
+            nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::RolledBack,
+            old_applied.revision.get(),
+        )));
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            outcome,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::RolledBack
+        );
+        assert_eq!(
+            outcome.value().applied_revision,
+            Some(old_applied.revision.get())
+        );
+        assert_eq!(outcome.degradations()[0].code, "core_rollback");
+        assert_eq!(
+            client.get_app_config().await.unwrap().core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.unwrap();
+        let applied = lifecycle.applied.unwrap();
+        assert_eq!(
+            promoted.target_core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        assert!(promoted.revision > old_applied.revision);
+        assert!(applied.identity_eq(&old_applied));
+    }
+
+    #[tokio::test]
+    async fn change_core_running_switches_via_apply_without_restart() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        seed_active_runtime(&client).await;
+        client.restart_core().await.unwrap();
+        let prior_runs = backend.run_calls();
+        let prior_applies = backend.apply_calls();
+        backend.push_apply_result(Ok(scripted_apply(
+            nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::Switched,
+            2,
+        )));
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, runtime::MutationOutcome::Applied { .. }));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::Switched
+        );
+        assert_eq!(backend.run_calls(), prior_runs);
+        assert_eq!(backend.apply_calls(), prior_applies + 1);
+        let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.unwrap();
+        let applied = lifecycle.applied.unwrap();
+        assert!(applied.identity_eq(&promoted));
+        assert_eq!(
+            promoted.target_core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        assert_eq!(
+            outcome.value().applied_revision,
+            Some(promoted.revision.get())
+        );
+    }
+
+    #[tokio::test]
+    async fn change_core_stopped_starts_promoted_core_once() {
+        let dir = tempdir().unwrap();
+        let backend = crate::core::actor::backend::TestBackend::new(facade_observation(
+            crate::core::actor::types::FaithfulLifecycle::Stopped { reason: None },
+        ));
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, runtime::MutationOutcome::Applied { .. }));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::Started
+        );
+        assert_eq!(backend.apply_calls(), 0);
+        assert_eq!(backend.run_calls(), 1);
+        assert_eq!(
+            backend.run_requests()[0].core_type,
+            nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::ClashRust)
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.unwrap();
+        let applied = lifecycle.applied.unwrap();
+        assert!(applied.identity_eq(&promoted));
+        assert_eq!(
+            outcome.value().applied_revision,
+            Some(promoted.revision.get())
+        );
+    }
+
+    #[tokio::test]
+    async fn change_core_stopped_start_failure_is_committed_degraded() {
+        let dir = tempdir().unwrap();
+        let backend = crate::core::actor::backend::TestBackend::new(facade_observation(
+            crate::core::actor::types::FaithfulLifecycle::Stopped { reason: None },
+        ));
+        backend.fail_next_run();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            outcome,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::NotApplied
+        );
+        assert_eq!(outcome.value().applied_revision, None);
+        assert!(outcome.value().desired_revision > 0);
+        assert_eq!(outcome.degradations().len(), 1);
+        assert_eq!(
+            outcome.degradations()[0].phase,
+            runtime::DegradationPhase::CoreLifecycle
+        );
+        assert_eq!(outcome.degradations()[0].code, "core_start_failed");
+        assert_eq!(
+            client.get_app_config().await.unwrap().core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        assert_eq!(
+            lifecycle.promoted.unwrap().target_core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        assert!(lifecycle.applied.is_none());
+    }
+
+    #[tokio::test]
+    async fn change_core_uses_faithful_lifecycle_for_attach_and_transition_states() {
+        use crate::core::actor::types::FaithfulLifecycle;
+
+        let cases = [
+            (FaithfulLifecycle::Running, true),
+            (FaithfulLifecycle::Starting, true),
+            (FaithfulLifecycle::Restarting, true),
+            (FaithfulLifecycle::Stopping, false),
+        ];
+        for (lifecycle, should_apply) in cases {
+            let dir = tempdir().unwrap();
+            let backend =
+                crate::core::actor::backend::TestBackend::new(facade_observation(lifecycle));
+            if should_apply {
+                backend.push_apply_result(Ok(scripted_apply(
+                    nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::Switched,
+                    1,
+                )));
+            }
+            let client =
+                actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                    .await;
+
+            let outcome = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .unwrap();
+
+            if should_apply {
+                assert_eq!(backend.apply_calls(), 1);
+                assert_eq!(backend.run_calls(), 0);
+                assert_eq!(
+                    outcome.value().outcome,
+                    runtime::RuntimeApplyOutcome::Switched
+                );
+            } else {
+                assert_eq!(backend.apply_calls(), 0);
+                assert_eq!(backend.run_calls(), 1);
+                assert_eq!(
+                    outcome.value().outcome,
+                    runtime::RuntimeApplyOutcome::Started
+                );
+            }
+        }
     }
 
     #[test]

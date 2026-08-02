@@ -30,6 +30,7 @@ use super::{
     },
     runtime::{CandidateFile, RuntimePaths},
 };
+use crate::core::actor::types::{CoreRequest, FaithfulLifecycle};
 
 const READY_OR_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const CHILD_DRAIN_TIMEOUT: Duration = Duration::from_secs(3);
@@ -312,6 +313,19 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
                 ))
             })?;
         Ok(super::core_bridge::test_apply_data(&snapshot))
+    }
+
+    async fn running_identity(
+        &mut self,
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), crate::core::actor::types::CoreActorError>
+    {
+        reap_if_exited(&mut self.state);
+        let lifecycle = if self.state.child.is_some() {
+            FaithfulLifecycle::Running
+        } else {
+            FaithfulLifecycle::Stopped { reason: None }
+        };
+        Ok((None, lifecycle))
     }
 
     async fn restart(&mut self) -> anyhow::Result<()> {
@@ -1204,134 +1218,6 @@ mod tests {
 
             client_a.shutdown().await;
             client_b.shutdown().await;
-        });
-    }
-
-    /// Process-level `change_core` failure + successful old-core rollback.
-    ///
-    /// Uses a start-exit queue so new-core restart fails and rollback old-core
-    /// restart long-runs. Touches legacy Config globals via `change_core`
-    /// (PR-5 residual); run under `--test-threads=1` with the rest of the
-    /// process matrix. Does not re-enumerate every mock branch.
-    #[test]
-    fn s09_process_change_core_new_start_exit_rollback_old_restart_succeeds() {
-        let env = ProcessTestEnv::new().expect("process env");
-        // Seed a real product so restart never invents a placeholder.
-        tauri::async_runtime::block_on(seed_product(
-            &env.adapter,
-            b"# s09-change-core-seed\nmode: rule\n",
-        ));
-
-        let mut start_exit_queue = VecDeque::new();
-        // New-core restart fails immediately; rollback old-core restart runs.
-        start_exit_queue.push_back(Some(3));
-        start_exit_queue.push_back(None);
-        env.adapter.set_policy(ProcessCorePolicy {
-            start_exit_queue,
-            hold_port: Some(0),
-            http_port: Some(0),
-            apply_status: Some(204),
-            ..Default::default()
-        });
-        let client = env.client().expect("client");
-
-        tauri::async_runtime::block_on(async {
-            // Explicit promote so product/promoted are established before switch.
-            let seeded = client
-                .promote_existing_runtime_product()
-                .await
-                .expect("seed promote");
-            assert!(
-                env.adapter
-                    .runtime_paths()
-                    .product()
-                    .as_std_path()
-                    .is_file(),
-                "product must exist after promote"
-            );
-
-            let selected_before = crate::config::Config::verge()
-                .latest()
-                .clash_core
-                .unwrap_or_default();
-            assert_ne!(
-                selected_before,
-                crate::config::nyanpasu::ClashCore::ClashRs,
-                "baseline selected core must not already be the target"
-            );
-
-            let err = client
-                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
-                .await
-                .expect_err("new-core start-exit must surface");
-            let rendered = format!("{err:?}");
-            assert!(
-                rendered.contains("start failed")
-                    || rendered.contains("immediate exit")
-                    || rendered.contains("exit"),
-                "unexpected change_core error: {rendered}"
-            );
-
-            let after = client.inner.core_client.lifecycle();
-            let promoted = after
-                .promoted
-                .expect("rollback must leave Promoted published");
-            let applied = after
-                .applied
-                .expect("successful old restart must publish Applied");
-            assert!(
-                promoted.identity_eq(&applied),
-                "Applied must match Promoted after successful rollback restart"
-            );
-            assert_ne!(
-                promoted.target_core,
-                ClashCore::ClashRs,
-                "rollback rebuild must target the restored old selected core"
-            );
-            // Seeded promote may be superseded by the rollback rebuild product;
-            // product bytes must still exist and selected core restored.
-            assert!(
-                env.adapter
-                    .runtime_paths()
-                    .product()
-                    .as_std_path()
-                    .is_file(),
-                "product must remain after rollback"
-            );
-            let selected_after = crate::config::Config::verge()
-                .latest()
-                .clash_core
-                .unwrap_or_default();
-            assert_eq!(
-                selected_after, selected_before,
-                "selected core must restore via draft discard"
-            );
-            let _ = seeded;
-
-            let snap = env.adapter.process_snapshot().await;
-            assert!(
-                snap.pid.is_some(),
-                "old-core child must be running after rollback restart"
-            );
-            assert!(
-                snap.hold_port.is_some(),
-                "hold port announced after rollback"
-            );
-            assert!(
-                snap.http_port.is_some(),
-                "http port announced after rollback"
-            );
-
-            {
-                let mut lease = env.adapter.begin().await.unwrap();
-                lease.stop().await.expect("cleanup stop");
-            }
-            let cleaned = env.adapter.process_snapshot().await;
-            assert!(cleaned.pid.is_none(), "child cleaned after stop");
-            assert!(cleaned.hold_port.is_none());
-            assert!(cleaned.http_port.is_none());
-
-            client.shutdown().await;
         });
     }
 

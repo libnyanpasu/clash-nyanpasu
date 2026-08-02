@@ -419,3 +419,170 @@ pub async fn set_mode(&self, mode: RunType) -> Result<()>;        // 内部转 s
 pub async fn reconcile_mode(&self) -> Result<()>;                 // 内部转 CoreModeReconciler
 // install / update / uninstall —— **不迁入 actor**（卡上明令），保持独立 controller
 ```
+
+---
+
+## 附录 B —— C2 / C3 的设计（第一批：先审设计，细节随后）
+
+> 本附录回应对抗审的六条 C2/C3 BLOCKING。原则：**先建后删**——替代物立起来之前不删任何活的生产者。
+
+### B.0 两条新查实的事实（决定设计形状）
+
+| ID  | 事实                                                                                                                                                                                                                        | 锚点                                               |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| F35 | **`IPC_STATE` 初值是 `Disconnected`**，而 bootstrap 在任何 health check 之前就读它。所以**今天 bootstrap 恒判为 `Normal`**，真实模式靠第一次轮询**异步纠正**——「删轮询」等于删掉这个纠正机制                                | `service/ipc.rs:28`；`client/mod.rs:303-306`       |
+| F36 | **一次性探针的两半今天都已存在**：`control::status()`（子进程 `SERVICE_PATH status --json`）+ **纯函数** `target_ipc_state(&info) -> (IpcState, ServiceCompat)`（fail-closed 兼容门）。`health_check` 就是「这两半 + 循环」 | `control.rs:351-376`；`ipc.rs:131-138`、`:103-124` |
+
+> F36 是好消息：**探针不需要发明**，只需把 `health_check` 的循环剥掉、把那两半提成可注入的端口。兼容门（fail-closed，只有 daemon 在跑**且**通过 `ServiceCompat` 才允许 `Connected`）**原样保留**，这是 PR-5-pre 的成果，不重做。
+
+---
+
+### B.1 C2 —— 服务状态探针与调用点
+
+#### B.1.1 探针（一次性、经兼容门控、可注入）
+
+```rust
+// core/service/probe.rs（新）
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub(crate) trait ServiceProbe: Send + Sync + 'static {
+    /// 一次性查询。失败按 fail-closed 处理为 Disconnected（与今天 health_check 的
+    /// Err 分支同语义），并把错误交给调用方决定是否记 degradation。
+    async fn probe(&self) -> (IpcState, ServiceCompat, Option<anyhow::Error>);
+}
+
+pub(crate) struct OsServiceProbe;   // 调 control::status() + target_ipc_state()
+```
+
+**为什么是 trait 而不是自由函数**：①**bootstrap 需要它，而那时 `CoreClient` 还不存在**（F35）——探针必须能独立于 actor 图构造；②测试要能脚本化「daemon 在跑但不兼容」这类分支，而真实实现要起子进程；③它是本阶段唯一的新注入点，与 `ServiceControlOps` 同层同形。
+
+**`target_ipc_state` 与 `ServiceCompat` 一行不改**——它们是 PR-5-pre 已审的 fail-closed 门，探针只是它们的宿主。
+
+#### B.1.2 必须调用它的位置（逐一点名，无遗漏）
+
+| #   | 位置                                                 | 今天怎么拿模式                                  | 改为                                                           |
+| --- | ---------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| 1   | **bootstrap**（`client/mod.rs:303`）                 | `get_ipc_state()`（**恒 `Disconnected`**，F35） | `probe()` 一次，用真值 classify——**顺带修掉 F35 那个既有缺陷** |
+| 2   | **install 之后**（`control.rs:101` 原 spawn 处）     | 轮询异步发现                                    | `probe()` + reconcile                                          |
+| 3   | **start 之后**（`:229`）                             | 轮询                                            | 同上                                                           |
+| 4   | **restart 之后**（`:324`）                           | 轮询                                            | 同上                                                           |
+| 5   | **stop 之后**                                        | 轮询                                            | 同上（`stop_service` 已调 reconcile，改为先 probe）            |
+| 6   | **uninstall 之后**                                   | 轮询                                            | 同上——**今天缺**（§7 ② 已裁定 uninstall 走 facade）            |
+| 7   | **update 之后**（`init/mod.rs:251`）                 | 轮询（v1→v2 升级后靠它发现 v2）                 | `probe()` + reconcile——**这条直接关系 smoke 2**                |
+| 8   | **`enable_service_mode` 配置变更后**                 | 轮询 + reconcile（但见 B.1.3 的洞）             | `probe()` + reconcile                                          |
+| 9   | **boot 的 `init_service`**（`service/mod.rs:18-29`） | 起轮询线程 + 忙等 100 ms                        | 直接 `probe()` + reconcile，**删忙等**                         |
+
+#### B.1.3 修 reconciler 的 Service→Normal 缺口
+
+今天（`request.rs:82-85`）：
+
+```rust
+let app = self.application.get().await?.state;
+if !app.enable_service_mode { return Ok(()); }        // ← 关掉服务模式时直接返回
+let mode = RunType::classify(true, ipc_state);        // ← 因此这里硬编码 true
+```
+
+**后果**：用户关闭服务模式后，reconcile 什么都不做，**后端停留在 Service**——Service→Normal 这条路径today 走不通。
+
+**改法**：删掉提前返回，把 `enable_service` 真值送进 `classify`：
+
+```rust
+let mode = RunType::classify(app.enable_service_mode, ipc_state);
+// enable=false → 必得 Normal；enable=true 时仍由 ipc_state 与兼容门决定
+```
+
+`classify` 本身（`core.rs:52-58`）**不改**——它已经是纯函数且语义正确，缺的只是有人把 `false` 喂给它。
+
+#### B.1.4 步骤重排：**先建后删**
+
+原 S6（删 statics）→ S7（显式化 API）的顺序**倒了**。改为：
+
+- **S6′**：建探针 + 接上 B.1.2 的九处调用点 + 修 B.1.3 的缺口。**此步不删任何东西**，轮询线程仍在跑（双轨并行，行为等价）；
+- **S7′**：确认九处都走新路径后，**再**删轮询线程与三个 statics。
+
+这样任何一步单独回滚都不会留下「模式无人生产」的中间态。
+
+---
+
+### B.2 C3 —— DNS 适配器与恢复拆分
+
+#### B.2.1 适配器（macOS-only，注入式）
+
+```rust
+// core/actor/dns.rs —— 整个文件 #[cfg(target_os = "macos")]
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub(crate) trait MacosDnsPort: Send + Sync + 'static {
+    async fn read_current(&self, device: &str) -> anyhow::Result<Option<Vec<IpAddr>>>;
+    async fn set(&self, device: &str, dns: Option<Vec<IpAddr>>) -> anyhow::Result<()>;
+}
+
+pub(crate) struct LocalMacosDns;                       // nyanpasu_utils::network::macos
+pub(crate) struct ServiceMacosDns { client: .. };      // IPC set_dns（F21）
+```
+
+**这不违反 D3 的「非 macOS 不加空抽象」**：整个文件都在 `#[cfg(target_os = "macos")]` 下，**非 macOS 平台上这个 trait 根本不存在**——D3 禁的是「为了对称而在所有平台造一个空 port」。
+
+fake 必须**按序记录** `enable` / `restore` / 与后端动作的相对次序，供 T-DNS-01…04 断言**顺序**而不只是终态。
+
+#### B.2.2 数据从哪来：**不扩 `CoreRequest`**
+
+`CoreRequest`（`types.rs:10-17`）是 run/check/apply 三条路共用的、**全平台**的进程描述；往里塞 macOS-only 的 TUN 开关与 TUN IP 会污染两条与 DNS 无关的路径。
+
+**改为独立的守卫消息**，desired DNS 由 client 侧算好后显式传入：
+
+```rust
+SetTunDns {
+    operation: OperationId,
+    desired: Option<Vec<IpAddr>>,     // None = 关闭 TUN，恢复原值
+    reply: RpcReplyPort<Result<(), CoreActorError>>,
+}
+```
+
+client 侧从 clash config 取 TUN device IP（今天 `core.rs:415-420` 干的事），**actor 不读任何配置全局**——这正是 D2/D3 接缝那条声明的落地形式。
+
+#### B.2.3 恢复拆两类（`Drop` 不能 await —— **这条要改 D3=A 的形态**）
+
+**问题**：D3=A 裁的是「RAII guard，`Drop` 时恢复」。但 Service 侧恢复要走**异步 IPC**（`core.rs:440-448`），**`Drop` 不能 await**，所以「Shutdown 必恢复」按 RAII 写法**不可实施**。
+
+**提议的修正（请裁定）**：
+
+| 路径                                           | 机制                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------------ |
+| **主路径**：`Stop` / `Shutdown` / `SetBackend` | actor 处理器内**显式 `await` 恢复**，**在**后端动作与 reply **之前**完成 |
+| **兜底**：`Drop`                               | **只记 error 日志**，不尝试恢复                                          |
+
+**为什么 `Drop` 不做尽力而为的同步恢复**：Service 路径同步根本做不到；Local 路径能同步做，但那会造成「Local 恢复得了、Service 恢复不了」的不对称，而**调用者无法预知自己在哪条路径上**。一个只在一半情况下生效的兜底，比一个明确不生效的兜底更难推理。所以 `Drop` 里的日志**是 bug 指示器**（走到这里说明主路径漏了恢复），不是功能。
+
+**恢复失败的去向**：进 degradation sink（`phase = CoreLifecycle`、`code = "macos_dns_restore_failed"`），与 5b 的 post-commit 模型一致。
+
+#### B.2.4 顺序：**Service 模式下控制动作前先拆 DNS**
+
+今天 `stop_service`（`client/mod.rs:523-528`）是 `stop()` → `reconcile()`。若恢复放在 reconcile 里，**服务已经停了、IPC 通道没了**，恢复必然失败。
+
+**契约**（附录 A.3 声明一次）：
+
+```text
+拆 DNS（await，IPC 尚在）  →  service_control.stop() / uninstall()  →  probe + reconcile
+```
+
+**stop 与 uninstall 两条都要测顺序**（T-DNS-05 / T-DNS-06），不能只测其一——它们是两个独立的调用点。
+
+#### B.2.5 Local 适配器**必须校验真实退出码**
+
+`nyanpasu_utils::network::macos::set_dns` 的实现是：
+
+```rust
+let _ = std::process::Command::new("osascript").arg("-e").arg(..).status()?;
+Ok(())
+```
+
+`let _ =` **丢弃了 `ExitStatus`**，`?` 只传播**spawn 失败**。所以 `networksetup` 真失败（例如用户取消授权弹窗）时它**返回 `Ok(())`**。S4 原来那句「DNS 失败不再被吞」**在适配器层面是假的**——mock 一个 `Err` 能让 T-DNS-04 变绿，真实命令失败依旧看起来成功。
+
+**该函数在 submodule 内，而本阶段不动 pin**，所以修法必须在**我们的适配器**里：
+
+- **推荐 A：写回后读回校验**——`set()` 之后调 `read_current()` 比对，不符即 `Err`。优点：不重复上游逻辑、**不依赖上游是否检查退出码**、且验证的是**真实终态**而非命令返回值；代价是每次多一次子进程调用（DNS 变更是低频操作）。
+- **选项 B**：我们自己起 `osascript` 并检查 `ExitStatus`。会把上游脚本逻辑复制进本仓，且仍只验「命令说自己成功」。
+- **选项 C**：不修，**显式在计划里写明「Local 路径的失败传播不可靠」**。诚实但把缺陷留着。
+
+**推荐 A**，并在 §5 契约归属里归为**测试保证**（fake 可脚本化「set 成功但 read_current 返回旧值」）。

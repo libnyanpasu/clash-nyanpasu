@@ -1,7 +1,7 @@
 # PR-5d 实施计划 — 运行模式探针与 macOS DNS 生命周期
 
 **日期：** 2026-08-03
-**版本：** v1（首版；设计直接写在正文，**不设计放附录**——那是 5c 第 #1 条 BLOCKING 的成因）
+**版本：** v2（leader 设计审通过；**五条已知问题与定序表三条提案全部定稿**，无「提案中」项进实施）
 **分支基线：** `refactor/core-manager-actor`（PR-5c 实施完成后的树；本计划的事实锚点取自 `899b069f5`，**实施前须复核**，见 §0）
 **权威 spec：** `task.md` 卡 C2、C3
 **上游材料：** PR-5c v4 终态 `git show 5a02a1727:docs/superpowers/plans/2026-08-02-pr5c-residual-cleanup.md`
@@ -322,21 +322,25 @@ F41：上游读路径不检查 `output.status`，空/不可解析 stdout → `Ok
 
 > **第三列是断言**：删掉那行生产代码，这条测试真的会红吗？
 
-| ID         | 断言                                                                 | **删掉哪行会让它红**                                     |
-| ---------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
-| T-PROBE-01 | 兼容门 fail-closed：daemon 在跑但不放行 → 探针返回 `Disconnected`    | 探针里调 `target_ipc_state()` 的那行                     |
-| T-PROBE-02 | **bootstrap 用探针真值而非 `Disconnected` 默认**（修 F35）           | bootstrap 处的 `probe()` 调用行                          |
-| T-PROBE-03 | 不兼容时**发出警告**（smoke 2 要求）                                 | 警告发出点（#3 定稿后填）                                |
-| T-MODE-01  | 关闭 `enable_service_mode` → 得 `Normal` 并 `set_backend`            | `request.rs` 送真值进 `classify` 那行                    |
-| T-MODE-02  | 六个控制动作后各探测一次——**逐条独立断言，不合并**                   | 各自的 `probe()+reconcile` 行                            |
-| T-MODE-03  | **#2 的竞态**：start→stop 序列下终态为 `Normal`，晚到的 probe 不翻转 | 守卫跨度那行（去掉守卫即红）                             |
-| T-DNS-01   | `SetTunDns{Some}` → 适配器 `set` 被调，guard 记为 active             | 处理器里 `port.set()` 那行                               |
-| T-DNS-02   | **顺序**：`Stop` 时恢复在 `backend.stop()` **之前**                  | `restore().await` 早于 `backend.stop()` 那行（对调即红） |
-| T-DNS-03   | **顺序**：`Shutdown` 时恢复在后端动作与 **reply** 之前               | shutdown 处理器的 `restore().await` 行                   |
-| T-DNS-04   | **回读比对真的会发现不一致**（走真实适配器）                         | 适配器里 `read_current()` 比对那行                       |
-| T-DNS-05   | Service **stop**：拆 DNS 在 `stop()` 之前                            | `stop_service` 里的拆 DNS 行                             |
-| T-DNS-06   | Service **uninstall**：同上顺序 + **失败时中止卸载**                 | `uninstall_service` 里的拆 DNS 行与中止分支              |
-| T-DNS-07   | `Shutdown` 后到达的 `SetTunDns` → `Err` 而非静默丢弃                 | 准入检查那行                                             |
+| ID         | 断言                                                                                    | **删掉哪行会让它红**                                     |
+| ---------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| T-PROBE-01 | 兼容门 fail-closed：daemon 在跑但不放行 → 探针返回 `Disconnected`                       | 探针里调 `target_ipc_state()` 的那行                     |
+| T-PROBE-02 | **bootstrap 用探针真值而非 `Disconnected` 默认**（修 F35）                              | bootstrap 处的 `probe()` 调用行                          |
+| T-PROBE-03 | 不兼容时**发出警告**（smoke 2 要求）                                                    | 警告发出点（#3 定稿后填）                                |
+| T-MODE-01  | 关闭 `enable_service_mode` → 得 `Normal` 并 `set_backend`                               | `request.rs` 送真值进 `classify` 那行                    |
+| T-MODE-02  | 六个控制动作后各探测一次——**逐条独立断言，不合并**                                      | 各自的 `probe()+reconcile` 行                            |
+| T-MODE-03  | **#2 的竞态**：start→stop 序列下终态为 `Normal`，晚到的 probe 不翻转                    | 守卫跨度那行（去掉守卫即红）                             |
+| T-DNS-01   | `SetTunDns{Some}` → 适配器 `set` 被调，guard 记为 active                                | 处理器里 `port.set()` 那行                               |
+| T-DNS-02   | **顺序**：`Stop` 时恢复在 `backend.stop()` **之前**                                     | `restore().await` 早于 `backend.stop()` 那行（对调即红） |
+| T-DNS-03   | **顺序**：`Shutdown` 时恢复在后端动作与 **reply** 之前                                  | shutdown 处理器的 `restore().await` 行                   |
+| T-DNS-04   | **回读比对真的会发现不一致**（走真实适配器）                                            | 适配器里 `read_current()` 比对那行                       |
+| T-DNS-05   | Service **stop**：拆 DNS 在 `stop()` 之前                                               | `stop_service` 里的拆 DNS 行                             |
+| T-DNS-06   | Service **uninstall**：同上顺序 + **失败时中止卸载**                                    | `uninstall_service` 里的拆 DNS 行与中止分支              |
+| T-DNS-07   | `Shutdown` 后到达的 `SetTunDns` → `Err` 而非静默丢弃                                    | 准入检查那行                                             |
+| T-DNS-08   | 读实现四态①：**退出码非零 → `Err`**（不是 `None`）                                      | 读实现里检查 `ExitStatus` 那行                           |
+| T-DNS-09   | 读实现四态②：**「无 DNS 服务器」那句 → `Ok(None)`**——**正向识别，不靠空串推断**         | 匹配该文案那行                                           |
+| T-DNS-10   | 读实现四态③：正常输出 → `Ok(Some(..))`                                                  | 解析 IP 列表那行                                         |
+| T-DNS-11   | 读实现四态④：**不认识的输出 → `Err`，不是 `None`**——**这条最关键**，它正是原 bug 的形状 | 兜底分支那行（改成返回 `None` 即红）                     |
 
 **回归契约**：区分**存活测试被迫修改**（不允许，停下核查）与**被删模块自带单测随属主消失**（预期）。**已知必改一条**：`initial_watch_snapshot_matches_legacy_empty_status` → 断言注入 mode **并改名**（2.1）。
 

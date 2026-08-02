@@ -446,7 +446,7 @@ impl NyanpasuClient {
                     return Ok(());
                 };
                 NyanpasuClient { inner }
-                    .rebuild_running_config()
+                    .rebuild_running_config_in_background()
                     .await
                     .map_err(anyhow::Error::from)
             }
@@ -1643,6 +1643,29 @@ impl NyanpasuClient {
         Ok(())
     }
 
+    async fn rebuild_running_config_in_background(&self) -> Result<()> {
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        let (report, degradations) = self.rebuild_pipeline_with_lease(&mut *lease).await;
+        report?;
+        if degradations.is_empty() {
+            drop(lease);
+            self.inner.ui_sink.refresh_clash();
+            self.inner.core.on_profile_change().await;
+            return Ok(());
+        }
+        for degradation in degradations {
+            tracing::warn!(
+                phase = ?degradation.phase,
+                code = %degradation.code,
+                retryable = degradation.retryable,
+                message = %degradation.message,
+                "background-driven rebuild failed (degraded)",
+            );
+            self.inner.degradation.publish(degradation);
+        }
+        Ok(())
+    }
+
     pub(crate) async fn regenerate_runtime(&self) -> Result<()> {
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         self.regenerate_runtime_inner(&mut *lease).await.map(|_| ())
@@ -1799,7 +1822,7 @@ mod tests {
         profiles::ports::{
             CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
             MockProfileMaterializationPort, MockRebuildNotifier, MockSubscriptionFetcher,
-            PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
+            PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort, RebuildNotifier,
         },
     };
     use async_trait::async_trait;
@@ -2372,6 +2395,14 @@ mod tests {
     impl crate::core::actor::backend::CoreDegradationSink for RecordingCoreDegradationSink {
         fn publish(&self, degradation: runtime::Degradation) {
             self.0.lock().unwrap().push(degradation);
+        }
+    }
+
+    struct NotifyingCoreDegradationSink(tokio::sync::mpsc::UnboundedSender<runtime::Degradation>);
+
+    impl crate::core::actor::backend::CoreDegradationSink for NotifyingCoreDegradationSink {
+        fn publish(&self, degradation: runtime::Degradation) {
+            let _ = self.0.send(degradation);
         }
     }
 
@@ -3448,6 +3479,47 @@ mod tests {
                 Some(&uid),
                 "state stays committed"
             );
+        });
+    }
+
+    #[test]
+    fn background_rebuild_degradation_reaches_sink_and_sync_caller_keeps_it_in_outcome() {
+        let dir = tempdir().unwrap();
+        let (degradation_tx, mut degradation_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote()
+            .returning(|_, _| Err(anyhow::anyhow!("background check failure")));
+        let mut args = test_profiles_client_args(&dir, Arc::new(core));
+        args.degradation = Arc::new(NotifyingCoreDegradationSink(degradation_tx));
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+
+        tauri::async_runtime::block_on(async {
+            client.rebuild_coordinator().notifier().request_rebuild();
+            let degradation = tokio::time::timeout(Duration::from_secs(2), degradation_rx.recv())
+                .await
+                .expect("background rebuild must publish without polling sleeps")
+                .expect("degradation sink must stay connected");
+            assert_eq!(degradation.phase, runtime::DegradationPhase::RuntimeCheck);
+            assert_eq!(degradation.code, "runtime_check_failed");
+            assert!(degradation.message.contains("background check failure"));
+
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .unwrap()
+                .into_value();
+            let outcome = client.activate_profile(Some(uid)).await.unwrap();
+            assert!(matches!(
+                outcome,
+                runtime::MutationOutcome::CommittedDegraded { .. }
+            ));
+            assert_eq!(outcome.degradations().len(), 1);
+            assert_eq!(outcome.degradations()[0].code, "runtime_check_failed");
+            assert!(degradation_rx.try_recv().is_err());
+            client.shutdown().await;
         });
     }
 

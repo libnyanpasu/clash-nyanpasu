@@ -30,6 +30,8 @@ nyanpasu-core = { path = "../nyanpasu-core" }
 nyanpasu-config = { path = "../nyanpasu-config" }
 nyanpasu-utils = { workspace = true }
 nyanpasu-egui = { path = "../nyanpasu-egui" }
+nyanpasu-core-manager = { workspace = true }
+nyanpasu-core-metadata = { workspace = true }
 
 # Common Utilities
 tokio = { workspace = true, features = ["test-util"] }
@@ -272,6 +274,7 @@ webview2-com = "0.38"
 
 [dev-dependencies]
 mockall = "0.15"
+interprocess = { version = "2.4.2", features = ["tokio"] }
 # Test-only protocol helpers + binary discovery for later process-lifecycle
 # matrix tests. A dev-dependency does NOT build the fake-core binary and does
 # NOT set CARGO_BIN_EXE_fake-core for this package. Prebuild with

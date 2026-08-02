@@ -1,5 +1,6 @@
 mod application;
 mod clash_config;
+mod core;
 mod core_bridge;
 mod error;
 mod event_sink;
@@ -12,10 +13,8 @@ pub mod runtime;
 mod session_state;
 mod system_dns;
 
-use self::{
-    application::ApplicationClient, clash_config::ClashConfigClient,
-    session_state::SessionStateClient,
-};
+pub(crate) use self::application::ApplicationClient;
+use self::{clash_config::ClashConfigClient, session_state::SessionStateClient};
 use crate::{
     enhance::{
         EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
@@ -55,6 +54,7 @@ use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
+pub use core::{CoreClient, CoreOperationGuard};
 pub use core_bridge::{
     CoreLifecycleLease, CoreLifecyclePort, LegacyCoreBridge, LegacyRunningConfigPatchBridge,
     RunningConfigPatchPort,

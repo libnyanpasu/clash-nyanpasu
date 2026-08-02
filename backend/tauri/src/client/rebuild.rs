@@ -227,9 +227,8 @@ impl NyanpasuClient {
     /// onto the facade in T08 and the legacy profile code was removed in T10.
     #[allow(dead_code)]
     pub(crate) async fn regenerate_runtime_for_legacy(&self) -> Result<()> {
-        // Inputs are read under the rebuild gate so a legacy regeneration
+        // Inputs are read under the core operation guard so a legacy regeneration
         // serializes with facade rebuilds and always sees the newest drafts.
-        let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         self.regenerate_for_legacy_inner(&mut *lease)
             .await
@@ -252,9 +251,8 @@ impl NyanpasuClient {
     }
 
     pub(crate) async fn regenerate_and_apply_for_legacy(&self) -> Result<()> {
-        // P0-2: one gate hold covers regenerate AND apply — a concurrent rebuild
+        // P0-2: one operation guard covers regenerate AND apply — a concurrent rebuild
         // cannot replace the product between the two steps.
-        let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.regenerate_for_legacy_inner(&mut *lease).await?;
         lease
@@ -268,7 +266,6 @@ impl NyanpasuClient {
     }
 
     pub(crate) async fn regenerate_and_restart_for_legacy(&self) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.regenerate_for_legacy_inner(&mut *lease).await?;
         lease.restart().await.map_err(ClientError::Anyhow)?;
@@ -279,13 +276,12 @@ impl NyanpasuClient {
     }
 
     /// Core-switch transaction (spec §5.4 / S03). The WHOLE
-    /// draft→rebuild→restart→commit/rollback sequence holds the rebuild gate,
+    /// draft→rebuild→restart→commit/rollback sequence holds the operation guard,
     /// so no concurrent rebuild can replace the checked product between check
     /// and start (P0-2). On rollback, product / Promoted / Applied come from the
     /// captured transaction snapshot; selected core is restored by verge
     /// `discard()` before the rollback rebuild.
     pub async fn change_core(&self, new_core: crate::config::nyanpasu::ClashCore) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
 
         // Capture rollback material BEFORE any mutation (spec §6.5 D5).
@@ -420,7 +416,7 @@ impl NyanpasuClient {
     /// candidate -> check -> promote — D5 has no exceptions. A failed check
     /// leaves no product; boot continues and the core start fails visibly.
     pub(crate) async fn promote_default_runtime_config(&self) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let revision = self
             .inner
             .runtime_revisions
@@ -457,7 +453,6 @@ impl NyanpasuClient {
             .create_candidate(&product_bytes)
             .await
             .map_err(ClientError::Anyhow)?;
-        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let checked = lease
             .check_and_promote(&candidate, app.core, self.inner.runtime_paths.product())
             .await;
@@ -1360,15 +1355,24 @@ mod tests {
     #[test]
     fn promote_default_runtime_config_publishes_promoted_only() {
         let dir = tempfile::tempdir().unwrap();
-        let mut core = crate::client::tests::MockRunningCoreBridge::new();
-        core.expect_check_and_promote()
-            .times(1)
-            .returning(|_, _| Ok(()));
-        core.expect_on_profile_change().returning(|| ());
-        let client = crate::client::NyanpasuClient::try_new_with_args(
-            crate::client::tests::test_profiles_client_args(&dir, std::sync::Arc::new(core)),
-        )
-        .unwrap();
+        let backend = crate::core::actor::backend::TestBackend::new(
+            crate::core::actor::types::BackendObservation {
+                view: crate::core::actor::types::CoreStatusView {
+                    state: nyanpasu_ipc::api::status::CoreState::Stopped(None),
+                    state_changed_at: 1,
+                    run_type: crate::core::RunType::Normal,
+                    revision: None,
+                    recovery_exhausted: false,
+                },
+                lifecycle: crate::core::actor::types::FaithfulLifecycle::Stopped { reason: None },
+            },
+        );
+        let client =
+            tauri::async_runtime::block_on(crate::client::tests::actor_backed_test_client(
+                &dir,
+                backend.clone(),
+                crate::client::tests::test_degradation_sink(),
+            ));
 
         tauri::async_runtime::block_on(client.promote_default_runtime_config())
             .expect("default fallback promote");
@@ -1382,6 +1386,7 @@ mod tests {
             lifecycle.applied.is_none(),
             "fallback must not advance Applied before core start"
         );
+        assert_eq!(backend.check_calls(), 1);
     }
 
     /// S09: two client graphs are independent — each owns its coordinator/core path.

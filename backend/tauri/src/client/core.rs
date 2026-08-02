@@ -441,8 +441,8 @@ impl CoreLifecycleAdapter {
 #[async_trait]
 impl CoreLifecyclePort for CoreLifecycleAdapter {
     async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
-        // Lock order: clash_patch_gate -> rebuild_gate -> OperationGate. Every lifecycle caller
-        // follows this order; PR-5b will absorb the first two gates.
+        // Lock order: clash_patch_gate -> OperationGate. Patch transactions keep
+        // this order until the API-first patch layer is removed later in PR-5b.
         let guard = self.core.begin_operation().await?;
         Ok(Box::new(CoreLeaseAdapter {
             guard,

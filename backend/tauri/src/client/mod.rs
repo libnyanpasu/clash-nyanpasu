@@ -250,11 +250,6 @@ struct NyanpasuClientInner {
     /// and any revision-fenced compensation.
     clash_patch_gate: tokio::sync::Mutex<()>,
     system_dns: Arc<dyn SystemDnsCache>,
-    /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
-    /// core apply). The profiles actor only orders commits; without this gate
-    /// a slow rebuild started for an older commit can finish after a newer
-    /// one and overwrite the runtime with a stale snapshot.
-    rebuild_gate: tokio::sync::Mutex<()>,
     /// Instance-owned background dirty coordinator (capacity-1 coalesce).
     /// Request/reply regeneration calls typed facade methods directly.
     rebuild: rebuild::RebuildCoordinator,
@@ -422,7 +417,6 @@ impl NyanpasuClient {
                 clash_patch,
                 clash_patch_gate: tokio::sync::Mutex::new(()),
                 system_dns,
-                rebuild_gate: tokio::sync::Mutex::new(()),
                 rebuild,
                 runtime_revisions: runtime::RuntimeRevisionAllocator::new(),
             }),
@@ -1341,7 +1335,7 @@ impl NyanpasuClient {
     pub(crate) async fn promote_existing_runtime_product(
         &self,
     ) -> Result<Arc<core_runtime::RuntimeSnapshot>> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let revision = self
             .inner
             .runtime_revisions
@@ -1373,7 +1367,6 @@ impl NyanpasuClient {
             .create_candidate(&bytes)
             .await
             .map_err(ClientError::Anyhow)?;
-        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let checked = lease
             .check_and_promote(&candidate, app.core, self.inner.runtime_paths.product())
             .await;
@@ -1389,11 +1382,10 @@ impl NyanpasuClient {
     }
 
     pub(crate) async fn start_promoted_runtime(&self) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.promoted_runtime().await.ok_or_else(|| {
             ClientError::Custom("cannot start core without a promoted runtime".into())
         })?;
-        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         lease.restart().await.map_err(ClientError::Anyhow)?;
         lease
             .publish_applied(promoted)
@@ -1467,7 +1459,6 @@ impl NyanpasuClient {
     /// captured Applied revision is still current.
     pub async fn patch_running_config(&self, patch: serde_yaml::Mapping) -> Result<()> {
         let _patch = self.inner.clash_patch_gate.lock().await;
-        let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let captured_lifecycle = self.inner.core_client.lifecycle();
         let applied = captured_lifecycle.applied.as_ref().ok_or_else(|| {
@@ -1529,7 +1520,6 @@ impl NyanpasuClient {
     }
 
     pub async fn rebuild_running_config(&self) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.regenerate_runtime_inner(&mut *lease).await?;
         lease
@@ -1548,13 +1538,12 @@ impl NyanpasuClient {
     }
 
     pub(crate) async fn regenerate_runtime(&self) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         self.regenerate_runtime_inner(&mut *lease).await.map(|_| ())
     }
 
-    /// Must only run while holding `rebuild_gate`: revision allocation happens
-    /// before desired snapshots are read, and failed attempts never reuse it.
+    /// Must only run while holding the core operation guard: revision allocation
+    /// happens before desired snapshots are read, and failed attempts never reuse it.
     async fn regenerate_runtime_inner(
         &self,
         lease: &mut dyn CoreLifecycleLease,
@@ -1824,6 +1813,147 @@ mod tests {
 
     struct TestCoreLease {
         inner: Arc<dyn TestRunningCoreBridge>,
+    }
+
+    struct OperationProbeCore {
+        gate: Arc<tokio::sync::Mutex<()>>,
+        state: Arc<OperationProbeState>,
+    }
+
+    struct OperationProbeState {
+        begin_calls: AtomicUsize,
+        check_calls: AtomicUsize,
+        active_checks: AtomicUsize,
+        max_active_checks: AtomicUsize,
+        candidates: StdMutex<Vec<Vec<u8>>>,
+        begin_entered_tx: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release_begin_rx: StdMutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+        first_check_entered_tx: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release_first_check_rx: StdMutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+        second_begin_attempted_tx: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        applied_revisions: StdMutex<Vec<u64>>,
+    }
+
+    struct OperationProbeLease {
+        state: Arc<OperationProbeState>,
+        _guard: tokio::sync::OwnedMutexGuard<()>,
+    }
+
+    impl OperationProbeState {
+        fn new() -> Self {
+            Self {
+                begin_calls: AtomicUsize::new(0),
+                check_calls: AtomicUsize::new(0),
+                active_checks: AtomicUsize::new(0),
+                max_active_checks: AtomicUsize::new(0),
+                candidates: StdMutex::new(Vec::new()),
+                begin_entered_tx: StdMutex::new(None),
+                release_begin_rx: StdMutex::new(None),
+                first_check_entered_tx: StdMutex::new(None),
+                release_first_check_rx: StdMutex::new(None),
+                second_begin_attempted_tx: StdMutex::new(None),
+                applied_revisions: StdMutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl CoreLifecyclePort for OperationProbeCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            let call = self.state.begin_calls.fetch_add(1, Ordering::SeqCst);
+            if call == 0 {
+                if let Some(tx) = self.state.begin_entered_tx.lock().unwrap().take() {
+                    let _ = tx.send(());
+                }
+                let release = self.state.release_begin_rx.lock().unwrap().take();
+                if let Some(release) = release {
+                    let _ = release.await;
+                }
+            } else if call == 1
+                && let Some(tx) = self.state.second_begin_attempted_tx.lock().unwrap().take()
+            {
+                let _ = tx.send(());
+            }
+            let guard = self.gate.clone().lock_owned().await;
+            Ok(Box::new(OperationProbeLease {
+                state: self.state.clone(),
+                _guard: guard,
+            }))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used by operation ordering tests")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for OperationProbeLease {
+        async fn check_and_promote(
+            &mut self,
+            candidate: &runtime::CandidateFile,
+            _target_core: nyanpasu_config::application::ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> anyhow::Result<[u8; 32]> {
+            let call = self.state.check_calls.fetch_add(1, Ordering::SeqCst);
+            let active = self.state.active_checks.fetch_add(1, Ordering::SeqCst) + 1;
+            self.state
+                .max_active_checks
+                .fetch_max(active, Ordering::SeqCst);
+            let bytes = tokio::fs::read(candidate.path()).await?;
+            self.state.candidates.lock().unwrap().push(bytes);
+            if call == 0 {
+                if let Some(tx) = self.state.first_check_entered_tx.lock().unwrap().take() {
+                    let _ = tx.send(());
+                }
+                let release = self.state.release_first_check_rx.lock().unwrap().take();
+                if let Some(release) = release {
+                    let _ = release.await;
+                }
+            }
+            self.state.active_checks.fetch_sub(1, Ordering::SeqCst);
+            Ok(candidate.bytes_sha256())
+        }
+
+        async fn apply_candidate(
+            &mut self,
+            _candidate: &runtime::CandidateFile,
+            _target_core: nyanpasu_config::application::ClashCore,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn restart(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn publish_applied(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<(), crate::core::actor::types::CoreActorError> {
+            self.state
+                .applied_revisions
+                .lock()
+                .unwrap()
+                .push(snapshot.revision.get());
+            Ok(())
+        }
+    }
+
+    fn operation_probe_core(state: Arc<OperationProbeState>) -> Arc<dyn CoreLifecyclePort> {
+        Arc::new(OperationProbeCore {
+            gate: Arc::new(tokio::sync::Mutex::new(())),
+            state,
+        })
     }
 
     #[async_trait]
@@ -3551,6 +3681,248 @@ mod tests {
             );
             assert!(lifecycle.promoted.is_none());
             assert!(lifecycle.applied.is_none());
+        });
+    }
+
+    fn test_runtime_snapshot(
+        revision: u64,
+        bytes: &'static [u8],
+    ) -> Arc<core_runtime::RuntimeSnapshot> {
+        let config = serde_yaml::from_slice(bytes).expect("test runtime must be valid YAML");
+        Arc::new(core_runtime::RuntimeSnapshot::from_data(
+            core_runtime::RuntimeRevision(revision),
+            nyanpasu_config::application::ClashCore::Mihomo,
+            Arc::from(bytes),
+            core_runtime::RuntimeSnapshotData {
+                config,
+                exists_keys: Vec::new(),
+                postprocessing_output: Default::default(),
+            },
+        ))
+    }
+
+    fn candidate_tun_enabled(bytes: &[u8]) -> Option<bool> {
+        let config: serde_yaml::Mapping =
+            serde_yaml::from_slice(bytes).expect("candidate must be valid YAML");
+        let tun = config
+            .get(serde_yaml::Value::String("tun".into()))
+            .and_then(serde_yaml::Value::as_mapping)?;
+        tun.get(serde_yaml::Value::String("enable".into()))
+            .and_then(serde_yaml::Value::as_bool)
+    }
+
+    #[test]
+    fn concurrent_rebuilds_serialize_and_second_reads_latest_snapshot() {
+        let dir = tempdir().unwrap();
+        let state = Arc::new(OperationProbeState::new());
+        let (first_check_entered_tx, first_check_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_first_check_tx, release_first_check_rx) = tokio::sync::oneshot::channel();
+        let (second_begin_attempted_tx, second_begin_attempted_rx) =
+            tokio::sync::oneshot::channel();
+        *state.first_check_entered_tx.lock().unwrap() = Some(first_check_entered_tx);
+        *state.release_first_check_rx.lock().unwrap() = Some(release_first_check_rx);
+        *state.second_begin_attempted_tx.lock().unwrap() = Some(second_begin_attempted_tx);
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            operation_probe_core(state.clone()),
+        ))
+        .unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .expect("add")
+                .into_value();
+            let first = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.activate_profile(Some(uid)).await }
+            });
+            first_check_entered_rx
+                .await
+                .expect("first rebuild must reach its check while holding the operation guard");
+
+            let mut latest = client.get_clash_config().await.unwrap();
+            assert!(!latest.enable_tun_mode);
+            latest.enable_tun_mode = true;
+            client
+                .replace_clash_config(latest)
+                .await
+                .expect("new desired snapshot must commit while the first rebuild is blocked");
+
+            let second = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.rebuild_running_config().await }
+            });
+            second_begin_attempted_rx
+                .await
+                .expect("second rebuild must queue on the operation guard");
+            assert_eq!(state.check_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(state.candidates.lock().unwrap().len(), 1);
+
+            let _ = release_first_check_tx.send(());
+            first
+                .await
+                .expect("first rebuild task must join")
+                .expect("first rebuild must succeed");
+            second
+                .await
+                .expect("second rebuild task must join")
+                .expect("second rebuild must succeed");
+
+            assert_eq!(state.max_active_checks.load(Ordering::SeqCst), 1);
+            let candidates = state.candidates.lock().unwrap();
+            assert_eq!(candidates.len(), 2);
+            assert_ne!(candidate_tun_enabled(&candidates[0]), Some(true));
+            assert_eq!(
+                candidate_tun_enabled(&candidates[1]),
+                Some(true),
+                "the queued rebuild must read the post-queue desired snapshot"
+            );
+        });
+    }
+
+    #[test]
+    fn promote_default_builds_candidate_after_operation_guard() {
+        let dir = tempdir().unwrap();
+        let state = Arc::new(OperationProbeState::new());
+        let (begin_entered_tx, begin_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_begin_tx, release_begin_rx) = tokio::sync::oneshot::channel();
+        *state.begin_entered_tx.lock().unwrap() = Some(begin_entered_tx);
+        *state.release_begin_rx.lock().unwrap() = Some(release_begin_rx);
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            operation_probe_core(state.clone()),
+        ))
+        .unwrap();
+        let candidate_dir = client.inner.runtime_paths.candidate_dir().to_owned();
+
+        tauri::async_runtime::block_on(async {
+            let promote = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.promote_default_runtime_config().await }
+            });
+            begin_entered_rx
+                .await
+                .expect("default promotion must begin the operation first");
+            let candidates_before_release = std::fs::read_dir(&candidate_dir)
+                .map(|entries| {
+                    entries
+                        .filter_map(std::result::Result::ok)
+                        .filter(|entry| {
+                            entry
+                                .file_name()
+                                .to_string_lossy()
+                                .starts_with("candidate-")
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+            assert_eq!(candidates_before_release, 0);
+            assert_eq!(state.check_calls.load(Ordering::SeqCst), 0);
+            let _ = release_begin_tx.send(());
+            promote
+                .await
+                .expect("default promotion task must join")
+                .expect("default promotion must succeed");
+            assert_eq!(state.check_calls.load(Ordering::SeqCst), 1);
+        });
+    }
+
+    #[test]
+    fn promote_existing_reads_product_after_operation_guard() {
+        let dir = tempdir().unwrap();
+        let state = Arc::new(OperationProbeState::new());
+        let (begin_entered_tx, begin_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_begin_tx, release_begin_rx) = tokio::sync::oneshot::channel();
+        *state.begin_entered_tx.lock().unwrap() = Some(begin_entered_tx);
+        *state.release_begin_rx.lock().unwrap() = Some(release_begin_rx);
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            operation_probe_core(state.clone()),
+        ))
+        .unwrap();
+        let product = client.runtime_product_path().to_owned();
+
+        tauri::async_runtime::block_on(async {
+            let promote = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.promote_existing_runtime_product().await }
+            });
+            begin_entered_rx
+                .await
+                .expect("existing-product promotion must begin the operation first");
+            assert!(!product.exists());
+            tokio::fs::create_dir_all(product.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&product, b"mode: rule\n").await.unwrap();
+            let _ = release_begin_tx.send(());
+            let promoted = promote
+                .await
+                .expect("existing-product promotion task must join")
+                .expect("product created after begin must be observed");
+            assert_eq!(promoted.product_bytes(), b"mode: rule\n");
+            assert_eq!(state.check_calls.load(Ordering::SeqCst), 1);
+        });
+    }
+
+    #[test]
+    fn start_promoted_reads_latest_snapshot_after_operation_guard() {
+        let dir = tempdir().unwrap();
+        let state = Arc::new(OperationProbeState::new());
+        let (begin_entered_tx, begin_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_begin_tx, release_begin_rx) = tokio::sync::oneshot::channel();
+        *state.begin_entered_tx.lock().unwrap() = Some(begin_entered_tx);
+        *state.release_begin_rx.lock().unwrap() = Some(release_begin_rx);
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            operation_probe_core(state.clone()),
+        ))
+        .unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let old = test_runtime_snapshot(1, b"mode: rule\n");
+            let operation = client.inner.core_client.begin_operation().await.unwrap();
+            client
+                .inner
+                .core_client
+                .publish_promoted(&operation, old)
+                .await
+                .unwrap();
+            operation.release().await;
+
+            let start = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.start_promoted_runtime().await }
+            });
+            begin_entered_rx
+                .await
+                .expect("start must begin the operation before reading Promoted");
+
+            let newest = test_runtime_snapshot(2, b"mode: global\n");
+            let operation = client.inner.core_client.begin_operation().await.unwrap();
+            client
+                .inner
+                .core_client
+                .publish_promoted(&operation, newest)
+                .await
+                .unwrap();
+            operation.release().await;
+            let _ = release_begin_tx.send(());
+            start
+                .await
+                .expect("start task must join")
+                .expect("start must succeed");
+
+            assert_eq!(
+                state.applied_revisions.lock().unwrap().as_slice(),
+                &[2],
+                "start must associate Applied with the Promoted snapshot read after begin"
+            );
         });
     }
 

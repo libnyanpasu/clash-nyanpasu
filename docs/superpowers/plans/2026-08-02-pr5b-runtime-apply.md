@@ -671,6 +671,8 @@ pnpm lint:architecture-ledger
 
 ## 6. 测试矩阵
 
+> **新增测试组的三处自查（定为规矩）**：每加一组测试，必须同时更新 **①本节的定义、②§7 的 RQ 出口门清单、③§9 的提交分配**。T-PC-12 与 T-CL 两次都只落了①而漏了②③——同一形状出现两次，靠逐条对照裁定列表抓不住，只能在加测试组时按这三处过一遍。
+
 ### 6.1 apply parity（RQ-03；§3 的 12 格）
 
 | ID         | 组合                                        | 断言                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -764,7 +766,7 @@ pnpm lint:architecture-ledger
 | apply parity：Noop/Patched/Reloaded/Restarted/Switched/RolledBack；Warning 正交                    | S4、S7   | T-AP-01…13 全绿（12 格 + 双后端） |
 | change-core rollback 断言 desired=new、Promoted=new、Applied=old                                   | S6       | T-B4-01                           |
 | 两个并发 rebuild 不重叠，后一个读最新 snapshot                                                     | S3       | T-B2-01                           |
-| RQ-01 已作答（含 §2.4 的**四类**投递上下文与 §2.3 的两条豁免）                                     | §2       | T-PC-01…12                        |
+| RQ-01 已作答（含 §2.4 的**四类**投递上下文与 §2.3 的两条豁免）                                     | §2       | T-PC-01…12 + **T-CL-01…04**       |
 | RQ-03 已作答（含 R1 的 `Started` 与 C1 的 `NotApplied` 两个非 apply 终态）                         | §3       | T-AP-01…13 + T-B4-03 / T-B4-05    |
 
 ---
@@ -791,7 +793,7 @@ pnpm lint:architecture-ledger
 1. `refactor(core): move runtime lifecycle types into the actor module` —— S1（纯搬迁，零行为）；
 2. `feat(core): own promoted and applied state in CoreActor` —— S2 + T-LC；
 3. `refactor(client): replace rebuild_gate with the core operation guard` —— S3 + T-B2；
-4. `feat(core): route promoted apply through the core backend` —— S4 + S7 + T-AP；
+4. `feat(core): route promoted apply through the core backend` —— S4 + S7 + T-AP + **T-CL-01…04**（分类器与 wire 映射同批落地，回归可归因）；
 5. `refactor(client): delete the api-first patch and compensation layer` —— S5 + T-PC-01…08、T-PC-10/11、**T-PC-12**（豁免边界分类测试随 §2.3 的规则一起落地）；
 6. `feat(client): publish background rebuild degradations to the core sink` —— §2.4 的两项动作 + T-PC-09；
 7. `refactor(client): make change_core a commit-first mutation` —— S6 + T-B4 + S8 + S9。

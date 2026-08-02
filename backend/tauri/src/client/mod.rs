@@ -447,7 +447,6 @@ impl NyanpasuClient {
                 NyanpasuClient { inner }
                     .rebuild_running_config_in_background()
                     .await
-                    .map_err(anyhow::Error::from)
             }
         });
     }
@@ -1425,19 +1424,6 @@ impl NyanpasuClient {
             .map_err(|error| ClientError::Anyhow(error.into()))
     }
 
-    fn actor_error_is_post_commit_exempt(
-        error: &crate::core::actor::types::CoreActorError,
-    ) -> bool {
-        matches!(
-            error,
-            crate::core::actor::types::CoreActorError::ShuttingDown
-        ) || matches!(
-            error,
-            crate::core::actor::types::CoreActorError::StaleOperation
-                | crate::core::actor::types::CoreActorError::LifecycleInvariant(_)
-        )
-    }
-
     fn post_commit_actor_error(error: crate::core::actor::types::CoreActorError) -> ClientError {
         if matches!(
             error,
@@ -1475,13 +1461,6 @@ impl NyanpasuClient {
             runtime::DegradationPhase::CoreLifecycle,
             "core_operation_unavailable",
             message,
-        )
-    }
-
-    fn is_runtime_revision_exhaustion(error: &ClientError) -> bool {
-        matches!(
-            error,
-            ClientError::Anyhow(source) if source.is::<runtime::RuntimeRevisionExhausted>()
         )
     }
 
@@ -1523,7 +1502,7 @@ impl NyanpasuClient {
             RuntimeRebuildError::CheckAndPromote(core_bridge::CheckAndPromoteFailure::Actor(
                 error,
             )) => {
-                if Self::actor_error_is_post_commit_exempt(&error) {
+                if rebuild::actor_error_is_post_commit_exempt(&error) {
                     return Err(Self::post_commit_actor_error(error));
                 }
                 let (phase, code) = match &error {
@@ -1539,7 +1518,7 @@ impl NyanpasuClient {
                 Ok(Self::runtime_degradation(phase, code, error.to_string()))
             }
             RuntimeRebuildError::Publish(error) => {
-                if Self::actor_error_is_post_commit_exempt(&error) {
+                if rebuild::actor_error_is_post_commit_exempt(&error) {
                     return Err(Self::post_commit_actor_error(error));
                 }
                 let (phase, code) = match &error {
@@ -1560,7 +1539,7 @@ impl NyanpasuClient {
     fn apply_failure_degradation(
         error: crate::core::actor::types::CoreActorError,
     ) -> std::result::Result<runtime::Degradation, ClientError> {
-        if Self::actor_error_is_post_commit_exempt(&error) {
+        if rebuild::actor_error_is_post_commit_exempt(&error) {
             return Err(Self::post_commit_actor_error(error));
         }
         let (code, message) = match error {
@@ -1692,7 +1671,7 @@ impl NyanpasuClient {
         };
         let (report, degradations) = self.rebuild_pipeline_with_lease(&mut *lease).await;
         if let Err(error) = report {
-            if Self::is_runtime_revision_exhaustion(&error) {
+            if rebuild::client_error_is_post_commit_exempt(&error) {
                 return Err(error);
             }
             for degradation in degradations {
@@ -3790,7 +3769,7 @@ mod tests {
     }
 
     #[test]
-    fn background_acquire_and_pipeline_errors_reach_the_degradation_sink() {
+    fn background_acquire_errors_degrade_but_stale_operations_do_not() {
         fn client_with_sink(
             dir: &TempDir,
             core: Arc<dyn CoreLifecyclePort>,
@@ -3807,18 +3786,12 @@ mod tests {
             )
         }
 
-        for (core, expected_message) in [
-            (
-                Arc::new(BeginFailureCore) as Arc<dyn CoreLifecyclePort>,
-                "acquire timeout",
-            ),
-            (
-                Arc::new(ExemptCheckCore) as Arc<dyn CoreLifecyclePort>,
-                "operation id does not match",
-            ),
-        ] {
+        {
             let dir = tempdir().unwrap();
-            let (client, mut degradation_rx) = client_with_sink(&dir, core);
+            let (client, mut degradation_rx) = client_with_sink(
+                &dir,
+                Arc::new(BeginFailureCore) as Arc<dyn CoreLifecyclePort>,
+            );
             tauri::async_runtime::block_on(async {
                 client.rebuild_coordinator().notifier().request_rebuild();
                 let degradation =
@@ -3829,9 +3802,59 @@ mod tests {
                 assert_eq!(degradation.phase, runtime::DegradationPhase::CoreLifecycle);
                 assert_eq!(degradation.code, "core_operation_unavailable");
                 assert!(degradation.retryable);
-                assert!(degradation.message.contains(expected_message));
+                assert!(degradation.message.contains("acquire timeout"));
+                client.shutdown().await;
             });
         }
+
+        {
+            let dir = tempdir().unwrap();
+            let (client, mut degradation_rx) = client_with_sink(
+                &dir,
+                Arc::new(ExemptCheckCore) as Arc<dyn CoreLifecyclePort>,
+            );
+            tauri::async_runtime::block_on(async {
+                let error = client
+                    .rebuild_running_config_in_background()
+                    .await
+                    .expect_err("stale operation must remain a plain invariant error");
+                assert!(rebuild::client_error_is_post_commit_exempt(&error));
+                assert!(
+                    degradation_rx.try_recv().is_err(),
+                    "E-b errors must never publish a degradation"
+                );
+                client.shutdown().await;
+            });
+        }
+    }
+
+    #[test]
+    fn background_revision_exhaustion_is_plain_error_without_degradation() {
+        let dir = tempdir().unwrap();
+        let degradation = Arc::new(RecordingCoreDegradationSink::default());
+        let mut args = test_profiles_client_args(&dir, Arc::new(MockRunningCoreBridge::new()));
+        args.degradation = degradation.clone();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        client.inner.runtime_revisions.exhaust();
+
+        tauri::async_runtime::block_on(async {
+            let error = client
+                .rebuild_running_config_in_background()
+                .await
+                .expect_err(
+                    "allocator exhaustion must be plain Err, never CommittedDegraded or Ok",
+                );
+            assert!(matches!(
+                error,
+                ClientError::Anyhow(source)
+                    if source.downcast_ref::<runtime::RuntimeRevisionExhausted>().is_some()
+            ));
+            assert!(
+                degradation.0.lock().unwrap().is_empty(),
+                "revision exhaustion is E-b and must not publish a degradation"
+            );
+            client.shutdown().await;
+        });
     }
 
     #[test]

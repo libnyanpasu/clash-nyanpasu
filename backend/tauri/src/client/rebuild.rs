@@ -17,9 +17,52 @@ use struct_patch::Patch as _;
 use tokio::sync::{mpsc, oneshot};
 
 use super::{ClientError, NyanpasuClient, Result};
-use crate::state::profiles::ports::RebuildNotifier;
+use crate::{core::actor::types::CoreActorError, state::profiles::ports::RebuildNotifier};
 
 const COALESCE_WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BackgroundFailureDisposition {
+    QuietShutdown,
+    InvariantViolation,
+    Degraded,
+}
+
+pub(super) fn actor_error_is_post_commit_exempt(error: &CoreActorError) -> bool {
+    matches!(error, CoreActorError::ShuttingDown)
+        || matches!(
+            error,
+            CoreActorError::StaleOperation | CoreActorError::LifecycleInvariant(_)
+        )
+}
+
+fn actor_error_from_client(error: &ClientError) -> Option<&CoreActorError> {
+    match error {
+        ClientError::Anyhow(source) => source.downcast_ref::<CoreActorError>(),
+        _ => None,
+    }
+}
+
+pub(super) fn client_error_is_post_commit_exempt(error: &ClientError) -> bool {
+    matches!(
+        error,
+        ClientError::Anyhow(source)
+            if source.downcast_ref::<super::runtime::RuntimeRevisionExhausted>().is_some()
+    ) || actor_error_from_client(error).is_some_and(actor_error_is_post_commit_exempt)
+}
+
+fn background_failure_disposition(error: &ClientError) -> BackgroundFailureDisposition {
+    if matches!(
+        actor_error_from_client(error),
+        Some(CoreActorError::ShuttingDown)
+    ) {
+        return BackgroundFailureDisposition::QuietShutdown;
+    }
+    if client_error_is_post_commit_exempt(error) {
+        return BackgroundFailureDisposition::InvariantViolation;
+    }
+    BackgroundFailureDisposition::Degraded
+}
 
 /// Capacity-1 dirty notifier. `try_send` full means a rebuild is already pending.
 #[derive(Clone)]
@@ -87,7 +130,7 @@ impl RebuildCoordinator {
     pub fn start_worker<F, Fut>(&self, rebuild: F)
     where
         F: Fn() -> Fut + Send + 'static,
-        Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
     {
         let mut control = self.control.lock().expect("rebuild coordinator");
         let Some(rx) = control.dirty_rx.take() else {
@@ -144,7 +187,7 @@ fn spawn_worker<F, Fut>(
     rebuild: F,
 ) where
     F: Fn() -> Fut + Send + 'static,
-    Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
+    Fut: Future<Output = Result<()>> + Send + 'static,
 {
     let fut = async move {
         loop {
@@ -171,7 +214,21 @@ fn spawn_worker<F, Fut>(
                     // Once rebuild starts it intentionally runs to completion even if
                     // shutdown races in — cancellation mid-apply is not demonstrably safe.
                     if let Err(error) = rebuild().await {
-                        tracing::warn!(%error, "background-driven rebuild failed (degraded)");
+                        match background_failure_disposition(&error) {
+                            BackgroundFailureDisposition::QuietShutdown => {}
+                            BackgroundFailureDisposition::InvariantViolation => {
+                                tracing::error!(
+                                    %error,
+                                    "background-driven rebuild hit an invariant violation"
+                                );
+                            }
+                            BackgroundFailureDisposition::Degraded => {
+                                tracing::warn!(
+                                    %error,
+                                    "background-driven rebuild failed (degraded)"
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -339,7 +396,7 @@ impl NyanpasuClient {
         let (running, lifecycle) = match lease.running_identity().await {
             Ok(identity) => identity,
             Err(error) => {
-                if Self::actor_error_is_post_commit_exempt(&error) {
+                if actor_error_is_post_commit_exempt(&error) {
                     return Err(Self::post_commit_actor_error(error));
                 }
                 let (code, message) = match error {
@@ -393,7 +450,7 @@ impl NyanpasuClient {
         if let Err(error) = lease.restart().await {
             let message = match error {
                 super::core_bridge::RestartFailure::Actor(error)
-                    if Self::actor_error_is_post_commit_exempt(&error) =>
+                    if actor_error_is_post_commit_exempt(&error) =>
                 {
                     return Err(Self::post_commit_actor_error(error));
                 }
@@ -493,6 +550,36 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
     };
     use tokio::sync::oneshot as tokio_oneshot;
+
+    #[test]
+    fn background_failure_classification_separates_teardown_invariants_and_degradation() {
+        let actor_error = |error| ClientError::Anyhow(anyhow::Error::new(error));
+
+        assert_eq!(
+            background_failure_disposition(&actor_error(CoreActorError::ShuttingDown)),
+            BackgroundFailureDisposition::QuietShutdown
+        );
+        assert_eq!(
+            background_failure_disposition(&actor_error(CoreActorError::StaleOperation)),
+            BackgroundFailureDisposition::InvariantViolation
+        );
+        assert_eq!(
+            background_failure_disposition(&actor_error(CoreActorError::LifecycleInvariant(
+                crate::core::actor::types::LifecycleInvariantKind::PromotedRegression,
+            ))),
+            BackgroundFailureDisposition::InvariantViolation
+        );
+        assert_eq!(
+            background_failure_disposition(&ClientError::Anyhow(anyhow::Error::new(
+                super::super::runtime::RuntimeRevisionExhausted,
+            ))),
+            BackgroundFailureDisposition::InvariantViolation
+        );
+        assert_eq!(
+            background_failure_disposition(&ClientError::Custom("ordinary failure".into())),
+            BackgroundFailureDisposition::Degraded
+        );
+    }
 
     /// Capacity-1 dirty burst folds into one rebuild after the coalesce window.
     /// Uses paused Tokio time — no real sleep ordering.
@@ -709,9 +796,9 @@ mod tests {
     }
 
     /// T07 review fix regression pin: the regeneration bridge assembles its
-    /// inputs from legacy verge/clash values as the writers drafted them
-    /// (feat::patch_clash / change_core draft first, reseed typed actors only
-    /// after commit). Tests the pure conversion half — the production wrapper
+    /// inputs from legacy verge/clash values as the writers expose them
+    /// (`feat::patch_clash` drafts first; `change_core` commits typed application
+    /// state directly). Tests the pure conversion half — the production wrapper
     /// reads Config::{verge,clash}().latest() and must stay draft-inclusive
     /// (mutating the process-global singletons here is inherently racy, so the
     /// wrapper's latest() choice is locked by comment + review, not by test).

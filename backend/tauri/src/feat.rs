@@ -251,6 +251,24 @@ pub async fn patch_clash(client: crate::client::NyanpasuClient, patch: Mapping) 
     .await
 }
 
+fn finish_successful_clash_rebuild<T>(
+    rebuilt: T,
+    apply_mirror: impl FnOnce(),
+    persist_mirror: impl FnOnce() -> Result<()>,
+) -> T {
+    apply_mirror();
+    // TODO(actor-migration): legacy clash persistence is best-effort now that the typed
+    // store is the source of truth after the rebuild succeeds.
+    // Remove when: all remaining Config::clash() readers migrate to the typed store.
+    if let Err(error) = persist_mirror() {
+        log::error!(
+            target: "app",
+            "failed to persist best-effort legacy clash mirror: {error:#}"
+        );
+    }
+    rebuilt
+}
+
 pub async fn patch_clash_with_rebuild<F, Fut, T>(
     client: crate::client::NyanpasuClient,
     patch: Mapping,
@@ -323,19 +341,13 @@ where
         Ok(rebuilt)
     };
     match run().await {
-        Ok(rebuilt) => {
-            Config::clash().apply();
-            // TODO(actor-migration): legacy clash persistence is best-effort now that the typed
-            // store is the source of truth after the rebuild succeeds.
-            // Remove when: all remaining Config::clash() readers migrate to the typed store.
-            if let Err(error) = Config::clash().data().save_config() {
-                log::error!(
-                    target: "app",
-                    "failed to persist best-effort legacy clash mirror: {error:#}"
-                );
-            }
-            Ok(rebuilt)
-        }
+        Ok(rebuilt) => Ok(finish_successful_clash_rebuild(
+            rebuilt,
+            || {
+                Config::clash().apply();
+            },
+            || Config::clash().data().save_config(),
+        )),
         Err(err) => {
             Config::clash().discard();
             Err(err)
@@ -560,6 +572,7 @@ pub fn update_proxies_buff(rx: Option<tokio::sync::oneshot::Receiver<()>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
 
     #[test]
     fn core_restart_only_for_port_controller_secret() {
@@ -575,5 +588,21 @@ mod tests {
         let mut patch = serde_yaml::Mapping::new();
         patch.insert("external-controller".into(), "127.0.0.1:9090".into());
         assert!(requires_core_restart(&patch));
+    }
+
+    #[test]
+    fn legacy_persistence_failure_cannot_flip_successful_rebuild_to_error() {
+        let mirror_applied = Cell::new(false);
+        let outcome: Result<&str> = Ok(finish_successful_clash_rebuild(
+            "typed commit and rebuild succeeded",
+            || mirror_applied.set(true),
+            || anyhow::bail!("injected legacy save failure"),
+        ));
+
+        assert!(
+            mirror_applied.get(),
+            "the in-memory mirror must still apply"
+        );
+        assert!(matches!(outcome, Ok("typed commit and rebuild succeeded")));
     }
 }

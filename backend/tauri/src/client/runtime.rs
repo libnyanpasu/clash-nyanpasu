@@ -46,6 +46,11 @@ impl RuntimeRevisionAllocator {
     pub(crate) fn last_allocated(&self) -> RuntimeRevision {
         RuntimeRevision(self.0.load(Ordering::Relaxed))
     }
+
+    #[cfg(test)]
+    pub(crate) fn exhaust(&self) {
+        self.0.store(u64::MAX, Ordering::Relaxed);
+    }
 }
 
 #[derive(Debug, Clone)]

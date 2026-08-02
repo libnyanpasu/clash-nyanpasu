@@ -184,7 +184,7 @@ impl CoreLifecycleLease for ActorBackedTestCoreLifecycleLease {
     async fn running_identity(
         &mut self,
     ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError> {
-        self.core.running(&self.operation).await
+        self.inner.running_identity().await
     }
 
     async fn apply_promoted(

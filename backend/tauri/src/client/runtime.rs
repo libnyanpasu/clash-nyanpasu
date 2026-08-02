@@ -41,6 +41,11 @@ impl RuntimeRevisionAllocator {
             .map_err(|_| RuntimeRevisionExhausted)?;
         Ok(RuntimeRevision(previous + 1))
     }
+
+    #[cfg(test)]
+    pub(crate) fn last_allocated(&self) -> RuntimeRevision {
+        RuntimeRevision(self.0.load(Ordering::Relaxed))
+    }
 }
 
 #[derive(Debug, Clone)]

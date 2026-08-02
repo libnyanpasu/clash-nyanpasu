@@ -104,6 +104,7 @@ struct ProcessCoreState {
     hold_port: Option<u16>,
     http_port: Option<u16>,
     target_core: ClashCore,
+    running_core: Option<ClashCore>,
     state_changed_at: i64,
 }
 
@@ -115,6 +116,7 @@ impl Default for ProcessCoreState {
             hold_port: None,
             http_port: None,
             target_core: ClashCore::Mihomo,
+            running_core: None,
             state_changed_at: unix_now(),
         }
     }
@@ -327,6 +329,15 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
         &mut self,
         snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
     ) -> Result<CoreApplyData, crate::core::actor::types::CoreActorError> {
+        let outcome = if self
+            .state
+            .running_core
+            .is_some_and(|core| core != snapshot.target_core)
+        {
+            nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::Switched
+        } else {
+            nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::Reloaded
+        };
         let product = self.runtime_paths.product().to_owned();
         self.apply_runtime_config(product.as_str())
             .await
@@ -335,7 +346,10 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
                     crate::core::actor::backend::CoreBackendError::Construct(error),
                 ))
             })?;
-        Ok(super::core_bridge::test_apply_data(&snapshot))
+        self.state.running_core = Some(snapshot.target_core);
+        let mut data = super::core_bridge::test_apply_data(&snapshot);
+        data.outcome = outcome;
+        Ok(data)
     }
 
     async fn running_identity(
@@ -574,6 +588,7 @@ impl ProcessCoreLifecycleLease {
         self.state.http_port = ready.announcement.http_port;
         self.state.ready = Some(ready);
         self.state.child = Some(child);
+        self.state.running_core = Some(target);
         self.state.state_changed_at = unix_now();
         Ok(())
     }
@@ -605,6 +620,7 @@ impl ProcessCoreLifecycleLease {
 
         self.state.hold_port = None;
         self.state.http_port = None;
+        self.state.running_core = None;
         self.state.state_changed_at = unix_now();
         Ok(())
     }
@@ -627,6 +643,7 @@ fn clear_running(state: &mut ProcessCoreState) {
     state.ready = None;
     state.hold_port = None;
     state.http_port = None;
+    state.running_core = None;
     state.state_changed_at = unix_now();
 }
 
@@ -924,6 +941,77 @@ mod tests {
                     .identity_eq(before.applied.as_ref().unwrap()),
                 "Applied must stay unchanged on check fail"
             );
+
+            let mut lease = env.adapter.begin().await.unwrap();
+            lease.stop().await.unwrap();
+            client.shutdown().await;
+        });
+    }
+
+    #[test]
+    fn s09_process_change_core_running_switches_end_to_end() {
+        let env = ProcessTestEnv::new().expect("process env");
+        tauri::async_runtime::block_on(seed_product(
+            &env.adapter,
+            b"# process-switch-old\nmode: rule\n",
+        ));
+        env.adapter.set_policy(ProcessCorePolicy {
+            http_port: Some(0),
+            apply_status: Some(204),
+            ..Default::default()
+        });
+        let client = env.client().expect("client");
+
+        tauri::async_runtime::block_on(async {
+            let old = client
+                .promote_existing_runtime_product()
+                .await
+                .expect("promote initial product");
+            client
+                .start_promoted_runtime()
+                .await
+                .expect("start initial process core");
+            let process_before = env.adapter.process_snapshot().await;
+            assert!(
+                process_before.pid.is_some(),
+                "initial process must be running"
+            );
+            assert_eq!(old.target_core, ClashCore::Mihomo);
+
+            let outcome = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .expect("real-process core switch must succeed");
+
+            assert!(matches!(
+                outcome,
+                crate::client::runtime::MutationOutcome::Applied { .. }
+            ));
+            assert_eq!(
+                outcome.value().outcome,
+                crate::client::runtime::RuntimeApplyOutcome::Switched
+            );
+            assert_eq!(
+                client.get_app_config().await.unwrap().core,
+                nyanpasu_config::application::ClashCore::ClashRs
+            );
+            let lifecycle = client.inner.core_client.lifecycle();
+            let promoted = lifecycle.promoted.expect("switch must publish Promoted");
+            let applied = lifecycle.applied.expect("switch must publish Applied");
+            assert_eq!(promoted.target_core, ClashCore::ClashRs);
+            assert!(applied.identity_eq(&promoted));
+            assert_eq!(outcome.value().desired_revision, promoted.revision.get());
+            assert_eq!(
+                outcome.value().applied_revision,
+                Some(promoted.revision.get())
+            );
+
+            let process_after = env.adapter.process_snapshot().await;
+            assert_eq!(
+                process_after.pid, process_before.pid,
+                "running switch must apply through the existing process"
+            );
+            assert_eq!(process_after.http_port, process_before.http_port);
 
             let mut lease = env.adapter.begin().await.unwrap();
             lease.stop().await.unwrap();

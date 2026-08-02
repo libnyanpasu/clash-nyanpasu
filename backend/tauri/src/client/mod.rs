@@ -3975,7 +3975,7 @@ mod tests {
 
     fn assert_not_applied_degradation(
         outcome: &runtime::MutationOutcome<runtime::RuntimeApplyReport>,
-        old_revision: u64,
+        allocated_revision: core_runtime::RuntimeRevision,
         phase: runtime::DegradationPhase,
         code: &str,
     ) {
@@ -3987,7 +3987,7 @@ mod tests {
             outcome.value().outcome,
             runtime::RuntimeApplyOutcome::NotApplied
         );
-        assert!(outcome.value().desired_revision > old_revision);
+        assert_eq!(outcome.value().desired_revision, allocated_revision.get());
         assert_eq!(outcome.value().applied_revision, None);
         assert_eq!(outcome.degradations().len(), 1);
         assert_eq!(outcome.degradations()[0].phase, phase);
@@ -4052,6 +4052,7 @@ mod tests {
             .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
             .await
             .unwrap();
+        let allocated_revision = client.inner.runtime_revisions.last_allocated();
 
         assert_eq!(
             client.get_app_config().await.unwrap().core,
@@ -4059,7 +4060,7 @@ mod tests {
         );
         assert_not_applied_degradation(
             &outcome,
-            0,
+            allocated_revision,
             runtime::DegradationPhase::RuntimeBuild,
             "runtime_build_failed",
         );
@@ -4080,6 +4081,7 @@ mod tests {
                 .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
                 .await
                 .unwrap();
+            let allocated_revision = client.inner.runtime_revisions.last_allocated();
 
             assert_eq!(
                 client.get_app_config().await.unwrap().core,
@@ -4087,7 +4089,7 @@ mod tests {
             );
             assert_not_applied_degradation(
                 &outcome,
-                0,
+                allocated_revision,
                 runtime::DegradationPhase::RuntimeCheck,
                 "runtime_check_failed",
             );
@@ -4118,10 +4120,11 @@ mod tests {
             .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
             .await
             .unwrap();
+        let allocated_revision = client.inner.runtime_revisions.last_allocated();
 
         assert_not_applied_degradation(
             &outcome,
-            old_applied.revision.get(),
+            allocated_revision,
             runtime::DegradationPhase::RuntimeApply,
             "core_transport_lost",
         );
@@ -4283,7 +4286,6 @@ mod tests {
             runtime::RuntimeApplyOutcome::NotApplied
         );
         assert_eq!(outcome.value().applied_revision, None);
-        assert!(outcome.value().desired_revision > 0);
         assert_eq!(outcome.degradations().len(), 1);
         assert_eq!(
             outcome.degradations()[0].phase,
@@ -4295,8 +4297,10 @@ mod tests {
             nyanpasu_config::application::ClashCore::ClashRs
         );
         let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.unwrap();
+        assert_eq!(outcome.value().desired_revision, promoted.revision.get());
         assert_eq!(
-            lifecycle.promoted.unwrap().target_core,
+            promoted.target_core,
             nyanpasu_config::application::ClashCore::ClashRs
         );
         assert!(lifecycle.applied.is_none());
@@ -4391,10 +4395,11 @@ mod tests {
                 .patch_running_config(allow_lan_patch())
                 .await
                 .unwrap();
+            let allocated_revision = client.inner.runtime_revisions.last_allocated();
 
             assert_not_applied_degradation(
                 &outcome,
-                old_applied.revision.get(),
+                allocated_revision,
                 runtime::DegradationPhase::RuntimePromote,
                 "runtime_promote_failed",
             );
@@ -4443,10 +4448,11 @@ mod tests {
                 .patch_running_config(allow_lan_patch())
                 .await
                 .unwrap();
+            let allocated_revision = client.inner.runtime_revisions.last_allocated();
 
             assert_not_applied_degradation(
                 &outcome,
-                old_applied.revision.get(),
+                allocated_revision,
                 runtime::DegradationPhase::RuntimePromote,
                 "runtime_promote_failed",
             );
@@ -4501,10 +4507,11 @@ mod tests {
             .patch_running_config(allow_lan_patch())
             .await
             .unwrap();
+        let allocated_revision = client.inner.runtime_revisions.last_allocated();
 
         assert_not_applied_degradation(
             &outcome,
-            old_applied.revision.get(),
+            allocated_revision,
             runtime::DegradationPhase::RuntimeApply,
             expected_code,
         );
@@ -4653,6 +4660,29 @@ mod tests {
             no_backend_outcome.value().outcome,
             runtime::RuntimeApplyOutcome::NotApplied
         );
+    }
+
+    #[test]
+    fn default_promotion_check_failure_is_plain_error_without_degradation() {
+        let dir = tempdir().unwrap();
+        let sink = Arc::new(RecordingCoreDegradationSink::default());
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote()
+            .times(1)
+            .returning(|_, _| Err(anyhow::anyhow!("scripted startup check failure")));
+        let mut args = test_profiles_client_args(&dir, Arc::new(core));
+        args.degradation = sink.clone();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+
+        let error = tauri::async_runtime::block_on(client.promote_default_runtime_config())
+            .expect_err("startup check failure has no prior commit and must stay an error");
+
+        assert!(error.to_string().contains("scripted startup check failure"));
+        assert!(sink.0.lock().unwrap().is_empty());
+        let lifecycle = client.inner.core_client.lifecycle();
+        assert!(lifecycle.promoted.is_none());
+        assert!(lifecycle.applied.is_none());
+        tauri::async_runtime::block_on(client.shutdown());
     }
 
     #[test]

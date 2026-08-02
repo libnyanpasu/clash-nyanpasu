@@ -953,7 +953,7 @@ mod tests {
         });
         let client =
             crate::client::NyanpasuClient::try_new_with_args(crate::client::ClientSetupArgs {
-                core: core.clone(),
+                core: Some(core.clone()),
                 ..crate::client::tests::test_profiles_client_args(
                     &dir,
                     Arc::new(crate::client::tests::MockRunningCoreBridge::new()),

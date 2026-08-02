@@ -54,16 +54,18 @@ use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
+#[cfg(test)]
+pub(crate) use core::CoreClientArgs;
+#[allow(unused_imports)]
 pub use core::{CoreClient, CoreOperationGuard};
 pub use core_bridge::{
-    CoreLifecycleLease, CoreLifecyclePort, LegacyCoreBridge, LegacyRunningConfigPatchBridge,
-    RunningConfigPatchPort,
+    CoreLifecycleLease, CoreLifecyclePort, LegacyRunningConfigPatchBridge, RunningConfigPatchPort,
 };
 pub use error::{ClientError, Result};
 pub(crate) use error::{CompensationFailure, LegacyVergeDomain, PartialCommit};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
-pub use event_sink::{TauriUiEventSink, UiEventSink};
+pub use event_sink::{TauriCoreDegradationSink, TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 #[cfg(test)]
@@ -71,13 +73,18 @@ pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
 #[cfg(test)]
 pub use tests::{MockRunningCoreBridge, TestRunningCoreBridge as RunningCoreBridge};
+#[cfg(test)]
+pub(crate) use tests::{test_binary_resolver, test_degradation_sink, test_service_control};
 
 pub struct ClientSetupArgs {
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
     pub bridges: LegacyBridgeSet,
     pub ui_sink: Arc<dyn UiEventSink>,
-    pub core: Arc<dyn CoreLifecyclePort>,
+    pub core: Option<Arc<dyn CoreLifecyclePort>>,
+    pub binary_resolver: Arc<dyn crate::core::actor::request::CoreBinaryResolver>,
+    pub degradation: Arc<dyn crate::core::actor::backend::CoreDegradationSink>,
+    pub(crate) service_control: Arc<dyn crate::core::actor::backend::ServiceControlOps>,
     /// Optional during the staged caller migration; setup always injects it.
     pub clash_patch: Option<Arc<dyn RunningConfigPatchPort>>,
     pub system_dns: Arc<dyn SystemDnsCache>,
@@ -232,7 +239,10 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
+    core_client: CoreClient,
     core: Arc<dyn CoreLifecyclePort>,
+    requests: crate::core::actor::request::CoreRequestFactory,
+    service_control: Arc<dyn crate::core::actor::backend::ServiceControlOps>,
     clash_patch: Arc<dyn RunningConfigPatchPort>,
     /// Serializes API-first running-core patches through desired-state rebuild
     /// and any revision-fenced compensation.
@@ -259,6 +269,9 @@ impl NyanpasuClient {
             bridges,
             ui_sink,
             core,
+            binary_resolver,
+            degradation,
+            service_control,
             clash_patch,
             system_dns,
         } = args;
@@ -269,48 +282,85 @@ impl NyanpasuClient {
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
-        let (application, session_state, clash_config, profiles, runtime_store, ports, fs, rebuild) =
-            tauri::async_runtime::block_on(async move {
-                runtime_paths_for_setup
-                    .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
-                    .await
-                    .context("failed to clean stale runtime candidates")?;
-                let (application, session_state, clash_config) =
-                    new_typed_config_clients(paths.clone(), bridges).await?;
+        let (
+            application,
+            session_state,
+            clash_config,
+            profiles,
+            runtime_store,
+            ports,
+            fs,
+            rebuild,
+            core_client,
+            core,
+            requests,
+        ) = tauri::async_runtime::block_on(async move {
+            runtime_paths_for_setup
+                .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
+                .await
+                .context("failed to clean stale runtime candidates")?;
+            let (application, session_state, clash_config) =
+                new_typed_config_clients(paths.clone(), bridges).await?;
+            let app = application.get().await?.state;
+            let mode = crate::core::RunType::classify(
+                app.enable_service_mode,
+                crate::core::service::ipc::get_ipc_state(),
+            );
+            let requests = crate::core::actor::request::CoreRequestFactory::new(
+                &paths,
+                runtime_paths_for_setup.clone(),
+                binary_resolver,
+            )?;
+            let core_client = CoreClient::new(core::CoreClientArgs {
+                mode,
+                requests: requests.clone(),
+                degradation,
+            })
+            .await?;
+            let core = core.unwrap_or_else(|| {
+                Arc::new(core::CoreLifecycleAdapter::new(
+                    core_client.clone(),
+                    application.clone(),
+                    requests.clone(),
+                )) as Arc<dyn CoreLifecyclePort>
+            });
 
-                // Eager session port resolution: the core is not running yet,
-                // so probing strategies is race-free (design §19.2 caller duty).
-                let ports = Arc::new(SessionPortResolver::default());
-                let clash_snapshot = clash_config.get().await?.state;
-                ports
-                    .resolve(&clash_snapshot)
-                    .context("failed to resolve session ports")?;
+            // Eager session port resolution: the core is not running yet,
+            // so probing strategies is race-free (design §19.2 caller duty).
+            let ports = Arc::new(SessionPortResolver::default());
+            let clash_snapshot = clash_config.get().await?.state;
+            ports
+                .resolve(&clash_snapshot)
+                .context("failed to resolve session ports")?;
 
-                let file_service = Arc::new(ProfileFileService::new(
-                    paths,
-                    ports.clone() as Arc<dyn SelfProxyPortSource>,
-                ));
-                let rebuild = rebuild::RebuildCoordinator::new();
-                let profiles = profiles::ProfilesClient::new(
-                    profiles_path,
-                    file_service.clone() as Arc<dyn ProfileFsPort>,
-                    file_service.clone() as Arc<dyn SubscriptionFetcher>,
-                    file_service.clone() as Arc<dyn ProfileMaterializationPort>,
-                    Arc::new(rebuild.notifier()),
-                )
-                .await?;
-                let runtime_store = runtime::new_runtime_lifecycle_store().await?;
-                anyhow::Ok((
-                    application,
-                    session_state,
-                    clash_config,
-                    profiles,
-                    runtime_store,
-                    ports,
-                    file_service as Arc<dyn ProfileFsPort>,
-                    rebuild,
-                ))
-            })?;
+            let file_service = Arc::new(ProfileFileService::new(
+                paths,
+                ports.clone() as Arc<dyn SelfProxyPortSource>,
+            ));
+            let rebuild = rebuild::RebuildCoordinator::new();
+            let profiles = profiles::ProfilesClient::new(
+                profiles_path,
+                file_service.clone() as Arc<dyn ProfileFsPort>,
+                file_service.clone() as Arc<dyn SubscriptionFetcher>,
+                file_service.clone() as Arc<dyn ProfileMaterializationPort>,
+                Arc::new(rebuild.notifier()),
+            )
+            .await?;
+            let runtime_store = runtime::new_runtime_lifecycle_store().await?;
+            anyhow::Ok((
+                application,
+                session_state,
+                clash_config,
+                profiles,
+                runtime_store,
+                ports,
+                file_service as Arc<dyn ProfileFsPort>,
+                rebuild,
+                core_client,
+                core,
+                requests,
+            ))
+        })?;
         let client = Self::with_parts(
             application,
             session_state,
@@ -321,7 +371,10 @@ impl NyanpasuClient {
             profiles_dir,
             runtime_paths,
             ui_sink,
+            core_client,
             core,
+            requests,
+            service_control,
             clash_patch,
             system_dns,
             runtime_store,
@@ -342,7 +395,10 @@ impl NyanpasuClient {
         profiles_dir: PathBuf,
         runtime_paths: RuntimePaths,
         ui_sink: Arc<dyn UiEventSink>,
+        core_client: CoreClient,
         core: Arc<dyn CoreLifecyclePort>,
+        requests: crate::core::actor::request::CoreRequestFactory,
+        service_control: Arc<dyn crate::core::actor::backend::ServiceControlOps>,
         clash_patch: Arc<dyn RunningConfigPatchPort>,
         system_dns: Arc<dyn SystemDnsCache>,
         runtime: runtime::RuntimeLifecycleStore,
@@ -359,7 +415,10 @@ impl NyanpasuClient {
                 profiles_dir,
                 runtime_paths,
                 ui_sink,
+                core_client,
                 core,
+                requests,
+                service_control,
                 clash_patch,
                 clash_patch_gate: tokio::sync::Mutex::new(()),
                 system_dns,
@@ -389,18 +448,119 @@ impl NyanpasuClient {
         });
     }
 
-    /// Stop the instance-owned **rebuild coordinator worker** and await its exit.
+    /// Stop the instance-owned rebuild worker and core actor, awaiting both exits.
     ///
-    /// Contract (PR-4S S09):
-    /// - Shuts down only the capacity-1 dirty rebuild worker owned by this client graph.
+    /// Contract (PR-5a S11):
+    /// - Shuts down the capacity-1 dirty rebuild worker before the core actor/backend.
     /// - Does **not** act as a general service locator teardown.
-    /// - Does **not** stop desired-state actors, CoreManager globals, system proxy,
-    ///   or OS-side resources — those remain PR-5/6 residuals and existing
-    ///   `cleanup_processes` / core stop paths.
+    /// - Does **not** stop desired-state actors, system proxy, or unrelated OS resources.
     /// - Safe to call multiple times; post-shutdown dirty notifications are no-ops.
     /// - An already in-flight rebuild is allowed to finish; coalesce waits abort.
     pub async fn shutdown(&self) {
         self.inner.rebuild.shutdown().await;
+        self.inner.core_client.shutdown().await;
+    }
+
+    fn core_mode_reconciler(&self) -> crate::core::actor::request::CoreModeReconciler {
+        crate::core::actor::request::CoreModeReconciler {
+            core: self.inner.core_client.clone(),
+            application: self.inner.application.clone(),
+            requests: self.inner.requests.clone(),
+        }
+    }
+
+    pub fn core_status(
+        &self,
+    ) -> (
+        std::borrow::Cow<'static, nyanpasu_ipc::api::status::CoreState>,
+        i64,
+        crate::core::RunType,
+    ) {
+        let status = self.inner.core_client.status();
+        self.inner.core_client.hint_refresh();
+        (
+            std::borrow::Cow::Owned(status.state),
+            status.state_changed_at,
+            status.run_type,
+        )
+    }
+
+    pub async fn restart_core(&self) -> Result<()> {
+        let result: anyhow::Result<()> = async {
+            let app = self.inner.application.get().await?.state;
+            let operation = self.inner.core_client.begin_operation().await?;
+            let request = self.inner.requests.for_product(app.core)?;
+            self.inner.core_client.run(&operation, &request).await?;
+            Ok(())
+        }
+        .await;
+        result?;
+        Ok(())
+    }
+
+    pub async fn install_service(&self) -> Result<()> {
+        self.inner
+            .service_control
+            .install(self.core_mode_reconciler())
+            .await?;
+        Ok(())
+    }
+
+    pub async fn start_service(&self) -> Result<()> {
+        let control = self
+            .inner
+            .service_control
+            .start(self.core_mode_reconciler())
+            .await;
+        self.reconcile_service_mode().await;
+        control?;
+        Ok(())
+    }
+
+    pub async fn stop_service(&self) -> Result<()> {
+        let control = self.inner.service_control.stop().await;
+        self.reconcile_service_mode().await;
+        control?;
+        Ok(())
+    }
+
+    pub async fn restart_service(&self) -> Result<()> {
+        let control = self
+            .inner
+            .service_control
+            .restart(self.core_mode_reconciler())
+            .await;
+        self.reconcile_service_mode().await;
+        control?;
+        Ok(())
+    }
+
+    async fn reconcile_service_mode(&self) {
+        if let Err(error) = self
+            .core_mode_reconciler()
+            .reconcile(crate::core::service::ipc::get_ipc_state())
+            .await
+        {
+            log::error!(target: "app", "{error}");
+        }
+    }
+
+    pub async fn init_service_health(&self) -> Result<()> {
+        let app = self.inner.application.get().await?.state;
+        crate::utils::init::init_service(app.enable_service_mode, self.core_mode_reconciler())
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_core(
+        &self,
+        core_type: crate::config::nyanpasu::ClashCore,
+    ) -> Result<usize> {
+        Ok(crate::core::updater::UpdaterManager::global()
+            .write()
+            .await
+            .update_core(&core_type, self.inner.core_client.clone())
+            .await?)
     }
 
     pub(crate) fn runtime_paths(&self) -> &RuntimePaths {
@@ -1369,36 +1529,37 @@ impl NyanpasuClient {
             .map_err(ClientError::Anyhow)?;
 
         let client = self.clone();
-        let result = crate::feat::patch_clash_with_rebuild(patch, |restart| async move {
-            let operation = async {
-                let snapshot = client
-                    .regenerate_for_legacy_inner(&mut *lease)
-                    .await
-                    .map_err(anyhow::Error::from)?;
-                if restart {
-                    lease.restart().await?;
-                } else {
-                    lease
-                        .apply_promoted(client.inner.runtime_paths.product())
-                        .await?;
-                }
-                Ok::<_, anyhow::Error>(snapshot)
-            };
-            match operation.await {
-                Ok(snapshot) => Ok(snapshot),
-                Err(primary) => {
-                    client
-                        .restore_applied_after_patch_failure(
-                            &mut *lease,
-                            captured_lifecycle,
-                            compensation,
-                            primary.to_string(),
-                        )
+        let result =
+            crate::feat::patch_clash_with_rebuild(self.clone(), patch, |restart| async move {
+                let operation = async {
+                    let snapshot = client
+                        .regenerate_for_legacy_inner(&mut *lease)
                         .await
+                        .map_err(anyhow::Error::from)?;
+                    if restart {
+                        lease.restart().await?;
+                    } else {
+                        lease
+                            .apply_promoted(client.inner.runtime_paths.product())
+                            .await?;
+                    }
+                    Ok::<_, anyhow::Error>(snapshot)
+                };
+                match operation.await {
+                    Ok(snapshot) => Ok(snapshot),
+                    Err(primary) => {
+                        client
+                            .restore_applied_after_patch_failure(
+                                &mut *lease,
+                                captured_lifecycle,
+                                compensation,
+                                primary.to_string(),
+                            )
+                            .await
+                    }
                 }
-            }
-        })
-        .await;
+            })
+            .await;
         match result {
             Ok(snapshot) => {
                 self.publish_applied(snapshot).await?;
@@ -1554,7 +1715,15 @@ mod tests {
         },
         state::window::{WindowLabel, WindowState},
     };
-    use std::{collections::BTreeMap, sync::Mutex as StdMutex};
+    use std::{
+        collections::BTreeMap,
+        sync::{
+            Condvar, Mutex as StdMutex,
+            atomic::{AtomicUsize, Ordering},
+            mpsc,
+        },
+        time::Duration,
+    };
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
 
@@ -1764,6 +1933,23 @@ mod tests {
         }
     }
 
+    pub(crate) async fn test_application_client(
+        dir: &TempDir,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> ApplicationClient {
+        let seed = NyanpasuAppConfig {
+            core,
+            ..NyanpasuAppConfig::default()
+        };
+        ApplicationClient::new(
+            temp_config_path(dir, "application.yaml"),
+            seed,
+            Arc::new(NoopVergeBridge),
+        )
+        .await
+        .unwrap()
+    }
+
     struct RecordingVergeBridge {
         mirrored_theme_color: Arc<StdMutex<Option<String>>>,
     }
@@ -1820,6 +2006,267 @@ mod tests {
         async fn patch(&self, _patch: &serde_yaml::Mapping) -> anyhow::Result<()> {
             Ok(())
         }
+    }
+
+    struct FixedCoreBinaryResolver(Utf8PathBuf);
+
+    impl crate::core::actor::request::CoreBinaryResolver for FixedCoreBinaryResolver {
+        fn resolve(&self, _kind: &nyanpasu_utils::core::CoreType) -> anyhow::Result<Utf8PathBuf> {
+            Ok(self.0.clone())
+        }
+    }
+
+    #[derive(Default)]
+    struct NoopCoreDegradationSink;
+
+    impl crate::core::actor::backend::CoreDegradationSink for NoopCoreDegradationSink {
+        fn publish(&self, _degradation: runtime::Degradation) {}
+    }
+
+    #[derive(Default)]
+    struct NoopServiceControlOps;
+
+    #[async_trait]
+    impl crate::core::actor::backend::ServiceControlOps for NoopServiceControlOps {
+        async fn install(
+            &self,
+            _reconciler: crate::core::actor::request::CoreModeReconciler,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn start(
+            &self,
+            _reconciler: crate::core::actor::request::CoreModeReconciler,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn stop(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn restart(
+            &self,
+            _reconciler: crate::core::actor::request::CoreModeReconciler,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct ScriptedServiceControlOps {
+        error: Option<&'static str>,
+        calls: AtomicUsize,
+    }
+
+    struct BlockingVergeBridge {
+        entered: mpsc::Sender<()>,
+        release: Arc<(StdMutex<bool>, Condvar)>,
+    }
+
+    impl VergeLegacyBridgeTrait for BlockingVergeBridge {
+        fn prepare(
+            &self,
+            _snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            self.entered.send(()).unwrap();
+            let (lock, wake) = &*self.release;
+            let mut released = lock.lock().unwrap();
+            while !*released {
+                released = wake.wait(released).unwrap();
+            }
+            Ok(Box::new(NoopPreparedLegacyMirror))
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
+            Ok(NyanpasuAppConfig::default())
+        }
+    }
+
+    impl ScriptedServiceControlOps {
+        fn success() -> Self {
+            Self {
+                error: None,
+                calls: AtomicUsize::new(0),
+            }
+        }
+
+        fn failing(error: &'static str) -> Self {
+            Self {
+                error: Some(error),
+                calls: AtomicUsize::new(0),
+            }
+        }
+
+        fn result(&self) -> anyhow::Result<()> {
+            self.calls.fetch_add(1, Ordering::AcqRel);
+            match self.error {
+                Some(error) => anyhow::bail!(error),
+                None => Ok(()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl crate::core::actor::backend::ServiceControlOps for ScriptedServiceControlOps {
+        async fn install(
+            &self,
+            _reconciler: crate::core::actor::request::CoreModeReconciler,
+        ) -> anyhow::Result<()> {
+            self.result()
+        }
+
+        async fn start(
+            &self,
+            _reconciler: crate::core::actor::request::CoreModeReconciler,
+        ) -> anyhow::Result<()> {
+            self.result()
+        }
+
+        async fn stop(&self) -> anyhow::Result<()> {
+            self.result()
+        }
+
+        async fn restart(
+            &self,
+            _reconciler: crate::core::actor::request::CoreModeReconciler,
+        ) -> anyhow::Result<()> {
+            self.result()
+        }
+    }
+
+    struct FailingCoreBinaryResolver;
+
+    impl crate::core::actor::request::CoreBinaryResolver for FailingCoreBinaryResolver {
+        fn resolve(&self, _kind: &nyanpasu_utils::core::CoreType) -> anyhow::Result<Utf8PathBuf> {
+            anyhow::bail!("scripted binary resolution failure")
+        }
+    }
+
+    pub(crate) fn test_binary_resolver(
+        dir: &TempDir,
+    ) -> Arc<dyn crate::core::actor::request::CoreBinaryResolver> {
+        Arc::new(FixedCoreBinaryResolver(
+            Utf8PathBuf::from_path_buf(dir.path().join("fake-core")).unwrap(),
+        ))
+    }
+
+    pub(crate) fn test_degradation_sink()
+    -> Arc<dyn crate::core::actor::backend::CoreDegradationSink> {
+        Arc::new(NoopCoreDegradationSink)
+    }
+
+    pub(crate) fn test_service_control() -> Arc<dyn crate::core::actor::backend::ServiceControlOps>
+    {
+        Arc::new(NoopServiceControlOps)
+    }
+
+    async fn test_actor_parts(
+        paths: &PathResolver,
+        runtime_paths: RuntimePaths,
+    ) -> (CoreClient, crate::core::actor::request::CoreRequestFactory) {
+        let requests = crate::core::actor::request::CoreRequestFactory::new(
+            paths,
+            runtime_paths,
+            Arc::new(FixedCoreBinaryResolver(
+                Utf8PathBuf::from_path_buf(paths.app_data_dir().join("fake-core")).unwrap(),
+            )),
+        )
+        .unwrap();
+        let core = CoreClient::new(core::CoreClientArgs {
+            mode: crate::core::RunType::Normal,
+            requests: requests.clone(),
+            degradation: Arc::new(NoopCoreDegradationSink),
+        })
+        .await
+        .unwrap();
+        (core, requests)
+    }
+
+    async fn service_facade(
+        dir: &TempDir,
+        enable_service: bool,
+        backend: crate::core::actor::backend::TestBackend,
+        binary: Arc<dyn crate::core::actor::request::CoreBinaryResolver>,
+        service_control: Arc<dyn crate::core::actor::backend::ServiceControlOps>,
+        application: Option<ApplicationClient>,
+    ) -> NyanpasuClient {
+        let (default_application, session_state, clash_config) =
+            test_typed_config_clients(dir).await;
+        let application = match application {
+            Some(application) => application,
+            None => {
+                let mut patch = NyanpasuAppConfig::new_empty_patch();
+                patch.enable_service_mode = Some(enable_service);
+                default_application.patch(patch).await.unwrap();
+                default_application
+            }
+        };
+        let profiles = profiles::ProfilesClient::new(
+            temp_config_path(dir, "profiles.yaml"),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let requests = crate::core::actor::request::CoreRequestFactory::new(
+            &paths,
+            runtime_paths.clone(),
+            binary,
+        )
+        .unwrap();
+        let core_client = CoreClient::new_with_reconciled_backend(
+            core::CoreClientArgs {
+                mode: crate::core::RunType::Normal,
+                requests: requests.clone(),
+                degradation: test_degradation_sink(),
+            },
+            backend,
+        )
+        .await
+        .unwrap();
+        let ports = Arc::new(SessionPortResolver::default());
+        ports.resolve(&ClashConfig::default()).unwrap();
+        NyanpasuClient::with_parts(
+            application,
+            session_state,
+            clash_config,
+            profiles,
+            Arc::new(MockProfileFsPort::new()),
+            ports,
+            paths.app_profiles_dir(),
+            runtime_paths,
+            Arc::new(crate::client::event_sink::NoopUiEventSink),
+            core_client,
+            test_core_port(Arc::new(MockRunningCoreBridge::new())),
+            requests,
+            service_control,
+            Arc::new(NoopRunningConfigPatchPort),
+            Arc::new(NoopSystemDnsCache),
+            crate::client::runtime::new_runtime_lifecycle_store()
+                .await
+                .unwrap(),
+            rebuild::RebuildCoordinator::new(),
+        )
+    }
+
+    fn facade_backend() -> crate::core::actor::backend::TestBackend {
+        crate::core::actor::backend::TestBackend::new(
+            crate::core::actor::types::BackendObservation {
+                view: crate::core::actor::types::CoreStatusView {
+                    state: nyanpasu_ipc::api::status::CoreState::Running,
+                    state_changed_at: 1,
+                    run_type: crate::core::RunType::Normal,
+                    revision: None,
+                    recovery_exhausted: false,
+                },
+                lifecycle: crate::core::actor::types::FaithfulLifecycle::Running,
+            },
+        )
     }
 
     #[derive(Default)]
@@ -2030,6 +2477,9 @@ mod tests {
         ports
             .resolve(&ClashConfig::default())
             .expect("default ports should resolve");
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let (core_client, requests) = test_actor_parts(&paths, runtime_paths.clone()).await;
         NyanpasuClient::with_parts(
             application,
             session_state,
@@ -2038,13 +2488,12 @@ mod tests {
             Arc::new(MockProfileFsPort::new()),
             ports,
             dir.path().join("profiles"),
-            RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
-                dir.path().into(),
-                dir.path().join("data"),
-            ))
-            .unwrap(),
+            runtime_paths,
             Arc::new(crate::client::event_sink::NoopUiEventSink),
+            core_client,
             test_core_port(Arc::new(MockRunningCoreBridge::new())),
+            requests,
+            test_service_control(),
             Arc::new(NoopRunningConfigPatchPort),
             system_dns,
             crate::client::runtime::new_runtime_lifecycle_store()
@@ -2081,6 +2530,183 @@ mod tests {
         assert!(error.to_string().contains("dns flush exploded"));
     }
 
+    #[tokio::test]
+    async fn service_control_failure_still_reconciles_and_remains_the_result() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let control = Arc::new(ScriptedServiceControlOps::failing("control-a"));
+        let client = service_facade(
+            &dir,
+            true,
+            backend.clone(),
+            test_binary_resolver(&dir),
+            control.clone(),
+            None,
+        )
+        .await;
+
+        let error = client.start_service().await.unwrap_err();
+        assert!(error.to_string().contains("control-a"));
+        assert_eq!(control.calls.load(Ordering::Acquire), 1);
+        assert_eq!(backend.run_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn disabled_service_mode_does_not_touch_the_core_actor() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let client = service_facade(
+            &dir,
+            false,
+            backend.clone(),
+            test_binary_resolver(&dir),
+            Arc::new(ScriptedServiceControlOps::success()),
+            None,
+        )
+        .await;
+
+        client.start_service().await.unwrap();
+        assert_eq!(backend.run_calls(), 0);
+        assert_eq!(backend.shutdown_calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn backend_replacement_failure_does_not_replace_control_success() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        backend.fail_next_replace();
+        let client = service_facade(
+            &dir,
+            true,
+            backend.clone(),
+            test_binary_resolver(&dir),
+            Arc::new(ScriptedServiceControlOps::success()),
+            None,
+        )
+        .await;
+
+        client.start_service().await.unwrap();
+        assert_eq!(backend.run_calls(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn snapshot_read_failure_does_not_replace_control_success() {
+        let dir = tempdir().unwrap();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let release = Arc::new((StdMutex::new(false), Condvar::new()));
+        let seed = NyanpasuAppConfig {
+            enable_service_mode: true,
+            ..NyanpasuAppConfig::default()
+        };
+        let application = ApplicationClient::new(
+            temp_config_path(&dir, "blocked-application.yaml"),
+            seed,
+            Arc::new(BlockingVergeBridge {
+                entered: entered_tx,
+                release: release.clone(),
+            }),
+        )
+        .await
+        .unwrap();
+        let control = Arc::new(ScriptedServiceControlOps::success());
+        let client = service_facade(
+            &dir,
+            true,
+            facade_backend(),
+            test_binary_resolver(&dir),
+            control.clone(),
+            Some(application.clone()),
+        )
+        .await;
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.enable_silent_start = Some(true);
+        let patch_task = tokio::spawn(async move { application.patch(patch).await });
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+
+        let result = client.start_service().await;
+        let (lock, wake) = &*release;
+        *lock.lock().unwrap() = true;
+        wake.notify_all();
+        patch_task.await.unwrap().unwrap();
+
+        result.unwrap();
+        assert_eq!(control.calls.load(Ordering::Acquire), 1);
+    }
+
+    #[tokio::test]
+    async fn request_and_run_failures_do_not_replace_control_success() {
+        let request_dir = tempdir().unwrap();
+        let request_backend = facade_backend();
+        let request_client = service_facade(
+            &request_dir,
+            true,
+            request_backend.clone(),
+            Arc::new(FailingCoreBinaryResolver),
+            Arc::new(ScriptedServiceControlOps::success()),
+            None,
+        )
+        .await;
+        request_client.start_service().await.unwrap();
+        assert_eq!(request_backend.run_calls(), 0);
+
+        let run_dir = tempdir().unwrap();
+        let run_backend = facade_backend();
+        run_backend.fail_next_run();
+        let run_client = service_facade(
+            &run_dir,
+            true,
+            run_backend.clone(),
+            test_binary_resolver(&run_dir),
+            Arc::new(ScriptedServiceControlOps::success()),
+            None,
+        )
+        .await;
+        run_client.start_service().await.unwrap();
+        assert_eq!(run_backend.run_calls(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn operation_timeout_does_not_replace_control_success() {
+        let dir = tempdir().unwrap();
+        let client = service_facade(
+            &dir,
+            true,
+            facade_backend(),
+            test_binary_resolver(&dir),
+            Arc::new(ScriptedServiceControlOps::success()),
+            None,
+        )
+        .await;
+        let held = client.inner.core_client.begin_operation().await.unwrap();
+        let call = tokio::spawn({
+            let client = client.clone();
+            async move { client.start_service().await }
+        });
+        tokio::task::yield_now().await;
+        tokio::time::advance(std::time::Duration::from_secs(121)).await;
+
+        call.await.unwrap().unwrap();
+        drop(held);
+    }
+
+    #[tokio::test]
+    async fn control_error_is_not_replaced_by_a_reconcile_error() {
+        let dir = tempdir().unwrap();
+        let client = service_facade(
+            &dir,
+            true,
+            facade_backend(),
+            Arc::new(FailingCoreBinaryResolver),
+            Arc::new(ScriptedServiceControlOps::failing("control-a")),
+            None,
+        )
+        .await;
+
+        let error = client.start_service().await.unwrap_err();
+        assert!(error.to_string().contains("control-a"));
+        assert!(!error.to_string().contains("binary resolution"));
+    }
+
     /// Like [`test_profiles_client_args`], but accepts an already-typed
     /// [`CoreLifecyclePort`] (e.g. process-backed S09 adapter) without the
     /// mockall `TestRunningCoreBridge` wrapper.
@@ -2099,7 +2725,10 @@ mod tests {
                 clash: Arc::new(NoopClashBridge),
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
-            core,
+            core: Some(core),
+            binary_resolver: test_binary_resolver(dir),
+            degradation: test_degradation_sink(),
+            service_control: test_service_control(),
             clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
             system_dns: Arc::new(NoopSystemDnsCache),
         }
@@ -2165,6 +2794,8 @@ mod tests {
         )
         .await
         .expect("profiles client should be created");
+        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let (core_client, requests) = test_actor_parts(&paths, runtime_paths.clone()).await;
         let client = NyanpasuClient::with_parts(
             application,
             session_state,
@@ -2173,9 +2804,12 @@ mod tests {
             file_service.clone() as Arc<dyn ProfileFsPort>,
             ports,
             paths.app_profiles_dir(),
-            RuntimePaths::from_resolver(&paths).unwrap(),
+            runtime_paths,
             Arc::new(crate::client::event_sink::NoopUiEventSink),
+            core_client,
             test_core_port(core),
+            requests,
+            test_service_control(),
             Arc::new(NoopRunningConfigPatchPort),
             Arc::new(NoopSystemDnsCache),
             crate::client::runtime::new_runtime_lifecycle_store()
@@ -2331,7 +2965,10 @@ mod tests {
                 clash: Arc::new(NoopClashBridge),
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
-            core: test_core_port(Arc::new(MockRunningCoreBridge::new())),
+            core: Some(test_core_port(Arc::new(MockRunningCoreBridge::new()))),
+            binary_resolver: test_binary_resolver(&dir),
+            degradation: test_degradation_sink(),
+            service_control: test_service_control(),
             clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
             system_dns: Arc::new(NoopSystemDnsCache),
         })

@@ -1,6 +1,11 @@
+use std::sync::Arc;
+
 use crate::{
     client::Result,
-    core::handle::{Message, StateChanged},
+    core::{
+        actor::backend::CoreDegradationSink,
+        handle::{Message, StateChanged},
+    },
 };
 use tauri::{Emitter, Manager};
 
@@ -74,6 +79,29 @@ impl<R: tauri::Runtime> UiEventSink for TauriUiEventSink<R> {
     fn update_systray_part(&self) -> Result<()> {
         crate::core::tray::Tray::update_part(&self.app_handle)?;
         Ok(())
+    }
+}
+
+pub struct TauriCoreDegradationSink {
+    ui_sink: Arc<dyn UiEventSink>,
+}
+
+impl TauriCoreDegradationSink {
+    pub fn new(ui_sink: Arc<dyn UiEventSink>) -> Self {
+        Self { ui_sink }
+    }
+}
+
+impl CoreDegradationSink for TauriCoreDegradationSink {
+    fn publish(&self, degradation: crate::client::runtime::Degradation) {
+        tracing::warn!(
+            code = %degradation.code,
+            phase = ?degradation.phase,
+            message = %degradation.message,
+            "core degradation"
+        );
+        self.ui_sink
+            .notice_message(&Message::SetConfig(Err(degradation.message)));
     }
 }
 

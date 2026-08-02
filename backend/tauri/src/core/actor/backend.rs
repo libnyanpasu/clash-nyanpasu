@@ -51,6 +51,8 @@ struct TestBackendState {
     run_calls: std::sync::atomic::AtomicUsize,
     shutdown_calls: std::sync::atomic::AtomicUsize,
     fail_observe: std::sync::atomic::AtomicBool,
+    fail_run: std::sync::atomic::AtomicBool,
+    fail_replace: std::sync::atomic::AtomicBool,
     run_barrier: std::sync::Mutex<Option<TestRunBarrier>>,
 }
 
@@ -106,6 +108,8 @@ impl TestBackend {
                 run_calls: std::sync::atomic::AtomicUsize::new(0),
                 shutdown_calls: std::sync::atomic::AtomicUsize::new(0),
                 fail_observe: std::sync::atomic::AtomicBool::new(false),
+                fail_run: std::sync::atomic::AtomicBool::new(false),
+                fail_replace: std::sync::atomic::AtomicBool::new(false),
                 run_barrier: std::sync::Mutex::new(None),
             }),
         }
@@ -119,6 +123,24 @@ impl TestBackend {
         self.state
             .fail_observe
             .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    pub(crate) fn fail_next_run(&self) {
+        self.state
+            .fail_run
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    pub(crate) fn fail_next_replace(&self) {
+        self.state
+            .fail_replace
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    pub(crate) fn take_replace_failure(&self) -> bool {
+        self.state
+            .fail_replace
+            .swap(false, std::sync::atomic::Ordering::AcqRel)
     }
 
     pub(crate) fn block_next_run(
@@ -239,6 +261,15 @@ impl CoreBackend {
                 test.state
                     .run_calls
                     .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                if test
+                    .state
+                    .fail_run
+                    .swap(false, std::sync::atomic::Ordering::AcqRel)
+                {
+                    return Err(CoreBackendError::Construct(anyhow::anyhow!(
+                        "scripted run failure"
+                    )));
+                }
                 test.wait_for_run_barrier().await;
             }
         }

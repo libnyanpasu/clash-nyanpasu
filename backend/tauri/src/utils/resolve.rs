@@ -149,7 +149,10 @@ pub fn resolve_setup(app: &mut App) {
     crate::consts::setup_app_handle(app.app_handle().clone());
 
     log_err!(init::init_resources());
-    log_err!(init::init_service());
+    let service_client = app.state::<crate::client::NyanpasuClient>().inner().clone();
+    log_err!(tauri::async_runtime::block_on(
+        service_client.init_service_health()
+    ));
 
     // FIXME(actor-migration): write the session-resolved ports back into the
     // legacy mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
@@ -285,7 +288,6 @@ fn spawn_window_ready_timeout(app_handle: AppHandle) {
 /// reset system proxy
 pub fn resolve_reset() {
     log_err!(sysopt::Sysopt::global().reset_sysproxy());
-    log_err!(block_on(CoreManager::global().stop_core()));
 }
 
 /// Main window implementation (new UI)

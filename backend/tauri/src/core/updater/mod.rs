@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    client::CoreClient,
     config::nyanpasu::ClashCore,
     utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
@@ -219,7 +220,7 @@ impl UpdaterManager {
         Ok(())
     }
 
-    pub async fn update_core(&mut self, core_type: &ClashCore) -> Result<usize> {
+    pub async fn update_core(&mut self, core_type: &ClashCore, core: CoreClient) -> Result<usize> {
         self.mirror_speed_test().await?;
         let (artifact, tag) = self
             .manifest_version
@@ -233,6 +234,7 @@ impl UpdaterManager {
                 .set_mirror(mirror)
                 .set_artifact(artifact)
                 .set_tag(tag)
+                .set_core(core)
                 .build()
                 .await?,
         );

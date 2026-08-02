@@ -7,11 +7,16 @@ use std::{
 };
 
 use anyhow::Context as _;
+use async_trait::async_trait;
 use nyanpasu_config::application::ClashCore;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::watch;
 
-use super::{ApplicationClient, RuntimePaths};
+use super::{
+    ApplicationClient, CoreLifecycleLease, CoreLifecyclePort, RuntimePaths,
+    core_bridge::{CoreStatusSnapshot, restore_product},
+    runtime::CandidateFile,
+};
 use crate::core::{
     RunType,
     actor::{
@@ -51,7 +56,7 @@ pub struct CoreOperationGuard {
 impl CoreClient {
     pub(crate) async fn new(args: CoreClientArgs) -> anyhow::Result<Self> {
         #[cfg(test)]
-        return Self::spawn(args, None, None).await;
+        return Self::spawn(args, None, None, None).await;
         #[cfg(not(test))]
         Self::spawn(args).await
     }
@@ -61,7 +66,7 @@ impl CoreClient {
         args: CoreClientArgs,
         backend: crate::core::actor::backend::BackendSlot,
     ) -> anyhow::Result<Self> {
-        Self::spawn(args, Some(backend), None).await
+        Self::spawn(args, Some(backend), None, None).await
     }
 
     #[cfg(test)]
@@ -70,13 +75,30 @@ impl CoreClient {
         backend: crate::core::actor::backend::BackendSlot,
         replace_barrier: crate::core::actor::ReplaceBarrier,
     ) -> anyhow::Result<Self> {
-        Self::spawn(args, Some(backend), Some(replace_barrier)).await
+        Self::spawn(args, Some(backend), Some(replace_barrier), None).await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn new_with_reconciled_backend(
+        args: CoreClientArgs,
+        backend: crate::core::actor::backend::TestBackend,
+    ) -> anyhow::Result<Self> {
+        Self::spawn(
+            args,
+            Some(crate::core::actor::backend::BackendSlot::Ready(
+                crate::core::actor::backend::CoreBackend::Test(backend.clone()),
+            )),
+            None,
+            Some(backend),
+        )
+        .await
     }
 
     async fn spawn(
         args: CoreClientArgs,
         #[cfg(test)] backend: Option<crate::core::actor::backend::BackendSlot>,
         #[cfg(test)] replace_barrier: Option<crate::core::actor::ReplaceBarrier>,
+        #[cfg(test)] replacement_backend: Option<crate::core::actor::backend::TestBackend>,
     ) -> anyhow::Result<Self> {
         let (status_tx, status_rx) = watch::channel(CoreStatusView::initial());
         let hint_pending = Arc::new(AtomicBool::new(false));
@@ -93,6 +115,8 @@ impl CoreClient {
                 backend,
                 #[cfg(test)]
                 replace_barrier,
+                #[cfg(test)]
+                replacement_backend,
             },
         )
         .await
@@ -135,6 +159,19 @@ impl CoreClient {
     ) -> Result<Option<CoreRequest>, CoreActorError> {
         self.call(|reply| CoreActorMessage::RunningIdentity {
             operation: operation.id(),
+            reply,
+        })
+        .await
+    }
+
+    pub(crate) async fn check(
+        &self,
+        operation: &CoreOperationGuard,
+        request: &CoreRequest,
+    ) -> Result<(), CoreActorError> {
+        self.call(|reply| CoreActorMessage::Check {
+            operation: operation.id(),
+            request: request.clone(),
             reply,
         })
         .await
@@ -295,6 +332,157 @@ pub(crate) struct CoreLeaseAdapter {
     target_core: Option<ClashCore>,
 }
 
+impl CoreLifecycleAdapter {
+    pub(crate) fn new(
+        core: CoreClient,
+        application: ApplicationClient,
+        requests: CoreRequestFactory,
+    ) -> Self {
+        Self {
+            core,
+            application,
+            requests,
+        }
+    }
+}
+
+#[async_trait]
+impl CoreLifecyclePort for CoreLifecycleAdapter {
+    async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+        // Lock order: clash_patch_gate -> rebuild_gate -> OperationGate. Every lifecycle caller
+        // follows this order; PR-5b will absorb the first two gates.
+        let guard = self.core.begin_operation().await?;
+        Ok(Box::new(CoreLeaseAdapter {
+            guard,
+            core: self.core.clone(),
+            application: self.application.clone(),
+            requests: self.requests.clone(),
+            runtime_paths: self.requests.runtime_paths().clone(),
+            target_core: None,
+        }))
+    }
+
+    async fn status(&self) -> anyhow::Result<CoreStatusSnapshot> {
+        let status = self.core.status();
+        Ok(CoreStatusSnapshot {
+            state: status.state,
+            state_changed_at: status.state_changed_at,
+            run_type: status.run_type,
+        })
+    }
+
+    async fn on_profile_change(&self) {
+        // TODO(actor-migration): connection interruption still reads Config::verge().
+        // Reason: break_when_* and clash API client migration is PR-6 scope.
+        // Remove when: interruption reads typed ClashConfig.break_connection.
+        let _ =
+            crate::core::connection_interruption::ConnectionInterruptionService::on_profile_change(
+            )
+            .await;
+    }
+}
+
+#[async_trait]
+impl CoreLifecycleLease for CoreLeaseAdapter {
+    async fn check_and_promote(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+        product: &camino::Utf8Path,
+    ) -> anyhow::Result<[u8; 32]> {
+        use sha2::Digest as _;
+
+        self.target_core = Some(target_core);
+        anyhow::ensure!(
+            product == self.runtime_paths.product(),
+            "product path must match the lifecycle adapter runtime product"
+        );
+        let bytes = tokio::fs::read(candidate.path()).await?;
+        let mut request = self.requests.for_product(target_core)?;
+        request.config_path = candidate.path().to_owned();
+        self.core.check(&self.guard, &request).await?;
+
+        let after = tokio::fs::read(candidate.path()).await?;
+        anyhow::ensure!(
+            after == bytes,
+            "candidate config changed between check and promote"
+        );
+        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
+        anyhow::ensure!(
+            candidate_hash == candidate.bytes_sha256(),
+            "candidate config hash changed before promotion"
+        );
+
+        restore_product(product.as_std_path(), &bytes).await?;
+        let promoted = tokio::fs::read(product).await?;
+        let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
+        anyhow::ensure!(
+            promoted_hash == candidate.bytes_sha256(),
+            "promoted runtime product hash does not match candidate"
+        );
+        Ok(promoted_hash)
+    }
+
+    async fn apply_candidate(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+    ) -> anyhow::Result<()> {
+        use sha2::Digest as _;
+
+        let bytes = tokio::fs::read(candidate.path()).await?;
+        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
+        anyhow::ensure!(
+            candidate_hash == candidate.bytes_sha256(),
+            "candidate config hash changed before check"
+        );
+        let mut request = self.requests.for_product(target_core)?;
+        request.config_path = candidate.path().to_owned();
+        self.core.check(&self.guard, &request).await?;
+        let after = tokio::fs::read(candidate.path()).await?;
+        anyhow::ensure!(
+            after == bytes,
+            "candidate config changed between check and apply"
+        );
+        apply_config_from(candidate.path()).await
+    }
+
+    async fn apply_promoted(&mut self, product: &camino::Utf8Path) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            product == self.runtime_paths.product(),
+            "product path must match the lifecycle adapter runtime product"
+        );
+        apply_config_from(product).await
+    }
+
+    async fn restart(&mut self) -> anyhow::Result<()> {
+        let core = match self.target_core {
+            Some(core) => core,
+            None => self.application.get().await?.state.core,
+        };
+        let request = self.requests.for_product(core)?;
+        self.core.run(&self.guard, &request).await?;
+        Ok(())
+    }
+
+    async fn stop(&mut self) -> anyhow::Result<()> {
+        self.core.stop(&self.guard).await?;
+        Ok(())
+    }
+}
+
+async fn apply_config_from(product: &camino::Utf8Path) -> anyhow::Result<()> {
+    for attempt in 0..5 {
+        match crate::core::clash::api::put_configs(product.as_str()).await {
+            Ok(()) => break,
+            Err(error) if attempt < 4 => log::info!(target: "app", "{error:?}"),
+            Err(error) => return Err(error),
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -342,6 +530,11 @@ mod tests {
         requests: CoreRequestFactory,
         sink: Arc<RecordingSink>,
         _dir: TempDir,
+    }
+
+    async fn running_request(client: &CoreClient) -> CoreRequest {
+        let operation = client.begin_operation().await.unwrap();
+        client.running(&operation).await.unwrap().unwrap()
     }
 
     fn observation(
@@ -821,5 +1014,97 @@ mod tests {
             })
             .await;
         assert!(matches!(result, Err(CoreActorError::StaleOperation)));
+    }
+
+    #[tokio::test]
+    async fn promoted_restart_uses_the_transaction_target_core() {
+        let test = test_client(stopped(None)).await;
+        let application =
+            crate::client::tests::test_application_client(&test._dir, ClashCore::Mihomo).await;
+        let adapter =
+            CoreLifecycleAdapter::new(test.client.clone(), application, test.requests.clone());
+        let candidate = test
+            .requests
+            .runtime_paths()
+            .create_candidate(b"mode: rule\n")
+            .await
+            .unwrap();
+        let mut lease = adapter.begin().await.unwrap();
+        lease
+            .check_and_promote(
+                &candidate,
+                ClashCore::ClashRs,
+                test.requests.runtime_paths().product(),
+            )
+            .await
+            .unwrap();
+        test.backend.set_observation(running(1));
+        lease.restart().await.unwrap();
+        drop(lease);
+
+        assert_eq!(
+            running_request(&test.client).await.core_type,
+            CoreType::Clash(ClashCoreType::ClashRust)
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_target_restart_falls_back_to_the_rollback_core() {
+        let test = test_client(stopped(None)).await;
+        let application =
+            crate::client::tests::test_application_client(&test._dir, ClashCore::Mihomo).await;
+        let adapter =
+            CoreLifecycleAdapter::new(test.client.clone(), application, test.requests.clone());
+        let candidate = test
+            .requests
+            .runtime_paths()
+            .create_candidate(b"mode: rule\n")
+            .await
+            .unwrap();
+        let mut lease = adapter.begin().await.unwrap();
+        lease
+            .check_and_promote(
+                &candidate,
+                ClashCore::ClashRs,
+                test.requests.runtime_paths().product(),
+            )
+            .await
+            .unwrap();
+        test.backend.fail_next_run();
+        assert!(lease.restart().await.is_err());
+        lease
+            .check_and_promote(
+                &candidate,
+                ClashCore::Mihomo,
+                test.requests.runtime_paths().product(),
+            )
+            .await
+            .unwrap();
+        test.backend.set_observation(running(2));
+        lease.restart().await.unwrap();
+        drop(lease);
+
+        assert_eq!(
+            running_request(&test.client).await.core_type,
+            CoreType::Clash(ClashCoreType::Mihomo)
+        );
+    }
+
+    #[tokio::test]
+    async fn pure_restart_uses_the_typed_snapshot_core() {
+        let test = test_client(stopped(None)).await;
+        let application =
+            crate::client::tests::test_application_client(&test._dir, ClashCore::Meow).await;
+        let adapter =
+            CoreLifecycleAdapter::new(test.client.clone(), application, test.requests.clone());
+        let mut lease = adapter.begin().await.unwrap();
+        test.backend.set_observation(running(3));
+        lease.restart().await.unwrap();
+        drop(lease);
+
+        assert_eq!(
+            running_request(&test.client).await.core_type,
+            CoreType::Clash(ClashCoreType::Meow)
+        );
     }
 }

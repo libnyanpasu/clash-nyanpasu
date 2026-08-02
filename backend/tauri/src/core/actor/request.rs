@@ -61,6 +61,10 @@ impl CoreRequestFactory {
     pub(crate) fn manager_runtime_dir(&self) -> Utf8PathBuf {
         self.runtime_paths.candidate_dir().join(".core-manager")
     }
+
+    pub(crate) fn runtime_paths(&self) -> &crate::client::RuntimePaths {
+        &self.runtime_paths
+    }
 }
 
 #[derive(Clone)]
@@ -68,4 +72,22 @@ pub(crate) struct CoreModeReconciler {
     pub(crate) core: CoreClient,
     pub(crate) application: ApplicationClient,
     pub(crate) requests: CoreRequestFactory,
+}
+
+impl CoreModeReconciler {
+    pub(crate) async fn reconcile(
+        &self,
+        ipc_state: crate::core::service::ipc::IpcState,
+    ) -> anyhow::Result<()> {
+        let app = self.application.get().await?.state;
+        if !app.enable_service_mode {
+            return Ok(());
+        }
+        let mode = crate::core::RunType::classify(true, ipc_state);
+        let operation = self.core.begin_operation().await?;
+        self.core.set_backend(&operation, mode).await?;
+        let request = self.requests.for_product(app.core)?;
+        self.core.run(&operation, &request).await?;
+        Ok(())
+    }
 }

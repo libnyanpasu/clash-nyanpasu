@@ -39,6 +39,8 @@ pub(crate) struct CoreActorArgs {
     #[cfg(test)]
     pub(crate) backend: Option<BackendSlot>,
     #[cfg(test)]
+    pub(crate) replacement_backend: Option<backend::TestBackend>,
+    #[cfg(test)]
     pub(crate) replace_barrier: Option<ReplaceBarrier>,
 }
 
@@ -55,6 +57,8 @@ pub(crate) struct CoreActorState {
     pub(crate) requests: CoreRequestFactory,
     #[cfg(test)]
     replace_barrier: Option<ReplaceBarrier>,
+    #[cfg(test)]
+    replacement_backend: Option<backend::TestBackend>,
 }
 
 #[cfg(test)]
@@ -216,7 +220,19 @@ impl CoreActorState {
         }
 
         self.mode = mode;
-        match CoreBackend::new(mode, &self.requests).await {
+        #[cfg(test)]
+        let replacement = match self.replacement_backend.as_ref() {
+            Some(backend) if backend.take_replace_failure() => {
+                Err(backend::CoreBackendError::Construct(anyhow::anyhow!(
+                    "scripted backend replacement failure"
+                )))
+            }
+            Some(backend) => Ok(CoreBackend::Test(backend.clone())),
+            None => CoreBackend::new(mode, &self.requests).await,
+        };
+        #[cfg(not(test))]
+        let replacement = CoreBackend::new(mode, &self.requests).await;
+        match replacement {
             Ok(backend) => {
                 let observation = backend.observe_status().await;
                 self.backend = Some(BackendSlot::Ready(backend));
@@ -340,6 +356,8 @@ impl Actor for CoreActor {
             requests: args.requests,
             #[cfg(test)]
             replace_barrier: args.replace_barrier,
+            #[cfg(test)]
+            replacement_backend: args.replacement_backend,
         })
     }
 

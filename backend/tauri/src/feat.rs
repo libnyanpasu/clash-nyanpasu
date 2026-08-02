@@ -53,9 +53,9 @@ pub fn toggle_dashboard() {
 }
 
 // 重启clash
-pub fn restart_clash_core() {
-    tauri::async_runtime::spawn(async {
-        match CoreManager::global().run_core().await {
+pub fn restart_clash_core(client: crate::client::NyanpasuClient) {
+    tauri::async_runtime::spawn(async move {
+        match client.restart_core().await {
             Ok(_) => {
                 handle::Handle::refresh_clash();
                 handle::Handle::notice_message(&Message::SetConfig(Ok(())));
@@ -237,7 +237,7 @@ pub(crate) fn requires_core_restart(patch: &Mapping) -> bool {
 /// land without a corresponding apply (use `regenerate_and_apply_for_legacy`).
 #[allow(dead_code)]
 pub async fn patch_clash(client: crate::client::NyanpasuClient, patch: Mapping) -> Result<()> {
-    patch_clash_with_rebuild(patch, |restart| {
+    patch_clash_with_rebuild(client.clone(), patch, |restart| {
         let client = client.clone();
         async move {
             if restart {
@@ -251,7 +251,11 @@ pub async fn patch_clash(client: crate::client::NyanpasuClient, patch: Mapping) 
     .await
 }
 
-pub async fn patch_clash_with_rebuild<F, Fut, T>(patch: Mapping, rebuild: F) -> Result<T>
+pub async fn patch_clash_with_rebuild<F, Fut, T>(
+    client: crate::client::NyanpasuClient,
+    patch: Mapping,
+    rebuild: F,
+) -> Result<T>
 where
     F: FnOnce(bool) -> Fut,
     Fut: Future<Output = Result<T>>,
@@ -289,7 +293,7 @@ where
                 let strategy = Config::verge()
                     .latest()
                     .get_external_controller_port_strategy();
-                let core_state = crate::core::CoreManager::global().status().await;
+                let core_state = client.core_status();
                 if matches!(core_state.0.as_ref(), &CoreState::Running)
                     && get_clash_external_port(&strategy, port).is_err()
                 {
@@ -382,13 +386,16 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
                     flag = true;
                 }
             }
-            let (state, _, _) = CoreManager::global().status().await;
+            let (state, _, _) = client.core_status();
             if flag || matches!(state.as_ref(), CoreState::Stopped(_)) {
                 log::debug!(target: "app", "core is stopped, restart core");
                 client.regenerate_and_restart_for_legacy().await?;
             } else {
                 log::debug!(target: "app", "update core config");
                 #[cfg(target_os = "macos")]
+                // TODO(actor-migration): macOS DNS still uses the legacy CoreManager.
+                // Reason: ordered MacosDnsGuard lifecycle ownership belongs to PR-5c / C3.
+                // Remove when: PR-5c moves MacosDnsGuard into CoreActor.
                 let _ = CoreManager::global()
                     .change_default_network_dns(tun_mode.unwrap_or(false))
                     .await

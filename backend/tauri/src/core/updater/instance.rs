@@ -1,10 +1,8 @@
 use super::shared::{self, CoreTypeMeta};
 use crate::{
+    client::CoreClient,
     config::nyanpasu::ClashCore,
-    core::{
-        CoreManager,
-        download::{DownloadSession, DownloadStatus},
-    },
+    core::download::{DownloadSession, DownloadStatus},
 };
 use anyhow::anyhow;
 use runas::Command as RunasCommand;
@@ -35,6 +33,7 @@ pub(super) struct Updater {
     artifact: String,
     inner: parking_lot::RwLock<UpdaterInner>,
     downloader: Arc<DownloadSession>,
+    core: CoreClient,
 }
 
 struct UpdaterInner {
@@ -54,6 +53,7 @@ pub(super) struct UpdaterBuilder {
     mirror: Option<String>,
     artifact: Option<String>,
     tag: Option<CoreTypeMeta>,
+    core: Option<CoreClient>,
 }
 
 impl UpdaterBuilder {
@@ -64,6 +64,7 @@ impl UpdaterBuilder {
             mirror: None,
             artifact: None,
             tag: None,
+            core: None,
         }
     }
 
@@ -92,6 +93,11 @@ impl UpdaterBuilder {
         self
     }
 
+    pub fn set_core(mut self, core: CoreClient) -> Self {
+        self.core = Some(core);
+        self
+    }
+
     pub async fn build(self) -> anyhow::Result<Updater> {
         let client = self.client.ok_or(anyhow::anyhow!("client is required"))?;
         let core_type = self
@@ -102,6 +108,7 @@ impl UpdaterBuilder {
             .ok_or(anyhow::anyhow!("artifact is required"))?;
         let tag = self.tag.ok_or(anyhow::anyhow!("tag is required"))?;
         let mirror = self.mirror.ok_or(anyhow::anyhow!("mirror is required"))?;
+        let core = self.core.ok_or(anyhow::anyhow!("core is required"))?;
 
         let temp_dir = TempDir::new()?;
         let inner = UpdaterInner {
@@ -124,6 +131,7 @@ impl UpdaterBuilder {
             inner: parking_lot::RwLock::new(inner),
             artifact,
             downloader,
+            core,
         })
     }
 }
@@ -198,26 +206,12 @@ impl Updater {
 
     async fn replace_core(&self) -> anyhow::Result<()> {
         self.dispatch_state(UpdaterState::Replacing);
-        let core_manager = CoreManager::global();
-        // TODO(actor-migration): temporary bridge to the legacy global core manager.
-        // Reason: the updater has not yet been injected with the core lifecycle port.
-        // Remove when: the updater receives the lifecycle port through the composition root.
-        let lifecycle = core_manager.begin_lifecycle().await;
-        let current_core = crate::config::Config::verge()
-            .latest()
-            .clash_core
-            .unwrap_or_default();
-        tracing::debug!("current core: {}", current_core);
+        let (operation, restart_target) = replacement_target(&self.core, self.core_type).await?;
 
-        let runtime_paths = if current_core == self.core_type {
-            let resolver = crate::utils::path::PathResolver::from_env()?;
-            let runtime_paths = crate::client::RuntimePaths::from_resolver(&resolver)?;
+        if restart_target.is_some() {
             tracing::debug!("stopping core to replace");
-            lifecycle.stop_core().await?;
-            Some(runtime_paths)
-        } else {
-            None
-        };
+            self.core.stop(&operation).await?;
+        }
         #[cfg(target_os = "windows")]
         let target_core = format!("{}.exe", self.core_type);
         #[cfg(not(target_os = "windows"))]
@@ -274,9 +268,9 @@ impl Updater {
             }
         };
 
-        if let Some(runtime_paths) = runtime_paths.as_ref() {
+        if let Some(request) = restart_target.as_ref() {
             self.dispatch_state(UpdaterState::Restarting);
-            lifecycle.run_core_from(runtime_paths.product()).await?;
+            self.core.run(&operation, request).await?;
         }
 
         Ok(())
@@ -321,5 +315,88 @@ impl Updater {
 
     pub fn get_updater_id(&self) -> usize {
         self.id
+    }
+}
+
+async fn replacement_target(
+    core: &CoreClient,
+    target: ClashCore,
+) -> anyhow::Result<(
+    crate::client::CoreOperationGuard,
+    Option<crate::core::actor::types::CoreRequest>,
+)> {
+    let operation = core.begin_operation().await?;
+    let running = core.running(&operation).await?;
+    let restart_target = running
+        .filter(|request| request.core_type == nyanpasu_utils::core::CoreType::from(&target));
+    Ok((operation, restart_target))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use camino::Utf8PathBuf;
+
+    use super::*;
+    use crate::{
+        client::CoreClientArgs,
+        core::{
+            RunType,
+            actor::{
+                backend::{BackendSlot, CoreBackendError, CoreDegradationSink},
+                request::{CoreBinaryResolver, CoreRequestFactory},
+            },
+        },
+        utils::path::PathResolver,
+    };
+
+    struct FixedBinary(Utf8PathBuf);
+
+    impl CoreBinaryResolver for FixedBinary {
+        fn resolve(&self, _kind: &nyanpasu_utils::core::CoreType) -> anyhow::Result<Utf8PathBuf> {
+            Ok(self.0.clone())
+        }
+    }
+
+    struct NoopDegradation;
+
+    impl CoreDegradationSink for NoopDegradation {
+        fn publish(&self, _degradation: crate::client::runtime::Degradation) {}
+    }
+
+    #[tokio::test]
+    async fn failed_backend_slot_aborts_replacement_without_typed_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths).unwrap();
+        let requests = CoreRequestFactory::new(
+            &paths,
+            runtime_paths,
+            Arc::new(FixedBinary(
+                Utf8PathBuf::from_path_buf(dir.path().join("fake-core")).unwrap(),
+            )),
+        )
+        .unwrap();
+        let core = CoreClient::new_with_backend(
+            CoreClientArgs {
+                mode: RunType::Normal,
+                requests,
+                degradation: Arc::new(NoopDegradation),
+            },
+            BackendSlot::Failed {
+                error: Arc::new(CoreBackendError::Construct(anyhow::anyhow!(
+                    "backend unavailable"
+                ))),
+            },
+        )
+        .await
+        .unwrap();
+
+        let error = match replacement_target(&core, ClashCore::Mihomo).await {
+            Ok(_) => panic!("failed backend slot must abort replacement"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("no core backend is available"));
     }
 }

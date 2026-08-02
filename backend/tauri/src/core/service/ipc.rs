@@ -7,7 +7,7 @@ use nyanpasu_utils::runtime::block_on;
 use serde::Serialize;
 use tracing::instrument;
 
-use crate::log_err;
+use crate::core::actor::request::CoreModeReconciler;
 
 use super::compat::ServiceCompat;
 
@@ -33,12 +33,12 @@ pub fn get_ipc_state() -> IpcState {
     IPC_STATE.load(Ordering::Relaxed)
 }
 
-pub(super) fn set_ipc_state(state: IpcState) {
+pub(super) fn set_ipc_state(state: IpcState, reconciler: &CoreModeReconciler) {
     IPC_STATE.store(state, Ordering::Relaxed);
-    on_ipc_state_changed(state);
+    on_ipc_state_changed(state, reconciler.clone());
 }
 
-fn dispatch_disconnected() {
+fn dispatch_disconnected(reconciler: &CoreModeReconciler) {
     // Strong CAS on purpose: a spurious `compare_exchange_weak` failure here
     // would leave a stale `Connected` past the accepted poll window and weaken
     // the fail-closed compat gate riding on this transition.
@@ -51,11 +51,11 @@ fn dispatch_disconnected() {
         )
         .is_ok()
     {
-        on_ipc_state_changed(IpcState::Disconnected)
+        on_ipc_state_changed(IpcState::Disconnected, reconciler.clone())
     }
 }
 
-fn dispatch_connected() {
+fn dispatch_connected(reconciler: &CoreModeReconciler) {
     if IPC_STATE
         .compare_exchange(
             IpcState::Disconnected,
@@ -65,58 +65,43 @@ fn dispatch_connected() {
         )
         .is_ok()
     {
-        on_ipc_state_changed(IpcState::Connected)
+        on_ipc_state_changed(IpcState::Connected, reconciler.clone())
     }
 }
 
 // TODO: it might be moved to outer scope?
-#[instrument]
-fn on_ipc_state_changed(state: IpcState) {
+#[instrument(skip(reconciler))]
+fn on_ipc_state_changed(state: IpcState, reconciler: CoreModeReconciler) {
     tracing::info!("IPC state changed: {:?}", state);
-    let enabled_service = {
-        *crate::config::Config::verge()
-            .latest()
-            .enable_service_mode
-            .as_ref()
-            .unwrap_or(&false)
-    };
     std::thread::spawn(move || {
         nyanpasu_utils::runtime::block_on(async move {
-            if enabled_service {
-                let (_, _, run_type) = crate::core::CoreManager::global().status().await;
-                match (state, run_type) {
-                    (IpcState::Connected, crate::core::RunType::Normal)
-                    | (IpcState::Disconnected, crate::core::RunType::Service) => {
-                        tracing::info!("Restarting core due to IPC state change");
-                        log_err!(crate::core::CoreManager::global().run_core().await);
-                    }
-                    _ => {}
-                }
+            if let Err(error) = reconciler.reconcile(state).await {
+                log::error!(target: "app", "{error}");
             }
         })
     });
 }
 
-pub(super) fn spawn_health_check() {
+pub(super) fn spawn_health_check(reconciler: CoreModeReconciler) {
     KILL_FLAG.store(false, Ordering::Relaxed);
-    std::thread::spawn(|| {
+    std::thread::spawn(move || {
         HEALTH_CHECK_RUNNING.store(true, Ordering::Release);
         block_on(async {
             loop {
                 if KILL_FLAG.load(Ordering::Acquire) {
-                    set_ipc_state(IpcState::Disconnected);
+                    set_ipc_state(IpcState::Disconnected, &reconciler);
                     HEALTH_CHECK_RUNNING.store(false, Ordering::Release);
                     break;
                 }
-                health_check().await;
+                health_check(&reconciler).await;
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         })
     });
 }
 
-#[instrument]
-async fn health_check() {
+#[instrument(skip(reconciler))]
+async fn health_check(reconciler: &CoreModeReconciler) {
     match super::control::status().await {
         Ok(info) => {
             let (state, compat) = target_ipc_state(&info);
@@ -127,13 +112,13 @@ async fn health_check() {
                 );
             }
             match state {
-                IpcState::Connected => dispatch_connected(),
-                IpcState::Disconnected => dispatch_disconnected(),
+                IpcState::Connected => dispatch_connected(reconciler),
+                IpcState::Disconnected => dispatch_disconnected(reconciler),
             }
         }
         Err(e) => {
             tracing::error!("IPC health check failed: {}", e);
-            dispatch_disconnected();
+            dispatch_disconnected(reconciler);
         }
     }
 }

@@ -153,6 +153,9 @@
 | F43  | **`CoreActorError` 今天只有四个变体** `StaleOperation` / `NoBackend` / `Backend` / `ShuttingDown`——**没有任何不变量类变体**。因此 v4 的「豁免 (b) 靠类型区分」在代码里**没有落点**：实施者要么挪用 `StaleOperation`（语义是守卫身份不符，不是单调性），要么裹进 `Backend`（把 bug 伪装成后端故障）——两条路都退回 NH2 刚消灭的字符串嗅探（NH4 的根因）                                                                                                                                                                                      | `core/actor/types.rs:59-70`                                                                                                                                      |
 | F44  | **`map_apply_outcome` 这个名字已被占用**：`backend.rs:536` 的既有函数做的是 **manager `ApplyOutcome` → `CoreApplyData`**（Local 侧 wire DTO 转换），有 3 处引用（`:358` 生产、`:975`/`:986` 测试）。C3 要新增的函数方向**相反**（`CoreApplyData` → `RuntimeApplyOutcome`）却同名、且在相邻模块（NH9 的根因）                                                                                                                                                                                                                               | `core/actor/backend.rs:536`、`:358`、`:975`、`:986`                                                                                                              |
 | F45  | 今天的实现里 **check/晋升 与 发布本来就是分离的两段**：`check_and_promote` 在 `mod.rs:1678-1680` 完成并 `?` 出错误，`publish_promoted` 在 `:1685` **独立调用**。v5 的 D3 那句「`check_and_promote` **内部**发 `PublishPromoted`」是全文唯一与此矛盾的措辞（H2 的根因）                                                                                                                                                                                                                                                                     | `client/mod.rs:1678-1685`                                                                                                                                        |
+| F46  | **`Backend(_)` 是一个未分化的口袋**：`CoreBackendError` 有四支 `Local` / `Service` / `Binary` / `Construct`，而 `backend_error()` 把**全部**裹进 `CoreActorError::Backend`。revision 冲突、not-started、传输丢失**全藏在这一支里面**——没有有序判据，§2.2 的第 5 行与 7b 会掉进 7c 兜底，6a 与 7c 互相歧义（H3 的根因）                                                                                                                                                                                                                     | `core/actor/backend.rs:593-603`；`core/actor/mod.rs:297-299`                                                                                                     |
+| F47  | **Local 侧有类型化谓词**：`nyanpasu_core_manager::Error::RevisionConflict { .. }`（`error.rs:44`）与 `Error::NotStarted`（`error.rs:11`）。注意 `NotStarted` 是 **`Err` 而非 outcome**——`manager/apply.rs:26` 的 `.ok_or(Error::NotStarted)?` 与 `:28` 的 `return Err(Error::NotStarted)` 都走错误通道                                                                                                                                                                                                                                     | `crates/nyanpasu-core-manager/src/error.rs:11,44`；`manager/apply.rs:26,28`                                                                                      |
+| F48  | **Service 侧的分类键是 `error_kind: Option<String>`，不是 `code`**：`ClientError::Server` 同时带 `code: ResponseCode` 与 `error_kind: Option<String>`，而**后者才是 R0 收敛出来的那个字段**（对照 `api::error_kind::{NOT_STARTED, REVISION_CONFLICT, …}` 字符串常量）。另：`ClientError` **共七支**（`BuildClient` / `Request` / `HttpStatus` / `Decode` / `Server` / `EmptyData` / `WebSocket`）**且标了 `#[non_exhaustive]`**——分类器必须有兜底                                                                                          | `nyanpasu_ipc/src/client/mod.rs:23-62`；`api/mod.rs:40,45`                                                                                                       |
 
 ---
 
@@ -238,7 +241,7 @@
 - **I-B（不静默）**：**除本节两条豁免外**，任何 `post` 失败**必须**产出至少一条 `Degradation`，不允许只写日志（豁免类改为 `Err` + 错误级日志，同样不静默）；
 - **I-C（状态单调）**：`post` 失败不得回退已经推进的 Promoted；Applied 只在 backend 确认采纳新 revision 时才推进（§3）。
 
-> 与 `CoreActorError` 的关系：`StaleOperation` / `LifecycleInvariant(_)` / `ShuttingDown` 走上面的 `matches!` 豁免规则，**不映射 degradation**；`NoBackend` 按 §2.2 第 **6b** 行处理（`core_backend_unavailable`），`Backend(_)` 按 6a / 7c 处理——**后两者永不豁免**。
+> 与 `CoreActorError` 的关系：`StaleOperation` / `LifecycleInvariant(_)` / `ShuttingDown` 走上面的 `matches!` 豁免规则，**不映射 degradation**；`NoBackend` 按 §2.2 第 **6b** 行处理（`core_backend_unavailable`）；**`Backend(_)` 不是单一去向**——它是个未分化口袋（F46），必须过 **A.7 的有序分类器**才能定到第 5 / 6a / 7b / 7c 行。**后两者永不豁免。**
 
 ### 2.4 degradation 投递到哪里（I-B 对**无 caller 的入口**如何满足）
 
@@ -949,6 +952,40 @@ pub(crate) fn runtime_outcome_from_apply_data(
     promoted_revision: u64,
 ) -> (RuntimeApplyReport, Vec<Degradation>);
 ```
+
+### A.7 `Backend(_)` 的有序分类器（H3；**唯一实现处**）
+
+`CoreActorError::Backend(_)` 是个口袋：revision 冲突、not-started、传输丢失全在里面（F46）。**按顺序**匹配，第一个命中即返回；分类器**只有一处实现**，各调用点一律调它，不得复制判据。
+
+```rust
+// core/actor/backend.rs —— 与 CoreBackendError 同模块（它最清楚自己的内部结构）
+pub(crate) enum BackendFailureClass {
+    RevisionConflict,   // → §2.2 行 5
+    NotRunning,         // → §2.2 行 7b
+    TransportLost,      // → §2.2 行 6a
+    Other,              // → §2.2 行 7c
+}
+
+pub(crate) fn classify_backend_failure(error: &CoreBackendError) -> BackendFailureClass;
+```
+
+| 顺序 | 类                        | Local 判据（`CoreBackendError::Local`）                                             | Service 判据（`CoreBackendError::Service`）                                                                                   |
+| ---- | ------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `RevisionConflict` → 行 5 | `matches!(e, Error::RevisionConflict { .. })`（`error.rs:44`）                      | `Server { error_kind: Some(k), .. }` 且 `k == api::error_kind::REVISION_CONFLICT`（`api/mod.rs:45`）                          |
+| 2    | `NotRunning` → 行 7b      | `matches!(e, Error::NotStarted)`（`error.rs:11`；**它是 `Err` 不是 outcome**，F47） | 同上，`k == api::error_kind::NOT_STARTED`（`api/mod.rs:40`）                                                                  |
+| 3    | `TransportLost` → 行 6a   | **无类型化谓词——照实说明，见下**                                                    | `ClientError` 除 `Server` 外的**其余六支**（`BuildClient` / `Request` / `HttpStatus` / `Decode` / `EmptyData` / `WebSocket`） |
+| 4    | `Other` → 行 7c           | 其余 `Error` 变体                                                                   | `Server` 带其它/缺失 `error_kind`；**以及 `#[non_exhaustive]` 的未来新变体**                                                  |
+
+`CoreBackendError::Binary` / `Construct` 一律归 `Other`（行 7c）。
+
+> **两处对裁定输入的修正（我逐一核过源码）：**
+>
+> 1. **Service 侧的分类键是 `error_kind: Option<String>`，不是 `code`。** `ClientError::Server` 两个字段都有：`code: ResponseCode` 是协议层响应码，`error_kind` 才是 **R0 收敛出来的**那个（doc 原文「The envelope's `error_kind`, when the service classified the failure」）。按 `code` 分类会分错。
+> 2. **`ClientError` 是七支且 `#[non_exhaustive]`**，不是四支。除 `Server` 外还有 `EmptyData` 与 `WebSocket`；`#[non_exhaustive]` 意味着 submodule 升级可能加新支，**分类器必须有兜底**（第 4 行已覆盖）。
+
+> **Local 侧的传输类没有类型化谓词——照实记录，不造。** `nyanpasu_core_manager` 是**进程内**管理器，没有 IPC 传输层，所以「传输丢失」在 Local 侧**根本不存在**；第 3 行的 Local 格因此为空，不是漏写。Local 的其余失败一律落 `Other`（行 7c）。
+
+> **这条分类链是 R0 的实证价值落点**：Service 侧之所以能把 revision 冲突与 not-started 从传输错误里**分**出来，靠的正是 R0 把服务端错误收敛成 `error_kind` 字符串常量。没有 R0，Service 侧只能看 HTTP 状态码与错误文本——那就退回 NH2 刚消灭的字符串嗅探。**R0 先行的必要性在这里得到实证。**
 
 ### A.6 degradation code 常量表（§2.2 / §3 引用）
 

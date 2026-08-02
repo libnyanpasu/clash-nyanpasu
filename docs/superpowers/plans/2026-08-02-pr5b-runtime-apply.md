@@ -1,7 +1,7 @@
 # PR-5b 实施计划 — 单一 runtime apply 管线
 
 **日期：** 2026-08-02
-**版本：** v4（复审 REJECT 后修订：NH1–NH3 + C1/M10 残留 + 六处陈旧文本；**D1–D5 全裁 A** 不重开）
+**版本：** v5（三轮复审 REJECT 后修订：NH4–NH9 + 五处机械修；**D1–D5 全裁 A** 不重开）
 **分支基线：** `refactor/core-manager-actor` @ `9727ef1d4`（PR-5a 阶段门已关闭：`ae4e0f288` + `6a3878bba` + `5277482a5` + `9727ef1d4`）
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/task.md` 卡 B1–B4；`design.md` §6–§8
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.2；必答项 §6.4 **RQ-01 / RQ-03**
@@ -150,6 +150,8 @@
 | F40  | **`CoreStatusView.state` 是二值投影，不能用来判「核在不在跑」**：`map_local_status` 的 `lifecycle` 忠实保留六态，但 `state` 把 `Running`/`Switching`/**`Stopping`** 压成 `CoreState::Running`，把 `Stopped` 之外的其余（**`Starting`**/**`Restarting`**）落进兜底 `_ => Stopped(None)`。即 **Starting→Stopped、Restarting→Stopped、Stopping→Running 三个分支会被反转**（NH1 的根因）                                                                                                                                                       | `core/actor/backend.rs:438-457`（`:445-447` 兜底、`:450-452` 三态归 Running）；`types.rs:20`                                                                     |
 | F41  | lease seam 的 `check_and_promote` 返回 **`anyhow::Result<[u8; 32]>`**——一个**未分化**的错误类型，**不携带任何相位信息**。v3 说「anyhow 天然区分 check 与 promote」是**错的**：知道相位的是 adapter 里的**构造位置**，不是错误值本身；照 v3 写下去，`runtime_check_failed` / `runtime_promote_failed` 的区分只能靠嗅探错误字符串（NH2 的根因）                                                                                                                                                                                              | `client/core_bridge.rs:48-58`                                                                                                                                    |
 | F42  | promote 是**先写后验**：`restore_product` 写入产物后才读回比对哈希（`core.rs:421` 写、`:422-427` 验）。因此「产物已是新值、Promoted 仍是旧值」的分裂窗口**今天的代码里就存在**，不是 5b 引入的（NH3 的根因之一）                                                                                                                                                                                                                                                                                                                           | `client/core.rs:405-428`                                                                                                                                         |
+| F43  | **`CoreActorError` 今天只有四个变体** `StaleOperation` / `NoBackend` / `Backend` / `ShuttingDown`——**没有任何不变量类变体**。因此 v4 的「豁免 (b) 靠类型区分」在代码里**没有落点**：实施者要么挪用 `StaleOperation`（语义是守卫身份不符，不是单调性），要么裹进 `Backend`（把 bug 伪装成后端故障）——两条路都退回 NH2 刚消灭的字符串嗅探（NH4 的根因）                                                                                                                                                                                      | `core/actor/types.rs:59-70`                                                                                                                                      |
+| F44  | **`map_apply_outcome` 这个名字已被占用**：`backend.rs:536` 的既有函数做的是 **manager `ApplyOutcome` → `CoreApplyData`**（Local 侧 wire DTO 转换），有 3 处引用（`:358` 生产、`:975`/`:986` 测试）。C3 要新增的函数方向**相反**（`CoreApplyData` → `RuntimeApplyOutcome`）却同名、且在相邻模块（NH9 的根因）                                                                                                                                                                                                                               | `core/actor/backend.rs:536`、`:358`、`:975`、`:986`                                                                                                              |
 
 ---
 
@@ -167,29 +169,43 @@
 | 入口                                                                                                                         | 有无 desired commit           | 分界                                                                                                                                                    |
 | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `patch_running_config`（B3）、`change_core`（B4）                                                                            | **有**，且在最前              | commit 之后全部 degraded                                                                                                                                |
-| `rebuild_running_config`（**后台脏重建**，`RebuildCoordinator` worker）                                                      | 无（响应更早的 commit）       | **全部 degraded**——commit 早已发生，此处只是迟到的副作用；投递走 sink，见 §2.4                                                                          |
+| `rebuild_running_config`（**后台脏重建**，`RebuildCoordinator` worker）                                                      | 无（响应更早的 commit）       | **除 §2.3 两条豁免外全部 degraded**——commit 早已发生，此处只是迟到的副作用；投递走 sink，见 §2.4                                                        |
 | `rebuild_running_config`（**`enhance_profiles` 命令**，F34 ③）                                                               | 无（doc 明写无前置 commit）   | **全部 `Err`**——命令 doc 原文「there is no prior state commit, so a failure is a plain error」                                                          |
 | `regenerate_and_apply_for_legacy` / `regenerate_and_restart_for_legacy`（**legacy 重播**，F34 ④）                            | 无（legacy draft 尚未 apply） | **全部 `Err`**——调用方 `feat::*` 靠 `Err` 触发 `Config::verge().discard()`；`RolledBack` 也必须映射成 `Err`，否则 legacy draft 会被误当成功而 `apply()` |
 | `promote_existing_runtime_product` / `start_promoted_runtime` / `promote_default_runtime_config`（启动路径）、`restart_core` | 无                            | 全部 `Err`（没有已提交的用户意图需要保护）                                                                                                              |
 
 ### 2.2 七项逐条作答
 
-`P` 列 = 该失败发生在分界线之前（`pre`）还是之后（`post`）。`post` 一律映射为 `Degradation { phase, code, retryable }` 并经 `MutationOutcome::from_parts` 变成 `CommittedDegraded`。
+`P` 列 = 该失败发生在分界线之前（`pre`）还是之后（`post`）。**除 §2.3 的两条豁免（E-a / E-b）外**，`post` 一律映射为 `Degradation { phase, code, retryable }` 并经 `MutationOutcome::from_parts` 变成 `CommittedDegraded`。
 
-| #   | 失败                       | 触发点                                                                   | P       | commit-first 入口的结果                                                                                                                                                                                                               | 无-commit 入口的结果 |
-| --- | -------------------------- | ------------------------------------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 1   | **operation acquire 超时** | `begin_operation()` 等待 `CORE_ACQUIRE_TIMEOUT`（F6）                    | **pre** | `Err(OperationError::AcquireTimeout)`——**guard 在 desired commit 之前取得**（见 S3 的顺序约束），因此永远是 pre                                                                                                                       | `Err`                |
-| 2   | **build 失败**             | `regenerate_runtime_with` 的 `spawn_blocking` 构建段                     | post    | `phase = RuntimeBuild`、`code = "runtime_build_failed"`、`retryable = true`                                                                                                                                                           | `Err`                |
-| 3   | **check 失败**             | `CoreBackend::check`（dry-run）                                          | post    | `phase = RuntimeCheck`、`code = "runtime_check_failed"`、`retryable = true`                                                                                                                                                           | `Err`                |
-| 4a  | **promote 前置失败**       | candidate 哈希不符 / `check` 后文件被改 / `restore_product` 写入本身失败 | post    | `phase = RuntimePromote`、`code = "runtime_promote_failed"`、`retryable = true`；**产物保持旧值**——原保证仍然成立                                                                                                                     | `Err`                |
-| 4b  | **写后校验 / 发布失败**    | `restore_product` 已写入后：读回哈希不符，或 `PublishPromoted` 被拒      | post    | 同 4a 的 phase 与 code（**message 区分**）；**产物已是新值、Promoted 仍是旧值**——见下方分裂窗口说明                                                                                                                                   | `Err`                |
-| 5   | **revision 冲突**          | `CoreBackend::apply` 的 CAS（`Error::RevisionConflict`）                 | post    | `phase = RuntimeApply`、`code = "revision_conflict"`、`retryable = true`；**Applied 不变**，下一次 rebuild 会带新 revision 重试                                                                                                       | `Err`                |
-| 6   | **IPC 连接丢失**           | Service backend 的传输错误（`ClientError`）                              | post    | `phase = RuntimeApply`、`code = "core_transport_lost"`、`retryable = true`；**Applied 不变**                                                                                                                                          | `Err`                |
-| 7   | **apply error**            | `CoreApplyData.outcome == RolledBack`，或 backend 返回 `Err`             | post    | `RolledBack` → `phase = CoreRollback`、`code = "core_rollback"`、`retryable = true`；核未运行（F27）→ `code = "core_not_running"`；其它 apply 错误 → `phase = RuntimeApply`、`code = "runtime_apply_failed"`。三者 **Applied 均不变** | `Err`                |
+| #   | 失败                       | 触发点                                                                   | P       | commit-first 入口的结果                                                                                                                                                               | 无-commit 入口的结果 |
+| --- | -------------------------- | ------------------------------------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1   | **operation acquire 超时** | `begin_operation()` 等待 `CORE_ACQUIRE_TIMEOUT`（F6）                    | **pre** | `Err(OperationError::AcquireTimeout)`——**guard 在 desired commit 之前取得**（见 S3 的顺序约束），因此永远是 pre                                                                       | `Err`                |
+| 2   | **build 失败**             | `regenerate_runtime_with` 的 `spawn_blocking` 构建段                     | post    | `phase = RuntimeBuild`、`code = "runtime_build_failed"`、`retryable = true`                                                                                                           | `Err`                |
+| 3   | **check 失败**             | `CoreBackend::check`（dry-run）                                          | post    | `phase = RuntimeCheck`、`code = "runtime_check_failed"`、`retryable = true`                                                                                                           | `Err`                |
+| 4a  | **promote 前置失败**       | candidate 哈希不符 / `check` 后文件被改 / `restore_product` 写入本身失败 | post    | `phase = RuntimePromote`、`code = "runtime_promote_failed"`、`retryable = true`；**产物保持旧值**——原保证仍然成立                                                                     | `Err`                |
+| 4b  | **写后校验失败**           | `restore_product` 已写入**之后**：读回哈希不符                           | post    | `phase = RuntimePromote`、`code = "runtime_promote_failed"`、`retryable = true`、report = `NotApplied`（**message 与 4a 区分**）；**产物已是新值、Promoted 仍是旧值**——见下方分裂窗口 | `Err`                |
+| 5   | **revision 冲突**          | `CoreBackend::apply` 的 CAS（`Error::RevisionConflict`）                 | post    | `phase = RuntimeApply`、`code = "revision_conflict"`、`retryable = true`；**Applied 不变**，下一次 rebuild 会带新 revision 重试                                                       | `Err`                |
+| 6a  | **IPC 连接丢失**           | Service backend 的传输错误（`ClientError`）                              | post    | `phase = RuntimeApply`、`code = "core_transport_lost"`、`retryable = true`、report = `NotApplied`；**Applied 不变**                                                                   | `Err`                |
+| 6b  | **后端不可用**             | `CoreActorError::NoBackend`（后端构造失败，槽位为 `Failed`）             | post    | `phase = RuntimeApply`、`code = "core_backend_unavailable"`、`retryable = true`、report = `NotApplied`（NH8：它与 6a **不是同一回事**，A.6 早有独立 code）                            | `Err`                |
+| 7a  | **apply 回滚**             | `CoreApplyData.outcome == RolledBack`（**有** `CoreApplyData`）          | post    | `phase = CoreRollback`、`code = "core_rollback"`、`retryable = true`；**report = `RolledBack`，不是 `NotApplied`**——旧配置确实在跑，这是一个真实终态动作                              | `Err`                |
+| 7b  | **核未运行**               | backend 返回 `NotStarted`（F27 / F36）                                   | post    | `phase = RuntimeApply`、`code = "core_not_running"`、`retryable = true`、report = `NotApplied`                                                                                        | `Err`                |
+| 7c  | **其它 apply 失败**        | backend 返回其它 `Err`                                                   | post    | `phase = RuntimeApply`、`code = "runtime_apply_failed"`、`retryable = true`、report = `NotApplied`                                                                                    | `Err`                |
+
+**发布中止（两条豁免类；穷尽性要求它们必须上桌，NH5 ①）**
+
+下面两类**不产 degradation、返回 `Err`**——把它们从矩阵里省略，正是 v4 让 4b 变得自相矛盾的原因。判别依据是 §2.3 的 `matches!` 规则，**不是**看失败发生在哪一步：
+
+| #   | 情形                                                          | 元组                                                  | 为什么不降级                                              |
+| --- | ------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------- |
+| E-a | 发布时进程正在关停（`ShuttingDown`）                          | `Err`、**无 degradation**、无 report                  | teardown 期没有任何读者会去渲染 degraded 结果（豁免 (a)） |
+| E-b | 发布被不变量拒绝（`LifecycleInvariant(_)`、`StaleOperation`） | `Err` + **错误级日志**、**无 degradation**、无 report | 这只可能是 bug，必须响亮失败（豁免 (b)）                  |
+
+> **E-a / E-b 与第 4b 行的区别**：三者都可能发生在「产物已写入」之后，终态也都是产物新 / Promoted 旧。区别**只在错误类型**——4b 是真实的运行时失败（读回哈希不符），E-a / E-b 匹配豁免规则。实施者按 `matches!` 分流，不靠推断失败位置。
 
 > **第八项（D5=A 引入，不在 RQ-01 原列表内）**：停止态 `change_core` 的 `restart()` 失败。desired 早已提交，故同样是 `post`——`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied 不推进（§3.1 的 `Started` 行、T-B4-05）。用 `CoreLifecycle` 而非 `RuntimeApply`：失败发生在核**生命周期**上，不是在配置应用上，与 5a 的 `core_recovery_exhausted` 同相。
 
-> **上表每一行的 `report` 取值（C1）**：`MutationOutcome` 的两个变体都要求 `value: T`（F31），所以 post-commit 失败也得给出一个诚实的 report。第 2–7 行**都没有发生任何终态动作**——既没有 `CoreApplyData`，也没有启核——因此一律取 **`RuntimeApplyOutcome::NotApplied`**，`applied_revision = None`，「为什么」由 degradations 承载。**不得**拿 `RolledBack` 或 `Started` 顶替：前者宣称「旧配置正在跑且是 apply 主动回滚的」，后者宣称「核被启起来了」，在 build / check / promote / 传输失败时两者都是假话。`desired_revision` 始终填本次分配的 revision（它确实分配了）。
+> **上表各行的 `report` 取值（C1，按 NH7 修正）**：`MutationOutcome` 的两个变体都要求 `value: T`（F31），所以 post-commit 失败也得给出一个诚实的 report。**第 2、3、4a、4b、5、6a、6b、7b、7c 行**都**没有发生任何终态动作**——既没有 `CoreApplyData`，也没有启核——因此一律取 **`RuntimeApplyOutcome::NotApplied`**、`applied_revision = None`，「为什么」由 degradations 承载。**唯一的例外是第 7a 行**：`RolledBack` **是有 `CoreApplyData` 的**，旧配置确实在跑、这是 apply 主动做出的真实终态动作，所以它的 report 就是 `RolledBack`（与 §3.1 的映射一致）——v4 把它一并归进 `NotApplied` 是错的。**E-a / E-b 两类没有 report**（返回 `Err`，不构造 `MutationOutcome`）。`desired_revision` 始终填本次分配的 revision。
 
 > **4b 的分裂窗口：诚实记录，不加第二套回滚（NH3 ②）**
 >
@@ -203,12 +219,25 @@
 
 - **I-A（不撒谎）**：desired 已提交时**绝不**返回 `Err`——只返回 `CommittedDegraded`。**两条显式豁免（NH3 ①）**：
   - **(a) 进程正在关停**（`CoreActorError::ShuttingDown`）：teardown 期没有任何读者会去渲染一个 degraded 结果，返回 `Err` 是诚实的；把它包成 `CommittedDegraded` 只是制造一个没人看的假成功；
-  - **(b) 不变量破坏**（`StaleOperation`、Promoted 单调性拒绝）：**这些只可能是 bug**——守卫串行化 + 单事务单次分配之下，陈旧 operation 与非递增 revision 都不该发生。**bug 必须响亮失败**（`Err` + 错误级日志）；包装成 degradation 等于把实现缺陷伪装成一次「运行时小故障」，让它长期潜伏。
-  - 两条豁免都**不适用于**真实的运行时失败（build / check / promote / apply / 传输）——那些一律 degraded。
-- **I-B（不静默）**：任何 `post` 失败**必须**产出至少一条 `Degradation`，不允许只写日志；
+  - **(b) 不变量破坏**：**这些只可能是 bug**——守卫串行化 + 单事务单次分配之下，陈旧 operation 与非递增 revision 都不该发生。**bug 必须响亮失败**（`Err` + 错误级日志）；包装成 degradation 等于把实现缺陷伪装成一次「运行时小故障」，让它长期潜伏。
+
+  **豁免的判据是一条可 `matches!` 的类型规则，全文在此声明一次（NH4）：**
+
+  ```rust
+  // 豁免当且仅当匹配这两支；其余一律 degraded。
+  matches!(err, CoreActorError::ShuttingDown)                  // 豁免 (a)
+      || matches!(err, CoreActorError::StaleOperation
+                     | CoreActorError::LifecycleInvariant(_))  // 豁免 (b)
+  ```
+
+  **`Backend`、`NoBackend`、以及任何 `CheckAndPromoteError` 永不符合豁免**——它们是真实的运行时失败，一律 degraded。这条规则由 **T-PC-12** 钉住（§6.2），其中「`Backend` / `NoBackend` → `CommittedDegraded`」那两例是证明**豁免吞不掉真实失败**的关键断言。
+
+  > v4 说「豁免 (b) 靠类型区分、边界够硬」——**那是错的**：`CoreActorError` 当时只有四个变体，没有任何不变量变体（F43），所谓硬边界并不存在。NH4 补上 `LifecycleInvariant`，规则才真正可判别。
+
+- **I-B（不静默）**：**除本节两条豁免外**，任何 `post` 失败**必须**产出至少一条 `Degradation`，不允许只写日志（豁免类改为 `Err` + 错误级日志，同样不静默）；
 - **I-C（状态单调）**：`post` 失败不得回退已经推进的 Promoted；Applied 只在 backend 确认采纳新 revision 时才推进（§3）。
 
-> 与 5a 的 `CoreActorError` 的关系：`StaleOperation` / `ShuttingDown` 属于**内部不变量破坏**，不映射 degradation——它们只可能出现在实现有 bug 或进程正在关停时，按 `Err` 上抛并记日志。`NoBackend` 在 commit-first 入口按第 6 行处理（`code = "core_backend_unavailable"`）。
+> 与 `CoreActorError` 的关系：`StaleOperation` / `LifecycleInvariant(_)` / `ShuttingDown` 走上面的 `matches!` 豁免规则，**不映射 degradation**；`NoBackend` 按 §2.2 第 **6b** 行处理（`core_backend_unavailable`），`Backend(_)` 按 6a / 7c 处理——**后两者永不豁免**。
 
 ### 2.4 degradation 投递到哪里（I-B 对**无 caller 的入口**如何满足）
 
@@ -264,7 +293,7 @@ I-B 说「不允许只写日志」，但 rebuild 管线有**四类**调用上下
 | **`Started`**（非 apply 产出，D5=A）  | **推进**         | `Applied`                                    | 核原本停止，本路径把它启起来了：restart 成功后**运行的就是 promoted revision**，因此与 `Noop` 同理必须推进，否则读模型永远滞后。`report.outcome = Started`                                                                  |
 | **`NotApplied`**（非 apply 产出，C1） | **不推进**       | `CommittedDegraded`（degradations 说明原因） | **什么终态动作都没发生**：build / check / promote / 传输 / `NoBackend` 失败时用它。`applied_revision = None`。它存在的唯一理由是 `MutationOutcome` 两变体都要求 `value`（F31），而拿 `RolledBack` 或 `Started` 顶替就是撒谎 |
 
-前六格逐一映射到 `RuntimeApplyOutcome` 的同名变体（A.4）。第七行 `Started` **不由 `apply` 产出**——它是 D5=A 的停止态启核路径直接构造的，**不进 `map_apply_outcome`**，因此不进 §3.2 的 12 格 parity 矩阵；但它是一个真实终态，Applied 推进规则必须在这张表上说清。
+前六格逐一映射到 `RuntimeApplyOutcome` 的同名变体（A.4）。第七行 `Started` **不由 `apply` 产出**——它是 D5=A 的停止态启核路径直接构造的，**不进 `runtime_outcome_from_apply_data`**，因此不进 §3.2 的 12 格 parity 矩阵；但它是一个真实终态，Applied 推进规则必须在这张表上说清。
 
 **`Started` 路径的失败侧（R1）**：停止态分支的 `restart()` 失败时，desired 早已提交（§2.1），因此**走 §2.2 的 post-commit 路径**——返回 `CommittedDegraded`，`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied **不推进**。成功侧由 **T-B4-03** 钉住，失败侧由 **T-B4-05** 钉住（§6.3）。
 
@@ -278,7 +307,7 @@ I-B 说「不允许只写日志」，但 rebuild 管线有**四类**调用上下
 
 矩阵是 **6 × 2 = 12 个组合**（六个 outcome × warning 有/无），每个组合都要断言三件事：Applied 是否推进、返回的 `MutationOutcome` 变体、degradation 列表内容。测试编号 T-AP-01…12（§6）。
 
-**双后端 parity（M10 残留已修）**：Local 与 Service 对同一 outcome 必须产出同一结果，而 parity 的价值全在**后端各自的转换层**，不在共用的 mapper。因此：**Local 侧直接单测真实的 manager-outcome → `CoreApplyData` 转换函数**（喂 manager 的 `ApplyOutcome` fixtures），**Service 侧走 IPC harness 解码**（套 `transport_available()` 守卫，F24），两侧得到的 `CoreApplyData` 逐字段相等后再各自过 `map_apply_outcome`。**`TestBackend` 的脚本化 apply 只服务 actor 层测试，不得冒充 parity**——用它喂 `CoreApplyData` 等于把两个后端的转换层双双旁路掉（F37 说明它今天还是 `unreachable!`，须先补）。
+**双后端 parity（M10 残留已修）**：Local 与 Service 对同一 outcome 必须产出同一结果，而 parity 的价值全在**后端各自的转换层**，不在共用的 mapper。因此：**Local 侧直接单测真实的 manager-outcome → `CoreApplyData` 转换函数**（喂 manager 的 `ApplyOutcome` fixtures），**Service 侧走 IPC harness 解码**（套 `transport_available()` 守卫，F24），两侧得到的 `CoreApplyData` 逐字段相等后再各自过 `runtime_outcome_from_apply_data`。**`TestBackend` 的脚本化 apply 只服务 actor 层测试，不得冒充 parity**——用它喂 `CoreApplyData` 等于把两个后端的转换层双双旁路掉（F37 说明它今天还是 `unreachable!`，须先补）。
 
 ---
 
@@ -295,7 +324,7 @@ B1 要把 Promoted/Applied 搬进 actor，但 `RuntimeSnapshot` / `RuntimeRevisi
 >
 > **L2 修正**：`RuntimeRevisionAllocator` **不迁**，留在 `client/runtime.rs`。它是 **ID 源泉**（一个 `AtomicU64`），不是 lifecycle 状态；迁入 actor 会逼出一条 `AllocateRevision` 守卫消息和一次多余的 round-trip，而单调性本来就由 actor 在 promote 时校验（T-LC-01 已钉）。它 `use` 迁走的 `RuntimeRevision`，方向仍是 client → core。**A.1 / A.2 / A.3 / S1 / S2 / S3 五处已按此对齐。**
 >
-> **v3 后记（C2 使 L1 的前提消失）**：L1 的理由是「`CheckAndPromote` 消息按值携带 `CandidateFile`」。C2 把该消息换成了 `PublishPromoted { operation, snapshot }`——**actor 不再碰任何文件类型**，`CandidateFile` 也就不必迁移。因此实施时 **`CandidateFile` 留在 `client/runtime.rs`**：L1 要保护的不变量（`core::actor` 不反向依赖 `client::`）由 C2 更彻底地实现了，而搬一个 actor 用不到的类型属于无谓改动。**这是对 L1 落地方式的修正，不是对 L1 裁定的推翻**——若 leader 认为仍应搬迁，S1 的表格改一行即可。
+> **v3 后记（C2 使 L1 的前提消失）**：L1 的理由是「`CheckAndPromote` 消息按值携带 `CandidateFile`」。C2 把该消息换成了 `PublishPromoted { operation, snapshot }`——**actor 不再碰任何文件类型**，`CandidateFile` 也就不必迁移。因此实施时 **`CandidateFile` 留在 `client/runtime.rs`**：L1 要保护的不变量（`core::actor` 不反向依赖 `client::`）由 C2 更彻底地实现了，而搬一个 actor 用不到的类型属于无谓改动。**这是对 L1 落地方式的修正，不是对 L1 裁定的推翻**；leader 已于 2026-08-02 确认。
 
 ### D2 — lifecycle 用第二条 watch 还是塞进 `CoreStatusView` —— **裁定 A**
 
@@ -328,7 +357,7 @@ L3 让我审计 `restart()` 残余，审出一条 v1 漏掉的语义差（F26/F2
 
 若 B4 无条件改走 `ApplyPromoted`，「停止态下切核」会从「切完并启动」变成「切完但失败」，这是 B4 卡没有授权的行为回归。
 
-- **裁定 A：按 `RunningIdentity` 分支**。**判据是「身份 + 忠实六态」的原子守卫联合读**（NH1；`Ok(None)` 单独看**不等于**核已停止，二值 `CoreStatusView.state` 更会把三个分支判反——真值表见 S6）。在跑 → `ApplyPromoted` 承载切换（`Switched`）；已停 → `restart()` 启新核，**与今天逐字同行为**；后端不可用 → 按 §2.2 第 6 行 degraded。`RuntimeApplyReport.outcome` 用**本仓自有**枚举 `RuntimeApplyOutcome`（镜像 upstream 六变体 + `Started` + `NotApplied`，共八个）。
+- **裁定 A：按 `RunningIdentity` 分支**。**判据是「身份 + 忠实六态」的原子守卫联合读**（NH1；`Ok(None)` 单独看**不等于**核已停止，二值 `CoreStatusView.state` 更会把三个分支判反——真值表见 S6）。在跑 → `ApplyPromoted` 承载切换（`Switched`）；已停 → `restart()` 启新核，**与今天逐字同行为**；后端不可用 → 按 §2.2 第 6b 行 degraded。`RuntimeApplyReport.outcome` 用**本仓自有**枚举 `RuntimeApplyOutcome`（镜像 upstream 六变体 + `Started` + `NotApplied`，共八个）。
 - **选项 B（未采纳）**：无条件 apply，停止态切核返回 degraded。更简单，但改用户可见行为，且 `Started` 这个真实状态在 wire 上无处表达。
 
 **leader 裁定 A（2026-08-02），四条理由：** ①前提经独立核实——`apply.rs` doc 原文「The core must already be running: apply never starts one」；②选项 B 未经 B4 卡授权就改用户可见行为，违反迁移政策；③`Ok(None)` → `restart()` 与今天逐字同行为，且与 5a updater 的 `Ok(None)` 先例不冲突——两者各自保留各自的 legacy 行为（updater 停止态换二进制**不**启动，change_core 停止态切核**启动**）；④`Started` 第七变体是诚实建模，把 `Ok(None)` 分支映射成 `Switched` 是撒谎（apply 根本没承载它）。
@@ -373,7 +402,7 @@ L3 让我审计 `restart()` 残余，审出一条 v1 漏掉的语义差（F26/F2
 
 - **推进决策与 wire 表示拆分（C3）**：
   - **推进决策**：`core/actor` 内一个**纯谓词** `advances_applied(outcome: ApplyOutcomeKind) -> bool`；`ApplyPromoted` 处理器在提交前调它——这是 **apply 路径唯一的推进点**；
-  - **wire 表示**：`map_apply_outcome` 只产 `RuntimeApplyReport` + `Vec<Degradation>`，**不再决定推进**（A.5 的契约相应改述）。两者读同一个 `outcome`，但一个决定 actor 状态、一个决定给前端看什么，不构成双决策；
+  - **wire 表示**：`runtime_outcome_from_apply_data` 只产 `RuntimeApplyReport` + `Vec<Degradation>`，**不再决定推进**（A.5 的契约相应改述）。两者读同一个 `outcome`，但一个决定 actor 状态、一个决定给前端看什么，不构成双决策；
   - **restart 类路径**：5a 的 `Run` 只更新 backend 观察、不碰 lifecycle（F33b），所以 `start_promoted_runtime` / legacy 重播 / D5 的 `Started` 分支都需要一条显式的 `PublishApplied { operation, snapshot }`（与 `PublishPromoted` 同族），由 client 在 `run` 成功后发送。
 - promote 成功推进 `lifecycle.promoted` 并发布 `lifecycle_tx`；apply 成功按 §3 决定是否推进 `lifecycle.applied`；
 - **`publish_promoted` 的「拒绝非递增 revision」与 `publish_applied` 的「必须存在 Promoted 且 `identity_eq`」两条校验原样迁入 actor**（F14 的语义不能丢）。**单调性由 actor 兜底**，因此 allocator 留在 client 侧不削弱任何不变量（T-LC-01 直接打 actor）；
@@ -477,8 +506,8 @@ guard → ApplicationClient::patch(core = new)   ← desired 提交，此后一�
                          Ok  → PublishApplied，outcome=Started      （C3）
                          Err → CommittedDegraded(CoreLifecycle /
                                  core_start_failed)，Applied 不推进  （R1）
-          无后端      → §2.2 第 6 行 degraded
-        注：只有「在跑」这条走 map_apply_outcome()（C3：wire 表示的唯一决策点）；
+          无后端      → §2.2 第 6b 行 degraded（core_backend_unavailable，NH8）
+        注：只有「在跑」这条走 runtime_outcome_from_apply_data()（C3：wire 表示的唯一决策点）；
             「已停」两侧与各类失败由 S7 直接构造 report（Started / NotApplied）。
 ```
 
@@ -488,7 +517,7 @@ guard → ApplicationClient::patch(core = new)   ← desired 提交，此后一�
 
 #### 「核在跑吗」怎么判（H5：`Ok(None)` ≠ 已停止）
 
-`state.running` 是**身份缓存**，恒初始化为 `None`，只有 GUI 发过 `Run` 才填充；而 `pre_start` 会 `observe_status()`，所以进程启动后 attach 到一个**已在运行**的 Service 核完全可能（F33）。此时 `RunningIdentity` 返回 `Ok(None)` 但核**正在跑**——照 v2 的写法会对一个运行中的核走 `restart()`，把用户的连接全部打断。
+`state.running` 是**身份缓存**，恒初始化为 `None`，只有 GUI 发过 `Run` 才填充；而 `pre_start` 会 `observe_status()`，所以进程启动后 attach 到一个**已在运行**的 Service 核完全可能（F33）。此时联合读的身份分量是 `None` 但生命周期分量是 `Running`——**核正在跑**——照 v2 的写法会对一个运行中的核走 `restart()`，把用户的连接全部打断。
 
 **判据必须读忠实六态，不能读 `CoreStatusView.state`（NH1）**：后者是二值投影，`Starting`/`Restarting` 被压成 `Stopped`、`Stopping` 被压成 `Running`（F40）——直接用它会把下表**三个分支判反**。这与 5a 规划期裁过的 wire 塌缩是同一类问题，只是换了场景。
 
@@ -500,7 +529,7 @@ guard → ApplicationClient::patch(core = new)   ← desired 提交，此后一�
 | `None`    | `Running` / `Starting` / `Restarting` / `Switching` | **apply**   | 核在跑或正在起来——apply 能承载切换，不该重启                                           |
 | `None`    | `Stopped { .. }`                                    | **restart** | 真的停着，D5=A 的启核分支                                                              |
 | `None`    | `Stopping`                                          | **restart** | 正在停——等它停稳后启新核；**注意二值投影会把它读成 `Running`**，这正是必须读六态的原因 |
-| —         | 后端不可用（`Err(NoBackend)`）                      | degraded    | §2.2 第 6 行                                                                           |
+| —         | 后端不可用（`Err(NoBackend)`）                      | degraded    | §2.2 第 **6b** 行（`core_backend_unavailable`，NH8）                                   |
 
 > **先取 guard 再读**，所以联合读到的值不会被并发操作改写。attach 场景与三个过渡态由 **T-B4-06** 钉住（`Starting` / `Restarting` / `Stopping` 各至少一例断言分支方向——这三例正是二值投影会判反的那三个）。
 
@@ -544,7 +573,7 @@ v2 写「外层 `run_legacy_verge_mutation` 的 typed 重播保留（PR-7a 才�
 
 > 换句话说：包裹器负责的是 **legacy → typed 的回灌**，而残余读者依赖的是 **typed → legacy 的镜像**——**两个方向**。B4 删掉的是前者的输入源，后者一直由 state actor 独立维护，不受影响。
 
-> 这是 CLAUDE.md §11「优先可迁移的破坏性变更，而不是加兼容层」的直接应用：前提消失的兼容层就该在该阶段摘掉，而不是留到 PR-7a 陪葬。**若 leader 认为该包裹器还有 B4 之外的作用**（例如 `verge_update_lock` 的互斥语义），请裁定——那样就改为泛化包裹器，代价是给一个 compat 层加泛型参数。
+> 这是 CLAUDE.md §11「优先可迁移的破坏性变更，而不是加兼容层」的直接应用：前提消失的兼容层就该在该阶段摘掉，而不是留到 PR-7a 陪葬。**leader 已于 2026-08-02 裁定摘除**（独立核验过上述镜像链后确认），不改为泛化包裹器——本条不再是待决问题。
 
 命令 `patch_clash_config` **本来就没有**走包裹器（`ipc.rs:435-458`），不受影响。
 
@@ -554,7 +583,7 @@ v2 写「外层 `run_legacy_verge_mutation` 的 typed 重播保留（PR-7a 才�
 
 新增 `RuntimeApplyReport`（D4=A 的三字段，`serde` + `specta`；F25 确认 workspace 已启用 specta，upstream 类型可直接内嵌）与 `RuntimeApplyOutcome`（D5=A），放在 `client/runtime.rs` 与 `MutationOutcome` 同层。
 
-新增纯函数 `map_apply_outcome(data: &CoreApplyData, promoted_revision: u64) -> (RuntimeApplyReport, Vec<Degradation>)`。**它的契约按 C3 改述：它是「wire 表示」的唯一决策点，不再是「Applied 是否推进」的决策点**——后者由 actor 内的纯谓词 `advances_applied(outcome)` 独占（S2 / S4）。两者读同一个 `outcome`：一个决定 actor 状态、一个决定给前端看什么，职责不重叠。§3 的 12 格 parity 矩阵仍全部由 `map_apply_outcome` 决定，测试直接打它。
+新增纯函数 `runtime_outcome_from_apply_data(data: &CoreApplyData, promoted_revision: u64) -> (RuntimeApplyReport, Vec<Degradation>)`。**它的契约按 C3 改述：它是「wire 表示」的唯一决策点，不再是「Applied 是否推进」的决策点**——后者由 actor 内的纯谓词 `advances_applied(outcome)` 独占（S2 / S4）。两者读同一个 `outcome`：一个决定 actor 状态、一个决定给前端看什么，职责不重叠。§3 的 12 格 parity 矩阵仍全部由 `runtime_outcome_from_apply_data` 决定，测试直接打它。
 
 **三条不经过它的路径**（都没有 `CoreApplyData`，由 S5/S6 直接构造报告）：
 
@@ -601,35 +630,37 @@ pnpm lint:architecture-ledger
 
 ### 6.1 apply parity（RQ-03；§3 的 12 格）
 
-| ID         | 组合                                        | 断言                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| T-AP-01    | `Noop` 无 warning                           | Applied **推进**至 Promoted；`Applied`；degradations 空                                                                                                                                                                                                                                                                                                                                    |
-| T-AP-02    | `Noop` + warning                            | Applied 推进；`CommittedDegraded`；恰 1 条 `RuntimeApply` durability                                                                                                                                                                                                                                                                                                                       |
-| T-AP-03/04 | `Patched` 无/有 warning                     | 同上形态                                                                                                                                                                                                                                                                                                                                                                                   |
-| T-AP-05/06 | `Reloaded` 无/有 warning                    | 同上形态                                                                                                                                                                                                                                                                                                                                                                                   |
-| T-AP-07/08 | `Restarted` 无/有 warning                   | 同上形态                                                                                                                                                                                                                                                                                                                                                                                   |
-| T-AP-09/10 | `Switched` 无/有 warning                    | 同上形态                                                                                                                                                                                                                                                                                                                                                                                   |
-| T-AP-11    | `RolledBack` 无 warning                     | Applied **不推进**；`CommittedDegraded`；恰 1 条 `CoreRollback`                                                                                                                                                                                                                                                                                                                            |
-| T-AP-12    | `RolledBack` + warning                      | Applied 不推进；**2 条** degradation（`CoreRollback` + durability）                                                                                                                                                                                                                                                                                                                        |
-| T-AP-13    | Local / Service 双后端对同一 outcome 同映射 | **不能只比 `map_apply_outcome`**（M10：两侧喂的是同一个纯函数，比了等于没比）。必须比**后端转换层**：Local 侧断言 manager `ApplyOutcome` → `CoreApplyData` 的转换结果，Service 侧断言 IPC 解码出的 `CoreApplyData`，两者逐字段相等后再各自过 mapper。前置条件：**`TestBackend::apply` 今天是 `unreachable!`（F37），须先加脚本化 apply 支持**；Service 侧套 `transport_available()`（F24） |
+| ID         | 组合                                        | 断言                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-AP-01    | `Noop` 无 warning                           | Applied **推进**至 Promoted；`Applied`；degradations 空                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| T-AP-02    | `Noop` + warning                            | Applied 推进；`CommittedDegraded`；恰 1 条 `RuntimeApply` durability                                                                                                                                                                                                                                                                                                                                                                                                      |
+| T-AP-03/04 | `Patched` 无/有 warning                     | 同上形态                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| T-AP-05/06 | `Reloaded` 无/有 warning                    | 同上形态                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| T-AP-07/08 | `Restarted` 无/有 warning                   | 同上形态                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| T-AP-09/10 | `Switched` 无/有 warning                    | 同上形态                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| T-AP-11    | `RolledBack` 无 warning                     | Applied **不推进**；`CommittedDegraded`；恰 1 条 `CoreRollback`                                                                                                                                                                                                                                                                                                                                                                                                           |
+| T-AP-12    | `RolledBack` + warning                      | Applied 不推进；**2 条** degradation（`CoreRollback` + durability）                                                                                                                                                                                                                                                                                                                                                                                                       |
+| T-AP-13    | Local / Service 双后端对同一 outcome 同映射 | **不比共用的 mapper**（M10）——parity 的价值全在各后端的转换层。Local 侧**直接在模块内单测既有的 `core::actor::backend::map_apply_outcome`**（喂 manager `ApplyOutcome` fixtures → `CoreApplyData`；`:975`/`:986` 已有两个测试可扩），Service 侧走 IPC harness 解码（套 `transport_available()`，F24）；两侧 `CoreApplyData` 逐字段相等。**不需要 `TestBackend` 前置**——M10 由此彻底关闭。注意它与新增的 `runtime_outcome_from_apply_data` 是**两个不同函数**（NH9 / F44） |
 
 ### 6.2 post-commit 失败矩阵（RQ-01；§2.2 的七项）
 
 > **每一行都必须同时断言 report 值（C1）**：v2 的 T-PC-02…07 与 T-B4-05 只断言外层变体与 degradation、从不看 `value`——正是这个空转掩盖了「report 没有诚实取值」的洞。第 2–7 行一律断言 `outcome == NotApplied` 且 `applied_revision == None`，`desired_revision` 等于本次分配的 revision。
 
-| ID      | 失败注入                     | 入口                                           | 断言                                                                                                                                                                                                                                                       |
-| ------- | ---------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-PC-01 | acquire 超时                 | `change_core`                                  | `Err`；**desired 未提交**（typed 快照未变）                                                                                                                                                                                                                |
-| T-PC-02 | build 失败                   | `change_core`                                  | `CommittedDegraded`；`RuntimeBuild`；desired = 新核                                                                                                                                                                                                        |
-| T-PC-03 | check 失败                   | `change_core`                                  | `CommittedDegraded`；`RuntimeCheck`；Promoted 未推进                                                                                                                                                                                                       |
-| T-PC-04 | promote 失败                 | `patch_running_config`                         | `CommittedDegraded`；`RuntimePromote`；产物保持旧值                                                                                                                                                                                                        |
-| T-PC-05 | revision 冲突                | `patch_running_config`                         | `CommittedDegraded`；`RuntimeApply` / `revision_conflict`；Applied 不变                                                                                                                                                                                    |
-| T-PC-06 | IPC 传输丢失                 | `change_core`                                  | `CommittedDegraded`；`core_transport_lost`；Applied 不变。**实现方式（L7）：优先用 `TestBackend` 脚本化传输错误**——不需要真 harness、也就不需要 `transport_available()` 守卫；只有在必须验证真实 `ClientError` 映射时才起真 IPC harness，那时套守卫（F24） |
-| T-PC-07 | apply error（非 RolledBack） | `patch_running_config`                         | `CommittedDegraded`；`runtime_apply_failed`；Applied 不变                                                                                                                                                                                                  |
-| T-PC-08 | 启动路径同类失败             | `promote_default_runtime_config`               | **`Err`**（无 desired commit）——证明分界线按入口区分                                                                                                                                                                                                       |
-| T-PC-09 | 后台 rebuild 失败            | `RebuildCoordinator` worker                    | **degradation 到达 `CoreDegradationSink`**（用 `RecordingSink`，`client/core.rs:529` 已有），而不是只进日志（§2.4 的 I-B 缺口）；同一失败经**同步** caller 时则出现在 `MutationOutcome` 里                                                                 |
-| T-PC-10 | build / check / apply 失败   | **`enhance_profiles`**（F34 ③）                | **普通 `Err`**，**零 degradation**、**不进 sink**——命令 doc 明写无前置 commit（§2.4 ④）                                                                                                                                                                    |
-| T-PC-11 | apply 返回 `RolledBack`      | **`regenerate_and_apply_for_legacy`**（F34 ④） | **普通 `Err`**——否则 legacy draft 会被误当成功而 `apply()`，在磁盘留下一份从未生效的配置（§2.4 ④ 的关键差异）                                                                                                                                              |
+| ID       | 失败注入                                           | 入口                                           | 断言                                                                                                                                                                                                                                                                                                                                                                   |
+| -------- | -------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-PC-01  | acquire 超时                                       | `change_core`                                  | `Err`；**desired 未提交**（typed 快照未变）                                                                                                                                                                                                                                                                                                                            |
+| T-PC-02  | build 失败                                         | `change_core`                                  | `CommittedDegraded`；`RuntimeBuild`；desired = 新核                                                                                                                                                                                                                                                                                                                    |
+| T-PC-03  | check 失败                                         | `change_core`                                  | `CommittedDegraded`；`RuntimeCheck`；Promoted 未推进                                                                                                                                                                                                                                                                                                                   |
+| T-PC-04a | promote **前置**失败（candidate 哈希不符）         | `patch_running_config`                         | `CommittedDegraded`；`RuntimePromote` / `runtime_promote_failed`；**产物保持旧值**；report = `NotApplied`                                                                                                                                                                                                                                                              |
+| T-PC-04b | promote **写后校验**失败（产物已写、读回哈希不符） | `patch_running_config`                         | `CommittedDegraded`；同上 phase/code（message 区分）；**产物 = 新、Promoted = 旧**（分裂窗口）；report = `NotApplied`；**并断言下一次 rebuild 使两者重新收敛**——这是「自愈」论证的实证，没有它 §2.2 的 4b 就只是一句主张                                                                                                                                               |
+| T-PC-05  | revision 冲突                                      | `patch_running_config`                         | `CommittedDegraded`；`RuntimeApply` / `revision_conflict`；Applied 不变                                                                                                                                                                                                                                                                                                |
+| T-PC-06  | IPC 传输丢失                                       | `change_core`                                  | `CommittedDegraded`；`core_transport_lost`；Applied 不变。**实现方式（L7）：优先用 `TestBackend` 脚本化传输错误**——不需要真 harness、也就不需要 `transport_available()` 守卫；只有在必须验证真实 `ClientError` 映射时才起真 IPC harness，那时套守卫（F24）                                                                                                             |
+| T-PC-07  | apply error（非 RolledBack）                       | `patch_running_config`                         | `CommittedDegraded`；`runtime_apply_failed`；Applied 不变                                                                                                                                                                                                                                                                                                              |
+| T-PC-08  | 启动路径同类失败                                   | `promote_default_runtime_config`               | **`Err`**（无 desired commit）——证明分界线按入口区分                                                                                                                                                                                                                                                                                                                   |
+| T-PC-09  | 后台 rebuild 失败                                  | `RebuildCoordinator` worker                    | **degradation 到达 `CoreDegradationSink`**（用 `RecordingSink`，`client/core.rs:529` 已有），而不是只进日志（§2.4 的 I-B 缺口）；同一失败经**同步** caller 时则出现在 `MutationOutcome` 里                                                                                                                                                                             |
+| T-PC-10  | build / check / apply 失败                         | **`enhance_profiles`**（F34 ③）                | **普通 `Err`**，**零 degradation**、**不进 sink**——命令 doc 明写无前置 commit（§2.4 ④）                                                                                                                                                                                                                                                                                |
+| T-PC-11  | apply 返回 `RolledBack`                            | **`regenerate_and_apply_for_legacy`**（F34 ④） | **普通 `Err`**——否则 legacy draft 会被误当成功而 `apply()`，在磁盘留下一份从未生效的配置（§2.4 ④ 的关键差异）                                                                                                                                                                                                                                                          |
+| T-PC-12  | **豁免边界分类**（NH4 / NH6）                      | 任意 commit-first 入口                         | 四例分类断言：①`ShuttingDown` → `Err`、**零 degradation**；②`LifecycleInvariant(PromotedRegression)` → `Err` + 错误级日志、**零 degradation**；③**`Backend(_)` → `CommittedDegraded`**；④**`NoBackend` → `CommittedDegraded`（`core_backend_unavailable`）**。**③④ 是关键**——它们证明豁免**吞不掉真实运行时失败**；没有 T-PC-12，§2.3 的 `matches!` 规则就只是纸面上的 |
 
 ### 6.3 B1/B2/B4 结构测试
 
@@ -642,7 +673,7 @@ pnpm lint:architecture-ledger
 | T-B2-02 | **三处** gate→begin 例外都在 guard 内构建快照 / candidate（H4 纠正了 F12）：`promote_default_runtime_config`、`promote_existing_runtime_product`、`start_promoted_runtime`。三例**分别断言不合并**——`start_promoted_runtime` 那例必须构造「读到旧 Promoted → 在 begin 上排队 → 启动新产物」的竞态窗口并证明它已关闭                                                           |
 | T-B4-01 | change-core `RolledBack`：desired = **新核**、Promoted = **新配置**、Applied = **旧值**（Exit 判据原文）                                                                                                                                                                                                                                                                      |
 | T-B4-02 | change-core 成功（**核在跑**）：三者一致推进；`RuntimeApplyReport.outcome == Switched`；**全程零次 `restart()`**——切核由 `apply` 承载（L3 的真实语义）                                                                                                                                                                                                                        |
-| T-B4-03 | change-core（**核已停**，D5=A 分支）：`RunningIdentity` 返回 `Ok(None)` → 恰好一次 `restart()`，且该次 Run 请求用的是**本次 promote 的新核**（`target_core.take()` 消费的正是它，F8 重述）；`outcome == Started`                                                                                                                                                              |
+| T-B4-03 | change-core（**核已停**，D5=A 分支）：`RunningIdentity` 返回 `Ok((None, FaithfulLifecycle::Stopped { .. }))` → 恰好一次 `restart()`，且该次 Run 请求用的是**本次 promote 的新核**（`target_core.take()` 消费的正是它，F8 重述）；`outcome == Started`                                                                                                                         |
 | T-B4-04 | `restart()` 的 `target_core` 一次性消费：同一 lease 内第二次 `restart()` 落回 typed 快照而非重用陈旧目标（把 F8 的机制本身钉住，与 change_core 流程解耦）                                                                                                                                                                                                                     |
 | T-B4-05 | change-core 停止态分支的**失败侧**（R1）：`restart()` 失败 → `CommittedDegraded`，`phase = CoreLifecycle` / `code = "core_start_failed"`；desired = 新核（已提交）、Promoted = 新配置、**Applied 不推进**。**并断言 report 值**（C1 残留）：`value.outcome == NotApplied`、`value.applied_revision == None`、`value.desired_revision == ` 本次分配的 revision                 |
 | T-B4-06 | **attach 场景 + 三个过渡态**（H5 / NH1）：(a) `pre_start` 观察到 `Running` 但 `state.running == None` → change_core **必须走 apply**（`outcome == Switched`）、**零次 `restart()`**；(b) `Starting`、(c) `Restarting`、(d) `Stopping` 各一例，断言分支方向。**(b)(c)(d) 正是二值 `CoreStatusView.state` 会判反的三个**（F40），所以它们同时也是「判据确实读了忠实六态」的证明 |
@@ -690,7 +721,7 @@ pnpm lint:architecture-ledger
 | 删 `rebuild_gate` 后 coalesce 语义被牵连                  | 中   | 重复/丢失 rebuild       | `RebuildCoordinator` 一行不改；五个 coordinator 测试零改动通过（T-6.4）                                                                                                                       |
 | `apply_promoted` 改道后重试语义丢失                       | 中   | 瞬时失败变成硬失败      | 旧路径是 5 次 250 ms 重试（F10）。**判据已在 S4 预先定死**：仅传输类错误在 `CoreLeaseAdapter` 层补 5 × 250 ms，check / 语义失败 / `RolledBack` 一律不重试；实测数据入实施报告，但**不改判据** |
 | `change_core` 在停止态下的行为回归                        | 中   | 切核后核不再自动启动    | D5=A 的 `RunningIdentity` 分支保留今天的启核行为；成功侧 T-B4-03、失败侧 T-B4-05 钉住                                                                                                         |
-| `RolledBack` 被误判为成功                                 | 中   | Applied 错误推进        | §3 的映射集中在 `map_apply_outcome` 一个纯函数里；T-AP-11/12 直接打它                                                                                                                         |
+| `RolledBack` 被误判为成功                                 | 中   | Applied 错误推进        | §3 的映射集中在 `runtime_outcome_from_apply_data` 一个纯函数里；T-AP-11/12 直接打它                                                                                                           |
 | `target_core.take()` 在多次 restart 下失效                | 低   | 启核用错目标            | T-B4-04 直接钉机制本身（不再依赖 B4 已删除的回滚流程）；T-B4-03 钉停止态分支只消费一次                                                                                                        |
 | B3 删除面过大牵连 profile mutation 的 `CommittedDegraded` | 中   | 既有 degraded 路径回归  | `MutationOutcome::from_parts` 是唯一产出点（F22），不动它；profile 侧测试零改动                                                                                                               |
 | Service parity 测试在 CI 某平台不可用                     | 中   | parity 静默消失         | 沿用 5a 规则：`transport_available()` 守卫 + 支持平台上必须常规运行（F24）                                                                                                                    |
@@ -748,6 +779,18 @@ pub(crate) struct RuntimeLifecycleState {
 
 // 注意（L2）：RuntimeRevisionAllocator **留在 client/runtime.rs**，
 // 它 `use crate::core::actor::runtime::RuntimeRevision`。actor 不持有 allocator。
+
+// core/actor/types.rs —— 扩 5a 的 CoreActorError（NH4；加法式，5a 四变体不动）
+pub(crate) enum LifecycleInvariantKind {
+    /// PublishPromoted 的 revision 未严格递增
+    PromotedRegression,
+    /// PublishApplied 找不到匹配的 Promoted，或身份不符
+    AppliedWithoutPromoted,
+}
+// CoreActorError 新增第五变体：
+//   #[error("core lifecycle invariant violated: {0:?}")]
+//   LifecycleInvariant(LifecycleInvariantKind),
+// I-A 豁免 (b) 的判据即 matches!(err, StaleOperation | LifecycleInvariant(_))——§2.3 单点声明。
 
 // core/actor/mod.rs —— CoreActorState 新增字段（其余字段见 5a 现状）
 pub(crate) lifecycle: RuntimeLifecycleState,
@@ -887,8 +930,11 @@ pub struct RuntimeApplyReport {
 /// §3 的 12 格矩阵**全部**由它决定：outcome→report 取值、warning→追加 degradation。
 /// C3：它**不**决定 Applied 是否推进——那由 actor 内的 advances_applied() 独占。
 /// 其它地方不得再判 outcome 来产 wire 值。
+/// NH9：**不要叫 map_apply_outcome**——那个名字已属于
+/// core::actor::backend::map_apply_outcome（manager ApplyOutcome → CoreApplyData，
+/// 方向相反、模块相邻，F44）。既有函数不改名，新函数两端都写进名字。
 /// 都在这里，其它地方不得再判 outcome。
-pub(crate) fn map_apply_outcome(
+pub(crate) fn runtime_outcome_from_apply_data(
     data: &CoreApplyData,
     promoted_revision: u64,
 ) -> (RuntimeApplyReport, Vec<Degradation>);
@@ -896,22 +942,23 @@ pub(crate) fn map_apply_outcome(
 
 ### A.6 degradation code 常量表（§2.2 / §3 引用）
 
-| code                       | phase            | retryable |
-| -------------------------- | ---------------- | --------- |
-| `runtime_build_failed`     | `RuntimeBuild`   | true      |
-| `runtime_check_failed`     | `RuntimeCheck`   | true      |
-| `runtime_promote_failed`   | `RuntimePromote` | true      |
-| `revision_conflict`        | `RuntimeApply`   | true      |
-| `core_transport_lost`      | `RuntimeApply`   | true      |
-| `core_backend_unavailable` | `RuntimeApply`   | true      |
-| `runtime_apply_failed`     | `RuntimeApply`   | true      |
-| `core_not_running`         | `RuntimeApply`   | true      |
-| `core_start_failed`        | `CoreLifecycle`  | true      |
+| code                              | phase            | retryable |
+| --------------------------------- | ---------------- | --------- |
+| `runtime_build_failed`            | `RuntimeBuild`   | true      |
+| `runtime_check_failed`            | `RuntimeCheck`   | true      |
+| `runtime_promote_failed`          | `RuntimePromote` | true      |
+| `revision_conflict`               | `RuntimeApply`   | true      |
+| `core_transport_lost`             | `RuntimeApply`   | true      |
+| `core_backend_unavailable`        | `RuntimeApply`   | true      |
+| `runtime_apply_failed`            | `RuntimeApply`   | true      |
+| `core_not_running`                | `RuntimeApply`   | true      |
+| `core_start_failed`               | `CoreLifecycle`  | true      |
+| `core_rollback`                   | `CoreRollback`   | true      |
+| `core_apply_durability_uncertain` | `RuntimeApply`   | false     |
 
 > **actor 发布失败的归类（NH3 ③）——本表不新增 code**：
 >
-> - `PublishPromoted` 因**单调性**被拒 → 不是 degradation，按 I-A 豁免 (b) 处理为 `Err` + 错误日志。守卫串行 + 单事务单次分配之下，非递增 revision 只可能是 bug；
+> - `PublishPromoted` 因**单调性**被拒（`LifecycleInvariant(PromotedRegression)`）→ 不是 degradation，按 I-A 豁免 (b) 处理为 `Err` + 错误级日志。守卫串行 + 单事务单次分配之下，非递增 revision 只可能是 bug；
+> - `PublishApplied` 找不到匹配 Promoted 或身份不符（`LifecycleInvariant(AppliedWithoutPromoted)`）→ 同上；
 > - `PublishPromoted` / `PublishApplied` 遇 `ShuttingDown` → 按 I-A 豁免 (a) 处理为 `Err`；
-> - 写后校验失败（§2.2 第 4b 行）→ 复用 `runtime_promote_failed`，`message` 注明是「产物已写、发布未成」侧。
->   | `core_rollback` | `CoreRollback` | true |
->   | `core_apply_durability_uncertain` | `RuntimeApply` | false |
+> - 写后校验失败（§2.2 第 4b 行）→ 复用 `runtime_promote_failed`，`message` 注明是「产物已写、发布未成」侧。**它不是豁免类**——见 §2.3 的 `matches!` 规则。

@@ -441,7 +441,7 @@ L3 让我审计 `restart()` 残余，审出一条 v1 漏掉的语义差（F26/F2
 
   > v2 的 `CheckAndPromote { operation, request, candidate, reply -> Arc<RuntimeSnapshot> }` **在类型上就不可实现**：actor 拿不到 revision、`RuntimeSnapshotData`、解析后的 config、target core、产物字节中的任何一个（F32），却承诺返回由它们构成的快照。
 
-  **lease seam 的类型化错误（NH2 + H2 残留）**：`check_and_promote` 的返回类型由 `anyhow::Result<[u8; 32]>` 改为 `Result<[u8; 32], CheckAndPromoteFailure>`（A.1b）。**外层和把两类不同源的失败分开**——`Actor(_)` 原样透出（check 本身就是一次 actor 调用，F51），`Operation(_)` 才是本 seam 自己的两相位失败。相位标签由 **adapter 内的构造位置**打，编排层按臂分流、按 `phase` 查表，**不做字符串嗅探、不 downcast**。两相位分类学不扩大。
+  **lease seam 的类型化错误（NH2 + H2 残留）**：`check_and_promote` 的返回类型由 `anyhow::Result<[u8; 32]>` 改为 `Result<[u8; 32], CheckAndPromoteFailure>`（A.1b）。**外层和把两类不同源的失败分开**——`Actor(_)` 原样透出（check 本身就是一次 actor 调用，F51），`Operation(_)` 才是本 seam 自己的两相位失败。相位标签由 **adapter 内的构造位置**打，编排层按臂分流、按 `phase` 查表，**不做字符串嗅探、不 downcast**。两相位分类学不扩大。 编排层按 **A.1b 的穷尽派发表**分流（五臂：三类豁免 / `NoBackend` → 行 6b / `Backend(_)` → 行 3 / `Operation(Check)` → 行 3 / `Operation(Promote)` → 行 4a·4b），**不经 A.7**。
 
 - **推进决策与 wire 表示拆分（C3）**：
   - **推进决策**：`core/actor` 内一个**纯谓词** `advances_applied(outcome: ApplyOutcomeKind) -> bool`；`ApplyPromoted` 处理器在提交前调它——这是 **apply 路径唯一的推进点**；
@@ -887,9 +887,26 @@ pub(crate) struct CheckAndPromoteError {
 // trait 签名：
 //   async fn check_and_promote(..) -> Result<[u8; 32], CheckAndPromoteFailure>;
 //
-// 编排层分流：
-//   Actor(e)     → 先过 §2.3 的 matches!（豁免则 Err），否则过 A.7 定行
-//   Operation(e) → 按 e.phase 映射行 3 / 4a / 4b，查 A.6 取 code
+// 编排层分流（**穷尽派发表；照此实现，不要自由发挥**）：
+//
+//   Actor(StaleOperation | LifecycleInvariant(_) | ShuttingDown)
+//       → §2.3 豁免（E-a / E-b）：Err，无 degradation
+//   Actor(NoBackend)
+//       → 行 6b（core_backend_unavailable）
+//   Actor(Backend(_))
+//       → 行 3（runtime_check_failed）
+//         ——因为本 seam 里唯一的 actor 调用就是 Check（core.rs:408），
+//           这条 Actor 臂只可能源自它。
+//   Operation(Check)
+//       → 行 3
+//   Operation(Promote)
+//       → 行 4a / 4b（写前 / 写后，按构造位置）
+//
+// **A.7 永远不从本 seam 可达**：它的签名是 &CoreBackendError，装不下 CoreActorError；
+// 且它的作用域是 apply 路径。seam 的 Actor(Backend(_)) 走行 3，不走 A.7。
+//
+// 同一个 Backend(_)：**在 seam 里意味着「检查失败」，在 apply 臂里才意味着「应用失败」**。
+// 区分二者的是**臂的来源**，不是错误内容——与 A.7 作用域是同一条道理。
 //
 // 相位仍由 adapter 内的构造位置打标签——它确切知道自己停在哪一步；
 // 编排层不做字符串嗅探，也不 downcast anyhow。
@@ -1043,7 +1060,7 @@ pub(crate) fn runtime_outcome_from_apply_data(
 
 **作用域（先读这条）：A.7 只分类 apply 路径上的 `Backend(_)`。** 生命周期路径（D5 停止态分支的 `restart()`）的失败**不过 A.7**，直接落 §2.2 的 restart-failure 行（`CoreLifecycle` / `core_start_failed`，R1 裁定、T-B4-05 钉住）。
 
-**绑定手段：名字 + 单一调用点。** 函数叫 `classify_apply_backend_failure`（作用域写进标识符），**只在 `ApplyPromoted` 的错误臂调用一次**，不得下沉到两条路径共用的 helper。**不做 newtype 包装**：包装类型的构造点同样在 apply 臂，能调错分类器的人也能构造错 newtype，保护是薄的；而为一个只有单一调用点的函数引入包装类型属于推测性抽象（CLAUDE.md §2）。这是诚实的 80%——**若将来真出现第二个调用点，届时再上 newtype**。
+**绑定手段：名字 + 单一调用点。** 函数叫 `classify_apply_backend_failure`（作用域写进标识符），**只在 `ApplyPromoted` 的错误臂调用一次**，不得下沉到两条路径共用的 helper。**不做 newtype 包装**：包装类型的构造点同样在 apply 臂，能调错分类器的人也能构造错 newtype，保护是薄的；而为一个只有单一调用点的函数引入包装类型属于推测性抽象（CLAUDE.md §2）。这是诚实的 80%——**若将来真出现第二个调用点，届时再上 newtype**。 **A.7 永不从 lease seam 可达**——seam 的 `Actor(Backend(_))` 按 A.1b 的派发表走行 3（检查失败），不进本分类器。
 
 > **为什么必须显式圈作用域**：两条路径的失败**在类型上完全同形**——`Run` 与 apply 一样经 `backend_error()` 包成 `Backend(_)`（F49）。而启核失败**以服务端信封返回时** `error_kind` 恒为 `None`（`start`/`stop`/`restart` 早于 `error_kind` 引入，F50），A.7 第 4 行会把它判成 `Other` → 行 7c → `runtime_apply_failed`，**与 R1 裁定的 `core_start_failed` 冲突**。该冲突**不必是每次都发生**（信封之前失败的会落 `TransportLost`）——**存在一条可达路径就够了**。靠判据本身分不开，只能靠调用点的路径归属。
 

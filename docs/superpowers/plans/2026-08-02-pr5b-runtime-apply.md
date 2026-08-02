@@ -1,7 +1,7 @@
 # PR-5b 实施计划 — 单一 runtime apply 管线
 
 **日期：** 2026-08-02
-**版本：** v2（leader 审查 L1–L7 修订；D1–D4 全裁 A）
+**版本：** v2.1（leader 审查 L1–L7 修订；**D1–D5 全裁 A**，rider R1/R2 已盖章；无待决项）
 **分支基线：** `refactor/core-manager-actor` @ `9727ef1d4`（PR-5a 阶段门已关闭：`ae4e0f288` + `6a3878bba` + `5277482a5` + `9727ef1d4`）
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/task.md` 卡 B1–B4；`design.md` §6–§8
 **路线图定位：** `docs/design/actor-migration-roadmap.md` §6.2；必答项 §6.4 **RQ-01 / RQ-03**
@@ -20,6 +20,14 @@
 | L5  | 删除 `LifecycleSnapshot` 消息                        | F30、A.2、S2                |
 | L6  | S4 重试判据预先定死；specta 已启用（新事实 F25）     | F25、S4、§8 风险表          |
 | L7  | T-PC-06 用 `TestBackend` 脚本化传输错误              | §6.2 T-PC-06                |
+
+**v2.1 盖章（leader 裁定 D5=A + 两条 rider）：**
+
+| 项  | 内容                                                                        | 落点                           |
+| --- | --------------------------------------------------------------------------- | ------------------------------ |
+| D5  | 停止态 `change_core` 走 `RunningIdentity` 分支 + 仓内 `RuntimeApplyOutcome` | §4 D5、S6、A.4                 |
+| R1  | §3 表补 `Started` 行（Applied **推进**）；restart 失败走 post-commit 路径   | §3.1、S6 流程、T-B4-03/05、A.6 |
+| R2  | 仓内枚举是**语义**选择而非编译必要；F25 保留原样                            | §4 D5 的 R2 注                 |
 
 ---
 
@@ -129,6 +137,8 @@
 | 6   | **IPC 连接丢失**           | Service backend 的传输错误（`ClientError`）                        | post    | `phase = RuntimeApply`、`code = "core_transport_lost"`、`retryable = true`；**Applied 不变**                                                                                                                                          | `Err`                |
 | 7   | **apply error**            | `CoreApplyData.outcome == RolledBack`，或 backend 返回 `Err`       | post    | `RolledBack` → `phase = CoreRollback`、`code = "core_rollback"`、`retryable = true`；核未运行（F27）→ `code = "core_not_running"`；其它 apply 错误 → `phase = RuntimeApply`、`code = "runtime_apply_failed"`。三者 **Applied 均不变** | `Err`                |
 
+> **第八项（D5=A 引入，不在 RQ-01 原列表内）**：停止态 `change_core` 的 `restart()` 失败。desired 早已提交，故同样是 `post`——`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied 不推进（§3.1 的 `Started` 行、T-B4-05）。用 `CoreLifecycle` 而非 `RuntimeApply`：失败发生在核**生命周期**上，不是在配置应用上，与 5a 的 `core_recovery_exhausted` 同相。
+
 ### 2.3 三条不变量
 
 - **I-A（不撒谎）**：desired 已提交时**绝不**返回 `Err`——只返回 `CommittedDegraded`；
@@ -158,22 +168,25 @@ I-B 说「不允许只写日志」，但 `rebuild_running_config` 有两类 call
 
 ## 3. RQ-03 — apply parity 矩阵（必答）
 
-### 3.1 六个 outcome + 一个正交标志
+### 3.1 六个 apply outcome + 一个非 apply 终态 + 一个正交标志
 
 `CoreApplyData { outcome: ApplyOutcomeKind, revision: ConfigRevisionInfo, warning: Option<String>, failed_apply: Option<String> }`。
 
 **`Warning` 不是第七个分支**——它是与 outcome 正交的标志位，可以与**任何**一个 outcome 组合出现（来源是 runtime 的 `ApplyOutcome::DurabilityUncertain` 包装，可嵌套两层并以 `"; "` 拼接）。
 
-| outcome      | Applied 是否推进 | 返回                                        | 说明                                                                                 |
-| ------------ | ---------------- | ------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `Noop`       | **推进**         | `Applied`                                   | 配置已在生效——运行的就是该 revision，Applied 必须等于 Promoted，否则读模型会永远滞后 |
-| `Patched`    | **推进**         | `Applied`                                   | 就地 `PATCH /configs`                                                                |
-| `Reloaded`   | **推进**         | `Applied`                                   | 就地 `PUT /configs`                                                                  |
-| `Restarted`  | **推进**         | `Applied`                                   | 同 epoch 内换进程                                                                    |
-| `Switched`   | **推进**         | `Applied`                                   | 换核（B4 的正常成功路径）                                                            |
-| `RolledBack` | **不推进**       | `CommittedDegraded { phase: CoreRollback }` | **旧配置在跑**；desired 与 Promoted 保留新值，Applied 保留旧值                       |
+| outcome                              | Applied 是否推进 | 返回                                        | 说明                                                                                                                                                       |
+| ------------------------------------ | ---------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Noop`                               | **推进**         | `Applied`                                   | 配置已在生效——运行的就是该 revision，Applied 必须等于 Promoted，否则读模型会永远滞后                                                                       |
+| `Patched`                            | **推进**         | `Applied`                                   | 就地 `PATCH /configs`                                                                                                                                      |
+| `Reloaded`                           | **推进**         | `Applied`                                   | 就地 `PUT /configs`                                                                                                                                        |
+| `Restarted`                          | **推进**         | `Applied`                                   | 同 epoch 内换进程                                                                                                                                          |
+| `Switched`                           | **推进**         | `Applied`                                   | 换核（B4 的正常成功路径）                                                                                                                                  |
+| `RolledBack`                         | **不推进**       | `CommittedDegraded { phase: CoreRollback }` | **旧配置在跑**；desired 与 Promoted 保留新值，Applied 保留旧值                                                                                             |
+| **`Started`**（非 apply 产出，D5=A） | **推进**         | `Applied`                                   | 核原本停止，本路径把它启起来了：restart 成功后**运行的就是 promoted revision**，因此与 `Noop` 同理必须推进，否则读模型永远滞后。`report.outcome = Started` |
 
-上表六格逐一映射到 `RuntimeApplyOutcome` 的同名变体（A.4）。第七个变体 `Started` **不由 apply 产出**——它是 D5=A 的停止态启核路径直接构造的，不进 `map_apply_outcome`，因此不扩大这张矩阵。
+前六格逐一映射到 `RuntimeApplyOutcome` 的同名变体（A.4）。第七行 `Started` **不由 `apply` 产出**——它是 D5=A 的停止态启核路径直接构造的，**不进 `map_apply_outcome`**，因此不进 §3.2 的 12 格 parity 矩阵；但它是一个真实终态，Applied 推进规则必须在这张表上说清。
+
+**`Started` 路径的失败侧（R1）**：停止态分支的 `restart()` 失败时，desired 早已提交（§2.1），因此**走 §2.2 的 post-commit 路径**——返回 `CommittedDegraded`，`phase = CoreLifecycle`、`code = "core_start_failed"`、`retryable = true`，Applied **不推进**。成功侧由 **T-B4-03** 钉住，失败侧由 **T-B4-05** 钉住（§6.3）。
 
 **Warning 的处理（与上表正交）：**
 
@@ -189,7 +202,7 @@ I-B 说「不允许只写日志」，但 `rebuild_running_config` 有两类 call
 
 ---
 
-## 4. 决策点（D1–D4 leader 已裁定，2026-08-02）
+## 4. 决策点（D1–D5 leader 已全部裁定，2026-08-02；**无待决项**）
 
 ### D1 — `RuntimeSnapshot` 等类型放哪 —— **裁定 A**
 
@@ -223,7 +236,7 @@ B4 让 `change_clash_core` 返回 `MutationOutcome<RuntimeApplyReport>`（F21：
 - **裁定 A**：新增 `RuntimeApplyReport { outcome, desired_revision: u64, applied_revision: Option<u64> }`（design §8 的形状），命令返回 `MutationOutcome<RuntimeApplyReport>`。bindings 因此新增两个 TS 类型 + 命令返回类型变化——**这是本阶段唯一的 wire 变化**，S9 按「恰好这些」核对。`specta` 已在 workspace 启用（F25），upstream 类型可直接内嵌，**不做镜像 DTO**。
 - **选项 B（未采纳）**：仍返回 unit，degraded 只进日志。B4 卡明写「前端复用通用 `RuntimeApplyReport`/MutationOutcome 展示 degraded」。
 
-### D5 —— **新增（L3 审计的产物）：核处于停止态时 `change_core` 怎么办**
+### D5 — 核处于停止态时 `change_core` 怎么办（L3 审计的产物）—— **裁定 A**
 
 L3 让我审计 `restart()` 残余，审出一条 v1 漏掉的语义差（F26/F27）：
 
@@ -233,10 +246,12 @@ L3 让我审计 `restart()` 残余，审出一条 v1 漏掉的语义差（F26/F2
 
 若 B4 无条件改走 `ApplyPromoted`，「停止态下切核」会从「切完并启动」变成「切完但失败」，这是 B4 卡没有授权的行为回归。
 
-- **推荐 A：按 5a 的 `RunningIdentity` 分支**。`Ok(Some(_))`（在跑）→ `ApplyPromoted` 承载切换（`Switched`）；`Ok(None)`（已停）→ 走 `restart()` 启新核，**与今天逐字同行为**；`Err(NoBackend)` → 按 §2.2 第 6 行 degraded。为此 `RuntimeApplyReport.outcome` 用**本仓自有**枚举 `RuntimeApplyOutcome`（镜像 upstream 六个变体 + `Started`），而不是直接复用 `ApplyOutcomeKind`——顺带把我们的 TS wire 与 submodule 的 API 版本解耦（bindings 仍是「新增两个 TS 类型」，规模不变）。
-- **选项 B**：无条件 apply，停止态切核返回 degraded。更简单，但改用户可见行为，且 `Started` 这个真实状态在 wire 上无处表达。
+- **裁定 A：按 5a 的 `RunningIdentity` 分支**。`Ok(Some(_))`（在跑）→ `ApplyPromoted` 承载切换（`Switched`）；`Ok(None)`（已停）→ 走 `restart()` 启新核，**与今天逐字同行为**；`Err(NoBackend)` → 按 §2.2 第 6 行 degraded。`RuntimeApplyReport.outcome` 用**本仓自有**枚举 `RuntimeApplyOutcome`（镜像 upstream 六个变体 + `Started`）。
+- **选项 B（未采纳）**：无条件 apply，停止态切核返回 degraded。更简单，但改用户可见行为，且 `Started` 这个真实状态在 wire 上无处表达。
 
-**推荐 A。** 若 leader 裁 B，S6 与 T-B4-04 按「停止态 → `CommittedDegraded(core_not_running)`」重写，A.4 的 outcome 退回 `ApplyOutcomeKind`。
+**leader 裁定 A（2026-08-02），四条理由：** ①前提经独立核实——`apply.rs` doc 原文「The core must already be running: apply never starts one」；②选项 B 未经 B4 卡授权就改用户可见行为，违反迁移政策；③`Ok(None)` → `restart()` 与今天逐字同行为，且与 5a updater 的 `Ok(None)` 先例不冲突——两者各自保留各自的 legacy 行为（updater 停止态换二进制**不**启动，change_core 停止态切核**启动**）；④`Started` 第七变体是诚实建模，把 `Ok(None)` 分支映射成 `Switched` 是撒谎（apply 根本没承载它）。
+
+> **R2 —— 为什么用仓内枚举而不是直接复用 `ApplyOutcomeKind`：这是语义选择，不是编译必要。** F25（specta 已在 workspace 启用）说明的是「直接内嵌 upstream 类型**能编译**、无需镜像 DTO」；本条决定的是「**不该**直接内嵌」，理由有两条且都与编译无关：`Started` 在 upstream 枚举里没有对应变体（承载不了 D5=A 的真实终态），以及把我们的 TS wire 与 submodule 的 API 版本解耦。**两条事实并立不矛盾**——F25 保留原样不动。
 
 ---
 
@@ -344,9 +359,13 @@ guard → ApplicationClient::patch(core = new)   ← desired 提交，此后一�
       → 统一 rebuild（新核）→ CheckAndPromote
       → RunningIdentity?                        ← D5=A 的分支
           Ok(Some(_))  → ApplyPromoted          ← apply 内部承载切核（Switched）
+                         → map_apply_outcome()  ← §3 的 12 格，唯一决策点
           Ok(None)     → restart()              ← 核本来就停着：启新核，与今天同行为
+                         Ok  → outcome=Started，Applied 推进        （不经 map_apply_outcome）
+                         Err → CommittedDegraded(CoreLifecycle /
+                                 core_start_failed)，Applied 不推进  （R1）
           Err(NoBackend) → §2.2 第 6 行 degraded
-      → 按 §3 映射：成功 → Applied 推进；RolledBack → Applied 保持旧值 + CommittedDegraded(CoreRollback)
+      → RolledBack → Applied 保持旧值 + CommittedDegraded(CoreRollback)
 ```
 
 **删除**：legacy `Config::verge().draft()/apply()/discard()`、回滚重建、`restore_product` 调用、回滚分支里的两次 old-core restart、`RuntimeTransactionSnapshot`（连类型一起删——change_core 是它唯一的使用者）。
@@ -379,7 +398,7 @@ v1 说「事务内 `restart()` 恰好一次」，**那是错的**：新流程的
 
 新增 `RuntimeApplyReport`（D4=A 的三字段，`serde` + `specta`；F25 确认 workspace 已启用 specta，upstream 类型可直接内嵌）与 `RuntimeApplyOutcome`（D5=A），放在 `client/runtime.rs` 与 `MutationOutcome` 同层。
 
-新增纯函数 `map_apply_outcome(data: &CoreApplyData, promoted_revision: u64) -> (RuntimeApplyReport, Vec<Degradation>)`，**§3 的 12 格矩阵全部由它决定**——它是唯一决策点，测试直接打它。停止态启核（D5=A）不经过它：它没有 `CoreApplyData`，由 S6 直接构造 `RuntimeApplyOutcome::Started` 的报告。
+新增纯函数 `map_apply_outcome(data: &CoreApplyData, promoted_revision: u64) -> (RuntimeApplyReport, Vec<Degradation>)`，**§3 的 12 格矩阵全部由它决定**——它是唯一决策点，测试直接打它。**停止态启核（D5=A）不经过它**：那条路径没有 `CoreApplyData`，由 S6 直接构造——成功侧 `RuntimeApplyOutcome::Started` + `applied_revision = Some(promoted)`，失败侧 `core_start_failed` 降级且 `applied_revision` 保持旧值（R1）。这不是「第二个决策点」：它判的是「有没有 apply 结果」，不是「apply 结果是什么」。
 
 **同时收敛 §2.4 的两条投递路径：**
 
@@ -406,7 +425,7 @@ pnpm architecture-ledger
 pnpm lint:architecture-ledger
 ```
 
-**bindings 预期差异（恰好这些）**：新增 `RuntimeApplyReport` 与 `RuntimeApplyOutcome` 两个 TS 类型（D5=A；若裁 B 则第二个是 upstream 的 `ApplyOutcomeKind`，数量不变）；`changeClashCore` 与 `patchClashConfig` 的返回类型由 `null` 变为 `MutationOutcome<RuntimeApplyReport>`。**其余零变化**——四条 runtime 读 IPC、`getCoreStatus` 均不得变。
+**bindings 预期差异（恰好这些）**：新增 `RuntimeApplyReport` 与 `RuntimeApplyOutcome` 两个 TS 类型（D5=A：第二个是**本仓自有**枚举，不是 upstream 的 `ApplyOutcomeKind`）；`changeClashCore` 与 `patchClashConfig` 的返回类型由 `null` 变为 `MutationOutcome<RuntimeApplyReport>`。**其余零变化**——四条 runtime 读 IPC、`getCoreStatus` 均不得变。
 
 **ledger 预期**：`config_calls` 应**下降**（B4 删掉 `change_core` 的 legacy draft/apply/discard 三处 `Config::verge()`）；`migration_markers` 应下降（`rebuild.rs` 的 core-selection 与 log-sink 两条 TODO 随 B4 删除）；`test_real_dirs` **必须仍为 0**。逐项核对后再 `--write-snapshot`。
 
@@ -455,6 +474,7 @@ pnpm lint:architecture-ledger
 | T-B4-02 | change-core 成功（**核在跑**）：三者一致推进；`RuntimeApplyReport.outcome == Switched`；**全程零次 `restart()`**——切核由 `apply` 承载（L3 的真实语义）                                                           |
 | T-B4-03 | change-core（**核已停**，D5=A 分支）：`RunningIdentity` 返回 `Ok(None)` → 恰好一次 `restart()`，且该次 Run 请求用的是**本次 promote 的新核**（`target_core.take()` 消费的正是它，F8 重述）；`outcome == Started` |
 | T-B4-04 | `restart()` 的 `target_core` 一次性消费：同一 lease 内第二次 `restart()` 落回 typed 快照而非重用陈旧目标（把 F8 的机制本身钉住，与 change_core 流程解耦）                                                        |
+| T-B4-05 | change-core 停止态分支的**失败侧**（R1）：`restart()` 失败 → `CommittedDegraded`，`phase = CoreLifecycle` / `code = "core_start_failed"`；desired = 新核（已提交）、Promoted = 新配置、**Applied 不推进**        |
 
 ### 6.4 回归（期望零改动通过）
 
@@ -475,7 +495,7 @@ pnpm lint:architecture-ledger
 | change-core rollback 断言 desired=new、Promoted=new、Applied=old                                   | S6       | T-B4-01                           |
 | 两个并发 rebuild 不重叠，后一个读最新 snapshot                                                     | S3       | T-B2-01                           |
 | RQ-01 已作答（含 §2.4 的 degradation 投递路径）                                                    | §2       | T-PC-01…09                        |
-| RQ-03 已作答                                                                                       | §3       | T-AP-01…13                        |
+| RQ-03 已作答（含 R1 的 `Started` 终态）                                                            | §3       | T-AP-01…13 + T-B4-03 / T-B4-05    |
 
 ---
 
@@ -486,7 +506,7 @@ pnpm lint:architecture-ledger
 | Promoted/Applied 迁入 actor 后四条读 IPC 行为漂移         | 中   | 前端读到空/陈旧 runtime | facade 方法保持同名同签名，内部改实现；四条 IPC 的 bindings 必须零变化（S9 判据）                                                                                                             |
 | 删 `rebuild_gate` 后 coalesce 语义被牵连                  | 中   | 重复/丢失 rebuild       | `RebuildCoordinator` 一行不改；五个 coordinator 测试零改动通过（T-6.4）                                                                                                                       |
 | `apply_promoted` 改道后重试语义丢失                       | 中   | 瞬时失败变成硬失败      | 旧路径是 5 次 250 ms 重试（F10）。**判据已在 S4 预先定死**：仅传输类错误在 `CoreLeaseAdapter` 层补 5 × 250 ms，check / 语义失败 / `RolledBack` 一律不重试；实测数据入实施报告，但**不改判据** |
-| `change_core` 在停止态下的行为回归                        | 中   | 切核后核不再自动启动    | D5=A 的 `RunningIdentity` 分支保留今天的启核行为；T-B4-03 钉住（若 leader 裁 D5=B，此风险转为**有意的行为变更**，须在 PR 描述里写明）                                                         |
+| `change_core` 在停止态下的行为回归                        | 中   | 切核后核不再自动启动    | D5=A 的 `RunningIdentity` 分支保留今天的启核行为；成功侧 T-B4-03、失败侧 T-B4-05 钉住                                                                                                         |
 | `RolledBack` 被误判为成功                                 | 中   | Applied 错误推进        | §3 的映射集中在 `map_apply_outcome` 一个纯函数里；T-AP-11/12 直接打它                                                                                                                         |
 | `target_core.take()` 在多次 restart 下失效                | 低   | 启核用错目标            | T-B4-04 直接钉机制本身（不再依赖 B4 已删除的回滚流程）；T-B4-03 钉停止态分支只消费一次                                                                                                        |
 | B3 删除面过大牵连 profile mutation 的 `CommittedDegraded` | 中   | 既有 degraded 路径回归  | `MutationOutcome::from_parts` 是唯一产出点（F22），不动它；profile 侧测试零改动                                                                                                               |
@@ -646,5 +666,6 @@ pub(crate) fn map_apply_outcome(
 | `core_backend_unavailable`        | `RuntimeApply`   | true      |
 | `runtime_apply_failed`            | `RuntimeApply`   | true      |
 | `core_not_running`                | `RuntimeApply`   | true      |
+| `core_start_failed`               | `CoreLifecycle`  | true      |
 | `core_rollback`                   | `CoreRollback`   | true      |
 | `core_apply_durability_uncertain` | `RuntimeApply`   | false     |

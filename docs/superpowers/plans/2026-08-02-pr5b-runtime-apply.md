@@ -994,6 +994,8 @@ pub(crate) fn runtime_outcome_from_apply_data(
 
 **作用域（先读这条）：A.7 只分类 apply 路径上的 `Backend(_)`。** 生命周期路径（D5 停止态分支的 `restart()`）的失败**不过 A.7**，直接落 §2.2 的 restart-failure 行（`CoreLifecycle` / `core_start_failed`，R1 裁定、T-B4-05 钉住）。
 
+**绑定手段：名字 + 单一调用点。** 函数叫 `classify_apply_backend_failure`（作用域写进标识符），**只在 `ApplyPromoted` 的错误臂调用一次**，不得下沉到两条路径共用的 helper。**不做 newtype 包装**：包装类型的构造点同样在 apply 臂，能调错分类器的人也能构造错 newtype，保护是薄的；而为一个只有单一调用点的函数引入包装类型属于推测性抽象（CLAUDE.md §2）。这是诚实的 80%——**若将来真出现第二个调用点，届时再上 newtype**。
+
 > **为什么必须显式圈作用域**：两条路径的失败**在类型上完全同形**——`Run` 与 apply 一样经 `backend_error()` 包成 `Backend(_)`（F49）。而 Service 侧的启核失败 `error_kind` **恒为 `None`**（`start`/`stop`/`restart` 早于 `error_kind` 引入，F50），A.7 第 4 行会确定性地把它判成 `Other` → 行 7c → `runtime_apply_failed`，**与 R1 裁定的 `core_start_failed` 直接冲突**。靠判据本身分不开，只能靠调用点的路径归属。
 
 `CoreActorError::Backend(_)`（apply 路径）是个口袋：revision 冲突、not-started、传输丢失全在里面（F46）。
@@ -1007,7 +1009,10 @@ pub(crate) enum BackendFailureClass {
     Other,              // → §2.2 行 7c
 }
 
-pub(crate) fn classify_backend_failure(error: &CoreBackendError) -> BackendFailureClass;
+/// **唯一调用点：`ApplyPromoted` 的错误臂**（A.2）。作用域写进了名字——
+/// 生命周期路径（停止态 restart）的 `Backend(_)` 不调它。
+/// 不得放进两条路径共用的 helper 里，否则名字就白改了。
+pub(crate) fn classify_apply_backend_failure(error: &CoreBackendError) -> BackendFailureClass;
 ```
 
 | 顺序 | 类                        | Local 判据（`CoreBackendError::Local`）                                             | Service 判据（`CoreBackendError::Service`）                                                                                               |

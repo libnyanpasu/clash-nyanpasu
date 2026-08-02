@@ -4,37 +4,36 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 105,
+      "total": 104,
       "byKey": {
-        "Config::verge()": 78,
+        "Config::verge()": 77,
         "Config::clash()": 27
       }
     },
     "service_globals": {
-      "total": 61,
+      "total": 57,
       "byKey": {
         "ProxiesGuard::global()": 14,
         "Handle::global()": 11,
         "Self::global()": 9,
         "Sysopt::global()": 8,
         "WindowManager::global()": 8,
-        "Logger::global()": 4,
         "Hotkey::global()": 3,
         "UpdaterManager::global()": 3,
         "CoreManager::global()": 1
       }
     },
     "migration_markers": {
-      "total": 15,
+      "total": 16,
       "byKey": {
-        "TODO(actor-migration)": 13,
+        "TODO(actor-migration)": 14,
         "FIXME(actor-migration)": 2
       }
     },
     "legacy_dto_refs": {
-      "total": 299,
+      "total": 296,
       "byKey": {
-        "IVerge": 175,
+        "IVerge": 172,
         "IClashTemp": 30,
         "LegacyVergeBridge": 28,
         "ClashLegacyBridge": 18,

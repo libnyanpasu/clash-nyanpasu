@@ -572,7 +572,7 @@ impl CoreLifecycleLease for CoreLeaseAdapter {
                 self.application
                     .get()
                     .await
-                    .map_err(|error| RestartFailure::Operation(error.into()))?
+                    .map_err(RestartFailure::Operation)?
                     .state
                     .core
             }

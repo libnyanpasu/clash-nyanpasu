@@ -160,11 +160,29 @@ rg 'crate::core::manager|crate::core::state\b|\bManagedState\b' backend/tauri/sr
 
 ### S3 — 删 `Logger` global（按 D1=A）
 
-删 `core/logger.rs` 整个文件；三个不可达写入者随 S4 的 `Instance` 一起消失。`get_clash_logs` 保留命令与 wire，内部返回空 `VecDeque`，并加**去向注记**。
+**删除面共四处（v5 只写了第一处，现补全）：**
 
-**注记写成 `TODO(actor-migration)`**（已定，不留到实施时）：D1=A 之后该命令是「存在、恒返回空、去向待 PR-6/7 决定」——**这正是 marker 要表达的真实迁移欠账**。写成普通注释能让数字好看，但那是**用少记欠账换指标**，与卡上「不以 `CoreManager::global() == 0` 作为硬指标」是同一种毛病。
+| #   | 编辑                                  | 位置                                                                                     |
+| --- | ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1   | 删整个文件                            | `backend/tauri/src/core/logger.rs`                                                       |
+| 2   | 删 `pub mod logger;`                  | `core/mod.rs:7`                                                                          |
+| 3   | 从 `use` 列表移除 `logger::Logger`    | `ipc.rs:5`                                                                               |
+| 4   | 删 `use crate::core::logger::Logger;` | `core/clash/core.rs:4`（该行随 S4 删 `Instance` 时也会失去用户，但**导入本身要显式删**） |
 
-**验证：** `rg 'Logger::global|crate::core::logger' backend/tauri/src` 为 0；**bindings 零变化**（命令与签名都不动）。
+`get_clash_logs` 保留命令与 wire，内部返回空 `VecDeque`，加**去向注记**。
+
+**注记写成 `TODO(actor-migration)`**（已定）：该命令是「存在、恒返回空、去向待 PR-6/7 决定」——**这正是 marker 要表达的真实迁移欠账**。写成普通注释能让数字好看，但那是**用少记欠账换指标**。
+
+**验证（两条，缺一不可）：**
+
+```bash
+rg 'Logger::global|crate::core::logger|logger::Logger' backend/tauri/src   # 调用与导入归零
+test ! -f backend/tauri/src/core/logger.rs && echo "logger.rs removed"      # 模块本身不存在
+```
+
+> **为什么必须有第二条**：四处调用消失后第一条就能过，**而全局定义仍然在**。**删一个模块，门禁必须能证明「模块本身没了」，而不只是「没人调它了」。**
+
+**bindings 零变化**（命令与签名都不动）。
 
 ### S4 — 删 `core/clash/core.rs` 的死面（**文件保留**）
 
@@ -174,26 +192,47 @@ rg 'crate::core::manager|crate::core::state\b|\bManagedState\b' backend/tauri/sr
 
 **`process_core_bridge.rs:4` 的禁止性注释（F38）**：它列举的禁项里 `CoreManager::global()` **在本阶段仍然存在**，因此**不悬空、不改**。（该注释里另一条关于 `RunType::default()` 的警告在 `:251`，同样**本阶段不动**——`RunType::default()` 随 D2 去 5d。）
 
-**验证：**
+**同时必须更新 `core/clash/core.rs:51` 的 doc 注释**：它现在写着「……无法构造出会发 `/core/*` 的 `Instance::Service`」，而 `Instance` 本步就被删除——**注释会指向一个不存在的类型**。
+
+> **它与 S1 是两件独立的事，两个都要做，别用一个替代另一个。** 巧合在于**同一行**：S1 修的是**扫描器**（根治——将来别的文件写 glob 串也不会中招），本步改的是**这句注释引用了被删的类型**。S1 修好后这行仍然会含 `/core/*` 而扫描器不再中招；本步改完注释后它不再提 `Instance`。两者互不替代。
+
+**验证（判据限定到该文件，且匹配真实声明形态）：**
 
 ```bash
-rg 'enum Instance\b|CoreManager::status|\.instance\b' backend/tauri/src
+rg -n 'enum Instance|pub async fn status|instance:' backend/tauri/src/core/clash/core.rs
+rg -n 'Instance::' backend/tauri/src/core/clash/core.rs        # 含 doc 注释里的引用
 ```
 
-为 0；`cargo check`。**不得写 `rg 'CoreManager'` 为 0**——它本阶段不归零（§0 纠缠 2、F28）。
+两条均应为 0；`cargo check`。
+
+> **v5 那条判据是错的，两半都错**：`\.instance` **全局搜会命中六处活代码**（`core/storage.rs:120`、`widget.rs:71,97,101,145,179`）；而 `CoreManager::status` **在该文件里 grep 计数本就是 0**——声明形态是 `pub async fn status<'a>(&self)`，**那半条判据删除前就恒真**，等于没有判据。
+>
+> **不得写 `rg 'CoreManager'` 为 0**——该类型本阶段整个留着（§0 纠缠 2）。
 
 ### S5 — 门禁
 
+**顺序本身就是判据的一部分**（v5 的顺序必然红，见下）：
+
 ```powershell
+# 1) 常规门禁
 pnpm fmt:backend
 pnpm lint:rustfmt
 pnpm lint:clippy
 pnpm test:backend
-git diff frontend/interface/src/ipc/bindings.ts
 pnpm lint:ts
-pnpm architecture-ledger
-pnpm lint:architecture-ledger
+
+# 2) bindings —— 与**基线**比，不与工作区比
+git diff --exit-code 899b069f5..HEAD -- frontend/interface/src/ipc/bindings.ts
+
+# 3) ledger 三步，顺序不可颠倒
+pnpm architecture-ledger                     # report 模式：核对精确增量（见下表）
+pnpm architecture-ledger --write-snapshot    # 核对无误后才写入最终快照
+pnpm lint:architecture-ledger                # 此时 gate 才有正确的比对对象
 ```
+
+> **v5 把 `lint:architecture-ledger` 排在最终 `--write-snapshot` 之前，那一步必然红。** S1 写入的是**修正后基线**，S2–S4 又故意改动每一项，而 gate 模式是**与已提交快照精确比对**——**让门禁去比对一个已知过期的基线，等于把判据写成必失败**。
+>
+> **同理，`git diff` 形态的判据只要跑在中间提交之后，就必须与基线比而不是与工作区比。** v5 的 `git diff <path>` 只看**未提交**改动，而 S1–S4 都先提交了——**即使某个提交改了 bindings，那条命令也返回空**，它是个恒真判据。**我按这个形态排查了全部门禁，「diff 应为空」形态只有 bindings 这一处**，已修正；其余门禁（fmt / lint / test / ledger）都不是差异比对形态。
 
 **bindings 预期：零变化。** 本阶段不改任何命令签名（D1=A 保留 `get_clash_logs` 的 wire）。
 
@@ -209,7 +248,7 @@ pnpm lint:architecture-ledger
 
 > **`migration_markers` 上升 1 是预期且正确的。** 它与 S1 让基线上升是**同一回事**：**ledger 数字变大不代表代码变差，而是账本看见了此前看不见的欠账**。`get_clash_logs` 的欠账一直存在（一个恒返回空的命令），只是从未被记账。**为了让数字好看而不记，才是真正的退步。**
 
-**最后一步**：逐项核对无误后 `pnpm architecture-ledger --write-snapshot`，**snapshot 变更单独成 commit**（与代码删除分开，便于归因与回滚）。
+**最终 snapshot 变更单独成 commit**（与代码删除分开，便于归因与回滚）。
 
 ---
 
@@ -224,9 +263,18 @@ pnpm lint:architecture-ledger
 
 **本阶段无新增生产类型与消息**，因此**没有 Appendix A**（单点声明附录）——纯删除阶段没有可声明的接线面。这一点本身值得写明：**若实施中发现需要新建类型，说明范围溢出，停下核查。**
 
-**回归（期望零改动通过）**：全套 467 条基线。**本阶段不应有任何测试被迫修改**——所有删除对象的调用点均已证明为零（F3/F27/F28）。**若某条测试被迫改动，停下核查**：那意味着某个「已死」判定是错的。
+**回归契约（措辞必须能区分两种情况，否则它会在正确执行时报警）：**
 
-> v4 里的具名例外（`initial_watch_snapshot_matches_legacy_empty_status`）**随 D2 移交 PR-5d**——本阶段不删 `RunType::default()`，该测试不受影响。
+| 情况                           | 是否允许   | 说明                                       |
+| ------------------------------ | ---------- | ------------------------------------------ |
+| **存活测试被迫修改**           | **不允许** | 意味着某个「已死」判定是错的——**停下核查** |
+| **被删模块自带的单测随其消失** | **预期**   | 属主没了，测试跟着没，**不是回归**         |
+
+**具体预期：后端测试 467 → 466。** 被删的那一个是 `core/state.rs:178` 的 `#[test] fn test_managed_state()`——它**属于 S2 要删的文件**，随属主一同消失。
+
+> **v5 写的「467 条全绿、不应有任何测试被迫修改」是假的**：它没区分这两种情况。实施者删完看到 466 会以为判据破了，**然后要么补一个假测试凑数、要么去怀疑某个「已死」判定**。**一个会在正确执行时报警的判据，比没有判据更糟——它训练人忽略警报。**
+
+> **T-LEDGER-01/02 属 Deno 测试套件，不进 `test:backend`**，不计入上面的后端计数。
 
 **已存在、需在门禁中具名的集成测试**：`s09_process_fixed_port_hold_conflict_and_frees_after_stop`（`process_core_bridge.rs:1129`，F39）——卡面要求 fixed-port 作为自动化集成测试而非手工 smoke，**它已经存在**，S5 只需确认它在 `pnpm test:backend` 中真的跑到。
 

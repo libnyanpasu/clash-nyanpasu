@@ -1,134 +1,131 @@
 # PR-5d 实施计划 — 运行模式探针与 macOS DNS 生命周期
 
 **日期：** 2026-08-03
-**版本：** v3（v2 被对抗审以 43/100 REJECT，七条 BLOCKING 全部上诉失败；leader 裁决另**推翻自己此前两条裁定**。本版按裁决重写，并已对着 **PR-5c 落地后的树**复核全部锚点）
-**分支基线：** `refactor/core-manager-actor` @ **`a062f1019`**（v2 的锚点取自 `899b069f5`，**已作废**；主体复核在 `48c17a705` 完成，随后 5c 收尾三提交落地，差异已在 §0.5 逐条消化）
-**权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/` 下**两个文件都算数**——`task.md` 卡 C2、C3（做什么）+ `design.md` §9（边界约束，其中 `:333` Service control 段直接管着本阶段）。**只读 `task.md` 会漏掉约束**，§0.5 记了一次实际漏检
+**版本：** v4（v3 对抗审 **REJECT 57/100**，43→57；六条 BLOCKING 全部维持，leader 另**升级一条**为 BLOCKING 并**推翻自己对 sibling-port 的接受理由**。本版按裁决重写）
+**分支基线：** `refactor/core-manager-actor` @ **`59a38dfb0`**
+**权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/` 下**两个文件都算数**——`task.md` 卡 C2、C3（做什么）+ `design.md` §9（边界约束，其中 `:333` Service control、`:337` macOS DNS 两段直接管着本阶段）。**只读 `task.md` 会漏掉约束**，§0.5 记了一次实际漏检
 **上游材料：** PR-5c v4 终态 `git show 5a02a1727:docs/superpowers/plans/2026-08-02-pr5c-residual-cleanup.md`
 **平台：** Windows 11 / PowerShell（**macOS 路径无法本地验证**，见 §10）
 
-> **本阶段是并发设计，不是清理。** 5c 的删除面靠「没有活调用者」即可证明；本阶段**每一条都要证明「每条路径都有人接、且接得住并发」**。
+> **v2→v3 的教训是「把机制写成结论」。v3→v4 的教训更窄也更硬：把 `Err` 当成「什么都没发生」的证据。**
 >
-> **v2 被打回的根本原因只有一条：把「机制」写成了「结论」。** 「守卫覆盖住了」「有界等待」「可注入」——这些都是结论。v3 的硬性要求是：**凡形如「X 之后 Y 一定已发生」的断言，必须点名那个强制它的构造**（守卫、await 点、准入检查、`tokio::time::timeout` 的取消语义），并且该构造要出现在 §6 的表里。
+> 一次写调用返回 `Err`，只说明**这次调用报告了失败**，**不说明外部状态没被改动**——daemon 可能已经改完 DNS 才丢了响应，本地命令可能改完才非零退出。这与老纪律「签名只能保证值到得了这里」是同一形状，只是换到了返回值上：**错误通道报告的是调用的结果，永远不是副作用的缺席。** v3 据此写了「写失败就不建守卫」，恰好制造出守卫本身要防的那个状态：DNS 变了、没有记录、无从恢复。
 
 ---
 
-## 0. 锚点复核结果（**本轮第一步，已完成**）
+## 0. 锚点复核结果
 
-v2 的锚点全部取自 `899b069f5`。5c 之后已删除 `core/manager.rs`、`core/state.rs`、`Logger` global、`enum Instance`，并删掉 `core/clash/core.rs` 约 75%。复核结论如下。
+### 0.1 已漂移、本版已改写的锚点（对 `899b069f5`）
 
-### 0.1 已漂移、本版已改写的锚点
-
-| 事实                                          | v2 锚点（`899b069f5`）                   | v3 锚点（`48c17a705`）                                                                                 | 说明               |
-| --------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------ |
-| F13 `RunType::default()` 读两个 legacy global | `core/clash/core.rs:61-78`               | **`core/clash/core.rs:39-56`**                                                                         | 文件缩短，逻辑未变 |
-| F12 `get_ipc_state()` 第五处生产读            | `core/clash/core.rs:70`                  | **`core/clash/core.rs:48`**                                                                            | 同上               |
-| F19 覆写代码 + `previous_dns` 状态            | `core/clash/core.rs:404-457`、`:373-383` | **`core/clash/core.rs:74-126`、`:61`、`:69`**                                                          | 同上               |
-| F20 读两个 global、Service/Local 双路径分叉   | `core/clash/core.rs:409,415-420,440-450` | **`core/clash/core.rs:78`（`RunType::default()`）、`:84-89`（`Config::clash()`）、`:109-118`（分叉）** | 同上               |
-| §2.1 `RunType::default()` 调用点之一          | `core/clash/core.rs:409`                 | **`core/clash/core.rs:78`**                                                                            |                    |
-| F15 `ServiceControlOps` 只有四个方法          | `core/actor/backend.rs:618-624`          | **`core/actor/backend.rs:619-624`**（`:618` 是 `#[async_trait]`）                                      |                    |
-| F18 `MacosDnsGuard` 尚未存在的注释            | `feat.rs:417-418`                        | **`feat.rs:416-418`**（三行 TODO；**文案已由 `a062f1019` 改指 PR-5d**，见 §0.5）                       | 行号未动，文案已变 |
-| F22 DNS 与 start/stop 无保序                  | `feat.rs:409-426`                        | **`feat.rs:410-412`（走 restart 的分支根本不碰 DNS）、`:415-424`（`let _ =` 吞失败）**                 | 拆成两条精确锚点   |
-| F36 一次性 status 查询                        | `control.rs:351-376`                     | **`control.rs:350-376`**（`:350` 是 `#[tracing::instrument]`）                                         |                    |
+| 事实                                          | v2 锚点                                  | v4 锚点                                                                       | 说明                                                      |
+| --------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------- |
+| F13 `RunType::default()` 读两个 legacy global | `core/clash/core.rs:61-78`               | **`core/clash/core.rs:39-56`**                                                | 5c 削掉该文件约 75%                                       |
+| F12 `get_ipc_state()` 第五处生产读            | `core/clash/core.rs:70`                  | **`core/clash/core.rs:48`**                                                   | 同上                                                      |
+| F19 覆写代码 + `previous_dns` 状态            | `core/clash/core.rs:404-457`、`:373-383` | **`core/clash/core.rs:74-126`、`:61`、`:69`**                                 | 同上                                                      |
+| F20 读两个 global、Service/Local 双路径分叉   | `core/clash/core.rs:409,415-420,440-450` | **`core/clash/core.rs:78`、`:84-89`、`:109-118`**                             | 同上                                                      |
+| F15 `ServiceControlOps` 只有四个方法          | `core/actor/backend.rs:618-624`          | **`core/actor/backend.rs:619-624`**                                           | `:618` 是 `#[async_trait]`                                |
+| F18 `MacosDnsGuard` 尚未存在的注释            | `feat.rs:417-418`                        | **`feat.rs:416-418`**                                                         | 行号未动，**文案已由 `a062f1019`/`59a38dfb0` 改指 PR-5d** |
+| F22 DNS 与 start/stop 无保序                  | `feat.rs:409-426`                        | **`feat.rs:410-412`（restart 分支不碰 DNS）、`:415-424`（`let _ =` 吞失败）** | 拆成两条精确锚点                                          |
+| F36 一次性 status 查询                        | `control.rs:351-376`                     | **`control.rs:350-376`**                                                      | `:350` 是 `#[tracing::instrument]`                        |
+| **F42 actor 内多余的 mode 覆盖赋值**          | v3 写 `mod.rs:370`                       | **`core/actor/mod.rs:371`**                                                   | **v3 差一行，审查者纠正，已核实**                         |
 
 ### 0.2 已核实**未**漂移的锚点
 
-`core/actor/gate.rs:20-30`、`:32-45`、`:55-60`；`core/actor/request.rs:78-92`（`:87` 取守卫、`:88` `set_backend`、`:82-85` 提前返回）；`core/actor/types.rs:44-50`；`core/service/ipc.rs:28-30`（三个 statics）、`:85-101`（`spawn_health_check`，`:97` 是 5 s）、`:103-124`（`health_check`）、`:131-138`（`target_ipc_state`）；`core/service/mod.rs:18-30`（boot 忙等在 `:26-28`）；`client/mod.rs:303-306`（bootstrap 读 `get_ipc_state()`）、`:544`；`feat.rs:383,401`；`utils/init/mod.rs:251`（update 调用点）；`.github/workflows/ci.yml:201-215,303-304`。
+`core/actor/gate.rs:20-30`、`:32-45`、`:55-60`；`core/actor/request.rs:78-92`（`:87` 取守卫、`:88` `set_backend`、`:82-85` 提前返回）；`core/actor/types.rs:44-50`、`:68-79`；`core/actor/mod.rs:185-190`、`:224-230`、`:266-296`、`:436`、`:500-539`、`:603-615`；`core/service/ipc.rs:28-30`、`:85-101`（`:97` 是 5 s）、`:103-124`（`:108` 是警告条件）、`:131-138`；`core/service/mod.rs:18-30`；`core/service/compat.rs:15-27`、`:29-52`、`:55-57`；`client/mod.rs:303-306`、`:455-465`、`:504-539`、`:544`；`client/core.rs:277-283`；`client/rebuild.rs:150-167`；`feat.rs:383,401`；`utils/init/mod.rs:251`；`utils/help.rs:263`；`.github/workflows/ci.yml:201-215,303-304`。
 
-### 0.3 5c 已消灭的锚点（本版删除）
+### 0.3 5c 已消灭的锚点
 
-- `core/clash/core.rs:399`（`CoreManager::status` 内的 `RunType::default()`）——**该函数已随 5c 删除**，v2「实施前复核」的悬念**已结清**：`RunType::default()` 的生产调用点现在是 **两处**（`core/actor/types.rs:48`、`core/clash/core.rs:78`）加一处测试、一处注释。
+- `core/clash/core.rs:399`（`CoreManager::status` 内的 `RunType::default()`）——函数已删。`RunType::default()` 的生产调用点现为**两处**（`core/actor/types.rs:48`、`core/clash/core.rs:78`）加一处测试、一处注释。
 
-### 0.4 复核过程中发现的、v2 漏掉的事实（**不是漂移，是遗漏**）
+### 0.4 卡面与前版都没有的事实
 
-| ID      | 事实                                                                                                                                                                                                                                                                                                     | 锚点                                                                                                                                                   |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **F42** | **`CoreStatusView::initial()` 有两个调用点**，v2 的 D2 表只列了一个。`core/actor/mod.rs:368-370` 先调 `initial()` 再用 `observed.view.run_type = args.mode;` **把它覆盖掉**——actor 侧其实早已是注入的，`initial()` 里的 `RunType::default()` 在这条路径上是**一次白读**。D2 加参后 `:370` 那行覆盖也要删 | `client/core.rs:111`；`core/actor/mod.rs:368-370`                                                                                                      |
-| **F43** | **`SetBackend` 会把核停掉**：`replace_backend` 在 `:268` 置 `self.running = None`，在 `:282` 才改 `self.mode`。因此「换后端之后重新施加 DNS」的正确时点**不是 `SetBackend` 之后，而是随后的 `Run` 之后**                                                                                                 | `core/actor/mod.rs:266-296`                                                                                                                            |
-| **F44** | **`state.running: Option<CoreRequest>` 是现成的「核是否在跑」判据**：`Run` 置 `Some`（`:514`）、`Stop` 置 `None`（`:532`）、`replace_backend` 置 `None`（`:268`）、`Shutdown` 置 `None`（`:605`）                                                                                                        | `core/actor/mod.rs:57`                                                                                                                                 |
-| **F45** | **`ServiceControlOps` 的六个控制入口签名不齐**：`install`/`start`/`restart` 收 `CoreModeReconciler`（因为要起轮询线程），`stop`/`update`/`uninstall` 不收；且 `update`/`uninstall` **根本不在 trait 上**                                                                                                 | `control.rs:58,106,149,188,234,283`；`backend.rs:619-624`                                                                                              |
-| **F46** | **`nyanpasu-utils` 全 crate 无 `administrator privileges`**（`rg -c` 无命中）。所以 `osascript` 这一跳**不提权**，去掉它不改变权限语义                                                                                                                                                                   | `crates/nyanpasu-utils/`（全 crate grep）                                                                                                              |
-| **F47** | **IPC `set_dns` 的 wire golden 确实存在**，但不在 v2 引的那个锚点上                                                                                                                                                                                                                                      | golden：`nyanpasu_ipc/tests/wire_golden.rs:282-295`；端点：`.../client/shortcuts.rs:91-96`                                                             |
-| **F48** | **`pnpm test` → `cargo test --all-features` 的展开链**是两跳，v2 只引了一跳                                                                                                                                                                                                                              | `package.json:40`（`"test": "run-p test:*"`）→ `package.json:42`（`"test:backend": "cargo test --manifest-path ./backend/Cargo.toml --all-features"`） |
+| ID      | 事实                                                                                                                                                                                                                                                       | 锚点                                                        |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **F42** | **`CoreStatusView::initial()` 有两个调用点**。`core/actor/mod.rs:367-371` 先调 `initial()` 再用 `observed.view.run_type = args.mode;`（**`:371`**）覆盖——actor 侧早已是注入的，`initial()` 里的 `RunType::default()` 在这条路径上是**一次白读**            | `client/core.rs:111`；`core/actor/mod.rs:367-371`           |
+| **F43** | `replace_backend` 置 `self.running = None`（`:268`）在前、改 `self.mode`（`:282`）在后                                                                                                                                                                     | `core/actor/mod.rs:266,268,282`                             |
+| **F44** | **`state.running: Option<CoreRequest>` 是现成的「核是否在跑」判据**：`Run` 置 `Some`（`:514`）、`Stop` 置 `None`（`:532`）、`Shutdown` 置 `None`（`:605`）                                                                                                 | `core/actor/mod.rs:57`                                      |
+| **F45** | 六个控制入口签名不齐；`update`/`uninstall` **不在 trait 上**                                                                                                                                                                                               | `control.rs:58,106,149,188,234,283`；`backend.rs:619-624`   |
+| **F46** | **`nyanpasu-utils` 全 crate 无 `administrator privileges`**                                                                                                                                                                                                | `crates/nyanpasu-utils/`（全 crate grep）                   |
+| **F47** | IPC `set_dns` 的 wire golden 存在，但不在 v2 引的锚点上                                                                                                                                                                                                    | golden：`nyanpasu_ipc/tests/wire_golden.rs:282-295`         |
+| **F48** | `pnpm test` → `cargo test --all-features` 是两跳                                                                                                                                                                                                           | `package.json:40` → `:42`                                   |
+| **F49** | **install 之后服务会自己起来**，且紧接着拉起 health checker                                                                                                                                                                                                | `control.rs:99-102`                                         |
+| **F56** | **IPC 里根本没有 DNS 读端点。** `nyanpasu_ipc/src/api/network/` 只有 `mod.rs` 与 `set_dns.rs`；全 crate 唯一 network 端点常量是 `NETWORK_SET_DNS_ENDPOINT`；`get_dns`/`read_dns` 在 `nyanpasu_ipc/src` 与 `crates/nyanpasu-service-runtime/src` **零命中** | `nyanpasu_ipc/src/api/network/`（目录列举）；`set_dns.rs:5` |
+| **F57** | **`commit()` 在观察到 `Stopped` 时也会清 `running`**（`:224-227`）。因此 `replace_backend` 里那句显式 `self.running = None` **不是唯一清除点**——紧随其后的 `commit(synthetic_stopped)`（`:270`）同样会清                                                   | `core/actor/mod.rs:224-230,270`                             |
+| **F58** | **facade 已有 `NyanpasuClient::shutdown()`**，且已是「有序两步」（先 rebuild worker 后 core），带 PR-5a S11 契约注释；生产入口是 `utils/help.rs:263`                                                                                                       | `client/mod.rs:455-465`；`utils/help.rs:263`                |
+| **F59** | **`ServiceCompat::Unknown` 有两个来源**：`status != Running`（`compat.rs:32-34`）与 `status == Running` 但 `info.server` 为 `None`（`:35-37`）。**丢掉 `ServiceStatus` 就再也分不出这两种 `Unknown`**                                                      | `core/service/compat.rs:29-52`                              |
+| **F60** | **`RebuildCoordinator::shutdown` 就是「关准入 + 等在飞」的现成范式**：先 `active.store(false)` 再 `done_rx.await`；契约明写「已在飞的 rebuild 允许跑完」                                                                                                   | `client/rebuild.rs:150-167`                                 |
 
-### 0.5 复核期间落地的 5c 收尾三提交（**逐条消化，不是「应该没影响」**）
+### 0.5 复核期间落地的 5c 收尾五提交
 
-主体复核在 `48c17a705` 完成，随后三个提交落地。逐条核过，**其中一个真的动了本计划的论据**：
+主体复核在 `48c17a705` 完成，其后五个提交落地：
 
-| 提交        | 改了什么                                                                    | 对本计划的影响                                                                                                                                                                                                                   |
-| ----------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0e20f35ba` | `scripts/architecture-ledger.ts` 学会正确词法分析 Rust 字符字面量与裸字符串 | **无锚点影响**。本计划 §9 只用 ledger 的三步顺序，不引它的行号。**顺带受益**：§8 的两条 ledger 门禁（`core/actor/dns.rs` 的 `Config::*()` 计数、`.probe()` 计数）依赖扫描器不把注释/字符串里的字样算进去，这次修复正好加固了它们 |
-| `a86478a7f` | 重写 roadmap §6.3：C2/C3 移交 PR-5d，并指名**本计划**为权威实施计划         | **真影响，已改**——见下                                                                                                                                                                                                           |
-| `a062f1019` | `feat.rs` 与 `core/service/ipc.rs` 的迁移标记文案由 PR-5c 改指 PR-5d        | **行号未动**（`feat.rs:416-418`、`ipc.rs:126-128`），仅 F18 的**描述**需改：那三行不再写「等 PR-5c 建它」。已改。**`change_default_network_dns` 本体与 `let _ =` 吞错行为一行未变**，F19/F20/F22/F40/F41 全部成立                |
+| 提交                     | 改了什么                                                                  | 影响                                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0e20f35ba`、`b3fe68035` | ledger 扫描器：Rust 字符字面量/裸字符串词法、不再把字面量里的指标文本计数 | **无锚点影响**，且**加固**了 §8 依赖的两条 ledger 门禁                                                                                                |
+| `a86478a7f`              | 重写 roadmap §6.3：C2/C3 移交 PR-5d，指名本计划为权威实施计划             | 见下方勘误                                                                                                                                            |
+| `a062f1019`、`59a38dfb0` | `feat.rs` 与 `core/service/ipc.rs` 的迁移标记改指 PR-5d、修正陈旧 reason  | **行号未动**（`feat.rs:416-418`、`ipc.rs:126-128`）；`change_default_network_dns` 本体与 `let _ =` 吞错行为**一行未变**，F19/F20/F22/F40/F41 全部成立 |
 
-> **`a86478a7f` 删掉的是一份拷贝，不是那条约束本身。约束**活着**。**
+> **勘误（v3 曾写反，保留记录）**：v3 初稿称「不引入完整 `ServiceControlPort`」只存在于 roadmap 且已被 `a86478a7f` 删除，证据是 `rg` 零命中。**那次 `rg` 只扫了 roadmap 与 `task.md` 两个文件，却把结论写成了「该约束不存在」。**
 >
-> **本计划一度写反过，记在这里**：v3 初稿声称「不引入完整 `ServiceControlPort`」只存在于 roadmap、已随 C2/C3 移交被删除，并拿「`rg` 零命中」作证。**那次 `rg` 只扫了 `docs/design/actor-migration-roadmap.md` 与 `task.md` 两个文件，却把结论写成了「该约束不存在」。**
+> **真相**：正本在 **`design.md:333`**，受版本控制，`git log 48c17a705..HEAD -- .../design.md` **为空**，`a86478a7f --stat` 只有 roadmap 一个文件。**roadmap 持有的是拷贝，约束一直活着。**
 >
-> **真相**：权威出处是 **`docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md:333`**（§9 Service control 段），原文为「install/update/uninstall/start/stop 是 service 管理，不属于 CoreActor。保留一个具体 `ServiceController`；操作完成后调用 `CoreClient::set_mode/reconcile_mode`。**不引入完整 `ServiceControlPort`，除非测试确实需要替换 OS command runner**」。该文件受版本控制，且 `git log 48c17a705..HEAD -- .../design.md` **为空**——5c 收尾三提交**一次都没碰过它**；`a86478a7f` 的 `--stat` 只有 roadmap 一个文件。所以 roadmap 持有的是拷贝，正本完好。
->
-> **方法论记账**：这正是本 PR 反复栽的**量词范围错误**——「在 X 与 Y 上零命中」与「该约束不存在」是两个不同命题，只有后者能撑起论证。**下断言前先把断言的范围定死，再让检索覆盖整个范围。** 本计划头部原先只写「权威 spec：`task.md` 卡 C2、C3」，把同目录的 `design.md` 排除在视野外，正是这次漏检的结构性成因，**已一并改正**。
->
-> §2.5 的结论（六个入口统一、`ServiceControlOps` 扩到六个方法）**不依赖那条约束是否被删**——理由见 §2.5，两条独立论证，均在约束存活的前提下成立。
->
-> **但不许因此悄悄把它当没发生过。** 该约束在 `48c17a705` 时确实存在（`git show 48c17a705:docs/design/actor-migration-roadmap.md` 第 330 行），是 `a86478a7f` 随 C2/C3 移交一并删除的。**出处与消失时点都记在这里**，§2.5 据此改写。
+> **方法论**：「在 X 与 Y 上零命中」与「该约束不存在」是两个命题，只有后者能撑论证。**下断言前先把量词范围定死，再让检索覆盖整个范围。** 计划头部原先只写「权威 spec：`task.md`」，把同目录 `design.md` 结构性排除在视野外，是这次漏检的真成因，已改正。
 
 ---
 
-## 1. 已核验事实（编号保持原号；锚点已按 §0 更新）
+## 1. 已核验事实
 
 ### 1.1 C2 —— 运行模式
 
-| ID      | 事实                                                                                                                                   | 锚点                                                                                                                                |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| F9      | `pending_run_type` 在 Rust 源码中**不存在**（仅设计文档命中）→ 卡面该项是 **no-op**                                                    | 全仓 `rg`（命中仅 `docs/`）                                                                                                         |
-| F10     | 「reconcile 走 `CoreOperationGuard`」**已满足**                                                                                        | `core/actor/request.rs:87`                                                                                                          |
-| F11     | 5 s 轮询与三个 statics 全在一个文件；`spawn_health_check` **定义**在 `ipc.rs`，**四处 spawn 调用点在别处**                             | 定义与 statics：`core/service/ipc.rs:28-30,85-101`（`:97` 是 5 s）；**调用点：`control.rs:101,229,324` + `core/service/mod.rs:25`** |
-| F12     | `get_ipc_state()` **5 处生产读**                                                                                                       | `feat.rs:383,401`；`client/mod.rs:305,544`；`core/clash/core.rs:48`                                                                 |
-| F13     | `RunType::default()` 读两个 legacy global，且被 `CoreStatusView::initial()` 调用——**删 statics 的主阻塞点**                            | `core/clash/core.rs:39-56`；`core/actor/types.rs:44-50`                                                                             |
-| F14     | `set_backend` **生产调用点恰好一个**；**不存在 `set_mode`**                                                                            | `core/actor/request.rs:88`                                                                                                          |
-| F15     | `ServiceControlOps` 只有 install/start/stop/restart；**update / uninstall 不在 trait 上**                                              | `core/actor/backend.rs:619-624`                                                                                                     |
-| F16     | `uninstall_service` **绕过 facade**（Tauri 命令直调自由函数）；`install_service` 在 facade 上**不 reconcile**                          | `ipc.rs:936-937`；`client/mod.rs:504-510`                                                                                           |
-| F35     | **`IPC_STATE` 初值 `Disconnected`**，bootstrap 在任何 health check 之前读它 → **今天 bootstrap 恒判 `Normal`**，靠首次轮询**异步纠正** | `core/service/ipc.rs:28`；`client/mod.rs:303-306`                                                                                   |
-| F36     | **探针两半已存在**：`control::status()`（子进程）+ **纯函数** `target_ipc_state()`；`health_check` = 两半 + 循环                       | `control.rs:350-376`；`ipc.rs:131-138`、`:103-124`                                                                                  |
-| F45     | 六个控制入口签名不齐，update/uninstall 不在 trait 上                                                                                   | 见 §0.4                                                                                                                             |
-| **F49** | **`install_service` 之后服务会自己起来**——代码注释明说，且紧接着就拉起 health checker                                                  | `control.rs:99-102`                                                                                                                 |
-
-> **F49 直接推翻 v2 §2.5 的裁定。** v2 写的「装服务不等于起服务，没有可 reconcile 的对象」在基线上就是**假的**。见 §2.5。
+| ID      | 事实                                                                                                                                                                                      | 锚点                                                                                                                   |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| F9      | `pending_run_type` 在 Rust 源码中**不存在**                                                                                                                                               | 全仓 `rg`（命中仅 `docs/`）                                                                                            |
+| F10     | 「reconcile 走 `CoreOperationGuard`」已满足                                                                                                                                               | `core/actor/request.rs:87`                                                                                             |
+| F11     | 5 s 轮询与三个 statics 在一个文件；`spawn_health_check` **定义**在 `ipc.rs`，**四处调用点在别处**                                                                                         | 定义与 statics：`ipc.rs:28-30,85-101`（`:97` 是 5 s）；**调用点：`control.rs:101,229,324` + `core/service/mod.rs:25`** |
+| F12     | `get_ipc_state()` **5 处生产读**                                                                                                                                                          | `feat.rs:383,401`；`client/mod.rs:305,544`；`core/clash/core.rs:48`                                                    |
+| F13     | `RunType::default()` 读两个 legacy global，被 `CoreStatusView::initial()` 调用                                                                                                            | `core/clash/core.rs:39-56`；`core/actor/types.rs:44-50`                                                                |
+| F14     | `set_backend` 生产调用点恰好一个；**不存在 `set_mode`**                                                                                                                                   | `core/actor/request.rs:88`                                                                                             |
+| F16     | `uninstall_service` **绕过 facade**；`install_service` 在 facade 上**不 reconcile**                                                                                                       | `ipc.rs:936-937`；`client/mod.rs:504-510`                                                                              |
+| F35     | **`IPC_STATE` 初值 `Disconnected`**，bootstrap 在任何 health check 之前读它 → **今天 bootstrap 恒判 `Normal`**                                                                            | `ipc.rs:28`；`client/mod.rs:303-306`                                                                                   |
+| F36     | 探针两半已存在：`control::status()`（子进程）+ 纯函数 `target_ipc_state()`                                                                                                                | `control.rs:350-376`；`ipc.rs:131-138`、`:103-124`                                                                     |
+| **F61** | **今天的三个 facade 控制方法「无论控制成败都 reconcile」**：`let control = …; self.reconcile_service_mode().await; control?;`——reconcile **先跑**，控制错误**之后**才返回                 | `client/mod.rs:512-538`                                                                                                |
+| **F62** | **今天的警告条件是合取式**：`info.status == ServiceStatus::Running && !compat.allows_service_backend()`。结合 F59，它覆盖 Running 下的 `Unknown` / `Incompatible` / `Unparsable` **三种** | `ipc.rs:108`                                                                                                           |
 
 ### 1.2 C3 —— macOS DNS
 
-| ID      | 事实                                                                                                                                                                        | 锚点                                                                                                                                                |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F18     | **`MacosDnsGuard` 不存在**（仅一条迁移标记；`a062f1019` 后该标记指向 **PR-5d**，即**本计划就是它的移除条件**）                                                              | `feat.rs:416-418`                                                                                                                                   |
-| F19     | 真正的覆写代码是 `CoreManager::change_default_network_dns` + `previous_dns` 状态                                                                                            | `core/clash/core.rs:74-126`、`:61`、`:69`                                                                                                           |
-| F20     | 它读两个 global，且 **Service / Local 双路径在此分叉**                                                                                                                      | `core/clash/core.rs:78`、`:84-89`、`:109-118`                                                                                                       |
-| F21     | **IPC `set_dns` 已上线**：端点 + wire golden 均在，但**是两个锚点**                                                                                                         | 端点：`nyanpasu_ipc/src/client/shortcuts.rs:91-96`；**wire golden：`nyanpasu_ipc/tests/wire_golden.rs:282-295`（`the_set_dns_request_is_pinned`）** |
-| F22     | **DNS 与 start/stop 今天毫无保序**；**走 restart 的分支根本不碰 DNS**；失败被 `let _ =` 吞掉                                                                                | `feat.rs:410-412`；`:415-424`                                                                                                                       |
-| F23     | **退出不恢复 DNS**——覆写跨崩溃/退出泄漏（**5c 之前就存在的缺陷**）。两处「本该恢复而没恢复」的位置：退出清理只 reset sysproxy；actor `Shutdown` 不碰 DNS                    | `utils/resolve.rs:288-291`；`client/core.rs:277-283`                                                                                                |
-| F24     | `SystemDnsCache` 只管 flush，**与 TUN 的 DNS 覆写生命周期无关**，勿混淆                                                                                                     | `client/system_dns.rs:4-7`                                                                                                                          |
-| F40     | **Local 写路径不提权**：`osascript` 调用**不带** `with administrator privileges`（F46 已在全 crate 核实），脚本本体只有 `networksetup -setdnsservers $1 $2`                 | `crates/nyanpasu-utils/src/network/mod.rs:27-55`；`.../scripts/set-macos-dns.sh:3`                                                                  |
-| F41     | **读路径不检查退出码**，空/不可解析 stdout → `Ok(None)`。因此**当原始 DNS 本就是 `None` 时，一次失败的读会与期望值「相等」**——回读校验在该情形下把失败误报成成功            | `crates/nyanpasu-utils/src/network/mod.rs:57-88`（判定在 `:81-87`）                                                                                 |
-| **F50** | **设备名是被文本拼进 bash 脚本的**：`include_str!(...).replace("$1", service_name)` 写临时文件后 `osascript -e "do shell script \"bash <path>\""`；脚本里 **`$1` 未加引号** | `crates/nyanpasu-utils/src/network/mod.rs:27-55`；`scripts/set-macos-dns.sh:3`                                                                      |
-| **F51** | **Service 侧 DNS 的线上契约里没有设备**：`NetworkSetDnsReq { dns_servers: Option<Vec<Cow<IpAddr>>> }`；服务端**每次请求**自行解析当前默认硬件端口                           | `nyanpasu_ipc/src/api/network/set_dns.rs:8-11`；`crates/nyanpasu-service-runtime/src/server/routing/network.rs:26`、`:39`                           |
-| **F52** | **上游读脚本会把换行压成空格**：`RES=$(networksetup -getdnsservers $1); echo $RES`——`echo $RES` 未加引号。我们改为直调 `networksetup` 后，输出是**换行分隔**的原始格式      | `crates/nyanpasu-utils/src/network/scripts/get-macos-dns.sh:3-4`                                                                                    |
+| ID      | 事实                                                                                                             | 锚点                                                                    |
+| ------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| F18     | `MacosDnsGuard` 不存在（仅一条迁移标记，现指向 PR-5d = **本计划就是它的移除条件**）                              | `feat.rs:416-418`                                                       |
+| F19     | 真正的覆写代码是 `CoreManager::change_default_network_dns` + `previous_dns`                                      | `core/clash/core.rs:74-126`、`:61`、`:69`                               |
+| F20     | 读两个 global，Service / Local 双路径在此分叉                                                                    | `core/clash/core.rs:78`、`:84-89`、`:109-118`                           |
+| F21     | IPC `set_dns` 已上线（端点 + wire golden，**两个锚点**）                                                         | `shortcuts.rs:91-96`；`tests/wire_golden.rs:282-295`                    |
+| F22     | DNS 与 start/stop 今天毫无保序；**restart 分支根本不碰 DNS**；失败被 `let _ =` 吞掉                              | `feat.rs:410-412`；`:415-424`                                           |
+| F23     | 退出不恢复 DNS——覆写跨崩溃/退出泄漏（**既有缺陷**）                                                              | `utils/resolve.rs:288-291`；`client/core.rs:277-283`                    |
+| F24     | `SystemDnsCache` 只管 flush，与 TUN 覆写生命周期无关                                                             | `client/system_dns.rs:4-7`                                              |
+| F40     | **Local 写路径不提权**：`osascript` 不带 `administrator privileges`                                              | `nyanpasu-utils/src/network/mod.rs:27-55`；`scripts/set-macos-dns.sh:3` |
+| F41     | **读路径不检查退出码**，空/不可解析 stdout → `Ok(None)`                                                          | `nyanpasu-utils/src/network/mod.rs:57-88`（判定在 `:82-87`）            |
+| F50     | 设备名被文本拼进 bash：`include_str!(..).replace("$1", service_name)`，脚本里 **`$1` 未加引号**                  | `network/mod.rs:27-55`；`scripts/set-macos-dns.sh:3`                    |
+| F51     | **Service 写的线上契约里没有设备**：`NetworkSetDnsReq { dns_servers }`；服务端**每次请求**自解析当前默认硬件端口 | `set_dns.rs:9-11`；`routing/network.rs:26`、`:39`                       |
+| F52     | 上游读脚本 `echo $RES` 未加引号 → 换行被压成空格                                                                 | `scripts/get-macos-dns.sh:3-4`                                          |
+| **F56** | **IPC 没有 DNS 读端点**（见 §0.4）                                                                               | `nyanpasu_ipc/src/api/network/`                                         |
 
 ### 1.3 smoke / CI
 
-| ID  | 事实                                                                                                   | 锚点                                                                                                                          |
-| --- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| F33 | CI **有** macOS runner 且在 PR 上跑 `cargo test --all-features` → **cfg 门控单测真实运行**。展开链两跳 | `.github/workflows/ci.yml:201-215`（矩阵含 `macos-latest`）、`:303-304`（`pnpm test`）；`package.json:40` → `package.json:42` |
-| F34 | **但没有任何作业能跑 smoke 3**——无作业启动应用；TUN 需签名扩展 + root，**是能力边界非配置缺失**        | `ci.yml`（全仓仅 `:304` 一处测试调用）                                                                                        |
+| ID  | 事实                                                                            | 锚点                                                    |
+| --- | ------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| F33 | CI 有 macOS runner 且在 PR 上跑 `cargo test --all-features`                     | `ci.yml:201-215`、`:303-304`；`package.json:40` → `:42` |
+| F34 | **但没有任何作业能跑 smoke 3**——TUN 需签名扩展 + root，**是能力边界非配置缺失** | `ci.yml`                                                |
 
 ### 1.4 平台事实（**从文档确立，不从代码形状推断**）
 
-| ID      | 事实                                                                                                                                             | 依据                                                                                                                                                                                                                                                                                                                                                                                                                                  | 置信度                                                   |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| **F53** | **`networksetup` 的写操作至少需要 admin 组身份**；若系统开启「Require an administrator password to access system-wide preferences」，则需要 root | ①`networksetup` man page（ss64 转录：_"requires at least admin privileges to change network settings. If the 'Require an administrator password…' option is selected… then root privileges are required"_，https://ss64.com/mac/networksetup.html）；②Stack Overflow 11819336 记录了真实的授权弹窗 _"networksetup is trying to modify the system network configuration. Type your password to allow this."_，公认解法是 `sudo` / suid | **高**（两个独立来源一致；来源二是社区证据不是一手文档） |
-| **F54** | **`osascript` 那一跳不改变权限**：它以同一用户身份执行，且不带 `administrator privileges`（F46 已在全 crate 核实无该字符串）                     | F46 + F53                                                                                                                                                                                                                                                                                                                                                                                                                             | **高**                                                   |
-| **F55** | **`networksetup -getdnsservers` 在无 DNS 时输出的确切文案，本轮未能从可引用来源确立**                                                            | 三轮检索（man page 转录 / Apple 讨论区 / SE）**均未给出该字面串**                                                                                                                                                                                                                                                                                                                                                                     | —                                                        |
+| ID      | 事实                                                                                                                                              | 依据                                                                                                                                                                                         | 置信度                               |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| F53     | **`networksetup` 的写操作至少需要 admin 组身份**；若开启「Require an administrator password to access system-wide preferences」则需 root          | ①man page（ss64 转录：_"requires at least admin privileges to **change** network settings…"_ https://ss64.com/mac/networksetup.html）；②SO 11819336 记录真实授权弹窗，公认解法是 `sudo`/suid | **高**（双源一致；来源二是社区证据） |
+| F54     | **`osascript` 那一跳不改变权限**（同用户身份执行，且不带 `administrator privileges`）                                                             | F46 + F53                                                                                                                                                                                    | **高**                               |
+| F55     | **`networksetup -getdnsservers` 无 DNS 时的确切文案，未能从可引用来源确立**                                                                       | 三轮检索均未给出该字面串                                                                                                                                                                     | —                                    |
+| **F63** | **`networksetup` 的读操作是否需要 admin，同样未能确立。** man page 那句的动词是 **change**，只谈改；**没有**任何来源正面陈述 get 子命令的权限要求 | 两轮定向检索（man page 转录 / SE / GitHub 脚本）无正面陈述                                                                                                                                   | **未确立**                           |
 
-> **F55 是本计划唯一一处「查了但没查到」，必须显式记账。** 它直接决定 T-DNS-09 的形态（§7.3）：**不许拍一个字面串**——那会让生产与测试共用同一个臆造常量，测试变成自证。
+> **F63 必须显式记账。** 直觉上「读大概率不需要提权」，但**这正是本文件上反复出错的那一类推断**。§4.6 的设计因此被写成**对 F63 的答案不敏感**：读被拒绝就是四态①的 `Err`，与任何其它读失败同路。**F63 只决定「验证在多少账户上真能用」，不决定设计是否安全。**
 
 ---
 
@@ -136,369 +133,394 @@ v2 的锚点全部取自 `899b069f5`。5c 之后已删除 `core/manager.rs`、`c
 
 ### 2.1 D2 = A —— `CoreStatusView::initial(mode)` 加参、删 `impl Default for RunType`
 
-`RunType::default()` 读 `Config::verge()` + `get_ipc_state()` 却被 `CoreStatusView::initial()` 调用，是典型隐藏依赖（F13）。
+| `RunType::default()` 调用点                 | 处置                                                                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `core/actor/types.rs:48`                    | D2 主目标，改为参数                                                                                                                                    |
+| `core/clash/core.rs:78`                     | 随 C3 迁走（该 `CoreManager` 整体消失）                                                                                                                |
+| `client/core.rs:1211`（测试）               | 断言注入的 mode，**并改名**为 `initial_watch_snapshot_reflects_the_injected_mode`——旧名的「legacy empty status」在 D2 之后不再是参照物，**命名即契约** |
+| `client/process_core_bridge.rs:251`（注释） | 删后悬空，顺手清理                                                                                                                                     |
 
-**`RunType::default()` 的调用点（复核后的完整清单）：**
+| `CoreStatusView::initial()` 调用点（F42） | 处置                                                  |
+| ----------------------------------------- | ----------------------------------------------------- |
+| `client/core.rs:111`                      | 改 `initial(args.mode)`                               |
+| `core/actor/mod.rs:367`                   | 改 `initial(args.mode)`，**并删掉 `:371` 的覆盖赋值** |
 
-| 位置                                | 处置                                                                                                                                                                                   |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core/actor/types.rs:48`            | D2 主目标，改为参数                                                                                                                                                                    |
-| `core/clash/core.rs:78`             | macOS DNS 路径分叉 → 随 C3 迁走（该 `CoreManager` 整体消失，见 §4）                                                                                                                    |
-| `client/core.rs:1211`               | **测试**，必然改动：断言注入的 mode，**并连名字一起改**为 `initial_watch_snapshot_reflects_the_injected_mode`（旧名里的「legacy empty status」在 D2 之后不再是参照物，**命名即契约**） |
-| `client/process_core_bridge.rs:251` | 注释里的警告，删后**悬空**，顺手清理或改写                                                                                                                                             |
+### 2.2 D3 = A —— DNS guard 挂 actor state，但 `Drop` 不恢复
 
-**`CoreStatusView::initial()` 的调用点（F42，v2 漏掉一个）：**
+**主路径**（`Stop` / `Shutdown` / `SetBackend`）：处理器内**显式 `await` 恢复**，在后端动作与 reply **之前**完成。
 
-| 位置                    | 处置                                                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `client/core.rs:111`    | 改为 `initial(args.mode)`                                                                                          |
-| `core/actor/mod.rs:368` | 改为 `initial(args.mode)`，**并删掉 `:370` 那行 `observed.view.run_type = args.mode;` 覆盖**——加参之后它是重复赋值 |
+**`Drop`**：**只记 `tracing::error!`，措辞按不变量破坏写**，**不尝试任何恢复**。
 
-### 2.2 D3 = A（含修正形态）—— DNS guard 挂 actor state，但 `Drop` 不恢复
+> **为什么不做「尽力而为的同步 Drop」**：Service 侧同步做不到、Local 侧能做——**那半个兜底恰好在开发者最常用的模式下生效**，会系统性地把主路径 bug 藏到用户实际部署的模式才暴露。**「在你测得到的地方生效、在你测不到的地方失效」的兜底是反向选择。**
 
-**主路径**（`Stop` / `Shutdown` / `SetBackend`）：actor 处理器内**显式 `await` 恢复**，**在**后端动作与 reply **之前**完成。
+**恢复失败去向**：degradation sink（`DegradationPhase::CoreLifecycle`、`code = "macos_dns_restore_failed"`）。`Degradation` 形状见 `client/runtime.rs:376-382`，`CoreLifecycle` 见 `:398`。
 
-**`Drop`**：**只记 `tracing::error!`，措辞按不变量破坏写**（`"reached Drop with DNS override still active — main-path restoration was missed"`），**不尝试任何恢复**。
-
-> **为什么不做「尽力而为的同步 Drop」**：Service 侧同步做不到、Local 侧能做——**那半个兜底恰好在开发者最常用的模式下生效**。开发日常跑 Local，兜底在 Local 上有效 → **主路径漏了恢复也不会被发现**；等到 Service 模式（用户实际部署、开发者最少跑的那条）才暴露。**一个「在你测得到的地方生效、在你测不到的地方失效」的兜底，是反向选择的一半。**
-
-**恢复失败去向**：degradation sink（`DegradationPhase::CoreLifecycle`、`code = "macos_dns_restore_failed"`）。`Degradation { phase, code, message, retryable }` 的形状见 `client/runtime.rs:376-382`，`CoreLifecycle` 见 `:398`。
-
-**`Drop` 不覆盖强杀**（SIGKILL / 任务管理器）——**如实写明**，兜底（启动时检测并清理残留覆写）属 **PR-6**，不在本阶段。
+**`Drop` 不覆盖强杀**（SIGKILL / 任务管理器）——如实写明，兜底属 **PR-6**。
 
 ### 2.3 D4 —— smoke 3 记为「未在本地验证**且不可由 CI 覆盖**」
 
-用户裁定路径乙。**不是「CI 暂未配置」，是托管 runner 的能力边界**（F34）：加 job、加 runner 都解决不了，需**自托管 mac 且预先批准网络扩展**。
+**不是「CI 暂未配置」，是托管 runner 的能力边界**（F34）：加 job、加 runner 都解决不了，需自托管 mac 且预先批准网络扩展。
 
-**CI 覆盖的**：cfg 门控单测（顺序、降级等**逻辑**契约，F33）。
-**未验证的（逐条点名）**：①真实 TUN 开关是否触发覆写；②真实 `networksetup` / IPC `set_dns` 是否成功改写系统 DNS；③关 TUN 与正常退出后 DNS **是否真的恢复**；④Service 与 Local 两条路径在真机上是否一致；⑤**F55 的无-DNS 文案**（新增，见 §7.3）。
+**CI 覆盖的**：cfg 门控单测（顺序、降级等逻辑契约，F33）。
+**未验证的**：①真实 TUN 开关是否触发覆写；②真实 `networksetup` / IPC `set_dns` 是否成功改写系统 DNS；③关 TUN 与正常退出后 DNS 是否真的恢复；④Service 与 Local 两条路径在真机上是否一致；⑤F55 的无-DNS 文案；⑥**F63 的读权限**。
 
-**结论必须显式出现在 PR 描述与发布说明里，不允许沉默跳过。**
+**结论必须显式出现在 PR 描述与发布说明里。**
 
-### 2.4 `SetTunDns` 的准入 —— **两条规则，各带测试**（v2 只有散文）
+### 2.4 §7 两处不对称 —— **两处都是缺陷**
 
-见 §4.3 的完整准入设计。此处只记裁定：`SetTunDns` **参与守卫**，且**「`Shutdown` 之后拒绝」与「`Stop` 之后拒绝开启」是两条不同的规则、由两个不同的构造强制**，不能合并。返回 `Err` 而非静默丢弃——静默丢弃会让调用方以为设置成功。
+> **更正**：v2 §2.5 曾称「`install_service` 不 reconcile 是有意的，因为装服务不等于起服务」。**F49 证明这在基线上就是假的**（`control.rs:99-102` 明写多数平台自动启动并拉起 health checker）。**该 carve-out 整条删除。**
 
-### 2.5 §7 两处不对称 —— **v2 的裁定被推翻，两处都是缺陷**
+| 项                                         | 裁定                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `install_service` 在 facade 上不 reconcile | **缺陷，改为与另外五个同形**                                                                           |
+| `uninstall_service` 绕过 facade            | **缺陷，改走 facade**——①违反「Tauri 命令是薄适配器」；②核在 Service 模式运行时卸载服务会让当前后端失效 |
 
-> **更正：v2 §2.5 说「`install_service` 不 reconcile 是有意的，因为装服务不等于起服务」。F49 证明这在基线上就是假的**——`control.rs:99-102` 的注释明说「大多数平台上服务安装后会自动启动」，紧接着就拉起 health checker。v2 还与自己的 §3.2、T-MODE-02 互相矛盾。**该 carve-out 整条删除。**
+**六个入口如何统一：**
 
-| 项                                         | v3 裁定                                                                                                                                                                                    |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `install_service` 在 facade 上不 reconcile | **缺陷，改为与另外五个同形**                                                                                                                                                               |
-| `uninstall_service` 绕过 facade            | **缺陷，改走 facade**——①违反「Tauri 命令是薄适配器」；②**实质风险**：核在 Service 模式运行时卸载服务会让当前后端失效。**不违反 C2 卡**：C2 禁的是「迁入 CoreActor」，**facade 不是 actor** |
+| 入口                              | 今天                                      | 到齐的动作                                                 |
+| --------------------------------- | ----------------------------------------- | ---------------------------------------------------------- |
+| `install_service` `control.rs:58` | 收 reconciler（只为在 `:100-102` 起轮询） | **删参**；facade 走统一序列                                |
+| `start_service` `:188`            | 收 reconciler                             | **删参**；facade 序列                                      |
+| `restart_service` `:283`          | 收 reconciler；**DNS 不拆**（F22）        | **删参**；facade 序列 + DNS 拆除                           |
+| `stop_service` `:234`             | 不收                                      | 上 trait；facade 序列                                      |
+| `update_service` `:106`           | 不收；调用点在 `utils/init/mod.rs:251`    | 上 trait；**改由 facade 调用**；facade 序列 + 有界等待就绪 |
+| `uninstall_service` `:149`        | 不收；被 `ipc.rs:936-937` 直调            | 上 trait；**改由 facade 调用**；facade 序列                |
 
-**六个入口如何统一到同一形态**（回答裁决 §2 要求的「说清每一个怎么到齐」）：
+**结果：六个签名一致（`async fn(&self) -> anyhow::Result<()>`），六个都在 `ServiceControlOps` 上。**
 
-| 入口                              | 今天的签名                                          | 今天缺什么                                                  | 到齐的动作                                                             |
-| --------------------------------- | --------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `install_service` `control.rs:58` | 收 `CoreModeReconciler`（只为在 `:100-102` 起轮询） | facade 不 reconcile                                         | **删参**（轮询消失后无人需要它）；facade 走统一序列                    |
-| `start_service` `:188`            | 收 reconciler（`:228-230` 起轮询）                  | —                                                           | **删参**；facade 序列                                                  |
-| `restart_service` `:283`          | 收 reconciler（`:323-325` 起轮询）                  | DNS 不拆（F22）                                             | **删参**；facade 序列 + DNS 拆除                                       |
-| `stop_service` `:234`             | 不收                                                | —                                                           | 上 trait；facade 序列                                                  |
-| `update_service` `:106`           | 不收                                                | 不在 trait 上；调用点在 `utils/init/mod.rs:251` 而非 facade | 上 trait；**改由 facade 调用**；facade 序列 + **有界等待就绪**（§3.4） |
-| `uninstall_service` `:149`        | 不收                                                | 不在 trait 上；被 `ipc.rs:936-937` 直调                     | 上 trait；**改由 facade 调用**；facade 序列                            |
-
-**结果：六个入口签名一致（`async fn(&self) -> anyhow::Result<()>`），六个都在 `ServiceControlOps` 上。**
-
-> **这与 `design.md:333`「不引入完整 `ServiceControlPort`，除非测试确实需要替换 OS command runner」冲突吗？不冲突。该约束**依然生效**（§0.5 记录了本计划一度误判它已被删除），下面两条论证**各自独立成立**，都不依赖它的存废。**
+> **这与 `design.md:333`「不引入完整 `ServiceControlPort`，除非测试确实需要替换 OS command runner」冲突吗？不冲突。** 该约束**依然生效**，下面两条论证**各自独立成立**：
 >
-> **论证一（判例，主）：PR-5a 已经确立了这条约束的读法，本阶段是延续而非例外。** `docs/superpowers/plans/2026-08-02-pr5a-core-actor.md:1037` 写着：
+> **论证一（判例，主）**：`plans/2026-08-02-pr5a-core-actor.md:1037` 已确立读法——「design §9 说的"不引入完整 `ServiceControlPort`"针对的是把 service 管理**迁进 CoreActor**；这里只给既有函数加一层可测边界，所有权仍在 `core::service::control`，不迁移」。5a 正是在此读法下建起今天的四方法 trait，**经十二轮对抗审查无人异议**。PR-5d 补上 `update`/`uninstall`，**六个具体函数一行不搬**，仍是「给既有函数加一层可测边界」。**这条论证与任何文档增删无关。**
 >
-> > 「这是 5a 唯一新增的 port。design §9 说的"不引入完整 `ServiceControlPort`"针对的是把 service 管理**迁进 CoreActor**；这里只给既有函数加一层可测边界，所有权仍在 `core::service::control`，不迁移。」
+> **论证二（例外条款，条件已证成）**：即便按最严读法，例外是「除非测试确实需要替换 OS command runner」。**例外只有条件被证成才算数**：
 >
-> 5a 正是在这个读法下建起了今天的四方法 `ServiceControlOps`，**经十二轮对抗审查无人异议**。PR-5d 给同一个 trait 补上 `update`/`uninstall`，**所有权仍在 `core::service::control`**（六个具体函数一行不搬），因此仍是「给既有函数加一层可测边界」。**这条论证与任何文档的增删无关，搬不动也删不掉。**
+> | 测试            | 为什么必须能替换 runner                                                           | 缺哪个方法就写不出来  |
+> | --------------- | --------------------------------------------------------------------------------- | --------------------- |
+> | T-MODE-02       | 六个控制动作**各自独立断言** probe+reconcile                                      | `update`、`uninstall` |
+> | T-DNS-06        | uninstall 拆 DNS 顺序 + **失败时中止卸载**；中止分支要断言 uninstall **未被调用** | `uninstall`           |
+> | T-DNS-18        | update 拆 DNS 顺序                                                                | `update`              |
+> | T-MODE-04/05    | 有界等待的成功/超时/挂死三路，需在无真实 daemon 下让 update 返回                  | `update`              |
+> | **T-CTL-01…04** | **控制失败的四种处置**（§3.5），需让控制动作**按脚本失败**                        | 六个全部              |
 >
-> **论证二（例外条款，且条件已证成）：** 即便按最严读法认为「六方法 = 完整 port」，`design.md:333` 自带的例外是「**除非测试确实需要替换 OS command runner**」。**例外只有在条件被证成时才算数，所以逐条点名哪些测试需要、以及为什么真实 runner 不行：**
+> **为什么真实 runner 不行**：`update_service`（`control.rs:106-147`）与 `uninstall_service`（`:149-186`）经 `runas`/`sudo` 提权调真实服务二进制。CI 三平台上要么二进制不存在、要么触发提权交互——**这类测试在 CI 里根本跑不起来**（与 F34 同类能力边界）。
 >
-> | 测试         | 为什么**必须**能替换 runner                                                                                   | 缺哪个方法就写不出来  |
-> | ------------ | ------------------------------------------------------------------------------------------------------------- | --------------------- |
-> | T-MODE-02    | 六个控制动作**各自独立断言** probe+reconcile；uninstall / update 两行没有可替换实现就无法构造                 | `update`、`uninstall` |
-> | T-DNS-06     | uninstall 的拆 DNS 顺序 + **拆除失败时中止卸载**；中止分支要断言 uninstall **未被调用**，必须观察得到调用与否 | `uninstall`           |
-> | T-DNS-18     | update 的拆 DNS 顺序                                                                                          | `update`              |
-> | T-MODE-04/05 | 有界等待就绪的成功 / 超时 / 探针挂死三路；要在没有真实 daemon 的前提下让 update 控制动作返回                  | `update`              |
+> **既有四方法已够用的**（如实划清）：T-DNS-05（stop）、T-DNS-17（restart）、T-MODE-03。
 >
-> **为什么真实 runner 不行（不是偏好，是能力问题）**：`update_service`（`control.rs:106-147`）与 `uninstall_service`（`:149-186`）经 `runas` / `sudo` 提权调用 `SERVICE_PATH` 的真实服务二进制。CI 三平台上要么该二进制不存在，要么会触发提权交互——**这类测试在 CI 里根本跑不起来**（与 F34 记的 smoke 3 是同一类能力边界）。
->
-> **既有四方法已够用、不需要扩的测试**（如实划清，避免把例外范围说大）：T-DNS-05（stop）、T-DNS-17（restart）、T-MODE-03。
->
-> **仍须写进 PR 描述**：不是因为需要豁免，而是因为 trait 由四方法扩到六方法是**对既有边界的可见扩大**，读者有权知道触发它的是哪几条测试。
+> **仍须写进 PR 描述**：trait 由四扩到六是**对既有边界的可见扩大**。
 
 ---
 
-## 3. C2 设计 —— 服务状态探针与调用点
+## 3. C2 设计 —— 探针、调用点与失败处置
 
-### 3.1 探针（一次性、经兼容门控、**注入路径已具体到字段**）
+### 3.1 探针（一次性、经兼容门控、**自带有界性**）
+
+> **v3 的 `(IpcState, ServiceCompat, Option<Error>)` 元组有两个洞**：①丢掉 `ServiceStatus` 就无法复现基线警告条件（F59 + F62）；②有界性只做在 `await_service_ready` 里，**其余三处调用点各自裸 await**。
 
 ```rust
 // core/service/probe.rs（新）
+pub(crate) struct ProbeOutcome {
+    pub state: IpcState,
+    pub compat: ServiceCompat,
+    /// `None` = 这次探针自身失败（子进程错误 / 超时），连 status 都没拿到。
+    /// 保留它才能复现基线的合取式警告条件（F62），因为 `ServiceCompat::Unknown`
+    /// 同时来自「没在跑」与「在跑但没上报 server」两种情形（F59）。
+    pub daemon_status: Option<ServiceStatus>,
+    pub error: Option<anyhow::Error>,
+}
+
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub(crate) trait ServiceProbe: Send + Sync + 'static {
-    /// 一次性查询。失败按 fail-closed 处理为 Disconnected（与今天 health_check
-    /// 的 Err 分支同语义）。ServiceCompat 一并返回——警告职责的接手方靠它（§3.3）；
-    /// Option<anyhow::Error> 是探针失败的原因，接手方见 §3.3。
-    async fn probe(&self) -> (IpcState, ServiceCompat, Option<anyhow::Error>);
+    /// 一次性查询，**自身有界**：实现内部对 status 子进程套 PER_PROBE_BUDGET。
+    /// 失败与超时都按 fail-closed 处理为 Disconnected（与今天 health_check 的
+    /// Err 分支同语义）。
+    async fn probe(&self) -> ProbeOutcome;
 }
 
-pub(crate) struct OsServiceProbe;   // control::status() + target_ipc_state()
+pub(crate) struct OsServiceProbe;
 ```
 
-`target_ipc_state` 与 `ServiceCompat` **一行不改**——PR-5-pre 已审的 fail-closed 门，探针只是宿主。
+**有界性放在实现内部，不放在调用点：**
 
-**注入路径（逐跳点名，v2 只说了「可注入」）：**
+```rust
+// OsServiceProbe::probe
+match tokio::time::timeout(PER_PROBE_BUDGET, control::status()).await {
+    Ok(Ok(info))  => { let (state, compat) = target_ipc_state(&info);
+                       ProbeOutcome { state, compat, daemon_status: Some(info.status), error: None } }
+    Ok(Err(e))    => ProbeOutcome { state: Disconnected, compat: Unknown, daemon_status: None, error: Some(e) }
+    Err(_elapsed) => ProbeOutcome { state: Disconnected, compat: Unknown, daemon_status: None,
+                                    error: Some(anyhow!("probe timed out")) }
+}
+```
+
+> **为什么必须在源头**：「每个调用方都要包一层 timeout」是**「不会忘记」型契约**，而那正是**无法强制**的一类（与 §8 的口诀同源）。四个调用点里有三个（`reconcile`、`reconcile_with`、bootstrap）**持着操作许可或阻塞着启动**，一次挂死的 `status --json` 会把核心门**无限期占住**——新的取门请求会超时，而**活跃那个永不释放**。源头一处 timeout 消灭整类问题。
+
+**`control::status()` 另须设 `.kill_on_drop(true)`**（`control.rs:352-356` 今天没设）：`timeout` 丢弃 future 只取消我们的等待，**`tokio::process::Command` 默认不杀子进程**。两者缺一，「有界」就只界住了自己。
+
+**`target_ipc_state` 与 `ServiceCompat` 一行不改**——PR-5-pre 已审的 fail-closed 门。
+
+**注入路径（逐跳）：**
 
 ```text
 composition root: client/mod.rs::try_new_with_args
-  └─ ClientSetupArgs { .., probe: Arc<dyn ServiceProbe>, .. }      ← 新字段，紧挨现有 service_control（client/mod.rs:85）
+  └─ ClientSetupArgs { .., probe: Arc<dyn ServiceProbe>, .. }      ← 新字段，紧挨 service_control（client/mod.rs:85）
        ├─ ①bootstrap 自用：client/mod.rs:303-306 的 get_ipc_state() 换成 probe.probe().await
-       └─ NyanpasuClientInner { .., probe: Arc<dyn ServiceProbe> } ← 新字段，紧挨 service_control（client/mod.rs:257）
-            └─ core_mode_reconciler()（client/mod.rs:467-473）在字面量里加 probe: self.inner.probe.clone()
-                 └─ CoreModeReconciler { core, application, requests, clash_config, probe }（core/actor/request.rs:70-75）
+       └─ NyanpasuClientInner { .., probe }                        ← 新字段，紧挨 service_control（:257）
+            └─ core_mode_reconciler()（:467-473）字面量加 probe: self.inner.probe.clone()
+                 └─ CoreModeReconciler { core, application, requests, clash_config, probe }（request.rs:70-75）
 ```
 
-`CoreModeReconciler` 是 `#[derive(Clone)]`，加 `Arc<dyn ServiceProbe>` 不破坏 Clone。测试侧沿用 `test_service_control()`（`client/mod.rs:2767`）的模式加一个 `test_service_probe()`。
+`CoreModeReconciler` 是 `#[derive(Clone)]`，加 `Arc<dyn ServiceProbe>` 不破坏 Clone。测试侧沿用 `test_service_control()`（`client/mod.rs:2767`）的模式加 `test_service_probe()`。
 
-**`OsServiceProbe` 必须设 `.kill_on_drop(true)`。** 今天 `control::status()`（`control.rs:352-356`）没设。有界等待（§3.4）靠丢弃 future 取消 await，但 `tokio::process::Command` 默认**不**杀子进程——不设这个 flag，「有界」就只界住了我们自己的等待，界不住残留的子进程。**这是一条生产代码行，不是注释。**
+### 3.2 九处调用点
 
-### 3.2 六个控制入口 + 三个非控制入口 = 九处调用点
-
-**统一形态（六个控制入口全部照此，无例外）：**
+**统一形态（六个控制入口，无例外）：**
 
 ```text
-guard = core.begin_operation().await?        ← 取守卫
-  ├─ 拆 DNS（await；见 §4.4，六个都拆）
-  ├─ service_control.<action>().await        ← 外部控制动作
-  ├─ reconciler.reconcile_with(&guard).await ← **在守卫内**探针 + 应用
-  └─ drop(guard)
+admission.enter()?                             ← §4.9 的准入许可（shutdown 已关则 Err）
+guard = core.begin_operation().await?
+  ├─ 拆 DNS（await；§4.4，六个都拆）
+  ├─ admission.check_open()?                   ← 紧贴外部命令之前再查一次（§4.9）
+  ├─ result = service_control.<action>().await ← **不早退**，见 §3.5
+  ├─ [仅 update 且 result.is_ok()] 有界等待就绪（§3.4）
+  ├─ reconciler.reconcile_with(&guard).await   ← **无论 result 成败都跑**（F61）
+  ├─ [若 TUN 仍需开启] 重新施加 DNS（§4.5）
+  └─ drop(guard) / drop(admission permit)
 ```
 
-| #   | 位置                                                      | 今天怎么拿模式                                  | 改为                                                                                                    |
-| --- | --------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 1   | **bootstrap**（`client/mod.rs:303`）                      | `get_ipc_state()`（**恒 `Disconnected`**，F35） | `probe()` 一次——**顺带修掉 F35 这个既有缺陷**。**这是唯一不在守卫内的探针**，理由见 §3.5                |
-| 2   | **install**（facade `client/mod.rs:504-510`）             | 不 reconcile（F16）                             | 统一形态                                                                                                |
-| 3   | **start**（`:512-521`）                                   | 轮询 + `reconcile(get_ipc_state())`             | 统一形态                                                                                                |
-| 4   | **restart**（`:530-539`）                                 | 同上                                            | 统一形态                                                                                                |
-| 5   | **stop**（`:523-528`）                                    | 同上                                            | 统一形态                                                                                                |
-| 6   | **uninstall**（今天在 `ipc.rs:936-937`）                  | 无                                              | **迁到 facade** + 统一形态                                                                              |
-| 7   | **update**（今天在 `utils/init/mod.rs:251`）              | 轮询（v1→v2 升级后靠它发现 v2）                 | **迁到 facade** + 统一形态，且控制动作与 reconcile 之间插**有界等待就绪**（§3.4）——**直接关系 smoke 2** |
-| 8   | **`enable_service_mode` 配置变更后**                      | 轮询 + reconcile（有 §3.6 的洞）                | `reconcile()`（自取守卫版，内部探针）                                                                   |
-| 9   | **boot 的 `init_service`**（`core/service/mod.rs:18-30`） | 起轮询线程 + 忙等 100 ms                        | `reconcile()`，**删忙等与整个函数**                                                                     |
+| #   | 位置                                                      | 今天                                        | 改为                                                                    |
+| --- | --------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
+| 1   | **bootstrap**（`client/mod.rs:303`）                      | `get_ipc_state()`（恒 `Disconnected`，F35） | `probe()` 一次——**顺带修掉 F35**。**唯一不在守卫内的探针**，理由见 §3.6 |
+| 2   | **install**（facade `:504-510`）                          | 不 reconcile（F16）                         | 统一形态                                                                |
+| 3   | **start**（`:512-521`）                                   | 轮询 + `reconcile(get_ipc_state())`         | 统一形态                                                                |
+| 4   | **restart**（`:530-539`）                                 | 同上                                        | 统一形态                                                                |
+| 5   | **stop**（`:523-528`）                                    | 同上                                        | 统一形态                                                                |
+| 6   | **uninstall**（今在 `ipc.rs:936-937`）                    | 无                                          | **迁到 facade** + 统一形态                                              |
+| 7   | **update**（今在 `utils/init/mod.rs:251`）                | 轮询                                        | **迁到 facade** + 统一形态 + 有界等待——**直接关系 smoke 2**             |
+| 8   | **`enable_service_mode` 配置变更后**                      | 轮询 + reconcile（有 §3.7 的洞）            | `reconcile()`（自取守卫版）                                             |
+| 9   | **boot 的 `init_service`**（`core/service/mod.rs:18-30`） | 起轮询线程 + 忙等 100 ms                    | `reconcile()`，**删忙等与整个函数**                                     |
 
-### 3.3 探针输出的两个接手方（**都要点名**）
+### 3.3 探针输出的接手方（**复现基线语义，不是收窄它**）
 
-| 输出                                    | 接手方                                                                 | 动作                                                                                                             |
-| --------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `ServiceCompat::Incompatible`           | **`CoreModeReconciler::reconcile_with` 内、`classify` 之前的唯一一处** | `tracing::warn!`（smoke 2 要的就是这一条）。**九处调用点不各自发**，否则刷屏                                     |
-| `Option<anyhow::Error>`（探针自身失败） | **同一处**                                                             | `tracing::warn!` **+ degradation**：`phase = CoreLifecycle`、`code = "service_probe_failed"`、`retryable = true` |
+| 输出条件                                                                                                                                                                              | 接手方                                                 | 动作                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **`daemon_status == Some(Running) && !compat.allows_service_backend()`**——**逐字复现 `ipc.rs:108` 的合取式**，覆盖 Running 下的 `Unknown`/`Incompatible`/`Unparsable` 三种（F59/F62） | **`CoreModeReconciler` 内、`classify` 之前的唯一一处** | `tracing::warn!(?compat, ..)`（smoke 2 要的就是这一条）                                                          |
+| `error.is_some()`（探针自身失败）                                                                                                                                                     | **同一处**                                             | `tracing::warn!` **+ degradation**：`phase = CoreLifecycle`、`code = "service_probe_failed"`、`retryable = true` |
 
-> 第二行是裁决 §9 点名要补的。**没有接手方 = 普通探针失败会静默变成 Local**，用户看到「服务模式没生效」而日志里什么都没有。轮询删掉之后 reconcile 的调用频次是有界的（九处），不存在刷屏风险。
+> **v3 只 warn `Incompatible`，是对基线的收窄。** 一个上报 Running 却不给 server 信息的 daemon（`Unknown`）、或版本串非法的 daemon（`Unparsable`），今天都会告警，v3 之后都会静默。**迁移不得顺手砍掉可观测性。**
 
-### 3.4 update 的有界等待就绪（**裁决 §6：必须能界住一个永不返回的探针**）
+**`await_service_ready` 的每一次非就绪结果也必须走同一个接手方**（v3 用 `_` 通配把它们全丢了）：轮询期间观察到的不兼容/探针错误要么即时告警、要么在收敛时汇总输出一次，**不能在 `force_local_with` 之前被丢弃**——那正是 smoke 2 要看的诊断。
 
-`update_service()` **只等更新进程退出、不等 daemon 就绪**。删掉轮询后，一次立即 probe 可能把模式**永久判成 `Normal`**（没有轮询再来纠正了）。
+### 3.4 update 的有界等待就绪
 
 ```rust
 // CoreModeReconciler::await_service_ready(&self, guard: &CoreOperationGuard) -> ReadyOutcome
 let deadline = Instant::now() + READY_BUDGET;
 let mut backoff = INITIAL_BACKOFF;
+let mut last: Option<ProbeOutcome> = None;
 loop {
     let remaining = deadline.saturating_duration_since(Instant::now());
-    if remaining.is_zero() { return ReadyOutcome::TimedOut; }
-    // 关键：per-attempt 预算取 min(remaining, PER_PROBE_BUDGET)。
-    // tokio::time::timeout 到点会**丢弃**这个 future——丢弃即取消，
-    // 因此一个永不返回的 probe 也**不可能活过 deadline**。
-    match tokio::time::timeout(remaining.min(PER_PROBE_BUDGET), self.probe.probe()).await {
-        Ok((IpcState::Connected, compat, _)) if compat.allows_service_backend() =>
-            return ReadyOutcome::Ready,
-        _ => {
-            tokio::time::sleep(backoff.min(deadline.saturating_duration_since(Instant::now()))).await;
-            backoff = (backoff * 2).min(MAX_BACKOFF);
-        }
+    if remaining.is_zero() { return ReadyOutcome::TimedOut { last }; }
+    let outcome = self.probe.probe().await;      // 探针自身已有界（§3.1）
+    self.report_probe_diagnostics(&outcome);     // ← §3.3 的同一接手方，不再吞
+    if outcome.state == IpcState::Connected && outcome.compat.allows_service_backend() {
+        return ReadyOutcome::Ready;
     }
+    last = Some(outcome);
+    tokio::time::sleep(backoff.min(deadline.saturating_duration_since(Instant::now()))).await;
+    backoff = (backoff * 2).min(MAX_BACKOFF);
 }
 ```
 
-四条要求逐条落位：
+| 要求                             | 构造                                                                                                                                          |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 外层 deadline 能**取消在飞探针** | 探针自身的 `PER_PROBE_BUDGET`（§3.1）保证单次必然返回；外层 `READY_BUDGET` 因此必然可达                                                       |
+| 明确退避                         | 指数退避封顶 `MAX_BACKOFF`；sleep 再与剩余预算取 min                                                                                          |
+| 超时后**仍持守卫**降级到 Local   | `ReadyOutcome::TimedOut` → `force_local_with(&guard)` + degradation `service_update_not_ready`、`retryable = true`。**控制动作本身返回 `Ok`** |
+| 诊断不丢                         | 每轮 `report_probe_diagnostics`                                                                                                               |
 
-| 裁决要求                                                             | 本设计里的构造                                                                                                                                                                  |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| (a) 外层 deadline 要能**取消在飞的 probe**，不是只在两次轮询之间检查 | `tokio::time::timeout(remaining.min(PER_PROBE_BUDGET), fut)` —— 到点丢弃 `fut`，丢弃即取消。**加上 `OsServiceProbe` 的 `.kill_on_drop(true)`（§3.1），子进程也一并终止**        |
-| (b) 明确的轮询间隔 / 退避                                            | 指数退避 `INITIAL_BACKOFF` ×2 封顶 `MAX_BACKOFF`；且 sleep 时长再与剩余预算取 min，避免最后一次睡过头                                                                           |
-| (c) 超时后**仍持守卫**降级到 Local，不是 `Err`                       | `ReadyOutcome::TimedOut` → `reconciler.force_local_with(&guard)`（§3.5 第三个签名）+ degradation `code = "service_update_not_ready"`、`retryable = true`。控制动作本身返回 `Ok` |
-| (d) 用一个**永不返回**的 probe 证明能及时降级                        | T-MODE-05（§7）                                                                                                                                                                 |
+**为什么超时是 degraded 而不是 `Err`**：更新进程本身成功退出了。返回 `Err` 等于告诉用户「更新失败了」，而那是假的。Local 是**合法运行状态**（PR-5-pre 的 fail-closed 门本就如此）。与 5b 的 I-A 同源：**已经成功的事不许报成失败；没做成的后置副作用报降级。**
 
-**为什么超时是 degraded 而不是 `Err`：** 更新进程本身成功退出了。返回 `Err` 等于告诉用户「更新失败了」，那是假的——更新完成了，只是服务还没应答。而 Local 是一个**合法运行状态**（PR-5-pre 的 fail-closed 门本就如此设计）。与 5b 的 I-A 同源：**已经成功的事不许报成失败；没做成的后置副作用报降级。**
+**常量来源分开记**：
 
-**常量的来源必须分开记**（裁决要求「界要从测量来，不是拍的」）：
+| 常量                              | 实测？ | 依据                                                                                                 |
+| --------------------------------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| `READY_BUDGET`                    | **是** | 实测 daemon 从 `update_service()` 返回到 `status()` 报兼容的耗时，取上界留余量，**依据写进实施报告** |
+| `PER_PROBE_BUDGET`                | **是** | 实测一次正常 `control::status()` 子进程往返上界                                                      |
+| `QUIESCE_BUDGET`（§4.9）          | **是** | 实测一次最慢控制动作（`update`）的正常耗时上界                                                       |
+| `INITIAL_BACKOFF` / `MAX_BACKOFF` | 否     | 不是正确性边界（正确性由前三者界住），**如实标注为选定值**                                           |
 
-| 常量                              | 是否需要实测 | 依据                                                                                                 |
-| --------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------- |
-| `READY_BUDGET`                    | **是**       | 实测 daemon 从 `update_service()` 返回到 `status()` 报兼容的耗时，取上界留余量；**依据写进实施报告** |
-| `PER_PROBE_BUDGET`                | **是**       | 实测一次正常 `control::status()` 子进程往返耗时的上界                                                |
-| `INITIAL_BACKOFF` / `MAX_BACKOFF` | 否           | 不是正确性边界（正确性由 `READY_BUDGET` 单独界住），只影响探测密度。**如实标注为选定值，不假装实测** |
+### 3.5 控制动作失败的处置（**v3 只画了成功路径**）
 
-### 3.5 reconcile 的三个签名（**裁决 §3：线性化点在 probe，不在 publish**）
+**基线行为必须保留**（F61）：`start`/`stop`/`restart` 今天**无论控制成败都 reconcile**，控制错误**之后**才返回。理由是实的：runner 可能**部分**启动/停止/替换了 daemon 后才非零退出——立即返回会把陈旧的后端判断留到某个无关的后续操作才纠正。
 
-v2 的形态有一个致命缺陷：**薄包装在接受一个已算好的 probe 结果之后才取守卫**，那保留了原缺陷——probe → 输给一个有守卫的 stop → 回来一个陈旧的 `Connected` → 发布 `Service`。
+**完整处置表：**
+
+| #   | 控制动作  | 就绪等待（仅 update） | reconcile                    | DNS 重施加 | **返回**                                          | degradation                                          |
+| --- | --------- | --------------------- | ---------------------------- | ---------- | ------------------------------------------------- | ---------------------------------------------------- |
+| 1   | `Ok`      | Ready / 不适用        | `Ok`                         | `Ok`       | `Ok`                                              | —                                                    |
+| 2   | `Ok`      | Ready / 不适用        | `Ok`                         | `Err`      | **`Ok`**                                          | `macos_dns_reapply_failed`                           |
+| 3   | `Ok`      | Ready / 不适用        | `Err`                        | 跳过       | **reconcile 的 `Err`**                            | —                                                    |
+| 4   | `Ok`      | **TimedOut**          | `force_local_with` `Ok`      | 跳过       | **`Ok`**                                          | `service_update_not_ready`                           |
+| 5   | `Ok`      | TimedOut              | `force_local_with` **`Err`** | 跳过       | **`Err`**                                         | `service_update_not_ready` + `mode_reconcile_failed` |
+| 6   | **`Err`** | **跳过**              | **照跑**                     | 跳过       | **控制动作的 `Err`**（优先于 reconcile 的 `Err`） | reconcile 若也失败 → `mode_reconcile_failed`         |
+
+**三条定则：**
+
+1. **控制错误优先级最高**——与基线 `control?` 在 reconcile 之后的写法一致。用户问的是「我这次操作成没成」。
+2. **控制失败后跳过就绪等待**：`update_service` 都失败了，等一个新 daemon 就绪没有意义；直接 reconcile 去观察现实。
+3. **控制失败后仍然 reconcile**：这是**唯一**能把「部分生效」的现实同步回来的机会。
+
+**第 2 行为什么返回 `Ok`**：控制动作与模式收敛都成功了，只是 TUN 的 DNS 没能重新施加。**已经成功的事不许报成失败**；DNS 缺失以降级呈现，守卫状态按 §4.2 保留。
+
+### 3.6 reconcile 的三个签名
 
 ```rust
 impl CoreModeReconciler {
-    /// 自取守卫 → **在守卫内探针** → 应用。九处调用点里唯一的无守卫入口（#8、#9）。
+    /// 自取守卫 → **在守卫内探针** → 应用。唯一的无守卫入口（#8、#9）。
     pub(crate) async fn reconcile(&self) -> anyhow::Result<()>;
-
-    /// 已持守卫：**在守卫内探针** → 应用。控制动作（#2..#7）用这个。
-    /// **注意没有 IpcState 参数。**
+    /// 已持守卫：**在守卫内探针** → 应用。控制动作（#2..#7）用这个。**没有 IpcState 参数。**
     pub(crate) async fn reconcile_with(&self, guard: &CoreOperationGuard) -> anyhow::Result<()>;
-
-    /// 已持守卫、**不探针**、直接落到 Local。**仅供 §3.4 的超时分支**。
+    /// 已持守卫、**不探针**、直接落 Local。**仅供 §3.4 超时分支**。
     pub(crate) async fn force_local_with(&self, guard: &CoreOperationGuard) -> anyhow::Result<()>;
 }
 ```
 
-**强制构造：`reconcile` / `reconcile_with` 都没有 `IpcState` 参数——调用方在类型上就无法喂进一个陈旧探针结果。** 这是签名能给的那一类保证（「这个值到得了这里」的对偶：这个值到不了这里），不是约定。
+**强制构造**：`reconcile`/`reconcile_with` **没有 `IpcState` 参数**——调用方在类型上就无法喂进陈旧探针结果。这是签名能给的那一类保证。
 
-今天 `reconcile(&self, ipc_state)` 在 `request.rs:78-92`，两个调用点（`ipc.rs:78`、`client/mod.rs:544`）都传 `get_ipc_state()`——**两处随本 PR 一起消失**。
+**「任何探针都不许在守卫外开始」是「不会去做某事」型契约**，落到 §9 的 ledger 门禁：`rg -n '\.probe\(\)'` 恰好三处（`reconcile_with` 内、`await_service_ready` 内、bootstrap）。
 
-**「任何探针都不许在守卫外开始」是「不会去做某事」型契约，签名管不了**，因此落到 §9 的 ledger 门禁：
+**bootstrap 是唯一守卫外探针，理由是真排除**：它在 `client/mod.rs:303`，而 `CoreClient::new` 在 `:312`——**actor 那时还不存在**，没有任何别的操作能在飞，也没有守卫可取。两行同在一个 `async move` 块，源码顺序即执行顺序。
 
-```text
-rg -n '\.probe\(\)' backend/tauri/src  →  恰好三处：
-  ① core/actor/request.rs  reconcile_with 内
-  ② core/actor/request.rs  await_service_ready 内（该函数只在持守卫时被调用）
-  ③ client/mod.rs          bootstrap
-```
+`force_local_with` 同样上 `rg` 门禁：**恰好一处调用点**。
 
-**bootstrap（③）是唯一的守卫外探针，理由是真排除而不是指望**：它发生在 `client/mod.rs:303`，而 `CoreClient::new(...)` 在 `:312`——**actor 那时还不存在**，没有任何别的操作能在飞，也没有守卫可取。两行在同一个 `async move` 块里，源码顺序即执行顺序。
+### 3.7 修 Service→Normal 缺口
 
-`force_local_with` 同样上 `rg` 门禁：**恰好一处调用点**（§3.4 的超时分支）。
+今天 `request.rs:82-85` 提前返回导致 `classify(true, ..)` 硬编码，**用户关闭服务模式后 reconcile 什么都不做**。改法：删掉提前返回，把真值送进 `classify`。`classify` 本身**不改**（`core/clash/core.rs:30-36` 已正确）。
 
-### 3.6 修 Service→Normal 缺口
+### 3.8 步骤顺序：先建后删，**不是双轨并行**
 
-今天（`request.rs:82-85`）提前返回导致 `classify(true, ..)` 硬编码，**用户关闭服务模式后 reconcile 什么都不做、后端停留在 Service**。
+> **两个生产者同时写同一状态而无定序，比一个更糟。** 单生产者的错误是确定性的；双生产者的错误是竞态的。
 
-**改法**：删掉提前返回，把真值送进 `classify`。`classify` 本身**不改**——它已经正确（`core/clash/core.rs:30-36`），缺的只是有人把 `false` 喂给它。
-
-### 3.7 步骤顺序：**先建后删**，但**不是「双轨并行」**
-
-> **5c v4 曾把这一步写成「轮询仍在跑、双轨等价、任一步可独立回滚」——那是错的**：**两个生产者同时写同一状态而无定序，比一个更糟**。单生产者的错误是确定性的、可复现的；双生产者的错误是竞态的。**「保留旧机制」看似保守，实际引入了一个新的失效模式。**
-
-- **S-a**：建探针 + 修 3.6 的缺口 + 接上九处调用点，**同时在同一步停掉轮询的 reconcile 派发**——**关键是任何时刻只有一个模式生产者**；
+- **S-a**：建探针 + 修 3.7 缺口 + 接上九处调用点，**同一步停掉轮询的 reconcile 派发**；
 - **S-b**：删轮询线程与三个 statics、`RunType::default()`（D2）、`core/service/mod.rs::init_service`。
 
-5c 携带的 `KILL_FLAG` weak-CAS 缺陷（`control.rs:274`）**随轮询线程删除而消失，不单独修**（5c §10.1 已记账）。
+5c 携带的 `KILL_FLAG` weak-CAS 缺陷（`control.rs:274`）**随轮询线程删除而消失，不单独修**。
 
 ---
 
-## 4. C3 设计 —— DNS 端口、状态机与恢复
+## 4. C3 设计 —— DNS 端口、状态机与生命周期
 
-> v2 在 `:293-300` 写着「待设计」，同时第 4 行宣称五条已知问题全部定稿——**这条自相矛盾本身就足以拦住实施**。§4 把整个模型写完。
+### 4.1 端口 —— **读永远本地，写按模式分叉**
 
-### 4.1 端口（macOS-only，注入式，**不对 Service 撒谎**）
+> **BLOCKING（leader 从 Suggestions 升级）：`nyanpasu_ipc` 里根本没有 DNS 读端点**（F56）。v3 给 `ServiceMacosDns` 写了 `read_default` / `read`，**它们没有任何实现机制**。而回读校验是整个设计的骨干——Service 侧读不了，`unverified` 就永远解不开，守卫没有出口。
 
-裁决 §5 的约束：**Service 侧的线上契约里没有设备**（F51），所以 `set(device, dns)` 这种签名是**假保证**。同时 Local 侧**确实**能指定设备。端口必须把这个不对称如实建模，且**不能接一个自己会悄悄忽略的设备参数**。
+**三条路线的取舍：**
+
+| 路线                                                          | 评价                                                                                                      |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| ①承认 Service 写不可验证，显式定义守卫与四态在该模式下的含义  | 诚实，但**放弃**了 Service 模式的全部验证能力，而 Service 是用户实际部署的那条路                          |
+| ②上游加读端点                                                 | **否**。R0 仍未合并，这会是叠在它之上的**第二个上游 PR**；leader 为设备字段否掉过同样的成本，此处成本不变 |
+| **③读一律走本地 `networksetup -getdnsservers`，两个模式共用** | **采纳**。无需线上变更；且见下方三条附带收益                                                              |
+
+**为什么③在 Service 模式下也成立（有依据，不是「大概行」）：**
+
+- **同一台机器、同一个函数**。`nyanpasu-service` 是本机特权 helper，服务端解析默认设备用的正是 `get_default_network_hardware_port()`（`routing/network.rs:26`）。我们在客户端调**同一个函数**，得到**同一个答案**，除非默认设备在两次调用之间变了——**那正是 R1 那个既有窗口，不是新增的**。
+- **读不依赖 daemon**。daemon 挂了、被 stop 了、被 uninstall 了，读**照样能用**。这一条直接救了 §4.4 的死锁序列。
+- **权限未确立（F63），但设计对它不敏感**：读被拒绝 → 非零退出 → 四态① `Err` → 与任何其它读失败同路（守卫保留、降级）。
 
 ```rust
 // core/actor/dns.rs —— 整个文件 #[cfg(target_os = "macos")]
 
-/// 一次覆写所针对的目标。**它只能由端口自己产出**，调用方不构造。
+/// 一次覆写所针对的目标：**本地解析到的硬件端口名**。
+/// 读与 Local 写都按它定向；Service 写**无法**定向（F51），只能在写之前
+/// 校验「当前默认设备仍是它」——见 ServiceMacosDns::write。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DnsTarget {
-    /// Local：适配器解析到的硬件端口名。我们能命名它，也能在之后重新指向它。
-    Device(String),
-    /// Service：IPC 契约里没有设备字段，daemon **每次请求**自解析当前默认设备（F51）。
-    /// 我们既命名不了它，也检测不到它变了。
-    ServerResolvedDefault,
-}
+pub(crate) struct DnsTarget(pub String);
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum DnsPortError {
-    #[error("this backend cannot address the recorded DNS target: {0:?}")]
-    TargetNotAddressable(DnsTarget),
+    /// Service 写之前发现默认设备已经不是记录的那个。**拒绝写，不猜。**
+    #[error("default device drifted: recorded {recorded}, observed {observed}")]
+    TargetDrifted { recorded: String, observed: String },
     #[error(transparent)]
     Io(#[from] anyhow::Error),
 }
 
+/// 本地读实现，**两个后端共用**（F56：IPC 没有读端点）。四态见 §4.8。
+pub(crate) struct LocalDnsReader;
+
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub(crate) trait MacosDnsPort: Send + Sync + 'static {
-    /// 读「当前默认目标」及其 DNS。返回的 DnsTarget 供守卫记录。
+    /// 解析当前默认硬件端口并读它的 DNS。**总是本地执行。**
     async fn read_default(&self) -> Result<(DnsTarget, Option<Vec<IpAddr>>), DnsPortError>;
-    /// 读指定目标的 DNS（回读校验用）。
+    /// 读指定目标。**总是本地执行**，因此 daemon 不在也能用。
     async fn read(&self, target: &DnsTarget) -> Result<Option<Vec<IpAddr>>, DnsPortError>;
-    /// 写指定目标。**无法寻址该目标时返回 TargetNotAddressable，绝不静默忽略。**
+    /// 写指定目标。Local 直接定向；Service 先校验默认设备未漂移，再发 IPC。
     async fn write(&self, target: &DnsTarget, dns: Option<Vec<IpAddr>>) -> Result<(), DnsPortError>;
 }
 
-pub(crate) struct LocalMacosDns;                  // 直调 networksetup（§4.6）
-pub(crate) struct ServiceMacosDns { client: .. }; // IPC set_dns（F21）
+pub(crate) struct LocalMacosDns   { reader: LocalDnsReader }
+pub(crate) struct ServiceMacosDns { reader: LocalDnsReader, client: .. }
 ```
 
-**两个适配器的能力如实写在行为里，不写在签名里能写的部分则写在签名里：**
+|                         | `LocalMacosDns`                                     | `ServiceMacosDns`                                                            |
+| ----------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `read_default` / `read` | 本地 `networksetup`                                 | **同左**（共用 `LocalDnsReader`）                                            |
+| `write(target, dns)`    | `networksetup -setdnsservers <target> ..`，直接定向 | 先本地解析当前默认设备；**≠ `target` 则 `Err(TargetDrifted)`**；相等才发 IPC |
 
-|                                    | `LocalMacosDns`             | `ServiceMacosDns`                                      |
-| ---------------------------------- | --------------------------- | ------------------------------------------------------ |
-| `read_default` 产出                | `Device(<hardware port>)`   | **恒** `ServerResolvedDefault`                         |
-| `write(Device(a), ..)`             | 写 `a`                      | **`Err(TargetNotAddressable)`** ——大声拒绝，不静默忽略 |
-| `write(ServerResolvedDefault, ..)` | `Err(TargetNotAddressable)` | 发 IPC，daemon 自解析                                  |
-
-> **为什么选 enum 形而不是 per-backend trait**：守卫要在**跨后端切换**时判断「旧目标新后端还寻不寻得到」（§4.5 的中止判据），这需要一个**跨后端可比较的目标类型**。两个互不相干的 trait 表达不出这个比较。
+> **③相对 v3 的实质改进：R1 从「构造上不可检测」变成「可检测、仍不可阻止」。**
 >
-> **「不接一个会被悄悄忽略的参数」怎么落实的**：`write` 接的是端口自己产出的 `DnsTarget`，而不是一个字符串设备名。Service 适配器拿到 `Device(_)` 时**返回错误**——拒绝是可观测、可测试的（T-DNS-14），静默忽略不是。
-
-**已知残留（裁决 §5 要求点名 owner 与移除条件）：**
-
-> **Service 模式下，若默认网络在「开启覆写」与「恢复」之间发生变化，恢复会写到新接口，原接口的覆写留着。**
-> **保证只到这里**：Service 模式下快照与恢复都由服务端解析「当前默认设备」，**只要默认设备不变就自洽**。
-> **这是既有限制，不是 5d 引入的**——今天 `core/clash/core.rs:109-118` 走的就是同一条只带地址的 IPC。**5d 也不修它**（`ServerResolvedDefault` 让它变得**可见且有名字**，仅此而已）。
-> **owner**：本计划 §10 的残留清单。**移除条件**：`NetworkSetDnsReq` 增加可选设备字段且 daemon 遵从（上游 `nyanpasu-runtime` PR）。
-> **为什么不在 5d 里扩 IPC**：那会是叠在仍未合并的 R0 之上的**第二个上游 PR**，而它关掉的窗口很窄。列为后续候选，不是 5d 的阻塞项。
+> v3 用 `DnsTarget::ServerResolvedDefault` 表达「Service 模式连设备名都拿不到」，代价是**默认设备漂移时我们毫不知情，会把旧设备的 DNS 写到新设备上**——那不只是没恢复成功，是**主动破坏另一个接口的配置**。
+>
+> ③之后我们**总能拿到设备名**，于是可以在写之前比对；检测到漂移就**拒绝写**并报降级。**残余是 TOCTOU**：我们的校验与 daemon 的解析之间仍有窗口，无法消除（除非走路线②）。**但窗口从「无限期静默写错接口」缩到「一次校验与一次 IPC 之间」。**
 
 **fake 必须按序记录** enable / restore / 与后端动作的相对次序，供测试断言**顺序**而非终态。
 
-**不违反 D3 的「非 macOS 不加空抽象」**：整个文件在 `#[cfg(target_os = "macos")]` 下，**非 macOS 平台上这些类型根本不存在**。
+**不违反 D3 的「非 macOS 不加空抽象」**：整个文件在 `#[cfg(target_os = "macos")]` 下。
 
-> ### 与 `design.md:337` 的一处**有意偏离**（点名记账，不埋在实施里）
+> ### 与 `design.md:337` 的偏离 —— **v3 的第二条理由已被推翻，重新推导**
 >
-> `design.md` §9 macOS DNS 段写的是「Service 模式需要提权时**由 `CoreBackend::Service` 调 IPC set_dns**」。本设计改为**独立的 `ServiceMacosDns` 端口持 IPC 客户端**，不经 `CoreBackend::Service`。
+> `design.md` §9 写「Service 模式需要提权时**由 `CoreBackend::Service` 调 IPC set_dns**」。本设计用**独立的兄弟端口**。
 >
-> **意图侧完全一致**（Service 路径的 DNS 写走 IPC，由 daemon 行使权限），偏离的只是「谁持有那个客户端」。两条机械理由：
+> **先撤回 v3 的错误论证。** v3 说「`replace_backend` 会 `take()` 掉旧后端，恢复通道住在后端里就会消失」。**审查者指出这站不住**：恢复是**在调用 `replace_backend` 之前**完成的，那一刻旧后端还活着。leader 已接受该反驳，并指出自己**只核了锚点没核论证**。该理由作废。
 >
-> 1. **`CoreBackend` 是全平台的核进程生命周期枚举**（`Local`/`Service`/`Test`）。往上挂 macOS-only 的 DNS 方法，与 §4.2 拒绝往 `CoreRequest` 塞 TUN 字段是同一个理由：污染两条无关平台路径。
-> 2. **更硬的一条：`replace_backend` 会 `take()` 掉旧后端并 `shutdown()`（`core/actor/mod.rs:267,273`）。** 若恢复通道住在后端内部，**换后端的那一刻通道就没了**——而 §4.5 恰恰要求「先用旧后端的适配器恢复、再换」。把 DNS 端口做成后端的兄弟而非成员，是让 §4.5 可实现的前提，不是风格选择。
+> **重新推导后，两条理由成立：**
 >
-> **命名对应**（避免审查者找不到 `design.md` 说的那个名字）：design 里的「小型 `MacosDnsGuard`」在本设计中即 `CoreActorState.dns: Option<DnsOverride>`（§4.2）；`MacosDnsPort` 是它调用的适配器。F18 已记 `MacosDnsGuard` 这个类型今天并不存在。
+> 1. **（机制，新）恢复所需的适配器不总是当前后端那个，有时根本没有后端。** §4.4 的裁定是 teardown 失败后 Stop 仍继续；随后 daemon 已下线，恢复只能走 **Local** 写——而此时 `state.mode` 可能仍是 Service、`state.backend` 在 `Shutdown` 后更是 `None`（`mod.rs:606`，此后 `backend()` 返回 `ShuttingDown`，`:175-183`）。**若 DNS 方法长在 `CoreBackend` 上，「用 Local 适配器恢复一个 Service 时期建立的覆写」在类型上就无从表达**，而那恰是 §4.4 死锁序列唯一的出路。兄弟端口独立于后端的替换与消失。
+> 2. **（洁净性）`CoreBackend` 是全平台的核进程生命周期枚举**，挂 macOS-only 的 DNS 方法，与 §4.2 拒绝往 `CoreRequest` 塞 TUN 字段是同一个理由。
+>
+> **理由 1 是机制性的、理由 2 是洁净性的，如实分开标注。** 若将来 §4.4 改成「teardown 失败即中止 Stop」，理由 1 会随之失效，**届时应当如实说只剩洁净性**。
+>
+> **命名对应**：design 里的「小型 `MacosDnsGuard`」在本设计中是 `CoreActorState.dns: Option<DnsOverride>`（§4.2）。
 
-### 4.2 状态与消息（**七个问题逐条回答**）
+### 4.2 状态与消息
 
 ```rust
 // CoreActorState 新增（core/actor/mod.rs:52-69）
-#[cfg(target_os = "macos")]
-pub(crate) dns: Option<DnsOverride>,
-#[cfg(target_os = "macos")]
-pub(crate) dns_ports: DnsPorts,
+#[cfg(target_os = "macos")] pub(crate) dns: Option<DnsOverride>,
+#[cfg(target_os = "macos")] pub(crate) dns_ports: DnsPorts,
 
-pub(crate) struct DnsPorts {
-    local:   Arc<dyn MacosDnsPort>,
-    service: Arc<dyn MacosDnsPort>,
-}
+pub(crate) struct DnsPorts { local: Arc<dyn MacosDnsPort>, service: Arc<dyn MacosDnsPort> }
 
 pub(crate) struct DnsOverride {
-    /// 快照时端口产出的目标。
+    /// 快照时本地解析到的设备。
     target: DnsTarget,
     /// 覆写**之前**的原始 DNS。`None` 是合法值（原本就没配）。
     previous: Option<Vec<IpAddr>>,
-    /// 建立覆写时所用的后端身份。恢复按它选适配器，**不按 state.mode**。
-    backend: RunType,
-    /// 写成功但回读未通过 → true。守卫**保持 active**，操作报降级。
+    /// 建立覆写时的后端身份。**仅用于诊断**——恢复选哪个适配器见 §4.5，
+    /// 按「谁还够得着」而不是按这个字段。
+    origin: RunType,
+    /// 写已发出但尚未被回读证实。守卫**保持 active**。
     unverified: bool,
 }
 
 // CoreActorMessage 新增
 SetTunDns {
     operation: OperationId,
-    /// Some(ip) = 开 TUN，把 DNS 指到该地址；None = 关 TUN，恢复原值。
-    /// TUN 设备 IP 由 client 侧从 clash config 算好传入——**actor 不读任何配置全局**。
+    /// Some(ip) = 开 TUN 并把 DNS 指到该地址；None = 关 TUN，恢复原值。
+    /// TUN 设备 IP 由 client 侧从 clash config 算好传入——**actor 不读配置全局**。
     desired: Option<IpAddr>,
     reply: RpcReplyPort<Result<DnsOutcome, CoreActorError>>,
 }
@@ -506,138 +528,166 @@ SetTunDns {
 pub(crate) enum DnsOutcome { Applied, AppliedUnverified, NoChange, Restored, RestoredUnverified }
 
 // CoreActorError 新增（core/actor/types.rs:68-79）
-#[error("core is not running; refusing to install a DNS override")]
-CoreNotRunning,
-#[error("DNS restoration failed; refusing to replace the backend")]
-DnsRestoreFailed,
+CoreNotRunning,      // 核已停，拒绝建立覆写
+DnsRestoreFailed,    // 所有可用适配器都恢复不了
 ```
 
-**注入路径**：`ClientSetupArgs`（新 `#[cfg(target_os="macos")] dns_ports`）→ `CoreClientArgs`（`client/core.rs:39-43`）→ `CoreClient::spawn`（`:105-119`）→ `CoreActorArgs`（`core/actor/mod.rs:37-50`）→ `CoreActorState`。**与 `requests` / `degradation` 走同一条既有路径，不新开机制。**
+**注入路径**：`ClientSetupArgs`（新 `#[cfg(target_os="macos")] dns_ports`）→ `CoreClientArgs`（`client/core.rs:39-43`）→ `CoreClient::spawn`（`:105-119`）→ `CoreActorArgs`（`core/actor/mod.rs:37-50`）→ `CoreActorState`。**与 `requests`/`degradation` 同一条既有路径。**
 
-**为什么不扩 `CoreRequest`**：它是 run/check/apply 三条路共用的**全平台**进程描述；塞 macOS-only 的 TUN 字段会污染两条无关路径。
+**不扩 `CoreRequest`**：它是 run/check/apply 共用的**全平台**进程描述，塞 macOS-only 的 TUN 字段会污染两条无关路径。
 
-**裁决 §7 的七问逐条落位：**
+#### 施加的顺序 —— **先记账，再写**
 
-| #   | 问题                                                           | 机制                                                                                                                                                                                                                                                                             |
-| --- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | 写成功但回读失败——DNS 可能**已经变了**                         | 保留 `Some(DnsOverride{ unverified: true })`，返回 `AppliedUnverified`，degradation `macos_dns_readback_failed`。**守卫不清**                                                                                                                                                    |
-| 2   | 守卫只在**验证过的恢复**之后才清                               | `state.dns = None` 只出现在**一条**分支上：`read(target)` 返回 `Ok(v)` 且 `v` 与 `previous` **集合相等**。其余分支一律保留 `Some(.. unverified: true)`                                                                                                                           |
-| 3   | 重复 `SetTunDns(Some(..))` 必须保住**最初**的原值              | 处理器开头：`if state.dns.is_some() { /* 不重新快照 */ }`——只写新 TUN 地址，`previous` 原封不动                                                                                                                                                                                  |
-| 4   | 设备变了要先把**旧设备**恢复再取新快照                         | 每次 `SetTunDns(Some)` 先 `read_default()`，把返回的 target 与 `override.target` 比。不等 → 先 `write(&override.target, previous)` 恢复旧目标（Local 能寻址），再对新 target 取快照。**Service 侧 `ServerResolvedDefault` 恒等，该分支永不触发——这正是 §4.1 那条残留限制的形状** |
-| 5   | 恢复失败发生在 `SetBackend` **之前**：中止还是保留旧适配器身份 | **中止**。见 §4.5                                                                                                                                                                                                                                                                |
-| 6   | `SetBackend` 成功后若仍需要 TUN，DNS 要**重新施加**            | 见 §4.5。**时点是 `Run` 之后，不是 `SetBackend` 之后**（F43）                                                                                                                                                                                                                    |
-| 7   | 「原值是 `None` 的活跃覆写」要与「没有覆写」可区分             | 外层 `Option<DnsOverride>` 表达「有没有覆写」，内层 `previous: Option<Vec<IpAddr>>` 表达「原值是不是 None」。**两层 Option，结构上不可混淆**                                                                                                                                     |
+> **裁定原则（必须写进代码注释）：错误通道报告的是调用的结果，永远不是副作用的缺席。**
+>
+> `write` 返回 `Err` 时，DNS **可能已经改了**：Service 侧 daemon 可能改完才丢响应；Local 侧命令可能改完才非零退出。**v3 的「写失败就不建守卫」因此制造出守卫本来要防的那个状态：DNS 变了、没有记录、Stop 与 Shutdown 都无从恢复。**
 
-### 4.3 `SetTunDns` 的准入 —— **两条规则，两个构造**（裁决 §1）
+```text
+① read_default()  → (target, previous)          ← 拿不到就直接 Err，什么都没做，安全
+② state.dns = Some(DnsOverride{ target, previous, origin: state.mode, unverified: true })
+                                                 ← **在写之前记账**
+③ write(&target, Some(tun_ip))                   ← 成败都不改变②已经记下的恢复意图
+④ read(&target) 消歧：
+     == desired   → unverified = false；返回 Applied（③若为 Err 则 AppliedUnverified + 降级）
+     == previous  → 写确实没生效 → **移除守卫**（无可恢复）→ 返回 ③ 的 Err
+     其它 / 读失败 → **保留守卫、unverified 维持 true** → AppliedUnverified + 降级
+```
 
-> **更正：v2 §5 #4 说「一个 `CoreOperationGuard` 横跨拆除与外部控制动作，就能挡住另一条 `SetTunDns`」。这是假的。** `OperationGate`（`gate.rs:20-30`、`:32-45`）只做两件事：FIFO 发放 operation id、`is_active` 校验。**它不是 actor 级互斥锁**——守卫在外面被持有的同时，actor 照常处理别的消息。
+**②在③之前是本节的全部要点。** 第④步的回读是**唯一**能把「写没生效」与「写生效了但报错」区分开的机制；在能区分之前，**必须假设已经改了**。
 
-**裁定：`SetTunDns` 携带 `OperationId`，与 `Stop`/`Run`/`SetBackend` 同形，由 `CoreActorState::validate_operation`（`core/actor/mod.rs:185-190`）校验。**
+**七个状态机问题的落点：**
 
-**为什么是「携带 id」而不是「自己取门」**（裁决要求选一个并说理）：`OperationGate::acquire` 在门被占时把请求塞进 `waiters`（`gate.rs:25-28`），**只有另一条 `ReleaseOperation` 消息被处理时才会发放**（`mod.rs:436` 与 `gate.rs:73-83`）。ractor 逐条串行处理消息，所以在 `handle()` 里 `await` 一个发放**永远等不到**——自取门是**构造性死锁**。携带 id 是唯一不死锁的形态，也和现有六条守卫消息一致。
+| #   | 问题                                         | 机制                                                                                                                                            |
+| --- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 写成功但回读失败                             | 保留 `Some(.. unverified: true)`，`AppliedUnverified` + `macos_dns_readback_failed`                                                             |
+| 2   | 守卫只在**验证过的恢复**之后才清             | `state.dns = None` 只出现在一条分支：`read(target)` 返回 `Ok(v)` 且 `v` 与 `previous` **集合相等**                                              |
+| 3   | 重复 `SetTunDns(Some(..))` 保住**最初**原值  | 处理器开头 `if state.dns.is_some()` → **不重新快照**，只写新地址                                                                                |
+| 4   | 设备变了先恢复旧设备再取新快照               | 每次 `SetTunDns(Some)` 先 `read_default()`，与 `override.target` 比；不等 → 先 `write(&override.target, previous)` 恢复旧设备，再对新设备取快照 |
+| 5   | 恢复失败发生在 `SetBackend` 之前             | 见 §4.5（**已改为逐适配器穷尽后才中止**）                                                                                                       |
+| 6   | `SetBackend` 成功后仍需 TUN 则重新施加       | 见 §4.5，**时点是 `Run` 之后**（F43），由**源码顺序**保证                                                                                       |
+| 7   | 「原值 `None` 的活跃覆写」与「无覆写」可区分 | 外层 `Option<DnsOverride>` 表达有无覆写，内层 `previous: Option<..>` 表达原值——**两层 Option，结构上不可混淆**                                  |
 
-**两条准入规则（裁决点名要的两个 `Stop` 竞态）：**
+### 4.3 `SetTunDns` 的准入 —— 两条规则，两个构造
 
-| #   | 场景                                                               | 规则                                                            | **强制它的构造**                                                                                                                                                                                                                           |
-| --- | ------------------------------------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| A   | `Shutdown` 已开始后到达的 `SetTunDns`                              | `Err(ShuttingDown)`                                             | `Shutdown` 处理器 `mod.rs:604` 调 `state.operation.shutdown()`，`gate.rs:55-60` 把 `active` 置 `None` → 此后**任何** id 都 `StaleOperation`；且 `:606` `state.backend.take()` 使 `state.backend()` 返回 `ShuttingDown`（`mod.rs:175-183`） |
-| B1  | `SetTunDns` **先**拿到许可，`Stop` 排在后面                        | `Stop` 的恢复在其处理器内发生，晚于 DNS 设置                    | `OperationGate` FIFO（`gate.rs:73-83`，已有 5 条单测 `gate.rs:121-207`）                                                                                                                                                                   |
-| B2  | `Stop` **先**拿到许可，晚到的 `SetTunDns(Some)` 持**自己的新守卫** | **`Err(CoreNotRunning)`** ——FIFO 本身挡不住它，它的 id 是合法的 | **新增准入检查 `state.running.is_some()`**（F44：`Run` 置 `Some` `mod.rs:514`，`Stop` 置 `None` `:532`）。**仅对 `desired = Some(..)` 生效**——`desired = None`（拆除）在核已停时仍必须被允许，那正是恢复路径                               |
+> **`OperationGate` 不是 actor 级互斥**（`gate.rs:20-30`、`:32-45`）：它只做 FIFO 发号 + `is_active` 校验。**外部持 guard 期间，actor 照常处理别的消息。**
 
-> **B2 是 v2 完全没有的那条。** 只靠 FIFO，晚到的 `SetTunDns` 会在 `Stop` 之后老老实实执行，**重新建立一个背后没有核的覆写**。`validate_operation` 也拦不住它——它的守卫是新的、合法的。**必须是第二个构造。**
+**`SetTunDns` 携带 `OperationId`，由 `validate_operation`（`mod.rs:185-190`）校验，与 `Stop`/`Run`/`SetBackend` 同形。**
 
-### 4.4 顺序：控制动作前先拆 DNS —— **一条规则，六个入口，无例外**
+**为什么是「携带 id」而不是「自己取门」**：`OperationGate::acquire` 在门被占时把请求塞进 `waiters`（`gate.rs:25-28`），**只有另一条 `ReleaseOperation` 消息被处理时才发放**（`mod.rs:436`、`gate.rs:73-83`）。ractor 逐条串行处理消息，所以在 `handle()` 里 `await` 一个发放**永远等不到**——自取门是**构造性死锁**。
 
-> v2 只覆盖 stop 与 uninstall。`restart_service` 同样会把 daemon 拉下来，`update_service` 可能替换/重启它；F22 本身就指出 restart 路径今天根本不碰 DNS。
+| #   | 场景                                                           | 规则                       | **强制构造**                                                                                                                                                                                                            |
+| --- | -------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A   | `Shutdown` 已开始后到达的 `SetTunDns`                          | `Err(ShuttingDown)`        | `Shutdown` 处理器 `mod.rs:604` 调 `state.operation.shutdown()`，`gate.rs:55-60` 把 `active` 置 `None` → 此后任何 id 都 `StaleOperation`；`:606` `state.backend.take()` 使 `backend()` 返回 `ShuttingDown`（`:175-183`） |
+| B1  | `SetTunDns` 先拿到许可，`Stop` 排在后面                        | `Stop` 的恢复晚于 DNS 设置 | `OperationGate` FIFO（`gate.rs:73-83`，已有 5 条单测）                                                                                                                                                                  |
+| B2  | `Stop` 先拿到许可，晚到的 `SetTunDns(Some)` 持**自己的新守卫** | **`Err(CoreNotRunning)`**  | **准入检查 `state.running.is_some()`**（F44）。**仅对 `desired = Some(..)` 生效**——`desired = None`（拆除）在核已停时仍必须允许，那正是恢复路径                                                                         |
+
+> **B2 是 FIFO 挡不住的那条**：晚到者的守卫是新的、合法的，`validate_operation` 会放行；只有 `state.running` 这条准入能拦住它**重新建立一个背后没有核的覆写**。
+>
+> **注意 F57**：`state.running` 的清除点**不止**一处显式赋值——`commit()` 观察到 `Stopped` 时也会清（`:224-227`）。**这加强而非削弱 B2**（多条路径都会让准入生效），但它使「删掉某一行就会红」的判据失效，见 §7 T-DNS-13/15 的第三列。
+
+### 4.4 顺序：控制动作前先拆 DNS —— 一条规则，六个入口
 
 **规则：六个服务控制入口，在调用外部控制动作之前，都先在同一守卫内 `await` 拆除 DNS 覆写。**
 
-```text
-guard  →  拆 DNS（await，IPC 尚在）  →  service_control.<action>()  →  [update: 有界等待]  →  reconcile_with(&guard)
-```
-
-**为什么是「六个」而不是裁决点名的「四个」（stop / uninstall / restart / update）**：要把 install 排除在外，就得证明 `nyanpasu-service install` 在已有 daemon 在跑时不会把它换掉/重启——**我核不了这一点，而它是「不会去做某事」型断言，从名字推不出来**。把规则铺到六个的代价是：在没有活跃覆写时多走一次 `state.dns.is_none()` 的判断（无副作用的 no-op）。**用一次 no-op 换掉一条无法验证的前提，划算。因此本规则没有需要点名的例外。**
+**为什么是六个而不是四个**：要把 install 排除在外，就得证明 `nyanpasu-service install` 在已有 daemon 在跑时不会把它换掉/重启——**我核不了这一点，而它是「不会去做某事」型断言**。铺到六个的代价是无活跃覆写时多一次 `state.dns.is_none()` 的 no-op 判断。**用一次 no-op 换掉一条无法验证的前提，划算。因此本规则没有需要点名的例外。**
 
 **拆除失败时的分岔：**
 
-| 场景                                          | 处置                                        | 理由                                                                                                                                      |
-| --------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **uninstall**                                 | **中止卸载**，返回 `Err` + **用户可见错误** | 卸载**不可逆**，而拆 DNS 失败说明我们**当下正处在一个连自己的写都验证不了的状态**——在这种状态下执行不可逆操作，是把已知的不确定性固化下来 |
-| **stop / restart / update / install / start** | **继续，产出 degradation**                  | 服务可再启动、通道会回来，泄漏可恢复；为拆 DNS 失败就让用户停不掉服务代价不成比例，还可能把人锁死                                         |
+| 场景          | 处置                                    | 理由                                                                                                      |
+| ------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **uninstall** | **中止卸载**，返回 `Err` + 用户可见错误 | 卸载**不可逆**；拆 DNS 失败说明我们**当下连自己的写都验证不了**，此时执行不可逆操作是把已知的不确定性固化 |
+| **其余五个**  | **继续，产出 degradation**              | 服务可再启动、通道会回来，泄漏可恢复；为拆 DNS 失败就让用户停不掉服务代价不成比例                         |
 
 **判别原则：失败会让泄漏变成永久的 → 中止；泄漏仍可恢复 → 继续并降级。**
 
-**中止 uninstall 的用户可见错误必须说清三件事**：**做了什么**（没有卸载）、**为什么**（DNS 覆写未能拆除，继续卸载会永久残留）、**怎么办**（重试；或先手动关闭 TUN 再卸载）。**只返回 `Err` 不够**——用户可见的失败，**措辞本身就是功能的一部分**。
+**中止 uninstall 的用户可见错误必须说清三件事**：做了什么（没有卸载）、为什么（DNS 覆写未能拆除，继续卸载会永久残留）、怎么办（重试；或先手动关闭 TUN 再卸载）。**用户可见的失败，措辞本身就是功能的一部分。**
 
-### 4.5 `SetBackend`：先用旧适配器恢复，成功后在 `Run` 之后重新施加
+#### 「拆除失败后继续 Stop」与「SetBackend 中止」的矛盾
 
-**恢复用哪个适配器**：`DnsOverride.backend`（记录值），**不是** `state.mode`。理由是双保险：①`replace_backend` 在 `mod.rs:282` 才改 `self.mode`，而恢复发生在调用 `replace_backend` **之前**，所以此刻 `state.mode` 仍是旧值；②即便将来有人调换了顺序，按记录值选仍然对。测试打掉第②层（T-DNS-16 断言选的是记录值）。
+审查者给的序列是真的：Service 模式拆除失败 → Stop 成功、daemon 与 IPC 通道消失 → probe 判 `Disconnected` → reconcile 目标 Local → `SetBackend` 重试恢复走 `ServiceMacosDns` → 通道没了必失败 → 无条件中止 → **卡在陈旧 Service 状态、DNS 被覆写、背后没有核**。
 
-**恢复失败 → 中止切换**（裁决 §7 第 5 问的二选一）：`SetBackend` 返回 `Err(DnsRestoreFailed)`，**不调 `replace_backend`**，`state.dns` 保留（`unverified: true`）。
+**根因不是两条规则本身矛盾，是 v3 把「恢复用哪个适配器」冻结在了快照时刻。** §4.5 改掉这一条之后矛盾消失：daemon 下线后恢复改走 **Local 写**（目标设备名我们有，因为读一直是本地的），不再依赖那条已经消失的通道。
 
-> **为什么中止而不是「守卫保留旧适配器身份」**：Local→Service 时记录的目标是 `Device(a)`，而 `ServiceMacosDns::write(Device(a), ..)` 只能 `Err(TargetNotAddressable)`（§4.1）——**换过去之后就再也恢复不了了，泄漏变永久**。这正是 §4.4 的判别原则。反方向（Service→Local）虽然还有救，但**统一中止**省掉一条按方向分叉的规则，而分叉规则正是这类设计出错的地方。
+### 4.5 `SetBackend`：恢复用**够得着的**适配器，成功后在 `Run` 之后重新施加
+
+> **v3 的规则是「用 `DnsOverride` 记录的后端恢复」。那条规则制造了 §4.4 的死锁。改掉。**
+
+**新规则：恢复时按「哪个适配器还够得着这个目标」选，而不是按覆写是谁建的。**
+
+因为读永远本地（§4.1），`DnsTarget` **总是一个具名设备**，于是：
+
+```text
+restore(target, previous):
+  候选顺序 = [ 与 state.mode 匹配的适配器（若其通道可用）, LocalMacosDns ]   ← 去重
+  依次尝试 write(&target, previous)：
+    任一成功 → 回读校验 → 通过则清守卫；不通过则保留 unverified
+    全部失败 → Err(DnsRestoreFailed)
+```
+
+- **正常 Service 路径**：`state.mode == Service` 且通道在 → 走 IPC（有权限），与今天一致。
+- **§4.4 的死锁路径**：Stop 之后 mode 已 reconcile 成 Local → 首选就是 Local → **能写到设备 D**，矛盾消解。
+- **Local 写在非 admin 账户会失败**：两个候选都失败 → `DnsRestoreFailed` → 中止 `SetBackend`。**这才是真正「所有出路都堵死」的情形，中止在此恰当。**
+
+`DnsOverride.origin` 因此**降级为纯诊断字段**（降级消息里说明覆写是谁建的），不再参与适配器选择。
 
 **成功切换后的重新施加，时点由 F43 钉死：**
 
 ```text
 guard
- ├─ SetTunDns(None)          ← 用 override.backend 选的旧适配器恢复；失败即中止
+ ├─ SetTunDns(None)          ← §4.5 的恢复；穷尽候选后仍失败才中止
  ├─ SetBackend(mode)         ← replace_backend：running := None（:268），mode := new（:282）
  ├─ Run(request)             ← running := Some（:514）        ★ 核在这里才重新起来
- └─ SetTunDns(Some(tun_ip))  ← 若 TUN 仍然要开：用**新**适配器重新施加
+ └─ SetTunDns(Some(tun_ip))  ← 若 TUN 仍需开启：用**新**适配器重新施加
 ```
 
-**强制这个时点的构造，就是 §4.3 的准入规则 B2**：在 `SetBackend` 与 `Run` 之间 `state.running` 是 `None`，此刻发出的 `SetTunDns(Some)` 会被 `CoreNotRunning` 拒掉。**顺序不是靠自觉，是靠一条会报错的准入检查。**
+> **保证这个时点的构造是「同一守卫内的源码顺序」，不是 `CoreNotRunning`。** 审查者说得对：`CoreNotRunning` 只能**拒绝过早**的重新施加，**不能保证后面真有一次重新施加**。真正的保证是 `CoreModeReconciler` 在持守卫期间**按上述四步的源码顺序依次 `await`**——第四步存在与否由源码决定，由 T-DNS-15 钉住。`CoreNotRunning` 是**附加的**安全网，防止别人在中间插一条。
 
-`desired`（TUN 是否开、TUN 设备 IP）由 `CoreModeReconciler` 算好传入：它需要新增一个 `clash_config: ClashConfigClient` 字段（`NyanpasuClientInner.clash_config`，`client/mod.rs:247`，注入方式同 §3.1），TUN 开关读 `application`（已有字段）。**actor 侧一行配置全局都不读。**
+`desired`（TUN 是否开、TUN 设备 IP）由 `CoreModeReconciler` 算好传入：新增 `clash_config: ClashConfigClient` 字段（`NyanpasuClientInner.clash_config`，`client/mod.rs:247`），TUN 开关读 `application`。**actor 侧一行配置全局都不读。**
 
-### 4.6 Local 适配器：**在我们自己的 crate 里直调 `networksetup`**（裁决 §8）
+### 4.6 Local 写：在我们自己的 crate 里直调 `networksetup`
 
-**不复用上游 `nyanpasu_utils::network::macos::{set_dns, get_dns}`。** 三条已核实的理由（F50 / F41 / F46）：
+**不复用上游 `nyanpasu_utils::network::macos::{set_dns, get_dns}`。** 三条已核实的理由：
 
-1. **设备名被文本拼进 bash 脚本**（F50）——设备来源一旦不是硬编码字面量，就是命令注入面；
+1. **设备名被文本拼进 bash 脚本**（F50）——设备来源一旦不是硬编码字面量就是注入面；
 2. **macOS 硬件端口名常含空格**（`USB 10/100/1000 LAN`），脚本里 `$1` 未加引号会被词法分割——**这条今天就是坏的**，只是 `Wi-Fi` 这种单词端口把它盖住了；
 3. **读路径不看退出码**（F41），非零退出 + 空 stdout 塌缩成 `Ok(None)`。
 
 ```rust
-// LocalMacosDns::write 的形状
 Command::new("networksetup")
-    .env("LC_ALL", "C")                 // 见 §7.3：文案匹配要求可复现的 locale
+    .env("LC_ALL", "C")          // §7.4：文案匹配要求可复现 locale
     .arg("-setdnsservers")
-    .arg(device)                        // 直接 argv，不经 shell
-    .args(dns_args)                     // 多个服务器 = 多个 argv；无 DNS 时是单个 "Empty"
+    .arg(&target.0)              // 直接 argv，不经 shell
+    .args(dns_args)              // 多服务器 = 多 argv；无 DNS 时单个 "Empty"
     .kill_on_drop(true)
     .output().await?;
 // 然后**检查 output.status**
 ```
 
-> **注意 `$2` 是「本该」被词法分割的**（多个 DNS 服务器要变成多个参数）——所以「两边都加引号」是错的修法，**直接 argv 才是对的**。
+> `$2` 是**本该**被词法分割的（多个 DNS 服务器要变成多个参数），所以「两边都加引号」是错的修法，**直接 argv 才是对的**。
 
-**这条比复用上游更短**：省掉临时目录、临时文件、`include_str!` 替换、`osascript` 包一层；同时消灭注入面、修好空格、并且**白拿到四态读所需的退出码**。**无需上游改动。**
+**这条比复用上游更短**：省掉临时目录、临时文件、`include_str!` 替换、`osascript` 包一层；同时消灭注入面、修好空格、**白拿到四态读所需的退出码**。**无需上游改动。**
 
-**权限（裁决点名要求确立而非假设，见 F53/F54）：**
+**权限（F53/F54/F63）：**
 
-- `networksetup` 的写操作**至少需要 admin 组身份**；系统若开启「Require an administrator password to access system-wide preferences」，则需要 root。
-- **`osascript` 那一跳不提权**（F46/F54），所以去掉它**不改变**权限语义——新旧两种形态在非 admin 账户上都会失败。
-- **写被拒绝时的行为**：`output.status` 非零 → `Err(DnsPortError::Io(..))` → 走 §4.4/§4.5 的失败分岔（拆除失败：uninstall 中止、其余降级；施加失败：`SetTunDns` 返回 `Err`，**不建立守卫**）。**关键是它第一次变得可见**——见 §10 那条风险。
-- **设计对「到底要不要 root」这个问题不敏感——这是有意的。** F53 已确立「至少要 admin 组」，但**具体账户是否在 admin 组、系统是否开了那个安全选项，是运行期事实，规划期确立不了**。两种情形下本设计的行为**完全相同**：
-  - **不需要提权（账户是 admin、选项关闭）** → 写成功 → 回读校验通过 → 守卫建立。
-  - **需要而没有（账户非 admin，或选项开启）** → `output.status` 非零 → `Err` → 上面那条失败分岔 → **degradation 里带上 stderr**。
-- **明确不做「权限预检」**：预检会引入第二个真相来源，它可以和真实写入结果不一致（预检说行、写仍然失败，或反之）。**唯一判据是那次真实写入的退出码。** 这也是 §4.8 四态①存在的理由。
+- 写至少需要 admin 组身份；系统开启那个安全选项则需 root。
+- **`osascript` 那一跳不提权**（F46/F54），去掉它**不改变**权限语义。
+- **读是否需要权限未确立（F63）**，man page 那句只谈 change。**不假设。**
+- **设计对两个答案都不敏感**：任何写或读被拒绝 → 非零退出 → `Err` → 走既定失败分岔。
+- **明确不做权限预检**：预检是第二个真相来源，可以和真实调用结果不一致。**唯一判据是那次真实调用的退出码。**
 
 ### 4.7 写回读回校验
 
 **(a) 必须是语义比较**：解析成 `IpAddr` 后比较**集合**（忽略顺序与重复），解析失败即视为不一致。**做不到语义比较就不要做这个校验**——文本比较会产生**假失败**，那比不校验更糟：会把成功的操作报成失败，然后有人为了让它绿而删掉校验。
 
-**(b) 失败进 degradation，不静默**；且测试**必须走真实适配器的校验路径**——测的是「**回读比对真的会发现不一致**」，不是「适配器会传播 `Err`」。
+**(b) 失败进 degradation，不静默**；测试**必须走真实适配器的比较逻辑**。
 
-**(c) 回读失败 ≠ 写失败**：写返回 `Ok` 但回读不通过时，DNS **可能已经变了**，所以守卫**保持 active**、`unverified = true`（§4.2 第 1 问）。
+**(c) 回读失败 ≠ 写失败**：见 §4.2 的四步，守卫保留、`unverified` 维持。
 
-**TOCTOU 不在范围**：本校验的语义是「**我们的写有没有生效**」，并发的外部变更不属于它要回答的问题。
+**TOCTOU 不在范围**：本校验回答的是「**我们的写有没有生效**」，并发的外部变更不属于它。
 
 ### 4.8 读实现必须分四态
 
-> **「没有配置 DNS」必须被正向识别，不能从「输出空 / 解析不了」推断。** `networksetup -getdnsservers` 在无 DNS 时输出的是**一句可识别的文字**，不是空串——**正是「把不可解析当成 `None`」这一步制造了原来的 bug**（F41）。
+> **「没有配置 DNS」必须被正向识别，不能从「输出空 / 解析不了」推断。** **正是「把不可解析当成 `None`」这一步制造了原来的 bug**（F41）。
 
 | #   | 条件                          | 结果                       |
 | --- | ----------------------------- | -------------------------- |
@@ -646,197 +696,269 @@ Command::new("networksetup")
 | 3   | 输出解析出 IP 列表            | `Ok(Some(..))`             |
 | 4   | **以上都不是**                | **`Err`**，**不是 `None`** |
 
-**第 4 条是关键：不认识的输出是错误，不是「没有」。** 四态各配一条断言（T-DNS-08…11）。
+**第 4 条是关键：不认识的输出是错误，不是「没有」。**
 
-**第 2 条的字面串在规划期未能确立（F55）——处置见 §7.3，不许拍。**
+#### 分支②的匹配串从哪来（**F55：规划期未能确立**）
+
+审查者指出：删掉 T-DNS-09 只是去掉一条空转测试，**没有回答生产代码里那个匹配串从哪来**。答案分两种情形，**都要写进 Exit**：
+
+| 情形                   | 分支②怎么实现                                                                                                                                                                                                       | 后果                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **能拿到真机**（首选） | 用**新调用形态**（直调 `networksetup`、`LC_ALL=C`）捕获真实输出，存为 fixture 并记 provenance（macOS 版本、locale、完整命令行）；生产匹配器**独立于** fixture 文件（不 `include_str!` 同一份），T-DNS-09 读 fixture | 四态完整，验证可用                                                                                                                                                                           |
+| **拿不到真机**         | **分支②不实现**——匹配失败即落分支④ `Err`。**不许拍一个字面串**：生产与测试共用臆造常量 = 自证                                                                                                                       | **「原值本就是 `None`」的恢复将恒为 `unverified`**：读不出「无 DNS」，就无法证实恢复到位。守卫保留、每次报降级。**安全但吵**，且 §11 必须点名「四态②未实现、restore-to-None 无法验证（R6）」 |
+
+> **不得用第三条路**（拍一个看起来对的串）。那会让 T-DNS-09 与生产共享同一个臆造事实，**测试通过恰好证明不了任何事**，而失败模式是静默的：真机上匹配不中 → 落④ → 读失败 → 与「没实现」同样吵，但我们**以为**自己实现了。
+
+### 4.9 `Shutdown` 的静默期协议
+
+> **不把 `Shutdown` 变成守卫消息。** 那是诱人但错误的修法：**关停必须能在一个操作卡住时仍然生效**，否则一次挂死的控制操作会让 app 关不掉。
+
+**问题的确切形状**（已核实）：facade 的控制序列在**外部**持有许可，而 `CoreClient::shutdown()` 发的是**无守卫**的 `Shutdown`（`client/core.rs:277-283`），actor 立即 `state.operation.shutdown()` 清掉活跃操作（`mod.rs:604`）。于是：
+
+1. `start_service` 取得守卫、拆完 DNS；
+2. `Shutdown` 插进来，清门、恢复 DNS、关后端、回复、停 actor；
+3. 原持有者继续执行**外部** `start`/`install`/`restart`/`update` 命令；
+4. 它随后的 `reconcile_with` 因 actor 已不在而失败。
+
+**OS 服务因此可能在「已经 await 过的关停」之后被启动或替换，而没有任何 actor 还能收敛它。** `operation.shutdown()` 只能作废**后续 actor 消息**，**管不了一个已经在跑的 facade future 及其下一条外部命令**。
+
+**协议放在 facade**（准入是 facade 概念；F58 显示 `NyanpasuClient::shutdown()` 已是有序多步，F60 给了现成范式）：
+
+```rust
+// NyanpasuClient 新增字段
+struct ControlAdmission {
+    closed: AtomicBool,
+    /// 1 个许可，被整条控制序列持有（含外部命令）。与 actor 的 OperationGate 是
+    /// 两个不同作用域：gate 管 actor 消息，这个管 facade future。
+    inflight: Arc<tokio::sync::Semaphore>,
+}
+```
+
+```text
+NyanpasuClient::shutdown()：
+ ① rebuild.shutdown().await                      ← 既有第一步，不动
+ ② admission.close()                             ← 关准入：此后六个控制入口立即 Err(ShuttingDown)
+ ③ 有界等待在飞控制序列退出：
+      tokio::time::timeout(QUIESCE_BUDGET, admission.inflight.acquire()).await
+      超时 → warn + degradation `shutdown_quiesce_timeout`，继续 ④
+ ④ 恢复 DNS（await）                              ← 此时无控制序列在飞，且后端仍在
+ ⑤ core_client.shutdown().await                  ← 既有最后一步
+```
+
+**为什么需要与 `OperationGate` 并存的第二个机制**（否则就是重复造轮子）：`OperationGate` 的许可只约束 **actor 消息**；`Shutdown` 本身是无守卫消息且会**主动清空**活跃许可，所以 gate 在关停面前不提供任何排他性。`ControlAdmission` 约束的是 **facade future 的存续**，包括那条 actor 完全看不见的外部 OS 命令。**两者作用域不同，不是冗余。**
+
+**残留（如实记账，不谎称关闭）：**
+
+| 残留   | 形状                                                           | 为什么不能消除                                                                                            |
+| ------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **R4** | ③ 超时后，被放弃的控制序列**仍可能**在关停之后完成它的外部命令 | 外部命令是 `runas`/`sudo` 起的**特权子进程**，在 `spawn_blocking` 里跑，**无法取消**。只能有界等待 + 记账 |
+| **R5** | ② 与「紧贴命令前的 `check_open()`」之间是 TOCTOU               | 检查与使用之间永远有窗口。**从「无限期」缩到「一次检查到一次 spawn」**，不是消除                          |
 
 ---
 
 ## 5. 五条已知问题的最终去向
 
-| #   | 问题                                   | v3 去向                                                                                      |
-| --- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
-| #2  | C2 不可线性化                          | §3.5（三个签名、无 `IpcState` 参数、`rg` 门禁钉住探针位置）+ §3.4（有界等待）                |
-| #3  | `health_check` 的警告职责没人接手      | §3.3（**两个**接手方：不兼容警告 + 探针失败可观测性）                                        |
-| #4  | 拆 DNS 的守卫跨度与 `reconcile()` 死锁 | §3.5（`reconcile_with` 避免递归取守卫）+ **§4.3（守卫本身挡不住并发消息，靠准入规则 A/B2）** |
-| #5  | 读路径不检查退出码                     | §4.6（自己实现）+ §4.8（四态）                                                               |
-| #6  | 适配器接线不全                         | **§4.1 / §4.2 全部写完，v2 的「待设计」已消除**                                              |
+| #   | 问题                                   | 去向                                                                                      |
+| --- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
+| #2  | C2 不可线性化                          | §3.6（三个签名、无 `IpcState` 参数、`rg` 门禁）+ §3.4（有界等待）+ **§4.9（关停静默期）** |
+| #3  | `health_check` 的警告职责没人接手      | §3.3（**合取式复现**，覆盖三种 compat + 探针失败 + 就绪轮询期观察）                       |
+| #4  | 拆 DNS 的守卫跨度与 `reconcile()` 死锁 | §3.6（避免递归取守卫）+ §4.3（守卫挡不住并发消息，靠准入 A/B2）                           |
+| #5  | 读路径不检查退出码                     | §4.6（自己实现）+ §4.8（四态 + 分支②来源）                                                |
+| #6  | 适配器接线不全                         | §4.1 / §4.2 全部写完                                                                      |
 
-**#5 的两个被否方案**（保留原裁定）：
+**#5 的两个被否方案**：
 
 | 方案                               | 为什么否                                                                                                                        |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | (b) 只在 `expected != None` 时校验 | **`None` 正是关 TUN 的主路径，也正是泄漏场景本身。** 一个「在最需要它的地方主动关闭」的校验**比没有校验更糟**——它给出覆盖的假象 |
-| (c) 哨兵区分                       | 多一次写入、多一个中间态，且**哨兵自身的写入同样不可验证**——把问题往后推一格                                                    |
+| (c) 哨兵区分                       | 多一次写入、多一个中间态，且**哨兵自身的写入同样不可验证**                                                                      |
 
 ---
 
-## 6. 定序保证表（**每条「X 之后 Y 一定已发生」都点名机制**）
+## 6. 定序保证表
 
-> **本表不允许带着「提案中」进实施。** 新增行同样必须在定稿前变成「已裁定」或被删掉。
-
-| 断言                                                               | **靠什么构造保证**                                                                                                        | 锚点                                                                   | 测试                   |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------- |
-| 两次控制动作的模式结论不交错                                       | `OperationGate` FIFO + **三步全在同一守卫内**                                                                             | `gate.rs:73-83`                                                        | T-MODE-03              |
-| **控制动作 → probe → reconcile 三步不可拆**                        | `reconcile_with(&guard)` **没有 `IpcState` 参数**，调用方无法喂陈旧结果；`rg` 门禁钉死 `.probe()` 只有三处                | §3.5                                                                   | T-MODE-03              |
-| **bootstrap 的守卫外探针是安全的**                                 | 它执行于 `CoreClient::new` **之前**，actor 尚不存在 → 无并发对象、无守卫可取                                              | `client/mod.rs:303` vs `:312`（同一 `async move` 块，源码顺序）        | T-PROBE-02             |
-| 恢复发生在后端动作与 reply 之前                                    | actor 处理器内的 `await` 点（源码顺序）                                                                                   | §2.2                                                                   | T-DNS-02/03            |
-| 拆 DNS 发生在**六个**服务控制动作之前                              | 同一守卫内的调用点顺序                                                                                                    | §4.4                                                                   | T-DNS-05/06/17/18      |
-| **`Shutdown` 后不再有 `SetTunDns` 生效**                           | `state.operation.shutdown()` 清 `active` → `validate_operation` 恒 `StaleOperation`；且 `backend.take()` → `ShuttingDown` | `mod.rs:604,606`；`gate.rs:55-60`                                      | T-DNS-07               |
-| **`Stop` 先拿到许可时，晚到的 `SetTunDns(Some)` 失败**             | **准入检查 `state.running.is_some()`**（FIFO 挡不住它）                                                                   | `mod.rs:532`（`Stop` 置 `None`）                                       | **T-DNS-13**           |
-| **`SetTunDns` 先拿到许可时，`Stop` 在其后恢复**                    | `OperationGate` FIFO                                                                                                      | `gate.rs:73-83`                                                        | **T-DNS-12**           |
-| **写 → 回读校验**                                                  | 处理器内 `write().await` 之后**紧跟** `read().await` 的源码顺序；回读不过 → `unverified = true`、守卫不清                 | §4.7                                                                   | T-DNS-04、**T-DNS-19** |
-| **`SetBackend` 前用「旧」适配器恢复**                              | 恢复调用位于 `state.replace_backend(mode)` **之前**，且按 `DnsOverride.backend` 选适配器（不按 `state.mode`）             | `mod.rs:282`（`mode` 在 `replace_backend` 内才改）                     | **T-DNS-16**           |
-| **切换成功后若仍需 TUN，在 `Run` 之后重新施加**                    | 准入规则 B2：`SetBackend` 与 `Run` 之间 `state.running` 是 `None`，此时的 `SetTunDns(Some)` 会被 `CoreNotRunning` 拒      | `mod.rs:268`（`replace_backend` 置 `None`）、`:514`（`Run` 置 `Some`） | **T-DNS-15**           |
-| **update 之后：要么观察到兼容的 Service，要么以 Local 收敛并降级** | 有界等待 + `tokio::time::timeout` 的**丢弃即取消**；超时分支 `force_local_with(&guard)`                                   | §3.4                                                                   | T-MODE-04/05           |
-| 任何时刻只有一个模式生产者                                         | S-a 同步停掉轮询派发                                                                                                      | §3.7                                                                   | `rg` 判据（§11）       |
-
-> **上一行在 v2 里写的是「update 之后模式反映的是 v2 daemon」——那在超时分支上是假的**（裁决 §9 点名）。已改成上表的措辞。
+| 断言                                                                                             | **靠什么构造保证**                                                                                                             | 锚点                                             | 测试                        |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ | --------------------------- |
+| 两次控制动作的模式结论不交错                                                                     | `OperationGate` FIFO + 三步同守卫                                                                                              | `gate.rs:73-83`                                  | T-MODE-03                   |
+| 控制动作 → probe → reconcile 三步不可拆                                                          | `reconcile_with(&guard)` **无 `IpcState` 参数**；`rg` 门禁钉死 `.probe()` 三处                                                 | §3.6                                             | T-MODE-03                   |
+| bootstrap 的守卫外探针安全                                                                       | 执行于 `CoreClient::new` **之前**，actor 尚不存在                                                                              | `client/mod.rs:303` vs `:312`                    | T-PROBE-02                  |
+| **探针必然在有限时间内返回**                                                                     | **`OsServiceProbe::probe` 内部的 `timeout` + `kill_on_drop`**，不是「每个调用方记得包一层」                                    | §3.1                                             | **T-PROBE-06**              |
+| **控制失败时仍然 reconcile，且控制错误优先返回**                                                 | §3.5 处置表的源码顺序（reconcile 在前、`control?` 在后），与基线 F61 同形                                                      | `client/mod.rs:512-538`                          | **T-CTL-01…04**             |
+| 恢复发生在后端动作与 reply 之前                                                                  | 处理器内的 `await` 点（源码顺序）                                                                                              | §2.2                                             | T-DNS-02/03                 |
+| 拆 DNS 发生在**六个**控制动作之前                                                                | 同一守卫内的调用点顺序                                                                                                         | §4.4                                             | T-DNS-05/06/17/18/**26/27** |
+| **`Shutdown` 不会越过在飞的控制序列**                                                            | **`ControlAdmission`：关准入 → 有界 drain → 才恢复 DNS 并停后端**；控制入口在外部命令前再查一次                                | §4.9                                             | **T-SD-01/02**              |
+| `Shutdown` 后不再有 `SetTunDns` 生效                                                             | `operation.shutdown()` 清 `active` → 恒 `StaleOperation`；`backend.take()` → `ShuttingDown`                                    | `mod.rs:604,606`；`gate.rs:55-60`                | T-DNS-07                    |
+| `Stop` 先拿到许可时晚到的 `SetTunDns(Some)` 失败                                                 | 准入检查 `state.running.is_some()`（FIFO 挡不住）                                                                              | `mod.rs:532`；**另见 F57 第二清除点 `:224-227`** | T-DNS-13                    |
+| `SetTunDns` 先拿到许可时 `Stop` 在其后恢复                                                       | `OperationGate` FIFO                                                                                                           | `gate.rs:73-83`                                  | T-DNS-12                    |
+| **写之前先记账**（`Err` 不代表没生效）                                                           | 处理器内 `state.dns = Some(..)` **早于** `write()` 的源码顺序                                                                  | §4.2 四步                                        | **T-DNS-19/28**             |
+| 写 → 回读消歧                                                                                    | `write()` 之后紧跟 `read()` 的源码顺序                                                                                         | §4.2 ④                                           | T-DNS-04/19                 |
+| **守卫只在验证过的恢复之后才清**                                                                 | `state.dns = None` 只出现在「回读集合相等」那一条分支上                                                                        | §4.2 问题 2                                      | **T-DNS-20**                |
+| **设备变更时先恢复旧设备再取新快照**                                                             | `SetTunDns(Some)` 开头 `read_default()` 与 `override.target` 比对的分支                                                        | §4.2 问题 4                                      | **T-DNS-23**                |
+| **恢复穷尽候选适配器后才中止 `SetBackend`**                                                      | §4.5 候选序列的循环 + 全失败才 `Err(DnsRestoreFailed)`                                                                         | §4.5                                             | **T-DNS-24/29**             |
+| 切换成功后若仍需 TUN，在 `Run` 之后重新施加                                                      | **`CoreModeReconciler` 持守卫期间四步的源码顺序**（`CoreNotRunning` 只是防插队的安全网，**不构成「后面一定还有一次」的保证**） | §4.5                                             | **T-DNS-15**                |
+| update 之后：**要么观察到兼容 Service，要么以 Local 收敛并降级；若降级动作本身失败则返回 `Err`** | 有界等待 + `force_local_with`；**该调用也可能失败**，落 §3.5 第 5 行                                                           | §3.4 / §3.5                                      | T-MODE-04/05、**T-CTL-03**  |
+| 任何时刻只有一个模式生产者                                                                       | S-a 同步停掉轮询派发                                                                                                           | §3.8                                             | `rg` 判据（§11）            |
 
 ---
 
 ## 7. 测试矩阵
 
 > **第三列是断言**：删掉那行生产代码，这条测试真的会红吗？**填不出第三列的测试不进矩阵。**
+>
+> **注意 F57 类陷阱**：某些状态有**多个**写入点，删掉其中一个另一个仍会生效，测试照绿。第三列必须点到**唯一**的那一行，或改用行为级构造。
 
 ### 7.1 C2
 
-| ID             | 断言                                                                                                                            | **删掉哪行会让它红**                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| T-PROBE-01     | 兼容门 fail-closed：daemon 在跑但不放行 → 探针返回 `Disconnected`                                                               | 探针里调 `target_ipc_state()` 的那行                                            |
-| T-PROBE-02     | **bootstrap 用探针真值而非 `Disconnected` 默认**（修 F35）                                                                      | `client/mod.rs:303` 的 `probe().await` 调用行                                   |
-| T-PROBE-03     | 不兼容时**发出警告**（smoke 2 要求）                                                                                            | `reconcile_with` 内 `classify` 之前的 `tracing::warn!` 行                       |
-| **T-PROBE-04** | **探针失败时发出 degradation `service_probe_failed`**，而不是静默变 Local                                                       | `reconcile_with` 内处理 `Option<anyhow::Error>` 的 `degradation.publish(..)` 行 |
-| T-MODE-01      | 关闭 `enable_service_mode` → 得 `Normal` 并 `set_backend`                                                                       | `request.rs:82-85` 删掉提前返回、送真值进 `classify` 那行                       |
-| T-MODE-02      | **六个**控制动作后各探测一次——**逐条独立断言，不合并**                                                                          | 各自 facade 方法里的 `reconcile_with(&guard)` 行                                |
-| T-MODE-03      | **#2 的竞态**：start→stop 序列下终态为 `Normal`，晚到的 probe 不翻转                                                            | `reconcile_with` 的 `guard` 参数（去掉守卫跨度即红）                            |
-| **T-MODE-04**  | **有界等待成功路径**：脚本化探针在第 N 次返回兼容 → 得 `Service`，无降级                                                        | `await_service_ready` 的循环体                                                  |
-| **T-MODE-05**  | **永不返回的探针**：在 `READY_BUDGET` 的小倍数内返回，且结果是 **Local + `service_update_not_ready` 降级**，控制动作本身仍 `Ok` | `tokio::time::timeout(..)` 那行（改成裸 `.await` 即挂死超时）                   |
+| ID             | 断言                                                                                                         | **删掉哪行会让它红**                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| T-PROBE-01     | 兼容门 fail-closed：daemon 在跑但不放行 → 探针 `Disconnected`                                                | 探针里调 `target_ipc_state()` 那行                                                    |
+| T-PROBE-02     | bootstrap 用探针真值而非 `Disconnected` 默认（修 F35）                                                       | `client/mod.rs:303` 的 `probe().await`                                                |
+| T-PROBE-03     | **Running + `Unparsable` 也告警**（不只 `Incompatible`）                                                     | 警告条件里的 `!compat.allows_service_backend()`（改成 `matches!(Incompatible)` 即红） |
+| **T-PROBE-05** | **Running + `Unknown`（有 status 无 server）告警；Stopped + `Unknown` 不告警**                               | `ProbeOutcome.daemon_status` 字段本身（去掉它两种 `Unknown` 就分不开，必红）          |
+| T-PROBE-04     | 探针失败发出 `service_probe_failed` 降级                                                                     | 处理 `error` 的 `degradation.publish(..)` 行                                          |
+| **T-PROBE-06** | **挂死的 `status` 在 `PER_PROBE_BUDGET` 内返回**（不靠调用方包 timeout）                                     | `OsServiceProbe::probe` 里的 `tokio::time::timeout(..)`                               |
+| T-MODE-01      | 关闭 `enable_service_mode` → 得 `Normal` 并 `set_backend`                                                    | `request.rs:82-85` 删提前返回后送真值那行                                             |
+| T-MODE-02      | 六个控制动作后**各自**触发 probe+reconcile——逐条独立断言。**断言「至少一次」而非「恰好一次」**               | 各自 facade 方法里的 `reconcile_with(&guard)`                                         |
+| T-MODE-03      | start→stop 序列下终态 `Normal`，晚到 probe 不翻转                                                            | `reconcile_with` 的 `guard` 参数                                                      |
+| T-MODE-04      | 有界等待成功路径：脚本探针第 N 次兼容 → `Service`，无降级                                                    | `await_service_ready` 循环体                                                          |
+| T-MODE-05      | **永不返回的探针**：在 `READY_BUDGET` 小倍数内返回，结果 Local + `service_update_not_ready`，控制动作仍 `Ok` | `OsServiceProbe::probe` 的 timeout（与 T-PROBE-06 同源）                              |
 
-### 7.2 C3 —— 生命周期与并发
+> **T-MODE-02 的「恰好一次」是 v3 的错**（审查者纠正）：正确的 update 路径会在 `await_service_ready` 内探针，**随后 `reconcile_with` 里还要再探一次**——即便立即就绪也至少两次。断言改为「至少一次，且 reconcile 用的是守卫内那次的结果」。
 
-| ID           | 断言                                                                                                                                              | **删掉哪行会让它红**                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| T-DNS-01     | `SetTunDns{Some}` → 适配器 `write` 被调，guard 记为 active                                                                                        | 处理器里 `port.write()` 那行                                                             |
-| T-DNS-02     | **顺序**：`Stop` 时恢复在 `backend.stop()` **之前**                                                                                               | `Stop` 臂里 `restore().await` 早于 `backend.stop()` 那行（对调即红）                     |
-| T-DNS-03     | **顺序**：`Shutdown` 时恢复在后端动作与 **reply** 之前                                                                                            | `Shutdown` 臂的 `restore().await` 行                                                     |
-| T-DNS-04     | **回读比对真的会发现不一致**（走真实适配器的比较逻辑）                                                                                            | 适配器里集合比较那行                                                                     |
-| T-DNS-05     | Service **stop**：拆 DNS 在 `stop()` 之前                                                                                                         | facade `stop_service` 里的拆 DNS 行                                                      |
-| T-DNS-06     | Service **uninstall**：同上顺序 + **失败时中止卸载**                                                                                              | facade `uninstall_service` 里的拆 DNS 行与中止分支                                       |
-| T-DNS-07     | `Shutdown` 后到达的 `SetTunDns` → `Err(ShuttingDown)` 而非静默丢弃                                                                                | `Shutdown` 臂的 `state.operation.shutdown()` 行                                          |
-| **T-DNS-12** | **`SetTunDns` 先取得许可** → `Stop` 在其之后恢复                                                                                                  | `Stop` 臂的 `restore().await` 行                                                         |
-| **T-DNS-13** | **`Stop` 先取得许可** → 后到的、持新守卫的 `SetTunDns(Some)` → `Err(CoreNotRunning)`                                                              | **`state.running.is_some()` 准入检查那行**（删掉即变成「成功建立一个背后没有核的覆写」） |
-| **T-DNS-14** | `ServiceMacosDns::write(Device(_), ..)` → `Err(TargetNotAddressable)`，**不是静默成功**                                                           | `ServiceMacosDns::write` 里的 target 匹配分支                                            |
-| **T-DNS-15** | `SetBackend` 成功且 TUN 仍开 → **`Run` 之后**用**新**适配器重新施加；且 `SetBackend` 与 `Run` 之间发出的 `SetTunDns(Some)` 被 `CoreNotRunning` 拒 | `replace_backend` 的 `self.running = None`（`mod.rs:268`）+ 准入检查行                   |
-| **T-DNS-16** | `SetBackend` 的恢复用 **`DnsOverride.backend` 记录的**适配器，不是 `state.mode`                                                                   | 适配器选择处读 `override.backend` 那行（改成读 `state.mode` 即红）                       |
-| **T-DNS-19** | **写成功 + 回读失败** → 守卫**仍 active**、`unverified = true`、返回 `AppliedUnverified` + 降级                                                   | 回读失败分支里「不清守卫」那段（改成 `state.dns = None` 即红）                           |
-| **T-DNS-20** | **恢复的回读校验失败** → 守卫**不清**                                                                                                             | `state.dns = None` 前的校验条件那行                                                      |
-| **T-DNS-21** | 重复 `SetTunDns(Some(a))` → `SetTunDns(Some(b))` → 恢复得到**最初**的原值，不是 `a`                                                               | 「已有覆写则不重新快照」那行                                                             |
-| **T-DNS-22** | 原值为 `None` 的活跃覆写，与「无覆写」可区分：前者 `Stop` 时**会**调一次 `write(.., None)`，后者不调                                              | 两层 `Option` 的外层判断行                                                               |
-| **T-DNS-23** | 设备变更：`Device(a)` 活跃时 `read_default()` 返回 `Device(b)` → 先 `write(Device(a), previous)` 再对 `b` 取快照                                  | target 比较那行                                                                          |
-| **T-DNS-24** | `SetBackend` 前恢复失败 → **不调 `replace_backend`**，返回 `Err(DnsRestoreFailed)`，`state.dns` 保留                                              | 中止分支的 `return` 行                                                                   |
-| **T-DNS-17** | **restart**：拆 DNS 在 `restart()` 之前                                                                                                           | facade `restart_service` 里的拆 DNS 行                                                   |
-| **T-DNS-18** | **update**：拆 DNS 在 `update()` 之前                                                                                                             | facade `update_service` 里的拆 DNS 行                                                    |
-| **T-DNS-25** | `Drop` 时若守卫仍 active → **记 `tracing::error!` 且不发起任何恢复**（断言适配器**零调用**）                                                      | `Drop` 里的 `tracing::error!` 行；反向断言钉住「不恢复」                                 |
+### 7.2 控制失败处置（§3.5 新增）
 
-> **T-DNS-05/06/17/18 不合并。** 它们是四个独立调用点，合并测则删掉其中一处另一处仍绿。
+| ID           | 断言                                                                          | **删掉哪行会让它红**                                            |
+| ------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **T-CTL-01** | 控制 `Err` + reconcile `Ok` → 返回**控制的** `Err`，且 reconcile **确实跑过** | `reconcile_with` 调用行位于 `control?` **之前**（改成早退即红） |
+| **T-CTL-02** | 控制 `Err` + reconcile `Err` → 返回**控制的** `Err`，reconcile 失败进降级     | 错误优先级那行（返回 reconcile 的 `Err` 即红）                  |
+| **T-CTL-03** | 控制 `Ok` + 就绪超时 + `force_local_with` **失败** → 返回 `Err` + 两条降级    | §3.5 第 5 行的失败分支                                          |
+| **T-CTL-04** | 控制 `Err`（update）→ **跳过**就绪等待（断言 `await_service_ready` 零调用）   | 就绪等待外层的 `result.is_ok()` 条件                            |
 
-### 7.3 C3 —— 四态读（**裁决 §9 点名要修的两条**）
+### 7.3 C3 —— 生命周期与并发
 
-| ID       | 断言                                                                                                              | **删掉哪行会让它红**                        |
-| -------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| T-DNS-08 | 四态①：**退出码非零 → `Err`**。**fixture 必须是「非零退出码 **+** 可解析的 IP 输出」**（例如 `8.8.8.8\n1.1.1.1`） | 读实现里 `if !output.status.success()` 那行 |
-| T-DNS-09 | 四态②：**「无 DNS 服务器」那句 → `Ok(None)`**——正向识别，不靠空串推断                                             | 匹配该文案那行                              |
-| T-DNS-10 | 四态③：正常输出 → `Ok(Some(..))`                                                                                  | 解析 IP 列表那行                            |
-| T-DNS-11 | 四态④：**不认识的输出 → `Err`，不是 `None`**——**这条最关键**，它正是原 bug 的形状                                 | 兜底分支那行（改成返回 `None` 即红）        |
+| ID           | 断言                                                                                                                    | **删掉哪行会让它红**                                                                                                                                         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T-DNS-01     | `SetTunDns{Some}` → 适配器 `write` 被调，guard 记为 active                                                              | 处理器里 `port.write()`                                                                                                                                      |
+| T-DNS-02     | **顺序**：`Stop` 时恢复在 `backend.stop()` **之前**                                                                     | `Stop` 臂 `restore().await` 早于 `backend.stop()`（对调即红）                                                                                                |
+| T-DNS-03     | **顺序**：`Shutdown` 时恢复在后端动作与 **reply** 之前                                                                  | `Shutdown` 臂的 `restore().await`                                                                                                                            |
+| T-DNS-04     | 回读比对真的会发现不一致（走真实比较逻辑）                                                                              | 适配器里集合比较那行                                                                                                                                         |
+| T-DNS-05     | **stop**：拆 DNS 在 `stop()` 之前                                                                                       | facade `stop_service` 的拆 DNS 行                                                                                                                            |
+| T-DNS-06     | **uninstall**：同上顺序 + **失败时中止卸载**（断言 uninstall **未被调用**）                                             | `uninstall_service` 的拆 DNS 行与中止分支                                                                                                                    |
+| T-DNS-17     | **restart**：拆 DNS 在 `restart()` 之前                                                                                 | facade `restart_service` 的拆 DNS 行                                                                                                                         |
+| T-DNS-18     | **update**：拆 DNS 在 `update()` 之前                                                                                   | facade `update_service` 的拆 DNS 行                                                                                                                          |
+| **T-DNS-26** | **install**：拆 DNS 在 `install()` 之前                                                                                 | facade `install_service` 的拆 DNS 行                                                                                                                         |
+| **T-DNS-27** | **start**：拆 DNS 在 `start()` 之前                                                                                     | facade `start_service` 的拆 DNS 行                                                                                                                           |
+| T-DNS-07     | **`Shutdown` 把等待中的取门请求全部以 `ShuttingDown` 排空**                                                             | **`gate.rs:57-59` 的 `waiters.drain(..)` 循环**（删掉即：等待者永远收不到回复，测试挂起/超时）                                                               |
+| T-DNS-12     | `SetTunDns` 先取得许可 → `Stop` 在其后恢复                                                                              | `Stop` 臂的 `restore().await`                                                                                                                                |
+| T-DNS-13     | `Stop` 先取得许可 → 后到的持新守卫的 `SetTunDns(Some)` → `Err(CoreNotRunning)`                                          | **`SetTunDns` 臂里的 `state.running.is_some()` 准入检查**（不能点 `Stop` 里的赋值，F57 有第二清除点）                                                        |
+| **T-DNS-14** | `ServiceMacosDns::write` 在默认设备漂移时 → `Err(TargetDrifted)`，**且未发出 IPC**                                      | 写前的设备比对分支                                                                                                                                           |
+| T-DNS-15     | `SetBackend` 成功且 TUN 仍开 → **`Run` 之后**用**新**适配器重新施加                                                     | **`CoreModeReconciler` 里第四步 `SetTunDns(Some(..))` 那一行**（删掉即无人重新施加；不再点 `replace_backend` 的 `running = None`，F57 表明那行删掉也不会红） |
+| **T-DNS-16** | **恢复按「够得着」选适配器**：Service 期建立的覆写，在 mode 已收敛 Local、IPC 通道不可用时，**经 Local 适配器成功恢复** | §4.5 候选序列里的 Local 回退项（删掉即 `DnsRestoreFailed`）                                                                                                  |
+| T-DNS-19     | **写返回 `Err` 但回读显示 desired 已生效** → 守卫**保留**、`unverified`、报降级                                         | **`state.dns = Some(..)` 早于 `write()` 的源码顺序**（把记账挪到写成功之后即红）                                                                             |
+| **T-DNS-28** | **写返回 `Err` 且回读显示仍是 previous** → **移除**守卫并返回 `Err`（不留假守卫）                                       | 回读消歧的 `== previous` 分支                                                                                                                                |
+| T-DNS-20     | 恢复的回读校验失败 → 守卫**不清**                                                                                       | `state.dns = None` 前的校验条件                                                                                                                              |
+| T-DNS-21     | 重复 `SetTunDns(Some(a))` → `SetTunDns(Some(b))` → 恢复得到**最初**原值                                                 | 「已有覆写则不重新快照」那行                                                                                                                                 |
+| T-DNS-22     | 原值为 `None` 的活跃覆写与「无覆写」可区分：前者 `Stop` 时**会**调一次 `write(.., None)`                                | 两层 `Option` 的外层判断行                                                                                                                                   |
+| T-DNS-23     | 设备变更：`Device(a)` 活跃时 `read_default()` 返回 `b` → 先 `write(a, previous)` 再对 `b` 取快照                        | target 比较那行                                                                                                                                              |
+| T-DNS-24     | **所有候选适配器都失败**时 `SetBackend` 中止：不调 `replace_backend`，返回 `Err(DnsRestoreFailed)`，`state.dns` 保留    | 中止分支的 `return`                                                                                                                                          |
+| **T-DNS-29** | **死锁全序列**：Service 拆除失败 → Stop 继续 → reconcile Local → `SetBackend` 经 Local **成功恢复**                     | §4.5 候选序列（回到 v3 的「按 `origin` 选」即红）                                                                                                            |
+| T-DNS-25     | `Drop` 时守卫仍 active → 记 `tracing::error!` 且**不发起任何恢复**（断言适配器零调用）                                  | `Drop` 里的 `tracing::error!` + 反向断言                                                                                                                     |
+| **T-SD-01**  | `Shutdown` 落在拆 DNS 之后、外部命令之前 → **外部命令不被调用**                                                         | 外部命令前的 `admission.check_open()?`                                                                                                                       |
+| **T-SD-02**  | 控制序列卡在外部命令里 → `shutdown` 在 `QUIESCE_BUDGET` 内返回 + `shutdown_quiesce_timeout` 降级                        | `tokio::time::timeout(QUIESCE_BUDGET, ..)`（改成裸 await 即挂死）                                                                                            |
 
-**T-DNS-08 为什么这么选 fixture**：v2 的版本可能**空转**——若非零退出的 fixture 带的是空/垃圾 stdout，删掉退出码检查之后仍会落进四态④的 `Err` 分支，测试照绿。换成「非零退出码 + 可解析 IP」之后，删掉退出码检查会让它返回 `Ok(Some(..))`，**由绿变错**。
+> **T-DNS-05/06/17/18/26/27 六条不合并**——六个独立调用点，合并测则删掉其中一处另一处仍绿。
 
-**T-DNS-09 的前置条件（F55：字面串在规划期未能确立）：**
+### 7.4 C3 —— 四态读
 
-1. **禁止**在生产与测试里共用一个臆造的字面常量——那样测试只证明「我们和自己一致」。
-2. fixture 必须是**真机捕获物**，提交到 `backend/tauri/src/core/actor/fixtures/macos-getdnsservers-none.txt`，并在同目录记录 provenance：**macOS 版本、`LC_ALL=C`、完整命令行**。
-3. **捕获必须用新的调用形态**（直调 `networksetup`），**不能用上游脚本**——上游 `echo $RES` 会把换行压成空格（F52），那是另一个生产者的输出。
-4. 生产侧的匹配器**独立于** fixture 文件（不用 `include_str!` 同一文件），测试读 fixture、生产读自己的匹配器；匹配器与现实一旦漂移，测试就红。
-5. `LC_ALL=C` **在生产代码里也要设**（§4.6），否则 fixture（在 `C` locale 下捕获）与生产（在用户 locale 下运行）不对应。
-6. **若实施期拿不到真机**：**T-DNS-09 直接删除，不许用臆造串顶替**；同时把「四态②未被测试覆盖」写进 §11 的 Exit 判据与 PR 描述。四态①③④不受影响。
+| ID       | 断言                                                                             | **删掉哪行会让它红**             |
+| -------- | -------------------------------------------------------------------------------- | -------------------------------- |
+| T-DNS-08 | 四态①：**退出码非零 → `Err`**。fixture 必须是「非零退出码 **+** 可解析 IP 输出」 | `if !output.status.success()`    |
+| T-DNS-09 | 四态②：「无 DNS 服务器」→ `Ok(None)`——**仅在拿到真机 fixture 时存在**（§4.8）    | 匹配该文案那行                   |
+| T-DNS-10 | 四态③：正常输出 → `Ok(Some(..))`                                                 | 解析 IP 列表那行                 |
+| T-DNS-11 | 四态④：**不认识的输出 → `Err`，不是 `None`**                                     | 兜底分支（改成返回 `None` 即红） |
 
-### 7.4 回归契约
+**T-DNS-08 的 fixture 选择理由**：若非零退出的 fixture 带空/垃圾 stdout，删掉退出码检查后仍会落四态④的 `Err`，测试照绿=空转。换成「非零退出 + 可解析 IP」后，删检查会返回 `Ok(Some(..))`，**由绿变错**。
+
+### 7.5 回归契约
 
 区分**存活测试被迫修改**（不允许，停下核查）与**被删模块自带单测随属主消失**（预期）。
 
-**已知必改：**
+**已知必改**：
 
-- `client/core.rs:1207-1214` `initial_watch_snapshot_matches_legacy_empty_status` → 断言注入 mode **并改名**为 `initial_watch_snapshot_reflects_the_injected_mode`（§2.1）。
-- `core/service/ipc.rs:140-187` 的两条 `target_ipc_state` 单测：`target_ipc_state` 本身不动，**测试随文件重整迁到 `core/service/probe.rs`**，断言不变。
+- `client/core.rs:1207-1214` `initial_watch_snapshot_matches_legacy_empty_status` → 断言注入 mode **并改名**为 `initial_watch_snapshot_reflects_the_injected_mode`。
+- `core/service/ipc.rs:140-187` 的两条 `target_ipc_state` 单测：函数不动，**测试随文件重整迁到 `core/service/probe.rs`**，断言不变。
 
 ---
 
 ## 8. 契约归属
 
-> **判别口诀**：签名能保证的只有**「值到得了这里」**（及其对偶「值到不了这里」）与**「类型在此平台不存在」**；凡「**不会去做某事**」一律靠测试 / 门禁 / `rg`，**且必须说得出怎么验**。
+> **口诀**：签名只能保证**「这个值到得了这里」**（及其对偶「到不了这里」）与**「这个类型在此平台不存在」**；凡「**不会去做某事**」一律靠测试 / 门禁 / `rg`。
+>
+> **v4 新增一条同源的**：**返回值的错误通道只报告调用的结果，不报告副作用的缺席**（§4.2）。
 
-| 契约                                       | 由谁保证                  | 为什么可验证                                                                                                    |
-| ------------------------------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 非 macOS 不存在 DNS 抽象                   | **cfg / 类型**            | 非 macOS 上**引用它编译不过**——真正的类型级保证                                                                 |
-| **调用方无法把陈旧探针结果喂给 reconcile** | **签名**                  | `reconcile` / `reconcile_with` **没有 `IpcState` 参数**——「这个值到不了这里」，是签名能给的那一类               |
-| **Service 端口拿到设备目标时不会静默忽略** | **返回值 + 测试**         | `Err(TargetNotAddressable)` 是可观测返回值，T-DNS-14 钉住。**不是签名保证**——签名只能说「它接一个 `DnsTarget`」 |
-| **任何探针都不在守卫外开始**               | **ledger / `rg` 门禁**    | `rg -n '\.probe\(\)'` 恒为三处且位置固定——**计数可数**。签名做不到                                              |
-| **`force_local_with` 只在超时分支用**      | **`rg` 门禁**             | 恰好一处调用点                                                                                                  |
-| DNS 路径选择不回头读全局                   | **ledger 门禁**           | `core/actor/dns.rs` 的 `Config::*()` / `::global()` 计数恒为 0                                                  |
-| 顺序类契约                                 | **测试**                  | 控制流性质，类型系统表达不了 → T-DNS-02/03/05/06/12/15/16/17/18                                                 |
-| **「核已停时不建立覆写」**                 | **运行时准入检查 + 测试** | `state.running.is_some()` 是可读字段，T-DNS-13 钉住                                                             |
-| `get_ipc_state` / statics 归零             | **`rg` 判据**             | 删除类不变量                                                                                                    |
+| 契约                                   | 由谁保证                      | 为什么可验证                                                                 |
+| -------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------- |
+| 非 macOS 不存在 DNS 抽象               | **cfg / 类型**                | 非 macOS 上引用它编译不过                                                    |
+| 调用方无法把陈旧探针结果喂给 reconcile | **签名**                      | `reconcile`/`reconcile_with` **没有 `IpcState` 参数**                        |
+| **探针必然在有限时间内返回**           | **实现内部的 `timeout`**      | 单点可验（T-PROBE-06）；**不是**「每个调用方都记得包一层」那种不可强制的契约 |
+| Service 写不会打到漂移后的设备         | **写前比对 + 返回值**         | `Err(TargetDrifted)` 可观测，T-DNS-14 钉住。**残余 TOCTOU 已记为 R1**        |
+| 任何探针都不在守卫外开始               | **ledger / `rg` 门禁**        | `rg -n '\.probe\(\)'` 恒三处且位置固定                                       |
+| `force_local_with` 只在超时分支用      | **`rg` 门禁**                 | 恰好一处调用点                                                               |
+| DNS 路径选择不回头读全局               | **ledger 门禁**               | `core/actor/dns.rs` 的 `Config::*()` / `::global()` 计数恒 0                 |
+| 顺序类契约                             | **测试**                      | 控制流性质，类型系统表达不了                                                 |
+| 「核已停时不建立覆写」                 | **运行时准入检查 + 测试**     | `state.running.is_some()` 可读，T-DNS-13 钉住                                |
+| **关停不会越过在飞控制序列**           | **`ControlAdmission` + 测试** | 有界 drain 可测（T-SD-02）；**R4/R5 两个残余已记账，不谎称关闭**             |
+| `get_ipc_state` / statics 归零         | **`rg` 判据**                 | 删除类不变量                                                                 |
 
 ---
 
 ## 9. 门禁
 
 1. **「diff 应为空」形态的判据，只要跑在中间提交之后，必须与基线比**：`git diff --exit-code <base>..HEAD -- <path>`；
-2. **ledger 三步顺序**：report 核对 → `--write-snapshot` → gate 比对。**顺序本身是判据的一部分**；
-3. **删模块要有「模块不存在」断言**，不能只查调用点归零（本阶段涉及 `core/service/mod.rs::init_service`、`core/service/ipc.rs` 的轮询部分）。
+2. **ledger 三步顺序**：report 核对 → `--write-snapshot` → gate 比对；
+3. **删模块要有「模块不存在」断言**（本阶段涉及 `core/service/mod.rs::init_service`、`ipc.rs` 的轮询部分）。
 
-**bindings 预期（v2 写的是「待定」，v3 定死）：**
+**bindings 预期：**
 
-| 变更                                                          | wire 影响                                                                                                        |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `uninstall_service` 从 `ipc.rs:936-937` 直调改为走 facade     | **命令名与签名都不变**（`uninstall_service() -> Result`），`frontend/interface/src/ipc/bindings.ts:233` **不动** |
-| `update_service` 调用点从 `utils/init/mod.rs:251` 迁到 facade | **不在命令面上**，无 wire 影响                                                                                   |
-| `SetTunDns` / `MacosDnsPort` / `ServiceProbe`                 | **全部 `pub(crate)`，不出现在命令面**                                                                            |
-| `set_mode` / `reconcile_mode`                                 | **不新增命令**——模式变更是六个既有服务控制命令的**内部**后果                                                     |
+| 变更                                                                                | wire 影响                                            |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `uninstall_service` 改走 facade                                                     | **命令名与签名不变**，`bindings.ts:233` 不动         |
+| `update_service` 调用点迁到 facade                                                  | 不在命令面上，无影响                                 |
+| `SetTunDns` / `MacosDnsPort` / `ServiceProbe` / `ProbeOutcome` / `ControlAdmission` | **全部 `pub(crate)`**，不出现在命令面                |
+| `set_mode` / `reconcile_mode`                                                       | **不新增命令**——模式变更是六个既有命令的**内部**后果 |
 
-**结论：本 PR 的 bindings diff 恰好为空。** 判据：`git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`（与 CI 的 `ci.yml:306-308` 同形）。**这是一条可证伪的预期，不是「待定」。**
+**结论：本 PR 的 bindings diff 恰好为空。** 判据：`git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`（与 `ci.yml:306-308` 同形）。
 
 ---
 
 ## 10. 风险与已知残留
 
-| 风险                                       | 概率 | 影响                    | 缓解                                                                                                        |
-| ------------------------------------------ | ---- | ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| ~~锚点漂移~~                               | —    | —                       | **已在 §0 复核完毕并改写**，不再是待办                                                                      |
-| **DNS 覆写在非管理员账户可能一直静默失效** | 中   | **误判为 5d 弄坏的**    | 见下（**必须预先写明**）                                                                                    |
-| **F55：无-DNS 文案未确立**                 | 中   | T-DNS-09 无法非自证地写 | §7.3 的六条前置；拿不到真机则**删测并记账**，不拍字面串                                                     |
-| `Drop` 不覆盖强杀 → DNS 残留               | 中   | 退出后全机解析受影响    | 如实写明；兜底属 PR-6                                                                                       |
-| smoke 3 不可验证                           | 高   | Exit 判据不可满足       | D4 已裁：记为已知未验证风险，结论进 PR 描述与发布说明                                                       |
-| **`READY_BUDGET` 实测不到**                | 中   | 有界等待的界没有依据    | 若实测条件不具备，**如实标注为选定值并写进 PR 描述**，不假装实测（§3.4 的表已把「实测项」与「选定项」分开） |
+| 风险                                       | 概率 | 影响                          | 缓解                                           |
+| ------------------------------------------ | ---- | ----------------------------- | ---------------------------------------------- |
+| **DNS 覆写在非管理员账户可能一直静默失效** | 中   | **误判为 5d 弄坏的**          | 见下                                           |
+| **F55/F63 两个平台事实未确立**             | 中   | 分支②可能无法实现；读权限未知 | §4.8 的两情形表；§4.6 的「对答案不敏感」设计   |
+| `Drop` 不覆盖强杀 → DNS 残留               | 中   | 退出后全机解析受影响          | 如实写明；兜底属 PR-6                          |
+| smoke 3 不可验证                           | 高   | Exit 判据不可满足             | D4 已裁                                        |
+| 三个预算常量实测不到                       | 中   | 界没有依据                    | **如实标注为选定值并写进 PR 描述**，不假装实测 |
 
-### 10.1 已知残留（**不由 5d 修，但要有名字、有 owner、有移除条件**）
+### 10.1 已知残留（**有名字、有 owner、有移除条件**）
 
-| #   | 残留                                                                       | 性质                                                                                                                              | owner / 移除条件                                                                                                                                                                 |
-| --- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | **Service 模式下默认网络在覆写期间变更 → 恢复写到新接口，原接口留残**      | **既有**（今天 `core/clash/core.rs:109-118` 就这样）。**5d 不引入、不修复**，只让它有了名字（`DnsTarget::ServerResolvedDefault`） | 本表。**移除条件**：`NetworkSetDnsReq` 增加可选设备字段且 daemon 遵从（上游 `nyanpasu-runtime` PR）。**不在 5d 做**：会成为叠在未合并 R0 之上的第二个上游 PR，而它关掉的窗口很窄 |
-| R2  | **强杀（SIGKILL / 任务管理器）后 DNS 覆写残留**                            | **既有**（F23）                                                                                                                   | PR-6：启动时检测并清理残留覆写                                                                                                                                                   |
-| R3  | **`update` 的有界等待超时后，daemon 可能稍后才就绪，而此时已收敛到 Local** | **5d 引入的取舍**（今天靠 5 s 轮询最终纠正）                                                                                      | 用户下次触发任一服务控制动作时会重新 probe 并纠正；degradation 文案里点明「当前以 Local 模式运行」。**不加后台重试**——那会把第二个模式生产者请回来（§3.7）                       |
+| #      | 残留                                                                      | 性质                                                                                                        | owner / 移除条件                                                                                                                     |
+| ------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| R1     | Service 模式下默认设备在**我们校验与 daemon 解析之间**变化 → 写落到新接口 | **既有**（今天 `core/clash/core.rs:109-118` 同样）。**5d 不修**，但从「不可检测」改善为「可检测、窗口极窄」 | 本表。移除条件 = `NetworkSetDnsReq` 增加可选设备字段且 daemon 遵从（上游 PR）。**不在 5d 做**：R0 未合并时不开第二个上游 PR          |
+| R2     | 强杀后 DNS 覆写残留                                                       | **既有**（F23）                                                                                             | PR-6：启动时检测并清理残留覆写                                                                                                       |
+| R3     | update 有界等待超时后 daemon 可能稍后才就绪，而已收敛 Local               | **5d 引入的取舍**（今天靠 5 s 轮询最终纠正）                                                                | 用户下次触发任一服务控制动作时重新 probe 纠正；降级文案点明「当前以 Local 模式运行」。**不加后台重试**——那会把第二个模式生产者请回来 |
+| **R4** | 关停静默期超时后，被放弃的控制序列仍可能完成其外部命令                    | **5d 新引入的有界窗口**（今天是**无界**的同类问题，且更糟：连准入都没有）                                   | 本表。移除条件 = 外部命令改为可取消（需 `runas`/`sudo` 侧支持，不在本仓）                                                            |
+| **R5** | `check_open()` 与外部命令 spawn 之间的 TOCTOU                             | 同上                                                                                                        | 与 R4 同条件                                                                                                                         |
+| **R6** | **拿不到真机时四态②不实现** → restore-to-None 恒 `unverified`             | 取决于实施期硬件可得性                                                                                      | §4.8；移除条件 = 捕获真机 fixture                                                                                                    |
 
 > ### 关于「非管理员账户可能一直静默失效」
 >
-> **推理链**：`networksetup -setdnsservers` 至少需要 admin 组身份（**F53，已从 man page 与社区证据确立，不是从代码形状推断**）→ 但代码**不提权**（F40/F46/F54）→ 失败被 `let _ =` 吞掉（F22）→ **没有任何观测点**。所以「这个功能在非管理员账户上可能从来就没工作过」**不是推测，而是当前代码结构下必然无法被发现的一类失效**——不是「碰巧没人报」，是**报不出来**。
+> **推理链**：`networksetup -setdnsservers` 至少需要 admin 组身份（**F53，已从 man page + 社区证据确立，不是从代码形状推断**）→ 但代码**不提权**（F40/F46/F54）→ 失败被 `let _ =` 吞掉（F22）→ **没有任何观测点**。所以「这个功能在非管理员账户上可能从来就没工作过」**不是推测，而是当前代码结构下必然无法被发现的一类失效**——不是「碰巧没人报」，是**报不出来**。
 >
-> **加上退出码检查与回读校验之后它会第一次变得可见。** 这**不是我们引入的回归，但我们会是发现它的人**。
+> **加上退出码检查与回读校验之后它会第一次变得可见。这不是我们引入的回归，但我们会是发现它的人。**
 >
-> **判别方法**（供冒烟时立即区分）：**在 5d 之前的版本上用同一账户手动跑一次 `networksetup -setdnsservers`**，看是否需要授权——能立刻分辨「5d 弄坏的」还是「5d 让它第一次可见」。
->
-> **这也是本阶段的一项真实收益**：C3 的价值不只是保序，还包括**让一条此前不可观测的路径变得可观测**。
+> **判别方法**：在 5d 之前的版本上用同一账户手动跑一次 `networksetup -setdnsservers`，看是否需要授权。
 >
 > 与 5b 那条纪律方向相反但同源：那次是**别把既有缺陷算成我们引入的**，这次是**别把即将暴露的既有缺陷当成我们弄坏的**。
 
@@ -844,23 +966,29 @@ Command::new("networksetup")
 
 ## 11. Exit 判据
 
-| 要求                                                       | 验证                                                                                                                                                                                                      |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 显式模式收敛全部走守卫                                     | T-MODE-01/02/03；`rg -n '\.probe\(\)'` 恰好三处且位置为 §3.5 所列                                                                                                                                         |
-| **`reconcile` 家族无 `IpcState` 参数**                     | 签名核对（编译期即拦）                                                                                                                                                                                    |
-| 删 `pending_run_type` 设计                                 | **no-op**（F9：不存在）                                                                                                                                                                                   |
-| 删轮询线程与 statics                                       | `rg 'IPC_STATE\|KILL_FLAG\|HEALTH_CHECK_RUNNING\|spawn_health_check\|get_ipc_state'` 为 0                                                                                                                 |
-| 删 `impl Default for RunType`                              | `rg 'RunType::default'` 为 0；`CoreStatusView::initial` **两个**调用点都传参（F42）                                                                                                                       |
-| **六个服务控制入口签名一致且全在 `ServiceControlOps` 上**  | 结构核对：六个具体函数**仍在 `core::service::control`**，所有权未搬 = 满足 `design.md:333`（按 5a `:1037` 已确立的读法）；例外条款的条件另有独立证成（§2.5 的四条测试表）；**扩到六个方法须写进 PR 描述** |
-| install/update/uninstall 保持独立 controller，不迁入 actor | 结构核对；facade 调 controller **不违反**该约束                                                                                                                                                           |
-| **六个入口都在控制动作前拆 DNS**                           | T-DNS-05/06/17/18 + install/start 两条同形断言                                                                                                                                                            |
-| `MacosDnsGuard` 与 start/stop/backend-switch 保序          | T-DNS-02/03/12/15/16                                                                                                                                                                                      |
-| **核已停时不会建立新覆写**                                 | T-DNS-13                                                                                                                                                                                                  |
-| **有界等待能界住永不返回的探针**                           | T-MODE-05                                                                                                                                                                                                 |
-| Service backend 用 IPC `set_dns`                           | T-DNS 双适配器 parity + T-DNS-14                                                                                                                                                                          |
-| 非 macOS 不加空抽象                                        | cfg 门控——非 macOS 上类型不存在                                                                                                                                                                           |
-| **bindings diff 为空**                                     | `git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`                                                                                                                                          |
-| **四态读全覆盖**                                           | T-DNS-08/10/11 必过；**T-DNS-09 视 §7.3 的真机 fixture 而定——拿不到就删测并在 PR 描述里点名「四态②未覆盖」**                                                                                              |
-| **smoke 2**（v1→v2 升级 + 拒绝升级 fail-closed Local）     | 本机可跑，**须真实服务环境**；**它是 C2 的真正验收点**——C2 迁移不完整会正好打断它**而 `rg` 门禁全绿**                                                                                                     |
-| **smoke 3**（macOS TUN/DNS）                               | **未在本地验证且不可由 CI 覆盖**（D4）；结论进 PR 描述与发布说明                                                                                                                                          |
-| **R1/R2/R3 三条残留**逐条出现在 PR 描述里                  | 文本核对——**「不修」必须是被记录的决定，不是沉默**                                                                                                                                                        |
+| 要求                                                                                | 验证                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 显式模式收敛全部走守卫                                                              | T-MODE-01/02/03；`rg -n '\.probe\(\)'` 恰好三处且位置为 §3.6 所列                                                                                                                           |
+| `reconcile` 家族无 `IpcState` 参数                                                  | 签名核对（编译期即拦）                                                                                                                                                                      |
+| **探针自身有界**                                                                    | T-PROBE-06；`OsServiceProbe` 内有 `timeout` 且 `status()` 设 `kill_on_drop`                                                                                                                 |
+| **警告覆盖面不小于基线**                                                            | T-PROBE-03/05（Running 下三种 compat 全覆盖，且 Stopped-`Unknown` 不误报）                                                                                                                  |
+| 删 `pending_run_type` 设计                                                          | **no-op**（F9）                                                                                                                                                                             |
+| 删轮询线程与 statics                                                                | `rg 'IPC_STATE\|KILL_FLAG\|HEALTH_CHECK_RUNNING\|spawn_health_check\|get_ipc_state'` 为 0                                                                                                   |
+| 删 `impl Default for RunType`                                                       | `rg 'RunType::default'` 为 0；`CoreStatusView::initial` **两个**调用点都传参，`mod.rs:371` 覆盖赋值已删                                                                                     |
+| 六个服务控制入口签名一致且全在 `ServiceControlOps` 上                               | 结构核对：六个具体函数**仍在 `core::service::control`**，所有权未搬 = 满足 `design.md:333`（按 5a `:1037` 已确立读法）；例外条款条件另有独立证成（§2.4 表）；**扩到六个方法须写进 PR 描述** |
+| **六个入口都在控制动作前拆 DNS**                                                    | T-DNS-05/06/17/18/26/27（**六条独立**）                                                                                                                                                     |
+| **控制失败的四种处置**                                                              | T-CTL-01…04                                                                                                                                                                                 |
+| **关停静默期**                                                                      | T-SD-01/02；**R4/R5 必须出现在 PR 描述里**                                                                                                                                                  |
+| `MacosDnsGuard` 与 start/stop/backend-switch 保序                                   | T-DNS-02/03/12/15/16                                                                                                                                                                        |
+| **写失败不会留下无记录的覆写**                                                      | T-DNS-19/28                                                                                                                                                                                 |
+| **死锁序列已解**                                                                    | T-DNS-29                                                                                                                                                                                    |
+| 核已停时不会建立新覆写                                                              | T-DNS-13                                                                                                                                                                                    |
+| 有界等待能界住永不返回的探针                                                        | T-MODE-05                                                                                                                                                                                   |
+| Service backend 用 IPC `set_dns` 写、**本地读**                                     | T-DNS 双适配器 parity + T-DNS-14；**F56 已记明 IPC 无读端点**                                                                                                                               |
+| 非 macOS 不加空抽象                                                                 | cfg 门控                                                                                                                                                                                    |
+| bindings diff 为空                                                                  | `git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`                                                                                                                            |
+| **四态读**                                                                          | T-DNS-08/10/11 必过；**T-DNS-09 与生产分支②同存亡**——拿不到真机则两者都不实现，且 PR 描述必须点名「四态②未实现、restore-to-None 恒 unverified（R6）」                                       |
+| **smoke 2**（v1→v2 升级 + 拒绝升级 fail-closed Local）                              | 本机可跑，**须真实服务环境**；**它是 C2 的真正验收点**                                                                                                                                      |
+| **smoke 3**（macOS TUN/DNS）                                                        | **未在本地验证且不可由 CI 覆盖**（D4）                                                                                                                                                      |
+| **R1–R6 六条残留**逐条出现在 PR 描述里                                              | 文本核对——**「不修」必须是被记录的决定，不是沉默**                                                                                                                                          |
+| **两处对 `design.md` 的有意偏离**（六方法 trait；DNS 兄弟端口）逐条出现在 PR 描述里 | 文本核对；`design.md` **本身不得修改**（基线不能中途搬动）                                                                                                                                  |

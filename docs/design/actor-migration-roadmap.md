@@ -322,16 +322,15 @@ PR-5 **只**新增三样东西：
 
 **退出：** `rg 'rebuild_gate|clash_patch_gate|RunningConfigPatchPort|LegacyRunningConfigPatchBridge'` 为 0；apply parity 覆盖 Noop / Patched / Reloaded / Restarted / Switched / RolledBack（Warning 是正交标志，不是 outcome）；change-core rollback 测试断言 desired=new、Promoted=new、Applied=old；两个并发 rebuild 不重叠，后一个在 FIFO 后读取最新 snapshot。
 
-### 6.3 PR-5c — 必要清理，不做指标驱动半迁移（C1–C4）
+### 6.3 PR-5c — 可证死代码删除与 residual 清理（C1、C4）
 
-**范围：**
+**实际交付：**
 
-- **C1 状态与日志**：backend status / events 投影到 actor 的 watch snapshot，status read 不走 mailbox RPC；actor 维护 100 条 `LogFrame` 环形缓冲（直接复用 `nyanpasu-core-metadata::LogFrame`，**不定义 `LogSink` trait**，manager 的 JSONL sink 保持原样），`get_clash_logs` 从 raw 渲染、可 additive 暴露 frames；删除 legacy `Logger` global；
-- **C2 运行模式**：`RunType = { Normal, Service }`（`Elevated` 的 `todo!()` 删除）。app config / service control 完成后**显式**调用 `set_mode` / `reconcile_mode`，该操作照常排队取得 `CoreOperationGuard`；删除 `pending_run_type` 设计、`core/service/ipc.rs` 的 statics 与 5 s 轮询线程。service install / update / uninstall 保持独立的具体 `ServiceController`，**不迁入 CoreActor、不引入完整 `ServiceControlPort`**（除非测试确实需要替换 OS command runner）；**保留启动时自动版本对比 + `update_service()` 语义**；
-- **C3 macOS DNS**：actor 内用小型 `MacosDnsGuard` 与 start / stop 保序，Service backend 走 IPC `set_dns`；**非 macOS 不定义空的 `NetworkDnsPort` 抽象**；
-- **C4 residual 与 smoke**：删除真正已失去调用者的 core / service / logger 文件与 globals；**Updater 不增加 `attach_core_port` 半迁移桥**——完整注入仍由 PR-6d 完成，PR-5 允许保留一个有明确 owner 和 remove condition 的 residual；更新 roadmap / ledger，**不以 `CoreManager::global() == 0` 作为牺牲边界的硬指标**。
+- **C1 状态与日志收窄**：确认 backend status 已通过 actor watch snapshot 暴露，status read 不走 mailbox RPC；按 PR-5c 决策 D1 = **裁定 A（只删不建）**，删除 legacy `Logger` global 与不可达写入者，**不建设** 100 条 `LogFrame` ring。依据是 `Logger` 本身已经是 ring 但零可达写入者、`get_clash_logs` 零前端消费者，且 tauri 侧不存在 `LogFrame`。`get_clash_logs` 保留 command 与 wire，返回空 deque，并用 migration marker 记录后续去向；
+- **C4 residual 与 gate**：删除已证实失去调用者的 core manager / state 模块及 `core/clash/core.rs` 死面，修复 ledger 对字符串、行注释与块注释的上下文判别；Updater 不增加 `attach_core_port` 半迁移桥，完整注入仍由 PR-6d 完成；更新 roadmap / ledger，**不以 `CoreManager::global() == 0` 作为牺牲边界的硬指标**；
+- **C2 / C3 拆分**：两轮对抗性审查确认运行模式与 macOS DNS 都需要新的定序与并发设计，不属于可证死代码清理，因此整体移交 **PR-5d**。权威实施计划见 [`2026-08-03-pr5d-run-mode-and-dns.md`](../superpowers/plans/2026-08-03-pr5d-run-mode-and-dns.md)。
 
-**退出：** smoke 1 = Local 模式 patch / restart / core-switch rollback；smoke 2 = Windows v1 daemon 自动升级后进入 v2 Service 模式，拒绝升级时 fail-closed 回 Local；smoke 3 = macOS TUN 开关与 DNS 恢复；fixed-port 占用作为**自动化集成测试**，不要求单独手工 smoke；`test_real_dirs == 0`。
+**退出：** smoke 1 = Local 模式 patch / restart / core-switch rollback；fixed-port 占用由既有自动化集成测试覆盖；`test_real_dirs == 0`。smoke 2（Windows v1→v2 Service）与 smoke 3（macOS TUN / DNS）随 C2 / C3 移交 PR-5d。
 
 ### 6.4 阶段规划必答项（2026-08-02 审查遗留）
 

@@ -493,34 +493,158 @@ fn x() {}
   assertEquals(buckets.migrationMarkers.total, 1);
 });
 
-const scannerLiteralRegressionCases = [
-  {
-    name: "lifetime before a same-line block comment",
-    source: String.raw`fn f<'a>() { /* CoreManager::global(); */ }`,
-  },
-  {
-    name: "lifetime before a multiline block comment",
-    source: String.raw`fn f<'a>() { /*
+const scannerLiteralRegressionCases: ReadonlyArray<
+  readonly [
+    name: string,
+    source: string,
+    productionLine: string,
+    expectedConfigCalls: number,
+    expectedServiceGlobals: number,
+  ]
+> = [
+  [
+    "lifetime before a same-line block comment",
+    String
+      .raw`fn f<'a>() { /* CoreManager::global(); */ let _ = Config::verge(); }`,
+    "opensRustCharLiteral(raw, j) guard",
+    1,
+    0,
+  ],
+  [
+    "lifetime before a multiline block comment",
+    String.raw`fn f<'a>() { /*
 CoreManager::global();
+*/
 let _ = Config::verge();
-*/ }`,
-  },
-  {
-    name: "loop label before a multiline block comment",
-    source: String.raw`'outer: loop { /*
+}`,
+    "opensRustCharLiteral(raw, j) guard",
+    1,
+    0,
+  ],
+  [
+    "loop label before a multiline block comment",
+    String.raw`fn f() {
+'outer: loop { /*
 CoreManager::global();
-*/ }`,
-  },
-  {
-    name: "raw string escape before a same-line block comment",
-    source: String.raw`fn f() { let p = r"a\"; /* CoreManager::global(); */ }`,
-  },
-  {
-    name: "raw string escape before a multiline block comment",
-    source: String.raw`fn f() { let p = r"a\"; /*
+*/
+let _ = Config::verge();
+break 'outer;
+}
+}`,
+    "opensRustCharLiteral(raw, j) guard",
+    1,
+    0,
+  ],
+  [
+    'r"..." before a same-line block comment',
+    String
+      .raw`fn f() { let p = r"a\"; /* CoreManager::global(); */ let _ = Config::verge(); }`,
+    '/^(?:br|cr|r)(#*)"/ raw-prefix match',
+    1,
+    0,
+  ],
+  [
+    'r"..." before a multiline block comment',
+    String.raw`fn f() { let p = r"a\"; /*
 CoreManager::global();
-*/ }`,
-  },
+*/
+let _ = Config::verge();
+}`,
+    '/^(?:br|cr|r)(#*)"/ raw-prefix match',
+    1,
+    0,
+  ],
+  [
+    'r##"..."## masks an interior quote and metric text',
+    String.raw`let s = r##"prefix" CoreManager::global()"##;
+let _ = Config::verge();`,
+    '/^(?:br|cr|r)(#*)"/ raw-prefix match',
+    1,
+    0,
+  ],
+  [
+    'br"..." before a same-line block comment',
+    String
+      .raw`fn f() { let p = br"a\"; /* CoreManager::global(); */ let _ = Config::verge(); }`,
+    '/^(?:br|cr|r)(#*)"/ raw-prefix match',
+    1,
+    0,
+  ],
+  [
+    'br##"..."## masks an interior quote and metric text',
+    String.raw`let s = br##"prefix" CoreManager::global()"##;
+let _ = Config::verge();`,
+    '/^(?:br|cr|r)(#*)"/ raw-prefix match',
+    1,
+    0,
+  ],
+  [
+    'cr"..." before a same-line block comment',
+    String
+      .raw`fn f() { let s = cr"a\"; /* CoreManager::global(); */ let _ = Config::verge(); }`,
+    '/^(?:br|cr|r)(#*)"/ raw-prefix match',
+    1,
+    0,
+  ],
+  [
+    'cr##"..."## masks an interior quote and metric text',
+    String.raw`let s = cr##"prefix" CoreManager::global()"##;
+let _ = Config::verge();`,
+    '/^(?:br|cr|r)(#*)"/ raw-prefix match',
+    1,
+    0,
+  ],
+  [
+    'r##"..."## masks comment-shaped metric text',
+    String.raw`let a = r##"Config::verge()"##;
+let s = r##"prefix" /* CoreManager::global(); */"##;`,
+    "continue in rawStringTerminator branch",
+    0,
+    0,
+  ],
+  [
+    '"..." masks metric text',
+    String.raw`let s = "Config::verge()";`,
+    "continue in stringDelimiter branch",
+    0,
+    0,
+  ],
+  [
+    'b"..." masks metric text',
+    String.raw`let s = b"CoreManager::global()";`,
+    "continue in stringDelimiter branch",
+    0,
+    0,
+  ],
+  [
+    'c"..." masks metric text',
+    String.raw`let s = c"CoreManager::global()";`,
+    "continue in stringDelimiter branch",
+    0,
+    0,
+  ],
+];
+
+for (
+  const [
+    name,
+    source,
+    productionLine,
+    expectedConfigCalls,
+    expectedServiceGlobals,
+  ] of scannerLiteralRegressionCases
+) {
+  Deno.test(`scanFile: ${name} protects ${productionLine}`, () => {
+    const buckets = createBuckets();
+    scanFile("backend/tauri/src/literal_regression.rs", source, buckets);
+    assertEquals(buckets.configCalls.total, expectedConfigCalls);
+    assertEquals(buckets.serviceGlobals.total, expectedServiceGlobals);
+  });
+}
+
+// Differential controls stay green under single-line scanner mutations and
+// verify that the experiment includes unchanged valid literal forms.
+const scannerLiteralControlCases = [
   {
     name: "slash char literal before a block comment",
     source: String.raw`let c = '/'; /* CoreManager::global(); */`,
@@ -537,18 +661,12 @@ CoreManager::global();
     name: "hashed raw string before a block comment",
     source: String.raw`let s = r#"say "hi""#; /* CoreManager::global(); */`,
   },
-  {
-    name: "raw and byte raw string variants before block comments",
-    source: String.raw`let a = r##"say "# hi"##; /* CoreManager::global(); */
-let b = br"a\"; /* CoreManager::global(); */
-let c = br##"say "# hi"##; /* CoreManager::global(); */`,
-  },
 ];
 
-for (const { name, source } of scannerLiteralRegressionCases) {
-  Deno.test(`scanFile: ${name}`, () => {
+for (const { name, source } of scannerLiteralControlCases) {
+  Deno.test(`scanFile control: ${name}`, () => {
     const buckets = createBuckets();
-    scanFile("backend/tauri/src/literal_regression.rs", source, buckets);
+    scanFile("backend/tauri/src/literal_control.rs", source, buckets);
     assertEquals(buckets.configCalls.total, 0);
     assertEquals(buckets.serviceGlobals.total, 0);
   });

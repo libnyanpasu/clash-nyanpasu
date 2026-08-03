@@ -483,7 +483,7 @@ function rustRawStringStart(
   index: number,
 ): { opener: string; terminator: string } | undefined {
   if (index > 0 && /[A-Za-z0-9_]/.test(line[index - 1])) return undefined;
-  const match = /^(?:br|r)(#*)"/.exec(line.slice(index));
+  const match = /^(?:br|cr|r)(#*)"/.exec(line.slice(index));
   if (!match) return undefined;
   return { opener: match[0], terminator: `"${match[1]}` };
 }
@@ -520,17 +520,15 @@ export function scanFile(
           code += rawStringTerminator;
           j += rawStringTerminator.length - 1;
           rawStringTerminator = "";
-        } else {
-          code += raw[j];
         }
         continue;
       }
 
       if (stringDelimiter) {
-        code += raw[j];
         if (raw[j] === "\\" && j + 1 < raw.length) {
-          code += raw[++j];
+          j++;
         } else if (raw[j] === stringDelimiter) {
+          code += raw[j];
           stringDelimiter = "";
         }
         continue;

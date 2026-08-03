@@ -3,7 +3,7 @@
 **日期：** 2026-08-03
 **版本：** v3（v2 被对抗审以 43/100 REJECT，七条 BLOCKING 全部上诉失败；leader 裁决另**推翻自己此前两条裁定**。本版按裁决重写，并已对着 **PR-5c 落地后的树**复核全部锚点）
 **分支基线：** `refactor/core-manager-actor` @ **`a062f1019`**（v2 的锚点取自 `899b069f5`，**已作废**；主体复核在 `48c17a705` 完成，随后 5c 收尾三提交落地，差异已在 §0.5 逐条消化）
-**权威 spec：** `task.md` 卡 C2、C3
+**权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/` 下**两个文件都算数**——`task.md` 卡 C2、C3（做什么）+ `design.md` §9（边界约束，其中 `:333` Service control 段直接管着本阶段）。**只读 `task.md` 会漏掉约束**，§0.5 记了一次实际漏检
 **上游材料：** PR-5c v4 终态 `git show 5a02a1727:docs/superpowers/plans/2026-08-02-pr5c-residual-cleanup.md`
 **平台：** Windows 11 / PowerShell（**macOS 路径无法本地验证**，见 §10）
 
@@ -61,11 +61,15 @@ v2 的锚点全部取自 `899b069f5`。5c 之后已删除 `core/manager.rs`、`c
 | `a86478a7f` | 重写 roadmap §6.3：C2/C3 移交 PR-5d，并指名**本计划**为权威实施计划         | **真影响，已改**——见下                                                                                                                                                                                                           |
 | `a062f1019` | `feat.rs` 与 `core/service/ipc.rs` 的迁移标记文案由 PR-5c 改指 PR-5d        | **行号未动**（`feat.rs:416-418`、`ipc.rs:126-128`），仅 F18 的**描述**需改：那三行不再写「等 PR-5c 建它」。已改。**`change_default_network_dns` 本体与 `let _ =` 吞错行为一行未变**，F19/F20/F22/F40/F41 全部成立                |
 
-> **`a86478a7f` 删掉了我原先援引的那句例外条款。** v3 的 §2.5 原文写着「roadmap 原文带例外：_除非测试确实需要替换 OS command runner_」，据此为「把 `ServiceControlOps` 扩到六个方法」开脱。
+> **`a86478a7f` 删掉的是一份拷贝，不是那条约束本身。约束**活着**。**
 >
-> **那句话现在不存在了。** 新 §6.3 把整条 C2 要点删除，其中就包括「**不引入完整 `ServiceControlPort`**（除非测试确实需要替换 OS command runner）」。核实：`rg 'ServiceControlPort|ServiceController'` 在 `docs/design/actor-migration-roadmap.md` 与 `task.md` 上**均无命中**。
+> **本计划一度写反过，记在这里**：v3 初稿声称「不引入完整 `ServiceControlPort`」只存在于 roadmap、已随 C2/C3 移交被删除，并拿「`rg` 零命中」作证。**那次 `rg` 只扫了 `docs/design/actor-migration-roadmap.md` 与 `task.md` 两个文件，却把结论写成了「该约束不存在」。**
 >
-> **所以正确的结论比原先更强，不是更弱**：活着的约束只剩 `task.md` 卡 C2 的「service install/update/uninstall 保持独立 concrete controller，**不迁入 CoreActor**」，而本设计**直接满足**它——facade 调 controller，trait 不是 actor。**扩 trait 不需要任何例外条款。**
+> **真相**：权威出处是 **`docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md:333`**（§9 Service control 段），原文为「install/update/uninstall/start/stop 是 service 管理，不属于 CoreActor。保留一个具体 `ServiceController`；操作完成后调用 `CoreClient::set_mode/reconcile_mode`。**不引入完整 `ServiceControlPort`，除非测试确实需要替换 OS command runner**」。该文件受版本控制，且 `git log 48c17a705..HEAD -- .../design.md` **为空**——5c 收尾三提交**一次都没碰过它**；`a86478a7f` 的 `--stat` 只有 roadmap 一个文件。所以 roadmap 持有的是拷贝，正本完好。
+>
+> **方法论记账**：这正是本 PR 反复栽的**量词范围错误**——「在 X 与 Y 上零命中」与「该约束不存在」是两个不同命题，只有后者能撑起论证。**下断言前先把断言的范围定死，再让检索覆盖整个范围。** 本计划头部原先只写「权威 spec：`task.md` 卡 C2、C3」，把同目录的 `design.md` 排除在视野外，正是这次漏检的结构性成因，**已一并改正**。
+>
+> §2.5 的结论（六个入口统一、`ServiceControlOps` 扩到六个方法）**不依赖那条约束是否被删**——理由见 §2.5，两条独立论证，均在约束存活的前提下成立。
 >
 > **但不许因此悄悄把它当没发生过。** 该约束在 `48c17a705` 时确实存在（`git show 48c17a705:docs/design/actor-migration-roadmap.md` 第 330 行），是 `a86478a7f` 随 C2/C3 移交一并删除的。**出处与消失时点都记在这里**，§2.5 据此改写。
 
@@ -197,11 +201,28 @@ v2 的锚点全部取自 `899b069f5`。5c 之后已删除 `core/manager.rs`、`c
 
 **结果：六个入口签名一致（`async fn(&self) -> anyhow::Result<()>`），六个都在 `ServiceControlOps` 上。**
 
-> **这与「不引入完整 `ServiceControlPort`」冲突吗？不冲突，而且理由比 v3 初稿写的更直接。**
+> **这与 `design.md:333`「不引入完整 `ServiceControlPort`，除非测试确实需要替换 OS command runner」冲突吗？不冲突。该约束**依然生效**（§0.5 记录了本计划一度误判它已被删除），下面两条论证**各自独立成立**，都不依赖它的存废。**
 >
-> 那条约束**只存在于 roadmap，且已被 `a86478a7f` 随 C2/C3 移交一并删除**（§0.5 记了出处与消失时点；现`rg 'ServiceControlPort|ServiceController'` 在 roadmap 与 `task.md` 上均为 0）。**活着的约束**是 `task.md` 卡 C2 的「service install/update/uninstall 保持独立 concrete controller，**不迁入 CoreActor**」——本设计直接满足：**facade 调 controller，`ServiceControlOps` 不是 actor**。
+> **论证一（判例，主）：PR-5a 已经确立了这条约束的读法，本阶段是延续而非例外。** `docs/superpowers/plans/2026-08-02-pr5a-core-actor.md:1037` 写着：
 >
-> 因此扩 trait**不依赖任何例外条款**。但「六个方法的 trait」相对 roadmap 的历史意图仍是扩大面，**必须写进 PR 描述**，不是默默扩。触发它的是 T-MODE-02：**六个控制动作各自独立断言 probe+reconcile**，需要能替换 OS command runner。
+> > 「这是 5a 唯一新增的 port。design §9 说的"不引入完整 `ServiceControlPort`"针对的是把 service 管理**迁进 CoreActor**；这里只给既有函数加一层可测边界，所有权仍在 `core::service::control`，不迁移。」
+>
+> 5a 正是在这个读法下建起了今天的四方法 `ServiceControlOps`，**经十二轮对抗审查无人异议**。PR-5d 给同一个 trait 补上 `update`/`uninstall`，**所有权仍在 `core::service::control`**（六个具体函数一行不搬），因此仍是「给既有函数加一层可测边界」。**这条论证与任何文档的增删无关，搬不动也删不掉。**
+>
+> **论证二（例外条款，且条件已证成）：** 即便按最严读法认为「六方法 = 完整 port」，`design.md:333` 自带的例外是「**除非测试确实需要替换 OS command runner**」。**例外只有在条件被证成时才算数，所以逐条点名哪些测试需要、以及为什么真实 runner 不行：**
+>
+> | 测试         | 为什么**必须**能替换 runner                                                                                   | 缺哪个方法就写不出来  |
+> | ------------ | ------------------------------------------------------------------------------------------------------------- | --------------------- |
+> | T-MODE-02    | 六个控制动作**各自独立断言** probe+reconcile；uninstall / update 两行没有可替换实现就无法构造                 | `update`、`uninstall` |
+> | T-DNS-06     | uninstall 的拆 DNS 顺序 + **拆除失败时中止卸载**；中止分支要断言 uninstall **未被调用**，必须观察得到调用与否 | `uninstall`           |
+> | T-DNS-18     | update 的拆 DNS 顺序                                                                                          | `update`              |
+> | T-MODE-04/05 | 有界等待就绪的成功 / 超时 / 探针挂死三路；要在没有真实 daemon 的前提下让 update 控制动作返回                  | `update`              |
+>
+> **为什么真实 runner 不行（不是偏好，是能力问题）**：`update_service`（`control.rs:106-147`）与 `uninstall_service`（`:149-186`）经 `runas` / `sudo` 提权调用 `SERVICE_PATH` 的真实服务二进制。CI 三平台上要么该二进制不存在，要么会触发提权交互——**这类测试在 CI 里根本跑不起来**（与 F34 记的 smoke 3 是同一类能力边界）。
+>
+> **既有四方法已够用、不需要扩的测试**（如实划清，避免把例外范围说大）：T-DNS-05（stop）、T-DNS-17（restart）、T-MODE-03。
+>
+> **仍须写进 PR 描述**：不是因为需要豁免，而是因为 trait 由四方法扩到六方法是**对既有边界的可见扩大**，读者有权知道触发它的是哪几条测试。
 
 ---
 
@@ -436,6 +457,17 @@ pub(crate) struct ServiceMacosDns { client: .. }; // IPC set_dns（F21）
 **fake 必须按序记录** enable / restore / 与后端动作的相对次序，供测试断言**顺序**而非终态。
 
 **不违反 D3 的「非 macOS 不加空抽象」**：整个文件在 `#[cfg(target_os = "macos")]` 下，**非 macOS 平台上这些类型根本不存在**。
+
+> ### 与 `design.md:337` 的一处**有意偏离**（点名记账，不埋在实施里）
+>
+> `design.md` §9 macOS DNS 段写的是「Service 模式需要提权时**由 `CoreBackend::Service` 调 IPC set_dns**」。本设计改为**独立的 `ServiceMacosDns` 端口持 IPC 客户端**，不经 `CoreBackend::Service`。
+>
+> **意图侧完全一致**（Service 路径的 DNS 写走 IPC，由 daemon 行使权限），偏离的只是「谁持有那个客户端」。两条机械理由：
+>
+> 1. **`CoreBackend` 是全平台的核进程生命周期枚举**（`Local`/`Service`/`Test`）。往上挂 macOS-only 的 DNS 方法，与 §4.2 拒绝往 `CoreRequest` 塞 TUN 字段是同一个理由：污染两条无关平台路径。
+> 2. **更硬的一条：`replace_backend` 会 `take()` 掉旧后端并 `shutdown()`（`core/actor/mod.rs:267,273`）。** 若恢复通道住在后端内部，**换后端的那一刻通道就没了**——而 §4.5 恰恰要求「先用旧后端的适配器恢复、再换」。把 DNS 端口做成后端的兄弟而非成员，是让 §4.5 可实现的前提，不是风格选择。
+>
+> **命名对应**（避免审查者找不到 `design.md` 说的那个名字）：design 里的「小型 `MacosDnsGuard`」在本设计中即 `CoreActorState.dns: Option<DnsOverride>`（§4.2）；`MacosDnsPort` 是它调用的适配器。F18 已记 `MacosDnsGuard` 这个类型今天并不存在。
 
 ### 4.2 状态与消息（**七个问题逐条回答**）
 
@@ -812,23 +844,23 @@ Command::new("networksetup")
 
 ## 11. Exit 判据
 
-| 要求                                                       | 验证                                                                                                                                |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 显式模式收敛全部走守卫                                     | T-MODE-01/02/03；`rg -n '\.probe\(\)'` 恰好三处且位置为 §3.5 所列                                                                   |
-| **`reconcile` 家族无 `IpcState` 参数**                     | 签名核对（编译期即拦）                                                                                                              |
-| 删 `pending_run_type` 设计                                 | **no-op**（F9：不存在）                                                                                                             |
-| 删轮询线程与 statics                                       | `rg 'IPC_STATE\|KILL_FLAG\|HEALTH_CHECK_RUNNING\|spawn_health_check\|get_ipc_state'` 为 0                                           |
-| 删 `impl Default for RunType`                              | `rg 'RunType::default'` 为 0；`CoreStatusView::initial` **两个**调用点都传参（F42）                                                 |
-| **六个服务控制入口签名一致且全在 `ServiceControlOps` 上**  | 结构核对；活着的约束只有 `task.md` C2 的「不迁入 CoreActor」，facade 调 controller 即满足（§2.5）；**扩到六个方法仍须写进 PR 描述** |
-| install/update/uninstall 保持独立 controller，不迁入 actor | 结构核对；facade 调 controller **不违反**该约束                                                                                     |
-| **六个入口都在控制动作前拆 DNS**                           | T-DNS-05/06/17/18 + install/start 两条同形断言                                                                                      |
-| `MacosDnsGuard` 与 start/stop/backend-switch 保序          | T-DNS-02/03/12/15/16                                                                                                                |
-| **核已停时不会建立新覆写**                                 | T-DNS-13                                                                                                                            |
-| **有界等待能界住永不返回的探针**                           | T-MODE-05                                                                                                                           |
-| Service backend 用 IPC `set_dns`                           | T-DNS 双适配器 parity + T-DNS-14                                                                                                    |
-| 非 macOS 不加空抽象                                        | cfg 门控——非 macOS 上类型不存在                                                                                                     |
-| **bindings diff 为空**                                     | `git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`                                                                    |
-| **四态读全覆盖**                                           | T-DNS-08/10/11 必过；**T-DNS-09 视 §7.3 的真机 fixture 而定——拿不到就删测并在 PR 描述里点名「四态②未覆盖」**                        |
-| **smoke 2**（v1→v2 升级 + 拒绝升级 fail-closed Local）     | 本机可跑，**须真实服务环境**；**它是 C2 的真正验收点**——C2 迁移不完整会正好打断它**而 `rg` 门禁全绿**                               |
-| **smoke 3**（macOS TUN/DNS）                               | **未在本地验证且不可由 CI 覆盖**（D4）；结论进 PR 描述与发布说明                                                                    |
-| **R1/R2/R3 三条残留**逐条出现在 PR 描述里                  | 文本核对——**「不修」必须是被记录的决定，不是沉默**                                                                                  |
+| 要求                                                       | 验证                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 显式模式收敛全部走守卫                                     | T-MODE-01/02/03；`rg -n '\.probe\(\)'` 恰好三处且位置为 §3.5 所列                                                                                                                                         |
+| **`reconcile` 家族无 `IpcState` 参数**                     | 签名核对（编译期即拦）                                                                                                                                                                                    |
+| 删 `pending_run_type` 设计                                 | **no-op**（F9：不存在）                                                                                                                                                                                   |
+| 删轮询线程与 statics                                       | `rg 'IPC_STATE\|KILL_FLAG\|HEALTH_CHECK_RUNNING\|spawn_health_check\|get_ipc_state'` 为 0                                                                                                                 |
+| 删 `impl Default for RunType`                              | `rg 'RunType::default'` 为 0；`CoreStatusView::initial` **两个**调用点都传参（F42）                                                                                                                       |
+| **六个服务控制入口签名一致且全在 `ServiceControlOps` 上**  | 结构核对：六个具体函数**仍在 `core::service::control`**，所有权未搬 = 满足 `design.md:333`（按 5a `:1037` 已确立的读法）；例外条款的条件另有独立证成（§2.5 的四条测试表）；**扩到六个方法须写进 PR 描述** |
+| install/update/uninstall 保持独立 controller，不迁入 actor | 结构核对；facade 调 controller **不违反**该约束                                                                                                                                                           |
+| **六个入口都在控制动作前拆 DNS**                           | T-DNS-05/06/17/18 + install/start 两条同形断言                                                                                                                                                            |
+| `MacosDnsGuard` 与 start/stop/backend-switch 保序          | T-DNS-02/03/12/15/16                                                                                                                                                                                      |
+| **核已停时不会建立新覆写**                                 | T-DNS-13                                                                                                                                                                                                  |
+| **有界等待能界住永不返回的探针**                           | T-MODE-05                                                                                                                                                                                                 |
+| Service backend 用 IPC `set_dns`                           | T-DNS 双适配器 parity + T-DNS-14                                                                                                                                                                          |
+| 非 macOS 不加空抽象                                        | cfg 门控——非 macOS 上类型不存在                                                                                                                                                                           |
+| **bindings diff 为空**                                     | `git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`                                                                                                                                          |
+| **四态读全覆盖**                                           | T-DNS-08/10/11 必过；**T-DNS-09 视 §7.3 的真机 fixture 而定——拿不到就删测并在 PR 描述里点名「四态②未覆盖」**                                                                                              |
+| **smoke 2**（v1→v2 升级 + 拒绝升级 fail-closed Local）     | 本机可跑，**须真实服务环境**；**它是 C2 的真正验收点**——C2 迁移不完整会正好打断它**而 `rg` 门禁全绿**                                                                                                     |
+| **smoke 3**（macOS TUN/DNS）                               | **未在本地验证且不可由 CI 覆盖**（D4）；结论进 PR 描述与发布说明                                                                                                                                          |
+| **R1/R2/R3 三条残留**逐条出现在 PR 描述里                  | 文本核对——**「不修」必须是被记录的决定，不是沉默**                                                                                                                                                        |

@@ -729,6 +729,7 @@ fn network_widget_to_legacy(
 mod tests {
     use super::*;
     use crate::{
+        bridge::LEGACY_CONFIG_TEST_LOCK as INTERLEAVING_TEST_LOCK,
         client::{
             ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet,
             LegacyRunningConfigPatchBridge, LegacyVergeDomain, MockRunningCoreBridge,
@@ -759,8 +760,6 @@ mod tests {
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
     use tokio::sync::oneshot;
-
-    static INTERLEAVING_TEST_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
     struct NoopWindowBridge;
 

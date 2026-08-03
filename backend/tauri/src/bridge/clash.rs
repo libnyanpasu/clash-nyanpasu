@@ -213,6 +213,7 @@ mod tests {
 
     #[test]
     fn prepared_apply_preserves_intervening_verge_update_and_shares_lock() {
+        let _serial = crate::bridge::LEGACY_CONFIG_TEST_LOCK.lock();
         let bridge = LegacyClashBridge::default();
         let verge_store = Config::verge();
         let original = verge_store.data().clone();

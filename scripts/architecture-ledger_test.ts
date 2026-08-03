@@ -493,6 +493,67 @@ fn x() {}
   assertEquals(buckets.migrationMarkers.total, 1);
 });
 
+const scannerLiteralRegressionCases = [
+  {
+    name: "lifetime before a same-line block comment",
+    source: String.raw`fn f<'a>() { /* CoreManager::global(); */ }`,
+  },
+  {
+    name: "lifetime before a multiline block comment",
+    source: String.raw`fn f<'a>() { /*
+CoreManager::global();
+let _ = Config::verge();
+*/ }`,
+  },
+  {
+    name: "loop label before a multiline block comment",
+    source: String.raw`'outer: loop { /*
+CoreManager::global();
+*/ }`,
+  },
+  {
+    name: "raw string escape before a same-line block comment",
+    source: String.raw`fn f() { let p = r"a\"; /* CoreManager::global(); */ }`,
+  },
+  {
+    name: "raw string escape before a multiline block comment",
+    source: String.raw`fn f() { let p = r"a\"; /*
+CoreManager::global();
+*/ }`,
+  },
+  {
+    name: "slash char literal before a block comment",
+    source: String.raw`let c = '/'; /* CoreManager::global(); */`,
+  },
+  {
+    name: "escaped quote char literal before a block comment",
+    source: String.raw`let c = '\''; /* CoreManager::global(); */`,
+  },
+  {
+    name: "byte char literal before a block comment",
+    source: String.raw`let b = b'/'; /* CoreManager::global(); */`,
+  },
+  {
+    name: "hashed raw string before a block comment",
+    source: String.raw`let s = r#"say "hi""#; /* CoreManager::global(); */`,
+  },
+  {
+    name: "raw and byte raw string variants before block comments",
+    source: String.raw`let a = r##"say "# hi"##; /* CoreManager::global(); */
+let b = br"a\"; /* CoreManager::global(); */
+let c = br##"say "# hi"##; /* CoreManager::global(); */`,
+  },
+];
+
+for (const { name, source } of scannerLiteralRegressionCases) {
+  Deno.test(`scanFile: ${name}`, () => {
+    const buckets = createBuckets();
+    scanFile("backend/tauri/src/literal_regression.rs", source, buckets);
+    assertEquals(buckets.configCalls.total, 0);
+    assertEquals(buckets.serviceGlobals.total, 0);
+  });
+}
+
 Deno.test("scanFile: comment delimiters in strings and line comments do not hide code", () => {
   const buckets = createBuckets();
   const source = `

@@ -471,6 +471,23 @@ function findItemEndLine(lines: string[], startLine: number): number {
   return lines.length - 1;
 }
 
+const RUST_CHAR_LITERAL_RE =
+  /^'(?:[^'\\\r\n]|\\(?:[nrt0\\'"]|x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f](?:_*[0-9A-Fa-f]){0,5}_*\}))'/u;
+
+function opensRustCharLiteral(line: string, index: number): boolean {
+  return RUST_CHAR_LITERAL_RE.test(line.slice(index));
+}
+
+function rustRawStringStart(
+  line: string,
+  index: number,
+): { opener: string; terminator: string } | undefined {
+  if (index > 0 && /[A-Za-z0-9_]/.test(line[index - 1])) return undefined;
+  const match = /^(?:br|r)(#*)"/.exec(line.slice(index));
+  if (!match) return undefined;
+  return { opener: match[0], terminator: `"${match[1]}` };
+}
+
 export function scanFile(
   relPath: string,
   source: string,
@@ -486,12 +503,25 @@ export function scanFile(
     const lineNo = i + 1;
 
     let code = "";
+    // String state intentionally resets per line; multiline literals are out of scope.
     let stringDelimiter = "";
+    let rawStringTerminator = "";
     for (let j = 0; j < raw.length; j++) {
       if (inBlockComment) {
         if (raw[j] === "*" && raw[j + 1] === "/") {
           inBlockComment = false;
           j++;
+        }
+        continue;
+      }
+
+      if (rawStringTerminator) {
+        if (raw.startsWith(rawStringTerminator, j)) {
+          code += rawStringTerminator;
+          j += rawStringTerminator.length - 1;
+          rawStringTerminator = "";
+        } else {
+          code += raw[j];
         }
         continue;
       }
@@ -506,7 +536,18 @@ export function scanFile(
         continue;
       }
 
-      if (raw[j] === '"' || raw[j] === "'") {
+      const rawStringStart = rustRawStringStart(raw, j);
+      if (rawStringStart) {
+        code += rawStringStart.opener;
+        rawStringTerminator = rawStringStart.terminator;
+        j += rawStringStart.opener.length - 1;
+        continue;
+      }
+
+      if (
+        raw[j] === '"' ||
+        (raw[j] === "'" && opensRustCharLiteral(raw, j))
+      ) {
         stringDelimiter = raw[j];
         code += raw[j];
         continue;

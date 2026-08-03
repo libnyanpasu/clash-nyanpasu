@@ -124,7 +124,7 @@ async fn health_check(reconciler: &CoreModeReconciler) {
 }
 
 // TODO(actor-migration): compat gate lives on the legacy IpcState seam.
-// Reason: CoreActor / CoreBackend do not exist until PR-5a.
+// Reason: run-mode reconciliation remains on the legacy IpcState seam until PR-5d moves it onto CoreClient::set_mode.
 // Remove when: PR-5d moves run-mode selection onto CoreClient::set_mode.
 /// 纯函数：把一次 status 查询结果映射为目标 IpcState。
 /// fail-closed —— 只有 daemon 在跑**且**通过兼容门禁才允许 Connected。

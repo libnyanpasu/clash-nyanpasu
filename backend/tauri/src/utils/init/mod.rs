@@ -228,51 +228,42 @@ pub fn init_resources() -> Result<()> {
 
 /// initialize service resources
 /// after tauri setup
-#[instrument]
-pub fn init_service() -> Result<()> {
-    use nyanpasu_utils::runtime::block_on;
+#[instrument(skip(reconciler))]
+pub async fn init_service(
+    enable_service: bool,
+    reconciler: crate::core::actor::request::CoreModeReconciler,
+) -> Result<()> {
     tracing::debug!("init services");
-    block_on(async move {
-        let enable_service = {
-            *Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enable_service {
-            match crate::core::service::control::status().await {
-                Ok(status) => {
-                    tracing::info!(
-                        "service mode is enabled and service is running, do a update check"
-                    );
-                    if let Some(info) = status.server
-                        && let (Some(server_ver), Some(app_ver)) = (
-                            compat::parse_service_version(info.version.as_ref()),
-                            compat::parse_service_version(status.version.as_ref()),
-                        )
-                    {
-                        if app_ver > server_ver {
-                            tracing::info!(
-                                "client service ver is newer than exist one, do service update"
-                            );
-                            if let Err(e) = crate::core::service::control::update_service().await {
-                                log::error!(target: "app", "failed to update service: {e:?}");
-                            }
-                        }
-                    } else {
-                        tracing::warn!(
-                            "service version not comparable; skipping the auto-update check"
+    if enable_service {
+        match crate::core::service::control::status().await {
+            Ok(status) => {
+                tracing::info!("service mode is enabled and service is running, do a update check");
+                if let Some(info) = status.server
+                    && let (Some(server_ver), Some(app_ver)) = (
+                        compat::parse_service_version(info.version.as_ref()),
+                        compat::parse_service_version(status.version.as_ref()),
+                    )
+                {
+                    if app_ver > server_ver {
+                        tracing::info!(
+                            "client service ver is newer than exist one, do service update"
                         );
+                        if let Err(e) = crate::core::service::control::update_service().await {
+                            log::error!(target: "app", "failed to update service: {e:?}");
+                        }
                     }
-                }
-                Err(e) => {
-                    log::error!(target: "app", "failed to get service status: {e:?}");
+                } else {
+                    tracing::warn!(
+                        "service version not comparable; skipping the auto-update check"
+                    );
                 }
             }
+            Err(e) => {
+                log::error!(target: "app", "failed to get service status: {e:?}");
+            }
         }
-        crate::core::service::init_service().await;
-    });
+    }
+    crate::core::service::init_service(enable_service, reconciler).await;
     Ok(())
 }
 

@@ -50,6 +50,10 @@ pub const BIN_NAME: &str = "fake-core";
 /// Runtime path override for cross-crate consumers / harnesses.
 pub const PATH_ENV: &str = "NYANPASU_FAKE_CORE";
 
+pub const PROBE_BIN_NAME: &str = "manager-probe-core";
+
+pub const PROBE_PATH_ENV: &str = "NYANPASU_MANAGER_PROBE_CORE";
+
 /// Process-wide lock for tests that observe or mutate [`PATH_ENV`].
 ///
 /// libtest may run tests on multiple threads; `set_var` / `remove_var` are not
@@ -413,6 +417,66 @@ pub fn require_bin_path() -> io::Result<PathBuf> {
                  Optional override: set non-empty {PATH_ENV}. \
                  Note: a `dev-dependency` on fake-core does not build this binary and \
                  does not set `CARGO_BIN_EXE_fake-core` for the dependent package.",
+                path.display()
+            ),
+        ))
+    }
+}
+
+fn probe_bin_file_name() -> String {
+    format!("{PROBE_BIN_NAME}{}", std::env::consts::EXE_SUFFIX)
+}
+
+fn resolve_probe_from_current_exe() -> Option<PathBuf> {
+    let exe = env::current_exe().ok()?;
+    let parent = exe.parent()?;
+    let file_name = probe_bin_file_name();
+
+    if parent.file_name().and_then(|name| name.to_str()) == Some("deps") {
+        let profile_dir = parent.parent()?;
+        let candidate = profile_dir.join(&file_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    let sibling = parent.join(&file_name);
+    sibling.is_file().then_some(sibling)
+}
+
+fn probe_target_fallback_path() -> PathBuf {
+    let target_dir = env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target"));
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    target_dir.join(profile).join(probe_bin_file_name())
+}
+
+pub fn resolve_probe_bin_path() -> PathBuf {
+    if let Ok(path) = env::var(PROBE_PATH_ENV)
+        && !path.is_empty()
+    {
+        return PathBuf::from(path);
+    }
+
+    resolve_probe_from_current_exe().unwrap_or_else(probe_target_fallback_path)
+}
+
+pub fn require_probe_bin_path() -> io::Result<PathBuf> {
+    let path = resolve_probe_bin_path();
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "manager probe core binary not found at `{}`. Prebuild with \
+                 `cargo build -p fake-core --bin manager-probe-core`, then re-run the consumer \
+                 tests. Optional override: set non-empty {PROBE_PATH_ENV}.",
                 path.display()
             ),
         ))

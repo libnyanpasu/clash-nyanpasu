@@ -169,6 +169,15 @@ v3 曾据 `rg` 零命中断言「不引入完整 `ServiceControlPort`」已被�
 **原则 C：凡「不会去做某事」型契约，一律靠测试 / 门禁 / `rg`，且必须说得出怎么验。**
 范围 = §7 契约表中「由谁保证」非「签名 / cfg」的每一行——**该表即本原则的完整实例清单**，不另列。
 
+**原则 D（v7 新增）：跨文档契约的每一处，两份文档必须能互相指到对方；单方面冻结的槽位不算契约。**
+范围 = §4.7 的三个接缝。**这条原则是 v6 那次失败的直接产物**——v6 单方面冻结了 S2/S3，而 PR-5e 的 §4.6/§4.8 早已把 owner 与位置定在别处，**两份文档各自内部自洽、合起来无法实施**。检索：`rg -n 'PR-5e|pr5e|SEAM-5E' docs/superpowers/plans/2026-08-03-pr5d-run-mode.md` 与 `rg -n 'PR-5d|pr5d' docs/superpowers/plans/2026-08-03-pr5e-macos-dns.md`，**逐条配对**。
+
+| #   | 接缝        | 本文档的落点                       | **PR-5e 侧的对应落点**                                                                                              | 一致性                                                                        |
+| --- | ----------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| D1  | S1 拆除     | §4.7 表；`run_control_sequence` 内 | 5e §4.7「六个入口，在调用外部控制动作之前，都先在同一守卫内 `await` 拆除」                                          | **一致**（v6 亦一致）                                                         |
+| D2  | S2 重施加   | §4.7 表；`apply_mode` 成功尾部     | 5e §4.8「owner 唯一 = `CoreModeReconciler`……`reconcile_with` 的末尾（仍持守卫）」                                   | **v7 改判后一致**；v6 冻在 facade 调用点，与 5e 冲突                          |
+| D3  | S3 关停恢复 | §4.7 表；actor `Shutdown` 臂内     | 5e §4.6「主路径（Stop / `Shutdown` / SetBackend）：处理器内**显式 `await` 恢复**，在后端动作与 reply **之前**完成」 | **v7 改判后一致**；v6 冻在 facade，与 5e 冲突且**结构上做不到**（§4.7 S3 段） |
+
 ---
 
 ## 3. 已裁定事项
@@ -293,7 +302,7 @@ client/mod.rs::try_new_with_args
 
 `CoreModeReconciler` 是 `#[derive(Clone)]`，加两个 `Arc<dyn _>` 不破坏 Clone。测试侧沿用 `test_service_control()`（`client/mod.rs:2767`）的模式加 `test_service_probe()`。
 
-> **`degradation` 是 v6 漏掉的一个字段，不是新需求。** §4.3 的 `report_probe_diagnostics` 要 `publish` 降级，而它挂在 `CoreModeReconciler` 上；v6 的注入图只加了 `probe`，那样写不出来。沿用既有的 `ClientSetupArgs.degradation`（`client/mod.rs:84`，`Arc<dyn CoreDegradationSink>`）与 bootstrap 已构造的 `client_degradation`（`:280`），**不新增 sink 类型**。
+> **`degradation` 是 v6 漏掉的一个字段，不是新需求。** §4.3 的 `report_probe_diagnostics` 要 `publish` 降级，而 reconciler 侧的探针诊断与 `await_service_ready` 都要用它；v6 的注入图只加了 `probe`，那样写不出来。沿用既有的 `ClientSetupArgs.degradation`（`client/mod.rs:84`，`Arc<dyn CoreDegradationSink>`）与 bootstrap 已构造的 `client_degradation`（`:280`），**不新增 sink 类型**。诊断函数本身是自由函数，理由见 §4.3。
 
 ### 4.2 九处调用点
 
@@ -322,17 +331,18 @@ async fn run_control_sequence(&self, action: ServiceControlAction) -> anyhow::Re
 `dispatch` 是 `ServiceControlOps` 上的 `match action { Install => self.install().await, .. }`——**六个方法签名已在 §3.2 统一为 `async fn(&self) -> anyhow::Result<()>`，所以 match 六臂各一行。**
 
 > **为什么必须是一处而不是六处**：S1 是 PR-5e 的插入点，而 5e 需要**六个入口各自**在控制动作前拆除（其 §4.7 与 T-DNS-05/06/17/18/26/27）。六份复制意味着六个可以各自漂移的插入点，**「都插对了」变成一条无法用签名或类型表达的「不会忘记」型契约**。一处共享实现把它降级成「六个方法都调它」，那是可以用行为测试钉死的（T-SEAM-01）。5e 的六条独立入口测试仍然照写、照过——它们断言的是每个入口的可观察行为，一处实现同样交付。
-> | # | 位置 | 今天 | 改为 |
-> | --- | ----------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
-> | 1 | **bootstrap**（`client/mod.rs:303`） | `get_ipc_state()`（恒 `Disconnected`，F35） | `probe()` 一次——**顺带修掉 F35**。**唯一不在守卫内的探针**，理由见 §4.5 |
-> | 2 | install（facade `:504-510`） | 不 reconcile（F16） | 统一形态 |
-> | 3 | start（`:512-521`） | 轮询 + `reconcile(get_ipc_state())` | 统一形态 |
-> | 4 | restart（`:530-539`） | 同上 | 统一形态 |
-> | 5 | stop（`:523-528`） | 同上 | 统一形态 |
-> | 6 | uninstall（今在 `ipc.rs:936-937`） | 无 | **迁到 facade** + 统一形态 |
-> | 7 | update（今在 `utils/init/mod.rs:251`） | 轮询 | **迁到 facade** + 统一形态 + 有界等待——**直接关系 smoke 2** |
-> | 8 | `enable_service_mode` 变更后 | 轮询 + reconcile（有 §4.8 的洞） | `reconcile()`（自取守卫版） |
-> | 9 | boot 的 `init_service`（`core/service/mod.rs:18-30`） | 起轮询线程 + 忙等 100 ms | `reconcile()`，**删忙等与整个函数** |
+
+| #   | 位置                                                  | 今天                                        | 改为                                                                          | 持准入？         |
+| --- | ----------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- | ---------------- |
+| 1   | **bootstrap**（`client/mod.rs:303`）                  | `get_ipc_state()`（恒 `Disconnected`，F35） | `probe()` 一次——**顺带修掉 F35**。**唯一不在守卫内的探针**，理由见 §4.5       | 否               |
+| 2   | install（facade `:504-510`）                          | 不 reconcile（F16）                         | `run_control_sequence(Install)`                                               | **是**           |
+| 3   | start（`:512-521`）                                   | 轮询 + `reconcile(get_ipc_state())`         | `run_control_sequence(Start)`                                                 | **是**           |
+| 4   | restart（`:530-539`）                                 | 同上                                        | `run_control_sequence(Restart)`                                               | **是**           |
+| 5   | stop（`:523-528`）                                    | 同上                                        | `run_control_sequence(Stop)`                                                  | **是**           |
+| 6   | uninstall（今在 `ipc.rs:936-937`）                    | 无                                          | **迁到 facade** → `run_control_sequence(Uninstall)`                           | **是**           |
+| 7   | update（今在 `utils/init/mod.rs:251`）                | 轮询                                        | **迁到 facade** → `run_control_sequence(Update)` + 有界等待——**关系 smoke 2** | **是**           |
+| 8   | `enable_service_mode` 变更后                          | 轮询 + reconcile（有 §4.8 的洞）            | `reconcile()`（自取守卫版）                                                   | **否**（R-C2-5） |
+| 9   | boot 的 `init_service`（`core/service/mod.rs:18-30`） | 起轮询线程 + 忙等 100 ms                    | `reconcile()`，**删忙等与整个函数**                                           | **否**（R-C2-5） |
 
 ### 4.3 诊断归属与有界等待就绪
 
@@ -343,6 +353,14 @@ async fn run_control_sequence(&self, action: ServiceControlAction) -> anyhow::Re
 | `daemon_status == Some(Running) && !compat.allows_service_backend()`——**逐字复现 `ipc.rs:108` 的合取式**，覆盖 Running 下 `Unknown`/`Incompatible`/`Unparsable` 三种（F59/F62） | `report_probe_diagnostics`，**单一实现**          | `tracing::warn!(?compat, ..)`（smoke 2 要的就是这一条）                                            |
 | `error.is_some()`                                                                                                                                                               | 同上                                              | `warn!` + degradation `service_probe_failed`、`retryable = true`                                   |
 | **bootstrap 的那次探针**                                                                                                                                                        | **bootstrap 调同一个 `report_probe_diagnostics`** | 同上二者。degradation sink 在 bootstrap 处已构造（`client/mod.rs:280` `client_degradation`），可用 |
+
+**「单一实现」要落到形状上**：`report_probe_diagnostics` 是 `core/service/probe.rs` 里的**自由函数**
+
+```rust
+pub(crate) fn report_probe_diagnostics(outcome: &ProbeOutcome, degradation: &dyn CoreDegradationSink);
+```
+
+**不能**做成 `CoreModeReconciler` 的方法——bootstrap 的那次探针发生在 `client/mod.rs:303`，而 reconciler 要到 client 构造完成之后才存在，届时**根本没有对象可调**。reconciler 侧写一个转发它的私有方法（下面代码里的 `self.report_probe_diagnostics`），bootstrap 直接传 `client_degradation`（`client/mod.rs:280`）。**两个调用点，一个实现。**
 
 **`await_service_ready` 的每一次非就绪结果也走同一个接手方**（v4 用 `_` 通配丢掉了）。
 
@@ -398,6 +416,8 @@ loop {
 1. **控制错误优先级最高**——与基线 `control?` 在 reconcile 之后的写法一致。用户问的是「我这次操作成没成」。
 2. **控制失败后跳过就绪等待**：`update_service` 都失败了，等一个新 daemon 就绪没有意义。
 3. **控制失败后仍然 reconcile**：这是**唯一**能把「部分生效」的现实同步回来的机会。
+
+> **本表与 S2 槽位的关系**：**第 1/3/5 行到达 S2，第 2/4/6 行到不了**（收敛失败会在 `apply_mode` 的 `?` 处提前返回）。**v6 在 §4.7 写「每一行都经过这里」是假的。** 逐行核对表与后果见 §4.7 的「S2 的前置条件逐行核对」，后果记为 R-C2-7。
 
 ### 4.5 reconcile 的三个入口 + **一个共享收敛实现**
 

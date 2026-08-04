@@ -551,13 +551,15 @@ v6 的序列第 ② 步写的是**裸** `rebuild.shutdown().await`。已核实 `
 let _ = control.done_rx.await;   // 无超时
 ```
 
-而 worker 侧的注释（`client/rebuild.rs:215`）写明：**「Once rebuild starts it intentionally runs to completion even if shutdown races in — cancellation mid-apply is not demonstrably safe.」** 一次在飞的 rebuild 可能正卡在 §4.6.3 所说的那些后端 await 上。**于是 shutdown 根本走不到 ③ 的关准入、④ 的 `QUIESCE_BUDGET`、⑤ 的 `ACTOR_STOP_BUDGET`——v6 给最后一步加的超时永远不会被执行到。** v6 的 T-SD-05 用的是空闲 rebuild 协调器，因此测不出这一点。
+而 worker 侧的注释（`client/rebuild.rs:215`）写明：**「Once rebuild starts it intentionally runs to completion even if shutdown races in — cancellation mid-apply is not demonstrably safe.」** 一次在飞的 rebuild 可能正卡在 §4.6.3 所说的那些后端 await 上。**于是 shutdown 根本走不到 v6 序列的 ③（关准入）、④（`QUIESCE_BUDGET`）、⑤（`ACTOR_STOP_BUDGET`）——v6 给最后一步加的那个超时永远不会被执行到。** v6 的 T-SD-05 用的是空闲 rebuild 协调器，因此测不出这一点。
+
+> **这就是「一份计划为修两件事而写，两件都没修完」的第二处**：v6 的头号修复（给 `Shutdown` RPC 加超时）本身是对的，但它装在一条**前驱无界**的序列上，等于没装。**上界必须整条序列成立，不是某一步成立。**
 
 **改法**：② 包 `timeout(REBUILD_DRAIN_BUDGET, ..)`。超时后**不取消 rebuild**（worker 的注释说得对，中途取消不安全），只是不再等它；按 §2.5 A5 处置——**后续步骤按「rebuild 可能仍在飞」写**：它随后的 actor 调用会在 ④ 之后一律 `ShuttingDown`，因此可能留下一份只应用了一半的运行时配置。**记为 R-C2-6。**
 
 **顺带修好的一件事**：v6 在 ③ 才关准入，也就是**整个无界的 rebuild 等待期间准入都还开着**。v7 在 ① 关（§4.6.4），关停一开始就没有新控制序列能进来。
 
-##### ⑤ 到底买到了什么（v6 的措辞强于机制）
+##### ⑤ 到底买到了什么（v6 编号 ⑥；**它的措辞强于机制**）
 
 v6 说「否则排在 close 之前入队的等待者会在 actor 拆除期间被唤醒」。**这条站不住**：
 
@@ -765,7 +767,7 @@ PR-5e §4.6 本来就把主路径（`Stop` / `Shutdown` / `SetBackend`）的恢�
 >
 > **第二遍（表 → 散文，抓过强措辞）**：本表每行的**「正文出处」列**必须指到 §4 的具体小节；打开该节，逐字比对**表里的措辞是否强于该节给出的机制**。本轮这一遍抓到一条：§4.6 的关停保证在 drain 超时后**并不成立**，因此该行措辞已改为条件式（并非「关停不会越过」，而是「关停**的等待**有界，且 drain 在预算内完成时不会越过」）。
 >
-> **第三遍**：对每一行问「**这条保证依赖的前提，是否有另一条保证在维护它**」。§4.6 ⑤ 就是这一遍抓出来的——「drain 有界」依赖「后续的 `core_client.shutdown()` 也有界」，而 v5 把后者判给了别的 PR，前者随之落空。
+> **第三遍**：对每一行问「**这条保证依赖的前提，是否有另一条保证在维护它**」。§4.6.3（v6 序列里编号 ⑤ 的那一步）就是这一遍抓出来的——「drain 有界」依赖「后续的 `core_client.shutdown()` 也有界」，而 v5 把后者判给了别的 PR，前者随之落空。
 >
 > > **第三遍在 v6 被跑过，而且漏了。** 它只审了**正在修的那一步**（⑤）的前提，没有回头审它的**前驱**（②的 `rebuild.shutdown()`），于是 v6 给序列末尾装了一个**永远执行不到**的超时。**这不是执行不认真，是程序本身的范围定错了。**
 >
@@ -884,6 +886,7 @@ PR-5e §4.6 本来就把主路径（`Stop` / `Shutdown` / `SetBackend`）的恢�
    **门禁只证明位置，不证明运行时定序**（词法序 ≠ 执行序）。定序由 T-SEAM-01/02、T-SD-07 承担。**两句都写出来，是因为 v6 用一条测试同时声称了这两件事。**
 
 5. **`G-NO-FORCED-STOP`**：`rg -n 'actor_ref\.stop\('` **恰好一处**，且落在 `client/core.rs` 的 `impl Drop for CoreClientInner` 内（今天在 `:379`）。**这是 §4.6.3 那条否定契约的另一半**（行为侧是 T-SD-09）。
+   **不覆盖**（如实划清，免得被误读为「禁止一切 stop」）：actor 在自己的 `Shutdown` 臂末尾调的 `myself.stop(None)`（`core/actor/mod.rs:614`）**是正常终止路径**，接收者不同故不被该 `rg` 命中；**本 PR 不动它**。
 
 **bindings 预期**：`ServiceProbe` / `ProbeOutcome` / `ServiceStatusRunner` / `ControlAdmission` / `ShutdownRole` / `ShutdownDisposition` 全部 `pub(crate)`；`uninstall_service` 命令名与签名不变（已核实其 specta 导出在 `specta_export.rs:77`，facade 迁移不动签名）；不新增命令。**结论：diff 恰好为空**，判据 `git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`（与 `ci.yml:306-308` 同形）。
 

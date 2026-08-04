@@ -671,17 +671,32 @@ function getMeowInfo(): BinInfo {
   };
 }
 
-// TODO: temporarily pinned instead of resolving the latest release, so the
-// sidecar stays on the same released version as the `nyanpasu-ipc` tag pinned
-// in `backend/Cargo.toml`. Unpin when both sides move together.
-const NYANPASU_SERVICE_VERSION = "v1.4.5";
+// The sidecar version follows the `nyanpasu-service` crate in the local
+// `nyanpasu-runtime` submodule, whose releases are tagged `v<crate version>`.
+const NYANPASU_SERVICE_MANIFEST = path.join(
+  WORKSPACE_ROOT,
+  "backend/nyanpasu-runtime/nyanpasu_service/Cargo.toml",
+);
 
-function getNyanpasuServiceInfo(): BinInfo {
-  const SERVICE_REPO = "libnyanpasu/nyanpasu-service";
+async function getNyanpasuServiceVersion(): Promise<string> {
+  const manifest = await Deno.readTextFile(NYANPASU_SERVICE_MANIFEST);
+  const match = manifest.match(
+    /^\[package\][^[]*?^version\s*=\s*"([^"]+)"/ms,
+  );
+  if (!match) {
+    throw new Error(
+      `failed to parse nyanpasu-service version from ${NYANPASU_SERVICE_MANIFEST}`,
+    );
+  }
+  return `v${match[1]}`;
+}
+
+async function getNyanpasuServiceInfo(): Promise<BinInfo> {
+  const SERVICE_REPO = "libnyanpasu/nyanpasu-runtime";
   const isWin = SIDECAR_HOST!.includes("windows");
   const urlExt = isWin ? "zip" : "tar.gz";
 
-  const version = NYANPASU_SERVICE_VERSION;
+  const version = await getNyanpasuServiceVersion();
   debugLog(`nyanpasu-service version: ${version}`);
 
   const name = "nyanpasu-service";

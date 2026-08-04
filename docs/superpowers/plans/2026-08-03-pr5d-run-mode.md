@@ -464,88 +464,261 @@ impl CoreModeReconciler {
 
 **问题形状**：facade 控制序列在**外部**持有许可，而 `CoreClient::shutdown()` 发的是**无守卫**的 `Shutdown`（`client/core.rs:277-283`），actor 立即 `state.operation.shutdown()` 清掉活跃操作（`mod.rs:604`）。于是控制序列可能在「已经 await 过的关停」之后仍去执行外部 `start`/`install`/`restart`/`update`，而没有 actor 还能收敛它。
 
+#### 4.6.1 `ControlAdmission` 与锁序不变式
+
 ```rust
-struct ControlAdmission {
-    /// 单次飞行状态：Open / Closing(Arc<Notify>) / Closed。
-    /// **不能用 AtomicBool**——它分不出「关停进行中」与「关停已完成」，
-    /// 于是第二个 shutdown() 会在拆除尚未结束时就返回（审查者点名）。
-    state: Mutex<AdmissionState>,
+enum AdmissionState {
+    Open,
+    /// 拆除已当选并在进行中。**准入在进入该态的那一刻就已关闭。**
+    Closing(Arc<tokio::sync::Notify>),
+    /// 拆除已终止（完成**或**被放弃）。不会再有第二次执行。
+    Closed,
+}
+
+pub(crate) struct ControlAdmission {
+    /// 用 std::sync::Mutex，**从不跨 await 持有**。
+    state: std::sync::Mutex<AdmissionState>,
     /// 1 个许可，被整条控制序列持有（含外部命令）。
     inflight: Arc<tokio::sync::Semaphore>,
 }
 ```
 
-```text
-enter()：
- ① 查 closed → 已关则 Err(ShuttingDown)
- ② acquire 许可（可能等待）
- ③ **再查一次 closed** → 已关则释放许可并 Err(ShuttingDown)
-    ← ③是必需的：①与②之间可能发生 close（审查者点名）
-
-NyanpasuClient::shutdown()：
- ① 单次飞行：已有关停在进行 → 等它完成后返回（不重复执行拆除）
- ② rebuild.shutdown().await                     ← 既有第一步
- ③ admission.close()                            ← 关准入
- ④ permit = timeout(QUIESCE_BUDGET, inflight.acquire())
-      超时 → warn + degradation `shutdown_quiesce_timeout`
- ⑤ core_client.shutdown().await                 ← **本身必须有界**，见下
- ⑥ **④拿到的 permit 在 ⑤ 之后才释放**
-    ← 否则排在 close 之前入队的等待者会在 actor 拆除期间被唤醒（审查者点名）
-```
-
 **为什么需要与 `OperationGate` 并存的第二个机制**：`OperationGate` 只约束 **actor 消息**；`Shutdown` 本身是无守卫消息且会**主动清空**活跃许可，所以 gate 在关停面前不提供任何排他性。`ControlAdmission` 约束的是 **facade future 的存续**，包括那条 actor 完全看不见的外部 OS 命令。**作用域不同，不是冗余。**
 
-#### ⑤ 也必须有界 —— **v5 曾错误地把这条判给 PR-5e**
+**锁序不变式（本 PR 新增记录，不是新增约束）：**
 
-> **v5 写的是「本 PR 范围内不存在 actor 内部挂死的风险，挂死点随 DNS 移出」。那是错的**（leader 指出）：**后端操作一样会挂**。DNS 只是挂死点之一，不是唯一。
+> **任何同时取用两者的路径，必须先取 `ControlAdmission`、再取 `OperationGate`，释放顺序相反。**
 
-**具体形状**：`CoreClient::shutdown()`（`client/core.rs:277-283`）是
+**当下不存在反序**，已逐路径核实：#2–#7 六条控制路径先 `admission.enter()` 后 `begin_operation()`（§4.2 共享实现，一处）；#1 bootstrap 两者都不取；#8/#9 只取门、不取准入；`shutdown()` 只取准入、不取门。**记录它的理由不是修复现状，是防止将来出现「门 → 准入」的第三种路径**——那正是死锁的构造。落 §7 门禁。
 
-```rust
-let _ = self.inner.actor_ref.call(CoreActorMessage::Shutdown, None).await;
-//                                                             ^^^^ 无超时，永久等待
+**#8/#9 不受准入约束的后果**（§1 已列，此处给结论）：关停开始后，一次 `reconcile()` 仍可能取得守卫并收敛。它**不发外部 OS 命令**，因此 §4.6 要防的那个危害（外部命令活过 actor）不成立；其 actor 调用在 `Shutdown` 被处理后一律 `ShuttingDown`。**记为 R-C2-5，不用措辞盖过去。**
+
+#### 4.6.2 关停序列（**全序列有界**）
+
+```text
+enter()：
+ ① 查状态 → 非 Open 则 Err(ShuttingDown)
+ ② acquire 许可（可能等待）
+ ③ **再查一次** → 非 Open 则释放许可并 Err(ShuttingDown)
+    ← ③是必需的：①与②之间可能发生关停
+
+check_open()：查状态 → 非 Open 则 Err(ShuttingDown)
+
+NyanpasuClient::shutdown()：
+ ① role = admission.begin_shutdown()             ← 选举，见 §4.6.4
+      Follower(n) → 等 n 后返回；Done → 立即返回
+      Leader(completion) → 继续；**该次转移已经把准入关掉了**
+ ② timeout(REBUILD_DRAIN_BUDGET, rebuild.shutdown())
+      超时 → warn + degradation `shutdown_rebuild_drain_timeout`（R-C2-6）
+ ③ permit = timeout(QUIESCE_BUDGET, inflight.acquire_owned())
+      超时 → warn + degradation `shutdown_quiesce_timeout`（R-C2-1）
+ ④ core_client.shutdown().await                  ← 见 §4.6.3，自身有界
+ ⑤ drop(permit)                                  ← 见下方「⑤ 到底买到了什么」
+ ⑥ drop(completion) → Closing → Closed + notify_waiters()
+      ← 由 Drop 承担，因此 ②③④ 任一步提前返回、panic 或整个 future 被取消
+        时都会执行（T-SD-08）
 ```
 
-而 ractor **逐条串行处理消息**：只要某个处理器还卡在 `backend.run()` / `stop()` / `check()` / `recover()` / `observe_status()` / `replace_backend` 的 await 里，排队的 `Shutdown` 就永远轮不到。**于是 `QUIESCE_BUDGET` 只界住了 facade 许可，关停整体仍然无界。**
+**复合上界 = `REBUILD_DRAIN_BUDGET` + `QUIESCE_BUDGET` + `ACTOR_STOP_BUDGET`。** follower 的上界相同（它不可能早于 leader 开始）。
 
-**改法（两步，都用仓内已有的 API）：**
+> **诚实限定**：这是**被 await 的时间**之和，不是墙钟上界；运行时被饿死或 executor 停摆不在其内。三个预算都在 §4.3 常量表有行、有依据、有 owner。
+
+##### v6 的 ② 是无界的 —— 这条把 v6 的头号修复整个抵消掉了
+
+v6 的序列第 ② 步写的是**裸** `rebuild.shutdown().await`。已核实 `client/rebuild.rs:155-166`，该方法结尾是
 
 ```rust
-// CoreClient::shutdown()
-match self.inner.actor_ref.call(CoreActorMessage::Shutdown, Some(ACTOR_STOP_BUDGET)).await {
+let _ = control.done_rx.await;   // 无超时
+```
+
+而 worker 侧的注释（`client/rebuild.rs:215`）写明：**「Once rebuild starts it intentionally runs to completion even if shutdown races in — cancellation mid-apply is not demonstrably safe.」** 一次在飞的 rebuild 可能正卡在 §4.6.3 所说的那些后端 await 上。**于是 shutdown 根本走不到 ③ 的关准入、④ 的 `QUIESCE_BUDGET`、⑤ 的 `ACTOR_STOP_BUDGET`——v6 给最后一步加的超时永远不会被执行到。** v6 的 T-SD-05 用的是空闲 rebuild 协调器，因此测不出这一点。
+
+**改法**：② 包 `timeout(REBUILD_DRAIN_BUDGET, ..)`。超时后**不取消 rebuild**（worker 的注释说得对，中途取消不安全），只是不再等它；按 §2.5 A5 处置——**后续步骤按「rebuild 可能仍在飞」写**：它随后的 actor 调用会在 ④ 之后一律 `ShuttingDown`，因此可能留下一份只应用了一半的运行时配置。**记为 R-C2-6。**
+
+**顺带修好的一件事**：v6 在 ③ 才关准入，也就是**整个无界的 rebuild 等待期间准入都还开着**。v7 在 ① 关（§4.6.4），关停一开始就没有新控制序列能进来。
+
+##### ⑤ 到底买到了什么（v6 的措辞强于机制）
+
+v6 说「否则排在 close 之前入队的等待者会在 actor 拆除期间被唤醒」。**这条站不住**：
+
+- `tokio::sync::Semaphore` 是**公平**的。排在 shutdown 的 `acquire` **之前**入队的等待者，本来就会先于 shutdown 拿到许可——它们**已经进去了**，⑤ 对它们毫无影响。
+- 排在 shutdown 的 `acquire` **之后**入队的等待者，拿到许可后会在 `enter()` 的第二次状态检查上失败并立即释放。**它们本来也执行不了任何东西。**
+
+**所以 ⑤ 的真实作用是：把那些注定失败的等待者的 `Err(ShuttingDown)` 推迟到拆除之后再返回。它不阻止任何执行，也不构成安全性质。** 保留它只因为代价为零、且让「同一时刻至多一条控制序列」这句话在拆除期间也逐字成立。§5 对应行按此改写，不再声称它阻止了什么。
+
+#### 4.6.3 `core_client.shutdown()` 必须有界，但**不能**升级为 `stop(None)`
+
+> **v5 曾把这条判给 PR-5e，错了**（leader 指出）：**后端操作一样会挂**，DNS 只是挂死点之一。**v6 加了超时，但超时分支从不触发，而一旦修好又会引入更糟的东西。**
+
+**基线形状**：`CoreClient::shutdown()`（`client/core.rs:277-283`）是 `call(CoreActorMessage::Shutdown, None)`——无超时。ractor 逐条串行处理消息：只要某个处理器还卡在 `backend.run()` / `stop()` / `check()` / `recover()` / `observe_status()` / `replace_backend` 的 await 里，排队的 `Shutdown` 就永远轮不到。
+
+**v6 的写法恒不触发。** v6 写的是：
+
+```rust
+match actor_ref.call(CoreActorMessage::Shutdown, Some(ACTOR_STOP_BUDGET)).await {
     Ok(_) => {}
-    Err(_) => {
-        // 升级：发停止信号。与 CoreClientInner::drop（client/core.rs:377-380）同一 API。
-        self.inner.actor_ref.stop(None);
+    Err(_) => actor_ref.stop(None),
+}
+```
+
+**ractor 把超时报成 `Ok(CallResult::Timeout)`，不是 `Err`。** 本仓自己的辅助函数就是这么写的（`client/core.rs:314-319`，`Ok(CallResult::SenderError | CallResult::Timeout) | Err(_)` 一起归为 `ShuttingDown`）。所以 `Ok(_) => {}` 把超时吞了，`stop(None)` 是死代码。
+
+**而把它「修好」会引入一条 v6 没有记录的危害。** 已核实 `ractor-0.16.2/src/actor/actor_cell.rs:~150` 的 `listen_in_priority` 顺序：**1. signal → 2. stop → 3. supervision → 4. 普通消息**。于是：
+
+- 处理器**真的卡死**时，`stop(None)` 同样排队，**不生效**——它对自己被引入的那个场景毫无作用；
+- 处理器只是**慢**、随后返回时，`stop` 因为在更高优先级的端口上，**会抢在已排队的 `Shutdown` 之前终止 actor**。而 `Shutdown` 臂（`core/actor/mod.rs:603-616`）是 **`backend.shutdown().await` 的全仓唯一调用点**，且该 actor **没有 `post_stop`**（impl 只定义了 `handle`）。**清理因此被整个跳过。** Service 模式下 daemon 是独立进程，**进程退出不会带走它管的核**。
+- PR-5e 把 S3 的 DNS 恢复放进同一个 `Shutdown` 臂（§4.7）之后，被跳过的还包括 **DNS 恢复**。
+
+**裁定：保留超时，撤回升级。**
+
+```rust
+// CoreClient::shutdown() -> ShutdownDisposition
+match self.inner.actor_ref
+        .call(CoreActorMessage::Shutdown, Some(ACTOR_STOP_BUDGET)).await {
+    Ok(CallResult::Success(())) => ShutdownDisposition::Completed,
+    // 超时 / 发送失败 / 通道错误：**不发 stop(None)**，理由见下。
+    Ok(CallResult::Timeout | CallResult::SenderError) | Err(_) => {
+        ShutdownDisposition::AbandonedUnverified
     }
 }
 ```
 
-**诚实边界（必须写明，否则又是一条「声明强于机制」）：**
+facade 收到 `AbandonedUnverified` 时按 §2.5 原则 A 处置：**报告降级关停，不报告干净关停**——`degradation.publish(shutdown_actor_stop_timeout)`，消息须写明**后端清理是否执行未知**。不改 `NyanpasuClient::shutdown()` 的签名（返回 `()`），因为唯一生产调用点 `utils/help.rs:263` 在退出路径上不消费返回值；**降级通道就是本计划一贯的报告机制**（§4.3、§4.4 同形），测试也从它观察。
 
-> **ractor 无法抢占一个正在执行的 `handle()`。** `stop(None)` 发的是停止信号，同样要排队；对一个卡死的处理器它**不生效**。所以上面这段**只能保证 facade 的等待有界，不能保证 actor 线程终止**。
->
-> **为什么这在关停场景下可以接受**：此时进程本就要退出，残留线程随进程销毁。**但这个理由只对「进程退出」成立**——若将来有人复用 `shutdown()` 做「重启 actor 而不退进程」，该前提消失。**记为 R-C2-4。**
+**为什么撤回优于修好（逐案穷举，不是偏好）：**
 
-**因此 §5 那一行的措辞是**「关停**的等待**有界」，**不是**「关停一定完成」。
+| 处理器实际状态            | 发 `stop(None)`                         | 不发                                                      |
+| ------------------------- | --------------------------------------- | --------------------------------------------------------- |
+| 永久卡死                  | 排队，不生效。清理无论如何跑不了        | 同左                                                      |
+| 慢，随后返回              | **抢在 `Shutdown` 前终止 → 清理被跳过** | `Shutdown` 照常执行 → **后端清理与 5e 的 DNS 恢复都跑到** |
+| 已经死了（`SenderError`） | no-op                                   | no-op                                                     |
 
-**残留（如实记账，§8）**：R-C2-1、R-C2-2、**R-C2-4**。
+**没有任何一格是 `stop(None)` 更好的。** 而 actor 的终止并不依赖它：`CoreClientInner::drop`（`client/core.rs:377-380`）本来就会 `stop(None)`，在 client 被丢弃时收尾。
+
+**诚实边界（这条 v6 写对了，保留）：**
+
+> ractor 无法抢占一个正在执行的 `handle()`。因此上面**只保证 facade 的等待有界，不保证 actor 终止、更不保证清理发生**。关停场景下可接受**仅因为进程随后就退出**；该前提在「重启 actor 而不退进程」的用法下不成立。**记为 R-C2-4**（v7 已把它从「无法抢占」改写为「**清理是否执行未知**」——那才是它真正的后果）。
+
+**因此 §5 那一行的措辞是**「关停**的等待**有界」，**不是**「关停一定完成」，**更不是**「清理一定发生」。
+
+#### 4.6.4 单次飞行：leader / follower 选举 + RAII 完成守卫
+
+> v6 声明了 `Open / Closing(Arc<Notify>) / Closed` 三态，**但 ①–⑥ 里没有任何一步把 leader 转成 `Closed`、也没有任何一步唤醒 follower**。T-SD-04 描述了想要的行为，计划却没有提供实现它的机制。v6 的序列还有一处自相矛盾：若 ① 就转 `Closing` 且 `enter()` 拒绝 `Closing`，准入其实在 ① 关，不在它写的 ③。
+
+**v7 的裁定：选举与关准入是同一次转移，都发生在 ①。** v6 的独立 `admission.close()` 步骤删除。三态语义因此明确：
+
+| 态           | `enter()` | `begin_shutdown()` | 含义                                     |
+| ------------ | --------- | ------------------ | ---------------------------------------- |
+| `Open`       | 放行      | 当选 → `Leader`    | 正常                                     |
+| `Closing(n)` | **拒绝**  | `Follower(n)`      | 准入已关，拆除进行中                     |
+| `Closed`     | **拒绝**  | `Done`             | 准入已关，拆除已终止（完成**或**被放弃） |
+
+```rust
+pub(crate) enum ShutdownRole {
+    /// 本次调用当选，必须执行拆除。completion 在 **Drop** 时完成状态转移并唤醒 follower。
+    Leader(ShutdownCompletion),
+    Follower(Arc<Notify>),
+    Done,
+}
+
+impl ControlAdmission {
+    pub(crate) fn begin_shutdown(self: &Arc<Self>) -> ShutdownRole {
+        let mut state = self.state.lock().expect("control admission");
+        match &*state {
+            AdmissionState::Open => {
+                let notify = Arc::new(Notify::new());
+                *state = AdmissionState::Closing(notify);          // ← 准入在此刻关闭
+                ShutdownRole::Leader(ShutdownCompletion { admission: self.clone() })
+            }
+            AdmissionState::Closing(notify) => ShutdownRole::Follower(notify.clone()),
+            AdmissionState::Closed => ShutdownRole::Done,
+        }
+    }
+}
+
+/// **RAII**：任何退出路径（正常返回、`?`、panic、future 被取消）都会跑。
+impl Drop for ShutdownCompletion {
+    fn drop(&mut self) {
+        let notify = {
+            let mut state = self.admission.state.lock().expect("control admission");
+            match std::mem::replace(&mut *state, AdmissionState::Closed) {
+                AdmissionState::Closing(n) => Some(n),
+                other => { *state = other; None }
+            }
+        };
+        if let Some(n) = notify { n.notify_waiters(); }
+    }
+}
+```
+
+**follower 的等待必须「先注册、后复查」**，否则 `notify_waiters()` 只唤醒**当前已注册**的等待者，转移与注册之间的窗口会让 follower 永久挂起：
+
+```rust
+ShutdownRole::Follower(notify) => loop {
+    let waiting = notify.notified();              // 先注册
+    if self.inner.admission.is_teardown_done() { break; }   // 后复查
+    waiting.await;
+},
+```
+
+**`Closed` 的语义是「不会再有第二次拆除」，不是「清理成功」。** follower 返回只说明没有拆除仍在进行中；清理是否发生由降级通道报告（§4.6.3）。**这条必须写明**，否则又是一句强于机制的话。
+
+**残留（如实记账，§8）**：R-C2-1、R-C2-2、**R-C2-4**、**R-C2-5**、**R-C2-6**。
 
 ### 4.7 为 PR-5e 声明的三个接缝（**空槽，但槽位与前置条件在本 PR 定死**）
 
 > **拆分只有在这一节存在时才真正省事。** v4 的三条接缝 BLOCKING（控制失败漏重施加、关停竞态、drain 与 actor 挂死）之所以能降级为「在这里加一步」，前提是**本 PR 交付的序列已经写明这一步该插在哪、插入时周围保证什么**。若 5d 交付一条没有声明接缝的序列，5e 仍然是一次重新设计，拆分白拆。
 >
-> **本节是契约，不是备注**：槽位的**位置**与**前置条件**由本 PR 冻结；**槽内内容**由 PR-5e 填。5e 不得移动槽位；如需移动，须回过头修订本节并说明理由。
+> **本节是契约，不是备注**：槽位的**位置**与**前置条件**由本 PR 冻结；**槽内内容**由 PR-5e 填。
+>
+> **v7 的改判**：v6 的 S2 与 S3 冻在了 **PR-5e 用不了的位置**——所以它们不是「5e 不得移动」，而是**本节必须改到 5e 的位置去**。leader 已裁定：**S2/S3 采 PR-5e 的位置，S1 保持 v6 的位置**（leader 曾考虑把 S1 移到 `check_open()` 之后并**已撤回**：现在这个顺序才让 `check_open()` 能抓到「拆除期间才开始的关停」并压掉那条控制命令）。此后若再要移动，仍须回过头修订本节并说明理由。
 
-| 槽位            | **精确位置**                                                                   | **进入该槽时，本 PR 保证成立的前置条件**                                                                                                                                           | 5e 将填入                                                                                           |
-| --------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **S1 拆除**     | §4.2 统一形态：`guard` 取得之后、`admission.check_open()?` **之前**            | ①已持 `CoreOperationGuard`（FIFO 序已确定）；②已通过准入（关停未开始）；③**外部控制命令尚未发出**——这正是「拆除必须早于控制动作」所要求的                                          | 拆 DNS 覆写并 `await` 其结果；失败时按入口分岔（uninstall 中止／其余降级）                          |
-| **S2 重施加**   | §4.2 统一形态：`reconcile_with(&guard).await` **之后**、`drop(guard)` **之前** | ①仍持同一守卫；②模式已收敛且 `set_backend`/`Run` 已完成——因此 `state.running` 反映的是**收敛后**的事实；③**无论前序控制动作成败都会到达此处**（§4.4 六行处置表的每一行都经过这里） | 按「`running.is_some()` **且** TUN 期望开启」决定是否重施加；失败以降级呈现，**不改变该行的返回值** |
-| **S3 关停恢复** | §4.6 序列：④ drain 之后、⑤ `core_client.shutdown()` **之前**                   | ①准入已关闭，无新控制序列可进入；②drain 已完成或已超时（**两种情形都会到达此处**）；③**actor 与后端仍在**——⑤ 尚未执行                                                              | 恢复 DNS 并 `await`；失败进降级                                                                     |
+| 槽位            | **精确位置**                                                                                                                           | **进入该槽时，本 PR 保证成立的前置条件**                                                                                                                                                                                                           | 5e 将填入                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **S1 拆除**     | `NyanpasuClient::run_control_sequence`（§4.2，**唯一实现**）：`begin_operation()` 之后、`admission.check_open()?` **之前**             | ①已持 `CoreOperationGuard`（FIFO 序已确定）；②已通过准入；③**外部控制命令尚未发出**；④**`action: ServiceControlAction` 在作用域内**——5e 按入口分岔无需拆成六份；⑤**六个 facade 方法全部经由此处**（T-SEAM-01 钉住）                                | 拆 DNS 覆写并 `await`；失败按入口分岔（uninstall 中止／其余降级）                             |
+| **S2 重施加**   | `CoreModeReconciler::apply_mode`（§4.5，**三个入口唯一的收敛实现**）：`self.core.run(..)` 返回 `Ok` 之后、`Ok(())` 之前                | ①仍持同一守卫；②`set_backend` 与 `run` **均已成功**，因此 `state.running` 反映的是**收敛后**的事实；③**九处调用点的每一次成功收敛都经过此处**（含 #8/#9 的 `reconcile()` 与 §4.4 第 3 行的 `force_local_with`）；④**失败收敛到不了此处**——逐行见下 | 按「`running.is_some()` **且** TUN 期望开启」决定是否重施加；失败以降级呈现，**不改变返回值** |
+| **S3 关停恢复** | `CoreActor` 的 `Shutdown` 臂（`core/actor/mod.rs:603-615`）：`backend.shutdown().await`（`:609`）与 `reply.send(())`（`:613`）**之前** | ①actor 正在处理 `Shutdown`，**无其他处理器并发**；②facade **不会**在该处理器返回前强制终止 actor（§4.6.3 已撤回 `stop(None)`）；③`state.backend` 尚未被消费；④reply 尚未发出（T-SD-07 钉住「reply 在后端动作之后」）；⑤**facade 侧不留 S3 槽位**   | 在处理器内 `await` 恢复；失败进降级                                                           |
 
-**三条槽位的共同前置**：全部位于**同一个 `CoreOperationGuard` 或同一次关停序列之内**，因此 5e 填入的步骤**不需要自取守卫**——那正是 v2 那条构造性死锁的来源。
+**三条槽位的共同前置**：S1/S2 位于**同一个 `CoreOperationGuard` 之内**，S3 位于 **actor 处理器之内**，因此 5e 填入的步骤**一律不需要自取守卫**——actor 内自取守卫正是 v2 那条构造性死锁（PR-5e §4.9 已完整论证）。
 
-**本 PR 对槽位的验证义务**：§6 的 T-SEAM-01 断言三个槽位在源码中**存在且为空**（以标记注释或空函数体形式），且顺序与上表一致。**这条测试的存在，就是「5e 不需要重新设计」这句话的机制。**
+#### S2 的前置条件逐行核对 —— **v6 在这里立了一条假的全称命题**
+
+v6 写「§4.4 六行处置表的每一行都经过这里」。**第 2/4/6 行恰恰是收敛失败的那三行**，`apply_mode` 会在 `?` 处提前返回，**到不了尾部**。
+
+| §4.4 行 | 收敛调用           | 结果  | 到达 S2？                                        |
+| ------- | ------------------ | ----- | ------------------------------------------------ |
+| 1       | `reconcile_with`   | `Ok`  | **是**                                           |
+| 2       | `reconcile_with`   | `Err` | **否**——`set_backend`/`run`/`for_product` 已失败 |
+| 3       | `force_local_with` | `Ok`  | **是**（与第 1 行同为一次成功收敛）              |
+| 4       | `force_local_with` | `Err` | **否**                                           |
+| 5       | `reconcile_with`   | `Ok`  | **是**（控制动作 `Err` 不影响收敛是否成功）      |
+| 6       | `reconcile_with`   | `Err` | **否**                                           |
+
+**第 2/4/6 行会发生什么，必须写出来而不是留一条全称句：** S1 已经把 DNS 覆写拆掉了，而收敛失败意味着**我们并不知道核处于什么状态**，因此**不重施加**是正确的处置——按「收敛后的事实」触发的机制，在没有确立的事实时就不该触发。代价是：若此时 TUN 仍被期望开启且核实际上在跑，DNS 覆写就缺席了。**记为 R-C2-7，owner 是 PR-5e**（它需要在这三行上给出可见的降级，而不是静默）。**本 PR 槽位为空，故 R-C2-7 在 5e 落地前不产生实际影响，但契约现在就冻结。**
+
+#### S3 的位置为什么必须在 actor 内 —— **v6 放在 facade 是做不到的**
+
+v6 把 S3 冻在 facade 的 drain 之后、`core_client.shutdown()` 之前。两条**已核实**的理由否掉它：
+
+1. **facade 那一点上没有 `CoreOperationGuard`。** 关停序列全程不取守卫（§4.6），而 PR-5e 的 `SetTunDns` 携带 `OperationId` 并由 `validate_operation` 校验（其 §4.9）。facade 无从构造一个合法的 `OperationId`；临时取一个守卫又会与正在拆除的门相冲。
+2. **一条 facade 级的恢复 RPC 会排在有界的 `Shutdown` RPC 之前，然后卡在同一个挂死的处理器后面**——它会把 §4.6 刚建立起来的有界性整个毁掉。
+
+PR-5e §4.6 本来就把主路径（`Stop` / `Shutdown` / `SetBackend`）的恢复放在**处理器内、后端动作与 reply 之前**，且不经 `SetTunDns` 消息，因此不需要 `OperationId`。**采 5e 的位置。**
+
+**本 PR 因此欠 5e 一条预算义务：`ACTOR_STOP_BUDGET` 必须覆盖 5e 放进 `Shutdown` 臂的全部 I/O 预算之和**（其 §3.2 的 `DNS_READ_BUDGET` / `DNS_WRITE_BUDGET` / `DNS_IPC_BUDGET`），否则关停会**稳定**超时、**稳定**走进 §4.6.3 的 `AbandonedUnverified`，从而**稳定**跳过清理。已写进 §4.3 常量表的 owner 列。
+
+#### 本 PR 对槽位的验证义务（v6 把两件不同的事混成一条测试）
+
+> v6 的 T-SEAM-01 声称「断言三个槽位存在且为空，且顺序正确」。**注释对普通 Rust 测试不可见**，而**词法顺序也不证明运行时调用顺序**——尤其跨六个分处不同文件的 facade 方法。那是一条源码门禁冒充行为测试。
+
+拆成两件：
+
+| 性质         | 落点                               | 断言                                                                                                                                         |
+| ------------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **行为**     | §6 T-SEAM-01 / T-SEAM-02 / T-SD-07 | 六个 facade 方法**各自**遍历同一条控制序列且定序正确；三个 reconcile 入口**各自**遍历同一个 `apply_mode`；`Shutdown` 的 reply 在后端动作之后 |
+| **源码位置** | §8 G-SEAM-01/02/03（`rg` 门禁）    | 三个 `SEAM-5E-S1/S2/S3` 标记各恰好一处，且在**约定的函数内**、与相邻锚点行号序正确                                                           |
+
+**门禁能证明的是位置，测试能证明的是遍历与定序；两者都不能证明另一个。** 这样划分之后，「PR-5e 是填槽而不是重新设计」这句话的凭据是**门禁 + 测试的合取**，不是一条名不副实的测试。
 
 ### 4.8 修 Service→Normal 缺口
 

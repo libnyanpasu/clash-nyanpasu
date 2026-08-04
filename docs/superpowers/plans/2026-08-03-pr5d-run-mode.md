@@ -1052,41 +1052,56 @@ crate::client::test_support::seam_visited(Seam::S1);
 >
 > **同族第二条**（承自 v4，C3 那边是主战场，这里仍适用）：**返回值的错误通道只报告调用的结果，不报告副作用的缺席。**
 
-| 契约                                            | 由谁保证                                    | 为什么可验证                                                                                                         |
+> **第三条（v8 新增，来自 leader 的发现）：一条经三重交叉引用指向「某个门禁」的不变量，如果那个门禁在 §8 里不存在，它就等于不存在。** v7 的锁序不变式正是这样——§5 指向「§7 `rg` 判据」，§7 说「由 `rg` 门禁保证」，§8 的门禁清单里**没有这一条**。**因此本表「由谁保证」列写 `rg` 门禁的每一行，都必须在 §8 有一个 `G-` 编号**；下表第三列已逐行给出编号，没有编号的行不许写「门禁」。
+
+| 契约                                            | 由谁保证                                    | 为什么可验证（**`rg` 类必须给出 §8 的 G- 编号**）                                                                    |
 | ----------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | 调用方无法把陈旧探针结果喂给 reconcile          | **签名**                                    | `reconcile`/`reconcile_with` **没有 `IpcState` 参数**                                                                |
 | **探针必然有限时间返回**                        | **实现内部的 `timeout` + 低层 runner 接缝** | 单点可验（T-PROBE-06）；**不是**「每个调用方记得包一层」那种不可强制的契约                                           |
-| 任何探针都不在守卫外开始                        | **ledger / `rg` 门禁**                      | `rg -n '\.probe(_within)?\('` 恒三处且位置固定                                                                       |
-| `force_local_with` 只在超时分支用               | **`rg` 门禁**                               | 恰好一处调用点                                                                                                       |
-| **模块内不另开第二条收敛路径**                  | **`rg` 门禁 + 测试**                        | `apply_mode` 私有；`rg -n 'set_backend\('` 在 `request.rs` 内恒一处（T-SEAM-02 覆盖遍历）                            |
-| **六个 facade 控制方法不各自重写序列**          | **`rg` 门禁 + 测试**                        | `rg -n 'admission\.enter\('` 恒一处（在 `run_control_sequence` 内）；T-SEAM-01 覆盖遍历                              |
+| **挂死子进程会被回收**（`.kill_on_drop(true)`） | **代码审查——\*\*未被任何测试覆盖\*\***      | **如实登记的空白**：T-PROBE-06 的 mock runner 不 spawn 子进程，删掉 `kill_on_drop` 它照绿。不补测试的理由见 §6 末    |
+| 任何探针都不在守卫外开始                        | **`rg` 门禁 `G-PROBE-SITES`**               | `rg -n '\.probe(_within)?\('` 恒三处且位置固定                                                                       |
+| `force_local_with` 只在超时分支用               | **`rg` 门禁 `G-FORCE-LOCAL`**               | 恰好一处调用点                                                                                                       |
+| **模块内不另开第二条收敛路径**                  | **`rg` 门禁 `G-APPLY-MODE` + 测试**         | `apply_mode` 私有；`rg -n 'set_backend\('` 在 `request.rs` 内恒一处（T-SEAM-02/03 覆盖遍历）                         |
+| **六个 facade 控制方法不各自重写序列**          | **`rg` 门禁 `G-LOCK-01` + 测试**            | `rg -n 'admission\.enter\('` 恒一处（在 `run_control_sequence` 内）；T-SEAM-01 覆盖遍历                              |
 | 顺序类契约                                      | **测试**                                    | 控制流性质，类型系统表达不了                                                                                         |
-| **关停后不再有新\*\*控制序列\*\*（#2–#7）进入** | **状态机转移 + 双重检查 + 测试**            | T-SD-03；**已进入的序列见 R-C2-1、未受准入约束的 #8/#9 见 R-C2-5，两者都不谎称关闭**                                 |
-| **不发 `stop(None)` 抢占已排队的 `Shutdown`**   | **`rg` 门禁 + 测试**                        | `rg -n 'actor_ref\.stop\('` **恰好一处**，且在 `CoreClientInner::drop`（`client/core.rs:379`）内；T-SD-09 从行为侧验 |
-| **同时取准入与门时先准入后门**                  | **`rg` 门禁**                               | 同时出现 `admission.enter(` 与 `begin_operation(` 的函数**恒为 `run_control_sequence` 一个**，两行相对顺序固定       |
-| `get_ipc_state` / statics 归零                  | **`rg` 判据**                               | 删除类不变量                                                                                                         |
+| **关停后不再有新\*\*控制序列\*\*（#2–#7）进入** | **状态机转移 + 双重检查 + 测试**            | T-SD-03、T-SD-10；**已进入的序列见 R-C2-1、未受准入约束的 #8/#9 见 R-C2-5，两者都不谎称关闭**                        |
+| **不发 `stop(None)` 抢占已排队的 `Shutdown`**   | **`rg` 门禁 `G-NO-FORCED-STOP` + 测试**     | `rg -n 'actor_ref\.stop\('` **恰好一处**，且在 `CoreClientInner::drop`（`client/core.rs:379`）内；T-SD-09 从行为侧验 |
+| **同时取准入与门时先准入后门**                  | **`rg` 门禁 `G-LOCK-01`**                   | **同一条门禁两用**：`admission.enter(` 恒一处 ⇒ 第二个「同时取两者」的函数在结构上不可构造，反序无从产生             |
+| `get_ipc_state` / statics 归零                  | **`rg` 门禁 `G-STATICS-ZERO`**              | 删除类不变量                                                                                                         |
 
 ---
 
 ## 8. 门禁与残留
 
-**门禁：**
+**门禁 —— 本节是门禁的\*\*唯一权威清单\*\*，§5/§7/§9 只许引用这里的 `G-` 编号。**
 
-1. **「diff 应为空」形态的判据，只要跑在中间提交之后，必须与基线比**：`git diff --exit-code <base>..HEAD -- <path>`；
-2. **ledger 三步顺序**：report 核对 → `--write-snapshot` → gate 比对；
-3. **删模块要有「模块不存在」断言**（`core/service/mod.rs::init_service`、`ipc.rs` 的轮询部分）；
-4. **`G-SEAM-01/02/03` —— 三个 5e 槽位标记的位置门禁**（与 §6 的行为测试**互补，不互相替代**，理由见 §4.7 末）：
+> **v7 在这里塌了一次**：锁序不变式被 §5→§7→「`rg` 门禁」三重转引，而本节的 1–5 条里**根本没有它**。**一条经三次交叉引用指向空处的不变量，正是本计划反复在抓的那个形状。** v8 因此把散在 §7/§9 正文里的 `rg` 判据全部收进本节并编号；**没有编号的判据不许在别处被称作「门禁」。**
 
-   | 门禁          | 判据                                                                                                                                                            |
-   | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | **G-SEAM-01** | `rg -n 'SEAM-5E-S1'` **恰好一处**，在 `client/mod.rs` 的 `run_control_sequence` 内，行号介于该函数的 `begin_operation(` 行与 `admission.check_open(` 行**之间** |
-   | **G-SEAM-02** | `rg -n 'SEAM-5E-S2'` **恰好一处**，在 `core/actor/request.rs` 的 `apply_mode` 内，行号在该函数 `self.core.run(` 行**之后**                                      |
-   | **G-SEAM-03** | `rg -n 'SEAM-5E-S3'` **恰好一处**，在 `core/actor/mod.rs` 的 `Shutdown` 臂内，行号在 `backend.shutdown().await` 与 `reply.send(` 两行**之前**                   |
+| 编号                 | 判据                                                                                                                                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **G-DIFF-BASE**      | 「diff 应为空」形态的判据，只要跑在中间提交之后，必须与基线比：`git diff --exit-code <base>..HEAD -- <path>`                                                                                                                                |
+| **G-LEDGER**         | ledger 三步顺序：report 核对 → `--write-snapshot` → gate 比对                                                                                                                                                                               |
+| **G-MODULE-GONE**    | 删模块要有「模块不存在」断言（`core/service/mod.rs::init_service`、`ipc.rs` 的轮询部分）                                                                                                                                                    |
+| **G-SEAM-01**        | `rg -n 'SEAM-5E-S1'` **恰好一处**，在 `client/mod.rs` 的 `run_control_sequence` 内，行号介于该函数的 `begin_operation(` 行与 `admission.check_open(` 行**之间**                                                                             |
+| **G-SEAM-02**        | `rg -n 'SEAM-5E-S2'` **恰好一处**，在 `core/actor/request.rs` 的 `apply_mode` 内，位于 `match` 的 `Ok` 臂                                                                                                                                   |
+| **G-SEAM-03**        | `rg -n 'SEAM-5E-S3'` **恰好一处**，在 `core/actor/mod.rs` 的 `Shutdown` 臂内，行号在 `backend.shutdown().await` 与 `reply.send(` 两行**之前**                                                                                               |
+| **G-SEAM-04**        | `rg -n 'SEAM-5E-S4'` **恰好一处**，在 `core/actor/request.rs` 的 `apply_mode` 内，位于**同一个 `match` 的 `Err` 臂**                                                                                                                        |
+| **G-SEAM-SENTINEL**  | `rg -n 'seam_visited\('` **恰好四处**，与四个 `SEAM-5E-S*` 标记一一相邻，且全部在 `#[cfg(test)]` 之下（§4.7 末）                                                                                                                            |
+| **G-NO-FORCED-STOP** | `rg -n 'actor_ref\.stop\('` **恰好一处**，落在 `client/core.rs` 的 `impl Drop for CoreClientInner` 内（今天在 `:379`）。**不覆盖** actor 自身 `Shutdown` 臂末尾的 `myself.stop(None)`（`mod.rs:614`，接收者不同，正常终止路径，本 PR 不动） |
+| **G-LOCK-01**        | `rg -n 'admission\.enter\('` **恰好一处**，在 `run_control_sequence` 内，且行号**早于**同函数的 `begin_operation(` 行 —— 论证见下                                                                                                           |
+| **G-PROBE-SITES**    | `rg -n '\.probe(_within)?\('` **恰好三处**：`reconcile_with` 内、`await_service_ready` 内、bootstrap                                                                                                                                        |
+| **G-FORCE-LOCAL**    | `rg -n 'force_local_with\('` 的调用点**恰好一处**（§4.3 就绪超时分支）                                                                                                                                                                      |
+| **G-APPLY-MODE**     | `rg -n 'set_backend\('` 在 `core/actor/request.rs` 内**恰好一处**（即 `apply_mode_inner`），确保没有第二条收敛路径                                                                                                                          |
+| **G-STATICS-ZERO**   | `rg 'IPC_STATE\|KILL_FLAG\|HEALTH_CHECK_RUNNING\|spawn_health_check\|get_ipc_state\|RunType::default'` **为 0**                                                                                                                             |
+| **G-SHUTDOWN-BOUND** | `rg -n 'call\(CoreActorMessage::Shutdown, None\)'` 为 **0**；且 `rg -n 'rebuild\.shutdown\(\)'` 的调用点**不是裸 await**（必须被 `timeout(REBUILD_DRAIN_BUDGET, ..)` 包住）                                                                 |
 
-   **门禁只证明位置，不证明运行时定序**（词法序 ≠ 执行序）。定序由 T-SEAM-01/02、T-SD-07 承担。**两句都写出来，是因为 v6 用一条测试同时声称了这两件事。**
+**关于 `G-LOCK-01` —— 一条门禁同时承担两件事，论证要写出来：**
 
-5. **`G-NO-FORCED-STOP`**：`rg -n 'actor_ref\.stop\('` **恰好一处**，且落在 `client/core.rs` 的 `impl Drop for CoreClientInner` 内（今天在 `:379`）。**这是 §4.6.3 那条否定契约的另一半**（行为侧是 T-SD-09）。
-   **不覆盖**（如实划清，免得被误读为「禁止一切 stop」）：actor 在自己的 `Shutdown` 臂末尾调的 `myself.stop(None)`（`core/actor/mod.rs:614`）**是正常终止路径**，接收者不同故不被该 `rg` 命中；**本 PR 不动它**。
+> 锁序不变式是「任何同时取 `ControlAdmission` 与 `OperationGate` 的路径，必须先准入后门」。**直接检查「所有同时取两者的函数里两行的顺序」需要跨函数分析，`rg` 做不到。** 但本 PR 的结构提供了一条更强也更容易验的替代命题：
+>
+> **`admission.enter(` 全仓恰好一处** ⇒ **不存在第二个能同时取到两者的函数** ⇒ **反序在结构上不可构造**。剩下唯一那处的顺序，由同一条门禁的行号比较直接钉死。
+>
+> **这不是弱化，是把全称命题化归成一个可被 `rg` 判定的单点命题。** 代价：若将来真需要第二个取准入的地方，本门禁会红——**那正是应该红的时候**，因为那一刻锁序才第一次成为真问题。
 
 **bindings 预期**：`ServiceProbe` / `ProbeOutcome` / `ServiceStatusRunner` / `ControlAdmission` / `ShutdownRole` / `ShutdownDisposition` 全部 `pub(crate)`；`uninstall_service` 命令名与签名不变（已核实其 specta 导出在 `specta_export.rs:77`，facade 迁移不动签名）；不新增命令。**结论：diff 恰好为空**，判据 `git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`（与 `ci.yml:306-308` 同形）。
 

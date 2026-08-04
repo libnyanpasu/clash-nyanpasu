@@ -500,8 +500,14 @@ pub(crate) struct ControlAdmission {
     state: std::sync::Mutex<AdmissionState>,
     /// 1 个许可，被整条控制序列持有（含外部命令）。
     inflight: Arc<tokio::sync::Semaphore>,
+    /// §4.6.4 的「拆除被放弃」要在 **`Drop` 里**上报，而 `Drop` 是同步的。
+    /// `CoreDegradationSink::publish` 恰好是同步方法（`core/actor/backend.rs:614-616`），
+    /// 因此可以直接持有它，不需要另造一条异步上报通道。
+    degradation: Arc<dyn CoreDegradationSink>,
 }
 ```
+
+**`AdmissionState` 的两个字段见 §4.6.4**（`entrants_closed` 与 `teardown` 是正交的两维，v7 把它们塞进一个三态枚举正是那条缺陷的根因）。`ControlAdmission` 在合成根 `try_new_with_args` 构造，注入 §4.1 已有的 `degradation`——**不新增依赖，也不是全局**。
 
 **为什么需要与 `OperationGate` 并存的第二个机制**：`OperationGate` 只约束 **actor 消息**；`Shutdown` 本身是无守卫消息且会**主动清空**活跃许可，所以 gate 在关停面前不提供任何排他性。`ControlAdmission` 约束的是 **facade future 的存续**，包括那条 actor 完全看不见的外部 OS 命令。**作用域不同，不是冗余。**
 
@@ -673,63 +679,115 @@ facade 收到 `AbandonedUnverified` 时按 §2.5 原则 A 处置：**报告降�
 
 > v6 声明了 `Open / Closing(Arc<Notify>) / Closed` 三态，**但 ①–⑥ 里没有任何一步把 leader 转成 `Closed`、也没有任何一步唤醒 follower**。T-SD-04 描述了想要的行为，计划却没有提供实现它的机制。v6 的序列还有一处自相矛盾：若 ① 就转 `Closing` 且 `enter()` 拒绝 `Closing`，准入其实在 ① 关，不在它写的 ③。
 
-**v7 的裁定：选举与关准入是同一次转移，都发生在 ①。** v6 的独立 `admission.close()` 步骤删除。三态语义因此明确：
+**v7 的裁定保留：选举与关准入是同一次转移，都发生在 ①。** v6 的独立 `admission.close()` 步骤删除。
 
-| 态           | `enter()` | `begin_shutdown()` | 含义                                     |
-| ------------ | --------- | ------------------ | ---------------------------------------- |
-| `Open`       | 放行      | 当选 → `Leader`    | 正常                                     |
-| `Closing(n)` | **拒绝**  | `Follower(n)`      | 准入已关，拆除进行中                     |
-| `Closed`     | **拒绝**  | `Done`             | 准入已关，拆除已终止（完成**或**被放弃） |
+##### v7 的三态把两件事塞进了一个 `Closed`，**结果是取消 = 永久跳过拆除**
+
+> v7 的 `ShutdownCompletion::drop` 在**每一条**退出路径上转 `Closing → Closed`——这正是它被设计出来的目的，但也意味着：leader 当选 → 外层 timeout / 任务 abort / panic 在拆除完成**之前**取消了它 → `Drop` 置 `Closed` → follower 醒来并认定「拆除已完成」→ 此后每一次 `shutdown()` 都得到 `Done` → **rebuild 与 actor 拆除永远不会发生，而且什么都不上报**。
+>
+> **v7 的 T-SD-08 把这个行为断言成了正确行为**，于是缺陷被测试固化。它还与 §4.6.4 自己那句「清理是否发生由降级通道报告」直接冲突——被取消的那一次**一条降级也没发**。
+
+**根因**：`Closed` 同时承担了两个互不等价的意思——**「拆除跑完了」**与**「leader 不在了」**。v8 把它们拆开，并把「准入是否关闭」从「拆除进行到哪一步」里分离出来（两者本来就正交）：
 
 ```rust
-pub(crate) enum ShutdownRole {
-    /// 本次调用当选，必须执行拆除。completion 在 **Drop** 时完成状态转移并唤醒 follower。
-    Leader(ShutdownCompletion),
-    Follower(Arc<Notify>),
-    Done,
+struct AdmissionState {
+    /// **一经置位永不清除**：关停一旦开始，准入不再重开。
+    entrants_closed: bool,
+    teardown: Teardown,
 }
 
+enum Teardown {
+    NotStarted,
+    Running(Arc<Notify>),
+    Done,
+}
+```
+
+| `entrants_closed` | `teardown`       | `enter()` | `begin_shutdown()`          | 含义                                           |
+| ----------------- | ---------------- | --------- | --------------------------- | ---------------------------------------------- |
+| `false`           | `NotStarted`     | 放行      | 当选 → `Leader`             | 正常                                           |
+| `true`            | `Running(n)`     | **拒绝**  | `Follower(n)`               | 准入已关，拆除进行中                           |
+| `true`            | **`NotStarted`** | **拒绝**  | **当选 → `Leader`（重试）** | 准入已关，**上一任 leader 被取消，拆除未完成** |
+| `true`            | `Done`           | **拒绝**  | `Done`                      | 准入已关，拆除**确实跑完了**                   |
+
+**第三行是新增的那个态**，它就是「leader 不在了但活没干完」。注意它**不需要第四个枚举值**——`entrants_closed = true` 与 `teardown = NotStarted` 的组合本身就表达了它，这也是把两个维度拆开的收益。
+
+```rust
 impl ControlAdmission {
     pub(crate) fn begin_shutdown(self: &Arc<Self>) -> ShutdownRole {
         let mut state = self.state.lock().expect("control admission");
-        match &*state {
-            AdmissionState::Open => {
+        state.entrants_closed = true;                    // ← 准入在此刻关闭，且永不重开
+        match &state.teardown {
+            Teardown::NotStarted => {                    // 首次当选，或**接替被取消的 leader**
                 let notify = Arc::new(Notify::new());
-                *state = AdmissionState::Closing(notify);          // ← 准入在此刻关闭
-                ShutdownRole::Leader(ShutdownCompletion { admission: self.clone() })
+                state.teardown = Teardown::Running(notify);
+                ShutdownRole::Leader(ShutdownCompletion { admission: self.clone(), finished: false })
             }
-            AdmissionState::Closing(notify) => ShutdownRole::Follower(notify.clone()),
-            AdmissionState::Closed => ShutdownRole::Done,
+            Teardown::Running(notify) => ShutdownRole::Follower(notify.clone()),
+            Teardown::Done => ShutdownRole::Done,
         }
     }
 }
 
-/// **RAII**：任何退出路径（正常返回、`?`、panic、future 被取消）都会跑。
+impl ShutdownCompletion {
+    /// 正常路径**显式**调用（消费 self）：拆除确实跑完了。
+    pub(crate) fn finish(mut self) {
+        self.finished = true;                            // Drop 随即按「已完成」处理
+    }
+}
+
 impl Drop for ShutdownCompletion {
     fn drop(&mut self) {
-        let notify = {
+        let (notify, abandoned) = {
             let mut state = self.admission.state.lock().expect("control admission");
-            match std::mem::replace(&mut *state, AdmissionState::Closed) {
-                AdmissionState::Closing(n) => Some(n),
-                other => { *state = other; None }
+            match std::mem::replace(&mut state.teardown, Teardown::NotStarted) {
+                Teardown::Running(n) if self.finished => {
+                    state.teardown = Teardown::Done;     // 完成
+                    (Some(n), false)
+                }
+                // **被取消 / panic**：退回 NotStarted，让下一个调用者接替。
+                // entrants_closed 保持 true——准入不因放弃而重开。
+                Teardown::Running(n) => (Some(n), true),
+                other => { state.teardown = other; (None, false) }
             }
         };
+        if abandoned {
+            // publish 是同步的（backend.rs:614-616），Drop 里可以调。
+            self.admission.degradation.publish(Degradation::shutdown_abandoned());
+        }
         if let Some(n) = notify { n.notify_waiters(); }
     }
 }
 ```
 
-**follower 的等待必须「先注册、后复查」**，否则 `notify_waiters()` 只唤醒**当前已注册**的等待者，转移与注册之间的窗口会让 follower 永久挂起：
+**follower 醒来后必须重新选举，而不是直接返回**——因为它可能是被「放弃」唤醒的：
 
 ```rust
-ShutdownRole::Follower(notify) => loop {
-    let waiting = notify.notified();              // 先注册
-    if self.inner.admission.is_teardown_done() { break; }   // 后复查
-    waiting.await;
-},
+loop {
+    match self.inner.admission.begin_shutdown() {
+        ShutdownRole::Done => break,                   // 拆除确实跑完了
+        ShutdownRole::Leader(completion) => {          // 接替被取消的 leader
+            self.run_teardown(completion).await;       // 内部结束时 completion.finish()
+            break;
+        }
+        ShutdownRole::Follower(notify) => {
+            let waiting = notify.notified();           // **先注册**
+            if self.inner.admission.is_teardown_done() { break; }   // **后复查**
+            waiting.await;
+        }
+    }
+}
 ```
 
-**`Closed` 的语义是「不会再有第二次拆除」，不是「清理成功」。** follower 返回只说明没有拆除仍在进行中；清理是否发生由降级通道报告（§4.6.3）。**这条必须写明**，否则又是一句强于机制的话。
+> **「先注册、后复查」这一段 codex 复核为本来就安全**：`Notified` 在**创建时**就记下 generation，因此 `notify_waiters()` 与 `.await` 之间没有丢唤醒窗口。**保留它不是因为有窗口，而是因为唤醒之后必须重新判断醒来的原因**（完成？还是放弃？）——上面的 `loop` 才是它现在存在的理由。
+
+**语义收紧（v7 那句话本身也是错的）：**
+
+- `Teardown::Done` 现在**只**表示「拆除跑完了」。follower 收到 `Done` 才可以认为没有活儿剩下。
+- **「跑完了」仍然不等于「清理成功」**——`ACTOR_STOP_BUDGET` 超时属于「跑完了但清理未知」，由 `shutdown_actor_stop_timeout` 降级报告（§4.6.3）。
+- **被放弃**由 `shutdown_abandoned` 降级报告，并且**允许一次受控重试**：准入始终关闭，所以重试期间不会有新控制序列混进来。
+
+**这三条现在各有各的可观测信号**，不再挤在一个状态里。
 
 **残留（如实记账，§8）**：R-C2-1、R-C2-2、**R-C2-4**、**R-C2-5**、**R-C2-6**。
 

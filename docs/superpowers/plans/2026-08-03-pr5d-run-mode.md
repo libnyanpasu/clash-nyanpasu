@@ -615,13 +615,59 @@ facade 收到 `AbandonedUnverified` 时按 §2.5 原则 A 处置：**报告降�
 | 慢，随后返回              | **抢在 `Shutdown` 前终止 → 清理被跳过** | `Shutdown` 照常执行 → **后端清理与 5e 的 DNS 恢复都跑到** |
 | 已经死了（`SenderError`） | no-op                                   | no-op                                                     |
 
-**没有任何一格是 `stop(None)` 更好的。** 而 actor 的终止并不依赖它：`CoreClientInner::drop`（`client/core.rs:377-380`）本来就会 `stop(None)`，在 client 被丢弃时收尾。
+**没有任何一格是 `stop(None)` 更好的。**
 
-**诚实边界（这条 v6 写对了，保留）：**
+##### 上表第二行依赖一个前提，v7 没有查证它 —— **v8 已经查证，逐级引用如下**
 
-> ractor 无法抢占一个正在执行的 `handle()`。因此上面**只保证 facade 的等待有界，不保证 actor 终止、更不保证清理发生**。关停场景下可接受**仅因为进程随后就退出**；该前提在「重启 actor 而不退进程」的用法下不成立。**记为 R-C2-4**（v7 已把它从「无法抢占」改写为「**清理是否执行未知**」——那才是它真正的后果）。
+> **v7 的缺陷不是结论错，是论证里有一处未建立的事实被同时用在两个相反方向上。** v7 一边用 `CoreClientInner::drop`（`client/core.rs:377-380`）当作「不升级也不会漏掉 actor 终止」的宽慰，一边断言「不升级则排队的 `Shutdown` 一定还有机会执行」。**这两句依赖同一个事实：退出时那个 `Drop` 到底跑不跑。** 跑，则宽慰成立而安全断言破（`Drop` 里的 `stop(None)` 会抢在排队的 `Shutdown` 前面）；不跑，则安全断言成立而宽慰是空话。**v7 两句都写了，却没有定过是哪一种。**
+
+**已建立的事实链（全部读源码，非从命名推断）：**
+
+| #   | 事实                                                                                                                                           | 出处                                                                                                           |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 1   | `CoreClient` 是 `#[derive(Clone)]` 且只含 `inner: Arc<CoreClientInner>`，故 `CoreClientInner::drop` 只在**最后一个** clone 消失时触发          | `client/core.rs:53-55`、`:377-380`                                                                             |
+| 2   | `NyanpasuClient` 由 Tauri **managed state** 持有；`cleanup_processes` 取的是一个 **clone**（`state.inner().clone()`），丢掉它不是最后一次 drop | `utils/help.rs:258-260`                                                                                        |
+| 3   | 应用主循环是 `app.run(...)`；`RunEvent::ExitRequested{ code: Some(_) }` 分支调用 `cleanup_processes` → `client.shutdown().await`               | `lib.rs:346`、`:350-352`；`help.rs:261-264`                                                                    |
+| 4   | `App::run` **消费 `self`**（`App` 持有 `manager: Arc<AppManager>`，managed state 在其中），并把控制权交给 `runtime.run(..)`                    | `tauri-2.11.5/src/app.rs:1366-1374`                                                                            |
+| 5   | wry 的 `Runtime::run` 直接调 `self.event_loop.run(event_handler)`                                                                              | `tauri-runtime-wry-2.11.4/src/lib.rs:3238-3242`                                                                |
+| 6   | tao 的 `EventLoop::run` 返回类型是 **`!`**（永不返回）                                                                                         | `tao-0.35.3/src/event_loop.rs:220`                                                                             |
+| 7   | 三个桌面平台的实现都以 `process::exit(exit_code)` 收场                                                                                         | `tao-0.35.3/src/platform_impl/windows/event_loop.rs:230`、`macos/event_loop.rs:202`、`linux/event_loop.rs:998` |
+| 8   | Tauri 退出前只调 `cleanup_before_exit`，它清的是 tray icon / resources table / window，**完全不碰 managed state**                              | `tauri-2.11.5/src/app.rs:1108-1120`、`:1430-1437`                                                              |
+| 9   | `restart_application` 走的是另一条路：显式 `std::process::exit(0)`，**`std::process::exit` 不运行任何析构函数**                                | `utils/help.rs:295`                                                                                            |
+
+**结论（两条退出路径都已定案，不是「取决于 Tauri，无法静态确定」）：**
+
+> **`CoreClientInner::drop` 在两条已发布的退出路径上都不会触发。**
+> `quit_application`（`help.rs:274-276`）经 4→7：`App` 永不被 drop，managed state 永不被 drop。
+> `restart_application`（`help.rs:279-296`）经 9：`process::exit` 直接跳过析构。
+
+因此：
+
+- **安全断言成立，而且比 v7 声称的更强**——退出路径上**根本没有任何东西**发送 `stop(None)`，所以排队的 `Shutdown` 不可能被优先级停止端口抢占。上表第二行「不发」列如实。
+- **v7 那句宽慰是空话，已删。** actor 在退出时的终止来自**进程销毁**，不来自 `Drop`，也不来自任何升级；`Drop` 里那行 `stop(None)` 只在**非退出**场景（client 被真正丢弃）才有意义。**升级在已发布的退出路径上一分钱都买不到**——这反而是撤回它的第三条独立理由。
+
+**诚实边界（这条 v6/v7 写对了，保留并收紧）：**
+
+> ractor 无法抢占一个正在执行的 `handle()`。因此上面**只保证 facade 的等待有界，不保证 actor 终止、更不保证清理发生**。关停场景下可接受**仅因为进程随后就销毁**（事实 6/7/9，不再是假设）；**但「进程销毁」不等于「清理已发生」**——见 R-C2-4 与下面 `restart_application` 那一段。
+
+##### `restart_application` 把 R-C2-4 从假设变成一条**已发布代码路径**上的实际后果
+
+`utils/help.rs:279-296` 的顺序是：
+
+```text
+:280  cleanup_processes(app_handle)      → client.shutdown().await（可能在复合上界处超时返回）
+:290  std::process::Command::new(path).spawn()   ← **后继进程在此刻已经起来了**
+:294  app_handle.exit(0)
+:295  std::process::exit(0)              ← 不运行析构
+```
+
+**若 `:280` 的关停在 `ACTOR_STOP_BUDGET` 处超时，`backend.shutdown()` 可能没跑，而 `:290` 立刻拉起一个新实例。** Service 模式下 daemon 是独立进程，**不随本进程销毁**，于是旧核可能与新实例并存。这不是「重启 actor 而不退进程」那种假想用法——**进程确实退出了，只是后继紧接着启动**。R-C2-4 的措辞据此加宽。
+
+**一个方向相反的事实也要记**：v7 之前这条路径上的 `client.shutdown()` 是**无界**的，一次挂死的处理器会让 `cleanup_processes` 永远不返回，`:290` 永远到不了——**重启功能整个卡死**。复合上界把「重启卡死」换成了「重启可能与旧核并存」。**这是一次有意的取舍，不是净损失，两边都写出来。**
 
 **因此 §5 那一行的措辞是**「关停**的等待**有界」，**不是**「关停一定完成」，**更不是**「清理一定发生」。
+
+> **顺带一条对用户可见的收益**：`cleanup_processes` 在 `RunEvent::ExitRequested` 分支里被调用（`lib.rs:350-352`），也就是**在事件循环线程上** `block_on`（`help.rs:261`）。复合上界因此同时是「退出时 UI 最多卡多久」的上界。
 
 #### 4.6.4 单次飞行：leader / follower 选举 + RAII 完成守卫
 

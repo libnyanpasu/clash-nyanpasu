@@ -9,12 +9,16 @@ use std::{
 use anyhow::Context as _;
 use async_trait::async_trait;
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_ipc::api::{core::apply::CoreApplyData, status::RevisionIdInfo};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::watch;
 
 use super::{
     ApplicationClient, CoreLifecycleLease, CoreLifecyclePort, RuntimePaths,
-    core_bridge::{CoreStatusSnapshot, restore_product},
+    core_bridge::{
+        CheckAndPromoteError, CheckAndPromoteFailure, CheckAndPromotePhase, CoreStatusSnapshot,
+        RestartFailure, restore_product,
+    },
     runtime::CandidateFile,
 };
 use crate::core::{
@@ -23,7 +27,10 @@ use crate::core::{
         CoreActor, CoreActorArgs, CoreActorMessage, OperationError, OperationId,
         backend::CoreDegradationSink,
         request::CoreRequestFactory,
-        types::{BackendObservation, CoreActorError, CoreRequest, CoreStatusView},
+        runtime::{RuntimeLifecycleState, RuntimeSnapshot},
+        types::{
+            BackendObservation, CoreActorError, CoreRequest, CoreStatusView, FaithfulLifecycle,
+        },
     },
 };
 
@@ -39,6 +46,7 @@ struct CoreClientInner {
     actor_ref: ActorRef<CoreActorMessage>,
     next_operation: AtomicU64,
     status_rx: watch::Receiver<CoreStatusView>,
+    lifecycle_rx: watch::Receiver<RuntimeLifecycleState>,
     hint_pending: Arc<AtomicBool>,
 }
 
@@ -101,6 +109,7 @@ impl CoreClient {
         #[cfg(test)] replacement_backend: Option<crate::core::actor::backend::TestBackend>,
     ) -> anyhow::Result<Self> {
         let (status_tx, status_rx) = watch::channel(CoreStatusView::initial());
+        let (lifecycle_tx, lifecycle_rx) = watch::channel(RuntimeLifecycleState::default());
         let hint_pending = Arc::new(AtomicBool::new(false));
         let actor_ref = Actor::spawn(
             None,
@@ -110,6 +119,7 @@ impl CoreClient {
                 requests: args.requests,
                 degradation: args.degradation,
                 status_tx,
+                lifecycle_tx,
                 hint_pending: hint_pending.clone(),
                 #[cfg(test)]
                 backend,
@@ -127,6 +137,7 @@ impl CoreClient {
                 actor_ref,
                 next_operation: AtomicU64::new(1),
                 status_rx,
+                lifecycle_rx,
                 hint_pending,
             }),
         })
@@ -134,6 +145,10 @@ impl CoreClient {
 
     pub(crate) fn status(&self) -> CoreStatusView {
         self.inner.status_rx.borrow().clone()
+    }
+
+    pub(crate) fn lifecycle(&self) -> RuntimeLifecycleState {
+        self.inner.lifecycle_rx.borrow().clone()
     }
 
     #[cfg(test)]
@@ -161,9 +176,52 @@ impl CoreClient {
     pub(crate) async fn running(
         &self,
         operation: &CoreOperationGuard,
-    ) -> Result<Option<CoreRequest>, CoreActorError> {
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError> {
         self.call(|reply| CoreActorMessage::RunningIdentity {
             operation: operation.id(),
+            reply,
+        })
+        .await
+    }
+
+    pub(crate) async fn publish_promoted(
+        &self,
+        operation: &CoreOperationGuard,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.call(|reply| CoreActorMessage::PublishPromoted {
+            operation: operation.id(),
+            snapshot,
+            reply,
+        })
+        .await
+    }
+
+    pub(crate) async fn publish_applied(
+        &self,
+        operation: &CoreOperationGuard,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.call(|reply| CoreActorMessage::PublishApplied {
+            operation: operation.id(),
+            snapshot,
+            reply,
+        })
+        .await
+    }
+
+    pub(crate) async fn apply_promoted(
+        &self,
+        operation: &CoreOperationGuard,
+        request: &CoreRequest,
+        expected: Option<RevisionIdInfo>,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<CoreApplyData, CoreActorError> {
+        self.call(|reply| CoreActorMessage::ApplyPromoted {
+            operation: operation.id(),
+            request: request.clone(),
+            expected,
+            snapshot,
             reply,
         })
         .await
@@ -354,8 +412,6 @@ impl CoreLifecycleAdapter {
 #[async_trait]
 impl CoreLifecyclePort for CoreLifecycleAdapter {
     async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
-        // Lock order: clash_patch_gate -> rebuild_gate -> OperationGate. Every lifecycle caller
-        // follows this order; PR-5b will absorb the first two gates.
         let guard = self.core.begin_operation().await?;
         Ok(Box::new(CoreLeaseAdapter {
             guard,
@@ -394,79 +450,141 @@ impl CoreLifecycleLease for CoreLeaseAdapter {
         candidate: &CandidateFile,
         target_core: ClashCore,
         product: &camino::Utf8Path,
-    ) -> anyhow::Result<[u8; 32]> {
+    ) -> Result<[u8; 32], CheckAndPromoteFailure> {
         use sha2::Digest as _;
 
         self.target_core = Some(target_core);
-        anyhow::ensure!(
-            product == self.runtime_paths.product(),
-            "product path must match the lifecycle adapter runtime product"
-        );
-        let bytes = tokio::fs::read(candidate.path()).await?;
-        let mut request = self.requests.for_product(target_core)?;
+        if product != self.runtime_paths.product() {
+            return Err(check_and_promote_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("product path must match the lifecycle adapter runtime product"),
+            ));
+        }
+        let bytes = tokio::fs::read(candidate.path()).await.map_err(|error| {
+            check_and_promote_operation_error(CheckAndPromotePhase::Promote, error.into())
+        })?;
+        let mut request = self.requests.for_product(target_core).map_err(|error| {
+            check_and_promote_operation_error(
+                CheckAndPromotePhase::Check,
+                anyhow::Error::new(error),
+            )
+        })?;
         request.config_path = candidate.path().to_owned();
-        self.core.check(&self.guard, &request).await?;
+        self.core
+            .check(&self.guard, &request)
+            .await
+            .map_err(CheckAndPromoteFailure::Actor)?;
 
-        let after = tokio::fs::read(candidate.path()).await?;
-        anyhow::ensure!(
-            after == bytes,
-            "candidate config changed between check and promote"
-        );
+        let after = tokio::fs::read(candidate.path()).await.map_err(|error| {
+            check_and_promote_operation_error(CheckAndPromotePhase::Promote, error.into())
+        })?;
+        if after != bytes {
+            return Err(check_and_promote_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("candidate config changed between check and promote"),
+            ));
+        }
         let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
-        anyhow::ensure!(
-            candidate_hash == candidate.bytes_sha256(),
-            "candidate config hash changed before promotion"
-        );
+        if candidate_hash != candidate.bytes_sha256() {
+            return Err(check_and_promote_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("candidate config hash changed before promotion"),
+            ));
+        }
 
-        restore_product(product.as_std_path(), &bytes).await?;
-        let promoted = tokio::fs::read(product).await?;
+        restore_product(product.as_std_path(), &bytes)
+            .await
+            .map_err(|error| {
+                check_and_promote_operation_error(CheckAndPromotePhase::Promote, error)
+            })?;
+        let promoted = tokio::fs::read(product).await.map_err(|error| {
+            check_and_promote_operation_error(CheckAndPromotePhase::Promote, error.into())
+        })?;
         let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
-        anyhow::ensure!(
-            promoted_hash == candidate.bytes_sha256(),
-            "promoted runtime product hash does not match candidate"
-        );
+        if promoted_hash != candidate.bytes_sha256() {
+            return Err(check_and_promote_operation_error(
+                CheckAndPromotePhase::Promote,
+                anyhow::anyhow!("promoted runtime product hash does not match candidate"),
+            ));
+        }
         Ok(promoted_hash)
     }
 
-    async fn apply_candidate(
+    async fn publish_promoted(
         &mut self,
-        candidate: &CandidateFile,
-        target_core: ClashCore,
-    ) -> anyhow::Result<()> {
-        use sha2::Digest as _;
-
-        let bytes = tokio::fs::read(candidate.path()).await?;
-        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
-        anyhow::ensure!(
-            candidate_hash == candidate.bytes_sha256(),
-            "candidate config hash changed before check"
-        );
-        let mut request = self.requests.for_product(target_core)?;
-        request.config_path = candidate.path().to_owned();
-        self.core.check(&self.guard, &request).await?;
-        let after = tokio::fs::read(candidate.path()).await?;
-        anyhow::ensure!(
-            after == bytes,
-            "candidate config changed between check and apply"
-        );
-        apply_config_from(candidate.path()).await
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.core.publish_promoted(&self.guard, snapshot).await
     }
 
-    async fn apply_promoted(&mut self, product: &camino::Utf8Path) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            product == self.runtime_paths.product(),
-            "product path must match the lifecycle adapter runtime product"
-        );
-        apply_config_from(product).await
+    async fn publish_applied(
+        &mut self,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<(), CoreActorError> {
+        self.core.publish_applied(&self.guard, snapshot).await
     }
 
-    async fn restart(&mut self) -> anyhow::Result<()> {
+    async fn running_identity(
+        &mut self,
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError> {
+        self.core.running(&self.guard).await
+    }
+
+    async fn apply_promoted(
+        &mut self,
+        snapshot: Arc<RuntimeSnapshot>,
+    ) -> Result<CoreApplyData, CoreActorError> {
+        let target_core = self
+            .target_core
+            .expect("apply_promoted requires check_and_promote on the same lease");
+        let request = self
+            .requests
+            .for_product(target_core)
+            .map_err(|error| CoreActorError::Backend(Arc::new(error)))?;
+        let expected = self
+            .core
+            .status()
+            .revision
+            .as_ref()
+            .map(|revision| revision.id());
+        for attempt in 0..5 {
+            match self
+                .core
+                .apply_promoted(&self.guard, &request, expected.clone(), snapshot.clone())
+                .await
+            {
+                Ok(data) => return Ok(data),
+                Err(CoreActorError::Backend(error))
+                    if attempt < 4 && is_apply_transport_failure(error.as_ref()) =>
+                {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        unreachable!("bounded apply retry loop always returns")
+    }
+
+    async fn restart(&mut self) -> Result<(), RestartFailure> {
         let core = match self.target_core.take() {
             Some(core) => core,
-            None => self.application.get().await?.state.core,
+            None => {
+                self.application
+                    .get()
+                    .await
+                    .map_err(RestartFailure::Operation)?
+                    .state
+                    .core
+            }
         };
-        let request = self.requests.for_product(core)?;
-        self.core.run(&self.guard, &request).await?;
+        let request = self
+            .requests
+            .for_product(core)
+            .map_err(|error| RestartFailure::Operation(error.into()))?;
+        self.core
+            .run(&self.guard, &request)
+            .await
+            .map_err(RestartFailure::Actor)?;
         Ok(())
     }
 
@@ -476,16 +594,23 @@ impl CoreLifecycleLease for CoreLeaseAdapter {
     }
 }
 
-async fn apply_config_from(product: &camino::Utf8Path) -> anyhow::Result<()> {
-    for attempt in 0..5 {
-        match crate::core::clash::api::put_configs(product.as_str()).await {
-            Ok(()) => break,
-            Err(error) if attempt < 4 => log::info!(target: "app", "{error:?}"),
-            Err(error) => return Err(error),
-        }
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
-    Ok(())
+fn check_and_promote_operation_error(
+    phase: CheckAndPromotePhase,
+    source: anyhow::Error,
+) -> CheckAndPromoteFailure {
+    CheckAndPromoteFailure::Operation(CheckAndPromoteError { phase, source })
+}
+
+fn is_apply_transport_failure(error: &crate::core::actor::backend::CoreBackendError) -> bool {
+    matches!(
+        error,
+        crate::core::actor::backend::CoreBackendError::Service(
+            nyanpasu_ipc::client::ClientError::BuildClient(_)
+                | nyanpasu_ipc::client::ClientError::Request { .. }
+                | nyanpasu_ipc::client::ClientError::WebSocket { .. }
+                | nyanpasu_ipc::client::ClientError::HttpStatus { .. }
+        )
+    )
 }
 
 #[cfg(test)]
@@ -498,7 +623,10 @@ mod tests {
     };
 
     use camino::Utf8PathBuf;
-    use nyanpasu_ipc::api::status::{ConfigRevisionInfo, CoreState};
+    use nyanpasu_ipc::api::{
+        core::apply::ApplyOutcomeKind,
+        status::{ConfigRevisionInfo, CoreState},
+    };
     use nyanpasu_utils::core::{ClashCoreType, CoreType};
     use tempfile::TempDir;
 
@@ -509,8 +637,10 @@ mod tests {
             ReplaceBarrier,
             backend::{BackendSlot, CoreBackend, LocalBackend, TestBackend},
             request::CoreBinaryResolver,
-            types::FaithfulLifecycle,
+            runtime::{RuntimeRevision, RuntimeSnapshot, RuntimeSnapshotData},
+            types::{FaithfulLifecycle, LifecycleInvariantKind},
         },
+        enhance::PostProcessingOutput,
         utils::path::PathResolver,
     };
 
@@ -544,7 +674,7 @@ mod tests {
 
     async fn running_request(client: &CoreClient) -> CoreRequest {
         let operation = client.begin_operation().await.unwrap();
-        client.running(&operation).await.unwrap().unwrap()
+        client.running(&operation).await.unwrap().0.unwrap()
     }
 
     async fn poll_once_pending<F: Future>(mut future: Pin<&mut F>) {
@@ -665,6 +795,168 @@ mod tests {
 
     fn request(factory: &CoreRequestFactory, core: ClashCore) -> CoreRequest {
         factory.for_product(core).unwrap()
+    }
+
+    fn runtime_snapshot(revision: u64, core: ClashCore) -> Arc<RuntimeSnapshot> {
+        Arc::new(RuntimeSnapshot::from_data(
+            RuntimeRevision(revision),
+            core,
+            Arc::from([]),
+            RuntimeSnapshotData {
+                config: Default::default(),
+                exists_keys: Vec::new(),
+                postprocessing_output: PostProcessingOutput::default(),
+            },
+        ))
+    }
+
+    #[tokio::test]
+    async fn promoted_revision_must_advance_monotonically() {
+        let test = test_client(stopped(None)).await;
+        let operation = test.client.begin_operation().await.unwrap();
+        let snapshot = runtime_snapshot(1, ClashCore::Mihomo);
+        test.client
+            .publish_promoted(&operation, snapshot.clone())
+            .await
+            .unwrap();
+        let error = test
+            .client
+            .publish_promoted(&operation, snapshot.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            CoreActorError::LifecycleInvariant(LifecycleInvariantKind::PromotedRegression)
+        ));
+        assert!(Arc::ptr_eq(
+            test.client.lifecycle().promoted.as_ref().unwrap(),
+            &snapshot
+        ));
+    }
+
+    #[tokio::test]
+    async fn applied_requires_the_matching_promoted_snapshot() {
+        let test = test_client(stopped(None)).await;
+        let operation = test.client.begin_operation().await.unwrap();
+        let promoted = runtime_snapshot(1, ClashCore::Mihomo);
+        let other = runtime_snapshot(2, ClashCore::Mihomo);
+
+        let missing = test
+            .client
+            .publish_applied(&operation, promoted.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            missing,
+            CoreActorError::LifecycleInvariant(LifecycleInvariantKind::AppliedWithoutPromoted)
+        ));
+
+        test.client
+            .publish_promoted(&operation, promoted.clone())
+            .await
+            .unwrap();
+        let mismatched = test
+            .client
+            .publish_applied(&operation, other)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            mismatched,
+            CoreActorError::LifecycleInvariant(LifecycleInvariantKind::AppliedWithoutPromoted)
+        ));
+
+        test.client
+            .publish_applied(&operation, promoted.clone())
+            .await
+            .unwrap();
+        assert!(Arc::ptr_eq(
+            test.client.lifecycle().applied.as_ref().unwrap(),
+            &promoted
+        ));
+    }
+
+    #[tokio::test]
+    async fn actor_apply_advances_applied_for_all_outcomes_except_rollback() {
+        let outcomes = [
+            ApplyOutcomeKind::Noop,
+            ApplyOutcomeKind::Patched,
+            ApplyOutcomeKind::Reloaded,
+            ApplyOutcomeKind::Restarted,
+            ApplyOutcomeKind::Switched,
+            ApplyOutcomeKind::RolledBack,
+        ];
+        for outcome in outcomes {
+            for warning in [None, Some("durability uncertain".to_owned())] {
+                let test = test_client(running(5)).await;
+                let operation = test.client.begin_operation().await.unwrap();
+                let promoted = runtime_snapshot(10, ClashCore::Mihomo);
+                test.client
+                    .publish_promoted(&operation, promoted.clone())
+                    .await
+                    .unwrap();
+                test.backend.push_apply_result(Ok(CoreApplyData {
+                    outcome,
+                    revision: ConfigRevisionInfo {
+                        epoch: 1,
+                        generation: 6,
+                        source_hash: "source-6".into(),
+                        effective_hash: "effective-6".into(),
+                    },
+                    warning,
+                    failed_apply: (outcome == ApplyOutcomeKind::RolledBack)
+                        .then(|| "rejected".into()),
+                }));
+                let request = request(&test.requests, ClashCore::Mihomo);
+                let data = test
+                    .client
+                    .apply_promoted(
+                        &operation,
+                        &request,
+                        test.client
+                            .status()
+                            .revision
+                            .as_ref()
+                            .map(|revision| revision.id()),
+                        promoted.clone(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(data.outcome, outcome);
+                assert_eq!(test.backend.apply_calls(), 1);
+                let applied = test.client.lifecycle().applied;
+                if outcome == ApplyOutcomeKind::RolledBack {
+                    assert!(applied.is_none());
+                } else {
+                    assert!(Arc::ptr_eq(applied.as_ref().unwrap(), &promoted));
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn lifecycle_read_remains_live_while_run_is_blocked() {
+        let test = test_client(stopped(None)).await;
+        let operation = test.client.begin_operation().await.unwrap();
+        let snapshot = runtime_snapshot(1, ClashCore::Mihomo);
+        test.client
+            .publish_promoted(&operation, snapshot.clone())
+            .await
+            .unwrap();
+        let (started, release) = test.backend.block_next_run();
+        let client = test.client.clone();
+        let request = request(&test.requests, ClashCore::Mihomo);
+        let run = tokio::spawn(async move {
+            let result = client.run(&operation, &request).await;
+            drop(operation);
+            result
+        });
+        started.await.unwrap();
+        assert!(Arc::ptr_eq(
+            test.client.lifecycle().promoted.as_ref().unwrap(),
+            &snapshot
+        ));
+        release.send(()).unwrap();
+        run.await.unwrap().unwrap();
     }
 
     #[tokio::test]
@@ -907,7 +1199,7 @@ mod tests {
         test.backend.set_observation(running(1));
         let request_b = request(&test.requests, ClashCore::ClashRs);
         test.client.run(&operation, &request_b).await.unwrap();
-        let actual = test.client.running(&operation).await.unwrap().unwrap();
+        let actual = test.client.running(&operation).await.unwrap().0.unwrap();
         assert_eq!(actual.core_type, CoreType::Clash(ClashCoreType::ClashRust));
     }
 
@@ -997,9 +1289,9 @@ mod tests {
             .run(&operation, &request(&test.requests, ClashCore::Mihomo))
             .await
             .unwrap();
-        assert!(test.client.running(&operation).await.unwrap().is_some());
+        assert!(test.client.running(&operation).await.unwrap().0.is_some());
         let _ = test.client.set_backend(&operation, RunType::Service).await;
-        assert!(test.client.running(&operation).await.unwrap().is_none());
+        assert!(test.client.running(&operation).await.unwrap().0.is_none());
     }
 
     #[tokio::test]
@@ -1048,7 +1340,7 @@ mod tests {
             .set_backend(&operation, RunType::Normal)
             .await
             .unwrap();
-        assert!(test.client.running(&operation).await.unwrap().is_none());
+        assert!(test.client.running(&operation).await.unwrap().0.is_none());
         operation.release().await;
         test.client.shutdown().await;
     }
@@ -1086,7 +1378,7 @@ mod tests {
         test.backend
             .set_observation(stopped(Some("crashed".to_owned())));
         test.client.refresh_status(&operation).await.unwrap();
-        assert!(test.client.running(&operation).await.unwrap().is_none());
+        assert!(test.client.running(&operation).await.unwrap().0.is_none());
     }
 
     #[tokio::test]
@@ -1137,7 +1429,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_target_restart_falls_back_to_the_rollback_core() {
+    async fn restart_consumes_transaction_target_once_then_uses_typed_core() {
         let test = test_client(stopped(None)).await;
         let application =
             crate::client::tests::test_application_client(&test._dir, ClashCore::Mihomo).await;
@@ -1158,22 +1450,18 @@ mod tests {
             )
             .await
             .unwrap();
-        test.backend.fail_next_run();
-        assert!(lease.restart().await.is_err());
-        lease
-            .check_and_promote(
-                &candidate,
-                ClashCore::Mihomo,
-                test.requests.runtime_paths().product(),
-            )
-            .await
-            .unwrap();
-        test.backend.set_observation(running(2));
+        lease.restart().await.unwrap();
         lease.restart().await.unwrap();
         drop(lease);
 
+        let requests = test.backend.run_requests();
+        assert_eq!(requests.len(), 2);
         assert_eq!(
-            running_request(&test.client).await.core_type,
+            requests[0].core_type,
+            CoreType::Clash(ClashCoreType::ClashRust)
+        );
+        assert_eq!(
+            requests[1].core_type,
             CoreType::Clash(ClashCoreType::Mihomo)
         );
     }

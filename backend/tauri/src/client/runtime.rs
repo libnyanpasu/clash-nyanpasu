@@ -5,188 +5,52 @@
 use std::{
     fs::OpenOptions,
     io::Write,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, SystemTime},
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
-use nyanpasu_config::application::ClashCore;
+use nyanpasu_ipc::api::core::apply::{ApplyOutcomeKind, CoreApplyData};
 use serde::{Deserialize, Serialize};
-use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
 
-use crate::{enhance::PostProcessingOutput, utils::path::PathResolver};
+use crate::{core::actor::runtime::RuntimeRevision, utils::path::PathResolver};
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RuntimeRevision(u64);
-
-impl RuntimeRevision {
-    pub fn get(self) -> u64 {
-        self.0
-    }
-}
-
 pub(crate) struct RuntimeRevisionAllocator(AtomicU64);
+
+#[derive(Debug, thiserror::Error)]
+#[error("runtime revision space exhausted")]
+pub(crate) struct RuntimeRevisionExhausted;
 
 impl RuntimeRevisionAllocator {
     pub(crate) fn new() -> Self {
         Self(AtomicU64::new(0))
     }
 
-    pub(crate) fn allocate(&self) -> anyhow::Result<RuntimeRevision> {
+    pub(crate) fn allocate(
+        &self,
+    ) -> std::result::Result<RuntimeRevision, RuntimeRevisionExhausted> {
         let previous = self
             .0
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
             })
-            .map_err(|_| anyhow::anyhow!("runtime revision space exhausted"))?;
+            .map_err(|_| RuntimeRevisionExhausted)?;
         Ok(RuntimeRevision(previous + 1))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct RuntimeSnapshotData {
-    pub config: Mapping,
-    pub exists_keys: Vec<String>,
-    pub postprocessing_output: PostProcessingOutput,
-}
-
-#[derive(Debug, Clone)]
-pub struct RuntimeSnapshot {
-    pub revision: RuntimeRevision,
-    pub target_core: ClashCore,
-    pub product_sha256: [u8; 32],
-    product_bytes: Arc<[u8]>,
-    pub config: Mapping,
-    pub exists_keys: Vec<String>,
-    pub postprocessing_output: PostProcessingOutput,
-}
-
-impl RuntimeSnapshot {
-    pub(crate) fn from_data(
-        revision: RuntimeRevision,
-        target_core: ClashCore,
-        product_bytes: Arc<[u8]>,
-        data: RuntimeSnapshotData,
-    ) -> Self {
-        let product_sha256 = Sha256::digest(&product_bytes).into();
-        Self {
-            revision,
-            target_core,
-            product_sha256,
-            product_bytes,
-            config: data.config,
-            exists_keys: data.exists_keys,
-            postprocessing_output: data.postprocessing_output,
-        }
-    }
-
-    pub(crate) fn product_bytes(&self) -> &[u8] {
-        &self.product_bytes
-    }
-
-    pub(crate) fn identity_eq(&self, other: &Self) -> bool {
-        self.revision == other.revision
-            && self.target_core == other.target_core
-            && self.product_sha256 == other.product_sha256
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct RuntimeLifecycleState {
-    pub promoted: Option<Arc<RuntimeSnapshot>>,
-    pub applied: Option<Arc<RuntimeSnapshot>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RuntimeTransactionSnapshot {
-    pub product: Option<Vec<u8>>,
-    pub lifecycle: RuntimeLifecycleState,
-}
-
-/// Facade-held runtime lifecycle store. It is instance-owned and non-persistent:
-/// writers are serialized by `rebuild_gate`, while runtime IPC reads clone the
-/// Promoted snapshot. With no subscribers, a plain RwLock keeps lifecycle writes
-/// infallible after product promotion or a successful core apply/restart.
-pub type RuntimeLifecycleStore = tokio::sync::RwLock<RuntimeLifecycleState>;
-
-pub async fn new_runtime_lifecycle_store() -> anyhow::Result<RuntimeLifecycleStore> {
-    Ok(tokio::sync::RwLock::new(RuntimeLifecycleState::default()))
-}
-
-/// Compensation for an API-first patch is planned from the last successfully
-/// applied runtime snapshot. The plan is intentionally independent of the
-/// core's patch transport semantics.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PatchCompensationPlan {
-    expected_applied_revision: RuntimeRevision,
-    ops: Vec<PatchCompensationOp>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PatchCompensationOp {
-    Set {
-        key: String,
-        value: serde_yaml::Value,
-    },
-    Remove {
-        key: String,
-    },
-}
-
-impl PatchCompensationPlan {
-    pub(crate) fn expected_applied_revision(&self) -> RuntimeRevision {
-        self.expected_applied_revision
     }
 
     #[cfg(test)]
-    pub(crate) fn ops(&self) -> &[PatchCompensationOp] {
-        &self.ops
+    pub(crate) fn last_allocated(&self) -> RuntimeRevision {
+        RuntimeRevision(self.0.load(Ordering::Relaxed))
     }
 
-    pub(crate) fn fence_matches(&self, applied: Option<&RuntimeSnapshot>) -> bool {
-        applied.is_some_and(|snapshot| snapshot.revision == self.expected_applied_revision)
+    #[cfg(test)]
+    pub(crate) fn exhaust(&self) {
+        self.0.store(u64::MAX, Ordering::Relaxed);
     }
-}
-
-pub(crate) fn compensation_for(
-    patch: &Mapping,
-    applied: Option<&RuntimeSnapshot>,
-) -> Option<PatchCompensationPlan> {
-    let applied = applied?;
-    if patch.is_empty() {
-        return None;
-    }
-
-    let ops = patch
-        .keys()
-        .map(|key| match applied.config.get(key) {
-            Some(value) => PatchCompensationOp::Set {
-                key: key
-                    .as_str()
-                    .expect("clash patch keys must be YAML strings")
-                    .to_owned(),
-                value: value.clone(),
-            },
-            None => PatchCompensationOp::Remove {
-                key: key
-                    .as_str()
-                    .expect("clash patch keys must be YAML strings")
-                    .to_owned(),
-            },
-        })
-        .collect();
-
-    Some(PatchCompensationPlan {
-        expected_applied_revision: applied.revision,
-        ops,
-    })
 }
 
 #[derive(Debug, Clone)]
@@ -374,6 +238,70 @@ fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
         .map_err(|path| anyhow::anyhow!("runtime path is not UTF-8: {}", path.display()))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeApplyOutcome {
+    Noop,
+    Patched,
+    Reloaded,
+    Restarted,
+    Switched,
+    RolledBack,
+    Started,
+    NotApplied,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct RuntimeApplyReport {
+    pub outcome: RuntimeApplyOutcome,
+    pub desired_revision: u64,
+    pub applied_revision: Option<u64>,
+}
+
+pub(crate) fn runtime_outcome_from_apply_data(
+    data: &CoreApplyData,
+    promoted_revision: u64,
+) -> (RuntimeApplyReport, Vec<Degradation>) {
+    let outcome = match data.outcome {
+        ApplyOutcomeKind::Noop => RuntimeApplyOutcome::Noop,
+        ApplyOutcomeKind::Patched => RuntimeApplyOutcome::Patched,
+        ApplyOutcomeKind::Reloaded => RuntimeApplyOutcome::Reloaded,
+        ApplyOutcomeKind::Restarted => RuntimeApplyOutcome::Restarted,
+        ApplyOutcomeKind::Switched => RuntimeApplyOutcome::Switched,
+        ApplyOutcomeKind::RolledBack => RuntimeApplyOutcome::RolledBack,
+    };
+    let mut degradations = Vec::new();
+    let applied_revision = if data.outcome == ApplyOutcomeKind::RolledBack {
+        degradations.push(Degradation {
+            phase: DegradationPhase::CoreRollback,
+            code: "core_rollback".into(),
+            message: data.failed_apply.clone().unwrap_or_else(|| {
+                "the new runtime was rejected and the previous revision restored".into()
+            }),
+            retryable: true,
+        });
+        Some(data.revision.generation)
+    } else {
+        Some(promoted_revision)
+    };
+    if let Some(warning) = data.warning.as_ref() {
+        degradations.push(Degradation {
+            phase: DegradationPhase::RuntimeApply,
+            code: "core_apply_durability_uncertain".into(),
+            message: warning.clone(),
+            retryable: false,
+        });
+    }
+    (
+        RuntimeApplyReport {
+            outcome,
+            desired_revision: promoted_revision,
+            applied_revision,
+        },
+        degradations,
+    )
+}
+
 /// Public mutation wire (PR-4S S08 / plan §12): state is committed first; post-
 /// commit side-effect failures degrade instead of erroring.
 ///
@@ -473,6 +401,7 @@ pub enum DegradationPhase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nyanpasu_ipc::api::status::ConfigRevisionInfo;
 
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
@@ -483,6 +412,15 @@ mod tests {
         assert_eq!(first.get(), 1);
         assert_eq!(second.get(), 2);
         assert!(second > first);
+    }
+
+    #[test]
+    fn runtime_revision_exhaustion_is_typed_as_an_invariant_failure() {
+        let allocator = RuntimeRevisionAllocator(AtomicU64::new(u64::MAX));
+        assert!(matches!(
+            allocator.allocate(),
+            Err(RuntimeRevisionExhausted)
+        ));
     }
 
     #[test]
@@ -524,6 +462,87 @@ mod tests {
     }
 
     #[test]
+    fn apply_outcome_wire_matrix_covers_six_outcomes_with_and_without_warning() {
+        let outcomes = [
+            (ApplyOutcomeKind::Noop, RuntimeApplyOutcome::Noop, true),
+            (
+                ApplyOutcomeKind::Patched,
+                RuntimeApplyOutcome::Patched,
+                true,
+            ),
+            (
+                ApplyOutcomeKind::Reloaded,
+                RuntimeApplyOutcome::Reloaded,
+                true,
+            ),
+            (
+                ApplyOutcomeKind::Restarted,
+                RuntimeApplyOutcome::Restarted,
+                true,
+            ),
+            (
+                ApplyOutcomeKind::Switched,
+                RuntimeApplyOutcome::Switched,
+                true,
+            ),
+            (
+                ApplyOutcomeKind::RolledBack,
+                RuntimeApplyOutcome::RolledBack,
+                false,
+            ),
+        ];
+
+        for (apply_outcome, runtime_outcome, advances) in outcomes {
+            for warning in [None, Some("directory sync uncertain".to_owned())] {
+                let data = CoreApplyData {
+                    outcome: apply_outcome,
+                    revision: ConfigRevisionInfo {
+                        epoch: 7,
+                        generation: 41,
+                        source_hash: "source".into(),
+                        effective_hash: "effective".into(),
+                    },
+                    warning: warning.clone(),
+                    failed_apply: (apply_outcome == ApplyOutcomeKind::RolledBack)
+                        .then(|| "new config rejected".into()),
+                };
+                let (report, degradations) = runtime_outcome_from_apply_data(&data, 42);
+                let outcome = MutationOutcome::from_parts(report, degradations);
+
+                assert_eq!(
+                    crate::core::actor::runtime::advances_applied(apply_outcome),
+                    advances
+                );
+                assert_eq!(outcome.value().outcome, runtime_outcome);
+                assert_eq!(outcome.value().desired_revision, 42);
+                assert_eq!(
+                    outcome.value().applied_revision,
+                    if advances { Some(42) } else { Some(41) }
+                );
+                let expected_degradations = usize::from(!advances) + usize::from(warning.is_some());
+                assert_eq!(outcome.degradations().len(), expected_degradations);
+                assert_eq!(
+                    matches!(outcome, MutationOutcome::Applied { .. }),
+                    expected_degradations == 0
+                );
+                if !advances {
+                    assert_eq!(
+                        outcome.degradations()[0].phase,
+                        DegradationPhase::CoreRollback
+                    );
+                    assert_eq!(outcome.degradations()[0].code, "core_rollback");
+                }
+                if warning.is_some() {
+                    let durability = outcome.degradations().last().unwrap();
+                    assert_eq!(durability.phase, DegradationPhase::RuntimeApply);
+                    assert_eq!(durability.code, "core_apply_durability_uncertain");
+                    assert!(!durability.retryable);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn degradation_phase_serde_is_snake_case() {
         let json = serde_json::to_string(&DegradationPhase::ProfileMaterialization).unwrap();
         assert_eq!(json, "\"profile_materialization\"");
@@ -556,83 +575,6 @@ mod tests {
         );
         assert_eq!(degraded_json["degradations"][0]["phase"], "runtime_build");
         assert_eq!(degraded_json["degradations"][0]["retryable"], true);
-    }
-
-    fn applied_snapshot(revision: u64, config: Mapping) -> RuntimeSnapshot {
-        RuntimeSnapshot::from_data(
-            RuntimeRevision(revision),
-            ClashCore::default(),
-            Arc::from([]),
-            RuntimeSnapshotData {
-                config,
-                exists_keys: Vec::new(),
-                postprocessing_output: PostProcessingOutput::default(),
-            },
-        )
-    }
-
-    #[test]
-    fn compensation_plan_emits_set_and_remove_for_each_patch_key() {
-        let mut applied_config = Mapping::new();
-        applied_config.insert("mode".into(), "rule".into());
-        applied_config.insert("allow-lan".into(), false.into());
-        let applied = applied_snapshot(7, applied_config);
-
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        patch.insert("ipv6".into(), true.into());
-
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-        assert_eq!(plan.expected_applied_revision(), RuntimeRevision(7));
-        assert_eq!(
-            plan.ops.as_slice(),
-            &[
-                PatchCompensationOp::Set {
-                    key: "mode".into(),
-                    value: "rule".into(),
-                },
-                PatchCompensationOp::Remove { key: "ipv6".into() },
-            ]
-        );
-    }
-
-    #[test]
-    fn compensation_plan_is_absent_without_applied_or_patch() {
-        let applied = applied_snapshot(7, Mapping::new());
-        assert!(compensation_for(&Mapping::new(), Some(&applied)).is_none());
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        assert!(compensation_for(&patch, None).is_none());
-    }
-
-    #[test]
-    fn compensation_plan_fence_accepts_matching_revision_and_rejects_conflict() {
-        let applied = applied_snapshot(7, Mapping::new());
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-
-        assert!(plan.fence_matches(Some(&applied)));
-        assert!(!plan.fence_matches(Some(&applied_snapshot(8, Mapping::new()))));
-        assert!(!plan.fence_matches(None));
-    }
-
-    #[test]
-    fn compensation_plan_preserves_old_applied_values() {
-        let mut config = Mapping::new();
-        config.insert("mode".into(), "rule".into());
-        let applied = applied_snapshot(3, config);
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-        assert_eq!(
-            plan.ops.as_slice(),
-            &[PatchCompensationOp::Set {
-                key: "mode".into(),
-                value: "rule".into(),
-            }]
-        );
     }
 
     fn temp_runtime_paths(dir: &tempfile::TempDir) -> RuntimePaths {

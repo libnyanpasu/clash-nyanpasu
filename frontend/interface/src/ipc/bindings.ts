@@ -32,7 +32,9 @@ export const commands = {
     typedError<string[], string>(__TAURI_INVOKE('get_clash_logs')),
   /**  patch clash runtime config */
   patchClashConfig: (payload: PatchRuntimeConfig_Deserialize) =>
-    typedError<null, string>(__TAURI_INVOKE('patch_clash_config', { payload })),
+    typedError<MutationOutcome<RuntimeApplyReport>, string>(
+      __TAURI_INVOKE('patch_clash_config', { payload }),
+    ),
   changeClashCore: (
     clashCore:
       | 'clash'
@@ -45,7 +47,7 @@ export const commands = {
       | 'meow'
       | null,
   ) =>
-    typedError<null, string>(
+    typedError<MutationOutcome<RuntimeApplyReport>, string>(
       __TAURI_INVOKE('change_clash_core', { clashCore }),
     ),
   /**  get the runtime config */
@@ -2033,6 +2035,22 @@ export type RunType =
   | 'service'
   /**  Run as elevated process, if profile advice to run as elevated */
   | 'elevated'
+
+export type RuntimeApplyOutcome =
+  | 'noop'
+  | 'patched'
+  | 'reloaded'
+  | 'restarted'
+  | 'switched'
+  | 'rolled_back'
+  | 'started'
+  | 'not_applied'
+
+export type RuntimeApplyReport = {
+  outcome: RuntimeApplyOutcome
+  desired_revision: number
+  applied_revision: number | null
+}
 
 export type RuntimeInfos = {
   service_data_dir: string

@@ -16,6 +16,7 @@ mod system_dns;
 pub(crate) use self::application::ApplicationClient;
 use self::{clash_config::ClashConfigClient, session_state::SessionStateClient};
 use crate::{
+    core::actor::runtime as core_runtime,
     enhance::{
         EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
         runtime_snapshot_data_from_artifact,
@@ -50,7 +51,6 @@ use nyanpasu_config::{
     runtime::executor::ResolvedPortBindings,
     state::{PersistentState, PersistentStatePatch},
 };
-use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
@@ -58,9 +58,7 @@ use struct_patch::Patch as _;
 pub(crate) use core::CoreClientArgs;
 #[allow(unused_imports)]
 pub use core::{CoreClient, CoreOperationGuard};
-pub use core_bridge::{
-    CoreLifecycleLease, CoreLifecyclePort, LegacyRunningConfigPatchBridge, RunningConfigPatchPort,
-};
+pub use core_bridge::{CoreLifecycleLease, CoreLifecyclePort};
 pub use error::{ClientError, Result};
 pub(crate) use error::{CompensationFailure, LegacyVergeDomain, PartialCommit};
 #[cfg(test)]
@@ -85,8 +83,6 @@ pub struct ClientSetupArgs {
     pub binary_resolver: Arc<dyn crate::core::actor::request::CoreBinaryResolver>,
     pub degradation: Arc<dyn crate::core::actor::backend::CoreDegradationSink>,
     pub(crate) service_control: Arc<dyn crate::core::actor::backend::ServiceControlOps>,
-    /// Optional during the staged caller migration; setup always injects it.
-    pub clash_patch: Option<Arc<dyn RunningConfigPatchPort>>,
     pub system_dns: Arc<dyn SystemDnsCache>,
 }
 
@@ -124,6 +120,22 @@ enum PreparedConfigDomain {
         forward: PreparedTypedReplace<ClashConfig>,
         rollback: PreparedTypedReplace<ClashConfig>,
     },
+}
+
+#[derive(Debug, thiserror::Error)]
+enum RuntimeRebuildError {
+    #[error(transparent)]
+    Build(ClientError),
+    #[error(transparent)]
+    CheckAndPromote(core_bridge::CheckAndPromoteFailure),
+    #[error(transparent)]
+    Publish(crate::core::actor::types::CoreActorError),
+}
+
+impl From<RuntimeRebuildError> for ClientError {
+    fn from(error: RuntimeRebuildError) -> Self {
+        Self::Anyhow(anyhow::Error::new(error))
+    }
 }
 
 enum CommittedConfigDomain {
@@ -243,21 +255,12 @@ struct NyanpasuClientInner {
     core: Arc<dyn CoreLifecyclePort>,
     requests: crate::core::actor::request::CoreRequestFactory,
     service_control: Arc<dyn crate::core::actor::backend::ServiceControlOps>,
-    clash_patch: Arc<dyn RunningConfigPatchPort>,
-    /// Serializes API-first running-core patches through desired-state rebuild
-    /// and any revision-fenced compensation.
-    clash_patch_gate: tokio::sync::Mutex<()>,
+    degradation: Arc<dyn crate::core::actor::backend::CoreDegradationSink>,
     system_dns: Arc<dyn SystemDnsCache>,
-    /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
-    /// core apply). The profiles actor only orders commits; without this gate
-    /// a slow rebuild started for an older commit can finish after a newer
-    /// one and overwrite the runtime with a stale snapshot.
-    rebuild_gate: tokio::sync::Mutex<()>,
     /// Instance-owned background dirty coordinator (capacity-1 coalesce).
     /// Request/reply regeneration calls typed facade methods directly.
     rebuild: rebuild::RebuildCoordinator,
     runtime_revisions: runtime::RuntimeRevisionAllocator,
-    runtime: runtime::RuntimeLifecycleStore,
 }
 
 #[allow(dead_code)]
@@ -272,13 +275,9 @@ impl NyanpasuClient {
             binary_resolver,
             degradation,
             service_control,
-            clash_patch,
             system_dns,
         } = args;
-        // TODO(actor-migration): temporary default for legacy test/caller construction.
-        // Reason: bridge callers migrate to the explicit patch port after S05.
-        // Remove when: all ClientSetupArgs callers provide clash_patch.
-        let clash_patch = clash_patch.unwrap_or_else(|| Arc::new(LegacyRunningConfigPatchBridge));
+        let client_degradation = degradation.clone();
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
@@ -287,7 +286,6 @@ impl NyanpasuClient {
             session_state,
             clash_config,
             profiles,
-            runtime_store,
             ports,
             fs,
             rebuild,
@@ -317,13 +315,26 @@ impl NyanpasuClient {
                 degradation,
             })
             .await?;
-            let core = core.unwrap_or_else(|| {
-                Arc::new(core::CoreLifecycleAdapter::new(
+            let core = match core {
+                Some(core) => {
+                    #[cfg(test)]
+                    {
+                        Arc::new(core_bridge::ActorBackedTestCoreLifecyclePort::new(
+                            core,
+                            core_client.clone(),
+                        )) as Arc<dyn CoreLifecyclePort>
+                    }
+                    #[cfg(not(test))]
+                    {
+                        core
+                    }
+                }
+                None => Arc::new(core::CoreLifecycleAdapter::new(
                     core_client.clone(),
                     application.clone(),
                     requests.clone(),
-                )) as Arc<dyn CoreLifecyclePort>
-            });
+                )) as Arc<dyn CoreLifecyclePort>,
+            };
 
             // Eager session port resolution: the core is not running yet,
             // so probing strategies is race-free (design §19.2 caller duty).
@@ -346,13 +357,11 @@ impl NyanpasuClient {
                 Arc::new(rebuild.notifier()),
             )
             .await?;
-            let runtime_store = runtime::new_runtime_lifecycle_store().await?;
             anyhow::Ok((
                 application,
                 session_state,
                 clash_config,
                 profiles,
-                runtime_store,
                 ports,
                 file_service as Arc<dyn ProfileFsPort>,
                 rebuild,
@@ -375,9 +384,8 @@ impl NyanpasuClient {
             core,
             requests,
             service_control,
-            clash_patch,
+            client_degradation,
             system_dns,
-            runtime_store,
             rebuild,
         );
         client.start_rebuild_worker();
@@ -399,9 +407,8 @@ impl NyanpasuClient {
         core: Arc<dyn CoreLifecyclePort>,
         requests: crate::core::actor::request::CoreRequestFactory,
         service_control: Arc<dyn crate::core::actor::backend::ServiceControlOps>,
-        clash_patch: Arc<dyn RunningConfigPatchPort>,
+        degradation: Arc<dyn crate::core::actor::backend::CoreDegradationSink>,
         system_dns: Arc<dyn SystemDnsCache>,
-        runtime: runtime::RuntimeLifecycleStore,
         rebuild: rebuild::RebuildCoordinator,
     ) -> Self {
         Self {
@@ -419,13 +426,10 @@ impl NyanpasuClient {
                 core,
                 requests,
                 service_control,
-                clash_patch,
-                clash_patch_gate: tokio::sync::Mutex::new(()),
+                degradation,
                 system_dns,
-                rebuild_gate: tokio::sync::Mutex::new(()),
                 rebuild,
                 runtime_revisions: runtime::RuntimeRevisionAllocator::new(),
-                runtime,
             }),
         }
     }
@@ -441,9 +445,8 @@ impl NyanpasuClient {
                     return Ok(());
                 };
                 NyanpasuClient { inner }
-                    .rebuild_running_config()
+                    .rebuild_running_config_in_background()
                     .await
-                    .map_err(anyhow::Error::from)
             }
         });
     }
@@ -976,21 +979,10 @@ impl NyanpasuClient {
         }
     }
 
-    /// Post-commit rebuild has a single opaque `Result` today; do not invent
-    /// RuntimeCheck/Promote/Apply precision the error surface cannot support.
-    fn map_runtime_rebuild_degradation(error: &ClientError) -> runtime::Degradation {
-        runtime::Degradation {
-            phase: runtime::DegradationPhase::RuntimeBuild,
-            code: "runtime_rebuild_failed".into(),
-            message: error.to_string(),
-            retryable: true,
-        }
-    }
-
     async fn collect_post_commit_degradations(
         &self,
         report: &CommitReport,
-    ) -> Vec<runtime::Degradation> {
+    ) -> Result<Vec<runtime::Degradation>> {
         // Post-commit side-effect failures are degraded results, not transaction
         // failures (T04 contract): state is already persisted, so surface them.
         let mut degradations: Vec<runtime::Degradation> = report
@@ -1008,20 +1000,49 @@ impl NyanpasuClient {
             })
             .collect();
 
-        if report.affects_current
-            && let Err(error) = self.rebuild_running_config().await
-        {
-            tracing::warn!(%error, "post-commit rebuild failed; state stays committed (degraded)");
-            degradations.push(Self::map_runtime_rebuild_degradation(&error));
+        if report.affects_current {
+            let mut lease = match self.inner.core.begin().await {
+                Ok(lease) => lease,
+                Err(error) => {
+                    let degradation = Self::core_operation_unavailable(error.to_string());
+                    tracing::warn!(
+                        phase = ?degradation.phase,
+                        code = %degradation.code,
+                        retryable = degradation.retryable,
+                        message = %degradation.message,
+                        "post-commit core operation could not be acquired (degraded)",
+                    );
+                    degradations.push(degradation);
+                    return Ok(degradations);
+                }
+            };
+            let (result, mut runtime_degradations) =
+                self.rebuild_pipeline_with_lease(&mut *lease).await;
+            result?;
+            if runtime_degradations.is_empty() {
+                drop(lease);
+                self.inner.ui_sink.refresh_clash();
+                self.inner.core.on_profile_change().await;
+            }
+            for degradation in &runtime_degradations {
+                tracing::warn!(
+                    phase = ?degradation.phase,
+                    code = %degradation.code,
+                    retryable = degradation.retryable,
+                    message = %degradation.message,
+                    "post-commit rebuild failed; state stays committed (degraded)",
+                );
+            }
+            degradations.append(&mut runtime_degradations);
         }
-        degradations
+        Ok(degradations)
     }
 
-    async fn after_commit(&self, report: &CommitReport) -> runtime::MutationOutcome<()> {
-        runtime::MutationOutcome::from_parts(
+    async fn after_commit(&self, report: &CommitReport) -> Result<runtime::MutationOutcome<()>> {
+        Ok(runtime::MutationOutcome::from_parts(
             (),
-            self.collect_post_commit_degradations(report).await,
-        )
+            self.collect_post_commit_degradations(report).await?,
+        ))
     }
 
     /// Public wire for a post-commit auto-activation hard failure. Create/import
@@ -1046,11 +1067,11 @@ impl NyanpasuClient {
     /// - `Ok(Some(report))` → merge report (and rebuild) degradations
     /// - `Ok(None)` → existing current won; no degradation
     /// - `Err(_)` → committed degradation, profile id retained by the caller
-    async fn try_auto_activate_if_none(&self, uid: ProfileId) -> Vec<runtime::Degradation> {
+    async fn try_auto_activate_if_none(&self, uid: ProfileId) -> Result<Vec<runtime::Degradation>> {
         match self.inner.profiles.set_current_if_none(uid).await {
             Ok(Some(report)) => self.collect_post_commit_degradations(&report).await,
-            Ok(None) => Vec::new(),
-            Err(error) => vec![Self::auto_activation_failure_degradation(&error)],
+            Ok(None) => Ok(Vec::new()),
+            Err(error) => Ok(vec![Self::auto_activation_failure_degradation(&error)]),
         }
     }
 
@@ -1078,7 +1099,7 @@ impl NyanpasuClient {
             .ok_or_else(|| ClientError::Custom("add committed without a created uid".into()))?;
         Ok(runtime::MutationOutcome::from_parts(
             created,
-            self.collect_post_commit_degradations(&report).await,
+            self.collect_post_commit_degradations(&report).await?,
         ))
     }
 
@@ -1100,7 +1121,7 @@ impl NyanpasuClient {
         // check-and-set atomic so a concurrent selection is not overwritten.
         if is_config {
             let uid = outcome.value().clone();
-            outcome = outcome.extend_degradations(self.try_auto_activate_if_none(uid).await);
+            outcome = outcome.extend_degradations(self.try_auto_activate_if_none(uid).await?);
         }
         Ok(outcome)
     }
@@ -1154,16 +1175,16 @@ impl NyanpasuClient {
             .created
             .clone()
             .ok_or_else(|| ClientError::Custom("import committed without a created uid".into()))?;
-        let mut degradations = self.collect_post_commit_degradations(&report).await;
+        let mut degradations = self.collect_post_commit_degradations(&report).await?;
         // Atomically activate only when nothing was selected during the download
         // window. Failures degrade; they must not erase the committed ProfileId.
-        degradations.extend(self.try_auto_activate_if_none(created.clone()).await);
+        degradations.extend(self.try_auto_activate_if_none(created.clone()).await?);
         Ok(runtime::MutationOutcome::from_parts(created, degradations))
     }
 
     pub async fn delete_profile(&self, uid: ProfileId) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.delete(uid).await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn reorder_profile(
@@ -1176,7 +1197,7 @@ impl NyanpasuClient {
             .profiles
             .reorder(ReorderOp::Move { active, over })
             .await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn reorder_profiles_by_list(
@@ -1184,7 +1205,7 @@ impl NyanpasuClient {
         list: Vec<ProfileId>,
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.reorder(ReorderOp::ByList(list)).await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn refresh_profile(
@@ -1193,7 +1214,7 @@ impl NyanpasuClient {
         patch: Option<RemoteProfileOptionsPatch>,
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.refresh(uid, patch).await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn patch_profile_metadata(
@@ -1202,7 +1223,7 @@ impl NyanpasuClient {
         patch: ProfileMetadataPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.patch_metadata(uid, patch).await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn patch_remote_profile_options(
@@ -1211,7 +1232,7 @@ impl NyanpasuClient {
         patch: RemoteProfileOptionsPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.patch_remote_options(uid, patch).await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn replace_profile_definition(
@@ -1224,7 +1245,7 @@ impl NyanpasuClient {
             .profiles
             .replace_definition(uid, definition)
             .await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn activate_profile(
@@ -1232,7 +1253,7 @@ impl NyanpasuClient {
         uid: Option<ProfileId>,
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_current(uid).await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn set_global_transforms(
@@ -1240,7 +1261,7 @@ impl NyanpasuClient {
         ids: Vec<ProfileId>,
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_global_transforms(ids).await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn set_profile_valid_fields(
@@ -1248,7 +1269,7 @@ impl NyanpasuClient {
         fields: Vec<String>,
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_valid_fields(fields).await?;
-        Ok(self.after_commit(&report).await)
+        self.after_commit(&report).await
     }
 
     pub async fn get_profile_materialized_path(&self, uid: ProfileId) -> Result<PathBuf> {
@@ -1331,54 +1352,8 @@ impl NyanpasuClient {
         self.inner.ports.cached_ports()
     }
 
-    pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
-        self.inner.runtime.read().await.promoted.clone()
-    }
-
-    pub(crate) async fn runtime_lifecycle_state(&self) -> runtime::RuntimeLifecycleState {
-        self.inner.runtime.read().await.clone()
-    }
-
-    async fn publish_promoted(&self, snapshot: Arc<runtime::RuntimeSnapshot>) -> Result<()> {
-        let mut lifecycle = self.inner.runtime.write().await;
-        if lifecycle
-            .promoted
-            .as_ref()
-            .is_some_and(|current| current.revision >= snapshot.revision)
-        {
-            return Err(ClientError::Custom(format!(
-                "runtime promoted revision must advance (current: {:?}, next: {})",
-                lifecycle.promoted.as_ref().map(|item| item.revision.get()),
-                snapshot.revision.get()
-            )));
-        }
-        lifecycle.promoted = Some(snapshot);
-        Ok(())
-    }
-
-    async fn publish_applied(&self, snapshot: Arc<runtime::RuntimeSnapshot>) -> Result<()> {
-        let mut lifecycle = self.inner.runtime.write().await;
-        let Some(promoted) = lifecycle.promoted.as_ref() else {
-            return Err(ClientError::Custom(
-                "cannot publish applied runtime without promoted runtime".into(),
-            ));
-        };
-        if !promoted.identity_eq(&snapshot) {
-            return Err(ClientError::Custom(format!(
-                "cannot publish stale applied runtime revision {}",
-                snapshot.revision.get()
-            )));
-        }
-        lifecycle.applied = Some(snapshot);
-        Ok(())
-    }
-
-    async fn restore_promoted(
-        &self,
-        promoted: Option<Arc<runtime::RuntimeSnapshot>>,
-    ) -> Result<()> {
-        self.inner.runtime.write().await.promoted = promoted;
-        Ok(())
+    pub async fn promoted_runtime(&self) -> Option<Arc<core_runtime::RuntimeSnapshot>> {
+        self.inner.core_client.lifecycle().promoted
     }
 
     pub(crate) fn runtime_product_path(&self) -> &camino::Utf8Path {
@@ -1387,24 +1362,24 @@ impl NyanpasuClient {
 
     pub(crate) async fn promote_existing_runtime_product(
         &self,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
+    ) -> Result<Arc<core_runtime::RuntimeSnapshot>> {
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let revision = self
             .inner
             .runtime_revisions
             .allocate()
-            .map_err(ClientError::Anyhow)?;
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         let bytes = tokio::fs::read(self.inner.runtime_paths.product())
             .await
             .map_err(ClientError::Io)?;
         let config: serde_yaml::Mapping =
             serde_yaml::from_slice(&bytes).map_err(ClientError::SerdeYaml)?;
         let app = self.get_app_config().await?;
-        let snapshot = Arc::new(runtime::RuntimeSnapshot::from_data(
+        let snapshot = Arc::new(core_runtime::RuntimeSnapshot::from_data(
             revision,
             app.core,
             Arc::from(bytes.clone()),
-            runtime::RuntimeSnapshotData {
+            core_runtime::RuntimeSnapshotData {
                 exists_keys: config
                     .keys()
                     .filter_map(serde_yaml::Value::as_str)
@@ -1420,165 +1395,263 @@ impl NyanpasuClient {
             .create_candidate(&bytes)
             .await
             .map_err(ClientError::Anyhow)?;
-        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let checked = lease
             .check_and_promote(&candidate, app.core, self.inner.runtime_paths.product())
             .await;
         if let Err(error) = candidate.cleanup().await {
             tracing::warn!(%error, "failed to remove existing-product candidate config");
         }
-        checked.map_err(ClientError::Anyhow)?;
-        self.publish_promoted(snapshot.clone()).await?;
+        checked.map_err(|error| ClientError::Anyhow(error.into()))?;
+        lease
+            .publish_promoted(snapshot.clone())
+            .await
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
         Ok(snapshot)
     }
 
     pub(crate) async fn start_promoted_runtime(&self) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         let promoted = self.promoted_runtime().await.ok_or_else(|| {
             ClientError::Custom("cannot start core without a promoted runtime".into())
         })?;
-        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
-        lease.restart().await.map_err(ClientError::Anyhow)?;
-        self.publish_applied(promoted).await
+        lease
+            .restart()
+            .await
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
+        lease
+            .publish_applied(promoted)
+            .await
+            .map_err(|error| ClientError::Anyhow(error.into()))
     }
 
-    async fn restore_applied_after_patch_failure(
-        &self,
-        lease: &mut dyn CoreLifecycleLease,
-        captured: runtime::RuntimeLifecycleState,
-        compensation: runtime::PatchCompensationPlan,
-        primary: String,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
-        let current_applied = self.inner.runtime.read().await.applied.clone();
-        let expected_revision = compensation.expected_applied_revision();
-        if !compensation.fence_matches(current_applied.as_deref()) {
-            anyhow::bail!(
-                "desired clash patch failed: {primary}; compensation refused because Applied revision changed (expected {}, actual {:?})",
-                expected_revision.get(),
-                current_applied
-                    .as_ref()
-                    .map(|snapshot| snapshot.revision.get()),
-            );
+    fn post_commit_actor_error(error: crate::core::actor::types::CoreActorError) -> ClientError {
+        if matches!(
+            error,
+            crate::core::actor::types::CoreActorError::StaleOperation
+                | crate::core::actor::types::CoreActorError::LifecycleInvariant(_)
+        ) {
+            tracing::error!(%error, "core lifecycle invariant failed after desired-state commit");
         }
-        let Some(applied) = captured.applied.as_ref() else {
-            anyhow::bail!(
-                "desired clash patch failed: {primary}; compensation refused because Applied runtime was unknown"
-            );
-        };
+        ClientError::Anyhow(anyhow::Error::new(error))
+    }
 
-        let candidate = self
-            .inner
-            .runtime_paths
-            .create_candidate(applied.product_bytes())
-            .await?;
-        anyhow::ensure!(
-            candidate.bytes_sha256() == applied.product_sha256,
-            "compensation candidate hash does not match Applied snapshot"
-        );
-        let restore = lease.apply_candidate(&candidate, applied.target_core).await;
-        if let Err(error) = candidate.cleanup().await {
-            tracing::warn!(%error, "failed to remove compensation candidate config");
+    fn not_applied_report(revision: core_runtime::RuntimeRevision) -> runtime::RuntimeApplyReport {
+        runtime::RuntimeApplyReport {
+            outcome: runtime::RuntimeApplyOutcome::NotApplied,
+            desired_revision: revision.get(),
+            applied_revision: None,
         }
-        restore.map_err(|error| {
-            anyhow::anyhow!(
-                "desired clash patch failed: {primary}; Applied snapshot restore also failed: {error:#}"
-            )
-        })?;
+    }
 
-        let product = tokio::fs::read(self.inner.runtime_paths.product()).await?;
-        let current_promoted = self
-            .inner
-            .runtime
-            .read()
-            .await
-            .promoted
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("compensation completed without a Promoted runtime"))?;
-        anyhow::ensure!(
-            <[u8; 32]>::from(Sha256::digest(&product)) == current_promoted.product_sha256,
-            "compensation refused to publish Applied because product no longer matches Promoted"
-        );
-        self.inner.runtime.write().await.applied = Some(applied.clone());
-        anyhow::bail!(
-            "desired clash patch failed after the running core was patched; Applied snapshot restored: {primary}"
+    fn runtime_degradation(
+        phase: runtime::DegradationPhase,
+        code: &'static str,
+        message: String,
+    ) -> runtime::Degradation {
+        runtime::Degradation {
+            phase,
+            code: code.into(),
+            message,
+            retryable: true,
+        }
+    }
+
+    fn core_operation_unavailable(message: String) -> runtime::Degradation {
+        Self::runtime_degradation(
+            runtime::DegradationPhase::CoreLifecycle,
+            "core_operation_unavailable",
+            message,
         )
     }
 
-    /// Apply a running-core patch first, then commit it to desired state and
-    /// rebuild. A failed desired mutation is compensated only while the
-    /// captured Applied revision is still current.
-    pub async fn patch_running_config(&self, patch: serde_yaml::Mapping) -> Result<()> {
-        let _patch = self.inner.clash_patch_gate.lock().await;
-        let _rebuild = self.inner.rebuild_gate.lock().await;
-        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
-        let captured_lifecycle = self.runtime_lifecycle_state().await;
-        let applied = captured_lifecycle.applied.as_ref().ok_or_else(|| {
-            ClientError::Custom(
-                "running-core patch requires a known Applied runtime; retry after core startup"
-                    .into(),
-            )
-        })?;
-        let Some(compensation) = runtime::compensation_for(&patch, Some(applied)) else {
-            return Ok(());
-        };
+    fn publish_background_degradation(&self, degradation: runtime::Degradation) {
+        tracing::warn!(
+            phase = ?degradation.phase,
+            code = %degradation.code,
+            retryable = degradation.retryable,
+            message = %degradation.message,
+            "background-driven rebuild failed (degraded)",
+        );
+        self.inner.degradation.publish(degradation);
+    }
 
-        self.inner
-            .clash_patch
-            .patch(&patch)
-            .await
-            .map_err(ClientError::Anyhow)?;
-
-        let client = self.clone();
-        let result =
-            crate::feat::patch_clash_with_rebuild(self.clone(), patch, |restart| async move {
-                let operation = async {
-                    let snapshot = client
-                        .regenerate_for_legacy_inner(&mut *lease)
-                        .await
-                        .map_err(anyhow::Error::from)?;
-                    if restart {
-                        lease.restart().await?;
-                    } else {
-                        lease
-                            .apply_promoted(client.inner.runtime_paths.product())
-                            .await?;
-                    }
-                    Ok::<_, anyhow::Error>(snapshot)
+    fn rebuild_failure_degradation(
+        error: RuntimeRebuildError,
+    ) -> std::result::Result<runtime::Degradation, ClientError> {
+        match error {
+            RuntimeRebuildError::Build(error) => Ok(Self::runtime_degradation(
+                runtime::DegradationPhase::RuntimeBuild,
+                "runtime_build_failed",
+                error.to_string(),
+            )),
+            RuntimeRebuildError::CheckAndPromote(
+                core_bridge::CheckAndPromoteFailure::Operation(error),
+            ) => {
+                let (phase, code) = match error.phase {
+                    core_bridge::CheckAndPromotePhase::Check => (
+                        runtime::DegradationPhase::RuntimeCheck,
+                        "runtime_check_failed",
+                    ),
+                    core_bridge::CheckAndPromotePhase::Promote => (
+                        runtime::DegradationPhase::RuntimePromote,
+                        "runtime_promote_failed",
+                    ),
                 };
-                match operation.await {
-                    Ok(snapshot) => Ok(snapshot),
-                    Err(primary) => {
-                        client
-                            .restore_applied_after_patch_failure(
-                                &mut *lease,
-                                captured_lifecycle,
-                                compensation,
-                                primary.to_string(),
-                            )
-                            .await
-                    }
-                }
-            })
-            .await;
-        match result {
-            Ok(snapshot) => {
-                self.publish_applied(snapshot).await?;
-                crate::feat::update_proxies_buff(None);
-                Ok(())
+                Ok(Self::runtime_degradation(phase, code, error.to_string()))
             }
-            Err(error) => Err(error.into()),
+            RuntimeRebuildError::CheckAndPromote(core_bridge::CheckAndPromoteFailure::Actor(
+                error,
+            )) => {
+                if rebuild::actor_error_is_post_commit_exempt(&error) {
+                    return Err(Self::post_commit_actor_error(error));
+                }
+                let (phase, code) = match &error {
+                    crate::core::actor::types::CoreActorError::NoBackend { .. } => (
+                        runtime::DegradationPhase::RuntimeApply,
+                        "core_backend_unavailable",
+                    ),
+                    _ => (
+                        runtime::DegradationPhase::RuntimeCheck,
+                        "runtime_check_failed",
+                    ),
+                };
+                Ok(Self::runtime_degradation(phase, code, error.to_string()))
+            }
+            RuntimeRebuildError::Publish(error) => {
+                if rebuild::actor_error_is_post_commit_exempt(&error) {
+                    return Err(Self::post_commit_actor_error(error));
+                }
+                let (phase, code) = match &error {
+                    crate::core::actor::types::CoreActorError::NoBackend { .. } => (
+                        runtime::DegradationPhase::RuntimeApply,
+                        "core_backend_unavailable",
+                    ),
+                    _ => (
+                        runtime::DegradationPhase::RuntimePromote,
+                        "runtime_promote_failed",
+                    ),
+                };
+                Ok(Self::runtime_degradation(phase, code, error.to_string()))
+            }
         }
     }
 
-    pub async fn rebuild_running_config(&self) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
+    fn apply_failure_degradation(
+        error: crate::core::actor::types::CoreActorError,
+    ) -> std::result::Result<runtime::Degradation, ClientError> {
+        if rebuild::actor_error_is_post_commit_exempt(&error) {
+            return Err(Self::post_commit_actor_error(error));
+        }
+        let (code, message) = match error {
+            crate::core::actor::types::CoreActorError::NoBackend { last_error } => {
+                ("core_backend_unavailable", last_error.to_string())
+            }
+            crate::core::actor::types::CoreActorError::Backend(error) => {
+                use crate::core::actor::backend::BackendFailureClass;
+                let code = match crate::core::actor::backend::classify_apply_backend_failure(
+                    error.as_ref(),
+                ) {
+                    BackendFailureClass::RevisionConflict => "revision_conflict",
+                    BackendFailureClass::NotRunning => "core_not_running",
+                    BackendFailureClass::TransportLost => "core_transport_lost",
+                    BackendFailureClass::Other => "runtime_apply_failed",
+                };
+                (code, error.to_string())
+            }
+            error => ("runtime_apply_failed", error.to_string()),
+        };
+        Ok(Self::runtime_degradation(
+            runtime::DegradationPhase::RuntimeApply,
+            code,
+            message,
+        ))
+    }
+
+    async fn rebuild_pipeline_with_lease(
+        &self,
+        lease: &mut dyn CoreLifecycleLease,
+    ) -> (
+        Result<runtime::RuntimeApplyReport>,
+        Vec<runtime::Degradation>,
+    ) {
+        let revision = match self.inner.runtime_revisions.allocate() {
+            Ok(revision) => revision,
+            Err(error) => return (Err(ClientError::Anyhow(error.into())), Vec::new()),
+        };
+        let promoted = match self.regenerate_runtime_at_revision(lease, revision).await {
+            Ok(promoted) => promoted,
+            Err(error) => {
+                return match Self::rebuild_failure_degradation(error) {
+                    Ok(degradation) => (Ok(Self::not_applied_report(revision)), vec![degradation]),
+                    Err(error) => (Err(error), Vec::new()),
+                };
+            }
+        };
+        match lease.apply_promoted(promoted).await {
+            Ok(data) => {
+                let (report, degradations) =
+                    runtime::runtime_outcome_from_apply_data(&data, revision.get());
+                (Ok(report), degradations)
+            }
+            Err(error) => match Self::apply_failure_degradation(error) {
+                Ok(degradation) => (Ok(Self::not_applied_report(revision)), vec![degradation]),
+                Err(error) => (Err(error), Vec::new()),
+            },
+        }
+    }
+
+    fn require_clean_pipeline(
+        result: Result<runtime::RuntimeApplyReport>,
+        degradations: Vec<runtime::Degradation>,
+    ) -> Result<runtime::RuntimeApplyReport> {
+        let report = result?;
+        if degradations.is_empty() {
+            return Ok(report);
+        }
+        Err(ClientError::Custom(
+            degradations
+                .iter()
+                .map(|degradation| format!("{}: {}", degradation.code, degradation.message))
+                .collect::<Vec<_>>()
+                .join("; "),
+        ))
+    }
+
+    pub async fn patch_running_config(
+        &self,
+        patch: serde_yaml::Mapping,
+    ) -> Result<runtime::MutationOutcome<runtime::RuntimeApplyReport>> {
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
-        let promoted = self.regenerate_runtime_inner(&mut *lease).await?;
-        lease
-            .apply_promoted(self.inner.runtime_paths.product())
-            .await
-            .map_err(ClientError::Anyhow)?;
-        self.publish_applied(promoted).await?;
+        let overrides_patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch =
+            serde_yaml::from_value(serde_yaml::Value::Mapping(patch.clone()))
+                .map_err(ClientError::SerdeYaml)?;
+        let mut overrides = self.inner.clash_config.get().await?.state.overrides.clone();
+        overrides.apply(overrides_patch);
+        let mut desired = ClashConfig::new_empty_patch();
+        desired.overrides = Some(overrides);
+        let client = self.clone();
+        let outcome = crate::feat::patch_clash_with_rebuild(
+            self.clone(),
+            patch,
+            move |_restart| async move {
+                client.inner.clash_config.patch(desired).await?;
+                let (report, degradations) = client.rebuild_pipeline_with_lease(&mut *lease).await;
+                Ok(runtime::MutationOutcome::from_parts(
+                    report.map_err(anyhow::Error::from)?,
+                    degradations,
+                ))
+            },
+        )
+        .await
+        .map_err(ClientError::Anyhow)?;
+        crate::feat::update_proxies_buff(None);
+        Ok(outcome)
+    }
+
+    pub async fn rebuild_running_config(&self) -> Result<()> {
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        let (report, degradations) = self.rebuild_pipeline_with_lease(&mut *lease).await;
+        Self::require_clean_pipeline(report, degradations)?;
         drop(lease);
         self.inner.ui_sink.refresh_clash();
         // 用户决策 2026-07-06:所有 rebuild 统一触发(选项默认 false 门控)。
@@ -1586,26 +1659,82 @@ impl NyanpasuClient {
         Ok(())
     }
 
+    async fn rebuild_running_config_in_background(&self) -> Result<()> {
+        let mut lease = match self.inner.core.begin().await {
+            Ok(lease) => lease,
+            Err(error) => {
+                self.publish_background_degradation(Self::core_operation_unavailable(
+                    error.to_string(),
+                ));
+                return Ok(());
+            }
+        };
+        let (report, degradations) = self.rebuild_pipeline_with_lease(&mut *lease).await;
+        if let Err(error) = report {
+            if rebuild::client_error_is_post_commit_exempt(&error) {
+                return Err(error);
+            }
+            for degradation in degradations {
+                self.publish_background_degradation(degradation);
+            }
+            self.publish_background_degradation(Self::core_operation_unavailable(
+                error.to_string(),
+            ));
+            return Ok(());
+        }
+        if degradations.is_empty() {
+            drop(lease);
+            self.inner.ui_sink.refresh_clash();
+            self.inner.core.on_profile_change().await;
+            return Ok(());
+        }
+        for degradation in degradations {
+            self.publish_background_degradation(degradation);
+        }
+        Ok(())
+    }
+
     pub(crate) async fn regenerate_runtime(&self) -> Result<()> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
         self.regenerate_runtime_inner(&mut *lease).await.map(|_| ())
     }
 
-    /// Must only run while holding `rebuild_gate`: revision allocation happens
-    /// before desired snapshots are read, and failed attempts never reuse it.
+    /// Must only run while holding the core operation guard: revision allocation
+    /// happens before desired snapshots are read, and failed attempts never reuse it.
     async fn regenerate_runtime_inner(
         &self,
         lease: &mut dyn CoreLifecycleLease,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<core_runtime::RuntimeSnapshot>> {
         let revision = self
             .inner
             .runtime_revisions
             .allocate()
-            .map_err(ClientError::Anyhow)?;
-        let profiles = self.inner.profiles.get().await?;
-        let clash = self.get_clash_config().await?;
-        let app = self.get_app_config().await?;
+            .map_err(|error| ClientError::Anyhow(error.into()))?;
+        self.regenerate_runtime_at_revision(lease, revision)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn regenerate_runtime_at_revision(
+        &self,
+        lease: &mut dyn CoreLifecycleLease,
+        revision: core_runtime::RuntimeRevision,
+    ) -> std::result::Result<Arc<core_runtime::RuntimeSnapshot>, RuntimeRebuildError> {
+        let profiles = self
+            .inner
+            .profiles
+            .get()
+            .await
+            .map_err(ClientError::from)
+            .map_err(RuntimeRebuildError::Build)?;
+        let clash = self
+            .get_clash_config()
+            .await
+            .map_err(RuntimeRebuildError::Build)?;
+        let app = self
+            .get_app_config()
+            .await
+            .map_err(RuntimeRebuildError::Build)?;
         self.regenerate_runtime_with(lease, revision, profiles, clash, app)
             .await
     }
@@ -1613,21 +1742,22 @@ impl NyanpasuClient {
     async fn regenerate_runtime_with(
         &self,
         lease: &mut dyn CoreLifecycleLease,
-        revision: runtime::RuntimeRevision,
+        revision: core_runtime::RuntimeRevision,
         profiles: Arc<Profiles>,
         clash: ClashConfig,
         app: NyanpasuAppConfig,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> std::result::Result<Arc<core_runtime::RuntimeSnapshot>, RuntimeRebuildError> {
         let resolved_ports = self
             .inner
             .ports
             .resolve(&clash)
-            .map_err(ClientError::Anyhow)?;
+            .map_err(ClientError::Anyhow)
+            .map_err(RuntimeRebuildError::Build)?;
         let profiles_dir = self.inner.profiles_dir.clone();
         let core = app.core;
         let builtin_enabled = app.enable_builtin_enhanced;
         let (data, yaml) = tokio::task::spawn_blocking(
-            move || -> anyhow::Result<(runtime::RuntimeSnapshotData, String)> {
+            move || -> anyhow::Result<(core_runtime::RuntimeSnapshotData, String)> {
                 let content = FsProfileContentSource::new(profiles_dir);
                 let scripts = EnhanceScriptRunner::new()?;
                 let input = RuntimeBuildInput {
@@ -1651,10 +1781,12 @@ impl NyanpasuClient {
             },
         )
         .await
-        .map_err(|error| ClientError::Custom(format!("runtime build task failed: {error}")))?
-        .map_err(ClientError::Anyhow)?;
+        .map_err(|error| ClientError::Custom(format!("runtime build task failed: {error}")))
+        .map_err(RuntimeRebuildError::Build)?
+        .map_err(ClientError::Anyhow)
+        .map_err(RuntimeRebuildError::Build)?;
         let product_bytes: Arc<[u8]> = Arc::from(yaml.into_bytes());
-        let snapshot = Arc::new(runtime::RuntimeSnapshot::from_data(
+        let snapshot = Arc::new(core_runtime::RuntimeSnapshot::from_data(
             revision,
             core,
             product_bytes.clone(),
@@ -1669,10 +1801,22 @@ impl NyanpasuClient {
             .runtime_paths
             .create_candidate(&product_bytes)
             .await
-            .map_err(ClientError::Anyhow)?;
+            .map_err(|source| {
+                RuntimeRebuildError::CheckAndPromote(
+                    core_bridge::CheckAndPromoteFailure::Operation(
+                        core_bridge::CheckAndPromoteError {
+                            phase: core_bridge::CheckAndPromotePhase::Promote,
+                            source,
+                        },
+                    ),
+                )
+            })?;
         if candidate.bytes_sha256() != snapshot.product_sha256 {
-            return Err(ClientError::Custom(
-                "runtime snapshot hash does not match candidate bytes".into(),
+            return Err(RuntimeRebuildError::CheckAndPromote(
+                core_bridge::CheckAndPromoteFailure::Operation(core_bridge::CheckAndPromoteError {
+                    phase: core_bridge::CheckAndPromotePhase::Promote,
+                    source: anyhow::anyhow!("runtime snapshot hash does not match candidate bytes"),
+                }),
             ));
         }
         let checked = lease
@@ -1681,8 +1825,11 @@ impl NyanpasuClient {
         if let Err(error) = candidate.cleanup().await {
             tracing::warn!(%error, "failed to remove candidate config");
         }
-        checked.map_err(ClientError::Anyhow)?;
-        self.publish_promoted(snapshot.clone()).await?;
+        checked.map_err(RuntimeRebuildError::CheckAndPromote)?;
+        lease
+            .publish_promoted(snapshot.clone())
+            .await
+            .map_err(RuntimeRebuildError::Publish)?;
         Ok(snapshot)
     }
 }
@@ -1703,7 +1850,7 @@ mod tests {
         profiles::ports::{
             CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
             MockProfileMaterializationPort, MockRebuildNotifier, MockSubscriptionFetcher,
-            PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort,
+            PreparedCleanup, PreparedMaterialization, ProfileMaterializationPort, RebuildNotifier,
         },
     };
     use async_trait::async_trait;
@@ -1715,6 +1862,7 @@ mod tests {
         },
         state::window::{WindowLabel, WindowState},
     };
+    use sha2::{Digest, Sha256};
     use std::{
         collections::BTreeMap,
         sync::{
@@ -1828,25 +1976,43 @@ mod tests {
             candidate: &runtime::CandidateFile,
             target_core: nyanpasu_config::application::ClashCore,
             _product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
             self.inner.check_and_promote(candidate, target_core).await?;
             Ok(candidate.bytes_sha256())
         }
 
-        async fn apply_candidate(
+        async fn apply_promoted(
             &mut self,
-            candidate: &runtime::CandidateFile,
-            target_core: nyanpasu_config::application::ClashCore,
-        ) -> anyhow::Result<()> {
-            self.inner.check_and_promote(candidate, target_core).await
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            self.inner.apply_config().await.map_err(|error| {
+                crate::core::actor::types::CoreActorError::Backend(Arc::new(
+                    crate::core::actor::backend::CoreBackendError::Construct(error),
+                ))
+            })?;
+            Ok(core_bridge::test_apply_data(&snapshot))
         }
 
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            self.inner.apply_config().await
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
         }
 
-        async fn restart(&mut self) -> anyhow::Result<()> {
-            self.inner.restart_core().await
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            self.inner
+                .restart_core()
+                .await
+                .map_err(core_bridge::RestartFailure::Operation)
         }
 
         async fn stop(&mut self) -> anyhow::Result<()> {
@@ -1860,6 +2026,422 @@ mod tests {
 
     struct TestCoreLease {
         inner: Arc<dyn TestRunningCoreBridge>,
+    }
+
+    struct OperationProbeCore {
+        gate: Arc<tokio::sync::Mutex<()>>,
+        state: Arc<OperationProbeState>,
+    }
+
+    struct OperationProbeState {
+        begin_calls: AtomicUsize,
+        check_calls: AtomicUsize,
+        active_checks: AtomicUsize,
+        max_active_checks: AtomicUsize,
+        candidates: StdMutex<Vec<Vec<u8>>>,
+        begin_entered_tx: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release_begin_rx: StdMutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+        first_check_entered_tx: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release_first_check_rx: StdMutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+        second_begin_attempted_tx: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        applied_revisions: StdMutex<Vec<u64>>,
+    }
+
+    struct OperationProbeLease {
+        state: Arc<OperationProbeState>,
+        _guard: tokio::sync::OwnedMutexGuard<()>,
+    }
+
+    #[derive(Clone, Copy)]
+    enum PromoteFailurePoint {
+        BeforeWrite,
+        AfterWrite,
+    }
+
+    struct PromoteFailureCore {
+        failure: PromoteFailurePoint,
+        check_calls: Arc<AtomicUsize>,
+    }
+
+    struct PromoteFailureLease {
+        failure: PromoteFailurePoint,
+        check_calls: Arc<AtomicUsize>,
+    }
+
+    struct ExemptRestartCore;
+
+    struct ExemptRestartLease;
+
+    struct ExemptCheckCore;
+
+    struct ExemptCheckLease;
+
+    struct BeginFailureCore;
+
+    #[async_trait]
+    impl CoreLifecyclePort for BeginFailureCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            anyhow::bail!("scripted acquire timeout")
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecyclePort for ExemptCheckCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            Ok(Box::new(ExemptCheckLease))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used by the exempt check test")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for ExemptCheckLease {
+        async fn check_and_promote(
+            &mut self,
+            _candidate: &runtime::CandidateFile,
+            _target_core: nyanpasu_config::application::ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
+            Err(core_bridge::CheckAndPromoteFailure::Actor(
+                crate::core::actor::types::CoreActorError::StaleOperation,
+            ))
+        }
+
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Err(crate::core::actor::types::CoreActorError::StaleOperation)
+        }
+
+        async fn apply_promoted(
+            &mut self,
+            _snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Err(crate::core::actor::types::CoreActorError::StaleOperation)
+        }
+
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            Err(core_bridge::RestartFailure::Actor(
+                crate::core::actor::types::CoreActorError::StaleOperation,
+            ))
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl CoreLifecyclePort for ExemptRestartCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            Ok(Box::new(ExemptRestartLease))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used by the exempt restart test")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for ExemptRestartLease {
+        async fn check_and_promote(
+            &mut self,
+            candidate: &runtime::CandidateFile,
+            _target_core: nyanpasu_config::application::ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
+            Ok(candidate.bytes_sha256())
+        }
+
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((
+                None,
+                crate::core::actor::types::FaithfulLifecycle::Stopped { reason: None },
+            ))
+        }
+
+        async fn apply_promoted(
+            &mut self,
+            _snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Err(crate::core::actor::types::CoreActorError::StaleOperation)
+        }
+
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            Err(core_bridge::RestartFailure::Actor(
+                crate::core::actor::types::CoreActorError::StaleOperation,
+            ))
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl CoreLifecyclePort for PromoteFailureCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            Ok(Box::new(PromoteFailureLease {
+                failure: self.failure,
+                check_calls: self.check_calls.clone(),
+            }))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used by promote failure tests")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for PromoteFailureLease {
+        async fn check_and_promote(
+            &mut self,
+            candidate: &runtime::CandidateFile,
+            _target_core: nyanpasu_config::application::ClashCore,
+            product: &camino::Utf8Path,
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
+            let call = self.check_calls.fetch_add(1, Ordering::SeqCst);
+            if call == 1 && matches!(self.failure, PromoteFailurePoint::BeforeWrite) {
+                return Err(core_bridge::CheckAndPromoteFailure::Operation(
+                    core_bridge::CheckAndPromoteError {
+                        phase: core_bridge::CheckAndPromotePhase::Promote,
+                        source: anyhow::anyhow!("candidate hash mismatch before product write"),
+                    },
+                ));
+            }
+
+            let bytes = tokio::fs::read(candidate.path()).await.map_err(|source| {
+                core_bridge::CheckAndPromoteFailure::Operation(core_bridge::CheckAndPromoteError {
+                    phase: core_bridge::CheckAndPromotePhase::Promote,
+                    source: source.into(),
+                })
+            })?;
+            if let Some(parent) = product.parent() {
+                tokio::fs::create_dir_all(parent).await.map_err(|source| {
+                    core_bridge::CheckAndPromoteFailure::Operation(
+                        core_bridge::CheckAndPromoteError {
+                            phase: core_bridge::CheckAndPromotePhase::Promote,
+                            source: source.into(),
+                        },
+                    )
+                })?;
+            }
+            tokio::fs::write(product, bytes).await.map_err(|source| {
+                core_bridge::CheckAndPromoteFailure::Operation(core_bridge::CheckAndPromoteError {
+                    phase: core_bridge::CheckAndPromotePhase::Promote,
+                    source: source.into(),
+                })
+            })?;
+            if call == 1 && matches!(self.failure, PromoteFailurePoint::AfterWrite) {
+                return Err(core_bridge::CheckAndPromoteFailure::Operation(
+                    core_bridge::CheckAndPromoteError {
+                        phase: core_bridge::CheckAndPromotePhase::Promote,
+                        source: anyhow::anyhow!("product hash mismatch after product write"),
+                    },
+                ));
+            }
+            Ok(candidate.bytes_sha256())
+        }
+
+        async fn apply_promoted(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok(core_bridge::test_apply_data(&snapshot))
+        }
+
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
+        }
+
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            Ok(())
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn promote_failure_core(failure: PromoteFailurePoint) -> Arc<dyn CoreLifecyclePort> {
+        Arc::new(PromoteFailureCore {
+            failure,
+            check_calls: Arc::new(AtomicUsize::new(0)),
+        })
+    }
+
+    impl OperationProbeState {
+        fn new() -> Self {
+            Self {
+                begin_calls: AtomicUsize::new(0),
+                check_calls: AtomicUsize::new(0),
+                active_checks: AtomicUsize::new(0),
+                max_active_checks: AtomicUsize::new(0),
+                candidates: StdMutex::new(Vec::new()),
+                begin_entered_tx: StdMutex::new(None),
+                release_begin_rx: StdMutex::new(None),
+                first_check_entered_tx: StdMutex::new(None),
+                release_first_check_rx: StdMutex::new(None),
+                second_begin_attempted_tx: StdMutex::new(None),
+                applied_revisions: StdMutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl CoreLifecyclePort for OperationProbeCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            let call = self.state.begin_calls.fetch_add(1, Ordering::SeqCst);
+            if call == 0 {
+                if let Some(tx) = self.state.begin_entered_tx.lock().unwrap().take() {
+                    let _ = tx.send(());
+                }
+                let release = self.state.release_begin_rx.lock().unwrap().take();
+                if let Some(release) = release {
+                    let _ = release.await;
+                }
+            } else if call == 1
+                && let Some(tx) = self.state.second_begin_attempted_tx.lock().unwrap().take()
+            {
+                let _ = tx.send(());
+            }
+            let guard = self.gate.clone().lock_owned().await;
+            Ok(Box::new(OperationProbeLease {
+                state: self.state.clone(),
+                _guard: guard,
+            }))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used by operation ordering tests")
+        }
+
+        async fn on_profile_change(&self) {}
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for OperationProbeLease {
+        async fn check_and_promote(
+            &mut self,
+            candidate: &runtime::CandidateFile,
+            _target_core: nyanpasu_config::application::ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
+            let call = self.state.check_calls.fetch_add(1, Ordering::SeqCst);
+            let active = self.state.active_checks.fetch_add(1, Ordering::SeqCst) + 1;
+            self.state
+                .max_active_checks
+                .fetch_max(active, Ordering::SeqCst);
+            let bytes = tokio::fs::read(candidate.path())
+                .await
+                .map_err(anyhow::Error::from)?;
+            self.state.candidates.lock().unwrap().push(bytes);
+            if call == 0 {
+                if let Some(tx) = self.state.first_check_entered_tx.lock().unwrap().take() {
+                    let _ = tx.send(());
+                }
+                let release = self.state.release_first_check_rx.lock().unwrap().take();
+                if let Some(release) = release {
+                    let _ = release.await;
+                }
+            }
+            self.state.active_checks.fetch_sub(1, Ordering::SeqCst);
+            Ok(candidate.bytes_sha256())
+        }
+
+        async fn apply_promoted(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok(core_bridge::test_apply_data(&snapshot))
+        }
+
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
+        }
+
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            Ok(())
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn publish_applied(
+            &mut self,
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<(), crate::core::actor::types::CoreActorError> {
+            self.state
+                .applied_revisions
+                .lock()
+                .unwrap()
+                .push(snapshot.revision.get());
+            Ok(())
+        }
+    }
+
+    fn operation_probe_core(state: Arc<OperationProbeState>) -> Arc<dyn CoreLifecyclePort> {
+        Arc::new(OperationProbeCore {
+            gate: Arc::new(tokio::sync::Mutex::new(())),
+            state,
+        })
     }
 
     #[async_trait]
@@ -1886,25 +2468,43 @@ mod tests {
             candidate: &runtime::CandidateFile,
             target_core: nyanpasu_config::application::ClashCore,
             _product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
+        ) -> std::result::Result<[u8; 32], core_bridge::CheckAndPromoteFailure> {
             self.inner.check_and_promote(candidate, target_core).await?;
             Ok(candidate.bytes_sha256())
         }
 
-        async fn apply_candidate(
+        async fn apply_promoted(
             &mut self,
-            candidate: &runtime::CandidateFile,
-            target_core: nyanpasu_config::application::ClashCore,
-        ) -> anyhow::Result<()> {
-            self.inner.check_and_promote(candidate, target_core).await
+            snapshot: Arc<core_runtime::RuntimeSnapshot>,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::apply::CoreApplyData,
+            crate::core::actor::types::CoreActorError,
+        > {
+            self.inner.apply_config().await.map_err(|error| {
+                crate::core::actor::types::CoreActorError::Backend(Arc::new(
+                    crate::core::actor::backend::CoreBackendError::Construct(error),
+                ))
+            })?;
+            Ok(core_bridge::test_apply_data(&snapshot))
         }
 
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            self.inner.apply_config().await
+        async fn running_identity(
+            &mut self,
+        ) -> std::result::Result<
+            (
+                Option<crate::core::actor::types::CoreRequest>,
+                crate::core::actor::types::FaithfulLifecycle,
+            ),
+            crate::core::actor::types::CoreActorError,
+        > {
+            Ok((None, crate::core::actor::types::FaithfulLifecycle::Running))
         }
 
-        async fn restart(&mut self) -> anyhow::Result<()> {
-            self.inner.restart_core().await
+        async fn restart(&mut self) -> std::result::Result<(), core_bridge::RestartFailure> {
+            self.inner
+                .restart_core()
+                .await
+                .map_err(core_bridge::RestartFailure::Operation)
         }
 
         async fn stop(&mut self) -> anyhow::Result<()> {
@@ -1999,15 +2599,6 @@ mod tests {
         }
     }
 
-    struct NoopRunningConfigPatchPort;
-
-    #[async_trait]
-    impl RunningConfigPatchPort for NoopRunningConfigPatchPort {
-        async fn patch(&self, _patch: &serde_yaml::Mapping) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
     struct FixedCoreBinaryResolver(Utf8PathBuf);
 
     impl crate::core::actor::request::CoreBinaryResolver for FixedCoreBinaryResolver {
@@ -2029,6 +2620,14 @@ mod tests {
     impl crate::core::actor::backend::CoreDegradationSink for RecordingCoreDegradationSink {
         fn publish(&self, degradation: runtime::Degradation) {
             self.0.lock().unwrap().push(degradation);
+        }
+    }
+
+    struct NotifyingCoreDegradationSink(tokio::sync::mpsc::UnboundedSender<runtime::Degradation>);
+
+    impl crate::core::actor::backend::CoreDegradationSink for NotifyingCoreDegradationSink {
+        fn publish(&self, degradation: runtime::Degradation) {
+            let _ = self.0.send(degradation);
         }
     }
 
@@ -2226,7 +2825,7 @@ mod tests {
             core::CoreClientArgs {
                 mode: crate::core::RunType::Normal,
                 requests: requests.clone(),
-                degradation,
+                degradation: degradation.clone(),
             },
             backend,
         )
@@ -2251,11 +2850,8 @@ mod tests {
             core,
             requests,
             test_service_control(),
-            Arc::new(NoopRunningConfigPatchPort),
+            degradation,
             Arc::new(NoopSystemDnsCache),
-            crate::client::runtime::new_runtime_lifecycle_store()
-                .await
-                .unwrap(),
             rebuild,
         )
     }
@@ -2296,11 +2892,12 @@ mod tests {
             binary,
         )
         .unwrap();
+        let degradation = test_degradation_sink();
         let core_client = CoreClient::new_with_reconciled_backend(
             core::CoreClientArgs {
                 mode: crate::core::RunType::Normal,
                 requests: requests.clone(),
-                degradation: test_degradation_sink(),
+                degradation: degradation.clone(),
             },
             backend,
         )
@@ -2322,28 +2919,45 @@ mod tests {
             test_core_port(Arc::new(MockRunningCoreBridge::new())),
             requests,
             service_control,
-            Arc::new(NoopRunningConfigPatchPort),
+            degradation,
             Arc::new(NoopSystemDnsCache),
-            crate::client::runtime::new_runtime_lifecycle_store()
-                .await
-                .unwrap(),
             rebuild::RebuildCoordinator::new(),
         )
     }
 
-    fn facade_backend() -> crate::core::actor::backend::TestBackend {
-        crate::core::actor::backend::TestBackend::new(
-            crate::core::actor::types::BackendObservation {
-                view: crate::core::actor::types::CoreStatusView {
-                    state: nyanpasu_ipc::api::status::CoreState::Running,
-                    state_changed_at: 1,
-                    run_type: crate::core::RunType::Normal,
-                    revision: None,
-                    recovery_exhausted: false,
-                },
-                lifecycle: crate::core::actor::types::FaithfulLifecycle::Running,
+    fn facade_observation(
+        lifecycle: crate::core::actor::types::FaithfulLifecycle,
+    ) -> crate::core::actor::types::BackendObservation {
+        let state = match lifecycle {
+            crate::core::actor::types::FaithfulLifecycle::Stopped { ref reason } => {
+                nyanpasu_ipc::api::status::CoreState::Stopped(reason.clone())
+            }
+            crate::core::actor::types::FaithfulLifecycle::Starting
+            | crate::core::actor::types::FaithfulLifecycle::Restarting => {
+                nyanpasu_ipc::api::status::CoreState::Stopped(None)
+            }
+            crate::core::actor::types::FaithfulLifecycle::Running
+            | crate::core::actor::types::FaithfulLifecycle::Switching
+            | crate::core::actor::types::FaithfulLifecycle::Stopping => {
+                nyanpasu_ipc::api::status::CoreState::Running
+            }
+        };
+        crate::core::actor::types::BackendObservation {
+            view: crate::core::actor::types::CoreStatusView {
+                state,
+                state_changed_at: 1,
+                run_type: crate::core::RunType::Normal,
+                revision: None,
+                recovery_exhausted: false,
             },
-        )
+            lifecycle,
+        }
+    }
+
+    fn facade_backend() -> crate::core::actor::backend::TestBackend {
+        crate::core::actor::backend::TestBackend::new(facade_observation(
+            crate::core::actor::types::FaithfulLifecycle::Running,
+        ))
     }
 
     #[tokio::test]
@@ -2380,102 +2994,6 @@ mod tests {
         status.changed().await.unwrap();
         assert_eq!(degradation.0.lock().unwrap().len(), 1);
         client.shutdown().await;
-    }
-
-    #[derive(Default)]
-    struct CompensationLease {
-        checked: Vec<Vec<u8>>,
-        apply_calls: usize,
-    }
-
-    #[async_trait]
-    impl CoreLifecycleLease for CompensationLease {
-        async fn check_and_promote(
-            &mut self,
-            candidate: &runtime::CandidateFile,
-            _target_core: nyanpasu_config::application::ClashCore,
-            product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
-            let bytes = tokio::fs::read(candidate.path()).await?;
-            core_bridge::restore_product(product.as_std_path(), &bytes).await?;
-            self.checked.push(bytes);
-            Ok(candidate.bytes_sha256())
-        }
-
-        async fn apply_candidate(
-            &mut self,
-            candidate: &runtime::CandidateFile,
-            _target_core: nyanpasu_config::application::ClashCore,
-        ) -> anyhow::Result<()> {
-            self.checked.push(tokio::fs::read(candidate.path()).await?);
-            self.apply_calls += 1;
-            Ok(())
-        }
-
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            self.apply_calls += 1;
-            Ok(())
-        }
-
-        async fn restart(&mut self) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn stop(&mut self) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    struct BarrierCompensationLease {
-        _guard: tokio::sync::OwnedMutexGuard<()>,
-        check_entered: Option<tokio::sync::oneshot::Sender<()>>,
-        release_check: Option<tokio::sync::oneshot::Receiver<()>>,
-    }
-
-    #[async_trait]
-    impl CoreLifecycleLease for BarrierCompensationLease {
-        async fn check_and_promote(
-            &mut self,
-            candidate: &runtime::CandidateFile,
-            _target_core: nyanpasu_config::application::ClashCore,
-            product: &camino::Utf8Path,
-        ) -> anyhow::Result<[u8; 32]> {
-            if let Some(sender) = self.check_entered.take() {
-                let _ = sender.send(());
-            }
-            if let Some(receiver) = self.release_check.take() {
-                let _ = receiver.await;
-            }
-            let bytes = tokio::fs::read(candidate.path()).await?;
-            core_bridge::restore_product(product.as_std_path(), &bytes).await?;
-            Ok(candidate.bytes_sha256())
-        }
-
-        async fn apply_candidate(
-            &mut self,
-            _candidate: &runtime::CandidateFile,
-            _target_core: nyanpasu_config::application::ClashCore,
-        ) -> anyhow::Result<()> {
-            if let Some(sender) = self.check_entered.take() {
-                let _ = sender.send(());
-            }
-            if let Some(receiver) = self.release_check.take() {
-                let _ = receiver.await;
-            }
-            Ok(())
-        }
-
-        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn restart(&mut self) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn stop(&mut self) -> anyhow::Result<()> {
-            Ok(())
-        }
     }
 
     struct NoopClashBridge;
@@ -2607,11 +3125,8 @@ mod tests {
             test_core_port(Arc::new(MockRunningCoreBridge::new())),
             requests,
             test_service_control(),
-            Arc::new(NoopRunningConfigPatchPort),
+            test_degradation_sink(),
             system_dns,
-            crate::client::runtime::new_runtime_lifecycle_store()
-                .await
-                .expect("runtime state store"),
             rebuild::RebuildCoordinator::new(),
         )
     }
@@ -2842,7 +3357,6 @@ mod tests {
             binary_resolver: test_binary_resolver(dir),
             degradation: test_degradation_sink(),
             service_control: test_service_control(),
-            clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
             system_dns: Arc::new(NoopSystemDnsCache),
         }
     }
@@ -2923,11 +3437,8 @@ mod tests {
             test_core_port(core),
             requests,
             test_service_control(),
-            Arc::new(NoopRunningConfigPatchPort),
+            test_degradation_sink(),
             Arc::new(NoopSystemDnsCache),
-            crate::client::runtime::new_runtime_lifecycle_store()
-                .await
-                .expect("runtime state store"),
             rebuild,
         );
         client.start_rebuild_worker();
@@ -3082,7 +3593,6 @@ mod tests {
             binary_resolver: test_binary_resolver(&dir),
             degradation: test_degradation_sink(),
             service_control: test_service_control(),
-            clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
             system_dns: Arc::new(NoopSystemDnsCache),
         })
         .expect("client should construct with typed config actors");
@@ -3103,273 +3613,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let client = tauri::async_runtime::block_on(test_client(&dir));
         let promoted = tauri::async_runtime::block_on(client.promoted_runtime());
-        let lifecycle = tauri::async_runtime::block_on(client.runtime_lifecycle_state());
+        let lifecycle = client.inner.core_client.lifecycle();
 
         assert!(promoted.is_none());
         assert!(lifecycle.promoted.is_none());
         assert!(lifecycle.applied.is_none());
-    }
-
-    fn compensation_snapshot(
-        client: &NyanpasuClient,
-        config: serde_yaml::Mapping,
-    ) -> Arc<runtime::RuntimeSnapshot> {
-        let product_bytes = serde_yaml::to_string(&config).unwrap().into_bytes();
-        compensation_snapshot_with_bytes(client, config, product_bytes)
-    }
-
-    fn compensation_snapshot_with_bytes(
-        client: &NyanpasuClient,
-        config: serde_yaml::Mapping,
-        product_bytes: Vec<u8>,
-    ) -> Arc<runtime::RuntimeSnapshot> {
-        let revision = tauri::async_runtime::block_on(async {
-            client.inner.runtime_revisions.allocate().unwrap()
-        });
-        Arc::new(runtime::RuntimeSnapshot::from_data(
-            revision,
-            nyanpasu_config::application::ClashCore::default(),
-            Arc::from(product_bytes),
-            runtime::RuntimeSnapshotData {
-                exists_keys: config
-                    .keys()
-                    .filter_map(serde_yaml::Value::as_str)
-                    .map(ToOwned::to_owned)
-                    .collect(),
-                config,
-                postprocessing_output: Default::default(),
-            },
-        ))
-    }
-
-    #[test]
-    fn s05_remove_compensation_applies_p1_without_replacing_promoted_p2_product() {
-        let dir = tempdir().unwrap();
-        let client = tauri::async_runtime::block_on(test_client(&dir));
-        let p1_bytes =
-            b"# exact applied P1\nmode: rule\nproxy-groups: [] # formatting must survive\n";
-        let p2_bytes = b"# promoted P2 product\nmode: direct\nproxy-groups: [new]\n";
-        let applied = compensation_snapshot_with_bytes(
-            &client,
-            serde_yaml::from_slice(p1_bytes).unwrap(),
-            p1_bytes.to_vec(),
-        );
-        let promoted = compensation_snapshot_with_bytes(
-            &client,
-            serde_yaml::from_slice(p2_bytes).unwrap(),
-            p2_bytes.to_vec(),
-        );
-        assert!(promoted.revision > applied.revision);
-        std::fs::create_dir_all(client.runtime_product_path().parent().unwrap()).unwrap();
-        std::fs::write(client.runtime_product_path(), p2_bytes).unwrap();
-        tauri::async_runtime::block_on(async {
-            *client.inner.runtime.write().await = runtime::RuntimeLifecycleState {
-                promoted: Some(promoted.clone()),
-                applied: Some(applied.clone()),
-            };
-        });
-        let mut patch = serde_yaml::Mapping::new();
-        patch.insert("ipv6".into(), true.into());
-        let plan = runtime::compensation_for(&patch, Some(&applied)).unwrap();
-        assert!(matches!(
-            plan.ops(),
-            [runtime::PatchCompensationOp::Remove { .. }]
-        ));
-        let captured = runtime::RuntimeLifecycleState {
-            promoted: Some(promoted.clone()),
-            applied: Some(applied.clone()),
-        };
-        let mut lease = CompensationLease::default();
-        let result = tauri::async_runtime::block_on(client.restore_applied_after_patch_failure(
-            &mut lease,
-            captured,
-            plan,
-            "primary".into(),
-        ));
-        assert!(result.is_err());
-        assert_eq!(lease.checked, vec![p1_bytes.to_vec()]);
-        assert_eq!(lease.apply_calls, 1);
-        let product = std::fs::read(client.runtime_product_path()).unwrap();
-        assert_eq!(product, p2_bytes);
-        assert_eq!(
-            <[u8; 32]>::from(Sha256::digest(&product)),
-            promoted.product_sha256
-        );
-        let lifecycle = tauri::async_runtime::block_on(client.runtime_lifecycle_state());
-        assert!(Arc::ptr_eq(&lifecycle.promoted.unwrap(), &promoted));
-        assert!(Arc::ptr_eq(&lifecycle.applied.unwrap(), &applied));
-    }
-
-    #[test]
-    fn s05_compensation_preserves_new_promoted_and_restores_only_applied() {
-        let dir = tempdir().unwrap();
-        let client = tauri::async_runtime::block_on(test_client(&dir));
-        let p1_bytes = b"# exact applied P1\nmode: rule\n";
-        let p2_bytes = b"# captured promoted P2\nmode: direct\n";
-        let p3_bytes = b"# current promoted P3\nmode: global\n";
-        let applied = compensation_snapshot_with_bytes(
-            &client,
-            serde_yaml::from_slice(p1_bytes).unwrap(),
-            p1_bytes.to_vec(),
-        );
-        let captured_promoted = compensation_snapshot_with_bytes(
-            &client,
-            serde_yaml::from_slice(p2_bytes).unwrap(),
-            p2_bytes.to_vec(),
-        );
-        let current_promoted = compensation_snapshot_with_bytes(
-            &client,
-            serde_yaml::from_slice(p3_bytes).unwrap(),
-            p3_bytes.to_vec(),
-        );
-        assert!(captured_promoted.revision < current_promoted.revision);
-        std::fs::create_dir_all(client.runtime_product_path().parent().unwrap()).unwrap();
-        std::fs::write(client.runtime_product_path(), p3_bytes).unwrap();
-        tauri::async_runtime::block_on(async {
-            *client.inner.runtime.write().await = runtime::RuntimeLifecycleState {
-                promoted: Some(current_promoted.clone()),
-                applied: Some(applied.clone()),
-            };
-        });
-        let mut patch = serde_yaml::Mapping::new();
-        patch.insert("ipv6".into(), true.into());
-        let plan = runtime::compensation_for(&patch, Some(&applied)).unwrap();
-        let mut lease = CompensationLease::default();
-        let result = tauri::async_runtime::block_on(client.restore_applied_after_patch_failure(
-            &mut lease,
-            runtime::RuntimeLifecycleState {
-                promoted: Some(captured_promoted),
-                applied: Some(applied.clone()),
-            },
-            plan,
-            "primary".into(),
-        ));
-        assert!(result.is_err());
-        assert_eq!(lease.checked, vec![p1_bytes.to_vec()]);
-        let product = std::fs::read(client.runtime_product_path()).unwrap();
-        assert_eq!(product, p3_bytes);
-        assert_eq!(
-            <[u8; 32]>::from(Sha256::digest(&product)),
-            current_promoted.product_sha256
-        );
-        let lifecycle = tauri::async_runtime::block_on(client.runtime_lifecycle_state());
-        assert!(Arc::ptr_eq(
-            lifecycle.promoted.as_ref().unwrap(),
-            &current_promoted
-        ));
-        assert!(Arc::ptr_eq(lifecycle.applied.as_ref().unwrap(), &applied));
-    }
-
-    #[test]
-    fn s05_revision_conflict_performs_no_restore() {
-        let dir = tempdir().unwrap();
-        let client = tauri::async_runtime::block_on(test_client(&dir));
-        let applied = compensation_snapshot(&client, serde_yaml::Mapping::new());
-        let current = compensation_snapshot(&client, serde_yaml::Mapping::new());
-        tauri::async_runtime::block_on(async {
-            client.inner.runtime.write().await.applied = Some(current);
-        });
-        let mut patch = serde_yaml::Mapping::new();
-        patch.insert("ipv6".into(), true.into());
-        let plan = runtime::compensation_for(&patch, Some(&applied)).unwrap();
-        let mut lease = CompensationLease::default();
-        let result = tauri::async_runtime::block_on(client.restore_applied_after_patch_failure(
-            &mut lease,
-            runtime::RuntimeLifecycleState {
-                promoted: Some(applied.clone()),
-                applied: Some(applied),
-            },
-            plan,
-            "primary".into(),
-        ));
-        assert!(result.is_err());
-        assert!(lease.checked.is_empty());
-        assert_eq!(lease.apply_calls, 0);
-    }
-
-    #[test]
-    fn s05_lifecycle_waiter_cannot_enter_during_compensation_restore() {
-        let dir = tempdir().unwrap();
-        let client = tauri::async_runtime::block_on(test_client(&dir));
-        let applied = compensation_snapshot(&client, serde_yaml::Mapping::new());
-        tauri::async_runtime::block_on(async {
-            client.inner.runtime.write().await.applied = Some(applied.clone());
-            let lifecycle = Arc::new(tokio::sync::Mutex::new(()));
-            let guard = lifecycle.clone().lock_owned().await;
-            let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
-            let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-            let lease = BarrierCompensationLease {
-                _guard: guard,
-                check_entered: Some(entered_tx),
-                release_check: Some(release_rx),
-            };
-            let mut patch = serde_yaml::Mapping::new();
-            patch.insert("ipv6".into(), true.into());
-            let plan = runtime::compensation_for(&patch, Some(&applied)).unwrap();
-            let restore = tauri::async_runtime::spawn({
-                let client = client.clone();
-                async move {
-                    let mut lease = lease;
-                    client
-                        .restore_applied_after_patch_failure(
-                            &mut lease,
-                            runtime::RuntimeLifecycleState {
-                                promoted: Some(applied.clone()),
-                                applied: Some(applied),
-                            },
-                            plan,
-                            "primary".into(),
-                        )
-                        .await
-                }
-            });
-            entered_rx.await.unwrap();
-            let (attempted_tx, attempted_rx) = tokio::sync::oneshot::channel();
-            let (waiter_tx, mut waiter_rx) = tokio::sync::oneshot::channel();
-            let waiter = tauri::async_runtime::spawn({
-                let lifecycle = lifecycle.clone();
-                async move {
-                    let _ = attempted_tx.send(());
-                    let _guard = lifecycle.lock_owned().await;
-                    let _ = waiter_tx.send(());
-                }
-            });
-            attempted_rx.await.unwrap();
-            assert!(waiter_rx.try_recv().is_err());
-            let _ = release_tx.send(());
-            restore.await.unwrap().unwrap_err();
-            waiter.await.unwrap();
-            waiter_rx.await.unwrap();
-        });
-    }
-
-    #[test]
-    fn s05_compensation_preserves_exact_applied_identity() {
-        let dir = tempdir().unwrap();
-        let client = tauri::async_runtime::block_on(test_client(&dir));
-        let mut config = serde_yaml::Mapping::new();
-        config.insert("mode".into(), "rule".into());
-        let applied = compensation_snapshot(&client, config);
-        tauri::async_runtime::block_on(async {
-            let mut lifecycle = client.inner.runtime.write().await;
-            lifecycle.promoted = Some(applied.clone());
-            lifecycle.applied = Some(applied.clone());
-        });
-        let mut patch = serde_yaml::Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        let plan = runtime::compensation_for(&patch, Some(&applied)).unwrap();
-        let mut lease = CompensationLease::default();
-        let _ = tauri::async_runtime::block_on(client.restore_applied_after_patch_failure(
-            &mut lease,
-            runtime::RuntimeLifecycleState {
-                promoted: Some(applied.clone()),
-                applied: Some(applied.clone()),
-            },
-            plan,
-            "primary".into(),
-        ));
-        let lifecycle = tauri::async_runtime::block_on(client.runtime_lifecycle_state());
-        assert!(Arc::ptr_eq(&lifecycle.applied.unwrap(), &applied));
     }
 
     #[test]
@@ -3407,7 +3655,7 @@ mod tests {
             );
             let _ = promoted.postprocessing_output.clone();
 
-            let lifecycle = client.runtime_lifecycle_state().await;
+            let lifecycle = client.inner.core_client.lifecycle();
             let applied = lifecycle
                 .applied
                 .as_ref()
@@ -3465,9 +3713,9 @@ mod tests {
             assert_eq!(degradations.len(), 1);
             assert_eq!(
                 degradations[0].phase,
-                crate::client::runtime::DegradationPhase::RuntimeBuild
+                crate::client::runtime::DegradationPhase::RuntimeCheck
             );
-            assert_eq!(degradations[0].code, "runtime_rebuild_failed");
+            assert_eq!(degradations[0].code, "runtime_check_failed");
             assert!(degradations[0].retryable);
             assert!(degradations[0].message.contains("check boom"));
             let profiles = client.get_profiles().await.unwrap();
@@ -3475,6 +3723,168 @@ mod tests {
                 profiles.current.as_ref(),
                 Some(&uid),
                 "state stays committed"
+            );
+        });
+    }
+
+    #[test]
+    fn background_rebuild_degradation_reaches_sink_and_sync_caller_keeps_it_in_outcome() {
+        let dir = tempdir().unwrap();
+        let (degradation_tx, mut degradation_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote()
+            .returning(|_, _| Err(anyhow::anyhow!("background check failure")));
+        let mut args = test_profiles_client_args(&dir, Arc::new(core));
+        args.degradation = Arc::new(NotifyingCoreDegradationSink(degradation_tx));
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+
+        tauri::async_runtime::block_on(async {
+            client.rebuild_coordinator().notifier().request_rebuild();
+            let degradation = tokio::time::timeout(Duration::from_secs(2), degradation_rx.recv())
+                .await
+                .expect("background rebuild must publish without polling sleeps")
+                .expect("degradation sink must stay connected");
+            assert_eq!(degradation.phase, runtime::DegradationPhase::RuntimeCheck);
+            assert_eq!(degradation.code, "runtime_check_failed");
+            assert!(degradation.message.contains("background check failure"));
+
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .unwrap()
+                .into_value();
+            let outcome = client.activate_profile(Some(uid)).await.unwrap();
+            assert!(matches!(
+                outcome,
+                runtime::MutationOutcome::CommittedDegraded { .. }
+            ));
+            assert_eq!(outcome.degradations().len(), 1);
+            assert_eq!(outcome.degradations()[0].code, "runtime_check_failed");
+            assert!(degradation_rx.try_recv().is_err());
+            client.shutdown().await;
+        });
+    }
+
+    #[test]
+    fn background_acquire_errors_degrade_but_stale_operations_do_not() {
+        fn client_with_sink(
+            dir: &TempDir,
+            core: Arc<dyn CoreLifecyclePort>,
+        ) -> (
+            NyanpasuClient,
+            tokio::sync::mpsc::UnboundedReceiver<runtime::Degradation>,
+        ) {
+            let (degradation_tx, degradation_rx) = tokio::sync::mpsc::unbounded_channel();
+            let mut args = test_client_args_with_lifecycle(dir, core);
+            args.degradation = Arc::new(NotifyingCoreDegradationSink(degradation_tx));
+            (
+                NyanpasuClient::try_new_with_args(args).unwrap(),
+                degradation_rx,
+            )
+        }
+
+        {
+            let dir = tempdir().unwrap();
+            let (client, mut degradation_rx) = client_with_sink(
+                &dir,
+                Arc::new(BeginFailureCore) as Arc<dyn CoreLifecyclePort>,
+            );
+            tauri::async_runtime::block_on(async {
+                client.rebuild_coordinator().notifier().request_rebuild();
+                let degradation =
+                    tokio::time::timeout(Duration::from_secs(2), degradation_rx.recv())
+                        .await
+                        .expect("background error must publish without polling sleeps")
+                        .expect("degradation sink must stay connected");
+                assert_eq!(degradation.phase, runtime::DegradationPhase::CoreLifecycle);
+                assert_eq!(degradation.code, "core_operation_unavailable");
+                assert!(degradation.retryable);
+                assert!(degradation.message.contains("acquire timeout"));
+                client.shutdown().await;
+            });
+        }
+
+        {
+            let dir = tempdir().unwrap();
+            let (client, mut degradation_rx) = client_with_sink(
+                &dir,
+                Arc::new(ExemptCheckCore) as Arc<dyn CoreLifecyclePort>,
+            );
+            tauri::async_runtime::block_on(async {
+                let error = client
+                    .rebuild_running_config_in_background()
+                    .await
+                    .expect_err("stale operation must remain a plain invariant error");
+                assert!(rebuild::client_error_is_post_commit_exempt(&error));
+                assert!(
+                    degradation_rx.try_recv().is_err(),
+                    "E-b errors must never publish a degradation"
+                );
+                client.shutdown().await;
+            });
+        }
+    }
+
+    #[test]
+    fn background_revision_exhaustion_is_plain_error_without_degradation() {
+        let dir = tempdir().unwrap();
+        let degradation = Arc::new(RecordingCoreDegradationSink::default());
+        let mut args = test_profiles_client_args(&dir, Arc::new(MockRunningCoreBridge::new()));
+        args.degradation = degradation.clone();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        client.inner.runtime_revisions.exhaust();
+
+        tauri::async_runtime::block_on(async {
+            let error = client
+                .rebuild_running_config_in_background()
+                .await
+                .expect_err(
+                    "allocator exhaustion must be plain Err, never CommittedDegraded or Ok",
+                );
+            assert!(matches!(
+                error,
+                ClientError::Anyhow(source)
+                    if source.downcast_ref::<runtime::RuntimeRevisionExhausted>().is_some()
+            ));
+            assert!(
+                degradation.0.lock().unwrap().is_empty(),
+                "revision exhaustion is E-b and must not publish a degradation"
+            );
+            client.shutdown().await;
+        });
+    }
+
+    #[test]
+    fn profile_commit_acquire_failure_is_committed_degraded() {
+        let dir = tempdir().unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            Arc::new(BeginFailureCore),
+        ))
+        .unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let outcome = client
+                .create_profile(minimal_file_profile_request(), Some("proxies: []".into()))
+                .await
+                .unwrap();
+            assert!(matches!(
+                outcome,
+                runtime::MutationOutcome::CommittedDegraded { .. }
+            ));
+            assert_eq!(outcome.degradations().len(), 1);
+            assert_eq!(
+                outcome.degradations()[0].phase,
+                runtime::DegradationPhase::CoreLifecycle
+            );
+            assert_eq!(outcome.degradations()[0].code, "core_operation_unavailable");
+            assert!(outcome.degradations()[0].retryable);
+            assert_eq!(
+                client.get_profiles().await.unwrap().current.as_ref(),
+                Some(outcome.value())
             );
         });
     }
@@ -3551,13 +3961,1084 @@ mod tests {
             // T8: a failed rebuild degrades (commit stays) instead of erroring;
             // the rejected candidate must still never reach readers.
             let _ = client.activate_profile(Some(uid)).await;
-            let lifecycle = client.runtime_lifecycle_state().await;
+            let lifecycle = client.inner.core_client.lifecycle();
             assert!(
                 client.promoted_runtime().await.is_none(),
                 "a rejected candidate must never be published to readers"
             );
             assert!(lifecycle.promoted.is_none());
             assert!(lifecycle.applied.is_none());
+        });
+    }
+
+    async fn seed_active_runtime(client: &NyanpasuClient) -> Arc<core_runtime::RuntimeSnapshot> {
+        let uid = client
+            .add_profile(
+                minimal_file_profile_request(),
+                Some("proxies: []\nmode: rule\n".into()),
+            )
+            .await
+            .expect("add profile")
+            .into_value();
+        client
+            .activate_profile(Some(uid))
+            .await
+            .expect("activate profile");
+        client
+            .inner
+            .core_client
+            .lifecycle()
+            .applied
+            .expect("initial rebuild must publish Applied")
+    }
+
+    fn allow_lan_patch() -> serde_yaml::Mapping {
+        serde_yaml::from_str("allow-lan: true\n").unwrap()
+    }
+
+    fn assert_not_applied_degradation(
+        outcome: &runtime::MutationOutcome<runtime::RuntimeApplyReport>,
+        allocated_revision: core_runtime::RuntimeRevision,
+        phase: runtime::DegradationPhase,
+        code: &str,
+    ) {
+        assert!(matches!(
+            outcome,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::NotApplied
+        );
+        assert_eq!(outcome.value().desired_revision, allocated_revision.get());
+        assert_eq!(outcome.value().applied_revision, None);
+        assert_eq!(outcome.degradations().len(), 1);
+        assert_eq!(outcome.degradations()[0].phase, phase);
+        assert_eq!(outcome.degradations()[0].code, code);
+    }
+
+    fn scripted_apply(
+        outcome: nyanpasu_ipc::api::core::apply::ApplyOutcomeKind,
+        generation: u64,
+    ) -> nyanpasu_ipc::api::core::apply::CoreApplyData {
+        nyanpasu_ipc::api::core::apply::CoreApplyData {
+            outcome,
+            revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                epoch: 1,
+                generation,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            warning: None,
+            failed_apply: None,
+        }
+    }
+
+    #[test]
+    fn change_core_acquire_failure_does_not_commit_desired_core() {
+        let dir = tempdir().unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            Arc::new(BeginFailureCore),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let before = client.get_app_config().await.unwrap().core;
+            let error = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .unwrap_err();
+
+            assert!(error.to_string().contains("acquire timeout"));
+            assert_eq!(client.get_app_config().await.unwrap().core, before);
+        });
+    }
+
+    #[tokio::test]
+    async fn change_core_build_failure_commits_desired_and_reports_not_applied() {
+        let dir = tempdir().unwrap();
+        let client =
+            actor_backed_test_client(&dir, facade_backend(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        let uid = client
+            .add_profile(minimal_file_profile_request(), Some("proxies: [".into()))
+            .await
+            .unwrap()
+            .into_value();
+        let activation = client.activate_profile(Some(uid)).await.unwrap();
+        assert!(matches!(
+            activation,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+        let allocated_revision = client.inner.runtime_revisions.last_allocated();
+
+        assert_eq!(
+            client.get_app_config().await.unwrap().core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        assert_not_applied_degradation(
+            &outcome,
+            allocated_revision,
+            runtime::DegradationPhase::RuntimeBuild,
+            "runtime_build_failed",
+        );
+    }
+
+    #[test]
+    fn change_core_check_failure_commits_desired_without_promoting() {
+        let dir = tempdir().unwrap();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote()
+            .once()
+            .returning(|_, _| Err(anyhow::anyhow!("scripted change-core check failure")));
+        let client =
+            NyanpasuClient::try_new_with_args(test_profiles_client_args(&dir, Arc::new(core)))
+                .unwrap();
+        tauri::async_runtime::block_on(async {
+            let outcome = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .unwrap();
+            let allocated_revision = client.inner.runtime_revisions.last_allocated();
+
+            assert_eq!(
+                client.get_app_config().await.unwrap().core,
+                nyanpasu_config::application::ClashCore::ClashRs
+            );
+            assert_not_applied_degradation(
+                &outcome,
+                allocated_revision,
+                runtime::DegradationPhase::RuntimeCheck,
+                "runtime_check_failed",
+            );
+            assert!(client.inner.core_client.lifecycle().promoted.is_none());
+        });
+    }
+
+    #[tokio::test]
+    async fn change_core_transport_loss_is_committed_degraded_and_preserves_applied() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        let old_applied = seed_active_runtime(&client).await;
+        let ipc = nyanpasu_ipc::client::Client::new("change-core-transport-test").unwrap();
+        for _ in 0..5 {
+            let source = ipc.http_client().get("::::").build().unwrap_err();
+            backend.push_apply_result(Err(crate::core::actor::backend::CoreBackendError::Service(
+                nyanpasu_ipc::client::ClientError::Request {
+                    operation: "apply",
+                    source,
+                },
+            )));
+        }
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+        let allocated_revision = client.inner.runtime_revisions.last_allocated();
+
+        assert_not_applied_degradation(
+            &outcome,
+            allocated_revision,
+            runtime::DegradationPhase::RuntimeApply,
+            "core_transport_lost",
+        );
+        assert_eq!(
+            client.get_app_config().await.unwrap().core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        assert!(lifecycle.applied.unwrap().identity_eq(&old_applied));
+        assert!(lifecycle.promoted.unwrap().revision > old_applied.revision);
+    }
+
+    #[tokio::test]
+    async fn change_core_rolled_back_keeps_old_applied_without_application_rollback() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        let old_applied = seed_active_runtime(&client).await;
+        backend.push_apply_result(Ok(scripted_apply(
+            nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::RolledBack,
+            old_applied.revision.get(),
+        )));
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            outcome,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::RolledBack
+        );
+        assert_eq!(
+            outcome.value().applied_revision,
+            Some(old_applied.revision.get())
+        );
+        assert_eq!(outcome.degradations()[0].code, "core_rollback");
+        assert_eq!(
+            client.get_app_config().await.unwrap().core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.unwrap();
+        let applied = lifecycle.applied.unwrap();
+        assert_eq!(
+            promoted.target_core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        assert!(promoted.revision > old_applied.revision);
+        assert!(applied.identity_eq(&old_applied));
+    }
+
+    #[tokio::test]
+    async fn change_core_running_switches_via_apply_without_restart() {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        seed_active_runtime(&client).await;
+        client.restart_core().await.unwrap();
+        let prior_runs = backend.run_calls();
+        let prior_applies = backend.apply_calls();
+        backend.push_apply_result(Ok(scripted_apply(
+            nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::Switched,
+            2,
+        )));
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, runtime::MutationOutcome::Applied { .. }));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::Switched
+        );
+        assert_eq!(backend.run_calls(), prior_runs);
+        assert_eq!(backend.apply_calls(), prior_applies + 1);
+        let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.unwrap();
+        let applied = lifecycle.applied.unwrap();
+        assert!(applied.identity_eq(&promoted));
+        assert_eq!(
+            promoted.target_core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        assert_eq!(
+            outcome.value().applied_revision,
+            Some(promoted.revision.get())
+        );
+    }
+
+    #[tokio::test]
+    async fn change_core_stopped_starts_promoted_core_once() {
+        let dir = tempdir().unwrap();
+        let backend = crate::core::actor::backend::TestBackend::new(facade_observation(
+            crate::core::actor::types::FaithfulLifecycle::Stopped { reason: None },
+        ));
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, runtime::MutationOutcome::Applied { .. }));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::Started
+        );
+        assert_eq!(backend.apply_calls(), 0);
+        assert_eq!(backend.run_calls(), 1);
+        assert_eq!(
+            backend.run_requests()[0].core_type,
+            nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::ClashRust)
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.unwrap();
+        let applied = lifecycle.applied.unwrap();
+        assert!(applied.identity_eq(&promoted));
+        assert_eq!(
+            outcome.value().applied_revision,
+            Some(promoted.revision.get())
+        );
+    }
+
+    #[tokio::test]
+    async fn change_core_stopped_start_failure_is_committed_degraded() {
+        let dir = tempdir().unwrap();
+        let backend = crate::core::actor::backend::TestBackend::new(facade_observation(
+            crate::core::actor::types::FaithfulLifecycle::Stopped { reason: None },
+        ));
+        backend.fail_next_run();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+
+        let outcome = client
+            .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            outcome,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+        assert_eq!(
+            outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::NotApplied
+        );
+        assert_eq!(outcome.value().applied_revision, None);
+        assert_eq!(outcome.degradations().len(), 1);
+        assert_eq!(
+            outcome.degradations()[0].phase,
+            runtime::DegradationPhase::CoreLifecycle
+        );
+        assert_eq!(outcome.degradations()[0].code, "core_start_failed");
+        assert_eq!(
+            client.get_app_config().await.unwrap().core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.unwrap();
+        assert_eq!(outcome.value().desired_revision, promoted.revision.get());
+        assert_eq!(
+            promoted.target_core,
+            nyanpasu_config::application::ClashCore::ClashRs
+        );
+        assert!(lifecycle.applied.is_none());
+    }
+
+    #[test]
+    fn change_core_stopped_exempt_restart_failure_returns_plain_error() {
+        let dir = tempdir().unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            Arc::new(ExemptRestartCore),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let error = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .expect_err("stale operation must stay a plain error");
+
+            let ClientError::Anyhow(error) = error else {
+                panic!("stale operation must stay an actor-backed error");
+            };
+            assert!(matches!(
+                error.downcast_ref(),
+                Some(crate::core::actor::types::CoreActorError::StaleOperation)
+            ));
+        });
+    }
+
+    #[tokio::test]
+    async fn change_core_uses_faithful_lifecycle_for_attach_and_transition_states() {
+        use crate::core::actor::types::FaithfulLifecycle;
+
+        let cases = [
+            (FaithfulLifecycle::Running, true),
+            (FaithfulLifecycle::Starting, true),
+            (FaithfulLifecycle::Restarting, true),
+            (FaithfulLifecycle::Stopping, false),
+        ];
+        for (lifecycle, should_apply) in cases {
+            let dir = tempdir().unwrap();
+            let backend =
+                crate::core::actor::backend::TestBackend::new(facade_observation(lifecycle));
+            if should_apply {
+                backend.push_apply_result(Ok(scripted_apply(
+                    nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::Switched,
+                    1,
+                )));
+            }
+            let client =
+                actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                    .await;
+
+            let outcome = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await
+                .unwrap();
+
+            if should_apply {
+                assert_eq!(backend.apply_calls(), 1);
+                assert_eq!(backend.run_calls(), 0);
+                assert_eq!(
+                    outcome.value().outcome,
+                    runtime::RuntimeApplyOutcome::Switched
+                );
+            } else {
+                assert_eq!(backend.apply_calls(), 0);
+                assert_eq!(backend.run_calls(), 1);
+                assert_eq!(
+                    outcome.value().outcome,
+                    runtime::RuntimeApplyOutcome::Started
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn patch_promote_prewrite_failure_keeps_product_and_reports_not_applied() {
+        let dir = tempdir().unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            promote_failure_core(PromoteFailurePoint::BeforeWrite),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let old_applied = seed_active_runtime(&client).await;
+            let old_product = tokio::fs::read(client.runtime_product_path())
+                .await
+                .unwrap();
+
+            let outcome = client
+                .patch_running_config(allow_lan_patch())
+                .await
+                .unwrap();
+            let allocated_revision = client.inner.runtime_revisions.last_allocated();
+
+            assert_not_applied_degradation(
+                &outcome,
+                allocated_revision,
+                runtime::DegradationPhase::RuntimePromote,
+                "runtime_promote_failed",
+            );
+            assert_eq!(
+                tokio::fs::read(client.runtime_product_path())
+                    .await
+                    .unwrap(),
+                old_product
+            );
+            let lifecycle = client.inner.core_client.lifecycle();
+            assert!(
+                lifecycle
+                    .promoted
+                    .as_ref()
+                    .is_some_and(|promoted| promoted.identity_eq(&old_applied))
+            );
+            assert!(
+                lifecycle
+                    .applied
+                    .as_ref()
+                    .is_some_and(|applied| applied.identity_eq(&old_applied))
+            );
+            assert!(
+                outcome.degradations()[0]
+                    .message
+                    .contains("before product write")
+            );
+        });
+    }
+
+    #[test]
+    fn patch_promote_postwrite_failure_self_heals_on_next_rebuild() {
+        let dir = tempdir().unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            promote_failure_core(PromoteFailurePoint::AfterWrite),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let old_applied = seed_active_runtime(&client).await;
+            let old_product = tokio::fs::read(client.runtime_product_path())
+                .await
+                .unwrap();
+
+            let outcome = client
+                .patch_running_config(allow_lan_patch())
+                .await
+                .unwrap();
+            let allocated_revision = client.inner.runtime_revisions.last_allocated();
+
+            assert_not_applied_degradation(
+                &outcome,
+                allocated_revision,
+                runtime::DegradationPhase::RuntimePromote,
+                "runtime_promote_failed",
+            );
+            let written_product = tokio::fs::read(client.runtime_product_path())
+                .await
+                .unwrap();
+            assert_ne!(written_product, old_product);
+            let split_lifecycle = client.inner.core_client.lifecycle();
+            assert!(
+                split_lifecycle
+                    .promoted
+                    .as_ref()
+                    .is_some_and(|promoted| promoted.identity_eq(&old_applied))
+            );
+            assert!(
+                outcome.degradations()[0]
+                    .message
+                    .contains("after product write")
+            );
+
+            client.rebuild_running_config().await.unwrap();
+
+            let healed = client.inner.core_client.lifecycle();
+            let promoted = healed.promoted.expect("self-heal must publish Promoted");
+            let applied = healed.applied.expect("self-heal must publish Applied");
+            assert!(applied.identity_eq(&promoted));
+            assert_eq!(promoted.product_bytes(), written_product);
+            assert_eq!(
+                tokio::fs::read(client.runtime_product_path())
+                    .await
+                    .unwrap(),
+                promoted.product_bytes()
+            );
+        });
+    }
+
+    async fn assert_patch_apply_backend_failure(
+        errors: Vec<crate::core::actor::backend::CoreBackendError>,
+        expected_code: &str,
+    ) {
+        let dir = tempdir().unwrap();
+        let backend = facade_backend();
+        let client =
+            actor_backed_test_client(&dir, backend.clone(), Arc::new(NoopCoreDegradationSink))
+                .await;
+        let old_applied = seed_active_runtime(&client).await;
+        for error in errors {
+            backend.push_apply_result(Err(error));
+        }
+
+        let outcome = client
+            .patch_running_config(allow_lan_patch())
+            .await
+            .unwrap();
+        let allocated_revision = client.inner.runtime_revisions.last_allocated();
+
+        assert_not_applied_degradation(
+            &outcome,
+            allocated_revision,
+            runtime::DegradationPhase::RuntimeApply,
+            expected_code,
+        );
+        let lifecycle = client.inner.core_client.lifecycle();
+        let promoted = lifecycle.promoted.expect("candidate must stay Promoted");
+        let applied = lifecycle.applied.expect("old Applied must be retained");
+        assert_eq!(promoted.revision.get(), outcome.value().desired_revision);
+        assert!(promoted.revision > old_applied.revision);
+        assert!(applied.identity_eq(&old_applied));
+    }
+
+    #[test]
+    fn patch_revision_conflict_is_committed_degraded_and_preserves_applied() {
+        tauri::async_runtime::block_on(async {
+            let expected = nyanpasu_core_manager::RevisionId {
+                epoch: 1,
+                generation: 2,
+                effective_hash: "expected".into(),
+            };
+            assert_patch_apply_backend_failure(
+                vec![crate::core::actor::backend::CoreBackendError::Local(
+                    nyanpasu_core_manager::Error::RevisionConflict {
+                        expected,
+                        actual: None,
+                    },
+                )],
+                "revision_conflict",
+            )
+            .await;
+        });
+    }
+
+    #[test]
+    fn patch_transport_loss_is_committed_degraded_and_preserves_applied() {
+        tauri::async_runtime::block_on(async {
+            let ipc = nyanpasu_ipc::client::Client::new("post-commit-transport-test").unwrap();
+            let transport_failures = (0..5)
+                .map(|_| {
+                    let source = ipc.http_client().get("::::").build().unwrap_err();
+                    crate::core::actor::backend::CoreBackendError::Service(
+                        nyanpasu_ipc::client::ClientError::Request {
+                            operation: "apply",
+                            source,
+                        },
+                    )
+                })
+                .collect();
+            assert_patch_apply_backend_failure(transport_failures, "core_transport_lost").await;
+        });
+    }
+
+    #[test]
+    fn patch_backend_apply_error_is_committed_degraded_and_preserves_applied() {
+        tauri::async_runtime::block_on(async {
+            assert_patch_apply_backend_failure(
+                vec![crate::core::actor::backend::CoreBackendError::Construct(
+                    anyhow::anyhow!("scripted apply failure"),
+                )],
+                "runtime_apply_failed",
+            )
+            .await;
+        });
+    }
+
+    #[test]
+    fn post_commit_exemption_boundary_keeps_backend_failures_degraded() {
+        struct ErrorEventCounter(Arc<AtomicUsize>);
+
+        impl<S> tracing_subscriber::Layer<S> for ErrorEventCounter
+        where
+            S: tracing::Subscriber,
+        {
+            fn on_event(
+                &self,
+                event: &tracing::Event<'_>,
+                _context: tracing_subscriber::layer::Context<'_, S>,
+            ) {
+                if *event.metadata().level() == tracing::Level::ERROR {
+                    self.0.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        }
+
+        let shutting_down = NyanpasuClient::apply_failure_degradation(
+            crate::core::actor::types::CoreActorError::ShuttingDown,
+        );
+        assert!(shutting_down.is_err());
+
+        let errors = Arc::new(AtomicUsize::new(0));
+        let subscriber = {
+            use tracing_subscriber::prelude::*;
+            tracing_subscriber::registry().with(ErrorEventCounter(errors.clone()))
+        };
+        let invariant = tracing::subscriber::with_default(subscriber, || {
+            NyanpasuClient::apply_failure_degradation(
+                crate::core::actor::types::CoreActorError::LifecycleInvariant(
+                    crate::core::actor::types::LifecycleInvariantKind::PromotedRegression,
+                ),
+            )
+        });
+        assert!(invariant.is_err());
+        assert_eq!(errors.load(Ordering::SeqCst), 1);
+
+        let backend = NyanpasuClient::apply_failure_degradation(
+            crate::core::actor::types::CoreActorError::Backend(Arc::new(
+                crate::core::actor::backend::CoreBackendError::Construct(anyhow::anyhow!(
+                    "backend apply failure"
+                )),
+            )),
+        )
+        .unwrap();
+        let backend_outcome = runtime::MutationOutcome::from_parts(
+            NyanpasuClient::not_applied_report(core_runtime::RuntimeRevision(41)),
+            vec![backend],
+        );
+        assert!(matches!(
+            backend_outcome,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+        assert_eq!(
+            backend_outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::NotApplied
+        );
+
+        let no_backend = NyanpasuClient::apply_failure_degradation(
+            crate::core::actor::types::CoreActorError::NoBackend {
+                last_error: Arc::new(crate::core::actor::backend::CoreBackendError::Construct(
+                    anyhow::anyhow!("backend unavailable"),
+                )),
+            },
+        )
+        .unwrap();
+        let no_backend_outcome = runtime::MutationOutcome::from_parts(
+            NyanpasuClient::not_applied_report(core_runtime::RuntimeRevision(42)),
+            vec![no_backend],
+        );
+        assert!(matches!(
+            no_backend_outcome,
+            runtime::MutationOutcome::CommittedDegraded { .. }
+        ));
+        assert_eq!(
+            no_backend_outcome.degradations()[0].code,
+            "core_backend_unavailable"
+        );
+        assert_eq!(
+            no_backend_outcome.value().outcome,
+            runtime::RuntimeApplyOutcome::NotApplied
+        );
+    }
+
+    #[test]
+    fn default_promotion_check_failure_is_plain_error_without_degradation() {
+        let dir = tempdir().unwrap();
+        let sink = Arc::new(RecordingCoreDegradationSink::default());
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote()
+            .times(1)
+            .returning(|_, _| Err(anyhow::anyhow!("scripted startup check failure")));
+        let mut args = test_profiles_client_args(&dir, Arc::new(core));
+        args.degradation = sink.clone();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+
+        let error = tauri::async_runtime::block_on(client.promote_default_runtime_config())
+            .expect_err("startup check failure has no prior commit and must stay an error");
+
+        assert!(error.to_string().contains("scripted startup check failure"));
+        assert!(sink.0.lock().unwrap().is_empty());
+        let lifecycle = client.inner.core_client.lifecycle();
+        assert!(lifecycle.promoted.is_none());
+        assert!(lifecycle.applied.is_none());
+        tauri::async_runtime::block_on(client.shutdown());
+    }
+
+    #[test]
+    fn enhance_profiles_failures_are_plain_errors_and_do_not_publish_degradations() {
+        let build_dir = tempdir().unwrap();
+        let build_sink = Arc::new(RecordingCoreDegradationSink::default());
+        let build_client = tauri::async_runtime::block_on(actor_backed_test_client(
+            &build_dir,
+            facade_backend(),
+            build_sink.clone(),
+        ));
+        tauri::async_runtime::block_on(async {
+            let uid = build_client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .unwrap()
+                .into_value();
+            build_client
+                .activate_profile(Some(uid.clone()))
+                .await
+                .unwrap();
+            let materialized = build_client
+                .get_profile_materialized_path(uid)
+                .await
+                .unwrap();
+            tokio::fs::remove_file(materialized).await.unwrap();
+            assert!(build_client.rebuild_running_config().await.is_err());
+        });
+        assert!(build_sink.0.lock().unwrap().is_empty());
+
+        let check_dir = tempdir().unwrap();
+        let check_sink = Arc::new(RecordingCoreDegradationSink::default());
+        let mut check_core = MockRunningCoreBridge::new();
+        check_core
+            .expect_check_and_promote()
+            .times(1)
+            .returning(|_, _| Err(anyhow::anyhow!("scripted check failure")));
+        let mut check_args = test_profiles_client_args(&check_dir, Arc::new(check_core));
+        check_args.degradation = check_sink.clone();
+        let check_client = NyanpasuClient::try_new_with_args(check_args).unwrap();
+        assert!(tauri::async_runtime::block_on(check_client.rebuild_running_config()).is_err());
+        assert!(check_sink.0.lock().unwrap().is_empty());
+
+        let apply_dir = tempdir().unwrap();
+        let apply_sink = Arc::new(RecordingCoreDegradationSink::default());
+        let mut apply_core = MockRunningCoreBridge::new();
+        apply_core
+            .expect_check_and_promote()
+            .times(1)
+            .returning(|_, _| Ok(()));
+        apply_core
+            .expect_apply_config()
+            .times(1)
+            .returning(|| Err(anyhow::anyhow!("scripted apply failure")));
+        let mut apply_args = test_profiles_client_args(&apply_dir, Arc::new(apply_core));
+        apply_args.degradation = apply_sink.clone();
+        let apply_client = NyanpasuClient::try_new_with_args(apply_args).unwrap();
+        assert!(tauri::async_runtime::block_on(apply_client.rebuild_running_config()).is_err());
+        assert!(apply_sink.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn legacy_apply_rolled_back_is_a_plain_error_without_sink_degradation() {
+        let dir = tempdir().unwrap();
+        let sink = Arc::new(RecordingCoreDegradationSink::default());
+        let backend = facade_backend();
+        backend.push_apply_result(Ok(nyanpasu_ipc::api::core::apply::CoreApplyData {
+            outcome: nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::RolledBack,
+            revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                epoch: 1,
+                generation: 17,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            warning: None,
+            failed_apply: None,
+        }));
+        let client = actor_backed_test_client(&dir, backend, sink.clone()).await;
+
+        let error = client
+            .regenerate_and_apply_for_legacy()
+            .await
+            .expect_err("RolledBack must make legacy draft callers discard");
+
+        assert!(error.to_string().contains("rolled back"));
+        assert!(sink.0.lock().unwrap().is_empty());
+        let lifecycle = client.inner.core_client.lifecycle();
+        assert!(lifecycle.promoted.is_some());
+        assert!(lifecycle.applied.is_none());
+    }
+
+    fn test_runtime_snapshot(
+        revision: u64,
+        bytes: &'static [u8],
+    ) -> Arc<core_runtime::RuntimeSnapshot> {
+        let config = serde_yaml::from_slice(bytes).expect("test runtime must be valid YAML");
+        Arc::new(core_runtime::RuntimeSnapshot::from_data(
+            core_runtime::RuntimeRevision(revision),
+            nyanpasu_config::application::ClashCore::Mihomo,
+            Arc::from(bytes),
+            core_runtime::RuntimeSnapshotData {
+                config,
+                exists_keys: Vec::new(),
+                postprocessing_output: Default::default(),
+            },
+        ))
+    }
+
+    fn candidate_tun_enabled(bytes: &[u8]) -> Option<bool> {
+        let config: serde_yaml::Mapping =
+            serde_yaml::from_slice(bytes).expect("candidate must be valid YAML");
+        let tun = config
+            .get(serde_yaml::Value::String("tun".into()))
+            .and_then(serde_yaml::Value::as_mapping)?;
+        tun.get(serde_yaml::Value::String("enable".into()))
+            .and_then(serde_yaml::Value::as_bool)
+    }
+
+    #[test]
+    fn concurrent_rebuilds_serialize_and_second_reads_latest_snapshot() {
+        let dir = tempdir().unwrap();
+        let state = Arc::new(OperationProbeState::new());
+        let (first_check_entered_tx, first_check_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_first_check_tx, release_first_check_rx) = tokio::sync::oneshot::channel();
+        let (second_begin_attempted_tx, second_begin_attempted_rx) =
+            tokio::sync::oneshot::channel();
+        *state.first_check_entered_tx.lock().unwrap() = Some(first_check_entered_tx);
+        *state.release_first_check_rx.lock().unwrap() = Some(release_first_check_rx);
+        *state.second_begin_attempted_tx.lock().unwrap() = Some(second_begin_attempted_tx);
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            operation_probe_core(state.clone()),
+        ))
+        .unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .expect("add")
+                .into_value();
+            let first = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.activate_profile(Some(uid)).await }
+            });
+            first_check_entered_rx
+                .await
+                .expect("first rebuild must reach its check while holding the operation guard");
+
+            let mut latest = client.get_clash_config().await.unwrap();
+            assert!(!latest.enable_tun_mode);
+            latest.enable_tun_mode = true;
+            client
+                .replace_clash_config(latest)
+                .await
+                .expect("new desired snapshot must commit while the first rebuild is blocked");
+
+            let second = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.rebuild_running_config().await }
+            });
+            second_begin_attempted_rx
+                .await
+                .expect("second rebuild must queue on the operation guard");
+            assert_eq!(state.check_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(state.candidates.lock().unwrap().len(), 1);
+
+            let _ = release_first_check_tx.send(());
+            first
+                .await
+                .expect("first rebuild task must join")
+                .expect("first rebuild must succeed");
+            second
+                .await
+                .expect("second rebuild task must join")
+                .expect("second rebuild must succeed");
+
+            assert_eq!(state.max_active_checks.load(Ordering::SeqCst), 1);
+            let candidates = state.candidates.lock().unwrap();
+            assert_eq!(candidates.len(), 2);
+            assert_ne!(candidate_tun_enabled(&candidates[0]), Some(true));
+            assert_eq!(
+                candidate_tun_enabled(&candidates[1]),
+                Some(true),
+                "the queued rebuild must read the post-queue desired snapshot"
+            );
+        });
+    }
+
+    #[test]
+    fn promote_default_builds_candidate_after_operation_guard() {
+        let dir = tempdir().unwrap();
+        let state = Arc::new(OperationProbeState::new());
+        let (begin_entered_tx, begin_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_begin_tx, release_begin_rx) = tokio::sync::oneshot::channel();
+        *state.begin_entered_tx.lock().unwrap() = Some(begin_entered_tx);
+        *state.release_begin_rx.lock().unwrap() = Some(release_begin_rx);
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            operation_probe_core(state.clone()),
+        ))
+        .unwrap();
+        let candidate_dir = client.inner.runtime_paths.candidate_dir().to_owned();
+
+        tauri::async_runtime::block_on(async {
+            let promote = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.promote_default_runtime_config().await }
+            });
+            begin_entered_rx
+                .await
+                .expect("default promotion must begin the operation first");
+            let candidates_before_release = std::fs::read_dir(&candidate_dir)
+                .map(|entries| {
+                    entries
+                        .filter_map(std::result::Result::ok)
+                        .filter(|entry| {
+                            entry
+                                .file_name()
+                                .to_string_lossy()
+                                .starts_with("candidate-")
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+            assert_eq!(candidates_before_release, 0);
+            assert_eq!(state.check_calls.load(Ordering::SeqCst), 0);
+            let _ = release_begin_tx.send(());
+            promote
+                .await
+                .expect("default promotion task must join")
+                .expect("default promotion must succeed");
+            assert_eq!(state.check_calls.load(Ordering::SeqCst), 1);
+        });
+    }
+
+    #[test]
+    fn promote_existing_reads_product_after_operation_guard() {
+        let dir = tempdir().unwrap();
+        let state = Arc::new(OperationProbeState::new());
+        let (begin_entered_tx, begin_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_begin_tx, release_begin_rx) = tokio::sync::oneshot::channel();
+        *state.begin_entered_tx.lock().unwrap() = Some(begin_entered_tx);
+        *state.release_begin_rx.lock().unwrap() = Some(release_begin_rx);
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            operation_probe_core(state.clone()),
+        ))
+        .unwrap();
+        let product = client.runtime_product_path().to_owned();
+
+        tauri::async_runtime::block_on(async {
+            let promote = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.promote_existing_runtime_product().await }
+            });
+            begin_entered_rx
+                .await
+                .expect("existing-product promotion must begin the operation first");
+            assert!(!product.exists());
+            tokio::fs::create_dir_all(product.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&product, b"mode: rule\n").await.unwrap();
+            let _ = release_begin_tx.send(());
+            let promoted = promote
+                .await
+                .expect("existing-product promotion task must join")
+                .expect("product created after begin must be observed");
+            assert_eq!(promoted.product_bytes(), b"mode: rule\n");
+            assert_eq!(state.check_calls.load(Ordering::SeqCst), 1);
+        });
+    }
+
+    #[test]
+    fn start_promoted_reads_latest_snapshot_after_operation_guard() {
+        let dir = tempdir().unwrap();
+        let state = Arc::new(OperationProbeState::new());
+        let (begin_entered_tx, begin_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_begin_tx, release_begin_rx) = tokio::sync::oneshot::channel();
+        *state.begin_entered_tx.lock().unwrap() = Some(begin_entered_tx);
+        *state.release_begin_rx.lock().unwrap() = Some(release_begin_rx);
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_lifecycle(
+            &dir,
+            operation_probe_core(state.clone()),
+        ))
+        .unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let old = test_runtime_snapshot(1, b"mode: rule\n");
+            let operation = client.inner.core_client.begin_operation().await.unwrap();
+            client
+                .inner
+                .core_client
+                .publish_promoted(&operation, old)
+                .await
+                .unwrap();
+            operation.release().await;
+
+            let start = tauri::async_runtime::spawn({
+                let client = client.clone();
+                async move { client.start_promoted_runtime().await }
+            });
+            begin_entered_rx
+                .await
+                .expect("start must begin the operation before reading Promoted");
+
+            let newest = test_runtime_snapshot(2, b"mode: global\n");
+            let operation = client.inner.core_client.begin_operation().await.unwrap();
+            client
+                .inner
+                .core_client
+                .publish_promoted(&operation, newest)
+                .await
+                .unwrap();
+            operation.release().await;
+            let _ = release_begin_tx.send(());
+            start
+                .await
+                .expect("start task must join")
+                .expect("start must succeed");
+
+            assert_eq!(
+                state.applied_revisions.lock().unwrap().as_slice(),
+                &[2],
+                "start must associate Applied with the Promoted snapshot read after begin"
+            );
         });
     }
 
@@ -3601,7 +5082,7 @@ mod tests {
                 .await
                 .expect("initial apply");
 
-            let before = client.runtime_lifecycle_state().await;
+            let before = client.inner.core_client.lifecycle();
             let old_applied = before.applied.expect("initial Applied");
             assert!(old_applied.identity_eq(before.promoted.as_deref().expect("initial Promoted")));
 
@@ -3611,7 +5092,7 @@ mod tests {
                 .expect_err("second apply must fail");
             assert!(error.to_string().contains("apply boom"));
 
-            let after = client.runtime_lifecycle_state().await;
+            let after = client.inner.core_client.lifecycle();
             let promoted = after.promoted.expect("second Promoted");
             let applied = after.applied.expect("previous Applied retained");
             assert!(promoted.revision > old_applied.revision);
@@ -3651,7 +5132,7 @@ mod tests {
 
             client.start_promoted_runtime().await.unwrap();
 
-            let lifecycle = client.runtime_lifecycle_state().await;
+            let lifecycle = client.inner.core_client.lifecycle();
             assert!(
                 lifecycle
                     .applied
@@ -3963,6 +5444,9 @@ mod tests {
             ports
                 .resolve(&ClashConfig::default())
                 .expect("default ports");
+            let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+            let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+            let (core_client, requests) = test_actor_parts(&paths, runtime_paths.clone()).await;
             let client = NyanpasuClient::with_parts(
                 application,
                 session_state,
@@ -3971,18 +5455,14 @@ mod tests {
                 Arc::new(MockProfileFsPort::new()),
                 ports,
                 dir.path().join("profiles"),
-                RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
-                    dir.path().into(),
-                    dir.path().join("data"),
-                ))
-                .unwrap(),
+                runtime_paths,
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
+                core_client,
                 test_core_port(Arc::new(MockRunningCoreBridge::new())),
-                Arc::new(NoopRunningConfigPatchPort),
+                requests,
+                test_service_control(),
+                test_degradation_sink(),
                 Arc::new(NoopSystemDnsCache),
-                crate::client::runtime::new_runtime_lifecycle_store()
-                    .await
-                    .expect("runtime state store"),
                 rebuild::RebuildCoordinator::new(),
             );
 

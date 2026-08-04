@@ -56,6 +56,14 @@ pub(super) fn is_recovery_exhausted(reason: &str) -> bool {
     reason.starts_with(RECOVERY_EXHAUSTED_PREFIX)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LifecycleInvariantKind {
+    /// PublishPromoted's revision did not advance strictly.
+    PromotedRegression,
+    /// PublishApplied had no matching Promoted snapshot.
+    AppliedWithoutPromoted,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CoreActorError {
     #[error("operation id does not match the active operation")]
@@ -66,4 +74,6 @@ pub(crate) enum CoreActorError {
     Backend(Arc<CoreBackendError>),
     #[error("core actor is shutting down")]
     ShuttingDown,
+    #[error("core lifecycle invariant violated: {0:?}")]
+    LifecycleInvariant(LifecycleInvariantKind),
 }

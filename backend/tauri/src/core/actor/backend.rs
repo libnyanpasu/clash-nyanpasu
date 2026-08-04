@@ -49,12 +49,14 @@ struct TestBackendState {
     observation: std::sync::Mutex<BackendObservation>,
     observe_calls: std::sync::atomic::AtomicUsize,
     check_calls: std::sync::atomic::AtomicUsize,
+    apply_calls: std::sync::atomic::AtomicUsize,
+    apply_results:
+        std::sync::Mutex<std::collections::VecDeque<Result<CoreApplyData, CoreBackendError>>>,
     run_calls: std::sync::atomic::AtomicUsize,
     run_requests: std::sync::Mutex<Vec<CoreRequest>>,
     shutdown_calls: std::sync::atomic::AtomicUsize,
     fail_observe: std::sync::atomic::AtomicBool,
     fail_run: std::sync::atomic::AtomicBool,
-    fail_run_action: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
     fail_replace: std::sync::atomic::AtomicBool,
     run_barrier: std::sync::Mutex<Option<TestRunBarrier>>,
 }
@@ -109,12 +111,13 @@ impl TestBackend {
                 observation: std::sync::Mutex::new(observation),
                 observe_calls: std::sync::atomic::AtomicUsize::new(0),
                 check_calls: std::sync::atomic::AtomicUsize::new(0),
+                apply_calls: std::sync::atomic::AtomicUsize::new(0),
+                apply_results: std::sync::Mutex::new(std::collections::VecDeque::new()),
                 run_calls: std::sync::atomic::AtomicUsize::new(0),
                 run_requests: std::sync::Mutex::new(Vec::new()),
                 shutdown_calls: std::sync::atomic::AtomicUsize::new(0),
                 fail_observe: std::sync::atomic::AtomicBool::new(false),
                 fail_run: std::sync::atomic::AtomicBool::new(false),
-                fail_run_action: std::sync::Mutex::new(None),
                 fail_replace: std::sync::atomic::AtomicBool::new(false),
                 run_barrier: std::sync::Mutex::new(None),
             }),
@@ -123,6 +126,16 @@ impl TestBackend {
 
     pub(crate) fn set_observation(&self, observation: BackendObservation) {
         *self.state.observation.lock().unwrap() = observation;
+    }
+
+    pub(crate) fn push_apply_result(&self, result: Result<CoreApplyData, CoreBackendError>) {
+        self.state.apply_results.lock().unwrap().push_back(result);
+    }
+
+    pub(crate) fn apply_calls(&self) -> usize {
+        self.state
+            .apply_calls
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     pub(crate) fn fail_next_observe(&self) {
@@ -135,11 +148,6 @@ impl TestBackend {
         self.state
             .fail_run
             .store(true, std::sync::atomic::Ordering::Release);
-    }
-
-    pub(crate) fn fail_next_run_with(&self, action: impl FnOnce() + Send + 'static) {
-        *self.state.fail_run_action.lock().unwrap() = Some(Box::new(action));
-        self.fail_next_run();
     }
 
     pub(crate) fn fail_next_replace(&self) {
@@ -296,9 +304,6 @@ impl CoreBackend {
                     .fail_run
                     .swap(false, std::sync::atomic::Ordering::AcqRel)
                 {
-                    if let Some(action) = test.state.fail_run_action.lock().unwrap().take() {
-                        action();
-                    }
                     return Err(CoreBackendError::Construct(anyhow::anyhow!(
                         "scripted run failure"
                     )));
@@ -366,7 +371,35 @@ impl CoreBackend {
                 })
                 .await?),
             #[cfg(test)]
-            Self::Test(_) => unreachable!("test backend does not implement apply"),
+            Self::Test(test) => {
+                test.state
+                    .apply_calls
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                if let Some(result) = test.state.apply_results.lock().unwrap().pop_front() {
+                    result
+                } else {
+                    let revision = test
+                        .state
+                        .observation
+                        .lock()
+                        .unwrap()
+                        .view
+                        .revision
+                        .clone()
+                        .unwrap_or(ConfigRevisionInfo {
+                            epoch: 0,
+                            generation: 0,
+                            source_hash: String::new(),
+                            effective_hash: String::new(),
+                        });
+                    Ok(CoreApplyData {
+                        outcome: ApplyOutcomeKind::Noop,
+                        revision,
+                        warning: None,
+                        failed_apply: None,
+                    })
+                }
+            }
         }
     }
 
@@ -602,6 +635,43 @@ pub(crate) enum CoreBackendError {
     Construct(#[source] anyhow::Error),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BackendFailureClass {
+    RevisionConflict,
+    NotRunning,
+    TransportLost,
+    Other,
+}
+
+pub(crate) fn classify_apply_backend_failure(error: &CoreBackendError) -> BackendFailureClass {
+    match error {
+        CoreBackendError::Local(nyanpasu_core_manager::Error::RevisionConflict { .. }) => {
+            BackendFailureClass::RevisionConflict
+        }
+        CoreBackendError::Local(nyanpasu_core_manager::Error::NotStarted) => {
+            BackendFailureClass::NotRunning
+        }
+        CoreBackendError::Local(_) => BackendFailureClass::Other,
+        CoreBackendError::Service(ClientError::Server {
+            error_kind: Some(kind),
+            ..
+        }) if kind == error_kind::REVISION_CONFLICT => BackendFailureClass::RevisionConflict,
+        CoreBackendError::Service(ClientError::Server {
+            error_kind: Some(kind),
+            ..
+        }) if kind == error_kind::NOT_STARTED => BackendFailureClass::NotRunning,
+        CoreBackendError::Service(
+            ClientError::BuildClient(_)
+            | ClientError::Request { .. }
+            | ClientError::WebSocket { .. }
+            | ClientError::HttpStatus { .. },
+        ) => BackendFailureClass::TransportLost,
+        CoreBackendError::Service(_)
+        | CoreBackendError::Binary(_)
+        | CoreBackendError::Construct(_) => BackendFailureClass::Other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -630,6 +700,7 @@ mod tests {
     use nyanpasu_ipc::api::{
         RBuilder,
         core::{
+            apply::{CORE_APPLY_ENDPOINT, CoreApplyReq, CoreApplyRes},
             check::{CORE_CHECK_ENDPOINT, CoreCheckReq, CoreCheckRes},
             recover::{CORE_RECOVER_ENDPOINT, CoreRecoverRes},
             start::{CORE_START_ENDPOINT, CoreStartReq, CoreStartRes},
@@ -727,6 +798,7 @@ mod tests {
         calls: VecDeque<&'static str>,
         stop_error_kind: Option<&'static str>,
         generation: u64,
+        apply_data: CoreApplyData,
     }
 
     impl Harness {
@@ -736,6 +808,9 @@ mod tests {
                 calls: VecDeque::new(),
                 stop_error_kind: None,
                 generation: 0,
+                apply_data: map_apply_outcome(&ApplyOutcome::Noop {
+                    revision: revision(0),
+                }),
             })))
         }
 
@@ -758,6 +833,10 @@ mod tests {
                 source_hash: format!("source-{generation}"),
                 effective_hash: format!("effective-{generation}"),
             });
+        }
+
+        fn set_apply_data(&self, data: CoreApplyData) {
+            self.0.lock().unwrap().apply_data = data;
         }
 
         fn take_calls(&self) -> Vec<&'static str> {
@@ -831,6 +910,15 @@ mod tests {
     async fn recover_handler(State(harness): State<Harness>) -> Json<CoreRecoverRes<'static>> {
         harness.0.lock().unwrap().calls.push_back("recover");
         Json(RBuilder::success(()))
+    }
+
+    async fn apply_handler(
+        State(harness): State<Harness>,
+        Json(_request): Json<CoreApplyReq<'static>>,
+    ) -> Json<CoreApplyRes<'static>> {
+        let mut state = harness.0.lock().unwrap();
+        state.calls.push_back("apply");
+        Json(RBuilder::success(state.apply_data.clone()))
     }
 
     struct IpcListener(Listener, String);
@@ -909,6 +997,7 @@ mod tests {
             .route(CORE_START_ENDPOINT, post(start_handler))
             .route(CORE_STOP_ENDPOINT, post(stop_handler))
             .route(CORE_RECOVER_ENDPOINT, post(recover_handler))
+            .route(CORE_APPLY_ENDPOINT, post(apply_handler))
             .with_state(harness);
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
@@ -986,6 +1075,132 @@ mod tests {
         let mapped = map_apply_outcome(&nested);
         assert_eq!(mapped.outcome, ApplyOutcomeKind::Noop);
         assert_eq!(mapped.warning.as_deref(), Some("outer; inner"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn local_and_service_apply_conversion_preserve_identical_data() {
+        if !transport_available() {
+            return;
+        }
+        let local_data = map_apply_outcome(&ApplyOutcome::DurabilityUncertain {
+            outcome: Box::new(ApplyOutcome::RolledBack {
+                revision: revision(13),
+                failed_apply: "scripted apply failure".to_owned(),
+            }),
+            warning: "directory sync uncertain".to_owned(),
+        });
+        let harness = Harness::new();
+        harness.set_apply_data(local_data.clone());
+        let (placeholder, shutdown) = spawn_harness(harness.clone());
+        let service = CoreBackend::Service(ServiceBackend::with_placeholder(&placeholder).unwrap());
+        let dir = tempfile::tempdir().unwrap();
+        let factory = test_factory(&dir, Utf8PathBuf::from("unused"));
+        let request = factory.for_product(ClashCore::Mihomo).unwrap();
+
+        let service_data = service.apply(&request, None).await.unwrap();
+
+        assert_eq!(service_data, local_data);
+        assert_eq!(harness.take_calls(), ["apply"]);
+        let _ = shutdown.send(());
+    }
+
+    fn request_client_error() -> ClientError {
+        let client = nyanpasu_ipc::client::Client::new("classifier-test").unwrap();
+        let source = client.http_client().get("::::").build().unwrap_err();
+        ClientError::Request {
+            operation: "apply",
+            source,
+        }
+    }
+
+    fn build_client_error() -> ClientError {
+        let client = nyanpasu_ipc::client::Client::new("classifier-test").unwrap();
+        let source = client.http_client().get("::::").build().unwrap_err();
+        ClientError::BuildClient(source)
+    }
+
+    fn service_server_error(error_kind: Option<&str>) -> CoreBackendError {
+        CoreBackendError::Service(ClientError::Server {
+            operation: "apply",
+            code: nyanpasu_ipc::api::ResponseCode::OtherError,
+            msg: "scripted".into(),
+            error_kind: error_kind.map(str::to_owned),
+        })
+    }
+
+    #[test]
+    fn apply_backend_classifier_recognizes_revision_conflicts() {
+        let revision = RevisionId {
+            epoch: 1,
+            generation: 2,
+            effective_hash: "hash".into(),
+        };
+        let local = CoreBackendError::Local(ManagerError::RevisionConflict {
+            expected: revision,
+            actual: None,
+        });
+        let service = service_server_error(Some(error_kind::REVISION_CONFLICT));
+        assert_eq!(
+            classify_apply_backend_failure(&local),
+            BackendFailureClass::RevisionConflict
+        );
+        assert_eq!(
+            classify_apply_backend_failure(&service),
+            BackendFailureClass::RevisionConflict
+        );
+    }
+
+    #[test]
+    fn apply_backend_classifier_recognizes_not_running() {
+        let local = CoreBackendError::Local(ManagerError::NotStarted);
+        let service = service_server_error(Some(error_kind::NOT_STARTED));
+        assert_eq!(
+            classify_apply_backend_failure(&local),
+            BackendFailureClass::NotRunning
+        );
+        assert_eq!(
+            classify_apply_backend_failure(&service),
+            BackendFailureClass::NotRunning
+        );
+    }
+
+    #[test]
+    fn apply_backend_classifier_recognizes_transport_failures() {
+        let cases = [
+            CoreBackendError::Service(request_client_error()),
+            CoreBackendError::Service(ClientError::HttpStatus {
+                operation: "apply",
+                status: reqwest::StatusCode::BAD_GATEWAY,
+                body: None,
+            }),
+            CoreBackendError::Service(build_client_error()),
+        ];
+        for error in cases {
+            assert_eq!(
+                classify_apply_backend_failure(&error),
+                BackendFailureClass::TransportLost
+            );
+        }
+    }
+
+    #[test]
+    fn apply_backend_classifier_keeps_decoded_and_unclassified_failures_other() {
+        let cases = [
+            service_server_error(None),
+            CoreBackendError::Service(ClientError::Decode {
+                operation: "apply",
+                source: serde_json::from_str::<()>("!").unwrap_err(),
+            }),
+            CoreBackendError::Service(ClientError::EmptyData { operation: "apply" }),
+            CoreBackendError::Binary(anyhow::anyhow!("binary")),
+            CoreBackendError::Construct(anyhow::anyhow!("construct")),
+        ];
+        for error in cases {
+            assert_eq!(
+                classify_apply_backend_failure(&error),
+                BackendFailureClass::Other
+            );
+        }
     }
 
     #[test]

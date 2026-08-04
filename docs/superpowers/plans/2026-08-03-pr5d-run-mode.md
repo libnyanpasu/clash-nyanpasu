@@ -285,37 +285,54 @@ match tokio::time::timeout(budget, self.runner.status()).await {
 client/mod.rs::try_new_with_args
   └─ ClientSetupArgs { .., probe: Arc<dyn ServiceProbe>, .. }   ← 新字段，紧挨 service_control（:85）
        ├─ bootstrap 自用：:303-306 的 get_ipc_state() 换成 probe.probe().await
-       └─ NyanpasuClientInner { .., probe }                     ← 新字段，紧挨 service_control（:257）
-            └─ core_mode_reconciler()（:467-473）加 probe: self.inner.probe.clone()
-                 └─ CoreModeReconciler { core, application, requests, probe }（request.rs:70-75）
+       ├─ NyanpasuClientInner { .., probe, admission }          ← 两个新字段（admission 见 §4.6）
+       └─ core_mode_reconciler()（:467-473）加两个字段：
+            └─ CoreModeReconciler { core, application, requests, probe, degradation }
+                                                                （request.rs:70-75）
 ```
 
-`CoreModeReconciler` 是 `#[derive(Clone)]`，加 `Arc<dyn ServiceProbe>` 不破坏 Clone。测试侧沿用 `test_service_control()`（`client/mod.rs:2767`）的模式加 `test_service_probe()`。
+`CoreModeReconciler` 是 `#[derive(Clone)]`，加两个 `Arc<dyn _>` 不破坏 Clone。测试侧沿用 `test_service_control()`（`client/mod.rs:2767`）的模式加 `test_service_probe()`。
+
+> **`degradation` 是 v6 漏掉的一个字段，不是新需求。** §4.3 的 `report_probe_diagnostics` 要 `publish` 降级，而它挂在 `CoreModeReconciler` 上；v6 的注入图只加了 `probe`，那样写不出来。沿用既有的 `ClientSetupArgs.degradation`（`client/mod.rs:84`，`Arc<dyn CoreDegradationSink>`）与 bootstrap 已构造的 `client_degradation`（`:280`），**不新增 sink 类型**。
 
 ### 4.2 九处调用点
 
-**统一形态：**
+**统一形态 = 一处共享实现，不是六份复制。** 六个 facade 控制方法（#2–#7）全部收敛到 `NyanpasuClient::run_control_sequence` 这一个私有方法上；六个公开方法只剩「构造 `ServiceControlAction` 并转发」一行。
 
-```text
-permit = admission.enter().await?              ← §4.6；已关停则 Err(ShuttingDown)
-guard  = core.begin_operation().await?
-  ├─ admission.check_open()?                   ← 紧贴外部命令之前再查一次（§4.6）
-  ├─ result = service_control.<action>().await ← **不早退**，见 §4.4
-  ├─ [仅 update 且 result.is_ok()] await_service_ready（§4.3）
-  └─ reconciler.reconcile_with(&guard).await   ← **无论 result 成败都跑**（F61）
+```rust
+// client/mod.rs（私有）
+enum ServiceControlAction { Install, Start, Stop, Restart, Update, Uninstall }
+
+async fn run_control_sequence(&self, action: ServiceControlAction) -> anyhow::Result<()> {
+    let _permit = self.inner.admission.enter().await?;   // §4.6；已关停则 Err(ShuttingDown)
+    let guard = self.inner.core_client.begin_operation().await?;
+
+    // ── SEAM-5E-S1（PR-5e 填；本 PR 为空）──────────────────────────
+    // 拆除 DNS 覆写。`action` 在此作用域内可见，5e 按入口分岔
+    // （uninstall 中止 / 其余降级）无需把本函数拆成六份。
+    // ───────────────────────────────────────────────────────────────
+
+    self.inner.admission.check_open()?;                  // 紧贴外部命令之前再查一次
+    let result = self.inner.service_control.dispatch(action).await;   // **不早退**，见 §4.4
+    // [仅 Update 且 result.is_ok()] await_service_ready（§4.3）
+    // reconcile_with(&guard) —— **无论 result 成败都跑**（F61）；处置见 §4.4 六行表
+}
 ```
 
-| #   | 位置                                                  | 今天                                        | 改为                                                                    |
-| --- | ----------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
-| 1   | **bootstrap**（`client/mod.rs:303`）                  | `get_ipc_state()`（恒 `Disconnected`，F35） | `probe()` 一次——**顺带修掉 F35**。**唯一不在守卫内的探针**，理由见 §4.5 |
-| 2   | install（facade `:504-510`）                          | 不 reconcile（F16）                         | 统一形态                                                                |
-| 3   | start（`:512-521`）                                   | 轮询 + `reconcile(get_ipc_state())`         | 统一形态                                                                |
-| 4   | restart（`:530-539`）                                 | 同上                                        | 统一形态                                                                |
-| 5   | stop（`:523-528`）                                    | 同上                                        | 统一形态                                                                |
-| 6   | uninstall（今在 `ipc.rs:936-937`）                    | 无                                          | **迁到 facade** + 统一形态                                              |
-| 7   | update（今在 `utils/init/mod.rs:251`）                | 轮询                                        | **迁到 facade** + 统一形态 + 有界等待——**直接关系 smoke 2**             |
-| 8   | `enable_service_mode` 变更后                          | 轮询 + reconcile（有 §4.8 的洞）            | `reconcile()`（自取守卫版）                                             |
-| 9   | boot 的 `init_service`（`core/service/mod.rs:18-30`） | 起轮询线程 + 忙等 100 ms                    | `reconcile()`，**删忙等与整个函数**                                     |
+`dispatch` 是 `ServiceControlOps` 上的 `match action { Install => self.install().await, .. }`——**六个方法签名已在 §3.2 统一为 `async fn(&self) -> anyhow::Result<()>`，所以 match 六臂各一行。**
+
+> **为什么必须是一处而不是六处**：S1 是 PR-5e 的插入点，而 5e 需要**六个入口各自**在控制动作前拆除（其 §4.7 与 T-DNS-05/06/17/18/26/27）。六份复制意味着六个可以各自漂移的插入点，**「都插对了」变成一条无法用签名或类型表达的「不会忘记」型契约**。一处共享实现把它降级成「六个方法都调它」，那是可以用行为测试钉死的（T-SEAM-01）。5e 的六条独立入口测试仍然照写、照过——它们断言的是每个入口的可观察行为，一处实现同样交付。
+> | # | 位置 | 今天 | 改为 |
+> | --- | ----------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
+> | 1 | **bootstrap**（`client/mod.rs:303`） | `get_ipc_state()`（恒 `Disconnected`，F35） | `probe()` 一次——**顺带修掉 F35**。**唯一不在守卫内的探针**，理由见 §4.5 |
+> | 2 | install（facade `:504-510`） | 不 reconcile（F16） | 统一形态 |
+> | 3 | start（`:512-521`） | 轮询 + `reconcile(get_ipc_state())` | 统一形态 |
+> | 4 | restart（`:530-539`） | 同上 | 统一形态 |
+> | 5 | stop（`:523-528`） | 同上 | 统一形态 |
+> | 6 | uninstall（今在 `ipc.rs:936-937`） | 无 | **迁到 facade** + 统一形态 |
+> | 7 | update（今在 `utils/init/mod.rs:251`） | 轮询 | **迁到 facade** + 统一形态 + 有界等待——**直接关系 smoke 2** |
+> | 8 | `enable_service_mode` 变更后 | 轮询 + reconcile（有 §4.8 的洞） | `reconcile()`（自取守卫版） |
+> | 9 | boot 的 `init_service`（`core/service/mod.rs:18-30`） | 起轮询线程 + 忙等 100 ms | `reconcile()`，**删忙等与整个函数** |
 
 ### 4.3 诊断归属与有界等待就绪
 
@@ -352,12 +369,16 @@ loop {
 
 **常量来源分开记：**
 
-| 常量                              | 实测？ | 依据                                                                 |
-| --------------------------------- | ------ | -------------------------------------------------------------------- |
-| `READY_BUDGET`                    | **是** | 实测 daemon 从 `update_service()` 返回到 `status()` 报兼容的耗时上界 |
-| `PER_PROBE_BUDGET`                | **是** | 实测一次正常 `control::status()` 子进程往返上界                      |
-| `QUIESCE_BUDGET`（§4.6）          | **是** | 实测最慢控制动作（`update`）的正常耗时上界                           |
-| `INITIAL_BACKOFF` / `MAX_BACKOFF` | 否     | 不是正确性边界，**如实标注为选定值**                                 |
+| 常量                                   | 实测？ | 依据                                                                                                                       | **owner（谁有权改 / 谁必须复核）**                                                                                                                                                                                  |
+| -------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `READY_BUDGET`                         | **是** | 实测 daemon 从 `update_service()` 返回到 `status()` 报兼容的耗时上界                                                       | PR-5d                                                                                                                                                                                                               |
+| `PER_PROBE_BUDGET`                     | **是** | 实测一次正常 `control::status()` 子进程往返上界                                                                            | PR-5d                                                                                                                                                                                                               |
+| `QUIESCE_BUDGET`（§4.6.2 ③）           | **是** | 实测最慢控制动作（`update`）的正常耗时上界                                                                                 | PR-5d                                                                                                                                                                                                               |
+| **`REBUILD_DRAIN_BUDGET`**（§4.6.2 ②） | **是** | 实测一次在飞 rebuild 从进入 `rebuild()` 到返回的耗时上界（`client/rebuild.rs:216`）                                        | PR-5d                                                                                                                                                                                                               |
+| **`ACTOR_STOP_BUDGET`**（§4.6.3）      | **是** | 实测 `Shutdown` 臂正常路径耗时上界——即 `backend.shutdown().await`（`core/actor/mod.rs:609`，**全仓唯一调用点**）的正常上界 | PR-5d **提出**；**PR-5e 必须复核**——5e 把 S3 的 DNS I/O 放进同一个 `Shutdown` 臂（§4.7），该预算必须覆盖 5e 的 `DNS_READ_BUDGET`/`DNS_WRITE_BUDGET`/`DNS_IPC_BUDGET` 之和，否则关停会**稳定**超时并**稳定**跳过清理 |
+| `INITIAL_BACKOFF` / `MAX_BACKOFF`      | 否     | 不是正确性边界，**如实标注为选定值**                                                                                       | PR-5d                                                                                                                                                                                                               |
+
+> **这张表是为了防「常量凭空出现」而建的**，v6 引入 `ACTOR_STOP_BUDGET` 却没在这里落行——**表本身没被使用，就等于没有**。v7 补两行，并加 owner 列，因为 `ACTOR_STOP_BUDGET` 是**唯一一个跨 PR 的预算**。
 
 ### 4.4 控制动作失败的处置
 
@@ -378,20 +399,58 @@ loop {
 2. **控制失败后跳过就绪等待**：`update_service` 都失败了，等一个新 daemon 就绪没有意义。
 3. **控制失败后仍然 reconcile**：这是**唯一**能把「部分生效」的现实同步回来的机会。
 
-### 4.5 reconcile 的三个签名
+### 4.5 reconcile 的三个入口 + **一个共享收敛实现**
 
 ```rust
 impl CoreModeReconciler {
-    /// 自取守卫 → **在守卫内探针** → 应用。唯一的无守卫入口（#8、#9）。
-    pub(crate) async fn reconcile(&self) -> anyhow::Result<()>;
-    /// 已持守卫：**在守卫内探针** → 应用。控制动作（#2..#7）用这个。**没有 IpcState 参数。**
-    pub(crate) async fn reconcile_with(&self, guard: &CoreOperationGuard) -> anyhow::Result<()>;
+    /// 自取守卫 → 转发。唯一的无守卫入口（#8、#9）。
+    pub(crate) async fn reconcile(&self) -> anyhow::Result<()> {
+        let guard = self.core.begin_operation().await?;
+        self.reconcile_with(&guard).await
+    }
+
+    /// 已持守卫：**在守卫内探针** → 收敛。控制动作（#2..#7）用这个。**没有 IpcState 参数。**
+    pub(crate) async fn reconcile_with(&self, guard: &CoreOperationGuard) -> anyhow::Result<()> {
+        let app = self.application.get().await?.state;
+        let outcome = self.probe.probe_within(PER_PROBE_BUDGET).await;
+        self.report_probe_diagnostics(&outcome);
+        let mode = crate::core::RunType::classify(app.enable_service_mode, outcome.state); // §4.8
+        self.apply_mode(guard, mode, &app).await
+    }
+
     /// 已持守卫、**不探针**、直接落 Local。**仅供 §4.3 超时分支**。
-    pub(crate) async fn force_local_with(&self, guard: &CoreOperationGuard) -> anyhow::Result<()>;
+    pub(crate) async fn force_local_with(&self, guard: &CoreOperationGuard) -> anyhow::Result<()> {
+        let app = self.application.get().await?.state;
+        self.apply_mode(guard, crate::core::RunType::Local, &app).await
+    }
+
+    /// **三个入口唯一的收敛实现。私有。**
+    async fn apply_mode(
+        &self, guard: &CoreOperationGuard, mode: RunType, app: &ApplicationState,
+    ) -> anyhow::Result<()> {
+        self.core.set_backend(guard, mode).await?;
+        let request = self.requests.for_product(app.core)?;
+        self.core.run(guard, &request).await?;
+
+        // ── SEAM-5E-S2（PR-5e 填；本 PR 为空）──────────────────────
+        // **收敛成功尾部**：mode 已落、Run 已完成、守卫仍在手。
+        // 只有走到这里才代表「收敛后的事实」已确立——这正是 5e §4.8
+        // 判定重施加的依据。失败路径**到不了这里**，见 §4.7。
+        // ───────────────────────────────────────────────────────────
+        Ok(())
+    }
 }
 ```
 
 **强制构造**：`reconcile`/`reconcile_with` **没有 `IpcState` 参数**——调用方在类型上就无法喂进陈旧探针结果。这是签名能给的那一类保证。
+
+**`apply_mode` 私有且唯一**：模块外无法绕开三个公开入口自行收敛（`pub(crate)` 与 `private` 的差别在这里是实质的）。「模块**内**不另开第二条收敛路径」不由签名承担，落 §7 的 `rg` 门禁与 T-SEAM-02。
+
+> **为什么 S2 必须落在这里，而不是 v6 写的调用点**（**leader 已裁定采用 PR-5e §4.8 的位置**）：
+>
+> 1. **调用点槽位覆盖不到 #8/#9。** 那两处走 `reconcile()`，根本不经过 §4.2 的 facade 序列——v6 把 S2 冻在 `reconcile_with(&guard).await` **返回之后的调用点上**，#8/#9 的每一次收敛都会绕过它。
+> 2. **`force_local_with` 也是一次收敛。** §4.4 第 3 行（就绪超时 → 强制 Local → 成功）之后核在跑、模式已定，与第 1 行在「收敛后的事实」上没有区别。挂在调用点则要在两个地方各写一次。
+> 3. **owner 归属**：PR-5e §4.8 明写「owner 唯一 = `CoreModeReconciler`，facade 不做重施加」。槽位放在 facade 调用点与该裁定直接冲突。
 
 **「任何探针都不许在守卫外开始」是「不会去做某事」型契约**，落到 §7 门禁：`rg -n '\.probe(_within)?\('` 恰好三处（`reconcile_with` 内、`await_service_ready` 内、bootstrap）。
 

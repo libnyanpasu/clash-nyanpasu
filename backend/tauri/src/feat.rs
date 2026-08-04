@@ -414,8 +414,8 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
                 log::debug!(target: "app", "update core config");
                 #[cfg(target_os = "macos")]
                 // TODO(actor-migration): macOS DNS still uses the legacy CoreManager.
-                // Reason: ordered MacosDnsGuard lifecycle ownership belongs to PR-5c / C3.
-                // Remove when: PR-5c moves MacosDnsGuard into CoreActor.
+                // Reason: ordered MacosDnsGuard lifecycle ownership belongs to PR-5d / C3.
+                // Remove when: PR-5d moves MacosDnsGuard into CoreActor.
                 let _ = CoreManager::global()
                     .change_default_network_dns(tun_mode.unwrap_or(false))
                     .await

@@ -197,10 +197,28 @@ pub(crate) trait MacosDnsPort: Send + Sync + 'static {
 
 **第二层：每个含 DNS I/O 的处理器整体再包一层预算。** 第一层保证不了整体上界——一个处理器里有 4~5 次调用，其和才是它占住消息循环的时间；而"每处都记得包"是「不会忘记」型契约。因此：
 
-| 处理器路径                                                     | 外层预算             | 定义                                                                       |
-| -------------------------------------------------------------- | -------------------- | -------------------------------------------------------------------------- |
-| 恢复（`SetTunDns(None)` / `Stop` / `SetBackend` / `Shutdown`） | `DNS_RESTORE_BUDGET` | §3.3                                                                       |
-| 施加（`SetTunDns(Some)`）                                      | `DNS_APPLY_BUDGET`   | `3 × DNS_READ_BUDGET + DNS_WRITE_BUDGET`（情形 (c) 另加一次恢复，见 §4.2） |
+| 处理器路径                                                     | 外层预算             | 定义                                                                      |
+| -------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------- |
+| 恢复（`SetTunDns(None)` / `Stop` / `SetBackend` / `Shutdown`） | `DNS_RESTORE_BUDGET` | §3.3                                                                      |
+| 施加（`SetTunDns(Some)`）                                      | `DNS_APPLY_BUDGET`   | `4 × DNS_READ_BUDGET + DNS_WRITE_BUDGET + DNS_RESTORE_BUDGET`（推导见下） |
+
+`DNS_APPLY_BUDGET` 的推导按 §4.2 的三情形取最坏值，**逐项可核**：
+
+```text
+情形 (a)：read_default ①            READ
+          resolve_default ③'        READ
+          write ④                        WRITE
+          read ⑤                    READ                 = 3×READ + WRITE
+情形 (b)：resolve_default（分派用）  READ
+          write ④ + read ⑤          READ + WRITE         = 2×READ + WRITE
+          （b1 分支改走恢复循环 ⇒ + DNS_RESTORE_BUDGET）
+情形 (c)：resolve_default（分派用）  READ
+          c1 恢复                          DNS_RESTORE_BUDGET
+          c3 = 情形 (a)              3×READ + WRITE
+                                    ⇒ 4×READ + WRITE + DNS_RESTORE_BUDGET   ← 最坏
+```
+
+> **这条推导在 v2 的初稿里算错过一次**（写成 `3×READ + WRITE`，漏了情形 (c) 的分派读与其内嵌的恢复）。**外层 `timeout` 的价值正在于此**：算错的是常量的取值，而不是上界是否存在——处理器占住消息循环的时间仍由那一个 `timeout` 封顶。
 
 **外层超时的处置遵循 §0**：守卫**不清**、发降级、处理器返回，让后续步骤（如 `Shutdown` 的 `backend.shutdown()`）继续推进。**不重试。**
 
@@ -234,7 +252,18 @@ ACTOR_STOP_BUDGET  ≥  DNS_RESTORE_BUDGET + backend.shutdown() 的正常耗时�
 
 **外层 `timeout` 是这条义务成立的构造，算术只是它的合理性检查。** 即使逐项预算实测偏低、或将来某条路径多了一次读，`Shutdown` 臂占住消息循环的时间仍以 `DNS_RESTORE_BUDGET` 为上界。**这正是「一步有界不等于整条序列有界」（5d §4.6.2）的同一课在本 PR 的应用。**
 
-**诚实限定**：这是**被 await 的时间**之和，不是墙钟上界；运行时被饿死或 executor 停摆不在其内。且**它保证不了 S3 一定被执行**——若 `Shutdown` 之前排着一个卡死的处理器，`Shutdown` 根本轮不到（R-C3-6）。
+**这条义务的量词必须写死：它管的是 `Shutdown` 臂\*\*内部\*\*的时间，不是 facade 等待 `Shutdown` 的总时间。**
+
+5d §4.3 把 `ACTOR_STOP_BUDGET` 的依据定为「实测 `Shutdown` 臂**正常路径**耗时上界」——**它不为排队时间预留任何余量**。而 `Shutdown` 必须排在**在飞的处理器**之后（ractor 逐条串行）。于是：
+
+| 在飞的处理器           | 本 PR 之前             | 本 PR 之后                   | 后果                                               |
+| ---------------------- | ---------------------- | ---------------------------- | -------------------------------------------------- |
+| 一次 DNS 施加（挂死）  | **无界**（无 timeout） | ≤ `DNS_APPLY_BUDGET`         | 从"永久挂起"变成"有界地推迟" —— **改善，不是保证** |
+| 一次后端 await（挂死） | 无界                   | 无界（不属本 PR，5a 设计面） | `ACTOR_STOP_BUDGET` 耗尽 ⇒ S3 不执行 ⇒ **R-C3-6**  |
+
+**因此正确的说法是**：本 PR 让 DNS 路径不再是"actor 被无限期卡住"的成因之一；它**没有**、也无法让 `Shutdown` 一定被处理。**不把 `DNS_APPLY_BUDGET` 塞进上面那个不等式**，是因为那会把一条本就无法成立的保证（"排队时间也有上界"）伪装成算术问题——真正的后端 await 仍然无界。
+
+**诚实限定**：以上都是**被 await 的时间**之和，不是墙钟上界；运行时被饿死或 executor 停摆不在其内。且**它保证不了 S3 一定被执行**——若 `Shutdown` 之前排着一个卡死的处理器，`Shutdown` 根本轮不到（R-C3-6）。
 
 ---
 

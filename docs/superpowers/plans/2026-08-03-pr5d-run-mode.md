@@ -1,14 +1,38 @@
 # PR-5d 实施计划 — 运行模式探针（C2）
 
 **日期：** 2026-08-03
-**版本：** v5（**范围收窄**：C3 macOS DNS 已拆出为独立 PR，见 `2026-08-03-pr5e-macos-dns.md`）
-**分支基线：** `refactor/core-manager-actor` @ **`6f1a6683d`**
+**版本：** v7（v6 判 48/100 后重建。四条 BLOCKING 全部改判：**两个接缝槽位改采 PR-5e 的位置**、**`shutdown()` 整条序列有界而不只是最后一步**、**撤回不可能生效且一旦修好就有害的 `stop(None)` 升级**、**补完单次飞行状态机的完成转移**）
+**分支基线：** `refactor/core-manager-actor` @ **`049bd30dc`**
+
+> **基线为什么从 `6f1a6683d` 前移**：v6 头部仍写着 `6f1a6683d`，而被审查的 HEAD 是 `049bd30dc`。已核实 `git diff --stat 6f1a6683d..049bd30dc` **只动 `docs/superpowers/plans/` 三个文件**，因此 §2.1 的全部源码锚点不受影响——但**陈旧标记正是 5c 收尾那两个提交（`a062f1019`/`59a38dfb0`）要清掉的东西**，不能自己留一条。
+
 **权威 spec：** `docs/superpowers/specs/2026-08-01-pr5-core-actor/` 下**两个文件都算数**——`task.md` 卡 C2 + `design.md` §9（`:333` Service control 段直接管着本阶段）。**只读 `task.md` 会漏掉约束**，§2.4 记了一次实际漏检
+**姊妹计划：** `docs/superpowers/plans/2026-08-03-pr5e-macos-dns.md`（C3）。§4.7 是两份文档之间的**契约**，出现分歧以本节与 5e 对应节的**显式互指**为准
 **平台：** Windows 11 / PowerShell
 
 ---
 
-## 0. 为什么 v5 是收窄而不是又一次修补
+## 0.0 v7 修订记录（逐条对应 v6 的判定）
+
+| v6 的问题                                                  | v7 的处置                                                                                                                                 |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| §4.7 的 S2/S3 槽位与 PR-5e 冲突                            | **PR-5e 的位置胜出**：S2 移进收敛实现的成功尾部（§4.5 `apply_mode`）、S3 移进 actor 的 `Shutdown` 臂。S1 保持原位，但改为**一处共享实现** |
+| §4.7 声称「§4.4 每一行都到达 S2」                          | **假命题，已删**。第 2/4/6 行是收敛失败行，**到不了**。§4.7 逐行写明，并记 **R-C2-7**                                                     |
+| `shutdown()` ② `rebuild.shutdown()` 无界，在新超时**之前** | 加 `REBUILD_DRAIN_BUDGET`；**复合上界写成具名预算之和**；T-SD-06 用**在飞**的 rebuild 验                                                  |
+| ⑤ 的升级分支恒不触发（ractor 超时是 `Ok(Timeout)`）        | 改为按 `CallResult` 分支；**并撤回 `stop(None)` 本身**——理由见 §4.6.3                                                                     |
+| 单次飞行状态机没有完成转移                                 | 补 leader/follower 选举 API + **RAII 完成守卫**（§4.6.4）；准入**在选举那一刻就关**，v6 的第 ③ 步删除                                     |
+| 锁序无记录；§1 称九处统一持准入                            | §1 改表逐处写明；锁序不变式写进 §4.6.1                                                                                                    |
+| 步骤 ⑥「持 permit 到 actor 停止之后」措辞强于机制          | §4.6.2 如实改写：信号量公平，**它只推迟错误，不阻止任何执行**                                                                             |
+| T-SEAM-01 是源码门禁冒充行为测试                           | 拆成 **T-SEAM-01（行为，六处遍历同一实现）** + **§8 的 G-SEAM-01/02/03（标记门禁）**                                                      |
+| §5 只有一行聚合的接缝断言                                  | 拆成四行（S1 定序与六处遍历、S2 仅成功路径、S3 位置、槽位无需自取守卫）                                                                   |
+| `ACTOR_STOP_BUDGET` 不在常量表                             | §4.3 补两行（含 `REBUILD_DRAIN_BUDGET`）并加 **owner 列**                                                                                 |
+| 残留清单三处互不一致                                       | 统一为 R-C2-1…7，§9 只留一行引用全集                                                                                                      |
+| §9「C3 未被触碰」与 §1/§3.1 矛盾                           | 改写为真实范围：签名 + 函数体一行 + 调用点两行                                                                                            |
+| §3.2 用 T-CTL 论证「六个方法全都必要」                     | 论证收窄给 T-MODE-02；结论不变                                                                                                            |
+
+---
+
+## 0. 为什么收窄而不是又一次修补
 
 v2→v4 三轮对抗审的分数是 43 → 57 → 60，**但七条 BLOCKING 的分布比分数更能说明问题**：
 
@@ -35,12 +59,37 @@ C2 侧两条（探针有界性、警告归属）本轮均判 **RESOLVED**。**�
 **做（C2 + D2）：**
 
 1. 服务状态探针（一次性、经兼容门控、**自身有界**、可注入）；
-2. **九处调用点**统一为 `准入 → 守卫 → 控制 → [update: 有界等待] → probe → reconcile`；
+2. **九处调用点统一定序**——但**准入不是九处都有**（**v6 §1 写「九处统一为准入→守卫→…」是假的**，据此纠正）：
+
+   | 调用点                          | `ControlAdmission`       | `CoreOperationGuard`     | 外部控制命令 |
+   | ------------------------------- | ------------------------ | ------------------------ | ------------ |
+   | #1 bootstrap                    | **无**（actor 尚不存在） | **无**                   | 无           |
+   | #2–#7 六个控制入口              | **有**                   | 有                       | **有**       |
+   | #8 `enable_service_mode` 变更后 | **无**                   | 有（`reconcile()` 自取） | 无           |
+   | #9 boot 的 `init_service`       | **无**                   | 有（`reconcile()` 自取） | 无           |
+
+   **因此 §5 的「关停开始后不再有新控制序列进入」只覆盖 #2–#7**，不覆盖 #8/#9。#8/#9 不发外部命令，关停期间最坏情形是一次与拆除并发的模式收敛；它的 actor 调用在 `Shutdown` 被处理之后一律返回 `ShuttingDown`。**如实记为 R-C2-5**，不靠措辞盖过去。锁序不变式见 §4.6.1。
+
 3. 修 Service→Normal 缺口；
 4. **控制动作失败的处置表**（保留基线「无论成败都 reconcile」语义）；
 5. **关停静默期协议**（`ControlAdmission`）；
 6. **先建后删**地移除 5 s 轮询与三个 statics；
-7. **D2**：`CoreStatusView::initial(mode)` 加参、删 `impl Default for RunType`（删 statics 的前置阻塞）。
+7. **D2**：`CoreStatusView::initial(mode)` 加参、删 `impl Default for RunType`（删 statics 的前置阻塞）；
+8. **为 PR-5e 声明三个接缝**（§4.7）——**槽位与前置条件在本 PR 冻结**，槽内内容由 5e 填；
+9. **两处一行改动，随本 PR 落地：**
+   - **`feat.rs:416-418` 的迁移标记改指 PR-5e。** 该标记现在写着「Remove when: **PR-5d** moves MacosDnsGuard into CoreActor」——拆分之后这句**已经不可能成真**。5c 刚刚才修正过一轮陈旧标记（`a062f1019`/`59a38dfb0`），**留一条新的陈旧标记正是那轮修正要防的事**。`ipc.rs:126` 指向 PR-5d 的那条**仍然正确，不动**。
+   - **`change_default_network_dns(run_type, enabled)` 加参。**
+
+> **关于第 9 条第二项，须防被误读为「C3 泄漏进 C2」。真实范围是三处、共四行**（§9 的对应判据按这个写，不写「仅签名一处」）：
+>
+> | 处                             | 改动                                                    |
+> | ------------------------------ | ------------------------------------------------------- |
+> | `core/clash/core.rs` 签名      | 加 `run_type: RunType` 形参                             |
+> | `core/clash/core.rs:78` 函数体 | `let run_type = RunType::default();` → 使用入参         |
+> | `feat.rs:409`                  | `let (state, _, _)` → `let (state, _, run_type)`（F64） |
+> | `feat.rs:420`                  | 传入 `run_type`——**已核实这是该函数唯一的调用点**       |
+>
+> DNS 逻辑（设备解析、快照、Service/Local 分叉、写入）**一行不动**，整体迁移属 PR-5e。改它的唯一理由是 D2 要删 `RunType::default()`，而它是四个调用点之一。
 
 **不做：** C3 macOS DNS 全部（→ PR-5e）；`UpdaterManager::global()`（PR-6d）；五个 owner-PR globals；`feat::patch_verge` 的 sysproxy/systray/locale 编排（PR-6e）。
 
@@ -89,6 +138,39 @@ v3 曾据 `rg` 零命中断言「不引入完整 `ServiceControlPort`」已被�
 
 ---
 
+### 2.5 受管辖点清单 —— **本计划声明的每条原则，逐一列出它治理的位置**
+
+> **这张表存在的理由**：三轮审查反复抓到的是「声明了原则，但某处机制没实现它」。**清单让审查者核对列表，而不是重新发现遗漏。**
+>
+> **枚举方法（可复核，不是断言）**：对每条原则，先写下它的**量词范围**（「所有 X」里的 X 是什么），再用一次可重跑的检索把该范围内的全部实例列出来，最后逐个填处置。检索式写在表里，审查者可以重跑。
+
+**原则 A：错误通道报告的是调用的结果，永远不是副作用的缺席。**
+范围 = 本计划中**所有会引发外部副作用的调用**。检索：`rg -n 'service_control\.|\.probe|force_local_with|actor_ref\.call|rebuild\.shutdown|inflight\.acquire'`。
+
+| #      | 位置                                                                                                  | 若把 `Err` / 超时当成「没发生」会怎样                                                                                              | 本计划的处置                                                                                                           |
+| ------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| A1     | `service_control.<action>()` 返回 `Err`                                                               | runner 可能**已经部分**启动/停止/替换了 daemon 才非零退出。早退 = 把陈旧的后端判断留到某个无关操作才纠正                           | **仍然 reconcile**（§4.4 定则 3，与基线 F61 同形）                                                                     |
+| A2     | `force_local_with` 返回 `Err`                                                                         | 模式**可能已经**被改。当成没改会让状态与现实分叉                                                                                   | §4.4 第 4 行：**返回 `Err` 并同时发两条降级**，不假装模式还是原样                                                      |
+| A3     | 探针返回 `error`                                                                                      | daemon 状态**未知**，不等于「没在跑」                                                                                              | **fail-closed 判 `Disconnected`**（与今天 `health_check` 的 `Err` 分支同语义），并**发降级**（§4.3），不静默           |
+| A4     | `actor_ref.call(Shutdown, Some(ACTOR_STOP_BUDGET))` 返回 `Ok(Timeout)` / `Ok(SenderError)` / `Err(_)` | 超时既不代表 actor 没在拆除，也不代表它拆完了；**尤其不代表 `backend.shutdown()`（`mod.rs:609`，全仓唯一调用点）执行过或没执行过** | §4.6.3：**报告为降级关停**（`shutdown_actor_stop_timeout`），具名残留 **R-C2-4**；**不发 `stop(None)`**——理由见 §4.6.3 |
+| **A5** | `timeout(REBUILD_DRAIN_BUDGET, rebuild.shutdown())` 超时                                              | 在飞的 rebuild **仍在跑**，可能已把运行时配置写了一半。当成「rebuild 结束了」会让后续步骤按错误前提推进                            | §4.6.2：降级 `shutdown_rebuild_drain_timeout` + **R-C2-6**；后续步骤**按「rebuild 可能仍在飞」写**，不按「已结束」写   |
+| **A6** | `timeout(QUIESCE_BUDGET, inflight.acquire())` 超时                                                    | 被放弃的控制序列**可能仍在执行外部 OS 命令**                                                                                       | §4.6.2：降级 `shutdown_quiesce_timeout` + 既有 **R-C2-1**，措辞为「等待有界」而非「已静默」                            |
+
+**原则 B：签名只能保证「值到得了这里」与「值到不了这里」。**
+范围 = 本计划所有靠签名承担的契约。检索：`rg -n 'fn reconcile|fn reconcile_with|fn force_local_with|fn apply_mode|fn run_control_sequence'`。
+
+| #      | 契约                                | 由签名承担的部分                                                         | **不由签名承担、另行落点的部分**                                                                |
+| ------ | ----------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| B1     | 陈旧探针结果喂不进 reconcile        | `reconcile`/`reconcile_with` **没有 `IpcState` 参数** ⇒ 那个值到不了这里 | 「探针不得在守卫外开始」——**签名管不了**，落 `rg` 门禁（§7）                                    |
+| B2     | `force_local_with` 只在超时分支使用 | **无**——签名不表达调用位置                                               | 全部落 `rg` 门禁：恰好一处调用点                                                                |
+| **B3** | 每一次成功收敛都经过 S2 槽位        | `apply_mode` 是**私有**的 ⇒ 模块外无法绕过三个公开入口自行收敛           | 「模块**内**不另开第二条收敛路径」「三个入口都调它」——签名管不了，落 `rg` 门禁（§7）+ T-SEAM-02 |
+| **B4** | 六个 facade 控制方法走同一条序列    | `run_control_sequence` 是**私有**的，六个公开方法是它的薄包装            | 「六个方法都调它、且不自己重写序列」——落 T-SEAM-01（行为）+ `rg` 门禁                           |
+
+**原则 C：凡「不会去做某事」型契约，一律靠测试 / 门禁 / `rg`，且必须说得出怎么验。**
+范围 = §7 契约表中「由谁保证」非「签名 / cfg」的每一行——**该表即本原则的完整实例清单**，不另列。
+
+---
+
 ## 3. 已裁定事项
 
 ### 3.1 D2 = A —— `CoreStatusView::initial(mode)` 加参、删 `impl Default for RunType`
@@ -126,11 +208,14 @@ v3 曾据 `rg` 零命中断言「不引入完整 `ServiceControlPort`」已被�
 >
 > **论证二（例外条款，条件已证成）**：
 >
-> | 测试         | 为什么必须能替换 runner                          | 缺哪个方法就写不出来  |
-> | ------------ | ------------------------------------------------ | --------------------- |
-> | T-MODE-02    | 六个控制动作**各自独立断言** probe+reconcile     | `update`、`uninstall` |
-> | T-MODE-04/05 | 有界等待三路，需在无真实 daemon 下让 update 返回 | `update`              |
-> | T-CTL-01…04  | 控制失败四种处置，需让控制动作**按脚本失败**     | 六个全部              |
+> | 测试         | 为什么必须能替换 runner                          | 缺哪个方法就写不出来                                |
+> | ------------ | ------------------------------------------------ | --------------------------------------------------- |
+> | T-MODE-02    | 六个控制动作**各自独立断言** probe+reconcile     | **`update`、`uninstall`——例外条款由这一行独力承担** |
+> | T-SEAM-01    | 六个 facade 方法**各自**遍历同一条控制序列       | 同上                                                |
+> | T-MODE-04/05 | 有界等待三路，需在无真实 daemon 下让 update 返回 | `update`                                            |
+> | T-CTL-01…04  | 控制失败四种处置，需让控制动作**按脚本失败**     | **任一可脚本化的动作即可**——见下方更正              |
+>
+> **更正（v6 论证过强）**：v6 在 T-CTL 那行写「六个全部」。**不成立**——T-CTL-01…04 检验的是**错误处置策略**（控制错误优先、失败后仍 reconcile、失败后跳过就绪等待），策略不随动作而异，用**代表性动作**（如 `start` + `update`）即可覆盖。**结论不变**（仍须扩到六方法），但承担例外条款的是 **T-MODE-02 与 T-SEAM-01 的「逐个入口独立断言」**，不是 T-CTL。**论证过强本身就是本轮反复出现的那个形状**，故显式改正而不是悄悄改字。
 >
 > **真实 runner 不行**：`update_service`（`control.rs:106-147`）与 `uninstall_service`（`:149-186`）经 `runas`/`sudo` 提权调真实服务二进制；CI 三平台上要么二进制不存在、要么触发提权交互。
 >
@@ -229,7 +314,7 @@ guard  = core.begin_operation().await?
 | 5   | stop（`:523-528`）                                    | 同上                                        | 统一形态                                                                |
 | 6   | uninstall（今在 `ipc.rs:936-937`）                    | 无                                          | **迁到 facade** + 统一形态                                              |
 | 7   | update（今在 `utils/init/mod.rs:251`）                | 轮询                                        | **迁到 facade** + 统一形态 + 有界等待——**直接关系 smoke 2**             |
-| 8   | `enable_service_mode` 变更后                          | 轮询 + reconcile（有 §4.7 的洞）            | `reconcile()`（自取守卫版）                                             |
+| 8   | `enable_service_mode` 变更后                          | 轮询 + reconcile（有 §4.8 的洞）            | `reconcile()`（自取守卫版）                                             |
 | 9   | boot 的 `init_service`（`core/service/mod.rs:18-30`） | 起轮询线程 + 忙等 100 ms                    | `reconcile()`，**删忙等与整个函数**                                     |
 
 ### 4.3 诊断归属与有界等待就绪
@@ -344,26 +429,74 @@ NyanpasuClient::shutdown()：
  ③ admission.close()                            ← 关准入
  ④ permit = timeout(QUIESCE_BUDGET, inflight.acquire())
       超时 → warn + degradation `shutdown_quiesce_timeout`
- ⑤ core_client.shutdown().await
+ ⑤ core_client.shutdown().await                 ← **本身必须有界**，见下
  ⑥ **④拿到的 permit 在 ⑤ 之后才释放**
     ← 否则排在 close 之前入队的等待者会在 actor 拆除期间被唤醒（审查者点名）
 ```
 
 **为什么需要与 `OperationGate` 并存的第二个机制**：`OperationGate` 只约束 **actor 消息**；`Shutdown` 本身是无守卫消息且会**主动清空**活跃许可，所以 gate 在关停面前不提供任何排他性。`ControlAdmission` 约束的是 **facade future 的存续**，包括那条 actor 完全看不见的外部 OS 命令。**作用域不同，不是冗余。**
 
-> **本 PR 范围内不存在「actor 内部挂死」的对应风险。** v4 那条 BLOCKING（drain 超时而 actor 仍挂死）的挂死点是 **DNS 读写**，随 C3 一并移出。C2 留在 actor 内的 await 只有既有的 backend 操作，其边界属 PR-5a 既有设计，本 PR 不改。**PR-5e 必须重新处理这一条**——已写进该计划的前置。
+#### ⑤ 也必须有界 —— **v5 曾错误地把这条判给 PR-5e**
 
-**残留（如实记账，§8）**：R-C2-1、R-C2-2。
+> **v5 写的是「本 PR 范围内不存在 actor 内部挂死的风险，挂死点随 DNS 移出」。那是错的**（leader 指出）：**后端操作一样会挂**。DNS 只是挂死点之一，不是唯一。
 
-### 4.7 修 Service→Normal 缺口
+**具体形状**：`CoreClient::shutdown()`（`client/core.rs:277-283`）是
+
+```rust
+let _ = self.inner.actor_ref.call(CoreActorMessage::Shutdown, None).await;
+//                                                             ^^^^ 无超时，永久等待
+```
+
+而 ractor **逐条串行处理消息**：只要某个处理器还卡在 `backend.run()` / `stop()` / `check()` / `recover()` / `observe_status()` / `replace_backend` 的 await 里，排队的 `Shutdown` 就永远轮不到。**于是 `QUIESCE_BUDGET` 只界住了 facade 许可，关停整体仍然无界。**
+
+**改法（两步，都用仓内已有的 API）：**
+
+```rust
+// CoreClient::shutdown()
+match self.inner.actor_ref.call(CoreActorMessage::Shutdown, Some(ACTOR_STOP_BUDGET)).await {
+    Ok(_) => {}
+    Err(_) => {
+        // 升级：发停止信号。与 CoreClientInner::drop（client/core.rs:377-380）同一 API。
+        self.inner.actor_ref.stop(None);
+    }
+}
+```
+
+**诚实边界（必须写明，否则又是一条「声明强于机制」）：**
+
+> **ractor 无法抢占一个正在执行的 `handle()`。** `stop(None)` 发的是停止信号，同样要排队；对一个卡死的处理器它**不生效**。所以上面这段**只能保证 facade 的等待有界，不能保证 actor 线程终止**。
+>
+> **为什么这在关停场景下可以接受**：此时进程本就要退出，残留线程随进程销毁。**但这个理由只对「进程退出」成立**——若将来有人复用 `shutdown()` 做「重启 actor 而不退进程」，该前提消失。**记为 R-C2-4。**
+
+**因此 §5 那一行的措辞是**「关停**的等待**有界」，**不是**「关停一定完成」。
+
+**残留（如实记账，§8）**：R-C2-1、R-C2-2、**R-C2-4**。
+
+### 4.7 为 PR-5e 声明的三个接缝（**空槽，但槽位与前置条件在本 PR 定死**）
+
+> **拆分只有在这一节存在时才真正省事。** v4 的三条接缝 BLOCKING（控制失败漏重施加、关停竞态、drain 与 actor 挂死）之所以能降级为「在这里加一步」，前提是**本 PR 交付的序列已经写明这一步该插在哪、插入时周围保证什么**。若 5d 交付一条没有声明接缝的序列，5e 仍然是一次重新设计，拆分白拆。
+>
+> **本节是契约，不是备注**：槽位的**位置**与**前置条件**由本 PR 冻结；**槽内内容**由 PR-5e 填。5e 不得移动槽位；如需移动，须回过头修订本节并说明理由。
+
+| 槽位            | **精确位置**                                                                   | **进入该槽时，本 PR 保证成立的前置条件**                                                                                                                                           | 5e 将填入                                                                                           |
+| --------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **S1 拆除**     | §4.2 统一形态：`guard` 取得之后、`admission.check_open()?` **之前**            | ①已持 `CoreOperationGuard`（FIFO 序已确定）；②已通过准入（关停未开始）；③**外部控制命令尚未发出**——这正是「拆除必须早于控制动作」所要求的                                          | 拆 DNS 覆写并 `await` 其结果；失败时按入口分岔（uninstall 中止／其余降级）                          |
+| **S2 重施加**   | §4.2 统一形态：`reconcile_with(&guard).await` **之后**、`drop(guard)` **之前** | ①仍持同一守卫；②模式已收敛且 `set_backend`/`Run` 已完成——因此 `state.running` 反映的是**收敛后**的事实；③**无论前序控制动作成败都会到达此处**（§4.4 六行处置表的每一行都经过这里） | 按「`running.is_some()` **且** TUN 期望开启」决定是否重施加；失败以降级呈现，**不改变该行的返回值** |
+| **S3 关停恢复** | §4.6 序列：④ drain 之后、⑤ `core_client.shutdown()` **之前**                   | ①准入已关闭，无新控制序列可进入；②drain 已完成或已超时（**两种情形都会到达此处**）；③**actor 与后端仍在**——⑤ 尚未执行                                                              | 恢复 DNS 并 `await`；失败进降级                                                                     |
+
+**三条槽位的共同前置**：全部位于**同一个 `CoreOperationGuard` 或同一次关停序列之内**，因此 5e 填入的步骤**不需要自取守卫**——那正是 v2 那条构造性死锁的来源。
+
+**本 PR 对槽位的验证义务**：§6 的 T-SEAM-01 断言三个槽位在源码中**存在且为空**（以标记注释或空函数体形式），且顺序与上表一致。**这条测试的存在，就是「5e 不需要重新设计」这句话的机制。**
+
+### 4.8 修 Service→Normal 缺口
 
 今天 `request.rs:82-85` 提前返回导致 `classify(true, ..)` 硬编码，**用户关闭服务模式后 reconcile 什么都不做**。改法：删掉提前返回，把真值送进 `classify`。`classify` 本身**不改**（`core/clash/core.rs:30-36` 已正确）。
 
-### 4.8 步骤顺序：先建后删，**不是双轨并行**
+### 4.9 步骤顺序：先建后删，**不是双轨并行**
 
 > **两个生产者同时写同一状态而无定序，比一个更糟。** 单生产者的错误是确定性的；双生产者的错误是竞态的。
 
-- **S-a**：建探针 + 修 4.7 缺口 + 接上九处调用点，**同一步停掉轮询的 reconcile 派发**；
+- **S-a**：建探针 + 修 4.8 缺口 + 接上九处调用点，**同一步停掉轮询的 reconcile 派发**；
 - **S-b**：删轮询线程与三个 statics、`RunType::default()`（D2）、`core/service/mod.rs::init_service`。
 
 ---
@@ -372,23 +505,35 @@ NyanpasuClient::shutdown()：
 
 > **表与散文双向对齐。措辞不得强于其机制。**
 >
-> **穷尽方法（可复核）**：对 §4 逐节抽取所有「X 之后 Y 一定已发生 / X 不会发生」句式，每条生成一行；再对本表逐行回指正文小节号。两遍都做完才算齐。下表右侧的「正文出处」列即第二遍的产物。
+> ### 穷尽方法 —— **写成可重跑的步骤，而不是一句「已穷尽」**
+>
+> 「本表已完整」这个断言**连续三轮被证伪**（每轮都有散文保证缺行）。所以这里写的是**产生它的程序**，审查者可以照着重跑并与结果比对：
+>
+> **第一遍（散文 → 表，抓漏行）**：在 §4 全文检索保证性句式的标记词——`rg -n '之前|之后|一定|必然|不会|不再|恒|只在|唯一' docs/superpowers/plans/2026-08-03-pr5d-run-mode.md`——对每一处命中判断它是否构成「X 之后 Y 一定已发生」或「X 不会发生」；是则必须在本表有对应行。
+>
+> **第二遍（表 → 散文，抓过强措辞）**：本表每行的**「正文出处」列**必须指到 §4 的具体小节；打开该节，逐字比对**表里的措辞是否强于该节给出的机制**。本轮这一遍抓到一条：§4.6 的关停保证在 drain 超时后**并不成立**，因此该行措辞已改为条件式（并非「关停不会越过」，而是「关停**的等待**有界，且 drain 在预算内完成时不会越过」）。
+>
+> **第三遍（新增，针对本轮教训）**：对每一行问「**这条保证依赖的前提，是否有另一条保证在维护它**」。§4.6 ⑤ 就是这一遍抓出来的——「drain 有界」依赖「后续的 `core_client.shutdown()` 也有界」，而 v5 把后者判给了别的 PR，前者随之落空。
+>
+> 三遍都跑完才算齐；**跑过的检索式留在上面，供复核**。
 
-| 断言                                                                                          | **靠什么构造保证**                                                     | 正文出处 | 测试            |
-| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------- | --------------- |
-| 两次控制动作的模式结论不交错                                                                  | `OperationGate` FIFO + 三步同守卫                                      | §4.2     | T-MODE-03       |
-| 控制动作 → probe → reconcile 三步不可拆                                                       | `reconcile_with(&guard)` **无 `IpcState` 参数**；`rg` 门禁钉死探针三处 | §4.5     | T-MODE-03       |
-| bootstrap 的守卫外探针安全                                                                    | 执行于 `CoreClient::new` **之前**，actor 尚不存在                      | §4.5     | T-PROBE-02      |
-| **探针必然在有限时间内返回**                                                                  | `OsServiceProbe` 内部 `timeout` + runner 层 `kill_on_drop`             | §4.1     | T-PROBE-06      |
-| **就绪等待总耗时不超过 `READY_BUDGET`**                                                       | per-probe 预算取 `remaining.min(PER_PROBE_BUDGET)`                     | §4.3     | T-MODE-05       |
-| **警告覆盖面不小于基线**                                                                      | `daemon_status` 保留 `ServiceStatus`，条件逐字复现合取式               | §4.3     | T-PROBE-03/05   |
-| **bootstrap 的探针诊断有归属**                                                                | bootstrap 调用同一个 `report_probe_diagnostics`                        | §4.3     | T-PROBE-07      |
-| **控制失败时仍然 reconcile，且控制错误优先返回**                                              | §4.4 表的源码顺序（reconcile 在前、`control?` 在后），与基线 F61 同形  | §4.4     | T-CTL-01…04     |
-| **控制失败时不进入就绪等待**                                                                  | 就绪等待外层的 `result.is_ok()` 条件                                   | §4.4     | T-CTL-04        |
-| **关停开始后不再有新控制序列进入**                                                            | `ControlAdmission::enter` 的**双重** closed 检查                       | §4.6     | T-SD-03         |
-| **drain 在预算内完成时，关停不会越过在飞控制序列**（**条件式——预算耗尽则不保证，见 R-C2-1**） | 关准入 → 有界 drain → **持 permit 到 actor 停止之后**                  | §4.6     | T-SD-01/02      |
-| **重复 `shutdown()` 不重复执行拆除**                                                          | 单次飞行状态机，**不是 `AtomicBool`**                                  | §4.6     | T-SD-04         |
-| 任何时刻只有一个模式生产者                                                                    | S-a 同步停掉轮询派发                                                   | §4.8     | `rg` 判据（§9） |
+| 断言                                                                                                     | **靠什么构造保证**                                                     | 正文出处 | 测试            |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------- | --------------- |
+| 两次控制动作的模式结论不交错                                                                             | `OperationGate` FIFO + 三步同守卫                                      | §4.2     | T-MODE-03       |
+| 控制动作 → probe → reconcile 三步不可拆                                                                  | `reconcile_with(&guard)` **无 `IpcState` 参数**；`rg` 门禁钉死探针三处 | §4.5     | T-MODE-03       |
+| bootstrap 的守卫外探针安全                                                                               | 执行于 `CoreClient::new` **之前**，actor 尚不存在                      | §4.5     | T-PROBE-02      |
+| **探针必然在有限时间内返回**                                                                             | `OsServiceProbe` 内部 `timeout` + runner 层 `kill_on_drop`             | §4.1     | T-PROBE-06      |
+| **就绪等待总耗时不超过 `READY_BUDGET`**                                                                  | per-probe 预算取 `remaining.min(PER_PROBE_BUDGET)`                     | §4.3     | T-MODE-05       |
+| **警告覆盖面不小于基线**                                                                                 | `daemon_status` 保留 `ServiceStatus`，条件逐字复现合取式               | §4.3     | T-PROBE-03/05   |
+| **bootstrap 的探针诊断有归属**                                                                           | bootstrap 调用同一个 `report_probe_diagnostics`                        | §4.3     | T-PROBE-07      |
+| **控制失败时仍然 reconcile，且控制错误优先返回**                                                         | §4.4 表的源码顺序（reconcile 在前、`control?` 在后），与基线 F61 同形  | §4.4     | T-CTL-01…04     |
+| **控制失败时不进入就绪等待**                                                                             | 就绪等待外层的 `result.is_ok()` 条件                                   | §4.4     | T-CTL-04        |
+| **关停开始后不再有新控制序列进入**                                                                       | `ControlAdmission::enter` 的**双重** closed 检查                       | §4.6     | T-SD-03         |
+| **drain 在预算内完成时，关停不会越过在飞控制序列**（**条件式——预算耗尽则不保证，见 R-C2-1**）            | 关准入 → 有界 drain → **持 permit 到 actor 停止之后**                  | §4.6     | T-SD-01/02      |
+| **重复 `shutdown()` 不重复执行拆除**                                                                     | 单次飞行状态机，**不是 `AtomicBool`**                                  | §4.6     | T-SD-04         |
+| **`shutdown()` 的等待有界**（**不是「关停一定完成」**——ractor 抢占不了正在执行的 `handle()`，见 R-C2-4） | `call(Shutdown, Some(ACTOR_STOP_BUDGET))` + 超时后 `stop(None)` 信号   | §4.6 ⑤   | **T-SD-05**     |
+| **三个 5e 接缝在源码中存在、为空、且顺序正确**                                                           | 槽位标记 + 顺序断言                                                    | §4.7     | **T-SEAM-01**   |
+| 任何时刻只有一个模式生产者                                                                               | S-a 同步停掉轮询派发                                                   | §4.9     | `rg` 判据（§9） |
 
 ---
 
@@ -398,29 +543,31 @@ NyanpasuClient::shutdown()：
 >
 > **两类空转陷阱**（前几轮各踩一次）：①状态有**多个**写入点，删其一另一仍生效；②**mock 打在被测机制之上**，删掉机制对 mock 无影响——**接缝必须低于被测机制**。
 
-| ID             | 断言                                                                                                                   | **删掉哪行会让它红**                                                                                                                                                  |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-PROBE-01     | 兼容门 fail-closed：daemon 在跑但不放行 → 探针 `Disconnected`                                                          | 探针里调 `target_ipc_state()` 那行                                                                                                                                    |
-| T-PROBE-02     | bootstrap 用探针真值而非 `Disconnected` 默认（修 F35）                                                                 | `client/mod.rs:303` 的 `probe().await`                                                                                                                                |
-| T-PROBE-03     | **Running + `Unparsable` 也告警**（不只 `Incompatible`）                                                               | 警告条件里的 `!compat.allows_service_backend()`（改成 `matches!(Incompatible)` 即红）                                                                                 |
-| T-PROBE-04     | 探针失败发出 `service_probe_failed` 降级                                                                               | 处理 `error` 的 `degradation.publish(..)` 行                                                                                                                          |
-| T-PROBE-05     | **Running + `Unknown` 告警；Stopped + `Unknown` 不告警**                                                               | `ProbeOutcome.daemon_status` 字段本身（去掉它两种 `Unknown` 分不开，必红）                                                                                            |
-| **T-PROBE-06** | **注入永不返回的 `MockServiceStatusRunner`**，`OsServiceProbe::probe_within` 仍在预算内返回                            | `OsServiceProbe` 里的 `tokio::time::timeout(..)`。**接缝在 runner 层**——用 `MockServiceProbe` 会绕过被测 timeout，那是空转                                            |
-| **T-PROBE-07** | bootstrap 探针失败/不兼容时**也**产出诊断                                                                              | bootstrap 处的 `report_probe_diagnostics(..)` 调用行                                                                                                                  |
-| T-MODE-01      | 关闭 `enable_service_mode` → 得 `Normal` 并 `set_backend`                                                              | `request.rs:82-85` 删提前返回后送真值那行                                                                                                                             |
-| T-MODE-02      | 六个控制动作后**各自**触发 probe+reconcile——逐条独立断言，**断言「至少一次」**                                         | 各自 facade 方法里的 `reconcile_with(&guard)`                                                                                                                         |
-| T-MODE-03      | start→stop 序列下终态 `Normal`，晚到 probe 不翻转                                                                      | `reconcile_with` 的 `guard` 参数                                                                                                                                      |
-| T-MODE-04      | 有界等待成功路径：脚本 runner 第 N 次兼容 → `Service`，无降级                                                          | `await_service_ready` 循环体                                                                                                                                          |
-| **T-MODE-05**  | **挂死 runner**：`await_service_ready` 在 `READY_BUDGET` 内返回 TimedOut（**不是** `READY_BUDGET + PER_PROBE_BUDGET`） | `remaining.min(PER_PROBE_BUDGET)` 里的 `remaining.min(..)`（去掉即超预算，断言时限即红）                                                                              |
-| T-CTL-01       | 控制 `Err` + reconcile `Ok` → 返回**控制的** `Err`，且 reconcile **确实跑过**                                          | `reconcile_with` 调用位于 `control?` **之前**（改成早退即红）                                                                                                         |
-| T-CTL-02       | 控制 `Err` + reconcile `Err` → 返回**控制的** `Err`，reconcile 失败进降级                                              | 错误优先级那行                                                                                                                                                        |
-| T-CTL-03       | 控制 `Ok` + 就绪超时 + `force_local_with` **失败** → 返回 `Err` + 两条降级                                             | §4.4 第 4 行的失败分支                                                                                                                                                |
-| T-CTL-04       | 控制 `Err`（update）→ **跳过**就绪等待（断言 `await_service_ready` 零调用）                                            | 就绪等待外层的 `result.is_ok()` 条件                                                                                                                                  |
-| **T-GATE-01**  | **`Shutdown` 把等待中的取门请求全部以 `ShuttingDown` 排空**——测试**直接持有 `OperationGate`**、观察 waiter 的 reply    | **`gate.rs:57-59` 的 `waiters.drain(..)` 循环**。**不能走 actor 集成测试**：actor state 析构会 drop reply port，等待者照样收到错误，删掉 drain 也不会红（审查者点名） |
-| **T-SD-01**    | `Shutdown` 落在守卫取得之后、外部命令之前 → **外部命令不被调用**                                                       | 外部命令前的 `admission.check_open()?`                                                                                                                                |
-| **T-SD-02**    | 控制序列卡在外部命令 → `shutdown` 在 `QUIESCE_BUDGET` 内返回 + `shutdown_quiesce_timeout` 降级                         | `timeout(QUIESCE_BUDGET, ..)`（改成裸 await 即挂死）                                                                                                                  |
-| **T-SD-03**    | 在 `enter()` 的 acquire **之后**、返回之前发生 `close()` → 该次 `enter()` 返回 `Err(ShuttingDown)`                     | `enter()` 的**第二次** closed 检查（删掉即放行，必红）                                                                                                                |
-| **T-SD-04**    | 并发两次 `shutdown()` → 拆除**恰好执行一次**，两个调用都在其完成后返回                                                 | 单次飞行状态机；**改成 `AtomicBool` 即红**（第二个调用会在拆除完成前提前返回）                                                                                        |
+| ID             | 断言                                                                                                                                                                | **删掉哪行会让它红**                                                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-PROBE-01     | 兼容门 fail-closed：daemon 在跑但不放行 → 探针 `Disconnected`                                                                                                       | 探针里调 `target_ipc_state()` 那行                                                                                                                                    |
+| T-PROBE-02     | bootstrap 用探针真值而非 `Disconnected` 默认（修 F35）                                                                                                              | `client/mod.rs:303` 的 `probe().await`                                                                                                                                |
+| T-PROBE-03     | **Running + `Unparsable` 也告警**（不只 `Incompatible`）                                                                                                            | 警告条件里的 `!compat.allows_service_backend()`（改成 `matches!(Incompatible)` 即红）                                                                                 |
+| T-PROBE-04     | 探针失败发出 `service_probe_failed` 降级                                                                                                                            | 处理 `error` 的 `degradation.publish(..)` 行                                                                                                                          |
+| T-PROBE-05     | **Running + `Unknown` 告警；Stopped + `Unknown` 不告警**                                                                                                            | `ProbeOutcome.daemon_status` 字段本身（去掉它两种 `Unknown` 分不开，必红）                                                                                            |
+| **T-PROBE-06** | **注入永不返回的 `MockServiceStatusRunner`**，`OsServiceProbe::probe_within` 仍在预算内返回                                                                         | `OsServiceProbe` 里的 `tokio::time::timeout(..)`。**接缝在 runner 层**——用 `MockServiceProbe` 会绕过被测 timeout，那是空转                                            |
+| **T-PROBE-07** | bootstrap 探针失败/不兼容时**也**产出诊断                                                                                                                           | bootstrap 处的 `report_probe_diagnostics(..)` 调用行                                                                                                                  |
+| T-MODE-01      | 关闭 `enable_service_mode` → 得 `Normal` 并 `set_backend`                                                                                                           | `request.rs:82-85` 删提前返回后送真值那行                                                                                                                             |
+| T-MODE-02      | 六个控制动作后**各自**触发 probe+reconcile——逐条独立断言，**断言「至少一次」**                                                                                      | 各自 facade 方法里的 `reconcile_with(&guard)`                                                                                                                         |
+| T-MODE-03      | start→stop 序列下终态 `Normal`，晚到 probe 不翻转                                                                                                                   | `reconcile_with` 的 `guard` 参数                                                                                                                                      |
+| T-MODE-04      | 有界等待成功路径：脚本 runner 第 N 次兼容 → `Service`，无降级                                                                                                       | `await_service_ready` 循环体                                                                                                                                          |
+| **T-MODE-05**  | **挂死 runner**：`await_service_ready` 在 `READY_BUDGET` 内返回 TimedOut（**不是** `READY_BUDGET + PER_PROBE_BUDGET`）                                              | `remaining.min(PER_PROBE_BUDGET)` 里的 `remaining.min(..)`（去掉即超预算，断言时限即红）                                                                              |
+| T-CTL-01       | 控制 `Err` + reconcile `Ok` → 返回**控制的** `Err`，且 reconcile **确实跑过**                                                                                       | `reconcile_with` 调用位于 `control?` **之前**（改成早退即红）                                                                                                         |
+| T-CTL-02       | 控制 `Err` + reconcile `Err` → 返回**控制的** `Err`，reconcile 失败进降级                                                                                           | 错误优先级那行                                                                                                                                                        |
+| T-CTL-03       | 控制 `Ok` + 就绪超时 + `force_local_with` **失败** → 返回 `Err` + 两条降级                                                                                          | §4.4 第 4 行的失败分支                                                                                                                                                |
+| T-CTL-04       | 控制 `Err`（update）→ **跳过**就绪等待（断言 `await_service_ready` 零调用）                                                                                         | 就绪等待外层的 `result.is_ok()` 条件                                                                                                                                  |
+| **T-GATE-01**  | **`Shutdown` 把等待中的取门请求全部以 `ShuttingDown` 排空**——测试**直接持有 `OperationGate`**、观察 waiter 的 reply                                                 | **`gate.rs:57-59` 的 `waiters.drain(..)` 循环**。**不能走 actor 集成测试**：actor state 析构会 drop reply port，等待者照样收到错误，删掉 drain 也不会红（审查者点名） |
+| **T-SD-01**    | `Shutdown` 落在守卫取得之后、外部命令之前 → **外部命令不被调用**                                                                                                    | 外部命令前的 `admission.check_open()?`                                                                                                                                |
+| **T-SD-02**    | 控制序列卡在外部命令 → `shutdown` 在 `QUIESCE_BUDGET` 内返回 + `shutdown_quiesce_timeout` 降级                                                                      | `timeout(QUIESCE_BUDGET, ..)`（改成裸 await 即挂死）                                                                                                                  |
+| **T-SD-03**    | 在 `enter()` 的 acquire **之后**、返回之前发生 `close()` → 该次 `enter()` 返回 `Err(ShuttingDown)`                                                                  | `enter()` 的**第二次** closed 检查（删掉即放行，必红）                                                                                                                |
+| **T-SD-04**    | 并发两次 `shutdown()` → 拆除**恰好执行一次**，两个调用都在其完成后返回                                                                                              | 单次飞行状态机；**改成 `AtomicBool` 即红**（第二个调用会在拆除完成前提前返回）                                                                                        |
+| **T-SD-05**    | **actor 处理器卡在一次后端 await 里** → `shutdown()` 仍在 `ACTOR_STOP_BUDGET` 内返回（**注入一个永不返回的后端**，不是 mock 掉 `CoreClient::shutdown`）             | `call(..)` 的 `Some(ACTOR_STOP_BUDGET)`（改回 `None` 即永久挂起，断言时限即红）。**接缝在后端层**——mock 掉 `shutdown()` 本身会绕过被测的超时，那是空转                |
+| **T-SEAM-01**  | 三个 5e 接缝在源码中**存在且为空**，且相对顺序为 S1（守卫后、外部命令前）→ S2（`reconcile_with` 后、`drop(guard)` 前）→ S3（drain 后、`core_client.shutdown()` 前） | 任一槽位标记。**这条测试就是「5e 不必重新设计」那句话的机制**——没有它，槽位只是散文                                                                                   |
 
 **回归契约**：区分**存活测试被迫修改**（不允许，停下核查）与**被删模块自带单测随属主消失**（预期）。
 
@@ -458,11 +605,12 @@ NyanpasuClient::shutdown()：
 
 **残留：**
 
-| #          | 残留                                                        | 性质                                                                   | owner / 移除条件                                                                      |
-| ---------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| **R-C2-1** | drain 超时后，被放弃的控制序列仍可能完成其外部命令          | **本 PR 引入的有界窗口**；今天是**无界**同类问题且更糟（连准入都没有） | 移除条件 = 外部命令可取消（需 `runas`/`sudo` 侧支持，不在本仓）                       |
-| **R-C2-2** | `check_open()` 与外部命令 spawn 之间的 TOCTOU               | 同上                                                                   | 与 R-C2-1 同条件                                                                      |
-| **R-C2-3** | update 有界等待超时后 daemon 可能稍后才就绪，而已收敛 Local | **本 PR 引入的取舍**（今天靠 5 s 轮询最终纠正）                        | 下次任一服务控制动作会重新 probe 纠正；**不加后台重试**——那会把第二个模式生产者请回来 |
+| #          | 残留                                                                                                                    | 性质                                                                                  | owner / 移除条件                                                                                                                                                           |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **R-C2-1** | drain 超时后，被放弃的控制序列仍可能完成其外部命令                                                                      | **本 PR 引入的有界窗口**；今天是**无界**同类问题且更糟（连准入都没有）                | 移除条件 = 外部命令可取消（需 `runas`/`sudo` 侧支持，不在本仓）                                                                                                            |
+| **R-C2-2** | `check_open()` 与外部命令 spawn 之间的 TOCTOU                                                                           | 同上                                                                                  | 与 R-C2-1 同条件                                                                                                                                                           |
+| **R-C2-3** | update 有界等待超时后 daemon 可能稍后才就绪，而已收敛 Local                                                             | **本 PR 引入的取舍**（今天靠 5 s 轮询最终纠正）                                       | 下次任一服务控制动作会重新 probe 纠正；**不加后台重试**——那会把第二个模式生产者请回来                                                                                      |
+| **R-C2-4** | **`stop(None)` 抢占不了一个正在执行的 `handle()`**：若某个后端 await 永久挂死，actor 线程不会终止，只是 facade 不再等它 | **既有**（ractor 的执行模型，本 PR 未引入也无法消除）。本 PR 把**等待**从无界改为有界 | 关停场景下可接受**仅因为进程随后就退出**；**该前提在「重启 actor 而不退进程」的用法下不成立**。移除条件 = 后端 await 各自有界（属 PR-5a 的设计面）或 ractor 提供处理器抢占 |
 
 ---
 
@@ -480,7 +628,9 @@ NyanpasuClient::shutdown()：
 | 删 `impl Default for RunType`                                     | `rg 'RunType::default'` 为 0；`initial` 两个调用点都传参，`mod.rs:371` 覆盖赋值已删                                               |
 | 六个入口签名一致且全在 `ServiceControlOps` 上                     | 结构核对：六个具体函数**仍在 `core::service::control`**（满足 `design.md:333`，按 5a `:1037` 读法）；**扩到六方法须写进 PR 描述** |
 | **控制失败六种处置**                                              | T-CTL-01…04                                                                                                                       |
-| **关停静默期**                                                    | T-SD-01…04、T-GATE-01；**R-C2-1/2 必须出现在 PR 描述里**                                                                          |
+| **关停静默期**                                                    | T-SD-01…**05**、T-GATE-01；**R-C2-1/2/4 必须出现在 PR 描述里**                                                                    |
+| **关停的等待有界**（不等于关停一定完成）                          | T-SD-05；`rg -n 'call\(CoreActorMessage::Shutdown, None\)'` 为 **0**                                                              |
+| **三个 5e 接缝已声明且为空**                                      | T-SEAM-01；§4.7 表与源码槽位标记逐一对应——**这是 PR-5e 能被当作「填槽」而非「重新设计」的唯一凭据**                               |
 | bindings diff 为空                                                | `git diff --exit-code -- frontend/interface/src/ipc/bindings.ts`                                                                  |
 | **C3 未被本 PR 触碰**                                             | `core/clash/core.rs::change_default_network_dns` 仅有**签名加参**一处改动；`feat.rs:416-418` 迁移标记改指 **PR-5e**               |
 | **smoke 2**（v1→v2 升级 + 拒绝升级 fail-closed Local）            | 本机可跑，**须真实服务环境**；**它是 C2 的真正验收点**——迁移不完整会正好打断它**而 `rg` 门禁全绿**                                |

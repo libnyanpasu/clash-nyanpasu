@@ -4,14 +4,14 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 109,
+      "total": 102,
       "byKey": {
-        "Config::verge()": 83,
+        "Config::verge()": 76,
         "Config::clash()": 26
       }
     },
     "service_globals": {
-      "total": 59,
+      "total": 58,
       "byKey": {
         "ProxiesGuard::global()": 14,
         "Handle::global()": 11,
@@ -20,23 +20,23 @@
         "WindowManager::global()": 8,
         "Hotkey::global()": 3,
         "UpdaterManager::global()": 3,
-        "Logger::global()": 2,
-        "CoreManager::global()": 1
+        "CoreManager::global()": 1,
+        "Logger::global()": 1
       }
     },
     "migration_markers": {
-      "total": 17,
+      "total": 15,
       "byKey": {
-        "TODO(actor-migration)": 15,
+        "TODO(actor-migration)": 13,
         "FIXME(actor-migration)": 2
       }
     },
     "legacy_dto_refs": {
-      "total": 300,
+      "total": 299,
       "byKey": {
         "IVerge": 175,
         "IClashTemp": 30,
-        "LegacyVergeBridge": 29,
+        "LegacyVergeBridge": 28,
         "ClashLegacyBridge": 18,
         "VergeLegacyBridge": 18,
         "LegacyVergePatchRoute": 9,

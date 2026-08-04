@@ -1,27 +1,58 @@
 //! Core lifecycle port (S04): exclusive lease over check/promote/apply/restart/stop.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use super::runtime::CandidateFile;
 use async_trait::async_trait;
 use camino::Utf8Path;
 use nyanpasu_config::application::ClashCore;
-use nyanpasu_ipc::api::status::CoreState;
+use nyanpasu_ipc::api::{core::apply::CoreApplyData, status::CoreState};
 
-/// Narrow boundary for API-first updates to the running core configuration.
-#[cfg_attr(test, mockall::automock)]
-#[async_trait]
-pub trait RunningConfigPatchPort: Send + Sync + 'static {
-    async fn patch(&self, patch: &serde_yaml::Mapping) -> anyhow::Result<()>;
+use crate::core::actor::types::{CoreActorError, CoreRequest, FaithfulLifecycle};
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CheckAndPromoteFailure {
+    #[error(transparent)]
+    Actor(CoreActorError),
+    #[error(transparent)]
+    Operation(CheckAndPromoteError),
 }
 
-pub struct LegacyRunningConfigPatchBridge;
-
-#[async_trait]
-impl RunningConfigPatchPort for LegacyRunningConfigPatchBridge {
-    async fn patch(&self, patch: &serde_yaml::Mapping) -> anyhow::Result<()> {
-        crate::core::clash::api::patch_configs(patch).await
+#[cfg(test)]
+impl From<anyhow::Error> for CheckAndPromoteFailure {
+    fn from(source: anyhow::Error) -> Self {
+        // Test doubles use this convenience only for failures that occur before
+        // promotion. Production adapters must tag Check/Promote at the exact
+        // construction site instead of relying on this default.
+        Self::Operation(CheckAndPromoteError {
+            phase: CheckAndPromotePhase::Check,
+            source,
+        })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CheckAndPromotePhase {
+    Check,
+    Promote,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{phase:?} failed: {source:#}")]
+pub(crate) struct CheckAndPromoteError {
+    pub(crate) phase: CheckAndPromotePhase,
+    pub(crate) source: anyhow::Error,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum RestartFailure {
+    #[error(transparent)]
+    Actor(CoreActorError),
+    #[error(transparent)]
+    Operation(anyhow::Error),
 }
 
 #[allow(dead_code)]
@@ -53,21 +84,147 @@ pub trait CoreLifecycleLease: Send {
         candidate: &CandidateFile,
         target_core: ClashCore,
         product: &Utf8Path,
-    ) -> anyhow::Result<[u8; 32]>;
-    /// Check and apply exact candidate bytes without promoting them to product.
-    async fn apply_candidate(
+    ) -> Result<[u8; 32], CheckAndPromoteFailure>;
+    async fn publish_promoted(
         &mut self,
-        candidate: &CandidateFile,
-        target_core: ClashCore,
-    ) -> anyhow::Result<()>;
-    async fn apply_promoted(&mut self, product: &Utf8Path) -> anyhow::Result<()>;
-    async fn restart(&mut self) -> anyhow::Result<()>;
+        _snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        Ok(())
+    }
+    async fn publish_applied(
+        &mut self,
+        _snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        Ok(())
+    }
+    async fn running_identity(
+        &mut self,
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError>;
+    async fn apply_promoted(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<CoreApplyData, CoreActorError>;
+    async fn restart(&mut self) -> Result<(), RestartFailure>;
     #[allow(dead_code)]
     async fn stop(&mut self) -> anyhow::Result<()>;
 }
 
-/// Atomically write known-good product bytes back: the sole promote path and
-/// the change-core last-resort rollback path.
+#[cfg(test)]
+pub(crate) struct ActorBackedTestCoreLifecyclePort {
+    inner: Arc<dyn CoreLifecyclePort>,
+    core: super::core::CoreClient,
+}
+
+#[cfg(test)]
+impl ActorBackedTestCoreLifecyclePort {
+    pub(crate) fn new(inner: Arc<dyn CoreLifecyclePort>, core: super::core::CoreClient) -> Self {
+        Self { inner, core }
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl CoreLifecyclePort for ActorBackedTestCoreLifecyclePort {
+    async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+        let inner = self.inner.begin().await?;
+        let operation = self.core.begin_operation().await?;
+        Ok(Box::new(ActorBackedTestCoreLifecycleLease {
+            inner,
+            core: self.core.clone(),
+            operation,
+        }))
+    }
+
+    async fn status(&self) -> anyhow::Result<CoreStatusSnapshot> {
+        self.inner.status().await
+    }
+
+    async fn on_profile_change(&self) {
+        self.inner.on_profile_change().await;
+    }
+}
+
+#[cfg(test)]
+struct ActorBackedTestCoreLifecycleLease {
+    inner: Box<dyn CoreLifecycleLease>,
+    core: super::core::CoreClient,
+    operation: super::core::CoreOperationGuard,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl CoreLifecycleLease for ActorBackedTestCoreLifecycleLease {
+    async fn check_and_promote(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+        product: &Utf8Path,
+    ) -> Result<[u8; 32], CheckAndPromoteFailure> {
+        self.inner
+            .check_and_promote(candidate, target_core, product)
+            .await
+    }
+
+    async fn publish_promoted(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        self.inner.publish_promoted(snapshot.clone()).await?;
+        self.core.publish_promoted(&self.operation, snapshot).await
+    }
+
+    async fn publish_applied(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<(), crate::core::actor::types::CoreActorError> {
+        self.inner.publish_applied(snapshot.clone()).await?;
+        self.core.publish_applied(&self.operation, snapshot).await
+    }
+
+    async fn running_identity(
+        &mut self,
+    ) -> Result<(Option<CoreRequest>, FaithfulLifecycle), CoreActorError> {
+        self.inner.running_identity().await
+    }
+
+    async fn apply_promoted(
+        &mut self,
+        snapshot: Arc<crate::core::actor::runtime::RuntimeSnapshot>,
+    ) -> Result<CoreApplyData, CoreActorError> {
+        let data = self.inner.apply_promoted(snapshot.clone()).await?;
+        if crate::core::actor::runtime::advances_applied(data.outcome) {
+            self.core.publish_applied(&self.operation, snapshot).await?;
+        }
+        Ok(data)
+    }
+
+    async fn restart(&mut self) -> Result<(), RestartFailure> {
+        self.inner.restart().await
+    }
+
+    async fn stop(&mut self) -> anyhow::Result<()> {
+        self.inner.stop().await
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_apply_data(
+    snapshot: &crate::core::actor::runtime::RuntimeSnapshot,
+) -> CoreApplyData {
+    CoreApplyData {
+        outcome: nyanpasu_ipc::api::core::apply::ApplyOutcomeKind::Reloaded,
+        revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+            epoch: 1,
+            generation: snapshot.revision.get(),
+            source_hash: String::new(),
+            effective_hash: String::new(),
+        },
+        warning: None,
+        failed_apply: None,
+    }
+}
+
+/// Atomically write known-good product bytes into the runtime product path.
 pub(crate) async fn restore_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     if let Some(parent) = product.parent() {
         tokio::fs::create_dir_all(parent).await?;

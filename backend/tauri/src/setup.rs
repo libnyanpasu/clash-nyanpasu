@@ -8,8 +8,8 @@ use crate::{
         window::LegacyWindowBridge,
     },
     client::{
-        ClientSetupArgs, LegacyBridgeSet, LegacyRunningConfigPatchBridge, NyanpasuClient,
-        OsSystemDnsCache, RuntimePaths, TauriCoreDegradationSink, TauriUiEventSink, UiEventSink,
+        ClientSetupArgs, LegacyBridgeSet, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
+        TauriCoreDegradationSink, TauriUiEventSink, UiEventSink,
     },
     utils::path::PathResolver,
 };
@@ -54,7 +54,6 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         binary_resolver,
         degradation: Arc::new(TauriCoreDegradationSink::new(ui_sink)),
         service_control: Arc::new(crate::core::service::control::OsServiceControlOps),
-        clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
         system_dns: Arc::new(OsSystemDnsCache),
     })
     .context("Failed to setup nyanpasu client")?;

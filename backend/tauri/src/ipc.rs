@@ -438,7 +438,7 @@ pub struct PatchRuntimeConfig {
 pub async fn patch_clash_config(
     client: State<'_, NyanpasuClient>,
     payload: PatchRuntimeConfig,
-) -> Result {
+) -> Result<crate::client::runtime::MutationOutcome<crate::client::runtime::RuntimeApplyReport>> {
     // Explicit-field whitelist so future DTO fields never auto-leak into logs.
     tracing::debug!(
         allow_lan = ?payload.allow_lan,
@@ -453,8 +453,7 @@ pub async fn patch_clash_config(
         _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
     };
 
-    client.patch_running_config(mapping).await?;
-    Ok(())
+    Ok(client.patch_running_config(mapping).await?)
 }
 
 #[tauri::command]
@@ -480,19 +479,11 @@ pub async fn patch_verge_config(legacy: State<'_, LegacyVergeBridge>, payload: I
 #[specta::specta]
 pub async fn change_clash_core(
     client: State<'_, NyanpasuClient>,
-    legacy: State<'_, LegacyVergeBridge>,
     clash_core: Option<nyanpasu::ClashCore>,
-) -> Result {
+) -> Result<crate::client::runtime::MutationOutcome<crate::client::runtime::RuntimeApplyReport>> {
     let clash_core =
         clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
-    // reseed wrapper 语义不变:核心切换动了 legacy verge,须回灌 typed actors。
-    let client = client.inner().clone();
-    legacy
-        .run_legacy_verge_mutation(move || async move {
-            client.change_core(clash_core).await.map_err(Into::into)
-        })
-        .await?;
-    Ok(())
+    Ok(client.change_core(clash_core).await?)
 }
 
 /// restart the sidecar

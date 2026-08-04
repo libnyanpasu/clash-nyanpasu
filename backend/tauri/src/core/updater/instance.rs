@@ -328,6 +328,7 @@ async fn replacement_target(
     let operation = core.begin_operation().await?;
     let running = core.running(&operation).await?;
     let restart_target = running
+        .0
         .filter(|request| request.core_type == nyanpasu_utils::core::CoreType::from(&target));
     Ok((operation, restart_target))
 }

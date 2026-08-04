@@ -396,11 +396,10 @@ pub async fn get_postprocessing_output(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_status() -> Result<(Cow<'static, CoreState>, i64, RunType)> {
-    // TODO(actor-migration): compatibility bridge for legacy core manager status.
-    // Reason: core lifecycle/status is not yet owned by an injected typed client here.
-    // Remove when: CoreClient exposes typed status through NyanpasuClient or command adapters.
-    Ok(CoreManager::global().status().await)
+pub async fn get_core_status(
+    client: State<'_, NyanpasuClient>,
+) -> Result<(Cow<'static, CoreState>, i64, RunType)> {
+    Ok(client.core_status())
 }
 
 #[tauri::command]
@@ -499,8 +498,8 @@ pub async fn change_clash_core(
 /// restart the sidecar
 #[tauri::command]
 #[specta::specta]
-pub async fn restart_sidecar() -> Result {
-    (CoreManager::global().run_core().await)?;
+pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
+    client.restart_core().await?;
     Ok(())
 }
 
@@ -636,13 +635,11 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_core(core_type: nyanpasu::ClashCore) -> Result<usize> {
-    let event_id = (updater::UpdaterManager::global()
-        .write()
-        .await
-        .update_core(&core_type)
-        .await)?;
-    Ok(event_id)
+pub async fn update_core(
+    client: State<'_, NyanpasuClient>,
+    core_type: nyanpasu::ClashCore,
+) -> Result<usize> {
+    Ok(client.update_core(core_type).await?)
 }
 
 #[tauri::command]
@@ -904,7 +901,8 @@ pub async fn is_tray_icon_set(mode: TrayIcon) -> Result<bool> {
 
 pub mod service {
     use super::Result;
-    use crate::core::service;
+    use crate::{client::NyanpasuClient, core::service};
+    use tauri::State;
 
     /// `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
     /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
@@ -934,8 +932,8 @@ pub mod service {
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn install_service() -> Result {
-        (service::control::install_service().await)?;
+    pub async fn install_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.install_service().await?;
         Ok(())
     }
 
@@ -948,53 +946,23 @@ pub mod service {
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn start_service() -> Result {
-        let res = service::control::start_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn start_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.start_service().await?;
+        Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn stop_service() -> Result {
-        let res = service::control::stop_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn stop_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.stop_service().await?;
+        Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn restart_service() -> Result {
-        let res = service::control::restart_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn restart_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.restart_service().await?;
+        Ok(())
     }
 }
 

@@ -732,7 +732,8 @@ mod tests {
         client::{
             ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet,
             LegacyRunningConfigPatchBridge, LegacyVergeDomain, MockRunningCoreBridge,
-            NoopUiEventSink, NyanpasuClient,
+            NoopUiEventSink, NyanpasuClient, test_binary_resolver, test_degradation_sink,
+            test_service_control,
         },
         config::{
             IClashTemp,
@@ -1078,7 +1079,10 @@ mod tests {
                 clash,
             },
             ui_sink: Arc::new(NoopUiEventSink),
-            core: Arc::new(MockRunningCoreBridge::new()),
+            core: Some(Arc::new(MockRunningCoreBridge::new())),
+            binary_resolver: test_binary_resolver(dir),
+            degradation: test_degradation_sink(),
+            service_control: test_service_control(),
             clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
         })

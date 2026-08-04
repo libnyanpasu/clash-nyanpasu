@@ -953,7 +953,7 @@ mod tests {
         });
         let client =
             crate::client::NyanpasuClient::try_new_with_args(crate::client::ClientSetupArgs {
-                core: core.clone(),
+                core: Some(core.clone()),
                 ..crate::client::tests::test_profiles_client_args(
                     &dir,
                     Arc::new(crate::client::tests::MockRunningCoreBridge::new()),
@@ -1270,6 +1270,69 @@ mod tests {
             nyanpasu_config::application::ClashCore::ClashRs,
             "rollback rebuild must target the restored old selected core"
         );
+    }
+
+    #[test]
+    fn rollback_build_failure_restarts_the_committed_old_core() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = crate::core::actor::backend::TestBackend::new(
+            crate::core::actor::types::BackendObservation {
+                view: crate::core::actor::types::CoreStatusView {
+                    state: nyanpasu_ipc::api::status::CoreState::Running,
+                    state_changed_at: 1,
+                    run_type: crate::core::RunType::Normal,
+                    revision: None,
+                    recovery_exhausted: false,
+                },
+                lifecycle: crate::core::actor::types::FaithfulLifecycle::Running,
+            },
+        );
+        let client =
+            tauri::async_runtime::block_on(crate::client::tests::actor_backed_test_client(
+                &dir,
+                backend.clone(),
+                crate::client::tests::test_degradation_sink(),
+            ));
+
+        tauri::async_runtime::block_on(async {
+            let report = client
+                .inner
+                .profiles
+                .add(
+                    crate::client::tests::minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .unwrap();
+            let uid = report.created.unwrap();
+            client
+                .inner
+                .profiles
+                .set_current(Some(uid.clone()))
+                .await
+                .unwrap();
+            let materialized = client.get_profile_materialized_path(uid).await.unwrap();
+            assert!(materialized.is_file());
+            backend.fail_next_run_with(move || std::fs::remove_file(materialized).unwrap());
+
+            let result = client
+                .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
+                .await;
+            assert!(result.is_err());
+            assert_eq!(backend.check_calls(), 1);
+            let requests = backend.run_requests();
+            assert_eq!(requests.len(), 2);
+            assert_eq!(
+                requests[0].core_type,
+                nyanpasu_utils::core::CoreType::Clash(
+                    nyanpasu_utils::core::ClashCoreType::ClashRust
+                )
+            );
+            assert_eq!(
+                requests[1].core_type,
+                nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::Mihomo)
+            );
+        });
     }
 
     /// Default fallback publishes Promoted only — Applied stays unset until a

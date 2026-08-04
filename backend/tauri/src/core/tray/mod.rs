@@ -449,7 +449,12 @@ impl Tray {
             "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
             "open_logs_dir" => crate::log_err!(ipc::open_logs_dir()),
-            "restart_clash" => feat::restart_clash_core(),
+            "restart_clash" => feat::restart_clash_core(
+                app_handle
+                    .state::<crate::client::NyanpasuClient>()
+                    .inner()
+                    .clone(),
+            ),
             "restart_app" => help::restart_application(app_handle),
             "quit" => {
                 help::quit_application(app_handle);

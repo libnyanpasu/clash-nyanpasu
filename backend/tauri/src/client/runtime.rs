@@ -467,6 +467,7 @@ pub enum DegradationPhase {
     CoreRollback,
     SystemEffect,
     UiEffect,
+    CoreLifecycle,
 }
 
 #[cfg(test)]

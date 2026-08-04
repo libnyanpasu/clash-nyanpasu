@@ -2,11 +2,10 @@ use super::api;
 use crate::{
     config::{Config, nyanpasu::ClashCore},
     core::logger::Logger,
-    log_err,
     utils::dirs,
 };
-use anyhow::{Context, Result, bail};
-use camino::{Utf8Path, Utf8PathBuf};
+use anyhow::Result;
+use camino::Utf8Path;
 #[cfg(target_os = "macos")]
 use nyanpasu_ipc::api::network::set_dns::NetworkSetDnsReq;
 use nyanpasu_ipc::{
@@ -18,7 +17,7 @@ use nyanpasu_utils::{
         CommandEvent,
         instance::{CoreInstance, CoreInstanceBuilder},
     },
-    runtime::{block_on, spawn},
+    runtime::spawn,
 };
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
@@ -31,9 +30,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicI64, Ordering},
     },
-    time::Duration,
 };
-use tokio::time::sleep;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -222,20 +219,7 @@ impl Instance {
                                                     err_buf.join("\n")
                                                 ));
                                                 tracing::error!("{}\n{}", err, err_buf.join("\n"));
-                                                if tx.send(Err(err)).await.is_err()
-                                                    && !kill_flag.load(Ordering::Acquire)
-                                                {
-                                                    std::thread::spawn(move || {
-                                                        block_on(async {
-                                                            tracing::info!(
-                                                                "Trying to recover core."
-                                                            );
-                                                            let _ = CoreManager::global()
-                                                                .recover_core()
-                                                                .await;
-                                                        });
-                                                    });
-                                                }
+                                                let _ = tx.send(Err(err)).await;
                                             }
                                             break;
                                         }
@@ -383,49 +367,9 @@ impl Instance {
     }
 }
 
-/// Exclusive guard for core lifecycle mutations.
-#[must_use = "the lifecycle lease releases the mutex when dropped"]
-pub(crate) struct CoreLifecycleLease<'a> {
-    manager: &'a CoreManager,
-    _guard: tokio::sync::MutexGuard<'a, ()>,
-}
-
-impl CoreLifecycleLease<'_> {
-    pub(crate) async fn check_config(
-        &self,
-        config_path: &Utf8Path,
-        clash_core: ClashCore,
-    ) -> Result<()> {
-        self.manager
-            .check_config_with_lease(self, config_path, clash_core)
-            .await
-    }
-
-    pub(crate) async fn run_core_from(&self, config_path: &Utf8Path) -> Result<()> {
-        self.manager.run_core_with_lease(self, config_path).await
-    }
-
-    #[allow(dead_code)]
-    pub(crate) async fn recover_core(&self) -> Result<()> {
-        self.manager.recover_core_with_lease(self).await
-    }
-
-    pub(crate) async fn stop_core(&self) -> Result<()> {
-        self.manager.stop_core_with_lease(self).await
-    }
-
-    pub(crate) async fn apply_config_from(&self, product: &Utf8Path) -> Result<()> {
-        self.manager
-            .apply_config_from_with_lease(self, product)
-            .await
-    }
-}
-
 #[derive(Debug)]
 pub struct CoreManager {
     instance: Mutex<Option<Arc<Instance>>>,
-    /// Single mutex domain for run/restart, stop, check, apply, and recover.
-    lifecycle_lock: tokio::sync::Mutex<()>,
     #[cfg(target_os = "macos")]
     previous_dns: tokio::sync::Mutex<Option<Vec<std::net::IpAddr>>>,
 }
@@ -435,17 +379,9 @@ impl CoreManager {
         static CORE_MANAGER: OnceCell<CoreManager> = OnceCell::new();
         CORE_MANAGER.get_or_init(|| CoreManager {
             instance: Mutex::new(None),
-            lifecycle_lock: tokio::sync::Mutex::new(()),
             #[cfg(target_os = "macos")]
             previous_dns: tokio::sync::Mutex::new(None),
         })
-    }
-
-    pub(crate) async fn begin_lifecycle(&self) -> CoreLifecycleLease<'_> {
-        CoreLifecycleLease {
-            manager: self,
-            _guard: self.lifecycle_lock.lock().await,
-        }
     }
 
     pub async fn status<'a>(&self) -> (Cow<'a, CoreState>, i64, RunType) {
@@ -463,204 +399,6 @@ impl CoreManager {
                 RunType::default(),
             )
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn init(&self) -> Result<()> {
-        tauri::async_runtime::spawn(async {
-            // 启动clash
-            log_err!(Self::global().run_core().await);
-        });
-
-        Ok(())
-    }
-
-    /// 检查配置是否正确
-    #[allow(dead_code)]
-    pub async fn check_config(&self, config_path: &Utf8Path, clash_core: ClashCore) -> Result<()> {
-        let lease = self.begin_lifecycle().await;
-        self.check_config_with_lease(&lease, config_path, clash_core)
-            .await
-    }
-
-    pub(crate) async fn check_config_with_lease(
-        &self,
-        _lease: &CoreLifecycleLease<'_>,
-        config_path: &Utf8Path,
-        clash_core: ClashCore,
-    ) -> Result<()> {
-        use nyanpasu_utils::core::instance::CoreInstance;
-        let clash_core: nyanpasu_utils::core::CoreType = (&clash_core).into();
-
-        let app_dir = dirs::app_data_dir()?;
-        let app_dir = Utf8PathBuf::from_path_buf(app_dir)
-            .map_err(|_| anyhow::anyhow!("failed to convert app dir to utf8 path"))?;
-        let binary_path = find_binary_path(&clash_core)?;
-        let binary_path = Utf8PathBuf::from_path_buf(binary_path)
-            .map_err(|_| anyhow::anyhow!("failed to convert binary path to utf8 path"))?;
-        log::debug!(target: "app", "check config in `{clash_core}`");
-        CoreInstance::check_config_(&clash_core, config_path, &binary_path, &app_dir)
-            .await
-            .context("failed to check config")
-            .inspect_err(|e| log::error!(target: "app", "failed to check config: {e:?}"))?;
-
-        Ok(())
-    }
-
-    pub(crate) async fn run_core_with_lease(
-        &self,
-        _lease: &CoreLifecycleLease<'_>,
-        config_path: &Utf8Path,
-    ) -> Result<()> {
-        {
-            let instance = {
-                let instance = self.instance.lock();
-                instance.as_ref().cloned()
-            };
-            if let Some(instance) = instance.as_ref()
-                && matches!(instance.state().await.as_ref(), CoreState::Running)
-            {
-                log::debug!(target: "app", "core is already running, stop it first...");
-                instance.stop().await?;
-            }
-        }
-
-        // T07 review fix: port ownership moved to SessionPortResolver (resolved at
-        // startup, written back by resolve_setup). Re-picking external-controller
-        // here (legacy prepare_external_controller_port) could select a NEW port on
-        // core restart — e.g. while the old core still holds the current one — and
-        // desync the api client from the runtime config generated off session ports.
-        let run_type = RunType::default();
-        let instance = Arc::new(Instance::try_new(run_type, config_path)?);
-
-        #[cfg(target_os = "macos")]
-        {
-            let enable_tun = Config::verge().latest().enable_tun_mode.unwrap_or(false);
-            let _ = self
-                .change_default_network_dns(enable_tun)
-                .await
-                .inspect_err(|e| log::error!(target: "app", "failed to set system dns: {:?}", e));
-        }
-
-        {
-            let mut this = self.instance.lock();
-            *this = Some(instance.clone());
-        }
-        instance.start().await
-    }
-
-    pub async fn run_core_from(&self, config_path: &Utf8Path) -> Result<()> {
-        let lease = self.begin_lifecycle().await;
-        self.run_core_with_lease(&lease, config_path).await
-    }
-
-    // TODO(actor-migration): compatibility bridge for legacy lifecycle callers.
-    // Reason: service/updater/IPC lifecycle routing is completed by S04.
-    // Remove when: all lifecycle callers receive the injected core port.
-    pub async fn run_core(&self) -> Result<()> {
-        let paths = crate::utils::path::PathResolver::from_env()?;
-        let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths)?;
-        self.run_core_from(runtime_paths.product()).await
-    }
-
-    /// 重启内核
-    pub async fn recover_core(&'static self) -> Result<()> {
-        let result = {
-            let lease = self.begin_lifecycle().await;
-            self.recover_core_with_lease(&lease).await
-        };
-
-        if let Err(err) = result {
-            log::error!(target: "app", "failed to recover clash core");
-            log::error!(target: "app", "{err:?}");
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            std::thread::spawn(move || {
-                block_on(async {
-                    let _ = CoreManager::global().recover_core().await;
-                })
-            });
-        }
-
-        Ok(())
-    }
-
-    pub(crate) async fn recover_core_with_lease(
-        &self,
-        lease: &CoreLifecycleLease<'_>,
-    ) -> Result<()> {
-        {
-            let instance = {
-                let mut this = self.instance.lock();
-                this.take()
-            };
-            if let Some(instance) = instance
-                && matches!(instance.state().await.as_ref(), CoreState::Running)
-            {
-                log::debug!(target: "app", "core is running, stop it first...");
-                instance.stop().await?;
-            }
-        }
-
-        let paths = crate::utils::path::PathResolver::from_env()?;
-        let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths)?;
-        self.run_core_with_lease(lease, runtime_paths.product())
-            .await
-    }
-
-    /// 停止核心运行
-    pub async fn stop_core(&self) -> Result<()> {
-        let lease = self.begin_lifecycle().await;
-        self.stop_core_with_lease(&lease).await
-    }
-
-    pub(crate) async fn stop_core_with_lease(&self, _lease: &CoreLifecycleLease<'_>) -> Result<()> {
-        #[cfg(target_os = "macos")]
-        let _ = self
-            .change_default_network_dns(false)
-            .await
-            .inspect_err(|e| log::error!(target: "app", "failed to set system dns: {:?}", e));
-        let instance = {
-            let instance = self.instance.lock();
-            instance.as_ref().cloned()
-        };
-        if let Some(instance) = instance.as_ref() {
-            instance.stop().await?;
-        }
-        Ok(())
-    }
-
-    /// Push the promoted runtime product to the running core over the api.
-    /// Check + promote happen in the rebuild pipeline (RunningCoreBridge::
-    /// check_and_promote) before this is called.
-    #[allow(dead_code)]
-    pub async fn apply_config_from(&self, product: &Utf8Path) -> Result<()> {
-        let lease = self.begin_lifecycle().await;
-        self.apply_config_from_with_lease(&lease, product).await
-    }
-
-    pub(crate) async fn apply_config_from_with_lease(
-        &self,
-        _lease: &CoreLifecycleLease<'_>,
-        product: &Utf8Path,
-    ) -> Result<()> {
-        let path = product.as_str();
-
-        // 发送请求 发送5次
-        for i in 0..5 {
-            match api::put_configs(path).await {
-                Ok(_) => break,
-                Err(err) => {
-                    if i < 4 {
-                        log::info!(target: "app", "{err:?}");
-                    } else {
-                        bail!(err);
-                    }
-                }
-            }
-            sleep(Duration::from_millis(250)).await;
-        }
-
-        Ok(())
     }
 
     #[cfg(target_os = "macos")]

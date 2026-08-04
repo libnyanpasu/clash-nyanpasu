@@ -142,6 +142,8 @@ function localizeDegradationPhase(phase: DegradationPhase): string {
       return m.mutation_degradation_phase_system_effect()
     case 'ui_effect':
       return m.mutation_degradation_phase_ui_effect()
+    case 'core_lifecycle':
+      return String(phase)
     default: {
       const _exhaustive: never = phase
       return String(_exhaustive)

@@ -778,6 +778,7 @@ export type DegradationPhase =
   | 'core_rollback'
   | 'system_effect'
   | 'ui_effect'
+  | 'core_lifecycle'
 
 export type DelayRes = {
   delay: number

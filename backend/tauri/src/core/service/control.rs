@@ -1,4 +1,8 @@
-use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
+use crate::{
+    core::actor::{backend::ServiceControlOps, request::CoreModeReconciler},
+    utils::dirs::{app_config_dir, app_data_dir, app_install_dir},
+};
+use async_trait::async_trait;
 use runas::Command as RunasCommand;
 use std::ffi::OsString;
 
@@ -51,7 +55,7 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> 
     Ok(args)
 }
 
-pub async fn install_service() -> anyhow::Result<()> {
+pub async fn install_service(reconciler: CoreModeReconciler) -> anyhow::Result<()> {
     let args = get_service_install_args().await?;
     let child = tokio::task::spawn_blocking(move || {
         #[cfg(not(target_os = "macos"))]
@@ -94,7 +98,7 @@ pub async fn install_service() -> anyhow::Result<()> {
     }
     // Due to most platform, the service will be started automatically after installed
     if !super::ipc::HEALTH_CHECK_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
-        super::ipc::spawn_health_check();
+        super::ipc::spawn_health_check(reconciler);
     }
     Ok(())
 }
@@ -181,7 +185,7 @@ pub async fn uninstall_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn start_service() -> anyhow::Result<()> {
+pub async fn start_service(reconciler: CoreModeReconciler) -> anyhow::Result<()> {
     let child = tokio::task::spawn_blocking(move || {
         const ARGS: &[&str] = &["start"];
         #[cfg(not(target_os = "macos"))]
@@ -222,7 +226,7 @@ pub async fn start_service() -> anyhow::Result<()> {
         );
     }
     if !super::ipc::HEALTH_CHECK_RUNNING.load(std::sync::atomic::Ordering::Acquire) {
-        super::ipc::spawn_health_check();
+        super::ipc::spawn_health_check(reconciler);
     }
     Ok(())
 }
@@ -276,7 +280,7 @@ pub async fn stop_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn restart_service() -> anyhow::Result<()> {
+pub async fn restart_service(reconciler: CoreModeReconciler) -> anyhow::Result<()> {
     let child = tokio::task::spawn_blocking(move || {
         const ARGS: &[&str] = &["restart"];
         #[cfg(not(target_os = "macos"))]
@@ -317,9 +321,30 @@ pub async fn restart_service() -> anyhow::Result<()> {
         );
     }
     if !super::ipc::HEALTH_CHECK_RUNNING.load(std::sync::atomic::Ordering::Acquire) {
-        super::ipc::spawn_health_check();
+        super::ipc::spawn_health_check(reconciler);
     }
     Ok(())
+}
+
+pub(crate) struct OsServiceControlOps;
+
+#[async_trait]
+impl ServiceControlOps for OsServiceControlOps {
+    async fn install(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()> {
+        install_service(reconciler).await
+    }
+
+    async fn start(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()> {
+        start_service(reconciler).await
+    }
+
+    async fn stop(&self) -> anyhow::Result<()> {
+        stop_service().await
+    }
+
+    async fn restart(&self, reconciler: CoreModeReconciler) -> anyhow::Result<()> {
+        restart_service(reconciler).await
+    }
 }
 
 #[tracing::instrument]

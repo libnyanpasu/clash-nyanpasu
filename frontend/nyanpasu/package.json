@@ -74,7 +74,7 @@
     "@vitejs/plugin-react": "6.0.5",
     "change-case": "5.4.4",
     "clsx": "2.1.1",
-    "core-js": "3.49.0",
+    "core-js": "3.50.0",
     "filesize": "11.0.22",
     "meta-json-schema": "1.19.29",
     "monaco-yaml": "5.5.1",

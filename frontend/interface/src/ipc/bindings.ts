@@ -222,7 +222,9 @@ export const commands = {
   setCustomAppDir: (path: string) =>
     typedError<null, string>(__TAURI_INVOKE('set_custom_app_dir', { path })),
   statusService: () =>
-    typedError<StatusInfo, string>(__TAURI_INVOKE('status_service')),
+    typedError<ServiceStatusInfo_Serialize, string>(
+      __TAURI_INVOKE('status_service'),
+    ),
   installService: () =>
     typedError<null, string>(__TAURI_INVOKE('install_service')),
   uninstallService: () =>
@@ -587,16 +589,171 @@ export type ConfigDefinition_Serialize =
       transforms?: ProfileId[]
     } & { source?: never })
 
+/**
+ *  Identity of the config the running core actually adopted.
+ *
+ *  `source_hash` is computed over the caller's own file and `effective_hash`
+ *  over the canonical form the core is running, both FNV-1a over canonical
+ *  YAML. A caller that holds the source file can therefore confirm the
+ *  service read the same bytes it wrote, without reimplementing the hash.
+ *  The manager's private runtime copy path is deliberately not exposed: it
+ *  lives in a 0o700 directory the caller cannot read, so it would only
+ *  mislead.
+ */
+export type ConfigRevisionInfo = {
+  epoch: number
+  generation: number
+  source_hash: string
+  effective_hash: string
+}
+
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 
-export type CoreInfos = {
+/**
+ *  The core's control endpoint, as the manager resolved it.
+ *
+ *  A deliberately separate type from `clash_api::Host`: clash-api is an
+ *  internal dependency of the core manager and must not leak into the wire
+ *  dependency tree. The controller secret is never carried here — it comes
+ *  from the caller's own config, and the IPC transport's only gate is the
+ *  socket ACL.
+ */
+export type CoreControllerInfo =
+  | ({ NamedPipe: string } & { Http?: never; UnixSocket?: never })
+  | ({ UnixSocket: string } & { Http?: never; NamedPipe?: never })
+  /**  Normalized base URL with any credentials removed. */
+  | ({ Http: string } & { NamedPipe?: never; UnixSocket?: never })
+
+/**
+ *  The manager's health observation for the active core. Absent while the
+ *  core is stopping or stopped.
+ */
+export type CoreHealthInfo = {
+  state: CoreHealthState
+  /**  Unix milliseconds of the last health-state transition. */
+  changed_at: number
+  consecutive_failures: number
+  /**  Last probe failure detail, capped by the manager at 512 bytes. */
+  last_error: string | null
+  /**  Unix milliseconds of the last successful probe. */
+  last_success_at: number | null
+}
+
+/**  Health observation state for the active core. */
+export type CoreHealthState = 'Starting' | 'Healthy' | 'Unhealthy'
+
+export type CoreInfos = CoreInfos_Serialize | CoreInfos_Deserialize
+
+export type CoreInfos_Deserialize = {
   type: CoreType | null
   state: CoreState
   state_changed_at: number
   config_path: string | null
+  /**
+   *  Omitted rather than null when absent, so a payload carrying none of
+   *  the fields below is byte-identical to the pre-S7 wire format.
+   */
+  controller?: CoreControllerInfo | null
+  health?: CoreHealthInfo | null
+  revision?: ConfigRevisionInfo | null
+  detail?: CoreStateDetail | null
+}
+
+export type CoreInfos_Serialize = {
+  type: CoreType | null
+  state: CoreState
+  state_changed_at: number
+  config_path: string | null
+  /**
+   *  Omitted rather than null when absent, so a payload carrying none of
+   *  the fields below is byte-identical to the pre-S7 wire format.
+   */
+  controller?: CoreControllerInfo | null
+  health?: CoreHealthInfo | null
+  revision?: ConfigRevisionInfo | null
+  detail?: CoreStateDetail | null
 }
 
 export type CoreState = 'Running' | { Stopped: string | null }
+
+/**
+ *  The core's full lifecycle state.
+ *
+ *  [`CoreState`] is a two-valued projection kept for wire compatibility: it
+ *  reports `Starting` and `Restarting` as `Stopped(None)`, so a crash loop is
+ *  indistinguishable from a real stop. This is the faithful view; prefer it
+ *  when present.
+ */
+export type CoreStateDetail =
+  | ({
+      Stopped: {
+        reason: string | null
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Starting: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Running: {
+        epoch: number
+        pid: number
+      }
+    } & {
+      Restarting?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Restarting: {
+        epoch: number
+        attempt: number
+      }
+    } & {
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Switching: {
+        from: number | null
+        to: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+    })
+  | ({
+      Stopping: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Switching?: never
+    })
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
@@ -1025,6 +1182,102 @@ export type LocalBinding_Serialize =
       target: ExternalProfilePath
       mode: ExternalMode
     }
+
+/**
+ *  Where this service writes logs.
+ *
+ *  These are the service's own facts, not an echo of what the caller passed at
+ *  start-up, which is why they are here and not in [`RuntimeInfos`].
+ *
+ *  **These are locations, not a grant.** Both directories are restricted to the
+ *  account the service runs under plus local administrators, so a caller
+ *  running as an ordinary user generally cannot read them — surface the path
+ *  for a support request rather than building a tail on it. Live core output is
+ *  on the event stream; the service's own logs are not streamed at all.
+ *
+ *  TODO: that restriction is the open question here, not a settled posture. A
+ *  user-level GUI reading the archive would need one of: a widened DACL (which
+ *  means teaching `nyanpasu_utils::io::atomic_fs`'s hardener *and* its verifier
+ *  a second acceptable shape — the verifier rejects user-readable DACLs today,
+ *  so both move together or directory creation starts failing), some other
+ *  grant mechanism, or an RPC that serves the archive so the directory stays
+ *  closed. All three are acceptable; none is chosen yet. The two sites that
+ *  would change are `log_sink::prepare_dir` and the service's own log directory
+ *  setup.
+ */
+export type LogPathsInfo = LogPathsInfo_Serialize | LogPathsInfo_Deserialize
+
+/**
+ *  Where this service writes logs.
+ *
+ *  These are the service's own facts, not an echo of what the caller passed at
+ *  start-up, which is why they are here and not in [`RuntimeInfos`].
+ *
+ *  **These are locations, not a grant.** Both directories are restricted to the
+ *  account the service runs under plus local administrators, so a caller
+ *  running as an ordinary user generally cannot read them — surface the path
+ *  for a support request rather than building a tail on it. Live core output is
+ *  on the event stream; the service's own logs are not streamed at all.
+ *
+ *  TODO: that restriction is the open question here, not a settled posture. A
+ *  user-level GUI reading the archive would need one of: a widened DACL (which
+ *  means teaching `nyanpasu_utils::io::atomic_fs`'s hardener *and* its verifier
+ *  a second acceptable shape — the verifier rejects user-readable DACLs today,
+ *  so both move together or directory creation starts failing), some other
+ *  grant mechanism, or an RPC that serves the archive so the directory stays
+ *  closed. All three are acceptable; none is chosen yet. The two sites that
+ *  would change are `log_sink::prepare_dir` and the service's own log directory
+ *  setup.
+ */
+export type LogPathsInfo_Deserialize = {
+  /**
+   *  The service's own logs: JSON lines from `tracing-appender`, rotated
+   *  daily, seven files kept.
+   */
+  service_dir: string
+  /**
+   *  The core log archive: one rolling JSONL stream, rotated by size and
+   *  retained by count. Absent when the manager's sink is switched off, in
+   *  which case no such directory exists at all.
+   */
+  core_dir?: string | null
+}
+
+/**
+ *  Where this service writes logs.
+ *
+ *  These are the service's own facts, not an echo of what the caller passed at
+ *  start-up, which is why they are here and not in [`RuntimeInfos`].
+ *
+ *  **These are locations, not a grant.** Both directories are restricted to the
+ *  account the service runs under plus local administrators, so a caller
+ *  running as an ordinary user generally cannot read them — surface the path
+ *  for a support request rather than building a tail on it. Live core output is
+ *  on the event stream; the service's own logs are not streamed at all.
+ *
+ *  TODO: that restriction is the open question here, not a settled posture. A
+ *  user-level GUI reading the archive would need one of: a widened DACL (which
+ *  means teaching `nyanpasu_utils::io::atomic_fs`'s hardener *and* its verifier
+ *  a second acceptable shape — the verifier rejects user-readable DACLs today,
+ *  so both move together or directory creation starts failing), some other
+ *  grant mechanism, or an RPC that serves the archive so the directory stays
+ *  closed. All three are acceptable; none is chosen yet. The two sites that
+ *  would change are `log_sink::prepare_dir` and the service's own log directory
+ *  setup.
+ */
+export type LogPathsInfo_Serialize = {
+  /**
+   *  The service's own logs: JSON lines from `tracing-appender`, rotated
+   *  daily, seven files kept.
+   */
+  service_dir: string
+  /**
+   *  The core log archive: one rolling JSONL stream, rotated by size and
+   *  retained by count. Absent when the manager's sink is switched off, in
+   *  which case no such directory exists at all.
+   */
+  core_dir?: string | null
+}
 
 export type LogSpan = 'log' | 'info' | 'warn' | 'error'
 
@@ -1819,19 +2072,79 @@ export type ScriptTransform_Serialize = {
   runtime: ScriptRuntime
 }
 
+export type ServiceCompat =
+  /**  daemon 未安装 / 未运行 / 未上报 server 信息，没有可判定的版本。 */
+  | { kind: 'unknown' }
+  /**  主版本匹配，允许进入 Service backend。 */
+  | { kind: 'compatible'; server_version: string }
+  /**  主版本不匹配（典型：v1.4.5）。fail-closed。 */
+  | { kind: 'incompatible'; server_version: string; required_major: number }
+  /**  server 上报的版本不是合法 semver。fail-closed。 */
+  | { kind: 'unparsable'; server_version: string }
+
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
 
-export type StatusInfo = {
+/**
+ *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  wire 是原结构的严格超集，前端既有消费点不受影响。
+ */
+export type ServiceStatusInfo =
+  | ServiceStatusInfo_Serialize
+  | ServiceStatusInfo_Deserialize
+
+/**
+ *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  wire 是原结构的严格超集，前端既有消费点不受影响。
+ */
+export type ServiceStatusInfo_Deserialize = {
   name: string
   version: string
   status: ServiceStatus
-  server: StatusResBody | null
+  server: StatusResBody_Deserialize | null
+  compat: ServiceCompat
 }
 
-export type StatusResBody = {
+/**
+ *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  wire 是原结构的严格超集，前端既有消费点不受影响。
+ */
+export type ServiceStatusInfo_Serialize = {
+  name: string
   version: string
-  core_infos: CoreInfos
+  status: ServiceStatus
+  server: StatusResBody_Serialize | null
+  compat: ServiceCompat
+}
+
+export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize
+
+export type StatusResBody_Deserialize = {
+  version: string
+  core_infos: CoreInfos_Deserialize
   runtime_infos: RuntimeInfos
+  /**
+   *  Declared last and omitted rather than null when absent, so a payload
+   *  without it is byte-identical to the pre-L3 format — the rule S7 used for
+   *  `CoreInfos`. The service always sends it; the `Option` exists so every
+   *  existing golden literal stays unchanged.
+   */
+  logs?: LogPathsInfo_Deserialize | null
+}
+
+export type StatusResBody_Serialize = {
+  version: string
+  core_infos: CoreInfos_Serialize
+  runtime_infos: RuntimeInfos
+  /**
+   *  Declared last and omitted rather than null when absent, so a payload
+   *  without it is byte-identical to the pre-L3 format — the rule S7 used for
+   *  `CoreInfos`. The service always sends it; the `Option` exists so every
+   *  existing golden literal stays unchanged.
+   */
+  logs?: LogPathsInfo_Serialize | null
 }
 
 export type StorageEntry = {

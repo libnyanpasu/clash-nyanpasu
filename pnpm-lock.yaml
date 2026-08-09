@@ -149,8 +149,8 @@ importers:
         specifier: workspace:^
         version: link:../utils
       '@paper-design/shaders-react':
-        specifier: 0.0.79
-        version: 0.0.79(@types/react@19.2.18)(react@19.2.8)
+        specifier: 0.0.80
+        version: 0.0.80(@types/react@19.2.18)(react@19.2.8)
       '@radix-ui/react-use-controllable-state':
         specifier: 1.2.6
         version: 1.2.6(@types/react@19.2.18)(react@19.2.8)
@@ -1846,8 +1846,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@paper-design/shaders-react@0.0.79':
-    resolution: {integrity: sha512-2ZWA6mdsxlXanpdNwPHGzXqNpxxB9qcLDeBo78j8cihmesJbU1DRFJLsqV25q7qBUzT9yErloB+xelKa+UbUyg==}
+  '@paper-design/shaders-react@0.0.80':
+    resolution: {integrity: sha512-Y1oxUeh5D2AECo05O+4UYRbaMfQzKKYH3Q5jcvirOcoX0hTPYbezCLn5g94nvcuzxy5LN/uqwsL3jDUp8r3E+A==}
     peerDependencies:
       '@types/react': ^18 || ^19
       react: ^18 || ^19
@@ -1855,8 +1855,8 @@ packages:
       '@types/react':
         optional: true
 
-  '@paper-design/shaders@0.0.79':
-    resolution: {integrity: sha512-wUom4Dec4DBSXlOkxup8YIIHFYLZI/ZL4wmmD/plkkoetr+xYbZJ2SI6OmaRZelB1UnUj/cZBLAg79Q4CCjf8g==}
+  '@paper-design/shaders@0.0.80':
+    resolution: {integrity: sha512-pcabvt5xDlFoEhpjUj4b1tGJMfqb0i5mXifWMNQf6z7FoOJYxYDo7F8R6k0JAh5D/7ouxjX5+N0cIq5WURyQ1Q==}
 
   '@parcel/watcher-android-arm64@2.5.6':
     resolution: {integrity: sha512-YQxSS34tPF/6ZG7r/Ih9xy+kP/WwediEUsqmtf0cuCV5TPPKw/PQHRhueUo6JdeFJaqV3pyjm0GdYjZotbRt/A==}
@@ -8139,14 +8139,14 @@ snapshots:
   '@oxlint/binding-win32-x64-msvc@1.77.0':
     optional: true
 
-  '@paper-design/shaders-react@0.0.79(@types/react@19.2.18)(react@19.2.8)':
+  '@paper-design/shaders-react@0.0.80(@types/react@19.2.18)(react@19.2.8)':
     dependencies:
-      '@paper-design/shaders': 0.0.79
+      '@paper-design/shaders': 0.0.80
       react: 19.2.8
     optionalDependencies:
       '@types/react': 19.2.18
 
-  '@paper-design/shaders@0.0.79': {}
+  '@paper-design/shaders@0.0.80': {}
 
   '@parcel/watcher-android-arm64@2.5.6':
     optional: true

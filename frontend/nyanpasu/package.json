@@ -20,7 +20,7 @@
     "@material/material-color-utilities": "0.4.0",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/utils": "workspace:^",
-    "@paper-design/shaders-react": "0.0.78",
+    "@paper-design/shaders-react": "0.0.79",
     "@radix-ui/react-use-controllable-state": "1.2.6",
     "@tailwindcss/postcss": "4.3.3",
     "@tanstack/react-table": "8.21.3",

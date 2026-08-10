@@ -80,7 +80,7 @@
     "monaco-yaml": "5.5.1",
     "nanoid": "6.0.1",
     "sass-embedded": "1.100.0",
-    "shiki": "4.4.2",
+    "shiki": "4.4.3",
     "unplugin-auto-import": "21.1.0",
     "unplugin-icons": "23.0.1",
     "vite": "8.2.1",

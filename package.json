@@ -88,7 +88,7 @@
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2"
   },
-  "packageManager": "pnpm@11.20.0",
+  "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": "24.19.0"
   }

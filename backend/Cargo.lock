@@ -1817,6 +1817,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "clash-api"
+version = "1.0.0-rc.1"
+dependencies = [
+ "backon",
+ "chrono",
+ "futures-core",
+ "futures-util",
+ "indexmap 2.14.0",
+ "ipnet",
+ "reqwest 0.13.4",
+ "reqwest-websocket",
+ "serde",
+ "serde_json",
+ "specta",
+ "thiserror 2.0.19",
+ "tokio",
+ "tokio-util",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "clash-nyanpasu"
 version = "0.1.0"
 dependencies = [
@@ -1876,6 +1898,7 @@ dependencies = [
  "notify-debouncer-full",
  "nyanpasu-config",
  "nyanpasu-core",
+ "nyanpasu-core-manager",
  "nyanpasu-egui",
  "nyanpasu-ipc",
  "nyanpasu-macro",
@@ -1913,7 +1936,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "serde_yaml_ng",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "sha2 0.10.9",
  "single-instance",
  "smol-cancellation-token",
@@ -5012,6 +5035,9 @@ name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "iptools"
@@ -6214,7 +6240,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "serde_yaml_ng",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "slab",
  "specta",
  "struct-patch",
@@ -6244,10 +6270,32 @@ dependencies = [
  "indexmap 2.14.0",
  "nyanpasu-utils",
  "serde",
- "serde_yaml_ng",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "nyanpasu-core-manager"
+version = "1.0.0-rc.1"
+dependencies = [
+ "camino",
+ "chrono",
+ "clash-api",
+ "enumset",
+ "nyanpasu-core-metadata",
+ "nyanpasu-utils",
+ "parking_lot",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "specta",
+ "thiserror 2.0.19",
+ "tokio",
+ "tokio-util",
  "tracing",
 ]
 
@@ -6337,11 +6385,13 @@ dependencies = [
  "dirs 6.0.0",
  "encoding_rs",
  "kill_tree",
+ "libc",
  "log",
  "memchr",
  "nix 0.31.3",
  "os_pipe",
  "parking_lot",
+ "processkit",
  "serde",
  "shared_child",
  "specta",
@@ -6349,6 +6399,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-attributes",
  "windows 0.62.2",
@@ -7821,6 +7872,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "processkit"
+version = "2.2.5"
+source = "git+https://github.com/ZelAnton/ProcessKit-rs?rev=2adad322f1e3d7c471f3b9c8c625e44f356e416b#2adad322f1e3d7c471f3b9c8c625e44f356e416b"
+dependencies = [
+ "async-trait",
+ "encoding_rs",
+ "libc",
+ "thiserror 2.0.19",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8405,6 +8472,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -9201,6 +9269,19 @@ dependencies = [
 [[package]]
 name = "serde_yaml_ng"
 version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
+dependencies = [
+ "indexmap 2.14.0",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
+]
+
+[[package]]
+name = "serde_yaml_ng"
+version = "0.10.0"
 source = "git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e#363da138dc97f90ef0a356f971c2dc1d8fe04c9e"
 dependencies = [
  "indexmap 2.14.0",
@@ -9664,6 +9745,7 @@ version = "2.0.0-rc.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38f9a30cbcbb7011f1da7d73483983bf838af123883e45f2b36ed76328df9c50"
 dependencies = [
+ "chrono",
  "indexmap 2.14.0",
  "paste",
  "rustc_version 0.4.1",
@@ -10902,6 +10984,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
  "tokio",
 ]
 

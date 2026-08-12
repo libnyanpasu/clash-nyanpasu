@@ -69,3 +69,11 @@ cd backend && cargo test -p clash-nyanpasu --lib actor_v2
 ## 5. 与既有 PR 栈的关系
 
 `#5070–#5074` 处置仍待用户裁定（本实施未动它们）；本工作基于 `pr5/1-pre` 分支内容但未 rebase/merge #5070。submodule pin 未移动（path deps 读工作树）。
+
+## 6. 独立测绘交叉核对（runtime-mapper 代理，基于 PR-A 前的 `e899bce` 快照）
+
+一个独立的探索代理对 pre-PR-A 树做了全量测绘，其结论与本实施相互印证，可作审计旁证：
+
+- 其"缺失清单"逐项即本次填补：无 OperationId/幂等键 → A1；无 executor 队列（公有方法即队列，一把 `ctrl` Mutex 横跨进程 spawn 与 fs I/O，RPC handler 直调、无取消隔离）→ A4；回滚补偿逐路径手写无通用事务抽象 → A3 的 `reconcile` 统一入口；无 RuntimeBackend/RuntimeInstance 接缝 → A2；core-manager 内无任何 DNS 组件 → A6；v1 wire 零版本协商机制 → 按修订 A1 裁定，fail-closed 门不建在 wire 握手而建在 app 侧 `ServiceCompat` 主版本比较（ServiceActor 为唯一实现点）。
+- 其"已有资产"确认了保留决策：`stop_and_confirm_dead` 是真 StopProof 原语（超时+独立 pid-file 权威兜底）；quarantine latch-until-recovered；publish 路径的 epoch fencing（`apply_epoch_status` 拒陈旧 epoch 帧）正是 D1 generation fencing 的同构先例；`IpcOperation` 契约对称性被 v2 三个新 op 沿用；fake-core 进程基建被 A7/控制面测试复用。
+- 另两处其标记的既有全局单例（`Logger::global()`、`Client::service_default()` OnceLock）为 pre-existing 边界代码，不在本次范围；`ServiceEndpoint::new` 以参数注入 client，bridge 阶段组合时不必经由该单例。

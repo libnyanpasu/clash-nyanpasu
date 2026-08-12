@@ -28,7 +28,7 @@ zstd = { version = "0.13.3", optional = true }
 strum = { version = "0.28", features = ["derive"] } # for enum string conversion
 atomic_enum = "0.3.0" # for atomic enum
 enumflags2 = "0.7" # for enum flags
-struct-patch = { version = "0.12" }
+struct-patch = { version = "0.13" }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_with = { version = "3.20.0", features = ["indexmap_2", "json"] }

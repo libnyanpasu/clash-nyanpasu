@@ -422,3 +422,261 @@ impl ServiceClient {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use super::*;
+    use crate::core::actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, ExecutionHost};
+    use nyanpasu_ipc::api::status::{CoreInfos, CoreState, StatusResBody};
+    use std::borrow::Cow;
+
+    /// A scriptable daemon: `state` drives what probe answers; commands
+    /// mutate it the way the real SCM would.
+    struct FakeDaemon {
+        /// (installed, running, version)
+        state: Mutex<(bool, bool, String)>,
+        installs: AtomicUsize,
+        starts: AtomicUsize,
+        updates: AtomicUsize,
+        uninstalls: AtomicUsize,
+        core_running: std::sync::atomic::AtomicBool,
+    }
+
+    impl FakeDaemon {
+        fn new(installed: bool, running: bool, version: &str) -> Arc<Self> {
+            Arc::new(Self {
+                state: Mutex::new((installed, running, version.to_owned())),
+                installs: AtomicUsize::new(0),
+                starts: AtomicUsize::new(0),
+                updates: AtomicUsize::new(0),
+                uninstalls: AtomicUsize::new(0),
+                core_running: std::sync::atomic::AtomicBool::new(false),
+            })
+        }
+    }
+
+    struct NullEndpoint;
+    impl ControlEndpoint for NullEndpoint {
+        fn host(&self) -> ExecutionHost {
+            ExecutionHost::Service
+        }
+        fn submit<'a>(
+            &'a self,
+            _envelope: nyanpasu_core_manager::CoreCommandEnvelope,
+        ) -> BoxFuture<'a, Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError>> {
+            unimplemented!("routing is the CoreActor business")
+        }
+        fn wait_operation<'a>(
+            &'a self,
+            _id: nyanpasu_core_manager::OperationId,
+            _timeout: std::time::Duration,
+        ) -> BoxFuture<'a, Option<nyanpasu_ipc::api::core::v2::OperationInfo>> {
+            unimplemented!()
+        }
+        fn status<'a>(&'a self) -> BoxFuture<'a, Result<CoreStatusSnapshot, CoreError>> {
+            unimplemented!()
+        }
+    }
+
+    impl ServiceHostAdapter for FakeDaemon {
+        fn probe(&self) -> BoxFuture<'_, StatusInfo<'static>> {
+            Box::pin(async move {
+                let (installed, running, version) = self.state.lock().unwrap().clone();
+                let status = match (installed, running) {
+                    (false, _) => ServiceStatus::NotInstalled,
+                    (true, false) => ServiceStatus::Stopped,
+                    (true, true) => ServiceStatus::Running,
+                };
+                let server = (installed && running).then(|| StatusResBody {
+                    version: Cow::Owned(version.clone()),
+                    core_infos: CoreInfos {
+                        r#type: None,
+                        state: if self.core_running.load(Ordering::SeqCst) {
+                            CoreState::Running
+                        } else {
+                            CoreState::Stopped(None)
+                        },
+                        state_changed_at: 0,
+                        config_path: None,
+                        controller: None,
+                        health: None,
+                        revision: None,
+                        detail: None,
+                    },
+                    runtime_infos: nyanpasu_ipc::api::status::RuntimeInfos {
+                        service_data_dir: Cow::Owned(std::path::PathBuf::new()),
+                        service_config_dir: Cow::Owned(std::path::PathBuf::new()),
+                        nyanpasu_config_dir: Cow::Owned(std::path::PathBuf::new()),
+                        nyanpasu_data_dir: Cow::Owned(std::path::PathBuf::new()),
+                    },
+                    logs: None,
+                });
+                StatusInfo {
+                    name: Cow::Borrowed("nyanpasu-service"),
+                    version: Cow::Borrowed("test"),
+                    status,
+                    server,
+                }
+            })
+        }
+        fn install(&self) -> BoxFuture<'_, Result<(), String>> {
+            Box::pin(async move {
+                self.installs.fetch_add(1, Ordering::SeqCst);
+                let mut state = self.state.lock().unwrap();
+                state.0 = true;
+                state.1 = true; // install auto-starts, like most platforms
+                Ok(())
+            })
+        }
+        fn uninstall(&self) -> BoxFuture<'_, Result<(), String>> {
+            Box::pin(async move {
+                self.uninstalls.fetch_add(1, Ordering::SeqCst);
+                *self.state.lock().unwrap() = (false, false, String::new());
+                Ok(())
+            })
+        }
+        fn start_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
+            Box::pin(async move {
+                self.starts.fetch_add(1, Ordering::SeqCst);
+                self.state.lock().unwrap().1 = true;
+                Ok(())
+            })
+        }
+        fn stop_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
+            Box::pin(async move {
+                self.state.lock().unwrap().1 = false;
+                Ok(())
+            })
+        }
+        fn update(&self) -> BoxFuture<'_, Result<(), String>> {
+            Box::pin(async move {
+                self.updates.fetch_add(1, Ordering::SeqCst);
+                self.state.lock().unwrap().2 = "2.0.0".to_owned();
+                Ok(())
+            })
+        }
+        fn endpoint(&self) -> EndpointHandle {
+            Arc::new(NullEndpoint)
+        }
+    }
+
+    #[tokio::test]
+    async fn ensure_ready_converges_from_not_installed_through_the_gate() {
+        let daemon = FakeDaemon::new(false, false, "2.0.0");
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+
+        let endpoint = client.ensure_ready().await.unwrap();
+        assert_eq!(endpoint.host(), ExecutionHost::Service);
+        assert_eq!(daemon.installs.load(Ordering::SeqCst), 1);
+        assert_eq!(client.status().phase, ServicePhase::Ready);
+        assert!(matches!(
+            client.status().compat,
+            ServiceCompat::Compatible { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_outdated_daemon_is_upgraded_once_at_startup() {
+        let daemon = FakeDaemon::new(true, true, "1.4.5");
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        // pre_start already reconciled: one update, then the gate passes.
+        assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
+        assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
+    }
+
+    #[tokio::test]
+    async fn the_version_gate_fails_closed() {
+        let daemon = FakeDaemon::new(true, true, "1.4.5");
+        // The startup auto-update is stubbed into a no-op that leaves the old
+        // version in place.
+        struct StubbornDaemon(Arc<FakeDaemon>);
+        impl ServiceHostAdapter for StubbornDaemon {
+            fn probe(&self) -> BoxFuture<'_, StatusInfo<'static>> {
+                self.0.probe()
+            }
+            fn install(&self) -> BoxFuture<'_, Result<(), String>> {
+                self.0.install()
+            }
+            fn uninstall(&self) -> BoxFuture<'_, Result<(), String>> {
+                self.0.uninstall()
+            }
+            fn start_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
+                self.0.start_daemon()
+            }
+            fn stop_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
+                self.0.stop_daemon()
+            }
+            fn update(&self) -> BoxFuture<'_, Result<(), String>> {
+                Box::pin(async { Ok(()) }) // succeeds without changing anything
+            }
+            fn endpoint(&self) -> EndpointHandle {
+                self.0.endpoint()
+            }
+        }
+        let client = ServiceClient::spawn(Arc::new(StubbornDaemon(daemon)), 2)
+            .await
+            .unwrap();
+        let error = client
+            .ensure_ready()
+            .await
+            .err()
+            .expect("the gate must fail closed");
+        assert!(!error.retryable, "fail-closed is not a retry loop");
+        assert_eq!(client.status().phase, ServicePhase::Incompatible);
+    }
+
+    #[tokio::test]
+    async fn uninstall_refuses_while_the_daemon_owns_a_running_core() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        daemon.core_running.store(true, Ordering::SeqCst);
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+
+        let error = client.uninstall().await.unwrap_err();
+        assert_eq!(error.kind, Some(CoreErrorKind::AlreadyRunning));
+        assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 0);
+
+        // After the core is handed off, uninstall proceeds (stop + uninstall).
+        daemon.core_running.store(false, Ordering::SeqCst);
+        client.uninstall().await.unwrap();
+        assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 1);
+        assert_eq!(client.status().phase, ServicePhase::NotInstalled);
+    }
+
+    #[tokio::test]
+    async fn endpoint_down_restarts_within_budget_then_latches_exhausted() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        let client = ServiceClient::spawn(daemon.clone(), 1).await.unwrap();
+
+        // Daemon dies; the first report restarts it within budget.
+        daemon.state.lock().unwrap().1 = false;
+        client.report_endpoint_down();
+        let status = client.probe().await.unwrap();
+        assert_eq!(status.phase, ServicePhase::Ready);
+        assert_eq!(daemon.starts.load(Ordering::SeqCst), 1);
+
+        // Dies again with the budget spent: honest exhaustion latch.
+        daemon.state.lock().unwrap().1 = false;
+        client.report_endpoint_down(); // attempt 2 > budget 1 -> Exhausted
+        let mut status_rx = client.subscribe();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if status_rx.borrow_and_update().phase == ServicePhase::Exhausted {
+                    break;
+                }
+                status_rx.changed().await.unwrap();
+            }
+        })
+        .await
+        .expect("the spent budget must latch Exhausted");
+
+        // EnsureReady is the explicit escape: it resets the budget and
+        // converges again.
+        client.ensure_ready().await.unwrap();
+        assert_eq!(client.status().phase, ServicePhase::Ready);
+    }
+}

@@ -131,8 +131,8 @@ importers:
         specifier: 0.27.20
         version: 0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@hookform/resolvers':
-        specifier: 5.7.1
-        version: 5.7.1(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.85.0(react@19.2.8))(zod@4.4.3)
+        specifier: 5.8.0
+        version: 5.8.0(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.85.0(react@19.2.8))(zod@4.4.3)
       '@inlang/paraglide-js':
         specifier: 2.23.2
         version: 2.23.2(typescript@7.0.2)(vite@8.2.1(@types/node@24.13.3)(jiti@2.7.0)(less@4.8.1(supports-color@10.2.2))(sass-embedded@1.102.0)(sass@1.102.0)(terser@5.36.0)(yaml@2.9.0))
@@ -1152,8 +1152,8 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
-  '@hookform/resolvers@5.7.1':
-    resolution: {integrity: sha512-8wS/P4UDr5sQDe4nFaV51TVyfDPrWgNIXweqG0Bs9Z5LSuzKLb+RQNPvkN2oHM5SRrJyWrVH/F+LOUcFjUyvwQ==}
+  '@hookform/resolvers@5.8.0':
+    resolution: {integrity: sha512-2m6GvRLmYYK1Fwt093lGMf7db9l/+8pNuAtwoNkpBntJT4xcA5lNthYGWKViOc3z2SuaPD0HjE81pyXmqc1JyA==}
     peerDependencies:
       '@sinclair/typebox': '>=0.25.24'
       '@standard-schema/spec': ^1.0.0
@@ -1177,7 +1177,7 @@ packages:
       superstruct: '>=0.12.0'
       typanion: ^3.3.2
       valibot: '>=0.31.0 || ^1.0.0-beta.4 || ^1.0.0-rc'
-      vest: '>=3.0.0'
+      vest: '>=6.0.0'
       yup: ^1.0.0
       zod: ^3.25.0 || ^4.0.0
     peerDependenciesMeta:
@@ -7706,7 +7706,7 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@hookform/resolvers@5.7.1(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.85.0(react@19.2.8))(zod@4.4.3)':
+  '@hookform/resolvers@5.8.0(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.85.0(react@19.2.8))(zod@4.4.3)':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.85.0(react@19.2.8)

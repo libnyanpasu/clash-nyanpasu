@@ -134,8 +134,8 @@ importers:
         specifier: 5.8.0
         version: 5.8.0(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.85.0(react@19.2.8))(zod@4.4.3)
       '@inlang/paraglide-js':
-        specifier: 2.23.2
-        version: 2.23.2(typescript@7.0.2)(vite@8.2.1(@types/node@24.13.3)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(sass-embedded@1.102.0)(sass@1.102.0)(terser@5.36.0)(yaml@2.9.0))
+        specifier: 2.24.0
+        version: 2.24.0(typescript@7.0.2)(vite@8.2.1(@types/node@24.13.3)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(sass-embedded@1.102.0)(sass@1.102.0)(terser@5.36.0)(yaml@2.9.0))
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -1257,8 +1257,8 @@ packages:
   '@iconify/utils@3.1.0':
     resolution: {integrity: sha512-Zlzem1ZXhI1iHeeERabLNzBHdOa4VhQbqAcOQaMKuTuyZCpwKbC2R4Dd0Zo3g9EAc+Y4fiarO8HIHRAth7+skw==}
 
-  '@inlang/paraglide-js@2.23.2':
-    resolution: {integrity: sha512-tzWnZ6DEQ3JRxpSM/lsmfUFSNXLymvlfUei4uX1lo/Qh3a8OfxZ5nchGrEM+p0aLX4m5ZMrVuMKfaD0qXJFeoA==}
+  '@inlang/paraglide-js@2.24.0':
+    resolution: {integrity: sha512-xI5nFnqcapa2CrSY0Z0VotC1Dt6+vBZEcb8zqR7mX6C+NP5CfztxxTccjBwdVmPZqm7OzmEY9auhRA7W54jibg==}
     hasBin: true
     peerDependencies:
       typescript: '>=5.6'
@@ -1272,8 +1272,8 @@ packages:
   '@inlang/recommend-sherlock@0.2.1':
     resolution: {integrity: sha512-ckv8HvHy/iTqaVAEKrr+gnl+p3XFNwe5D2+6w6wJk2ORV2XkcRkKOJ/XsTUJbPSiyi4PI+p+T3bqbmNx/rDUlg==}
 
-  '@inlang/sdk@2.10.0':
-    resolution: {integrity: sha512-xLVRHAI9Jw6L/NrlK6s1mXCvbFwzk5INEL4i3By4jW9yjIMchJ+JGSw4WgFpiLlcoBuR/qIMmSn6te/Jozuybg==}
+  '@inlang/sdk@3.0.0':
+    resolution: {integrity: sha512-jUo4NkxlreP22ZppCXygMp2gdgqkIcc0rt+dEruC9ylmESqRyWEF6muzIMsyU1CMKIhR6dxOtGG2v+H+MNu43w==}
     engines: {node: '>=20.0.0'}
 
   '@jridgewell/gen-mapping@0.3.12':
@@ -1307,12 +1307,28 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@lix-js/sdk@0.4.10':
-    resolution: {integrity: sha512-0dMInAJK/67guTG5rRZaCEhvzC5cCXENOjaePA5AqMXrCE97kaY7SRor9e2vnoGsFIiGqXKlT0MCIoZj36G0gg==}
-    engines: {node: '>=18'}
+  '@lix-js/sdk-darwin-arm64@0.12.0':
+    resolution: {integrity: sha512-Pt6Q17kpvoTJCBaUdo5SfXuDFf1Fx2vODvnWlFILBmwV7xzUh9g2ALRF8nZr2jDWSeAi6g8PnjXDvryp2ug81g==}
+    cpu: [arm64]
+    os: [darwin]
 
-  '@lix-js/server-protocol-schema@0.1.1':
-    resolution: {integrity: sha512-jBeALB6prAbtr5q4vTuxnRZZv1M2rKe8iNqRQhFJ4Tv7150unEa0vKyz0hs8Gl3fUGsWaNJBh3J8++fpbrpRBQ==}
+  '@lix-js/sdk-linux-arm64@0.12.0':
+    resolution: {integrity: sha512-tI+yZ6DOHIZhsblXMdMhFlq1k5m0Jc+/MF7im5MWzHk7KtYzdInW40uzg5NdjXkqlkFPsnugiNJzuCHCaW2XBg==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@lix-js/sdk-linux-x64@0.12.0':
+    resolution: {integrity: sha512-OTvkeZ3LNp3b1uHWBHGYPpeSQAv7NLj/kXbaUY1CMCyvZCFoWRvvz9Fmojv0mdWJV0j5qenJZF42XCiXVtcbrQ==}
+    cpu: [x64]
+    os: [linux]
+
+  '@lix-js/sdk-win32-x64@0.12.0':
+    resolution: {integrity: sha512-5THoK6ZEvYveHPmD23hEdxhElZw1OxunWof/ZCR6OlX2scfvCadEQ/snDAg1vXeelAh3VrZTh3fzPCO8rF/Rew==}
+    cpu: [x64]
+    os: [win32]
+
+  '@lix-js/sdk@0.12.0':
+    resolution: {integrity: sha512-Vn4IYLmQyvqrVM+wcpzK6yDAZoK2Q4Hi9wRSsslfr1CcLQanRV1Tfheb5Kh2xy5NBLLbzFmFLsl7ElIKo8wVuA==}
 
   '@material/material-color-utilities@0.4.0':
     resolution: {integrity: sha512-dlq6VExJReb8dhjj3a/yTigr3ncNwoFmL5Iy2ENtbDX03EmNeOEdZ+vsaGrj7RTuO+mB7L58II4LCsl4NpM8uw==}
@@ -4372,14 +4388,6 @@ packages:
   decode-named-character-reference@1.0.2:
     resolution: {integrity: sha512-O8x12RzrUF8xyVcY0KJowWsmaJxQbmy0/EtnNtHRpsOcT7dFk5W598coHqBVpmWo1oQQfsCqfCmkZN5DJrZVdg==}
 
-  dedent@1.5.1:
-    resolution: {integrity: sha512-+LxW+KLWxu3HW3M2w2ympwtqPrqYRzU8fqi6Fhd18fBALe15blJPI/I4+UHveMVG6lJqB4JNd4UG0S5cnVHwIg==}
-    peerDependencies:
-      babel-plugin-macros: ^3.1.0
-    peerDependenciesMeta:
-      babel-plugin-macros:
-        optional: true
-
   define-lazy-prop@2.0.0:
     resolution: {integrity: sha512-Ds09qNh8yw3khSjiJjiUInaGX9xlqZDY7JVryGxdxV7NPeuqQfplOpQ66yJFZut3jLa5zOwkXw1g9EI2uKh4Og==}
     engines: {node: '>=8'}
@@ -4576,6 +4584,9 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
   file-entry-cache@11.1.3:
     resolution: {integrity: sha512-oMbq0PD6VIiIwMF6LIa7MEwd/l9huKwmqRKXqmrkqIZv8CvRbfowL+L0ryAl8h//HfAS0zS+4SbYoRyAoA6BJA==}
 
@@ -4736,10 +4747,6 @@ packages:
   htmlparser2@9.1.0:
     resolution: {integrity: sha512-5zfg6mHUoaer/97TxnGpxmbR7zJtPwIYFMZ/H5ucTlPZhKvtum05yiPK3Mgai3a0DyVxv7qYqoweaEd2nrYQzQ==}
 
-  human-id@4.1.3:
-    resolution: {integrity: sha512-tsYlhAYpjCKa//8rXZ9DqKEawhPoSytweBC2eNvcaDK+57RZLHGqNs3PZTQO6yekLFSuvA6AlnAfrw1uBvtb+Q==}
-    hasBin: true
-
   husky@9.1.7:
     resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
     engines: {node: '>=18'}
@@ -4881,9 +4888,6 @@ packages:
 
   js-cookie@3.0.8:
     resolution: {integrity: sha512-yeJd4aNAdYZQjaon2bpD/Gb0B/omw7HQOsynXXcOiWVCacbBcPlgn8S/d1X6blFSaHao7ozqtW7NZW19xpCtIw==}
-
-  js-sha256@0.11.1:
-    resolution: {integrity: sha512-o6WSo/LUvY2uC4j7mO50a2ms7E/EAdbP0swigLV+nzHKTTaYnaLIWJ02VdXrsJX0vGedDESQnLsOekr94ryfjg==}
 
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
@@ -7743,10 +7747,10 @@ snapshots:
       '@iconify/types': 2.0.0
       mlly: 1.8.0
 
-  '@inlang/paraglide-js@2.23.2(typescript@7.0.2)(vite@8.2.1(@types/node@24.13.3)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(sass-embedded@1.102.0)(sass@1.102.0)(terser@5.36.0)(yaml@2.9.0))':
+  '@inlang/paraglide-js@2.24.0(typescript@7.0.2)(vite@8.2.1(@types/node@24.13.3)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(sass-embedded@1.102.0)(sass@1.102.0)(terser@5.36.0)(yaml@2.9.0))':
     dependencies:
       '@inlang/recommend-sherlock': 0.2.1
-      '@inlang/sdk': 2.10.0
+      '@inlang/sdk': 3.0.0
       commander: 11.1.0
       consola: 3.4.0
       json5: 2.2.3
@@ -7755,22 +7759,18 @@ snapshots:
     optionalDependencies:
       typescript: 7.0.2
       vite: 8.2.1(@types/node@24.13.3)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(sass-embedded@1.102.0)(sass@1.102.0)(terser@5.36.0)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - babel-plugin-macros
 
   '@inlang/recommend-sherlock@0.2.1':
     dependencies:
       comment-json: 4.5.0
 
-  '@inlang/sdk@2.10.0':
+  '@inlang/sdk@3.0.0':
     dependencies:
-      '@lix-js/sdk': 0.4.10
+      '@lix-js/sdk': 0.12.0
       '@sinclair/typebox': 0.31.28
       kysely: 0.28.14
       sqlite-wasm-kysely: 0.3.0(kysely@0.28.14)
       uuid: 14.0.0
-    transitivePeerDependencies:
-      - babel-plugin-macros
 
   '@jridgewell/gen-mapping@0.3.12':
     dependencies:
@@ -7806,19 +7806,26 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@lix-js/sdk@0.4.10':
-    dependencies:
-      '@lix-js/server-protocol-schema': 0.1.1
-      dedent: 1.5.1
-      human-id: 4.1.3
-      js-sha256: 0.11.1
-      kysely: 0.28.14
-      sqlite-wasm-kysely: 0.3.0(kysely@0.28.14)
-      uuid: 14.0.0
-    transitivePeerDependencies:
-      - babel-plugin-macros
+  '@lix-js/sdk-darwin-arm64@0.12.0':
+    optional: true
 
-  '@lix-js/server-protocol-schema@0.1.1': {}
+  '@lix-js/sdk-linux-arm64@0.12.0':
+    optional: true
+
+  '@lix-js/sdk-linux-x64@0.12.0':
+    optional: true
+
+  '@lix-js/sdk-win32-x64@0.12.0':
+    optional: true
+
+  '@lix-js/sdk@0.12.0':
+    dependencies:
+      fflate: 0.8.3
+    optionalDependencies:
+      '@lix-js/sdk-darwin-arm64': 0.12.0
+      '@lix-js/sdk-linux-arm64': 0.12.0
+      '@lix-js/sdk-linux-x64': 0.12.0
+      '@lix-js/sdk-win32-x64': 0.12.0
 
   '@material/material-color-utilities@0.4.0': {}
 
@@ -10613,8 +10620,6 @@ snapshots:
     dependencies:
       character-entities: 2.0.2
 
-  dedent@1.5.1: {}
-
   define-lazy-prop@2.0.0: {}
 
   delaunator@5.0.1:
@@ -10787,6 +10792,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
       picomatch: 4.0.5
+
+  fflate@0.8.3: {}
 
   file-entry-cache@11.1.3:
     dependencies:
@@ -10968,8 +10975,6 @@ snapshots:
       domutils: 3.2.2
       entities: 4.5.0
 
-  human-id@4.1.3: {}
-
   husky@9.1.7: {}
 
   hyphenate-style-name@1.1.0: {}
@@ -11076,8 +11081,6 @@ snapshots:
   jiti@2.7.0: {}
 
   js-cookie@3.0.8: {}
-
-  js-sha256@0.11.1: {}
 
   js-tokens@10.0.0: {}
 

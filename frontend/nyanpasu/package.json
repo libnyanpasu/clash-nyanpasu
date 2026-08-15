@@ -14,7 +14,7 @@
     "@dnd-kit/helpers": "0.5.0",
     "@dnd-kit/react": "0.5.0",
     "@floating-ui/react": "0.27.20",
-    "@hookform/resolvers": "5.8.0",
+    "@hookform/resolvers": "5.9.0",
     "@inlang/paraglide-js": "2.24.0",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.4.0",

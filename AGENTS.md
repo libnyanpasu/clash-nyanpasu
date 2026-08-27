@@ -547,6 +547,66 @@ git worktree list
 
 Removal reclaims only the worktree's own files and its symlinks (pointers back to main) — it never touches the main checkout's real `sidecar/` / `resources/`.
 
+## 18. Git Commit Rules
+
+### Stage only related files
+
+Before committing, run `git status` to review the changes, stage only the files related to this change with explicit paths (`git add <specific-path>`), then verify with `git diff --cached --stat`.
+
+Never use blanket staging such as `git add .`, `-A`, `--all`, or `*`. If something was staged by mistake, unstage it with `git reset HEAD <path>`.
+
+### One commit does one thing
+
+Every commit must be atomic, complete, and buildable.
+
+- One indivisible task is one commit.
+- Multiple independent tasks are split into multiple commits.
+- Do not commit code you know is broken.
+- Do not make fix-up (patch-style) commits on a development branch.
+
+If a commit on a development branch is flawed and has not been pushed, fix it with `git reset --soft HEAD~1` and recommit. If it has already been pushed, any rewrite, amend, or force push requires explicit consent first.
+
+Self-check before committing: does this change complete or correct the previous commit? If yes, fold it into the previous commit with `git reset --soft HEAD~1` and recommit instead of creating a new one. Even when two commits are each individually clean, a later commit that completes an earlier one is still a fix-up commit.
+
+Exploratory work may live on `temp/`, `wip/`, or `scratch/` branches. Do not merge those directly; create a clean branch and reorganize the work into atomic commits.
+
+### Commit message content
+
+The subject states what changed; the body explains why when the problem or the fix is not obvious.
+
+Subject rules:
+
+- Use the imperative mood, stay within 72 characters, and do not end with a period.
+- Describe the behavior or capability.
+
+Body rules:
+
+- A non-trivial change must have a body; the body may be omitted only when the subject is fully self-explanatory.
+- Explain the root cause and the rationale for the fix: why this is a bug and why this change is needed.
+- Do not enumerate changes file by file, and do not restate implementation steps that the diff already shows.
+- Describe only the final state relative to the parent commit, not differences between intermediate versions of the same patch (e.g. "v2 fixes X").
+
+### Trust the reader
+
+Assume the reader is a competent developer familiar with the project; do not explain what they already know:
+
+- How to build the project — that belongs in documentation, not in a commit message.
+- Obvious statements of usage. Counter-example:
+
+  ```text
+  Example usage:
+    # use mkv container:
+    ffmpeg -hwaccel d3d12va -hwaccel_output_format d3d12 -i input.mp4 -c:v av1_d3d12va output.mkv
+  ```
+
+- "Build succeeded" or "all tests green" — the commit's existence already implies it passed.
+
+Mention these only when they are genuinely non-obvious:
+
+- New test commands or tools that do not yet exist in the project.
+- Non-standard configuration required to reproduce the result.
+- Unusual constraints that affect how the data should be interpreted.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, clarifying questions come before implementation rather than after mistakes, and new code moves away from global singletons toward injected actor/pure-service composition.

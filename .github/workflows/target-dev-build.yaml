@@ -19,7 +19,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
-      portable: true
+      portable: false
       nightly: true
       bundle-type: 'both'
       arch: 'x86_64'
@@ -31,7 +31,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
-      portable: true
+      portable: false
       nightly: true
       bundle-type: 'both'
       arch: 'aarch64'

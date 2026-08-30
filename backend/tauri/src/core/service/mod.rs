@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 
 use crate::{config::Config, utils::dirs::app_install_dir};
 
+pub mod compat;
 pub mod control;
 pub mod ipc;
 

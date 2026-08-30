@@ -1,0 +1,20 @@
+{
+  "name": "nyanpasu-service",
+  "version": "2.0.0-rc.1",
+  "status": "running",
+  "server": {
+    "version": "1.4.5",
+    "core_infos": {
+      "type": { "clash": "mihomo" },
+      "state": { "Stopped": null },
+      "state_changed_at": 1753900000000,
+      "config_path": null
+    },
+    "runtime_infos": {
+      "service_data_dir": "/nonexistent/service/data",
+      "service_config_dir": "/nonexistent/service/config",
+      "nyanpasu_config_dir": "/nonexistent/nyanpasu/config",
+      "nyanpasu_data_dir": "/nonexistent/nyanpasu/data"
+    }
+  }
+}

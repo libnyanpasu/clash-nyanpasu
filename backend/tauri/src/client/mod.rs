@@ -237,6 +237,8 @@ struct NyanpasuClientInner {
     /// Serializes API-first running-core patches through desired-state rebuild
     /// and any revision-fenced compensation.
     clash_patch_gate: tokio::sync::Mutex<()>,
+    /// Serializes host handoff with service uninstall inside this app process.
+    host_transition: tokio::sync::Mutex<()>,
     system_dns: Arc<dyn SystemDnsCache>,
     /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
     /// core apply). The profiles actor only orders commits; without this gate
@@ -362,6 +364,7 @@ impl NyanpasuClient {
                 core,
                 clash_patch,
                 clash_patch_gate: tokio::sync::Mutex::new(()),
+                host_transition: tokio::sync::Mutex::new(()),
                 system_dns,
                 rebuild_gate: tokio::sync::Mutex::new(()),
                 rebuild,

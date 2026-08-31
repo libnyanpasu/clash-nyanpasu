@@ -10,6 +10,11 @@
 //! Desired state arrives by facade orchestration, never by config-watch
 //! subscription — two owners racing one change was the audited 5d/5e failure
 //! shape.
+//!
+//! The facade's host-transition lock coordinates only this app process. A
+//! second app instance or CLI can still race before the daemon is stopped;
+//! stopping it inside this mailbox turn is the point after which its control
+//! plane cannot admit another reconcile.
 
 use std::sync::Arc;
 
@@ -391,11 +396,23 @@ impl Actor for ServiceActor {
                         });
                     }
                     state.publish(ServicePhase::Uninstalling, ServiceCompat::Unknown);
-                    if info.status == ServiceStatus::Running {
-                        state
-                            .bounded(state.adapter.stop_daemon())
-                            .await
-                            .map_err(|error| ServiceActorState::command_error("stop", error))?;
+                    state
+                        .bounded(state.adapter.stop_daemon())
+                        .await
+                        .map_err(|error| ServiceActorState::command_error("stop", error))?;
+                    let stopped = state.bounded(state.adapter.probe()).await;
+                    if !matches!(
+                        stopped,
+                        Ok(StatusInfo {
+                            status: ServiceStatus::Stopped | ServiceStatus::NotInstalled,
+                            ..
+                        })
+                    ) {
+                        return Err(CoreError::new(
+                            CoreErrorKind::AlreadyRunning,
+                            "the daemon did not prove it stopped; uninstall was refused",
+                            false,
+                        ));
                     }
                     state
                         .bounded(state.adapter.uninstall())
@@ -486,14 +503,11 @@ fn command_and_probe_budget(command_timeout: std::time::Duration) -> std::time::
     command_timeout * 2 + CALL_BUDGET_SLACK
 }
 
-/// Caller bound for [`ServiceClient::uninstall`]. Four legs, worst case: the
-/// guard's own preflight probe, the conditional `stop_daemon` (only when
-/// that probe found the daemon `Running`), the `uninstall` call itself, and
-/// the handler's final `probe_and_publish`. All four sit on the same path
-/// when uninstalling a daemon that is running, which is the ordinary case
-/// this call exists for.
+/// Caller bound for [`ServiceClient::uninstall`]. Five legs: the guard probe,
+/// `stop_daemon`, the structural stopped-state proof, `uninstall`, and the
+/// handler's final `probe_and_publish`.
 fn uninstall_budget(command_timeout: std::time::Duration) -> std::time::Duration {
-    command_timeout * 4 + CALL_BUDGET_SLACK
+    command_timeout * 5 + CALL_BUDGET_SLACK
 }
 
 /// Caller bound for [`ServiceClient::ensure_ready`]. Six legs, worst case:
@@ -711,6 +725,8 @@ mod tests {
         /// F6: `install` never resolves, so only the actor's own bound can
         /// end it.
         hang_install: AtomicBool,
+        stop_succeeds: AtomicBool,
+        calls: Mutex<Vec<&'static str>>,
     }
 
     impl FakeDaemon {
@@ -727,6 +743,8 @@ mod tests {
                 fail_start: AtomicBool::new(false),
                 probe_fail: AtomicBool::new(false),
                 hang_install: AtomicBool::new(false),
+                stop_succeeds: AtomicBool::new(true),
+                calls: Mutex::new(Vec::new()),
             })
         }
 
@@ -761,6 +779,7 @@ mod tests {
     impl ServiceHostAdapter for FakeDaemon {
         fn probe(&self) -> BoxFuture<'_, Result<StatusInfo<'static>, String>> {
             Box::pin(async move {
+                self.calls.lock().unwrap().push("probe");
                 if self.probe_fail.load(Ordering::SeqCst) {
                     return Err("probe unreachable".to_owned());
                 }
@@ -827,6 +846,7 @@ mod tests {
         }
         fn uninstall(&self) -> BoxFuture<'_, Result<(), String>> {
             Box::pin(async move {
+                self.calls.lock().unwrap().push("uninstall");
                 self.uninstalls.fetch_add(1, Ordering::SeqCst);
                 *self.state.lock().unwrap() = (false, false, String::new());
                 Ok(())
@@ -844,7 +864,10 @@ mod tests {
         }
         fn stop_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
             Box::pin(async move {
-                self.state.lock().unwrap().1 = false;
+                self.calls.lock().unwrap().push("stop_daemon");
+                if self.stop_succeeds.load(Ordering::SeqCst) {
+                    self.state.lock().unwrap().1 = false;
+                }
                 Ok(())
             })
         }
@@ -940,6 +963,33 @@ mod tests {
         client.uninstall().await.unwrap();
         assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 1);
         assert_eq!(client.status().phase, ServicePhase::NotInstalled);
+    }
+
+    #[tokio::test]
+    async fn uninstall_stops_the_daemon_before_removing_it() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        daemon.calls.lock().unwrap().clear();
+
+        client.uninstall().await.unwrap();
+
+        let calls = daemon.calls.lock().unwrap().clone();
+        assert_eq!(&calls[..4], &["probe", "stop_daemon", "probe", "uninstall"]);
+    }
+
+    #[tokio::test]
+    async fn uninstall_refuses_when_the_daemon_will_not_stop() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
+        daemon.stop_succeeds.store(false, Ordering::SeqCst);
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        daemon.calls.lock().unwrap().clear();
+
+        let error = client.uninstall().await.unwrap_err();
+
+        assert_eq!(error.kind, Some(CoreErrorKind::AlreadyRunning));
+        assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
@@ -1281,7 +1331,7 @@ mod tests {
     /// message; `EnsureReady`'s own worst case is six sequential bounded legs
     /// (`converge`'s three probes plus its conditional install and start,
     /// plus `ensure_ready`'s recovery probe on failure -- see
-    /// `ensure_ready_budget`'s doc), and `Uninstall`'s is four. A timing test
+    /// `ensure_ready_budget`'s doc), and `Uninstall`'s is five. A timing test
     /// cannot discriminate this at safe-for-CI durations: shrinking
     /// `command_timeout` shrinks every leg together, so the fixed 30s slack
     /// swamps the gap at any tiny bound and the pre-fix code would pass a
@@ -1297,7 +1347,7 @@ mod tests {
         ] {
             let one_leg = command_timeout;
             let two_legs = command_timeout * 2;
-            let four_legs = command_timeout * 4;
+            let five_legs = command_timeout * 5;
             let six_legs = command_timeout * 6;
 
             assert!(
@@ -1309,8 +1359,8 @@ mod tests {
                 "command_and_probe_budget must outlast {two_legs:?} at command_timeout={command_timeout:?}"
             );
             assert!(
-                uninstall_budget(command_timeout) > four_legs,
-                "uninstall_budget must outlast {four_legs:?} at command_timeout={command_timeout:?}"
+                uninstall_budget(command_timeout) > five_legs,
+                "uninstall_budget must outlast {five_legs:?} at command_timeout={command_timeout:?}"
             );
             assert!(
                 ensure_ready_budget(command_timeout) > six_legs,
@@ -1326,7 +1376,7 @@ mod tests {
         // uninstall side effects still in flight.
         let old_fixed_budget = DEFAULT_SERVICE_COMMAND_TIMEOUT + std::time::Duration::from_secs(30);
         let ensure_ready_worst_case = DEFAULT_SERVICE_COMMAND_TIMEOUT * 6;
-        let uninstall_worst_case = DEFAULT_SERVICE_COMMAND_TIMEOUT * 4;
+        let uninstall_worst_case = DEFAULT_SERVICE_COMMAND_TIMEOUT * 5;
         assert!(ensure_ready_worst_case > old_fixed_budget);
         assert!(uninstall_worst_case > old_fixed_budget);
         assert!(ensure_ready_budget(DEFAULT_SERVICE_COMMAND_TIMEOUT) > ensure_ready_worst_case);

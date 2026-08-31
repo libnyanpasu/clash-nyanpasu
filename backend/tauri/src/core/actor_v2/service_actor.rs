@@ -107,6 +107,16 @@ pub enum ServiceActorMessage {
     StopDaemon {
         reply: RpcReplyPort<Result<(), CoreError>>,
     },
+    /// Adopt-only counterpart to `EnsureReady`: one probe, and the endpoint
+    /// back only if that same probe says `Ready`. It never installs, starts,
+    /// or updates, so a caller that must not raise a UAC prompt -- boot
+    /// restoring a persisted host -- can ask for the daemon without ever
+    /// converging one. Deciding from a cached phase and then calling
+    /// `EnsureReady` is not the same thing: the daemon can stop in between,
+    /// and the convergence would run.
+    AdoptIfReady {
+        reply: RpcReplyPort<Result<EndpointHandle, CoreError>>,
+    },
     /// Explicit probe. It reports and never escapes: `Exhausted` is cleared
     /// only by an explicit `EnsureReady`, which is the same rule as the
     /// variant's own doc.
@@ -340,6 +350,21 @@ impl Actor for ServiceActor {
         match message {
             ServiceActorMessage::EnsureReady { reply } => {
                 let _ = reply.send(state.ensure_ready().await);
+            }
+            ServiceActorMessage::AdoptIfReady { reply } => {
+                let (_, compat, phase) = state.probe_and_publish().await;
+                let result = if phase == ServicePhase::Ready {
+                    Ok(state.adapter.endpoint())
+                } else {
+                    Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        format!(
+                            "the daemon is {phase:?} ({compat:?}); adopting it would have to install or start it"
+                        ),
+                        true,
+                    ))
+                };
+                let _ = reply.send(result);
             }
             ServiceActorMessage::Install { reply } => {
                 state.publish(ServicePhase::Installing, ServiceCompat::Unknown);
@@ -635,6 +660,17 @@ impl ServiceClient {
         self.call(
             |reply| ServiceActorMessage::EnsureReady { reply },
             self.ensure_ready_budget,
+        )
+        .await?
+    }
+
+    /// The endpoint of a daemon that is already `Ready`, or an error. Unlike
+    /// [`Self::ensure_ready`] this never converges, so its worst case is a
+    /// single probe leg and it borrows `probe`'s budget.
+    pub async fn adopt_if_ready(&self) -> Result<EndpointHandle, CoreError> {
+        self.call(
+            |reply| ServiceActorMessage::AdoptIfReady { reply },
+            self.probe_budget,
         )
         .await?
     }

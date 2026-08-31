@@ -598,29 +598,26 @@ impl NyanpasuClient {
     /// reconcile decides where the core comes up. Without this the app boots
     /// every service-mode user onto a local child process.
     ///
-    /// A failing handoff leaves the app on Local rather than failing the boot:
+    /// A failing adoption leaves the app on Local rather than failing the boot:
     /// that is what the legacy `RunType` classification did when the daemon
     /// was not reachable, and the caller logs the degradation. No reconcile
     /// happens here -- the boot sequence runs one immediately afterwards, and
     /// a second would start the core twice.
+    ///
+    /// It adopts, and never converges. The legacy classification picked Service
+    /// only while the IPC was connected, so booting never installed or started
+    /// the daemon -- and never raised a UAC prompt -- on the user's behalf.
+    /// Reading a phase here and then calling the converging path would not be
+    /// the same guarantee, because the daemon can stop in between; the actor
+    /// decides from the one probe it takes itself.
     pub async fn restore_execution_host(&self) -> Result<()> {
         if !self.get_app_config().await?.enable_service_mode {
-            return Ok(());
-        }
-        // Adopt the daemon only when it is already up and compatible; never
-        // converge it. The legacy `RunType` classification picked Service only
-        // while the IPC was connected, so booting never installed or started
-        // the daemon -- and never raised a UAC prompt -- on the user's behalf.
-        if !matches!(
-            self.service_status().phase,
-            crate::core::actor_v2::service_actor::ServicePhase::Ready
-        ) {
             return Ok(());
         }
         let _transition = self.inner.host_transition.lock().await;
         self.inner
             .core_v2
-            .change_execution_host(ExecutionHost::Service)
+            .adopt_service_host()
             .await
             .map_err(client_error_from_core)?;
         Ok(())
@@ -1895,7 +1892,10 @@ pub(crate) mod tests {
             &self,
         ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
         {
-            Box::pin(async { Ok(()) })
+            Box::pin(async move {
+                self.calls.lock().unwrap().push("install");
+                Ok(())
+            })
         }
 
         fn uninstall(
@@ -1909,7 +1909,10 @@ pub(crate) mod tests {
             &self,
         ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
         {
-            Box::pin(async { Ok(()) })
+            Box::pin(async move {
+                self.calls.lock().unwrap().push("start_daemon");
+                Ok(())
+            })
         }
 
         fn stop_daemon(
@@ -2854,13 +2857,41 @@ pub(crate) mod tests {
         });
     }
 
-    /// Boot has to restore the persisted execution host -- the core actor
-    /// always spawns on Local -- but only by adopting a daemon that is already
-    /// up. Converging one here would install and start the service, raising a
-    /// UAC prompt at every launch for a user who merely left the setting on,
-    /// which the legacy `RunType` classification never did.
+    /// Boot has to restore the persisted execution host, because the core
+    /// actor always spawns on Local.
     #[test]
-    fn boot_restore_adopts_only_an_already_ready_daemon() {
+    fn boot_restore_moves_to_the_service_host_when_the_daemon_is_ready() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone());
+
+        tauri::async_runtime::block_on(async {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.enable_service_mode = Some(true);
+            client.patch_app_config(patch).await.unwrap();
+
+            client.restore_execution_host().await.unwrap();
+
+            assert_eq!(client.core_status().host, ExecutionHost::Service);
+        });
+
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls
+                .iter()
+                .any(|call| *call == "install" || *call == "start_daemon"),
+            "adopting a ready daemon must not converge it: {calls:?}"
+        );
+    }
+
+    /// ...but only by adopting a daemon that is already up. Converging one
+    /// would install and start the service, raising a UAC prompt at every
+    /// launch for a user who merely left the setting on, which the legacy
+    /// `RunType` classification never did. The refusal has to come from the
+    /// probe the actor takes itself -- a phase read before the call is a
+    /// different guarantee, because the daemon can stop in between.
+    #[test]
+    fn boot_restore_refuses_to_converge_an_absent_daemon() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         let client =
@@ -2871,8 +2902,12 @@ pub(crate) mod tests {
             patch.enable_service_mode = Some(true);
             client.patch_app_config(patch).await.unwrap();
 
-            client.restore_execution_host().await.unwrap();
+            let result = client.restore_execution_host().await;
 
+            assert!(
+                result.is_err(),
+                "an absent daemon cannot be adopted, and boot must hear about it"
+            );
             assert_eq!(
                 client.core_status().host,
                 ExecutionHost::Local,

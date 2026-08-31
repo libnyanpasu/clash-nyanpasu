@@ -138,6 +138,14 @@ impl CoreFacade {
         self.core.change_host(target).await
     }
 
+    /// Move to the Service host only if the daemon is already `Ready`, never
+    /// by converging one. Boot uses this to restore a persisted host without
+    /// installing or starting a service on the user's behalf.
+    pub async fn adopt_service_host(&self) -> Result<HandoffReport, CoreError> {
+        let target = self.service.adopt_if_ready().await?;
+        self.core.change_host(target).await
+    }
+
     pub fn core_status(&self) -> CoreStatusProjection {
         self.core.status()
     }

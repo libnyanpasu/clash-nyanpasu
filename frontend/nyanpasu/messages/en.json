@@ -324,6 +324,7 @@
   "dashboard_widget_proxy_status_occupied": "Used by Other Programs",
   "dashboard_widget_proxy_status_disabled": "Disabled",
   "dashboard_widget_core_status": "Core Status",
+  "dashboard_widget_core_status_loading": "Checking core status...",
   "dashboard_widget_core_status_running": "Running",
   "dashboard_widget_core_status_stopped": "Stopped",
   "dashboard_widget_core_status_running_by_service": "Running by Service",

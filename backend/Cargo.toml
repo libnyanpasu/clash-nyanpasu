@@ -12,11 +12,13 @@ members = [
   # sidecar/resource (see tauri.conf.json externalBin / resources).
   "fake-core",
 ]
+# `nyanpasu-runtime` is a submodule with its own workspace root. Without this
+# exclude, cargo pulls its member crates into this workspace and their
+# `workspace = true` inheritance resolves against this root, which has no
+# `anyhow` entry — surfacing as `dependency.anyhow was not found`.
+exclude = ["nyanpasu-runtime"]
 
 [patch.crates-io]
-
-[patch."https://github.com/libnyanpasu/nyanpasu-service.git"]
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git" }
 
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"
@@ -26,20 +28,16 @@ authors = ["zzzgydi", "keiko233"]
 
 [workspace.dependencies]
 # --- nyanpasu ---
-# Deliberately not pinned with `rev`: nyanpasu-ipc depends on nyanpasu-utils via
-# the same git URL on its default branch. A `rev` here would give the two
-# references different source ids, duplicating every crate in the nyanpasu-utils
-# workspace (nyanpasu-utils/dirs-utils/network-utils/os-utils). Cargo.lock pins
-# the exact commit for both.
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
+# These crates come from the `backend/nyanpasu-runtime` submodule; the gitlink is
+# the pin. `scripts/check.ts` derives the sidecar version from that submodule's
+# `nyanpasu_service/Cargo.toml` and downloads the release tagged with it, so the
+# IPC client and the `nyanpasu-service` binary follow one pin -- but only as far
+# as that crate version has been bumped. A gitlink ahead of the last version bump
+# downloads a daemon older than the protocol these crates speak.
+nyanpasu-utils = { path = "nyanpasu-runtime/crates/nyanpasu-utils", features = [
   "specta",
 ] }
-# TODO: temporarily pinned to the v1.4.5 release tag instead of the default
-# branch, so the IPC client stays on the same released version as the
-# nyanpasu-service sidecar pinned in `scripts/check.ts`. Unlike the `rev` case
-# above this is safe: nyanpasu-service.git is referenced exactly once, and the
-# `[patch]` entry keys on the bare URL. Unpin when both sides move together.
-nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", tag = "v1.4.5", features = [
+nyanpasu-ipc = { path = "nyanpasu-runtime/nyanpasu_ipc", features = [
   "client",
   "specta",
 ] } # IPC bridge between the UI process and service process

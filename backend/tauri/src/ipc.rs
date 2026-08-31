@@ -906,11 +906,30 @@ pub mod service {
     use super::Result;
     use crate::core::service;
 
+    /// `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
+    /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+    /// wire 是原结构的严格超集，前端既有消费点不受影响。
+    #[derive(serde::Serialize, specta::Type)]
+    pub struct ServiceStatusInfo<'a> {
+        pub name: std::borrow::Cow<'a, str>,
+        pub version: std::borrow::Cow<'a, str>,
+        pub status: nyanpasu_ipc::types::ServiceStatus,
+        pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'a>>,
+        pub compat: crate::core::service::compat::ServiceCompat,
+    }
+
     #[tauri::command]
     #[specta::specta]
-    pub async fn status_service<'a>() -> Result<nyanpasu_ipc::types::StatusInfo<'a>> {
-        let res = (service::control::status().await)?;
-        Ok(res)
+    pub async fn status_service<'a>() -> Result<ServiceStatusInfo<'a>> {
+        let info = (service::control::status().await)?;
+        let compat = crate::core::service::compat::ServiceCompat::classify(&info);
+        Ok(ServiceStatusInfo {
+            name: info.name,
+            version: info.version,
+            status: info.status,
+            server: info.server,
+            compat,
+        })
     }
 
     #[tauri::command]

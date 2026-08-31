@@ -493,6 +493,85 @@ fn x() {}
   assertEquals(buckets.migrationMarkers.total, 1);
 });
 
+Deno.test("scanFile: a doc comment's literal /core/* does not open a block comment", () => {
+  const buckets = createBuckets();
+  const source = `
+/// see /core/* here
+fn x() {
+    let _ = Config::verge();
+}
+`;
+  scanFile("backend/tauri/src/d.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 1);
+  assertEquals(buckets.configCalls.byKey.get("Config::verge()"), 1);
+});
+
+Deno.test("scanFile: // inside a string literal does not strip the rest of the line", () => {
+  const buckets = createBuckets();
+  const source = `
+fn x() {
+    let url = "http://example.com";
+    let _ = Config::verge();
+}
+`;
+  scanFile("backend/tauri/src/e.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 1);
+  assertEquals(buckets.configCalls.byKey.get("Config::verge()"), 1);
+});
+
+Deno.test("scanFile: a real multi-line block comment still hides code between /* and */", () => {
+  const buckets = createBuckets();
+  const source = `
+/* start
+   Config::verge() should not count
+*/
+fn x() {
+    let _ = Config::clash();
+}
+`;
+  scanFile("backend/tauri/src/f.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 1);
+  assertEquals(buckets.configCalls.byKey.get("Config::clash()"), 1);
+});
+
+Deno.test("scanFile: even backslash run before a closing quote does not misparse a trailing comment", () => {
+  const buckets = createBuckets();
+  // The string contains two escaped backslashes (an even run of 4 `\`), so
+  // the closing `"` is real and `/* Config::verge() */` is a real comment.
+  const source = String.raw`let s = "\\\\"; /* Config::verge() */
+`;
+  scanFile("backend/tauri/src/escape.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 0);
+});
+
+Deno.test("scanFile: a lone lifetime tick does not corrupt string/comment state for the rest of the line", () => {
+  const buckets = createBuckets();
+  const source = `let x: &'static str = "s"; /* Config::verge() */\n`;
+  scanFile("backend/tauri/src/lifetime.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 0);
+});
+
+Deno.test("scanFile: comment-like text inside a raw string is not treated as a real comment", () => {
+  const buckets = createBuckets();
+  const source =
+    `let s = r#"contains "// looks like a comment" text"#; let _ = Config::verge();\n`;
+  scanFile("backend/tauri/src/rawstr.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 1);
+  assertEquals(buckets.configCalls.byKey.get("Config::verge()"), 1);
+});
+
+Deno.test("scanFile: nested block comments only close at the matching outer */", () => {
+  const buckets = createBuckets();
+  const source = `
+/* outer /* inner */ still outer Config::verge() */
+Config::clash();
+`;
+  scanFile("backend/tauri/src/nested.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 1);
+  assertEquals(buckets.configCalls.byKey.get("Config::clash()"), 1);
+  assertEquals(buckets.configCalls.byKey.get("Config::verge()"), undefined);
+});
+
 Deno.test("scanFile: fn definitions of denylist helpers are not hits", () => {
   const buckets = createBuckets();
   const source = `
@@ -502,4 +581,78 @@ fn tray_icons_path(mode: &str) -> PathBuf { PathBuf::from(mode) }
 `;
   scanFile("backend/tauri/src/utils/tests.rs", source, buckets);
   assertEquals(buckets.testRealDirs.total, 0);
+});
+
+// Reviewer finding (Major): a lifetime apostrophe on a `#[cfg(test)]` item's
+// signature line must not make `stripLineComment`'s old quote tracking treat
+// a trailing `// }` as unstripped code — that fake `}` closed the item early
+// and dropped `app_home_dir()` out of the test mask, undercounting the hard
+// denylist. Sharing the literal-aware lexer with brace/item scanning fixes
+// this; the file path is deliberately not a dedicated test path so the bug
+// can't be masked by whole-file test detection.
+Deno.test("scanFile: lifetime in a cfg(test) fn signature does not truncate the item mask at a fake `// }`", () => {
+  const buckets = createBuckets();
+  const source = `
+#[cfg(test)]
+fn isolated<'a>() { // }
+    let _ = app_home_dir();
+}
+`;
+  scanFile("backend/tauri/src/lifetime_mask.rs", source, buckets);
+  assertEquals(buckets.testRealDirs.total, 1);
+  assert(
+    [...buckets.testRealDirs.byKey.keys()].some((k) =>
+      k.includes("app_home_dir")
+    ),
+  );
+});
+
+// Reviewer finding (Minor): raw C strings (`cr"..."`, `cr#"..."#`) were not
+// recognized as raw-string openers, so the opening `"` was treated as a
+// normal string. An odd backslash before the closing `"#` then left the
+// (fake) normal string unterminated for the rest of the line, swallowing the
+// real `Config::global()` call that follows.
+Deno.test('scanFile: cr#"..."# raw C string opener does not swallow real code after it', () => {
+  const buckets = createBuckets();
+  const source = String.raw`let value = cr#"\"#; Config::global();
+`;
+  scanFile("backend/tauri/src/raw_c_string.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 1);
+  assertEquals(buckets.configCalls.byKey.get("Config::global()"), 1);
+  assertEquals(buckets.serviceGlobals.total, 1);
+  assertEquals(buckets.serviceGlobals.byKey.get("Config::global()"), 1);
+});
+
+// Reviewer finding (Minor): string/raw-string/char-literal contents were
+// copied verbatim into `code` before the metric regexes ran, so metric-like
+// text inside a literal produced a false positive.
+Deno.test("scanFile: metric-like text inside a raw string literal is not counted", () => {
+  const buckets = createBuckets();
+  const source = `let example = r#"Config::global()"#;\n`;
+  scanFile("backend/tauri/src/literal_text.rs", source, buckets);
+  assertEquals(buckets.configCalls.total, 0);
+  assertEquals(buckets.serviceGlobals.total, 0);
+});
+
+// Bonus correctness win from sharing the lexer: a `}` inside a string
+// literal must not feed brace/item scanning, or it closes a cfg(test) item
+// early and drops the real code after it out of the test mask — the same
+// undercount shape as the Major finding, triggered by a brace instead of a
+// lifetime.
+Deno.test("scanFile: an unmatched brace inside a string literal does not end cfg(test) item scanning early", () => {
+  const buckets = createBuckets();
+  const source = `
+#[cfg(test)]
+fn braces_in_string() {
+    let _ = "unexpected } inside string";
+    let _ = app_home_dir();
+}
+`;
+  scanFile("backend/tauri/src/brace_in_string.rs", source, buckets);
+  assertEquals(buckets.testRealDirs.total, 1);
+  assert(
+    [...buckets.testRealDirs.byKey.keys()].some((k) =>
+      k.includes("app_home_dir")
+    ),
+  );
 });

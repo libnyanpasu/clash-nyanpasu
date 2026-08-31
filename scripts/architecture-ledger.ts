@@ -258,25 +258,144 @@ export function matchRealDirDenylist(
   return out;
 }
 
-function stripLineComment(line: string): string {
-  let inSingle = false;
+/**
+ * Recognizes a raw string opener: `r"`, `r#"`, `r##"`, ...; `br"`, `br#"`,
+ * ...; or the raw C string forms `cr"`, `cr#"`, ...
+ */
+const RAW_STRING_START_RE = /^(?:cr|br|r)(#*)"/;
+
+/**
+ * Recognizes a Rust character literal starting at `'`: `'x'`, `'\n'`, `'\''`,
+ * `'\\'`, `'\x41'`, `'\u{7FFF}'`. Anything else starting with `'` (`'a`,
+ * `'static`, `'_`) is a lifetime, not a char literal, and must not match.
+ */
+const CHAR_LITERAL_RE =
+  /^'(?:\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)|[^'\\])'/;
+
+/** True when `raw[index - 1]` (if any) is not an identifier character. */
+function isWordBoundaryBefore(raw: string, index: number): boolean {
+  return index === 0 || !/[A-Za-z0-9_]/.test(raw[index - 1]);
+}
+
+// Lexer state carried across lines: block comments nest (Rust allows
+// `/* /* */ */`), so a depth counter is tracked instead of a boolean; raw
+// strings (`r"..."`, `r#"..."#`, ...) can also span lines, so the number of
+// `#` needed to close one is carried the same way (-1 means "not in one").
+export type LexState = {
+  blockDepth: number;
+  rawStringHashes: number;
+};
+
+export function createLexState(): LexState {
+  return { blockDepth: 0, rawStringHashes: -1 };
+}
+
+// Lex `//`, `/* */`, strings, and raw strings in source order so a `//`/`/*`
+// inside a string, raw string, or comment never opens a new comment, and a
+// `"` inside a comment or raw-string body never opens a string. Inside a
+// normal string, only an even run of backslashes lets a `"` close it
+// (escapeNext tracks the run one char at a time). A `'` only opens a char
+// literal when it is actually shaped like one; otherwise (`'a`, `'static`,
+// `'_`) it is a lifetime and leaves all state alone. Literal *contents* are
+// replaced with nothing (delimiters are kept), so the returned code never
+// carries text or braces that only exist inside a literal. Shared by
+// `scanFile` and by the brace/item scanning below so both agree on what
+// counts as real code.
+export function stripCommentsAndLiterals(
+  raw: string,
+  state: LexState,
+): string {
+  let code = "";
   let inDouble = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    const prev = i > 0 ? line[i - 1] : "";
-    if (ch === "'" && !inDouble && prev !== "\\") inSingle = !inSingle;
-    if (ch === '"' && !inSingle && prev !== "\\") inDouble = !inDouble;
-    if (
-      !inSingle &&
-      !inDouble &&
-      ch === "/" &&
-      i + 1 < line.length &&
-      line[i + 1] === "/"
-    ) {
-      return line.slice(0, i);
+  let escapeNext = false;
+
+  for (let j = 0; j < raw.length; j++) {
+    const ch = raw[j];
+
+    if (state.rawStringHashes >= 0) {
+      if (
+        ch === '"' &&
+        raw.slice(j + 1, j + 1 + state.rawStringHashes) ===
+          "#".repeat(state.rawStringHashes)
+      ) {
+        code += ch + raw.slice(j + 1, j + 1 + state.rawStringHashes);
+        j += state.rawStringHashes;
+        state.rawStringHashes = -1;
+      }
+      continue;
     }
+
+    if (state.blockDepth > 0) {
+      if (ch === "/" && raw[j + 1] === "*") {
+        state.blockDepth += 1;
+        j++;
+      } else if (ch === "*" && raw[j + 1] === "/") {
+        state.blockDepth -= 1;
+        j++;
+      }
+      continue;
+    }
+
+    if (inDouble) {
+      if (escapeNext) {
+        escapeNext = false;
+      } else if (ch === "\\") {
+        escapeNext = true;
+      } else if (ch === '"') {
+        inDouble = false;
+        code += ch;
+      }
+      continue;
+    }
+
+    if (
+      (ch === "r" ||
+        (ch === "b" && raw[j + 1] === "r") ||
+        (ch === "c" && raw[j + 1] === "r")) &&
+      isWordBoundaryBefore(raw, j)
+    ) {
+      const rawStart = RAW_STRING_START_RE.exec(raw.slice(j));
+      if (rawStart) {
+        code += rawStart[0];
+        state.rawStringHashes = rawStart[1].length;
+        j += rawStart[0].length - 1;
+        continue;
+      }
+    }
+
+    if (ch === "'") {
+      const charLiteral = CHAR_LITERAL_RE.exec(raw.slice(j));
+      if (charLiteral) {
+        // Delimiters kept, content blanked: a char literal like `'{'` must
+        // not feed a stray brace into brace/item scanning either.
+        code += "''";
+        j += charLiteral[0].length - 1;
+        continue;
+      }
+      // Lifetime tick (`'a`, `'static`, `'_`): not a string delimiter.
+      code += ch;
+      continue;
+    }
+
+    if (ch === '"') {
+      inDouble = true;
+      code += ch;
+      continue;
+    }
+
+    if (ch === "/" && raw[j + 1] === "/") {
+      break;
+    }
+    if (ch === "/" && raw[j + 1] === "*") {
+      state.blockDepth = 1;
+      j++;
+      continue;
+    }
+
+    code += ch;
   }
-  return line;
+
+  return code;
 }
 
 export function emptyBucket(id: string, label: string): MetricBucket {
@@ -433,8 +552,9 @@ export function testLineMask(
 function findMatchingBraceLine(lines: string[], startLine: number): number {
   let depth = 0;
   let seen = false;
+  const state = createLexState();
   for (let i = startLine; i < lines.length; i++) {
-    const line = stripLineComment(lines[i]);
+    const line = stripCommentsAndLiterals(lines[i], state);
     for (const ch of line) {
       if (ch === "{") {
         depth += 1;
@@ -454,8 +574,9 @@ function findItemEndLine(lines: string[], startLine: number): number {
   // Items with `{ ... }` end at the matching brace.
   let depth = 0;
   let seenBrace = false;
+  const state = createLexState();
   for (let i = startLine; i < lines.length; i++) {
-    const line = stripLineComment(lines[i]);
+    const line = stripCommentsAndLiterals(lines[i], state);
     for (const ch of line) {
       if (ch === "{") {
         depth += 1;
@@ -478,34 +599,12 @@ export function scanFile(
 ): void {
   const lines = source.split(/\r?\n/);
   const testMask = testLineMask(lines, isDedicatedTestPath(relPath));
-
-  // Block-comment strip is best-effort; migration TODOs live in // comments
-  // and must remain visible, so only line-level // stripping is applied for
-  // code-like metrics, while migration markers scan the raw line.
-  let inBlockComment = false;
+  const lexState = createLexState();
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const lineNo = i + 1;
-
-    // Track /* */ so code metrics ignore commented-out call sites.
-    let code = "";
-    for (let j = 0; j < raw.length; j++) {
-      if (!inBlockComment && raw[j] === "/" && raw[j + 1] === "*") {
-        inBlockComment = true;
-        j++;
-        continue;
-      }
-      if (inBlockComment) {
-        if (raw[j] === "*" && raw[j + 1] === "/") {
-          inBlockComment = false;
-          j++;
-        }
-        continue;
-      }
-      code += raw[j];
-    }
-    code = stripLineComment(code);
+    const code = stripCommentsAndLiterals(raw, lexState);
 
     for (const m of matchAll(CONFIG_CALL_RE, code)) {
       record(buckets.configCalls, `Config::${m.groups[0]}()`, {

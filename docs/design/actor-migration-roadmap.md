@@ -253,6 +253,16 @@ flowchart LR
 > **语义权威**：`docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md`（设计正文）与同目录 `task.md`（任务清单：R0 / P1–P2 / A1–A3 / B1–B4 / C1–C4）。
 > **release-gate**：dev 渠道接受 rc.1；**stable 渠道发布前 submodule 须 bump 到上游正式 v2.0.0**。
 
+### 6.方向变更（2026-08-12）
+
+> **⚠️ 本节 6.1–6.3 描述的 GUI `CoreActor` 所有权形态（封闭 `CoreBackend` enum、`CoreOperationGuard`、Promoted/Applied 状态机入 actor）已被后续控制面方向取代**，规范见以下三份文档：
+>
+> - [`docs/audit/2026-08-12-core-actor-audit-verification.md`](../audit/2026-08-12-core-actor-audit-verification.md) —— 外部审计复核（事实表 + 事务信封 + 边界清单）；
+> - [`2026-08-08-core-manager-control-plane-runtime-backend-design.md`](./2026-08-08-core-manager-control-plane-runtime-backend-design.md) —— 控制面本体设计：`nyanpasu-runtime` 内的 `CoreControl` 拥有核心生命周期；
+> - [`2026-08-12-core-actor-v2-app-integration.md`](./2026-08-12-core-actor-v2-app-integration.md) —— app 侧集成设计：`CoreActor v2` 收窄为 endpoint router + 投影，`ServiceActor` 作为 `CoreControl` 的 RPC host，Local↔Service 切换改为显式 handoff + `ControllerGeneration` fencing。
+>
+> §6.0 PR-5-pre（依赖与 daemon 兼容门）不受影响，仍是当前阶段的权威实施范围；6.1–6.3 保留作为历史记录，不再是后续实施的规范来源。
+
 ### 6.总览 — 核心收敛
 
 PR-5 **只**新增三样东西：

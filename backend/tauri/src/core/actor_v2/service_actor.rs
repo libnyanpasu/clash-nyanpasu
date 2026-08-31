@@ -72,8 +72,12 @@ pub enum ServicePhase {
 
 /// The watch projection (UI settings page + facade). Daemon state, never a
 /// second copy of core state.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ServiceHostStatus {
+    pub name: std::borrow::Cow<'static, str>,
+    pub version: std::borrow::Cow<'static, str>,
+    pub status: ServiceStatus,
+    pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
     pub phase: ServicePhase,
     pub compat: ServiceCompat,
     pub restart_attempts: u8,
@@ -147,7 +151,30 @@ pub struct ServiceActorState {
 
 impl ServiceActorState {
     fn publish(&self, phase: ServicePhase, compat: ServiceCompat) {
+        let current = self.status_tx.borrow().clone();
         self.status_tx.send_replace(ServiceHostStatus {
+            name: current.name.clone(),
+            version: current.version.clone(),
+            status: current.status,
+            server: current.server.clone(),
+            phase,
+            compat,
+            restart_attempts: self.restart_attempts,
+        });
+    }
+
+    fn publish_probe(
+        &self,
+        phase: ServicePhase,
+        compat: ServiceCompat,
+        info: Option<&StatusInfo<'static>>,
+    ) {
+        let current = self.status_tx.borrow().clone();
+        self.status_tx.send_replace(ServiceHostStatus {
+            name: info.map_or_else(|| current.name.clone(), |info| info.name.clone()),
+            version: info.map_or_else(|| current.version.clone(), |info| info.version.clone()),
+            status: info.map_or(current.status, |info| info.status),
+            server: info.map_or_else(|| current.server.clone(), |info| info.server.clone()),
             phase,
             compat,
             restart_attempts: self.restart_attempts,
@@ -216,7 +243,7 @@ impl ServiceActorState {
         } else {
             phase
         };
-        self.publish(published, compat.clone());
+        self.publish_probe(published, compat.clone(), result.as_ref().ok());
         (result, compat, phase)
     }
 
@@ -567,6 +594,10 @@ impl ServiceClient {
         command_timeout: std::time::Duration,
     ) -> Result<Self, ractor::SpawnErr> {
         let (status_tx, status_rx) = watch::channel(ServiceHostStatus {
+            name: std::borrow::Cow::Borrowed("nyanpasu-service"),
+            version: std::borrow::Cow::Borrowed(""),
+            status: ServiceStatus::NotInstalled,
+            server: None,
             phase: ServicePhase::Probing,
             compat: ServiceCompat::Unknown,
             restart_attempts: 0,

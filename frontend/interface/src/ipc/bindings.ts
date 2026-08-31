@@ -354,7 +354,7 @@ export const events = {
   schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
     'scheme-request-received-event',
   ),
-  serviceStatusChangedEvent: makeEvent<ServiceStatusChangedEvent>(
+  serviceStatusChangedEvent: makeEvent<ServiceStatusChangedEvent_Deserialize>(
     'service-status-changed-event',
   ),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
@@ -2123,7 +2123,33 @@ export type ServiceCompat =
  *  The watch projection (UI settings page + facade). Daemon state, never a
  *  second copy of core state.
  */
-export type ServiceHostStatus = {
+export type ServiceHostStatus =
+  | ServiceHostStatus_Serialize
+  | ServiceHostStatus_Deserialize
+
+/**
+ *  The watch projection (UI settings page + facade). Daemon state, never a
+ *  second copy of core state.
+ */
+export type ServiceHostStatus_Deserialize = {
+  name: string
+  version: string
+  status: ServiceStatus
+  server: StatusResBody_Deserialize | null
+  phase: ServicePhase
+  compat: ServiceCompat
+  restart_attempts: number
+}
+
+/**
+ *  The watch projection (UI settings page + facade). Daemon state, never a
+ *  second copy of core state.
+ */
+export type ServiceHostStatus_Serialize = {
+  name: string
+  version: string
+  status: ServiceStatus
+  server: StatusResBody_Serialize | null
   phase: ServicePhase
   compat: ServiceCompat
   restart_attempts: number
@@ -2153,11 +2179,18 @@ export type ServicePhase =
 
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
 
-export type ServiceStatusChangedEvent = ServiceHostStatus
+export type ServiceStatusChangedEvent =
+  | ServiceStatusChangedEvent_Serialize
+  | ServiceStatusChangedEvent_Deserialize
+
+export type ServiceStatusChangedEvent_Deserialize =
+  ServiceHostStatus_Deserialize
+
+export type ServiceStatusChangedEvent_Serialize = ServiceHostStatus_Serialize
 
 /**
  *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
- *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
  *  wire 是原结构的严格超集，前端既有消费点不受影响。
  */
 export type ServiceStatusInfo =
@@ -2166,7 +2199,7 @@ export type ServiceStatusInfo =
 
 /**
  *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
- *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
  *  wire 是原结构的严格超集，前端既有消费点不受影响。
  */
 export type ServiceStatusInfo_Deserialize = {
@@ -2175,11 +2208,13 @@ export type ServiceStatusInfo_Deserialize = {
   status: ServiceStatus
   server: StatusResBody_Deserialize | null
   compat: ServiceCompat
+  phase: ServicePhase
+  restart_attempts: number
 }
 
 /**
  *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
- *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
  *  wire 是原结构的严格超集，前端既有消费点不受影响。
  */
 export type ServiceStatusInfo_Serialize = {
@@ -2188,6 +2223,8 @@ export type ServiceStatusInfo_Serialize = {
   status: ServiceStatus
   server: StatusResBody_Serialize | null
   compat: ServiceCompat
+  phase: ServicePhase
+  restart_attempts: number
 }
 
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize

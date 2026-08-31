@@ -6,7 +6,7 @@
 //!
 use crate::{
     config::*,
-    core::{actor_v2::endpoint::ExecutionHost, *},
+    core::*,
     log_err,
     utils::{self, help::get_clash_external_port, resolve},
 };
@@ -373,13 +373,17 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
     let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
-        let service_host = client.core_status().host == ExecutionHost::Service;
-        if let Some(service_mode) = service_mode
-            && service_host
-        {
+        if let Some(service_mode) = service_mode {
             log::debug!(target: "app", "change service mode to {}", service_mode);
-
-            client.regenerate_and_restart_for_legacy().await?;
+            let outcome = client.set_execution_host(service_mode).await?;
+            for degradation in outcome.degradations() {
+                log::warn!(
+                    target: "app",
+                    "service mode committed with degradation {}: {}",
+                    degradation.code,
+                    degradation.message
+                );
+            }
         }
 
         if tun_mode.is_some() {
@@ -391,7 +395,8 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
                 use crate::utils::dirs::check_core_permission;
                 let current_core = Config::verge().data().clash_core.unwrap_or_default();
                 let current_core: nyanpasu_utils::core::CoreType = (&current_core).into();
-                let service_host = client.core_status().host == ExecutionHost::Service;
+                let service_host = client.core_status().host
+                    == crate::core::actor_v2::endpoint::ExecutionHost::Service;
                 if !service_host && check_core_permission(&current_core).inspect_err(|e| {
                     log::error!(target: "app", "clash core is not granted the necessary permissions, grant it: {e:?}");
                 }).is_ok_and(|v| !v) {

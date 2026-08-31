@@ -914,98 +914,71 @@ pub async fn is_tray_icon_set(mode: TrayIcon) -> Result<bool> {
 }
 
 pub mod service {
-    use super::Result;
-    use crate::core::service;
+    use super::{NyanpasuClient, Result};
+    use tauri::State;
 
     /// `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
-    /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+    /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
     /// wire 是原结构的严格超集，前端既有消费点不受影响。
     #[derive(serde::Serialize, specta::Type)]
-    pub struct ServiceStatusInfo<'a> {
-        pub name: std::borrow::Cow<'a, str>,
-        pub version: std::borrow::Cow<'a, str>,
+    pub struct ServiceStatusInfo {
+        pub name: std::borrow::Cow<'static, str>,
+        pub version: std::borrow::Cow<'static, str>,
         pub status: nyanpasu_ipc::types::ServiceStatus,
-        pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'a>>,
+        pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
         pub compat: crate::core::service::compat::ServiceCompat,
+        pub phase: crate::core::actor_v2::service_actor::ServicePhase,
+        pub restart_attempts: u8,
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn status_service<'a>() -> Result<ServiceStatusInfo<'a>> {
-        let info = (service::control::status().await)?;
-        let compat = crate::core::service::compat::ServiceCompat::classify(&info);
+    pub async fn status_service(client: State<'_, NyanpasuClient>) -> Result<ServiceStatusInfo> {
+        let info = client.service_status();
         Ok(ServiceStatusInfo {
             name: info.name,
             version: info.version,
             status: info.status,
             server: info.server,
-            compat,
+            compat: info.compat,
+            phase: info.phase,
+            restart_attempts: info.restart_attempts,
         })
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn install_service() -> Result {
-        (service::control::install_service().await)?;
+    pub async fn install_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.install_service().await?;
         Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn uninstall_service() -> Result {
-        (service::control::uninstall_service().await)?;
+    pub async fn uninstall_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.uninstall_service().await?;
         Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn start_service() -> Result {
-        let res = service::control::start_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn start_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.start_service().await?;
+        Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn stop_service() -> Result {
-        let res = service::control::stop_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn stop_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.stop_service().await?;
+        Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn restart_service() -> Result {
-        let res = service::control::restart_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn restart_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.restart_service().await?;
+        Ok(())
     }
 }
 

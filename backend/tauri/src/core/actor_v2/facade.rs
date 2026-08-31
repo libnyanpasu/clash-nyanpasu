@@ -158,6 +158,18 @@ impl CoreFacade {
         self.service.probe().await
     }
 
+    pub async fn install_service(&self) -> Result<(), CoreError> {
+        self.service.install().await
+    }
+
+    pub async fn start_service(&self) -> Result<(), CoreError> {
+        self.service.start_daemon().await
+    }
+
+    pub async fn stop_service(&self) -> Result<(), CoreError> {
+        self.service.stop_daemon().await
+    }
+
     pub async fn uninstall_service(&self) -> Result<(), CoreError> {
         self.service.uninstall().await
     }

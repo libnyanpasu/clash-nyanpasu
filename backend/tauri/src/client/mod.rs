@@ -21,7 +21,7 @@ use crate::{
         CoreClient as CoreClientV2, CoreStatusProjection, HandoffReport, ShutdownReport,
         endpoint::ExecutionHost,
         facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
-        service_actor::{ServiceClient, ServiceHostStatus},
+        service_actor::{ServiceClient, ServiceHostStatus, ServicePhase},
     },
     enhance::{
         EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
@@ -509,6 +509,79 @@ impl NyanpasuClient {
         self.inner.core_v2.change_execution_host(host).await
     }
 
+    /// A completed handoff adopts the target with the runtime *stopped* -- see
+    /// [`HandoffReport::Completed`], which leaves the reconcile to the facade.
+    /// Skipping it reports a successful host switch and leaves the user with no
+    /// core running on the host they just switched to.
+    async fn reconcile_after_handoff(
+        &self,
+        report: HandoffReport,
+    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+        match report {
+            // Nothing moved, so nothing was stopped.
+            HandoffReport::NoChange => Ok(()),
+            HandoffReport::Completed { .. } => self.reconcile_core().await.map(|_| ()),
+        }
+    }
+
+    pub async fn set_execution_host(
+        &self,
+        service_mode: bool,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let _transition = self.inner.host_transition.lock().await;
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.enable_service_mode = Some(service_mode);
+        self.patch_app_config(patch).await?;
+
+        let effect = if service_mode {
+            match self
+                .inner
+                .core_v2
+                .change_execution_host(ExecutionHost::Service)
+                .await
+            {
+                Ok(report) => self.reconcile_after_handoff(report).await,
+                Err(error) => Err(error),
+            }
+        } else {
+            match self
+                .inner
+                .core_v2
+                .change_execution_host(ExecutionHost::Local)
+                .await
+            {
+                Ok(report) => match self.reconcile_after_handoff(report).await {
+                    // Only once the core is back up on Local is the daemon
+                    // safe to stop; stopping it first would leave the user
+                    // with nothing running.
+                    Ok(()) => {
+                        let phase = self.service_status().phase;
+                        if matches!(
+                            phase,
+                            ServicePhase::NotInstalled | ServicePhase::DaemonStopped
+                        ) {
+                            Ok(())
+                        } else {
+                            self.inner.core_v2.stop_service().await
+                        }
+                    }
+                    Err(error) => Err(error),
+                },
+                Err(error) => Err(error),
+            }
+        };
+
+        let degradations = effect.err().map_or_else(Vec::new, |error| {
+            vec![runtime::Degradation {
+                phase: runtime::DegradationPhase::SystemEffect,
+                code: "service_host_transition_failed".into(),
+                message: error.message,
+                retryable: error.retryable,
+            }]
+        });
+        Ok(runtime::MutationOutcome::from_parts((), degradations))
+    }
+
     pub fn core_status(&self) -> CoreStatusProjection {
         self.inner.core_v2.core_status()
     }
@@ -564,6 +637,27 @@ impl NyanpasuClient {
             .await
             .map_err(client_error_from_core)?;
         Ok(())
+    }
+
+    pub async fn install_service(
+        &self,
+    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+        self.inner.core_v2.install_service().await
+    }
+
+    pub async fn start_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+        self.inner.core_v2.start_service().await
+    }
+
+    pub async fn stop_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+        self.inner.core_v2.stop_service().await
+    }
+
+    pub async fn restart_service(
+        &self,
+    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+        self.inner.core_v2.stop_service().await?;
+        self.inner.core_v2.start_service().await
     }
 
     pub async fn shutdown_core(&self) -> ShutdownReport {
@@ -1701,6 +1795,229 @@ pub(crate) mod tests {
         }
     }
 
+    struct HostTransitionEndpoint {
+        host: ExecutionHost,
+        calls: Arc<StdMutex<Vec<&'static str>>>,
+        operations:
+            StdMutex<std::collections::HashMap<String, nyanpasu_ipc::api::core::v2::OperationInfo>>,
+    }
+
+    impl HostTransitionEndpoint {
+        fn new(host: ExecutionHost, calls: Arc<StdMutex<Vec<&'static str>>>) -> Arc<Self> {
+            Arc::new(Self {
+                host,
+                calls,
+                operations: StdMutex::new(Default::default()),
+            })
+        }
+    }
+
+    impl crate::core::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint {
+        fn host(&self) -> ExecutionHost {
+            self.host
+        }
+
+        fn submit<'a>(
+            &'a self,
+            submission: crate::core::actor_v2::endpoint::CoreSubmission,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            std::result::Result<
+                nyanpasu_ipc::api::core::v2::OperationInfo,
+                nyanpasu_core_manager::CoreError,
+            >,
+        > {
+            Box::pin(async move {
+                let output = match submission.envelope.command {
+                    nyanpasu_core_manager::CoreCommand::Stop => {
+                        if self.host == ExecutionHost::Service {
+                            self.calls.lock().unwrap().push("handoff_to_local");
+                        }
+                        nyanpasu_ipc::api::core::v2::OperationOutputInfo::Stopped
+                    }
+                    nyanpasu_core_manager::CoreCommand::Reconcile(_) => {
+                        self.calls.lock().unwrap().push(match self.host {
+                            ExecutionHost::Local => "reconcile_local",
+                            ExecutionHost::Service => "reconcile_service",
+                        });
+                        successful_reconcile(submission.envelope.operation_id)
+                            .output
+                            .unwrap()
+                    }
+                    _ => successful_reconcile(submission.envelope.operation_id)
+                        .output
+                        .unwrap(),
+                };
+                let info = nyanpasu_ipc::api::core::v2::OperationInfo {
+                    id: submission.envelope.operation_id.to_string(),
+                    phase: nyanpasu_ipc::api::core::v2::OperationPhase::Succeeded,
+                    output: Some(output),
+                    error: None,
+                };
+                self.operations
+                    .lock()
+                    .unwrap()
+                    .insert(info.id.clone(), info.clone());
+                Ok(info)
+            })
+        }
+
+        fn wait_operation<'a>(
+            &'a self,
+            id: nyanpasu_core_manager::OperationId,
+            _timeout: std::time::Duration,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            Option<nyanpasu_ipc::api::core::v2::OperationInfo>,
+        > {
+            Box::pin(async move {
+                self.operations
+                    .lock()
+                    .unwrap()
+                    .get(&id.to_string())
+                    .cloned()
+            })
+        }
+
+        fn status<'a>(
+            &'a self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            std::result::Result<
+                crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+                nyanpasu_core_manager::CoreError,
+            >,
+        > {
+            Box::pin(async {
+                Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                    state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Running {
+                        epoch: 1,
+                        pid: 7,
+                    }),
+                    state_changed_at: 0,
+                    revision: None,
+                    healthy: Some(true),
+                })
+            })
+        }
+    }
+
+    struct HostTransitionServiceAdapter {
+        endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+        calls: Arc<StdMutex<Vec<&'static str>>>,
+    }
+
+    impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
+        fn probe(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            '_,
+            std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String>,
+        > {
+            Box::pin(async move {
+                self.calls.lock().unwrap().push("ensure_ready");
+                Ok(nyanpasu_ipc::types::StatusInfo {
+                    name: std::borrow::Cow::Borrowed("test-service"),
+                    version: std::borrow::Cow::Borrowed("2.0.0"),
+                    status: nyanpasu_ipc::types::ServiceStatus::Running,
+                    server: Some(nyanpasu_ipc::api::status::StatusResBody {
+                        version: std::borrow::Cow::Borrowed("2.0.0"),
+                        core_infos: nyanpasu_ipc::api::status::CoreInfos {
+                            r#type: None,
+                            state: nyanpasu_ipc::api::status::CoreState::Running,
+                            state_changed_at: 0,
+                            config_path: None,
+                            controller: None,
+                            health: None,
+                            revision: None,
+                            detail: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
+                                reason: None,
+                            }),
+                        },
+                        runtime_infos: nyanpasu_ipc::api::status::RuntimeInfos {
+                            service_data_dir: std::borrow::Cow::Owned(Default::default()),
+                            service_config_dir: std::borrow::Cow::Owned(Default::default()),
+                            nyanpasu_config_dir: std::borrow::Cow::Owned(Default::default()),
+                            nyanpasu_data_dir: std::borrow::Cow::Owned(Default::default()),
+                        },
+                        logs: None,
+                    }),
+                })
+            })
+        }
+
+        fn install(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn uninstall(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn start_daemon(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn stop_daemon(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async move {
+                self.calls.lock().unwrap().push("stop_daemon");
+                Ok(())
+            })
+        }
+
+        fn update(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+            self.endpoint.clone()
+        }
+    }
+
+    struct OrderingVergeBridge {
+        calls: Arc<StdMutex<Vec<&'static str>>>,
+    }
+
+    struct OrderingPreparedVergeBridge {
+        calls: Arc<StdMutex<Vec<&'static str>>>,
+    }
+
+    impl PreparedLegacyMirror for OrderingPreparedVergeBridge {
+        fn apply(self: Box<Self>) {
+            self.calls.lock().unwrap().push("commit");
+        }
+    }
+
+    impl VergeLegacyBridge for OrderingVergeBridge {
+        fn prepare(
+            &self,
+            _snap: &NyanpasuAppConfig,
+        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
+            Ok(Box::new(OrderingPreparedVergeBridge {
+                calls: self.calls.clone(),
+            }))
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
+            Ok(NyanpasuAppConfig::default())
+        }
+    }
+
     fn successful_reconcile(
         id: nyanpasu_core_manager::OperationId,
     ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
@@ -2383,6 +2700,139 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
         }
+    }
+
+    fn host_transition_client(
+        dir: &TempDir,
+        calls: Arc<StdMutex<Vec<&'static str>>>,
+    ) -> NyanpasuClient {
+        let local = HostTransitionEndpoint::new(ExecutionHost::Local, calls.clone());
+        let service_endpoint = HostTransitionEndpoint::new(ExecutionHost::Service, calls.clone());
+        let adapter = Arc::new(HostTransitionServiceAdapter {
+            endpoint: service_endpoint,
+            calls: calls.clone(),
+        });
+        let (core_v2, service) = std::thread::spawn(move || {
+            tauri::async_runtime::block_on(async {
+                let core = CoreClientV2::spawn(local).await.unwrap();
+                let service = ServiceClient::spawn(adapter, 0).await.unwrap();
+                (core, service)
+            })
+        })
+        .join()
+        .unwrap();
+        let mut args = test_client_args_with_endpoint(dir, Arc::new(IdleEndpoint));
+        args.bridges.verge = Arc::new(OrderingVergeBridge {
+            calls: calls.clone(),
+        });
+        args.core_v2 = core_v2;
+        args.service = service;
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        calls.lock().unwrap().clear();
+        client
+    }
+
+    #[test]
+    fn enabling_service_mode_commits_before_ensure_ready() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone());
+
+        tauri::async_runtime::block_on(async {
+            let outcome = client.set_execution_host(true).await.unwrap();
+            assert!(matches!(outcome, runtime::MutationOutcome::Applied { .. }));
+            assert!(client.get_app_config().await.unwrap().enable_service_mode);
+        });
+
+        let calls = calls.lock().unwrap();
+        let commit = calls.iter().position(|call| *call == "commit").unwrap();
+        let ensure = calls
+            .iter()
+            .position(|call| *call == "ensure_ready")
+            .unwrap();
+        assert!(commit < ensure, "calls: {calls:?}");
+    }
+
+    #[test]
+    fn disabling_service_mode_hands_off_before_stopping_the_daemon() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone());
+
+        tauri::async_runtime::block_on(async {
+            client.set_execution_host(true).await.unwrap();
+            calls.lock().unwrap().clear();
+            let outcome = client.set_execution_host(false).await.unwrap();
+            assert!(matches!(outcome, runtime::MutationOutcome::Applied { .. }));
+            assert!(!client.get_app_config().await.unwrap().enable_service_mode);
+        });
+
+        let calls = calls.lock().unwrap();
+        let handoff = calls
+            .iter()
+            .position(|call| *call == "handoff_to_local")
+            .unwrap();
+        let stop = calls
+            .iter()
+            .position(|call| *call == "stop_daemon")
+            .unwrap();
+        assert!(handoff < stop, "calls: {calls:?}");
+    }
+
+    /// A handoff adopts its target with the runtime stopped, so the switch is
+    /// only finished once the core is reconciled onto the new host. Without
+    /// that step both directions report success and leave nothing running.
+    #[test]
+    fn enabling_service_mode_reconciles_onto_the_adopted_host() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone());
+
+        tauri::async_runtime::block_on(async {
+            client.set_execution_host(true).await.unwrap();
+        });
+
+        let calls = calls.lock().unwrap();
+        let ensure = calls
+            .iter()
+            .position(|call| *call == "ensure_ready")
+            .unwrap();
+        let reconcile = calls
+            .iter()
+            .position(|call| *call == "reconcile_service")
+            .expect("the service host must be reconciled after adopting it");
+        assert!(ensure < reconcile, "calls: {calls:?}");
+    }
+
+    #[test]
+    fn disabling_service_mode_reconciles_local_before_stopping_the_daemon() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let client = host_transition_client(&dir, calls.clone());
+
+        tauri::async_runtime::block_on(async {
+            client.set_execution_host(true).await.unwrap();
+            calls.lock().unwrap().clear();
+            client.set_execution_host(false).await.unwrap();
+        });
+
+        let calls = calls.lock().unwrap();
+        let handoff = calls
+            .iter()
+            .position(|call| *call == "handoff_to_local")
+            .unwrap();
+        let reconcile = calls
+            .iter()
+            .position(|call| *call == "reconcile_local")
+            .expect("the local host must be reconciled after adopting it");
+        let stop = calls
+            .iter()
+            .position(|call| *call == "stop_daemon")
+            .unwrap();
+        assert!(
+            handoff < reconcile && reconcile < stop,
+            "the core has to be running locally before the daemon goes away: {calls:?}"
+        );
     }
 
     pub(crate) fn test_profiles_client_args(

@@ -324,6 +324,7 @@
   "dashboard_widget_proxy_status_occupied": "Используется другими программами",
   "dashboard_widget_proxy_status_disabled": "Отключено",
   "dashboard_widget_core_status": "Статус ядра",
+  "dashboard_widget_core_status_loading": "Проверка состояния ядра...",
   "dashboard_widget_core_status_running": "Запущено",
   "dashboard_widget_core_status_stopped": "Остановлено",
   "dashboard_widget_core_status_running_by_service": "Запущено через сервис",

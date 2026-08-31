@@ -324,6 +324,7 @@
   "dashboard_widget_proxy_status_occupied": "其他程式佔用",
   "dashboard_widget_proxy_status_disabled": "已禁用",
   "dashboard_widget_core_status": "內核狀態",
+  "dashboard_widget_core_status_loading": "正在檢查核心狀態...",
   "dashboard_widget_core_status_running": "運行中",
   "dashboard_widget_core_status_stopped": "已停止",
   "dashboard_widget_core_status_running_by_service": "服務守護運行",

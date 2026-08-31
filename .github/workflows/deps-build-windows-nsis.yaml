@@ -73,6 +73,9 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # TODO: Remove after upgrading to a tauri-build release containing tauri-apps/tauri#15831.
+      __CARGO_TEMPORARY_BUILD_DIR_NEW_LAYOUT_OPT_OUT: '1'
 
     steps:
       - name: Checkout repository

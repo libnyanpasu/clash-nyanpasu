@@ -5,6 +5,7 @@
 use std::{
     fs::OpenOptions,
     io::Write,
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -101,13 +102,6 @@ impl RuntimeSnapshot {
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeLifecycleState {
     pub promoted: Option<Arc<RuntimeSnapshot>>,
-    pub applied: Option<Arc<RuntimeSnapshot>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RuntimeTransactionSnapshot {
-    pub product: Option<Vec<u8>>,
-    pub lifecycle: RuntimeLifecycleState,
 }
 
 /// Facade-held runtime lifecycle store. It is instance-owned and non-persistent:
@@ -120,73 +114,19 @@ pub async fn new_runtime_lifecycle_store() -> anyhow::Result<RuntimeLifecycleSto
     Ok(tokio::sync::RwLock::new(RuntimeLifecycleState::default()))
 }
 
-/// Compensation for an API-first patch is planned from the last successfully
-/// applied runtime snapshot. The plan is intentionally independent of the
-/// core's patch transport semantics.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PatchCompensationPlan {
-    expected_applied_revision: RuntimeRevision,
-    ops: Vec<PatchCompensationOp>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PatchCompensationOp {
-    Set {
-        key: String,
-        value: serde_yaml::Value,
-    },
-    Remove {
-        key: String,
-    },
-}
-
-impl PatchCompensationPlan {
-    pub(crate) fn expected_applied_revision(&self) -> RuntimeRevision {
-        self.expected_applied_revision
+pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    if let Some(parent) = product.parent() {
+        tokio::fs::create_dir_all(parent).await?;
     }
-
-    #[cfg(test)]
-    pub(crate) fn ops(&self) -> &[PatchCompensationOp] {
-        &self.ops
-    }
-
-    pub(crate) fn fence_matches(&self, applied: Option<&RuntimeSnapshot>) -> bool {
-        applied.is_some_and(|snapshot| snapshot.revision == self.expected_applied_revision)
-    }
-}
-
-pub(crate) fn compensation_for(
-    patch: &Mapping,
-    applied: Option<&RuntimeSnapshot>,
-) -> Option<PatchCompensationPlan> {
-    let applied = applied?;
-    if patch.is_empty() {
-        return None;
-    }
-
-    let ops = patch
-        .keys()
-        .map(|key| match applied.config.get(key) {
-            Some(value) => PatchCompensationOp::Set {
-                key: key
-                    .as_str()
-                    .expect("clash patch keys must be YAML strings")
-                    .to_owned(),
-                value: value.clone(),
-            },
-            None => PatchCompensationOp::Remove {
-                key: key
-                    .as_str()
-                    .expect("clash patch keys must be YAML strings")
-                    .to_owned(),
-            },
-        })
-        .collect();
-
-    Some(PatchCompensationPlan {
-        expected_applied_revision: applied.revision,
-        ops,
+    let product = product.to_path_buf();
+    let bytes = bytes.to_vec();
+    tokio::task::spawn_blocking(move || {
+        atomicwrites::AtomicFile::new(&product, atomicwrites::OverwriteBehavior::AllowOverwrite)
+            .write(|file| std::io::Write::write_all(file, &bytes))
     })
+    .await?
+    .map_err(|error| anyhow::anyhow!("failed to promote runtime config: {error}"))?;
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -557,81 +497,49 @@ mod tests {
         assert_eq!(degraded_json["degradations"][0]["retryable"], true);
     }
 
-    fn applied_snapshot(revision: u64, config: Mapping) -> RuntimeSnapshot {
-        RuntimeSnapshot::from_data(
-            RuntimeRevision(revision),
+    #[tokio::test]
+    async fn write_product_creates_the_runtime_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let product = dir.path().join("nested/runtime.yaml");
+        write_product(&product, b"mode: rule\n").await.unwrap();
+        assert_eq!(tokio::fs::read(product).await.unwrap(), b"mode: rule\n");
+    }
+
+    #[tokio::test]
+    async fn write_product_replaces_existing_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let product = dir.path().join("runtime.yaml");
+        write_product(&product, b"mode: rule\n").await.unwrap();
+        write_product(&product, b"mode: direct\n").await.unwrap();
+        assert_eq!(tokio::fs::read(product).await.unwrap(), b"mode: direct\n");
+    }
+
+    #[test]
+    fn runtime_lifecycle_store_tracks_only_the_promoted_product() {
+        let lifecycle = RuntimeLifecycleState::default();
+        assert!(lifecycle.promoted.is_none());
+    }
+
+    #[test]
+    fn runtime_snapshot_identity_uses_revision_core_and_product_hash() {
+        let data = || RuntimeSnapshotData {
+            config: Mapping::new(),
+            exists_keys: Vec::new(),
+            postprocessing_output: PostProcessingOutput::default(),
+        };
+        let first = RuntimeSnapshot::from_data(
+            RuntimeRevision(1),
             ClashCore::default(),
-            Arc::from([]),
-            RuntimeSnapshotData {
-                config,
-                exists_keys: Vec::new(),
-                postprocessing_output: PostProcessingOutput::default(),
-            },
-        )
-    }
-
-    #[test]
-    fn compensation_plan_emits_set_and_remove_for_each_patch_key() {
-        let mut applied_config = Mapping::new();
-        applied_config.insert("mode".into(), "rule".into());
-        applied_config.insert("allow-lan".into(), false.into());
-        let applied = applied_snapshot(7, applied_config);
-
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        patch.insert("ipv6".into(), true.into());
-
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-        assert_eq!(plan.expected_applied_revision(), RuntimeRevision(7));
-        assert_eq!(
-            plan.ops.as_slice(),
-            &[
-                PatchCompensationOp::Set {
-                    key: "mode".into(),
-                    value: "rule".into(),
-                },
-                PatchCompensationOp::Remove { key: "ipv6".into() },
-            ]
+            Arc::from(&b"mode: rule\n"[..]),
+            data(),
         );
-    }
-
-    #[test]
-    fn compensation_plan_is_absent_without_applied_or_patch() {
-        let applied = applied_snapshot(7, Mapping::new());
-        assert!(compensation_for(&Mapping::new(), Some(&applied)).is_none());
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        assert!(compensation_for(&patch, None).is_none());
-    }
-
-    #[test]
-    fn compensation_plan_fence_accepts_matching_revision_and_rejects_conflict() {
-        let applied = applied_snapshot(7, Mapping::new());
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-
-        assert!(plan.fence_matches(Some(&applied)));
-        assert!(!plan.fence_matches(Some(&applied_snapshot(8, Mapping::new()))));
-        assert!(!plan.fence_matches(None));
-    }
-
-    #[test]
-    fn compensation_plan_preserves_old_applied_values() {
-        let mut config = Mapping::new();
-        config.insert("mode".into(), "rule".into());
-        let applied = applied_snapshot(3, config);
-        let mut patch = Mapping::new();
-        patch.insert("mode".into(), "direct".into());
-
-        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
-        assert_eq!(
-            plan.ops.as_slice(),
-            &[PatchCompensationOp::Set {
-                key: "mode".into(),
-                value: "rule".into(),
-            }]
+        let same = RuntimeSnapshot::from_data(
+            RuntimeRevision(1),
+            ClashCore::default(),
+            Arc::from(&b"mode: rule\n"[..]),
+            data(),
         );
+        assert!(first.identity_eq(&same));
     }
 
     fn temp_runtime_paths(dir: &tempfile::TempDir) -> RuntimePaths {

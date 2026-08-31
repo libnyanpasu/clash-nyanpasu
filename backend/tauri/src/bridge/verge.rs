@@ -731,9 +731,8 @@ mod tests {
     use crate::{
         bridge::LEGACY_CONFIG_TEST_LOCK as INTERLEAVING_TEST_LOCK,
         client::{
-            ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet,
-            LegacyRunningConfigPatchBridge, LegacyVergeDomain, MockRunningCoreBridge,
-            NoopUiEventSink, NyanpasuClient,
+            ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet, LegacyVergeDomain,
+            MockRunningCoreBridge, NoopUiEventSink, NyanpasuClient,
         },
         config::{
             IClashTemp,
@@ -1081,7 +1080,6 @@ mod tests {
             core: Arc::new(MockRunningCoreBridge::new()),
             core_v2,
             service,
-            clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
         })
         .expect("client should construct with typed config actors");

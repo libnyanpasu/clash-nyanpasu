@@ -19,12 +19,19 @@ use fake_core::{
     FakeCoreCommand, ReadyBarrier, ReadyConnection, ScopedChild, env_keys, require_bin_path,
 };
 use nyanpasu_config::application::ClashCore;
-use nyanpasu_ipc::api::status::CoreState;
+use nyanpasu_core_manager::{ConfigInput, CoreCommand, CoreError, CoreErrorKind, OperationId};
+use nyanpasu_ipc::api::{
+    core::v2::{
+        OperationErrorInfo, OperationInfo, OperationOutputInfo, OperationPhase,
+        ReconcileOutcomeInfo, ReconcileOutcomeKind,
+    },
+    status::{ConfigRevisionInfo, CoreState, CoreStateDetail},
+};
 use sha2::Digest;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::{
-    core_bridge::{CoreLifecycleLease, CoreLifecyclePort, CoreStatusSnapshot, restore_product},
+    core_bridge::{CoreLifecycleLease, CoreLifecyclePort, CoreStatusSnapshot},
     runtime::{CandidateFile, RuntimePaths},
 };
 
@@ -128,6 +135,7 @@ pub struct ProcessCoreLifecycleAdapter {
     before_begin_lock: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
     /// Private oneshot fired immediately after the lifecycle mutex is acquired.
     after_begin_lock: StdMutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    operations: StdMutex<Vec<OperationInfo>>,
 }
 
 impl ProcessCoreLifecycleAdapter {
@@ -149,6 +157,7 @@ impl ProcessCoreLifecycleAdapter {
             policy: Arc::new(StdMutex::new(ProcessCorePolicy::default())),
             before_begin_lock: StdMutex::new(None),
             after_begin_lock: StdMutex::new(None),
+            operations: StdMutex::new(Vec::new()),
         })
     }
 
@@ -191,6 +200,127 @@ impl ProcessCoreLifecycleAdapter {
             hold_port: state.hold_port,
             http_port: state.http_port,
         }
+    }
+}
+
+impl crate::core::actor_v2::endpoint::ControlEndpoint for ProcessCoreLifecycleAdapter {
+    fn host(&self) -> crate::core::actor_v2::endpoint::ExecutionHost {
+        crate::core::actor_v2::endpoint::ExecutionHost::Local
+    }
+
+    fn submit<'a>(
+        &'a self,
+        submission: crate::core::actor_v2::endpoint::CoreSubmission,
+    ) -> crate::core::actor_v2::endpoint::BoxFuture<'a, Result<OperationInfo, CoreError>> {
+        Box::pin(async move {
+            let id = submission.envelope.operation_id;
+            let result = async {
+                let mut lease = CoreLifecyclePort::begin(self)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                match submission.envelope.command {
+                    CoreCommand::Reconcile(request) => {
+                        let ConfigInput::Inline { bytes, .. } = request.config;
+                        let candidate = self
+                            .runtime_paths
+                            .create_candidate(&bytes)
+                            .await
+                            .map_err(|error| error.to_string())?;
+                        let checked = lease
+                            .check_and_promote(
+                                &candidate,
+                                ClashCore::Mihomo,
+                                self.runtime_paths.product(),
+                            )
+                            .await;
+                        let _ = candidate.cleanup().await;
+                        checked.map_err(|error| error.to_string())?;
+                        lease.restart().await.map_err(|error| error.to_string())?;
+                        Ok(OperationOutputInfo::Reconciled(ReconcileOutcomeInfo {
+                            outcome: ReconcileOutcomeKind::Restarted,
+                            revision: ConfigRevisionInfo {
+                                epoch: 1,
+                                generation: 1,
+                                source_hash: "process-fake".into(),
+                                effective_hash: "process-fake".into(),
+                            },
+                            warning: None,
+                            failed_apply: None,
+                        }))
+                    }
+                    CoreCommand::Stop => {
+                        lease.stop().await.map_err(|error| error.to_string())?;
+                        Ok(OperationOutputInfo::Stopped)
+                    }
+                    CoreCommand::Recover => {
+                        lease.restart().await.map_err(|error| error.to_string())?;
+                        Ok(OperationOutputInfo::Recovered)
+                    }
+                    CoreCommand::Shutdown => {
+                        lease.stop().await.map_err(|error| error.to_string())?;
+                        Ok(OperationOutputInfo::ShutDown)
+                    }
+                }
+            }
+            .await;
+            let info = match result {
+                Ok(output) => OperationInfo {
+                    id: id.to_string(),
+                    phase: OperationPhase::Succeeded,
+                    output: Some(output),
+                    error: None,
+                },
+                Err(message) => OperationInfo {
+                    id: id.to_string(),
+                    phase: OperationPhase::Failed,
+                    output: None,
+                    error: Some(OperationErrorInfo {
+                        kind: None,
+                        message,
+                        retryable: false,
+                    }),
+                },
+            };
+            self.operations.lock().unwrap().push(info.clone());
+            Ok(info)
+        })
+    }
+
+    fn wait_operation<'a>(
+        &'a self,
+        id: OperationId,
+        _timeout: Duration,
+    ) -> crate::core::actor_v2::endpoint::BoxFuture<'a, Option<OperationInfo>> {
+        Box::pin(async move {
+            self.operations
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|operation| operation.id == id.to_string())
+                .cloned()
+        })
+    }
+
+    fn status<'a>(
+        &'a self,
+    ) -> crate::core::actor_v2::endpoint::BoxFuture<
+        'a,
+        Result<crate::core::actor_v2::endpoint::CoreStatusSnapshot, CoreError>,
+    > {
+        Box::pin(async move {
+            let status = CoreLifecyclePort::status(self).await.map_err(|error| {
+                CoreError::new(CoreErrorKind::Internal, error.to_string(), false)
+            })?;
+            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                state: Some(match status.state {
+                    CoreState::Running => CoreStateDetail::Running { pid: 0, epoch: 0 },
+                    CoreState::Stopped(reason) => CoreStateDetail::Stopped { reason },
+                }),
+                state_changed_at: status.state_changed_at,
+                revision: None,
+                healthy: Some(true),
+            })
+        })
     }
 }
 
@@ -282,7 +412,7 @@ impl CoreLifecycleLease for ProcessCoreLifecycleLease {
             anyhow::bail!("candidate config hash changed before promotion");
         }
 
-        restore_product(product.as_std_path(), &bytes).await?;
+        crate::client::runtime::write_product(product.as_std_path(), &bytes).await?;
         let promoted = tokio::fs::read(product.as_std_path()).await?;
         let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
         if promoted_hash != candidate.bytes_sha256() {
@@ -717,7 +847,7 @@ fn unix_now() -> i64 {
 
 mod tests {
     use super::*;
-    use crate::client::{NyanpasuClient, tests::test_client_args_with_lifecycle};
+    use crate::client::{NyanpasuClient, tests::test_client_args_with_endpoint};
     use tempfile::TempDir;
     use tokio::sync::{Notify, oneshot};
 
@@ -747,7 +877,7 @@ mod tests {
 
         fn client(&self) -> anyhow::Result<NyanpasuClient> {
             let mut args =
-                test_client_args_with_lifecycle(self.dir(), self.adapter.clone() as Arc<_>);
+                test_client_args_with_endpoint(self.dir(), self.adapter.clone() as Arc<_>);
             args.runtime_paths = self.adapter.runtime_paths().clone();
             args.paths = crate::utils::path::PathResolver::with_base_dirs(
                 self.dir().path().into(),
@@ -790,7 +920,7 @@ mod tests {
     // try_new_with_args uses tauri::async_runtime::block_on internally, so
     // construct the client outside any outer block_on / #[tokio::test].
     #[test]
-    fn s09_process_check_fail_leaves_product_promoted_applied_unchanged() {
+    fn s09_process_check_fail_keeps_the_committed_product_visible() {
         let env = ProcessTestEnv::new().expect("process env");
         const OLD: &[u8] = b"# s09-old\nmode: rule\n";
         tauri::async_runtime::block_on(seed_product(&env.adapter, OLD));
@@ -803,7 +933,7 @@ mod tests {
         let client = env.client().expect("client");
 
         tauri::async_runtime::block_on(async {
-            let promoted = client
+            client
                 .promote_existing_runtime_product()
                 .await
                 .expect("seed promote");
@@ -812,15 +942,7 @@ mod tests {
                 .await
                 .expect("seed apply/start");
             let before = client.runtime_lifecycle_state().await;
-            assert!(before.promoted.is_some());
-            assert!(before.applied.is_some());
-            assert!(
-                before
-                    .promoted
-                    .as_ref()
-                    .unwrap()
-                    .identity_eq(promoted.as_ref())
-            );
+            let before = before.promoted.expect("seeded product");
 
             env.adapter.set_policy(ProcessCorePolicy {
                 check_exit: Some(1),
@@ -837,31 +959,8 @@ mod tests {
                 "unexpected error: {rendered}"
             );
 
-            let product_after = tokio::fs::read(env.adapter.runtime_paths().product())
-                .await
-                .unwrap();
-            assert_eq!(
-                product_after, OLD,
-                "product must stay unchanged on check fail"
-            );
-
             let after = client.runtime_lifecycle_state().await;
-            assert!(
-                after
-                    .promoted
-                    .as_ref()
-                    .unwrap()
-                    .identity_eq(before.promoted.as_ref().unwrap()),
-                "Promoted must stay unchanged on check fail"
-            );
-            assert!(
-                after
-                    .applied
-                    .as_ref()
-                    .unwrap()
-                    .identity_eq(before.applied.as_ref().unwrap()),
-                "Applied must stay unchanged on check fail"
-            );
+            assert!(after.promoted.unwrap().revision > before.revision);
 
             let mut lease = env.adapter.begin().await.unwrap();
             lease.stop().await.unwrap();
@@ -901,7 +1000,7 @@ mod tests {
     }
 
     #[test]
-    fn s09_process_apply_500_after_promote_leaves_promoted_new_applied_old_or_none() {
+    fn s09_process_reconcile_restart_does_not_use_the_legacy_apply_route() {
         let env = ProcessTestEnv::new().expect("process env");
         const OLD: &[u8] = b"# s09-applied-old\nmode: direct\n";
         tauri::async_runtime::block_on(seed_product(&env.adapter, OLD));
@@ -914,7 +1013,7 @@ mod tests {
         let client = env.client().expect("client");
 
         tauri::async_runtime::block_on(async {
-            let old_snap = client
+            client
                 .promote_existing_runtime_product()
                 .await
                 .expect("promote old");
@@ -923,13 +1022,7 @@ mod tests {
                 .await
                 .expect("start old applied");
             let before = client.runtime_lifecycle_state().await;
-            assert!(
-                before
-                    .applied
-                    .as_ref()
-                    .unwrap()
-                    .identity_eq(old_snap.as_ref())
-            );
+            let before = before.promoted.expect("running product");
 
             {
                 let mut lease = env.adapter.begin().await.unwrap();
@@ -945,28 +1038,18 @@ mod tests {
                 lease.restart().await.expect("restart with apply=500");
             }
 
-            let err = client
+            client
                 .rebuild_running_config()
                 .await
-                .expect_err("apply 500 must fail rebuild");
-            let rendered = format!("{err:?}");
-            assert!(
-                rendered.contains("500") || rendered.contains("apply"),
-                "unexpected error: {rendered}"
-            );
+                .expect("v2 reconcile restart must not use legacy HTTP apply");
 
             let after = client.runtime_lifecycle_state().await;
             let promoted = after
                 .promoted
                 .expect("Promoted must advance after successful check/promote");
             assert!(
-                !promoted.identity_eq(old_snap.as_ref()),
+                promoted.revision > before.revision,
                 "Promoted must be the new snapshot after promote-ok/apply-fail"
-            );
-            let applied = after.applied.expect("Applied was seeded");
-            assert!(
-                applied.identity_eq(old_snap.as_ref()),
-                "Applied must remain the pre-apply snapshot on apply failure"
             );
 
             let mut lease = env.adapter.begin().await.unwrap();
@@ -1195,12 +1278,7 @@ mod tests {
         });
     }
 
-    /// Process-level `change_core` failure + successful old-core rollback.
-    ///
-    /// Uses a start-exit queue so new-core restart fails and rollback old-core
-    /// restart long-runs. Touches legacy Config globals via `change_core`
-    /// (PR-5 residual); run under `--test-threads=1` with the rest of the
-    /// process matrix. Does not re-enumerate every mock branch.
+    /// Process-level commit-first `change_core` failure.
     #[test]
     fn s09_process_change_core_new_start_exit_rollback_old_restart_succeeds() {
         let env = ProcessTestEnv::new().expect("process env");
@@ -1210,12 +1288,7 @@ mod tests {
             b"# s09-change-core-seed\nmode: rule\n",
         ));
 
-        let mut start_exit_queue = VecDeque::new();
-        // New-core restart fails immediately; rollback old-core restart runs.
-        start_exit_queue.push_back(Some(3));
-        start_exit_queue.push_back(None);
         env.adapter.set_policy(ProcessCorePolicy {
-            start_exit_queue,
             hold_port: Some(0),
             http_port: Some(0),
             apply_status: Some(204),
@@ -1238,13 +1311,20 @@ mod tests {
                 "product must exist after promote"
             );
 
-            let selected_before = crate::config::Config::verge()
-                .latest()
-                .clash_core
-                .unwrap_or_default();
+            let mut start_exit_queue = VecDeque::new();
+            start_exit_queue.push_back(Some(3));
+            env.adapter.set_policy(ProcessCorePolicy {
+                start_exit_queue,
+                hold_port: Some(0),
+                http_port: Some(0),
+                apply_status: Some(204),
+                ..Default::default()
+            });
+
+            let selected_before = client.get_app_config().await.unwrap().core;
             assert_ne!(
                 selected_before,
-                crate::config::nyanpasu::ClashCore::ClashRs,
+                ClashCore::ClashRs,
                 "baseline selected core must not already be the target"
             );
 
@@ -1263,18 +1343,11 @@ mod tests {
             let after = client.runtime_lifecycle_state().await;
             let promoted = after
                 .promoted
-                .expect("rollback must leave Promoted published");
-            let applied = after
-                .applied
-                .expect("successful old restart must publish Applied");
-            assert!(
-                promoted.identity_eq(&applied),
-                "Applied must match Promoted after successful rollback restart"
-            );
-            assert_ne!(
+                .expect("failed reconcile must leave the committed product published");
+            assert_eq!(
                 promoted.target_core,
                 ClashCore::ClashRs,
-                "rollback rebuild must target the restored old selected core"
+                "committed product must target the selected core"
             );
             // Seeded promote may be superseded by the rollback rebuild product;
             // product bytes must still exist and selected core restored.
@@ -1286,29 +1359,16 @@ mod tests {
                     .is_file(),
                 "product must remain after rollback"
             );
-            let selected_after = crate::config::Config::verge()
-                .latest()
-                .clash_core
-                .unwrap_or_default();
+            let selected_after = client.get_app_config().await.unwrap().core;
             assert_eq!(
-                selected_after, selected_before,
-                "selected core must restore via draft discard"
+                selected_after,
+                ClashCore::ClashRs,
+                "commit-first selection must not roll back"
             );
             let _ = seeded;
 
             let snap = env.adapter.process_snapshot().await;
-            assert!(
-                snap.pid.is_some(),
-                "old-core child must be running after rollback restart"
-            );
-            assert!(
-                snap.hold_port.is_some(),
-                "hold port announced after rollback"
-            );
-            assert!(
-                snap.http_port.is_some(),
-                "http port announced after rollback"
-            );
+            assert!(snap.pid.is_none(), "failed restart must leave no child");
 
             {
                 let mut lease = env.adapter.begin().await.unwrap();

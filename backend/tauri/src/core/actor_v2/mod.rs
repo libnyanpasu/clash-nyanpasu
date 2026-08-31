@@ -31,6 +31,7 @@
 
 pub mod endpoint;
 pub mod intent;
+pub mod local_host;
 pub mod service_actor;
 
 use std::time::Duration;

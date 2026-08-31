@@ -982,6 +982,38 @@ async fn a_degraded_shutdown_reports_that_no_stop_was_attempted() {
     assert_eq!(local.stops.load(Ordering::SeqCst), 0);
 }
 
+#[tokio::test]
+async fn a_second_shutdown_replays_the_same_report() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+
+    let first = client.shutdown().await.unwrap();
+    assert_eq!(client.status().connectivity, EndpointConnectivity::ShutDown);
+    let second = client.shutdown().await.unwrap();
+
+    assert_eq!(first.stop, second.stop);
+    assert_eq!(first.final_status, second.final_status);
+    assert_eq!(local.stops.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_submit_after_shutdown_is_refused_as_shutting_down() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let client = CoreClient::spawn(local).await.unwrap();
+
+    client.shutdown().await.unwrap();
+    let error = client.submit(reconcile_envelope()).await.unwrap_err();
+
+    assert_eq!(error.kind, Some(CoreErrorKind::ShuttingDown));
+    assert!(!error.retryable);
+}
+
 /// Minor-A2: an endpoint that accepts the read and never answers must degrade
 /// the projection. Unbounded, the pump would wait on it forever and the app
 /// would keep showing the last frame as if it were current.

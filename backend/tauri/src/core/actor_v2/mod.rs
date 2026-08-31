@@ -123,6 +123,7 @@ pub struct CoreStatusProjection {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EndpointConnectivity {
     Connected,
+    ShutDown,
     HandingOff {
         from: ExecutionHost,
         to: ExecutionHost,
@@ -233,6 +234,9 @@ pub struct CoreActorArgs {
 
 enum EndpointSlot {
     Connected(EndpointHandle),
+    ShutDown {
+        report: ShutdownReport,
+    },
     /// The stop-and-prove leg is in flight. Exhaustive matching on this enum
     /// is what makes "routed something during a handoff" a compile error
     /// rather than a race.
@@ -308,6 +312,12 @@ impl CoreActorState {
                     desired: *desired,
                     reason: reason.clone(),
                 },
+                snapshot,
+            },
+            EndpointSlot::ShutDown { .. } => CoreStatusProjection {
+                host: self.status_tx.borrow().host,
+                generation: self.generation,
+                connectivity: EndpointConnectivity::ShutDown,
                 snapshot,
             },
         }
@@ -595,6 +605,11 @@ impl Actor for CoreActor {
                         format!("the {desired:?} endpoint is degraded: {reason}"),
                         true,
                     )),
+                    EndpointSlot::ShutDown { .. } => Err(CoreError::new(
+                        CoreErrorKind::ShuttingDown,
+                        "the core router is shut down",
+                        false,
+                    )),
                 };
                 let _ = reply.send(result);
             }
@@ -617,7 +632,9 @@ impl Actor for CoreActor {
             } => {
                 // Stale frames from an abandoned endpoint are dropped, never
                 // merged (fencing use #1).
-                if generation == state.generation {
+                if generation == state.generation
+                    && !matches!(state.slot, EndpointSlot::ShutDown { .. })
+                {
                     state.set_snapshot(snapshot);
                 }
             }
@@ -650,6 +667,10 @@ impl Actor for CoreActor {
             }
 
             CoreActorMessage::Shutdown { reply } => {
+                if let EndpointSlot::ShutDown { report } = &state.slot {
+                    let _ = reply.send(report.clone());
+                    return Ok(());
+                }
                 if let Some(pump) = state.pump.take() {
                     pump.abort();
                 }
@@ -673,17 +694,22 @@ impl Actor for CoreActor {
                         true,
                     )),
                     EndpointSlot::HandingOff { .. } => unreachable!("deferred above"),
+                    EndpointSlot::ShutDown { .. } => unreachable!("replayed above"),
                 };
                 // Reported, never swallowed: the report is the structural fix
                 // for the audited fake-Stopped.
                 if let Err(error) = &stop {
                     tracing::error!("shutdown stop failed: {error}");
                 }
-                let _ = reply.send(ShutdownReport {
+                let report = ShutdownReport {
                     stop,
                     final_status: state.snapshot.clone(),
-                });
-                myself.stop(Some("shutdown".into()));
+                };
+                state.slot = EndpointSlot::ShutDown {
+                    report: report.clone(),
+                };
+                state.publish();
+                let _ = reply.send(report);
             }
         }
         Ok(())
@@ -706,6 +732,14 @@ impl CoreActor {
         target: EndpointHandle,
         reply: RpcReplyPort<Result<HandoffReport, CoreError>>,
     ) {
+        if matches!(state.slot, EndpointSlot::ShutDown { .. }) {
+            let _ = reply.send(Err(CoreError::new(
+                CoreErrorKind::ShuttingDown,
+                "the core router is shut down",
+                false,
+            )));
+            return;
+        }
         if matches!(state.slot, EndpointSlot::HandingOff { .. }) {
             let _ = reply.send(Err(CoreError::new(
                 CoreErrorKind::OperationConflict,
@@ -756,6 +790,7 @@ impl CoreActor {
             }
             EndpointSlot::Connected(current) => Some(current.clone()),
             EndpointSlot::HandingOff { .. } => unreachable!("refused above"),
+            EndpointSlot::ShutDown { .. } => unreachable!("refused above"),
         };
 
         let Some(source) = source else {
@@ -825,10 +860,13 @@ impl CoreActor {
                 stop: result,
                 final_status: state.snapshot.clone(),
             };
+            state.slot = EndpointSlot::ShutDown {
+                report: report.clone(),
+            };
+            state.publish();
             for shutdown_reply in state.pending_shutdown.drain(..) {
                 let _ = shutdown_reply.send(report.clone());
             }
-            myself.stop(Some("shutdown".into()));
             return;
         }
 

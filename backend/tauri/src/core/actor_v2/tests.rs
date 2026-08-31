@@ -1203,16 +1203,40 @@ fn handoff_budget_outlasts_every_internal_leg_it_covers() {
     assert!(super::handoff_budget(super::PUMP_STATUS_TIMEOUT, STOP_WAIT) > production_worst_case);
 }
 
-/// The coherence requirement's shutdown half: `Shutdown` never preflights a
-/// target, so its worst case is the stop's three legs (admission, long poll,
-/// status fallback) without the extra `status_timeout` `change_host` spends
-/// on the preflight.
+/// The coherence requirement's shutdown half. Standing alone, `Shutdown` never
+/// preflights a target, so its worst case is the stop's three legs (admission,
+/// long poll, status fallback). But it does not always stand alone: a shutdown
+/// that arrives during a handoff is deferred and settled by that handoff's
+/// continuation, after waiting out the preflight leg `change_host` holds the
+/// mailbox for. The budget has to outlast that longer path too, or it expires
+/// exactly when the actor answers honestly.
 #[test]
 fn shutdown_budget_outlasts_every_internal_leg_it_covers() {
     let status_timeout = Duration::from_millis(50);
     let stop_wait = Duration::from_millis(100);
-    let worst_case = status_timeout * 3 + stop_wait;
-    assert!(super::shutdown_budget(status_timeout, stop_wait) > worst_case);
+
+    let standalone = status_timeout * 3 + stop_wait;
+    assert!(super::shutdown_budget(status_timeout, stop_wait) > standalone);
+
+    let deferred_behind_a_handoff = status_timeout * 4 + stop_wait;
+    assert!(
+        super::shutdown_budget(status_timeout, stop_wait) > deferred_behind_a_handoff,
+        "a shutdown deferred by a concurrent handoff must outlast the preflight leg too"
+    );
+}
+
+/// The production numbers this closes, in the shape of the A1 defect it
+/// repeats: the previous three-leg budget was byte-for-byte the worst case a
+/// shutdown deferred behind a handoff can honestly take.
+#[test]
+fn the_old_shutdown_budget_equalled_the_deferred_worst_case() {
+    let deferred_worst_case = super::PUMP_STATUS_TIMEOUT * 4 + STOP_WAIT;
+    let old_budget = super::PUMP_STATUS_TIMEOUT * 3 + STOP_WAIT + super::CALL_BUDGET_SLACK;
+    assert_eq!(
+        old_budget, deferred_worst_case,
+        "the equality is the bug: the caller could give up as the actor answered"
+    );
+    assert!(super::shutdown_budget(super::PUMP_STATUS_TIMEOUT, STOP_WAIT) > deferred_worst_case);
 }
 
 /// The coherence requirement's submit half: once F4 bounds the `Submit`

@@ -97,11 +97,21 @@ fn handoff_budget(status_timeout: Duration, stop_wait: Duration) -> Duration {
     status_timeout * 4 + stop_wait + CALL_BUDGET_SLACK
 }
 
-/// Caller bound for [`CoreClient::shutdown`]. Same stop legs as
-/// [`handoff_budget`] minus the preflight — shutdown never probes a target —
-/// so three `status_timeout` legs plus `stop_wait`.
+/// Caller bound for [`CoreClient::shutdown`]. Shutdown never probes a target,
+/// so its own stop is the same three `status_timeout` legs as
+/// [`handoff_budget`] minus the preflight, plus `stop_wait`.
+///
+/// It still has to cover a fourth `status_timeout`, because shutdown is not
+/// always the thing occupying the actor. A shutdown that lands while
+/// `change_host` is running is deferred into `pending_shutdown` and settled by
+/// the handoff continuation, and before that it waits out the preflight leg
+/// `change_host` spends holding the mailbox on its way to `HandingOff`. Budget
+/// only for the three and the caller's deadline equals that path exactly:
+/// production had `3 * 10s + 60s + 10s` slack against a 100s worst case, so it
+/// could elapse at the very instant the actor produced its honest report — and
+/// the facade's shared future then caches the timeout-shaped report forever.
 fn shutdown_budget(status_timeout: Duration, stop_wait: Duration) -> Duration {
-    status_timeout * 3 + stop_wait + CALL_BUDGET_SLACK
+    status_timeout * 4 + stop_wait + CALL_BUDGET_SLACK
 }
 
 /// Caller bound for [`CoreClient::submit`]. The `Submit` handler bounds its

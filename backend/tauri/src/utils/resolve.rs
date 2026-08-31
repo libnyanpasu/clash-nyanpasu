@@ -149,7 +149,16 @@ pub fn resolve_setup(app: &mut App) {
     crate::consts::setup_app_handle(app.app_handle().clone());
 
     log_err!(init::init_resources());
-    log_err!(init::init_service());
+    {
+        let client = app.state::<crate::client::NyanpasuClient>();
+        log_err!(tauri::async_runtime::block_on(client.probe_service()));
+        // The core actor spawns on Local; persisted service mode only takes
+        // effect once the runtime is handed to the daemon, and that has to
+        // happen before the reconcile below picks a host to start the core on.
+        log_err!(tauri::async_runtime::block_on(
+            client.restore_execution_host()
+        ));
+    }
 
     // FIXME(actor-migration): write the session-resolved ports back into the
     // legacy mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
@@ -173,35 +182,12 @@ pub fn resolve_setup(app: &mut App) {
             let _ = Config::clash().data().save_config();
         }
 
-        // 启动首铸:profiles/clash/app 快照 → RuntimeBuilder → 候选 check → 晋升产物 → 发布
         log::trace!("init config");
-        log_err!(tauri::async_runtime::block_on(client.regenerate_runtime()));
-        // 兜底(spec §5.6):产物缺失时默认配置也必须过 check——check 失败则不落
-        // 未检产物(P0-5),boot 继续,核心启动失败可见。
-        let runtime_path = client.runtime_product_path();
-        if tauri::async_runtime::block_on(client.promoted_runtime()).is_none() {
-            if runtime_path.exists() {
-                log_err!(tauri::async_runtime::block_on(
-                    client.promote_existing_runtime_product()
-                ));
-            } else {
-                log_err!(tauri::async_runtime::block_on(
-                    client.promote_default_runtime_config()
-                ));
-            }
-        }
+        log_err!(tauri::async_runtime::block_on(client.reconcile_core()));
     }
 
     log::trace!("init storage");
     log_err!(crate::core::storage::setup(app));
-
-    log::trace!("launch core");
-    {
-        let client = app.state::<crate::client::NyanpasuClient>();
-        log_err!(tauri::async_runtime::block_on(
-            client.start_promoted_runtime()
-        ));
-    }
 
     log::trace!("init clash connection connector");
     log_err!(crate::core::clash::setup(app));
@@ -285,7 +271,6 @@ fn spawn_window_ready_timeout(app_handle: AppHandle) {
 /// reset system proxy
 pub fn resolve_reset() {
     log_err!(sysopt::Sysopt::global().reset_sysproxy());
-    log_err!(block_on(CoreManager::global().stop_core()));
 }
 
 /// Main window implementation (new UI)

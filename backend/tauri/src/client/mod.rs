@@ -429,14 +429,13 @@ impl NyanpasuClient {
         });
     }
 
-    /// Stop the instance-owned **rebuild coordinator worker** and await its exit.
+    /// Stop the instance-owned rebuild worker and await its exit.
     ///
     /// Contract (PR-4S S09):
     /// - Shuts down only the capacity-1 dirty rebuild worker owned by this client graph.
     /// - Does **not** act as a general service locator teardown.
-    /// - Does **not** stop desired-state actors, CoreManager globals, system proxy,
-    ///   or OS-side resources — those remain PR-5/6 residuals and existing
-    ///   `cleanup_processes` / core stop paths.
+    /// Core shutdown is owned by [`Self::shutdown_core`] and is invoked once by
+    /// the application exit path after this worker has quiesced.
     /// - Safe to call multiple times; post-shutdown dirty notifications are no-ops.
     /// - An already in-flight rebuild is allowed to finish; coalesce waits abort.
     pub async fn shutdown(&self) {
@@ -520,6 +519,51 @@ impl NyanpasuClient {
 
     pub fn service_status(&self) -> ServiceHostStatus {
         self.inner.core_v2.service_status()
+    }
+
+    pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
+        self.inner.core_v2.subscribe_service_events()
+    }
+
+    pub async fn probe_service(
+        &self,
+    ) -> std::result::Result<ServiceHostStatus, nyanpasu_core_manager::CoreError> {
+        self.inner.core_v2.probe_service().await
+    }
+
+    /// Boot-time execution-host restore.
+    ///
+    /// The core actor always spawns on the Local endpoint, so a session that
+    /// persisted service mode has to hand the runtime over before the first
+    /// reconcile decides where the core comes up. Without this the app boots
+    /// every service-mode user onto a local child process.
+    ///
+    /// A failing handoff leaves the app on Local rather than failing the boot:
+    /// that is what the legacy `RunType` classification did when the daemon
+    /// was not reachable, and the caller logs the degradation. No reconcile
+    /// happens here -- the boot sequence runs one immediately afterwards, and
+    /// a second would start the core twice.
+    pub async fn restore_execution_host(&self) -> Result<()> {
+        if !self.get_app_config().await?.enable_service_mode {
+            return Ok(());
+        }
+        // Adopt the daemon only when it is already up and compatible; never
+        // converge it. The legacy `RunType` classification picked Service only
+        // while the IPC was connected, so booting never installed or started
+        // the daemon -- and never raised a UAC prompt -- on the user's behalf.
+        if !matches!(
+            self.service_status().phase,
+            crate::core::actor_v2::service_actor::ServicePhase::Ready
+        ) {
+            return Ok(());
+        }
+        let _transition = self.inner.host_transition.lock().await;
+        self.inner
+            .core_v2
+            .change_execution_host(ExecutionHost::Service)
+            .await
+            .map_err(client_error_from_core)?;
+        Ok(())
     }
 
     pub async fn shutdown_core(&self) -> ShutdownReport {
@@ -1339,21 +1383,6 @@ impl NyanpasuClient {
             .await
             .map(|_| ())
             .map_err(client_error_from_core)
-    }
-
-    /// Commit the desired patch before asking the control plane to reconcile it.
-    pub async fn patch_running_config(&self, patch: serde_yaml::Mapping) -> Result<()> {
-        crate::config::Config::clash().draft().patch_config(patch);
-        crate::config::Config::clash().apply();
-        crate::config::Config::clash()
-            .data()
-            .save_config()
-            .map_err(ClientError::Anyhow)?;
-        self.reconcile_core()
-            .await
-            .map_err(client_error_from_core)?;
-        crate::feat::update_proxies_buff(None);
-        Ok(())
     }
 
     pub async fn rebuild_running_config(&self) -> Result<()> {
@@ -2765,6 +2794,33 @@ pub(crate) mod tests {
                 profiles.current.as_ref(),
                 Some(&uid),
                 "state stays committed"
+            );
+        });
+    }
+
+    /// Boot has to restore the persisted execution host -- the core actor
+    /// always spawns on Local -- but only by adopting a daemon that is already
+    /// up. Converging one here would install and start the service, raising a
+    /// UAC prompt at every launch for a user who merely left the setting on,
+    /// which the legacy `RunType` classification never did.
+    #[test]
+    fn boot_restore_adopts_only_an_already_ready_daemon() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client =
+            NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint))
+                .unwrap();
+        tauri::async_runtime::block_on(async {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.enable_service_mode = Some(true);
+            client.patch_app_config(patch).await.unwrap();
+
+            client.restore_execution_host().await.unwrap();
+
+            assert_eq!(
+                client.core_status().host,
+                ExecutionHost::Local,
+                "an absent daemon must not be installed and started by a boot restore"
             );
         });
     }

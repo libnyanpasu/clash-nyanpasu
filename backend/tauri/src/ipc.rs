@@ -10,15 +10,14 @@ use crate::{
 use anyhow::Context;
 use chrono::Local;
 use log::debug;
-use nyanpasu_ipc::api::status::CoreState;
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::Cow,
     collections::{HashMap, VecDeque},
     path::PathBuf,
     result::Result as StdResult,
 };
 use storage::{StorageOperationError, WebStorage};
+use struct_patch::Patch as _;
 use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
@@ -41,6 +40,8 @@ pub enum IpcError {
     Anyhow(#[from] anyhow::Error),
     #[error(transparent)]
     Profiles(#[from] crate::state::profiles::actor::ProfilesError),
+    #[error(transparent)]
+    Core(#[from] nyanpasu_core_manager::CoreError),
     #[error("{0}")]
     Custom(String),
 }
@@ -137,7 +138,7 @@ pub fn is_portable() -> Result<bool> {
 #[tauri::command]
 #[specta::specta]
 pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
-    client.rebuild_running_config().await?;
+    client.reconcile_core().await?;
     Ok(())
 }
 
@@ -396,11 +397,10 @@ pub async fn get_postprocessing_output(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_status() -> Result<(Cow<'static, CoreState>, i64, RunType)> {
-    // TODO(actor-migration): compatibility bridge for legacy core manager status.
-    // Reason: core lifecycle/status is not yet owned by an injected typed client here.
-    // Remove when: CoreClient exposes typed status through NyanpasuClient or command adapters.
-    Ok(CoreManager::global().status().await)
+pub async fn get_core_status(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::core::actor_v2::CoreStatusInfo> {
+    Ok(client.core_status().into())
 }
 
 #[tauri::command]
@@ -449,12 +449,19 @@ pub async fn patch_clash_config(
         "patch_clash_config"
     );
 
-    let mapping = match serde_yaml::to_value(&payload)? {
-        serde_yaml::Value::Mapping(m) => m,
-        _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
-    };
-
-    client.patch_running_config(mapping).await?;
+    let overrides = serde_yaml::from_value::<
+        nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
+    >(serde_yaml::to_value(payload)?)?;
+    let mut clash = client.get_clash_config().await?;
+    clash.overrides.apply(overrides);
+    let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+    patch.overrides = Some(clash.overrides);
+    client.patch_clash_config(patch).await?;
+    client.reconcile_core().await?;
+    // A mode change rewrites the proxy groups; warm the cache the same way the
+    // pre-facade patch path did, or the next read serves the old groups until
+    // the guard's freshness window lapses.
+    crate::feat::update_proxies_buff(None);
     Ok(())
 }
 
@@ -481,26 +488,27 @@ pub async fn patch_verge_config(legacy: State<'_, LegacyVergeBridge>, payload: I
 #[specta::specta]
 pub async fn change_clash_core(
     client: State<'_, NyanpasuClient>,
-    legacy: State<'_, LegacyVergeBridge>,
     clash_core: Option<nyanpasu::ClashCore>,
 ) -> Result {
     let clash_core =
         clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
-    // reseed wrapper 语义不变:核心切换动了 legacy verge,须回灌 typed actors。
-    let client = client.inner().clone();
-    legacy
-        .run_legacy_verge_mutation(move || async move {
-            client.change_core(clash_core).await.map_err(Into::into)
-        })
-        .await?;
+    let clash_core = match clash_core {
+        nyanpasu::ClashCore::ClashPremium => nyanpasu_config::application::ClashCore::ClashPremium,
+        nyanpasu::ClashCore::ClashRs => nyanpasu_config::application::ClashCore::ClashRs,
+        nyanpasu::ClashCore::Mihomo => nyanpasu_config::application::ClashCore::Mihomo,
+        nyanpasu::ClashCore::MihomoAlpha => nyanpasu_config::application::ClashCore::MihomoAlpha,
+        nyanpasu::ClashCore::ClashRsAlpha => nyanpasu_config::application::ClashCore::ClashRsAlpha,
+        nyanpasu::ClashCore::Meow => nyanpasu_config::application::ClashCore::Meow,
+    };
+    client.update_core(clash_core).await?;
     Ok(())
 }
 
 /// restart the sidecar
 #[tauri::command]
 #[specta::specta]
-pub async fn restart_sidecar() -> Result {
-    (CoreManager::global().run_core().await)?;
+pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
+    client.reconcile_core().await?;
     Ok(())
 }
 
@@ -636,11 +644,14 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_core(core_type: nyanpasu::ClashCore) -> Result<usize> {
+pub async fn update_core(
+    client: State<'_, NyanpasuClient>,
+    core_type: nyanpasu::ClashCore,
+) -> Result<usize> {
     let event_id = (updater::UpdaterManager::global()
         .write()
         .await
-        .update_core(&core_type)
+        .update_core(&core_type, client.inner().clone())
         .await)?;
     Ok(event_id)
 }

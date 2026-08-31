@@ -128,7 +128,9 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             window::WindowMessageEvent,
             window::WindowReadyEvent,
             core::storage::StorageValueChangedEvent,
-            ipc::SchemeRequestReceivedEvent
+            ipc::SchemeRequestReceivedEvent,
+            core::actor_v2::CoreStatusChangedEvent,
+            core::actor_v2::ServiceStatusChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
         // PR-3 T01: profile domain types, add-only. Commands referencing them

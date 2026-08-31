@@ -150,6 +150,14 @@ impl CoreFacade {
         self.service.status()
     }
 
+    pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
+        self.service.subscribe()
+    }
+
+    pub async fn probe_service(&self) -> Result<ServiceHostStatus, CoreError> {
+        self.service.probe().await
+    }
+
     pub async fn uninstall_service(&self) -> Result<(), CoreError> {
         self.service.uninstall().await
     }

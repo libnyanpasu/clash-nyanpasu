@@ -121,7 +121,8 @@ pub struct CoreStatusProjection {
     pub snapshot: Option<CoreStatusSnapshot>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case", tag = "kind")]
 pub enum EndpointConnectivity {
     Connected,
     ShutDown,
@@ -136,6 +137,44 @@ pub enum EndpointConnectivity {
         reason: String,
     },
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+pub struct CoreStatusInfo {
+    pub host: ExecutionHost,
+    pub connectivity: EndpointConnectivity,
+    pub generation: u64,
+    pub state: Option<nyanpasu_ipc::api::status::CoreStateDetail>,
+    pub state_changed_at: i64,
+    pub revision: Option<nyanpasu_ipc::api::status::RevisionIdInfo>,
+    pub healthy: Option<bool>,
+}
+
+impl From<CoreStatusProjection> for CoreStatusInfo {
+    fn from(status: CoreStatusProjection) -> Self {
+        let snapshot = status.snapshot;
+        Self {
+            host: status.host,
+            connectivity: status.connectivity,
+            generation: status.generation,
+            state: snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.state.clone()),
+            state_changed_at: snapshot
+                .as_ref()
+                .map_or_default(|snapshot| snapshot.state_changed_at),
+            revision: snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.revision.clone()),
+            healthy: snapshot.and_then(|snapshot| snapshot.healthy),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct ServiceStatusChangedEvent(pub service_actor::ServiceHostStatus);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HandoffReport {

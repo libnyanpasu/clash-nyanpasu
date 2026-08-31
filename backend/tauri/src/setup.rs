@@ -15,6 +15,7 @@ use crate::{
 };
 use anyhow::Context;
 use camino::Utf8PathBuf;
+use tauri_specta::Event;
 
 const RESTART_BUDGET: u8 = 3;
 
@@ -63,13 +64,14 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
             window: Arc::new(LegacyWindowBridge::new(legacy_lock.clone())),
             clash: Arc::new(LegacyClashBridge::new(legacy_lock)),
         },
-        ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle)),
+        ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle.clone())),
         core: Arc::new(LegacyCoreBridge::new(runtime_paths)),
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
     })
     .context("Failed to setup nyanpasu client")?;
+    forward_actor_events(app_handle, client.clone());
     app.manage(LegacyVergeBridge::new(
         client.clone(),
         legacy_verge_path,
@@ -80,6 +82,34 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
     // FIXME: this is a background setup, so be careful use this state in ipc.
     // crate::logging::setup(app).context("Failed to setup logging")?;
     Ok(())
+}
+
+fn forward_actor_events<R: tauri::Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    client: NyanpasuClient,
+) {
+    let mut core_events = client.subscribe_core_events();
+    let core_handle = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match core_events.recv().await {
+                Ok(status) => {
+                    let _ = crate::core::actor_v2::CoreStatusChangedEvent(status.into())
+                        .emit(&core_handle);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+
+    let mut service_events = client.subscribe_service_events();
+    tauri::async_runtime::spawn(async move {
+        while service_events.changed().await.is_ok() {
+            let status = service_events.borrow_and_update().clone();
+            let _ = crate::core::actor_v2::ServiceStatusChangedEvent(status).emit(&app_handle);
+        }
+    });
 }
 
 fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {

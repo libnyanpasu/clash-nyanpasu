@@ -47,7 +47,8 @@ pub trait ServiceHostAdapter: Send + Sync {
     fn endpoint(&self) -> EndpointHandle;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
 pub enum ServicePhase {
     Probing,
     NotInstalled,
@@ -71,7 +72,7 @@ pub enum ServicePhase {
 
 /// The watch projection (UI settings page + facade). Daemon state, never a
 /// second copy of core state.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
 pub struct ServiceHostStatus {
     pub phase: ServicePhase,
     pub compat: ServiceCompat,

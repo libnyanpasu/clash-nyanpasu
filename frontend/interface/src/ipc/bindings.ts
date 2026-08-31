@@ -251,10 +251,7 @@ export const commands = {
   isTrayIconSet: (mode: TrayIcon) =>
     typedError<boolean, string>(__TAURI_INVOKE('is_tray_icon_set', { mode })),
   getCoreStatus: () =>
-    typedError<
-      ['Running' | { Stopped: string | null }, number, RunType],
-      string
-    >(__TAURI_INVOKE('get_core_status')),
+    typedError<CoreStatusInfo, string>(__TAURI_INVOKE('get_core_status')),
   urlDelayTest: (url: string, expectedStatus: number) =>
     typedError<number | null, string>(
       __TAURI_INVOKE('url_delay_test', { url, expectedStatus }),
@@ -351,8 +348,14 @@ export const events = {
     'clash-connections-event',
   ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
+  coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
+    'core-status-changed-event',
+  ),
   schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
     'scheme-request-received-event',
+  ),
+  serviceStatusChangedEvent: makeEvent<ServiceStatusChangedEvent>(
+    'service-status-changed-event',
   ),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
@@ -755,6 +758,18 @@ export type CoreStateDetail =
       Switching?: never
     })
 
+export type CoreStatusChangedEvent = CoreStatusInfo
+
+export type CoreStatusInfo = {
+  host: ExecutionHost
+  connectivity: EndpointConnectivity
+  generation: number
+  state: CoreStateDetail | null
+  state_changed_at: number
+  revision: RevisionIdInfo | null
+  healthy: boolean | null
+}
+
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
@@ -814,6 +829,16 @@ export type DownloaderState =
  */
 export type EditorWindowType = 'profile' | 'css-editor'
 
+export type EndpointConnectivity =
+  | { kind: 'connected' }
+  | { kind: 'shut_down' }
+  | { kind: 'handing_off'; from: ExecutionHost; to: ExecutionHost }
+  /**
+   *  The endpoint is unreachable. `desired` names the committed host; the
+   *  router never falls back on its own.
+   */
+  | { kind: 'degraded'; desired: ExecutionHost; reason: string }
+
 export type EnvInfo = {
   os: string
   arch: string
@@ -833,6 +858,13 @@ export type EnvInfo = {
     llvm_version: string
   }
 }
+
+/**
+ *  Which controller owns the runtime. The app perceives the difference in
+ *  exactly two places: this tag on the endpoint slot, and the handoff
+ *  protocol.
+ */
+export type ExecutionHost = 'local' | 'service'
 
 export type ExternalControllerPortStrategy =
   | 'fixed'
@@ -2011,6 +2043,19 @@ export type RemoteProfileOptionsPatch_Serialize = {
   update_interval_minutes?: number | null
 }
 
+/**
+ *  The compare-and-swap identity of a config revision.
+ *
+ *  Deliberately a subset of [`ConfigRevisionInfo`]: the manager's CAS compares
+ *  epoch, generation and `effective_hash` only, so carrying `source_hash` here
+ *  would imply it takes part.
+ */
+export type RevisionIdInfo = {
+  epoch: number
+  generation: number
+  effective_hash: string
+}
+
 export type RuleProviderItem = {
   behavior: string | null
   format: string | null
@@ -2024,14 +2069,6 @@ export type RuleProviderItem = {
 export type RulesRes = {
   rules: ClashRule[]
 }
-
-export type RunType =
-  /**  Run as child process directly */
-  | 'normal'
-  /**  Run by Nyanpasu Service via a ipc call */
-  | 'service'
-  /**  Run as elevated process, if profile advice to run as elevated */
-  | 'elevated'
 
 export type RuntimeInfos = {
   service_data_dir: string
@@ -2082,7 +2119,41 @@ export type ServiceCompat =
   /**  server 上报的版本不是合法 semver。fail-closed。 */
   | { kind: 'unparsable'; server_version: string }
 
+/**
+ *  The watch projection (UI settings page + facade). Daemon state, never a
+ *  second copy of core state.
+ */
+export type ServiceHostStatus = {
+  phase: ServicePhase
+  compat: ServiceCompat
+  restart_attempts: number
+}
+
+export type ServicePhase =
+  | 'probing'
+  | 'not_installed'
+  | 'daemon_stopped'
+  | 'installing'
+  | 'starting_daemon'
+  | 'ready'
+  /**  Version gate failed closed: upgrade required, never downgraded to. */
+  | 'incompatible'
+  | 'restarting'
+  /**  Auto-restart budget spent; waits for an explicit `EnsureReady`. */
+  | 'exhausted'
+  | 'uninstalling'
+  /**
+   *  The probe itself failed or timed out (F5): what the daemon actually
+   *  is cannot be determined. Never treated as `DaemonStopped` -- an
+   *  unreachable daemon might still be holding a core open, so callers
+   *  that gate on "no core held" (the uninstall guard, `EndpointDown`'s
+   *  restart) must refuse rather than proceed.
+   */
+  | 'unknown'
+
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
+
+export type ServiceStatusChangedEvent = ServiceHostStatus
 
 /**
  *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，

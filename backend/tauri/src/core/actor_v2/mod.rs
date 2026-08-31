@@ -45,7 +45,9 @@ use nyanpasu_core_manager::{
 };
 use nyanpasu_ipc::api::core::v2::{OperationInfo, OperationOutputInfo, OperationPhase};
 
-use endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost};
+use endpoint::{
+    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle, ExecutionHost,
+};
 
 /// Monotonic owner fence. Incremented exactly once per completed handoff;
 /// stale pump frames and stale down reports are dropped by comparing it.
@@ -179,7 +181,7 @@ pub enum CoreActorMessage {
     /// Routed through the mailbox so it serializes with `ChangeHost`: while a
     /// handoff runs, no submit can land on the wrong host (I-R1).
     Submit {
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
         reply: RpcReplyPort<Result<SubmitTicket, CoreError>>,
     },
     /// Explicit ownership transfer. The endpoint is built by the caller; the
@@ -362,12 +364,15 @@ async fn stop_and_confirm(
     call_timeout: Duration,
     stop_wait: Duration,
 ) -> Result<Option<OperationInfo>, CoreError> {
-    let envelope = CoreCommandEnvelope {
-        operation_id: OperationId::generate(),
-        command: CoreCommand::Stop,
+    let submission = CoreSubmission {
+        envelope: CoreCommandEnvelope {
+            operation_id: OperationId::generate(),
+            command: CoreCommand::Stop,
+        },
+        core_type: None,
     };
-    let requested = envelope.operation_id;
-    let admitted = tokio::time::timeout(call_timeout, endpoint.submit(envelope))
+    let requested = submission.envelope.operation_id;
+    let admitted = tokio::time::timeout(call_timeout, endpoint.submit(submission))
         .await
         .map_err(|_| {
             CoreError::new(
@@ -536,17 +541,20 @@ impl Actor for CoreActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            CoreActorMessage::Submit { envelope, reply } => {
+            CoreActorMessage::Submit { submission, reply } => {
                 let result = match &state.slot {
                     EndpointSlot::Connected(handle) => {
                         let endpoint = handle.clone();
-                        let operation_id = envelope.operation_id;
+                        let operation_id = submission.envelope.operation_id;
                         // F4: an endpoint that accepts the call and never
                         // answers must not park the mailbox behind it — the
                         // same bound the preflight and the stop admission
                         // use, so it never outlasts the caller's own budget.
-                        match tokio::time::timeout(state.status_timeout, endpoint.submit(envelope))
-                            .await
+                        match tokio::time::timeout(
+                            state.status_timeout,
+                            endpoint.submit(submission),
+                        )
+                        .await
                         {
                             Ok(Ok(admitted)) if admitted.id != operation_id.to_string() => {
                                 // F8: a syntactically fine id that is not the
@@ -944,9 +952,9 @@ impl CoreClient {
         self.events_tx.subscribe()
     }
 
-    pub async fn submit(&self, envelope: CoreCommandEnvelope) -> Result<SubmitTicket, CoreError> {
+    pub async fn submit(&self, submission: CoreSubmission) -> Result<SubmitTicket, CoreError> {
         self.call(
-            |reply| CoreActorMessage::Submit { envelope, reply },
+            |reply| CoreActorMessage::Submit { submission, reply },
             self.submit_budget,
             // Mailbox residence, not a wedged endpoint, is the likely cause
             // once the caller's own budget already outlasts the `Submit`

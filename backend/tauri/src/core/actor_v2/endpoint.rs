@@ -54,6 +54,12 @@ pub struct CoreStatusSnapshot {
     pub healthy: Option<bool>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CoreSubmission {
+    pub envelope: CoreCommandEnvelope,
+    pub core_type: Option<nyanpasu_utils::core::CoreType>,
+}
+
 /// One host's control plane, as the router consumes it. Submit is the only
 /// mutating call and is always envelope-shaped; waiting on an operation is a
 /// read and deliberately not routed through the actor mailbox.
@@ -64,7 +70,7 @@ pub trait ControlEndpoint: Send + Sync {
     /// admission-time snapshot; the transaction survives this future's drop.
     fn submit<'a>(
         &'a self,
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
     ) -> BoxFuture<'a, Result<OperationInfo, CoreError>>;
 
     /// Long-poll the host's registry. `None` = unknown/evicted id (recover by
@@ -99,10 +105,10 @@ impl ControlEndpoint for LocalEndpoint {
 
     fn submit<'a>(
         &'a self,
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
     ) -> BoxFuture<'a, Result<OperationInfo, CoreError>> {
         Box::pin(async move {
-            let handle = self.control.submit(envelope)?;
+            let handle = self.control.submit(submission.envelope)?;
             Ok(map_local_operation(handle.id(), handle.state()))
         })
     }
@@ -289,10 +295,10 @@ impl ControlEndpoint for ServiceEndpoint {
 
     fn submit<'a>(
         &'a self,
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
     ) -> BoxFuture<'a, Result<OperationInfo, CoreError>> {
         Box::pin(async move {
-            let request = wire_submit_request(&envelope)?;
+            let request = wire_submit_request(&submission)?;
             self.client
                 .submit_core(&request)
                 .await
@@ -338,10 +344,11 @@ impl ControlEndpoint for ServiceEndpoint {
 /// The wire form of a local envelope. Only `Reconcile`, `Stop` and `Recover`
 /// travel; a local-only command (`Shutdown`) aimed at the daemon is a caller
 /// bug reported as such rather than silently dropped.
-fn wire_submit_request(
-    envelope: &CoreCommandEnvelope,
+pub(super) fn wire_submit_request(
+    submission: &CoreSubmission,
 ) -> Result<CoreSubmitReq<'static>, CoreError> {
     use nyanpasu_core_manager::{ConfigInput, CoreCommand};
+    let envelope = &submission.envelope;
     let command = match &envelope.command {
         CoreCommand::Reconcile(request) => {
             let ConfigInput::Inline {
@@ -356,7 +363,10 @@ fn wire_submit_request(
                 )
             })?;
             CoreCommandInfo::Reconcile {
-                core_type: Cow::Owned(app_core_kind_to_type(request.core.kind)?),
+                core_type: Cow::Owned(match &submission.core_type {
+                    Some(core_type) => core_type.clone(),
+                    None => app_core_kind_to_type(request.core.kind)?,
+                }),
                 config: Cow::Owned(config),
                 expected_digest: expected_digest.clone().map(Cow::Owned),
                 expected_applied: request.expected_applied.as_ref().map(|revision| {
@@ -384,11 +394,9 @@ fn wire_submit_request(
     })
 }
 
-/// Lossy by construction: `CoreKind` collapses the alpha channel (the daemon
-/// resolves the binary from the full `CoreType`). Known limitation, on the
-/// audit ledger: the bridge-stage facade must carry the intent's own
-/// `CoreType` to the service endpoint instead of round-tripping through the
-/// kind. `Meow` has no wire `CoreType` today and cannot be requested.
+/// Fallback used only when a caller did not carry the intent's full
+/// `CoreType`. `CoreKind` collapses alpha channels, so facade submissions
+/// always provide the original type. `Meow` has no fallback wire type.
 fn app_core_kind_to_type(
     kind: nyanpasu_core_manager::CoreKind,
 ) -> Result<nyanpasu_utils::core::CoreType, CoreError> {

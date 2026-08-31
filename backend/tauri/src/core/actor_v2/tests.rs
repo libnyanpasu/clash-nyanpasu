@@ -12,7 +12,8 @@ use std::{
 use tokio::sync::Notify;
 
 use nyanpasu_core_manager::{
-    CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, OperationId,
+    ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec,
+    InstanceOptions, OperationId, ReconcileRequest,
 };
 use nyanpasu_ipc::api::{
     core::v2::{OperationErrorInfo, OperationInfo, OperationOutputInfo, OperationPhase},
@@ -20,7 +21,8 @@ use nyanpasu_ipc::api::{
 };
 
 use super::{
-    CoreActorMessage, CoreClient, EndpointConnectivity, HandoffReport, STOP_WAIT, ShutdownReport,
+    CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport, STOP_WAIT,
+    ShutdownReport,
     endpoint::{BoxFuture, ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost},
 };
 
@@ -57,6 +59,7 @@ struct FakeEndpoint {
     /// call and then wedged would (F4).
     hang_submit: AtomicBool,
     never: Notify,
+    last_core_type: Mutex<Option<Option<nyanpasu_utils::core::CoreType>>>,
 }
 
 /// How the fake host answers a stop. Nothing here is derived from `status`.
@@ -92,6 +95,7 @@ impl FakeEndpoint {
             status_dropped: Mutex::new(None),
             hang_submit: AtomicBool::new(false),
             never: Notify::new(),
+            last_core_type: Mutex::new(None),
         })
     }
 
@@ -170,7 +174,7 @@ impl ControlEndpoint for FakeEndpoint {
 
     fn submit<'a>(
         &'a self,
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
     ) -> BoxFuture<'a, Result<OperationInfo, CoreError>> {
         Box::pin(async move {
             if self.hang_submit.load(Ordering::SeqCst) {
@@ -178,6 +182,8 @@ impl ControlEndpoint for FakeEndpoint {
                 unreachable!("nothing notifies `never`");
             }
             self.submits.fetch_add(1, Ordering::SeqCst);
+            *self.last_core_type.lock().unwrap() = Some(submission.core_type.clone());
+            let envelope = submission.envelope;
             let id = envelope.operation_id.to_string();
             if matches!(envelope.command, CoreCommand::Stop) {
                 self.stops.fetch_add(1, Ordering::SeqCst);
@@ -227,11 +233,68 @@ impl ControlEndpoint for FakeEndpoint {
     }
 }
 
-fn reconcile_envelope() -> CoreCommandEnvelope {
-    CoreCommandEnvelope {
-        operation_id: OperationId::generate(),
-        command: CoreCommand::Recover,
+fn reconcile_envelope() -> CoreSubmission {
+    CoreSubmission {
+        envelope: CoreCommandEnvelope {
+            operation_id: OperationId::generate(),
+            command: CoreCommand::Recover,
+        },
+        core_type: None,
     }
+}
+
+#[tokio::test]
+async fn an_alpha_core_reaches_the_service_wire_intact() {
+    use camino::Utf8PathBuf;
+    use nyanpasu_core_manager::CoreKind;
+    use nyanpasu_ipc::api::core::v2::CoreCommandInfo;
+    use nyanpasu_utils::core::{ClashCoreType, CoreType};
+
+    let service = FakeEndpoint::new(
+        ExecutionHost::Service,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    let client = CoreClient::spawn(service.clone()).await.unwrap();
+    let alpha = CoreType::Clash(ClashCoreType::MihomoAlpha);
+    let envelope = CoreCommandEnvelope {
+        operation_id: OperationId::generate(),
+        command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
+            core: CoreSpec {
+                kind: CoreKind::Mihomo,
+                binary_path: Utf8PathBuf::from("mihomo-alpha"),
+                version: None,
+                features: vec![],
+            },
+            config: ConfigInput::Inline {
+                bytes: b"proxies: []".to_vec(),
+                expected_digest: None,
+            },
+            options: InstanceOptions::default(),
+            expected_applied: None,
+        })),
+    };
+
+    client
+        .submit(CoreSubmission {
+            envelope: envelope.clone(),
+            core_type: Some(alpha.clone()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(*service.last_core_type.lock().unwrap(), Some(Some(alpha)));
+
+    let request = super::endpoint::wire_submit_request(&CoreSubmission {
+        envelope,
+        core_type: None,
+    })
+    .unwrap();
+    let CoreCommandInfo::Reconcile { core_type, .. } = request.command else {
+        panic!("expected reconcile wire command");
+    };
+    assert_eq!(
+        core_type.into_owned(),
+        CoreType::Clash(ClashCoreType::Mihomo)
+    );
 }
 
 #[tokio::test]
@@ -1222,7 +1285,7 @@ async fn a_submit_queued_behind_other_work_is_reported_retryable_not_internal() 
         client
             .actor
             .cast(CoreActorMessage::Submit {
-                envelope: reconcile_envelope(),
+                submission: reconcile_envelope(),
                 reply: reply.into(),
             })
             .unwrap();

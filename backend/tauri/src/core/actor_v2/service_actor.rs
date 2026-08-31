@@ -683,7 +683,9 @@ mod tests {
     };
 
     use super::*;
-    use crate::core::actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, ExecutionHost};
+    use crate::core::actor_v2::endpoint::{
+        ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
+    };
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, StatusResBody};
     use std::borrow::Cow;
 
@@ -740,7 +742,7 @@ mod tests {
         }
         fn submit<'a>(
             &'a self,
-            _envelope: nyanpasu_core_manager::CoreCommandEnvelope,
+            _submission: CoreSubmission,
         ) -> BoxFuture<'a, Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError>> {
             unimplemented!("routing is the CoreActor business")
         }

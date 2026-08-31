@@ -47,36 +47,9 @@ pub enum RunType {
     Elevated,
 }
 
-impl RunType {
-    /// 纯分类：Service backend 的唯一判据。
-    /// `IpcState::Connected` 只可能由通过 `ServiceCompat` 门禁的 daemon 产生
-    /// （见 `core::service::ipc::target_ipc_state`），因此旧版 daemon 无法到达
-    /// `RunType::Service`，也就无法构造出会发 `/core/*` 的 `Instance::Service`。
-    pub fn classify(enable_service: bool, ipc_state: crate::core::service::ipc::IpcState) -> Self {
-        if enable_service && ipc_state.is_connected() {
-            Self::Service
-        } else {
-            Self::Normal
-        }
-    }
-}
-
 impl Default for RunType {
     fn default() -> Self {
-        let enable_service = {
-            *Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        let run_type = Self::classify(enable_service, crate::core::service::ipc::get_ipc_state());
-        if run_type == Self::Service {
-            tracing::info!("run core as service");
-        } else {
-            tracing::info!("run core as child process");
-        }
-        run_type
+        Self::Normal
     }
 }
 

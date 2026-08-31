@@ -16,6 +16,8 @@ use crate::{
 use anyhow::Context;
 use camino::Utf8PathBuf;
 
+const RESTART_BUDGET: u8 = 3;
+
 pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     #[cfg(target_os = "windows")]
@@ -36,6 +38,20 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         .context("Failed to run config migrations before client setup")?;
     let legacy_verge_path = utf8_path(paths.nyanpasu_config_path())?;
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
+    let (core_v2, service) = tauri::async_runtime::block_on(async {
+        let control = crate::core::actor_v2::local_host::build(&paths).await?;
+        let local: crate::core::actor_v2::endpoint::EndpointHandle =
+            Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
+        let core = crate::core::actor_v2::CoreClient::spawn(local)
+            .await
+            .context("Failed to spawn core actor")?;
+        let adapter = Arc::new(crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter);
+        let service =
+            crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
+                .await
+                .context("Failed to spawn service actor")?;
+        anyhow::Ok((core, service))
+    })?;
     let legacy_lock = Arc::new(parking_lot::Mutex::new(()));
     let legacy_verge_store: Arc<dyn LegacyVergeStore> =
         Arc::new(ConfigLegacyVergeStore::new(legacy_lock.clone()));
@@ -49,6 +65,8 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         },
         ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle)),
         core: Arc::new(LegacyCoreBridge::new(runtime_paths)),
+        core_v2,
+        service,
         clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
         system_dns: Arc::new(OsSystemDnsCache),
     })

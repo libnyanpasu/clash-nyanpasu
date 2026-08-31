@@ -30,6 +30,7 @@
 //!   same answer any other lost reply gives.
 
 pub mod endpoint;
+pub mod facade;
 pub mod intent;
 pub mod local_host;
 pub mod service_actor;
@@ -923,6 +924,7 @@ impl CoreActor {
 #[derive(Clone)]
 pub struct CoreClient {
     actor: ActorRef<CoreActorMessage>,
+    initial_endpoint: EndpointHandle,
     status_rx: watch::Receiver<CoreStatusProjection>,
     events_tx: broadcast::Sender<CoreStatusProjection>,
     /// Caller bounds derived from the injected `status_timeout`/`stop_wait`
@@ -959,7 +961,7 @@ impl CoreClient {
             None,
             CoreActor,
             CoreActorArgs {
-                initial,
+                initial: initial.clone(),
                 status_tx,
                 events_tx: events_tx.clone(),
                 status_timeout,
@@ -969,6 +971,7 @@ impl CoreClient {
         .await?;
         Ok(Self {
             actor,
+            initial_endpoint: initial,
             status_rx,
             events_tx,
             submit_budget: submit_budget(status_timeout),
@@ -988,6 +991,10 @@ impl CoreClient {
 
     pub fn subscribe_events(&self) -> broadcast::Receiver<CoreStatusProjection> {
         self.events_tx.subscribe()
+    }
+
+    pub(crate) fn initial_endpoint(&self) -> EndpointHandle {
+        self.initial_endpoint.clone()
     }
 
     pub async fn submit(&self, submission: CoreSubmission) -> Result<SubmitTicket, CoreError> {

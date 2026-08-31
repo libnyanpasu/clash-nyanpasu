@@ -17,6 +17,12 @@ use self::{
     session_state::SessionStateClient,
 };
 use crate::{
+    core::actor_v2::{
+        CoreClient as CoreClientV2, CoreStatusProjection, HandoffReport, ShutdownReport,
+        endpoint::ExecutionHost,
+        facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
+        service_actor::{ServiceClient, ServiceHostStatus},
+    },
     enhance::{
         EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
         runtime_snapshot_data_from_artifact,
@@ -78,6 +84,8 @@ pub struct ClientSetupArgs {
     pub bridges: LegacyBridgeSet,
     pub ui_sink: Arc<dyn UiEventSink>,
     pub core: Arc<dyn CoreLifecyclePort>,
+    pub core_v2: CoreClientV2,
+    pub service: ServiceClient,
     /// Optional during the staged caller migration; setup always injects it.
     pub clash_patch: Option<Arc<dyn RunningConfigPatchPort>>,
     pub system_dns: Arc<dyn SystemDnsCache>,
@@ -205,6 +213,14 @@ async fn sync_legacy_mirrors(
     Ok(())
 }
 
+fn client_core_error(error: ClientError) -> nyanpasu_core_manager::CoreError {
+    nyanpasu_core_manager::CoreError::new(
+        nyanpasu_core_manager::CoreErrorKind::Internal,
+        error.to_string(),
+        false,
+    )
+}
+
 /// Fallback name for an imported subscription with no caller-provided name:
 /// the url's last non-empty path segment (sans `.yaml`/`.yml`), else the host,
 /// else a constant. Kept separate so `import_profile` reads as orchestration.
@@ -233,6 +249,7 @@ struct NyanpasuClientInner {
     runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
     core: Arc<dyn CoreLifecyclePort>,
+    core_v2: CoreFacade,
     clash_patch: Arc<dyn RunningConfigPatchPort>,
     /// Serializes API-first running-core patches through desired-state rebuild
     /// and any revision-fenced compensation.
@@ -261,6 +278,8 @@ impl NyanpasuClient {
             bridges,
             ui_sink,
             core,
+            core_v2,
+            service,
             clash_patch,
             system_dns,
         } = args;
@@ -324,6 +343,8 @@ impl NyanpasuClient {
             runtime_paths,
             ui_sink,
             core,
+            core_v2,
+            service,
             clash_patch,
             system_dns,
             runtime_store,
@@ -345,6 +366,8 @@ impl NyanpasuClient {
         runtime_paths: RuntimePaths,
         ui_sink: Arc<dyn UiEventSink>,
         core: Arc<dyn CoreLifecyclePort>,
+        core_v2: CoreClientV2,
+        service: ServiceClient,
         clash_patch: Arc<dyn RunningConfigPatchPort>,
         system_dns: Arc<dyn SystemDnsCache>,
         runtime: runtime::RuntimeLifecycleStore,
@@ -362,6 +385,7 @@ impl NyanpasuClient {
                 runtime_paths,
                 ui_sink,
                 core,
+                core_v2: CoreFacade::new(core_v2, service),
                 clash_patch,
                 clash_patch_gate: tokio::sync::Mutex::new(()),
                 host_transition: tokio::sync::Mutex::new(()),
@@ -418,6 +442,90 @@ impl NyanpasuClient {
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
         let client = self.inner.application.clone();
         Ok(client.get().await?.state)
+    }
+
+    pub async fn reconcile_core(
+        &self,
+    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
+        let _rebuild = self.inner.rebuild_gate.lock().await;
+        let snapshot = self
+            .regenerate_runtime_v2_inner()
+            .await
+            .map_err(client_core_error)?;
+        let core_spec = crate::core::actor_v2::local_host::core_spec(&snapshot.target_core)
+            .map_err(|error| {
+                nyanpasu_core_manager::CoreError::new(
+                    nyanpasu_core_manager::CoreErrorKind::BinaryNotFound,
+                    error.to_string(),
+                    false,
+                )
+            })?;
+        self.inner
+            .core_v2
+            .reconcile(snapshot.target_core, &snapshot.config, core_spec)
+            .await
+    }
+
+    pub async fn update_core(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
+        let mut app = self.get_app_config().await.map_err(client_core_error)?;
+        app.core = core;
+        self.replace_app_config(app)
+            .await
+            .map_err(client_core_error)?;
+        self.reconcile_core().await
+    }
+
+    pub async fn stop_core(
+        &self,
+    ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
+        self.inner.core_v2.stop().await
+    }
+
+    pub async fn recover_core(
+        &self,
+    ) -> std::result::Result<RecoverReport, nyanpasu_core_manager::CoreError> {
+        self.inner.core_v2.recover().await
+    }
+
+    pub async fn change_execution_host(
+        &self,
+        host: ExecutionHost,
+    ) -> std::result::Result<HandoffReport, nyanpasu_core_manager::CoreError> {
+        let _transition = self.inner.host_transition.lock().await;
+        self.inner.core_v2.change_execution_host(host).await
+    }
+
+    pub fn core_status(&self) -> CoreStatusProjection {
+        self.inner.core_v2.core_status()
+    }
+
+    pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
+        self.inner.core_v2.subscribe_core_events()
+    }
+
+    pub fn service_status(&self) -> ServiceHostStatus {
+        self.inner.core_v2.service_status()
+    }
+
+    pub async fn shutdown_core(&self) -> ShutdownReport {
+        self.inner.core_v2.shutdown().await
+    }
+
+    pub async fn uninstall_service(
+        &self,
+    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+        let _transition = self.inner.host_transition.lock().await;
+        if self.core_status().host == ExecutionHost::Service {
+            return Err(nyanpasu_core_manager::CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::OperationConflict,
+                "handoff to the local host before uninstalling the service",
+                false,
+            ));
+        }
+        self.inner.core_v2.uninstall_service().await
     }
 
     pub async fn flush_system_dns_cache(&self) -> Result<()> {
@@ -1452,9 +1560,69 @@ impl NyanpasuClient {
             .await
     }
 
+    async fn regenerate_runtime_v2_inner(&self) -> Result<Arc<runtime::RuntimeSnapshot>> {
+        let revision = self
+            .inner
+            .runtime_revisions
+            .allocate()
+            .map_err(ClientError::Anyhow)?;
+        let profiles = self.inner.profiles.get().await?;
+        let clash = self.get_clash_config().await?;
+        let app = self.get_app_config().await?;
+        let snapshot = self
+            .derive_runtime_snapshot(revision, profiles, clash, app)
+            .await?;
+        core_bridge::restore_product(
+            self.inner.runtime_paths.product().as_std_path(),
+            snapshot.product_bytes(),
+        )
+        .await
+        .map_err(ClientError::Anyhow)?;
+        self.publish_promoted(snapshot.clone()).await?;
+        Ok(snapshot)
+    }
+
     async fn regenerate_runtime_with(
         &self,
         lease: &mut dyn CoreLifecycleLease,
+        revision: runtime::RuntimeRevision,
+        profiles: Arc<Profiles>,
+        clash: ClashConfig,
+        app: NyanpasuAppConfig,
+    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
+        let snapshot = self
+            .derive_runtime_snapshot(revision, profiles, clash, app)
+            .await?;
+        let core = snapshot.target_core;
+        let product_bytes = snapshot.product_bytes();
+        // Candidate -> check -> promote -> PUBLISH (spec §5.2, P0-1): readers
+        // only ever see checked-and-promoted configs; a rejected candidate
+        // leaves both the product and the manager untouched. target core =
+        // the same input snapshot the builder used (P0-3).
+        let candidate = self
+            .inner
+            .runtime_paths
+            .create_candidate(product_bytes)
+            .await
+            .map_err(ClientError::Anyhow)?;
+        if candidate.bytes_sha256() != snapshot.product_sha256 {
+            return Err(ClientError::Custom(
+                "runtime snapshot hash does not match candidate bytes".into(),
+            ));
+        }
+        let checked = lease
+            .check_and_promote(&candidate, core, self.inner.runtime_paths.product())
+            .await;
+        if let Err(error) = candidate.cleanup().await {
+            tracing::warn!(%error, "failed to remove candidate config");
+        }
+        checked.map_err(ClientError::Anyhow)?;
+        self.publish_promoted(snapshot.clone()).await?;
+        Ok(snapshot)
+    }
+
+    async fn derive_runtime_snapshot(
+        &self,
         revision: runtime::RuntimeRevision,
         profiles: Arc<Profiles>,
         clash: ClashConfig,
@@ -1502,29 +1670,6 @@ impl NyanpasuClient {
             product_bytes.clone(),
             data,
         ));
-        // Candidate -> check -> promote -> PUBLISH (spec §5.2, P0-1): readers
-        // only ever see checked-and-promoted configs; a rejected candidate
-        // leaves both the product and the manager untouched. target core =
-        // the same input snapshot the builder used (P0-3).
-        let candidate = self
-            .inner
-            .runtime_paths
-            .create_candidate(&product_bytes)
-            .await
-            .map_err(ClientError::Anyhow)?;
-        if candidate.bytes_sha256() != snapshot.product_sha256 {
-            return Err(ClientError::Custom(
-                "runtime snapshot hash does not match candidate bytes".into(),
-            ));
-        }
-        let checked = lease
-            .check_and_promote(&candidate, core, self.inner.runtime_paths.product())
-            .await;
-        if let Err(error) = candidate.cleanup().await {
-            tracing::warn!(%error, "failed to remove candidate config");
-        }
-        checked.map_err(ClientError::Anyhow)?;
-        self.publish_promoted(snapshot.clone()).await?;
         Ok(snapshot)
     }
 }
@@ -1535,7 +1680,7 @@ fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::state::{
         mirror::{
@@ -1560,6 +1705,137 @@ mod tests {
     use std::{collections::BTreeMap, sync::Mutex as StdMutex};
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
+
+    struct IdleEndpoint;
+
+    impl crate::core::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
+        fn host(&self) -> ExecutionHost {
+            ExecutionHost::Local
+        }
+
+        fn submit<'a>(
+            &'a self,
+            _submission: crate::core::actor_v2::endpoint::CoreSubmission,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            std::result::Result<
+                nyanpasu_ipc::api::core::v2::OperationInfo,
+                nyanpasu_core_manager::CoreError,
+            >,
+        > {
+            Box::pin(async {
+                Err(nyanpasu_core_manager::CoreError::new(
+                    nyanpasu_core_manager::CoreErrorKind::BackendUnavailable,
+                    "idle test endpoint",
+                    true,
+                ))
+            })
+        }
+
+        fn wait_operation<'a>(
+            &'a self,
+            _id: nyanpasu_core_manager::OperationId,
+            _timeout: std::time::Duration,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            Option<nyanpasu_ipc::api::core::v2::OperationInfo>,
+        > {
+            Box::pin(async { None })
+        }
+
+        fn status<'a>(
+            &'a self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            std::result::Result<
+                crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+                nyanpasu_core_manager::CoreError,
+            >,
+        > {
+            Box::pin(async {
+                Err(nyanpasu_core_manager::CoreError::new(
+                    nyanpasu_core_manager::CoreErrorKind::BackendUnavailable,
+                    "idle test endpoint",
+                    true,
+                ))
+            })
+        }
+    }
+
+    struct IdleServiceAdapter;
+
+    impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
+        fn probe(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            '_,
+            std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String>,
+        > {
+            Box::pin(async {
+                Ok(nyanpasu_ipc::types::StatusInfo {
+                    name: std::borrow::Cow::Borrowed("test-service"),
+                    version: std::borrow::Cow::Borrowed("test"),
+                    status: nyanpasu_ipc::types::ServiceStatus::NotInstalled,
+                    server: None,
+                })
+            })
+        }
+
+        fn install(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn uninstall(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn start_daemon(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn stop_daemon(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn update(
+            &self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+            Arc::new(IdleEndpoint)
+        }
+    }
+
+    pub(crate) fn test_v2_clients() -> (CoreClientV2, ServiceClient) {
+        std::thread::spawn(|| {
+            tauri::async_runtime::block_on(async {
+                let endpoint: crate::core::actor_v2::endpoint::EndpointHandle =
+                    Arc::new(IdleEndpoint);
+                let core = CoreClientV2::spawn(endpoint).await.unwrap();
+                let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
+                    .await
+                    .unwrap();
+                (core, service)
+            })
+        })
+        .join()
+        .expect("test v2 client construction should not panic")
+    }
 
     mockall::mock! {
         pub RunningCoreOps {}
@@ -2033,6 +2309,7 @@ mod tests {
         ports
             .resolve(&ClashConfig::default())
             .expect("default ports should resolve");
+        let (core_v2, service) = test_v2_clients();
         NyanpasuClient::with_parts(
             application,
             session_state,
@@ -2048,6 +2325,8 @@ mod tests {
             .unwrap(),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             test_core_port(Arc::new(MockRunningCoreBridge::new())),
+            core_v2,
+            service,
             Arc::new(NoopRunningConfigPatchPort),
             system_dns,
             crate::client::runtime::new_runtime_lifecycle_store()
@@ -2093,6 +2372,7 @@ mod tests {
     ) -> ClientSetupArgs {
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let (core_v2, service) = test_v2_clients();
         ClientSetupArgs {
             paths,
             runtime_paths,
@@ -2103,6 +2383,8 @@ mod tests {
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core,
+            core_v2,
+            service,
             clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
             system_dns: Arc::new(NoopSystemDnsCache),
         }
@@ -2168,6 +2450,7 @@ mod tests {
         )
         .await
         .expect("profiles client should be created");
+        let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::with_parts(
             application,
             session_state,
@@ -2179,6 +2462,8 @@ mod tests {
             RuntimePaths::from_resolver(&paths).unwrap(),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             test_core_port(core),
+            core_v2,
+            service,
             Arc::new(NoopRunningConfigPatchPort),
             Arc::new(NoopSystemDnsCache),
             crate::client::runtime::new_runtime_lifecycle_store()
@@ -2325,6 +2610,7 @@ mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
             paths,
             runtime_paths,
@@ -2335,6 +2621,8 @@ mod tests {
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core: test_core_port(Arc::new(MockRunningCoreBridge::new())),
+            core_v2,
+            service,
             clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
             system_dns: Arc::new(NoopSystemDnsCache),
         })

@@ -1068,6 +1068,7 @@ mod tests {
         );
         let legacy_verge_path = temp_config_path(dir, "nyanpasu-config.yaml");
         let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths).unwrap();
+        let (core_v2, service) = crate::client::tests::test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
             paths,
             runtime_paths,
@@ -1078,6 +1079,8 @@ mod tests {
             },
             ui_sink: Arc::new(NoopUiEventSink),
             core: Arc::new(MockRunningCoreBridge::new()),
+            core_v2,
+            service,
             clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
         })

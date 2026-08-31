@@ -67,7 +67,7 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
 
     fn endpoint(&self) -> EndpointHandle {
         Arc::new(ServiceEndpoint::new(
-            nyanpasu_ipc::client::Client::service_default().clone(),
+            nyanpasu_ipc::client::shortcuts::Client::service_default().clone(),
         ))
     }
 }

@@ -8,8 +8,8 @@ use crate::{
         window::LegacyWindowBridge,
     },
     client::{
-        ClientSetupArgs, LegacyBridgeSet, LegacyCoreBridge, NyanpasuClient, OsSystemDnsCache,
-        RuntimePaths, TauriUiEventSink,
+        ClientSetupArgs, LegacyBridgeSet, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
+        TauriUiEventSink,
     },
     utils::path::PathResolver,
 };
@@ -65,7 +65,6 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
             clash: Arc::new(LegacyClashBridge::new(legacy_lock)),
         },
         ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle.clone())),
-        core: Arc::new(LegacyCoreBridge::new(runtime_paths)),
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),

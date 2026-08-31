@@ -732,7 +732,7 @@ mod tests {
         bridge::LEGACY_CONFIG_TEST_LOCK as INTERLEAVING_TEST_LOCK,
         client::{
             ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet, LegacyVergeDomain,
-            MockRunningCoreBridge, NoopUiEventSink, NyanpasuClient,
+            NoopUiEventSink, NyanpasuClient,
         },
         config::{
             IClashTemp,
@@ -1077,7 +1077,6 @@ mod tests {
                 clash,
             },
             ui_sink: Arc::new(NoopUiEventSink),
-            core: Arc::new(MockRunningCoreBridge::new()),
             core_v2,
             service,
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),

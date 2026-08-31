@@ -37,7 +37,7 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
 }
 
 pub fn core_spec(core: &ClashCore) -> Result<CoreSpec> {
-    core_spec_with(core, crate::core::clash::core::find_binary_path)
+    core_spec_with(core, crate::core::find_binary_path)
 }
 
 fn core_spec_with(

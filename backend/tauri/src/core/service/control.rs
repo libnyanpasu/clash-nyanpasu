@@ -92,10 +92,6 @@ pub async fn install_service() -> anyhow::Result<()> {
             }
         );
     }
-    // Due to most platform, the service will be started automatically after installed
-    if !super::ipc::HEALTH_CHECK_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
-        super::ipc::spawn_health_check();
-    }
     Ok(())
 }
 
@@ -172,12 +168,6 @@ pub async fn uninstall_service() -> anyhow::Result<()> {
             child.code().unwrap()
         );
     }
-    let _ = super::ipc::KILL_FLAG.compare_exchange(
-        false,
-        true,
-        std::sync::atomic::Ordering::Acquire,
-        std::sync::atomic::Ordering::Relaxed,
-    );
     Ok(())
 }
 
@@ -220,9 +210,6 @@ pub async fn start_service() -> anyhow::Result<()> {
                 }
             }
         );
-    }
-    if !super::ipc::HEALTH_CHECK_RUNNING.load(std::sync::atomic::Ordering::Acquire) {
-        super::ipc::spawn_health_check();
     }
     Ok(())
 }
@@ -267,12 +254,6 @@ pub async fn stop_service() -> anyhow::Result<()> {
             }
         );
     }
-    let _ = super::ipc::KILL_FLAG.compare_exchange_weak(
-        false,
-        true,
-        std::sync::atomic::Ordering::Acquire,
-        std::sync::atomic::Ordering::Relaxed,
-    );
     Ok(())
 }
 
@@ -315,9 +296,6 @@ pub async fn restart_service() -> anyhow::Result<()> {
                 }
             }
         );
-    }
-    if !super::ipc::HEALTH_CHECK_RUNNING.load(std::sync::atomic::Ordering::Acquire) {
-        super::ipc::spawn_health_check();
     }
     Ok(())
 }

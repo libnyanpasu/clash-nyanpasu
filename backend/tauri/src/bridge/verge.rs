@@ -2349,6 +2349,7 @@ mod tests {
                     state_changed_at: 0,
                     revision: None,
                     healthy: Some(true),
+                    applied_kind: None,
                 })
             })
         }

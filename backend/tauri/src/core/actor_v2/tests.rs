@@ -164,6 +164,7 @@ fn snapshot(state: CoreStateDetail) -> CoreStatusSnapshot {
         state_changed_at: 0,
         revision: None,
         healthy: None,
+        applied_kind: None,
     }
 }
 
@@ -472,6 +473,7 @@ async fn a_lost_stop_result_with_an_unknown_status_is_not_a_stop_proof() {
         state_changed_at: 0,
         revision: None,
         healthy: None,
+        applied_kind: None,
     });
     let service = FakeEndpoint::new(
         ExecutionHost::Service,

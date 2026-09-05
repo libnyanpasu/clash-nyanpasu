@@ -196,6 +196,14 @@ impl CoreFacade {
         self.core.status()
     }
 
+    /// Authoritative status read for callers that must decide from the
+    /// host's *applied* identity rather than the router's cached projection
+    /// (R5): the same in-mailbox endpoint read `reconcile`'s CAS token uses,
+    /// exposed for `replace_core_binary`'s stop decision.
+    pub async fn refresh_status(&self) -> Result<CoreStatusProjection, CoreError> {
+        self.core.refresh_status().await
+    }
+
     pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
         self.core.subscribe_events()
     }
@@ -375,6 +383,7 @@ mod tests {
                     state_changed_at: 1,
                     revision,
                     healthy: Some(true),
+                    applied_kind: None,
                 },
                 submissions: Mutex::new(Vec::new()),
                 stops: AtomicUsize::new(0),

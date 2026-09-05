@@ -15,8 +15,8 @@
 use std::{borrow::Cow, future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use nyanpasu_core_manager::{
-    ApplyOutcome, CoreCommandEnvelope, CoreControl, CoreError, CoreErrorKind, OperationId,
-    OperationOutput, OperationState,
+    ApplyOutcome, CoreCommandEnvelope, CoreControl, CoreError, CoreErrorKind, CoreKind,
+    OperationId, OperationOutput, OperationState,
 };
 use nyanpasu_ipc::api::{
     core::v2::{
@@ -52,6 +52,15 @@ pub struct CoreStatusSnapshot {
     pub revision: Option<nyanpasu_ipc::api::status::RevisionIdInfo>,
     /// Healthy / unhealthy, when the host reports it.
     pub healthy: Option<bool>,
+    /// The kind of core the host has actually applied -- not the desired
+    /// config. `None` when the host does not report an applied identity at
+    /// all (an old daemon with no `type`, or a manager that has never
+    /// applied anything). `CoreKind` collapses alpha channels on purpose: a
+    /// running mihomo-alpha and a running mihomo both report `Mihomo`, and a
+    /// consumer deciding whether an applied core "may be" some target must
+    /// treat them the same way it treats an unknown `state` -- as a fact it
+    /// cannot rule out, not as a mismatch.
+    pub applied_kind: Option<CoreKind>,
 }
 
 #[derive(Debug, Clone)]
@@ -251,6 +260,7 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
             .health
             .as_ref()
             .map(|health| matches!(health.state, nyanpasu_core_manager::HealthState::Healthy)),
+        applied_kind: status.spec.as_ref().map(|spec| spec.kind),
     }
 }
 
@@ -419,6 +429,33 @@ fn app_core_kind_to_type(
     }
 }
 
+/// The reverse of [`app_core_kind_to_type`]: a wire `CoreType`, collapsed to
+/// the coarser `CoreKind` the same way a local `CoreSpec` is built (see
+/// `local_host::core_spec`). `SingBox` has no `CoreKind` counterpart yet and
+/// stays `None` -- the same "unmapped variant stays unknown" rule
+/// `map_local_status` applies to a future `CoreState`.
+///
+/// Used to derive the *target*'s kind inside `replace_core_binary`
+/// (`client::NyanpasuClient`), not the service host's *applied* kind --
+/// `map_service_status` no longer feeds its `applied_kind` through this
+/// function; see that field's comment (R6b).
+pub(crate) fn wire_core_type_to_kind(
+    core_type: &nyanpasu_utils::core::CoreType,
+) -> Option<CoreKind> {
+    use nyanpasu_utils::core::{ClashCoreType, CoreType};
+    match core_type {
+        CoreType::Clash(ClashCoreType::Mihomo | ClashCoreType::MihomoAlpha) => {
+            Some(CoreKind::Mihomo)
+        }
+        CoreType::Clash(ClashCoreType::ClashRust | ClashCoreType::ClashRustAlpha) => {
+            Some(CoreKind::ClashRust)
+        }
+        CoreType::Clash(ClashCoreType::ClashPremium) => Some(CoreKind::ClashPremium),
+        CoreType::Clash(ClashCoreType::Meow) => Some(CoreKind::Meow),
+        CoreType::SingBox => None,
+    }
+}
+
 fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
     CoreStatusSnapshot {
         // A daemon too old to publish `detail` leaves this unknown. The coarse
@@ -433,6 +470,21 @@ fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
                 nyanpasu_ipc::api::status::CoreHealthState::Healthy
             )
         }),
+        // R6b: the daemon assembles `/v2/core/status` from the manager
+        // status plus a *separate* `requested_core` watch that a spawned
+        // task updates only after `handle.wait()` returns
+        // (`manager_bridge.rs`'s `watch_reconcile_echo`), while the app's
+        // operation poll returns independently from the control registry.
+        // Immediately after a service-side switch, the app can therefore
+        // observe the new state with the old `type` still echoed, which
+        // would read as "a different kind is applied" and wrongly skip a
+        // stop `replace_core_binary` needs. The durable fix is a daemon
+        // projection derived from the same manager snapshot the status
+        // itself comes from (a runtime follow-up, out of scope here); until
+        // then, the service host's applied identity is always unknown, so
+        // replacing a core while one is running on this host always takes
+        // the conservative stop-and-restart path.
+        applied_kind: None,
     }
 }
 

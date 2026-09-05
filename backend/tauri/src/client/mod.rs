@@ -16,7 +16,7 @@ use self::{
 use crate::{
     core::actor_v2::{
         CoreClient as CoreClientV2, CoreStatusProjection, HandoffReport, ShutdownReport,
-        endpoint::ExecutionHost,
+        endpoint::{ExecutionHost, wire_core_type_to_kind},
         facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus, ServicePhase},
     },
@@ -447,6 +447,18 @@ impl NyanpasuClient {
         &self,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
+        self.reconcile_core_inner().await
+    }
+
+    /// The body of [`Self::reconcile_core`], without taking `rebuild_gate`.
+    ///
+    /// Only call this while already holding `rebuild_gate` (as
+    /// `reconcile_core` does, and as [`Self::replace_core_binary`] does for
+    /// its restart step) -- the gate is a `tokio::sync::Mutex`, which is not
+    /// reentrant, so locking it twice on the same call path deadlocks.
+    async fn reconcile_core_inner(
+        &self,
+    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
         let snapshot = self
             .regenerate_runtime_v2_inner()
             .await
@@ -462,6 +474,127 @@ impl NyanpasuClient {
             .core_v2
             .reconcile(snapshot.target_core, &snapshot.config, core_spec)
             .await
+    }
+
+    /// Runs a caller-supplied binary-replacement step under the same
+    /// exclusion that serializes reconciles, so no competing reconcile or
+    /// host transition can start the executable while it is being replaced
+    /// on disk (finding 4: the updater used to stop, copy, and reconcile
+    /// with nothing held across the three steps, so any of the many other
+    /// reconcile entry points could restart the core from the old binary in
+    /// between and make the copy fail on Windows because it was running).
+    ///
+    /// `rebuild_gate` is taken once, for the whole body, before deciding
+    /// whether anything needs stopping (R5 regression, round 3): the
+    /// decision must reflect what the host actually has applied, not the
+    /// committed app config. `update_core` commits a new selection through
+    /// `replace_app_config` *before* it calls `reconcile_core` -- but only
+    /// `reconcile_core` takes this gate; the config commit itself runs
+    /// gate-free. So a config-only read taken here can still observe the
+    /// previous core as "selected" while a concurrent `update_core` has
+    /// already committed (gate-free) and is now waiting on this same gate to
+    /// start applying a different one (or the reverse, once that reconcile
+    /// has landed and released the gate). Deciding from either config alone
+    /// can land on the wrong side of that race and either skip a stop the
+    /// disk copy needs, or copy over a binary a concurrent switch has since
+    /// started.
+    ///
+    /// The decision instead reads the host's status via
+    /// `core_v2.refresh_status()` once the gate is held -- an authoritative,
+    /// in-mailbox endpoint read, not the router's cached projection. A stop
+    /// is skipped only when the status proves the core is already `Stopped`,
+    /// or the applied core's kind is known to be a kind other than
+    /// `target`'s; anything else -- including an unknown `state` or an
+    /// unknown `applied_kind` -- counts as "may still be `target`", the same
+    /// conservative rule
+    /// [`CoreStatusSnapshot`](crate::core::actor_v2::endpoint::CoreStatusSnapshot)
+    /// documents for its own fields. Whenever a stop was needed, `replace`
+    /// is also told to restart afterwards, so the committed desired core
+    /// comes back up even if it differs from `target`; otherwise the
+    /// restart decision falls back to whether the committed desired core
+    /// equals `target`. A `CoreErrorKind::NotStarted` from the stop itself
+    /// (nothing was actually running) is treated as "nothing to stop", not
+    /// a failed replacement.
+    ///
+    /// Neither a proven `Stopped` status nor a `NotStarted` stop answer is
+    /// proof the executable is actually dead (R6a): `CoreManager::stop`
+    /// takes the manager's current-instance slot before confirming the
+    /// process exited, so a stop that times out quarantines the epoch and
+    /// republishes `Stopped` with no applied kind while the process may
+    /// still be running -- and a later `NotStarted` answer leaves that
+    /// quarantine unresolved. `recover_core()` is the actual death proof: it
+    /// reaps every quarantined epoch by identity and is a no-op when
+    /// nothing is quarantined, so it runs unconditionally after the stop
+    /// step above, for every branch including a proven-`Stopped` status and
+    /// a skipped stop. If it fails, the replacement aborts before `replace`
+    /// runs rather than risk copying over a binary that may still be
+    /// executing.
+    ///
+    /// The stop, the recovery, and the restart all go through gate-free
+    /// paths (`stop_core` and `recover_core` never take the gate, and the
+    /// restart uses [`Self::reconcile_core_inner`]) so the non-reentrant
+    /// gate is not locked twice. `replace` receives the restart decision so
+    /// the caller can dispatch its own restart-related state at the right
+    /// point.
+    ///
+    /// On the service host, the applied kind is always reported as unknown
+    /// (see `map_service_status`'s `applied_kind`, R6b): the daemon's own
+    /// identity can lag its published state by one reconcile cycle, so a
+    /// replacement there always takes the conservative stop-and-restart
+    /// path while a core is running, regardless of `target`'s kind. The
+    /// local host keeps the kind-based skip described above. Identity is
+    /// therefore treated as unknown wherever it cannot be proven, and a
+    /// recovery that cannot prove death aborts the replacement by design.
+    pub async fn replace_core_binary<F, Fut>(
+        &self,
+        target: crate::config::nyanpasu::ClashCore,
+        replace: F,
+    ) -> Result<()>
+    where
+        F: FnOnce(bool) -> Fut,
+        Fut: std::future::Future<Output = anyhow::Result<()>>,
+    {
+        let _rebuild = self.inner.rebuild_gate.lock().await;
+        let desired: crate::config::nyanpasu::ClashCore = self.get_app_config().await?.core.into();
+        let status = self
+            .inner
+            .core_v2
+            .refresh_status()
+            .await
+            .map_err(client_error_from_core)?;
+        let (state, applied_kind) = match status.snapshot {
+            Some(snapshot) => (snapshot.state, snapshot.applied_kind),
+            None => (None, None),
+        };
+        let not_proven_stopped = !matches!(
+            state,
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+        );
+        let target_type: nyanpasu_utils::core::CoreType = (&target).into();
+        let target_kind = wire_core_type_to_kind(&target_type);
+        let needs_stop =
+            not_proven_stopped && (applied_kind.is_none() || applied_kind == target_kind);
+        let restart_after = desired == target || needs_stop;
+        if needs_stop {
+            match self.stop_core().await {
+                Ok(_) => {}
+                Err(error)
+                    if error.kind == Some(nyanpasu_core_manager::CoreErrorKind::NotStarted) => {}
+                Err(error) => return Err(client_error_from_core(error)),
+            }
+        }
+        // R6a: the death proof, unconditionally, for every branch above --
+        // see the doc comment. Abort before `replace` runs if recovery
+        // itself cannot prove the core is dead.
+        self.recover_core().await.map_err(client_error_from_core)?;
+        replace(restart_after).await?;
+        if restart_after {
+            self.reconcile_core_inner()
+                .await
+                .map(|_| ())
+                .map_err(client_error_from_core)?;
+        }
+        Ok(())
     }
 
     pub async fn update_core(
@@ -1632,6 +1765,7 @@ pub(crate) mod tests {
                     state_changed_at: 0,
                     revision: None,
                     healthy: Some(true),
+                    applied_kind: None,
                 })
             })
         }
@@ -1652,6 +1786,24 @@ pub(crate) mod tests {
         /// of re-running (and re-advancing) the CAS check.
         operations:
             StdMutex<std::collections::HashMap<String, nyanpasu_ipc::api::core::v2::OperationInfo>>,
+        /// What `status()` reports for `state` and `applied_kind` (R5): the
+        /// stop-decision tests script the host's applied identity
+        /// independently of this fake's CAS bookkeeping. Defaults to
+        /// `(None, None)` -- unknown state, unknown applied kind -- the same
+        /// starting point a brand new endpoint the router has not yet
+        /// classified would report, which the production rule already
+        /// treats conservatively as "not proven stopped".
+        status_override: StdMutex<(
+            Option<nyanpasu_ipc::api::status::CoreStateDetail>,
+            Option<nyanpasu_core_manager::CoreKind>,
+        )>,
+        /// Scripts whether the next `Recover` submission fails (R6a): the
+        /// death-proof step must abort `replace_core_binary` before the
+        /// closure runs when recovery itself cannot prove the core is dead.
+        /// Defaults to `false` so existing tests, which never scripted
+        /// `Recover` before it became an unconditional step, keep seeing it
+        /// succeed.
+        recover_should_fail: std::sync::atomic::AtomicBool,
     }
 
     impl TestControlEndpoint {
@@ -1661,6 +1813,8 @@ pub(crate) mod tests {
                 submissions: std::sync::atomic::AtomicUsize::new(0),
                 revision: StdMutex::new(Self::initial_revision()),
                 operations: StdMutex::new(std::collections::HashMap::new()),
+                status_override: StdMutex::new((None, None)),
+                recover_should_fail: std::sync::atomic::AtomicBool::new(false),
             })
         }
 
@@ -1670,6 +1824,8 @@ pub(crate) mod tests {
                 submissions: std::sync::atomic::AtomicUsize::new(0),
                 revision: StdMutex::new(Self::initial_revision()),
                 operations: StdMutex::new(std::collections::HashMap::new()),
+                status_override: StdMutex::new((None, None)),
+                recover_should_fail: std::sync::atomic::AtomicBool::new(false),
             })
         }
 
@@ -1683,6 +1839,21 @@ pub(crate) mod tests {
 
         pub(crate) fn submissions(&self) -> usize {
             self.submissions.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        /// Scripts what `status()` reports next (R5 stop-decision tests).
+        pub(crate) fn set_status(
+            &self,
+            state: Option<nyanpasu_ipc::api::status::CoreStateDetail>,
+            applied_kind: Option<nyanpasu_core_manager::CoreKind>,
+        ) {
+            *self.status_override.lock().unwrap() = (state, applied_kind);
+        }
+
+        /// Scripts whether the next `Recover` submission fails (R6a tests).
+        pub(crate) fn set_recover_should_fail(&self, should_fail: bool) {
+            self.recover_should_fail
+                .store(should_fail, std::sync::atomic::Ordering::SeqCst);
         }
 
         /// Computes and records the terminal result for `submission`.
@@ -1705,6 +1876,51 @@ pub(crate) mod tests {
                         message: "reconcile boom".into(),
                         retryable: false,
                     }),
+                };
+            }
+            // F4 regression coverage needs a real `Stopped` answer: the
+            // updater's replacement step stops the core before copying the
+            // binary, and the facade rejects any other output for `Stop`.
+            if matches!(
+                submission.envelope.command,
+                nyanpasu_core_manager::CoreCommand::Stop
+            ) {
+                return nyanpasu_ipc::api::core::v2::OperationInfo {
+                    id,
+                    phase: nyanpasu_ipc::api::core::v2::OperationPhase::Succeeded,
+                    output: Some(nyanpasu_ipc::api::core::v2::OperationOutputInfo::Stopped),
+                    error: None,
+                };
+            }
+            // R6a: `replace_core_binary` now submits `Recover` unconditionally
+            // as the death proof, and the facade rejects any other output for
+            // it. Scriptable to fail so a test can prove the replacement
+            // aborts before its closure runs when recovery cannot prove the
+            // core dead.
+            if matches!(
+                submission.envelope.command,
+                nyanpasu_core_manager::CoreCommand::Recover
+            ) {
+                if self
+                    .recover_should_fail
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    return nyanpasu_ipc::api::core::v2::OperationInfo {
+                        id,
+                        phase: nyanpasu_ipc::api::core::v2::OperationPhase::Failed,
+                        output: None,
+                        error: Some(nyanpasu_ipc::api::core::v2::OperationErrorInfo {
+                            kind: None,
+                            message: "recover boom".into(),
+                            retryable: false,
+                        }),
+                    };
+                }
+                return nyanpasu_ipc::api::core::v2::OperationInfo {
+                    id,
+                    phase: nyanpasu_ipc::api::core::v2::OperationPhase::Succeeded,
+                    output: Some(nyanpasu_ipc::api::core::v2::OperationOutputInfo::Recovered),
+                    error: None,
                 };
             }
             let nyanpasu_core_manager::CoreCommand::Reconcile(request) =
@@ -1819,13 +2035,13 @@ pub(crate) mod tests {
             >,
         > {
             Box::pin(async {
+                let (state, applied_kind) = self.status_override.lock().unwrap().clone();
                 Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
-                    state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
-                        reason: None,
-                    }),
+                    state,
                     state_changed_at: 0,
                     revision: Some(self.revision.lock().unwrap().clone()),
                     healthy: Some(true),
+                    applied_kind,
                 })
             })
         }
@@ -1933,6 +2149,7 @@ pub(crate) mod tests {
                     state_changed_at: 0,
                     revision: None,
                     healthy: Some(true),
+                    applied_kind: None,
                 })
             })
         }
@@ -3111,6 +3328,513 @@ pub(crate) mod tests {
             );
         });
         assert_eq!(endpoint.submissions(), 2);
+    }
+
+    /// F4 regression: `replace_core_binary` must hold `rebuild_gate` across
+    /// its whole body -- stop, the caller's replacement step, and the
+    /// restart reconcile -- so a competing `reconcile_core()` cannot start
+    /// the core from the old binary while the replacement is in flight.
+    ///
+    /// A fake replacement step parks (via a oneshot) right after the stop
+    /// and the death-proof recovery (R6a) have already reached the
+    /// endpoint. While parked, a concurrent `reconcile_core()` is
+    /// submitted: it must block on the gate and reach the endpoint only
+    /// after the replacement step is released. Removing the
+    /// `rebuild_gate.lock().await` at the top of `replace_core_binary`
+    /// turns this red, because the competing reconcile would then acquire
+    /// the (now separately locked) gate on its own and submit while the
+    /// replacement step is still parked.
+    #[test]
+    fn replace_core_binary_holds_the_gate_across_stop_replace_and_restart() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            for _ in 0..100 {
+                if client.core_status().snapshot.is_some() {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+
+            // `stop_first` is decided from the currently-selected core inside
+            // `replace_core_binary`, so passing that same core as `target`
+            // deterministically reproduces the `stop_first: true` case this
+            // test needs, regardless of which `ClashCore` variant is the
+            // default.
+            let target: crate::config::nyanpasu::ClashCore =
+                client.get_app_config().await.unwrap().core.into();
+
+            let (parked_tx, parked_rx) = tokio::sync::oneshot::channel::<()>();
+            let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+
+            let replace_client = client.clone();
+            let replace_task = tokio::spawn(async move {
+                replace_client
+                    .replace_core_binary(target, move |restart: bool| async move {
+                        assert!(
+                            restart,
+                            "the replacement target is the currently selected core, so a \
+                             restart is expected"
+                        );
+                        parked_tx
+                            .send(())
+                            .map_err(|_| anyhow::anyhow!("test harness dropped parked_rx"))?;
+                        release_rx.await.ok();
+                        Ok(())
+                    })
+                    .await
+            });
+
+            parked_rx
+                .await
+                .expect("the replacement step should signal once parked, after the stop");
+            let submissions_while_parked = endpoint.submissions();
+            assert_eq!(
+                submissions_while_parked, 2,
+                "only the stop and the recover should have reached the endpoint before the \
+                 replacement step parks"
+            );
+
+            let reconcile_client = client.clone();
+            let reconcile_task =
+                tokio::spawn(async move { reconcile_client.reconcile_core().await });
+
+            // The competing reconcile has to acquire `rebuild_gate` before it
+            // can submit anything, and the parked replacement step still
+            // holds it. This wait only bounds how long we give a buggy,
+            // gate-free implementation to race ahead and submit; it does not
+            // gate the correctness of the assertion, which is the exact
+            // submission count.
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            assert_eq!(
+                endpoint.submissions(),
+                submissions_while_parked,
+                "a competing reconcile_core() reached the endpoint while replace_core_binary was \
+                 still parked between the stop and the restart; the maintenance operation must \
+                 hold rebuild_gate for its entire body"
+            );
+
+            release_tx
+                .send(())
+                .expect("the replacement task should still be waiting on release_rx");
+
+            replace_task
+                .await
+                .expect("the replace task should not panic")
+                .expect("replace_core_binary should succeed once unparked");
+            reconcile_task
+                .await
+                .expect("the reconcile task should not panic")
+                .expect("the competing reconcile should complete once the gate is released");
+
+            assert_eq!(
+                endpoint.submissions(),
+                4,
+                "expected exactly the stop, the recover, the restart reconcile, and the \
+                 competing reconcile to reach the endpoint, in that order"
+            );
+        });
+    }
+
+    /// R1 regression (round 2): `replace_core_binary` must decide whether
+    /// to stop the core from the app config it reads *after* acquiring
+    /// `rebuild_gate`, not from a value a caller computed before ever
+    /// requesting the gate. The earlier shape took a precomputed
+    /// `stop_first: bool` from the caller (see the F4 test above); that
+    /// decision could go stale if a concurrent core switch committed a
+    /// different core in the window between the caller's read and the
+    /// gate, most dangerously turning into a skipped stop for a core a
+    /// concurrent switch has since started.
+    ///
+    /// This commits a core other than the default through `update_core` --
+    /// the same commit-then-reconcile path a concurrent core switch would
+    /// use -- and only then calls `replace_core_binary` for that
+    /// now-selected core. A `Stop` must reach the fake endpoint before the
+    /// replacement closure runs, proving the decision reflects the
+    /// committed state rather than whatever was selected before the commit.
+    #[test]
+    fn replace_core_binary_decides_stop_from_the_core_committed_under_the_gate() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let default_core = client.get_app_config().await.unwrap().core;
+            let target = if default_core == nyanpasu_config::application::ClashCore::Mihomo {
+                nyanpasu_config::application::ClashCore::ClashPremium
+            } else {
+                nyanpasu_config::application::ClashCore::Mihomo
+            };
+
+            client
+                .update_core(target)
+                .await
+                .expect("committing and reconciling the new core selection should succeed");
+            let submissions_after_commit = endpoint.submissions();
+
+            let (parked_tx, parked_rx) = tokio::sync::oneshot::channel::<()>();
+            let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+
+            let replace_client = client.clone();
+            let replace_task = tokio::spawn(async move {
+                replace_client
+                    .replace_core_binary(target.into(), move |restart: bool| async move {
+                        assert!(
+                            restart,
+                            "the replacement target is now the committed selected core, so a \
+                             restart is expected"
+                        );
+                        parked_tx
+                            .send(())
+                            .map_err(|_| anyhow::anyhow!("test harness dropped parked_rx"))?;
+                        release_rx.await.ok();
+                        Ok(())
+                    })
+                    .await
+            });
+
+            parked_rx
+                .await
+                .expect("the replacement step should signal once parked, after the stop");
+            assert_eq!(
+                endpoint.submissions(),
+                submissions_after_commit + 2,
+                "replace_core_binary must read the just-committed selected core under the gate \
+                 and, finding it equal to the replacement target, submit a Stop and then a \
+                 Recover before running the replacement closure"
+            );
+
+            release_tx
+                .send(())
+                .expect("the replace task should still be waiting on release_rx");
+            replace_task
+                .await
+                .expect("the replace task should not panic")
+                .expect("replace_core_binary should succeed once unparked");
+        });
+    }
+
+    /// R5 regression (round 3): the stop decision must reflect the host's
+    /// *applied* identity, not the committed desired config. The desired
+    /// core is patched to `core_b` with no reconcile, so nothing has
+    /// actually changed on the host; the fake status still reports `core_a`
+    /// as applied and running. `replace_core_binary(core_a, ...)` targets
+    /// the core that is actually running, so it must stop it and restart
+    /// afterwards even though the committed desired core is now `core_b`.
+    #[test]
+    fn replace_core_binary_stops_the_applied_core_even_when_a_different_core_is_desired() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let core_a = client.get_app_config().await.unwrap().core;
+            let core_b = if core_a == nyanpasu_config::application::ClashCore::Mihomo {
+                nyanpasu_config::application::ClashCore::ClashPremium
+            } else {
+                nyanpasu_config::application::ClashCore::Mihomo
+            };
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.core = Some(core_b);
+            client
+                .patch_app_config(patch)
+                .await
+                .expect("patching the desired core alone must succeed");
+            assert_eq!(
+                endpoint.submissions(),
+                0,
+                "patching the config alone must not reconcile"
+            );
+
+            endpoint.set_status(
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
+                Some(runtime_core_spec(&core_a).unwrap().kind),
+            );
+
+            client
+                .replace_core_binary(core_a.into(), |restart| async move {
+                    assert!(
+                        restart,
+                        "a core that had to be stopped must always be restarted"
+                    );
+                    Ok(())
+                })
+                .await
+                .expect("replace_core_binary should succeed");
+
+            assert_eq!(
+                endpoint.submissions(),
+                3,
+                "expected exactly a stop, a recover, and a restart reconcile, even though the \
+                 committed desired core is the different core_b"
+            );
+        });
+    }
+
+    /// R5 regression (round 3): an applied core of a provably different kind
+    /// than `target` must not be stopped -- it cannot be the binary about to
+    /// be replaced. The committed desired core is left equal to the applied
+    /// one (`core_a`), so a wrongly config-driven decision would still find
+    /// a reason to restart; this isolates the kind comparison by keeping the
+    /// replacement closure running regardless.
+    #[test]
+    fn replace_core_binary_skips_the_stop_when_the_applied_kind_differs_from_the_target() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let core_a = client.get_app_config().await.unwrap().core;
+            let core_b = if core_a == nyanpasu_config::application::ClashCore::Mihomo {
+                nyanpasu_config::application::ClashCore::ClashPremium
+            } else {
+                nyanpasu_config::application::ClashCore::Mihomo
+            };
+
+            endpoint.set_status(
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
+                Some(runtime_core_spec(&core_a).unwrap().kind),
+            );
+
+            let closure_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let closure_ran_flag = closure_ran.clone();
+            client
+                .replace_core_binary(core_b.into(), move |restart| async move {
+                    closure_ran_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    assert!(
+                        !restart,
+                        "the applied core is a different kind than the target and the \
+                         committed desired core still equals the applied core, not the \
+                         target, so nothing should need stopping or restarting"
+                    );
+                    Ok(())
+                })
+                .await
+                .expect("replace_core_binary should succeed");
+
+            assert!(
+                closure_ran.load(std::sync::atomic::Ordering::SeqCst),
+                "the replacement closure must still run even when nothing needed stopping"
+            );
+            assert_eq!(
+                endpoint.submissions(),
+                1,
+                "the recover (R6a death proof) runs unconditionally even though nothing needed \
+                 stopping; no stop and no restart reconcile should be submitted"
+            );
+        });
+    }
+
+    /// R5 regression (round 3): an unknown applied kind must be treated the
+    /// same conservative way as an unknown state -- "may still be `target`"
+    /// -- so a stop is attempted rather than skipped.
+    #[test]
+    fn replace_core_binary_stops_when_the_applied_kind_is_unknown() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let core_a = client.get_app_config().await.unwrap().core;
+            let core_b = if core_a == nyanpasu_config::application::ClashCore::Mihomo {
+                nyanpasu_config::application::ClashCore::ClashPremium
+            } else {
+                nyanpasu_config::application::ClashCore::Mihomo
+            };
+
+            endpoint.set_status(
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
+                None,
+            );
+
+            client
+                .replace_core_binary(core_b.into(), |restart| async move {
+                    assert!(
+                        restart,
+                        "an unknown applied kind must be treated as \"may be the target\""
+                    );
+                    Ok(())
+                })
+                .await
+                .expect("replace_core_binary should succeed");
+
+            assert_eq!(
+                endpoint.submissions(),
+                3,
+                "expected exactly a stop, a recover, and a restart reconcile"
+            );
+        });
+    }
+
+    /// R5 regression (round 3): a status that already proves the core
+    /// `Stopped` must skip the stop entirely; the restart decision then
+    /// falls back to whether the committed desired core equals `target`.
+    #[test]
+    fn replace_core_binary_skips_the_stop_when_the_status_proves_the_core_stopped() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let target: crate::config::nyanpasu::ClashCore =
+                client.get_app_config().await.unwrap().core.into();
+
+            endpoint.set_status(
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+                None,
+            );
+
+            client
+                .replace_core_binary(target, |restart| async move {
+                    assert!(
+                        restart,
+                        "nothing needed stopping, but the committed desired core still \
+                         equals target, so the caller expects it running afterwards"
+                    );
+                    Ok(())
+                })
+                .await
+                .expect("replace_core_binary should succeed");
+
+            assert_eq!(
+                endpoint.submissions(),
+                2,
+                "a status that already proves Stopped must skip the stop but still submit the \
+                 recover (R6a death proof) and the restart reconcile"
+            );
+        });
+    }
+
+    /// R6a regression: neither `Stopped` nor a `NotStarted` stop answer is
+    /// proof the process is dead -- `CoreManager::stop` takes the manager's
+    /// current-instance slot before confirming the process exited, so a stop
+    /// that times out quarantines the epoch and republishes `Stopped` with no
+    /// applied kind while the executable may still be running. `recover_core`
+    /// is the actual death proof; when it cannot reap the quarantine, the
+    /// replacement must abort *before* the closure runs rather than risk
+    /// copying over a still-live binary. Deleting the
+    /// `self.recover_core().await.map_err(...)?` call in
+    /// `replace_core_binary` (client/mod.rs) turns this red: the closure
+    /// would run and the call would return `Ok`.
+    #[test]
+    fn replace_core_binary_aborts_when_recovery_cannot_prove_the_core_is_dead() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let target: crate::config::nyanpasu::ClashCore =
+                client.get_app_config().await.unwrap().core.into();
+
+            endpoint.set_status(
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
+                    reason: Some("timed out waiting for the process to exit".into()),
+                }),
+                None,
+            );
+            endpoint.set_recover_should_fail(true);
+
+            let closure_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let closure_ran_flag = closure_ran.clone();
+            let result = client
+                .replace_core_binary(target, move |_restart| async move {
+                    closure_ran_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                })
+                .await;
+
+            assert!(
+                result.is_err(),
+                "a recovery failure must abort the replacement rather than let it succeed"
+            );
+            assert!(
+                !closure_ran.load(std::sync::atomic::Ordering::SeqCst),
+                "the replacement closure must never run when recovery cannot prove the core dead"
+            );
+        });
+    }
+
+    /// Counterpart to the test above: once `recover_core` succeeds -- even
+    /// after a status that already reports `Stopped` -- the replacement must
+    /// proceed. Also pins the submission count to the recover call itself
+    /// (no stop is needed here, and the target differs from the committed
+    /// desired core so no restart reconcile is needed either): deleting the
+    /// `self.recover_core().await.map_err(...)?` call in
+    /// `replace_core_binary` (client/mod.rs) would leave this at 0.
+    #[test]
+    fn replace_core_binary_runs_the_closure_once_recovery_proves_the_core_dead() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let core_a = client.get_app_config().await.unwrap().core;
+            let core_b = if core_a == nyanpasu_config::application::ClashCore::Mihomo {
+                nyanpasu_config::application::ClashCore::ClashPremium
+            } else {
+                nyanpasu_config::application::ClashCore::Mihomo
+            };
+
+            endpoint.set_status(
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
+                    reason: Some("timed out waiting for the process to exit".into()),
+                }),
+                None,
+            );
+
+            let closure_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let closure_ran_flag = closure_ran.clone();
+            client
+                .replace_core_binary(core_b.into(), move |restart| async move {
+                    closure_ran_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    assert!(
+                        !restart,
+                        "the committed desired core (core_a) differs from the target (core_b) \
+                         and nothing needed stopping, so no restart is expected"
+                    );
+                    Ok(())
+                })
+                .await
+                .expect("replace_core_binary should succeed once recovery proves the core dead");
+
+            assert!(
+                closure_ran.load(std::sync::atomic::Ordering::SeqCst),
+                "the replacement closure must run once recovery succeeds"
+            );
+            assert_eq!(
+                endpoint.submissions(),
+                1,
+                "the recover is the only submission expected here: the status already proves \
+                 Stopped (no stop needed) and the target differs from the committed desired \
+                 core (no restart needed)"
+            );
+        });
     }
 
     #[test]

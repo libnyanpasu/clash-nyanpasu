@@ -28,6 +28,15 @@ jobs:
           - os: windows-latest
     runs-on: ${{ matrix.targets.os }}
     steps:
+      # The nyanpasu-runtime submodule pins `newline_style = "Unix"` in its own
+      # rustfmt.toml, but its .gitattributes is only `* text=auto`. Without this,
+      # Windows checks the submodule out with CRLF and `lint:rustfmt` rejects every
+      # file in it. The submodule's own workflows set the same two options before
+      # checkout; the superproject has to do it too now that it vendors the crates.
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
       - uses: actions/checkout@v7
         with:
           # `backend/nyanpasu-runtime` is a submodule that itself nests
@@ -129,6 +138,11 @@ jobs:
     runs-on: ${{ matrix.targets.os }}
     needs: lint
     steps:
+      # Same reason as the lint job: the submodule must not arrive with CRLF.
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
       - uses: actions/checkout@v7
         with:
           submodules: recursive
@@ -218,6 +232,11 @@ jobs:
 
     # the steps our job runs **in order**
     steps:
+      # Same reason as the lint job: the submodule must not arrive with CRLF.
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
       # checkout the code on the workflow runner
       - uses: actions/checkout@v7
         with:

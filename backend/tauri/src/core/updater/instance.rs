@@ -1,10 +1,8 @@
 use super::shared::{self, CoreTypeMeta};
 use crate::{
+    client::NyanpasuClient,
     config::nyanpasu::ClashCore,
-    core::{
-        CoreManager,
-        download::{DownloadSession, DownloadStatus},
-    },
+    core::download::{DownloadSession, DownloadStatus},
 };
 use anyhow::anyhow;
 use runas::Command as RunasCommand;
@@ -35,6 +33,7 @@ pub(super) struct Updater {
     artifact: String,
     inner: parking_lot::RwLock<UpdaterInner>,
     downloader: Arc<DownloadSession>,
+    nyanpasu: NyanpasuClient,
 }
 
 struct UpdaterInner {
@@ -54,6 +53,7 @@ pub(super) struct UpdaterBuilder {
     mirror: Option<String>,
     artifact: Option<String>,
     tag: Option<CoreTypeMeta>,
+    nyanpasu: Option<NyanpasuClient>,
 }
 
 impl UpdaterBuilder {
@@ -64,11 +64,17 @@ impl UpdaterBuilder {
             mirror: None,
             artifact: None,
             tag: None,
+            nyanpasu: None,
         }
     }
 
     pub fn set_client(mut self, client: reqwest::Client) -> Self {
         self.client = Some(client);
+        self
+    }
+
+    pub fn set_nyanpasu_client(mut self, client: NyanpasuClient) -> Self {
+        self.nyanpasu = Some(client);
         self
     }
 
@@ -102,6 +108,9 @@ impl UpdaterBuilder {
             .ok_or(anyhow::anyhow!("artifact is required"))?;
         let tag = self.tag.ok_or(anyhow::anyhow!("tag is required"))?;
         let mirror = self.mirror.ok_or(anyhow::anyhow!("mirror is required"))?;
+        let nyanpasu = self
+            .nyanpasu
+            .ok_or(anyhow::anyhow!("nyanpasu client is required"))?;
 
         let temp_dir = TempDir::new()?;
         let inner = UpdaterInner {
@@ -124,6 +133,7 @@ impl UpdaterBuilder {
             inner: parking_lot::RwLock::new(inner),
             artifact,
             downloader,
+            nyanpasu,
         })
     }
 }
@@ -198,25 +208,15 @@ impl Updater {
 
     async fn replace_core(&self) -> anyhow::Result<()> {
         self.dispatch_state(UpdaterState::Replacing);
-        let core_manager = CoreManager::global();
-        // TODO(actor-migration): temporary bridge to the legacy global core manager.
-        // Reason: the updater has not yet been injected with the core lifecycle port.
-        // Remove when: the updater receives the lifecycle port through the composition root.
-        let lifecycle = core_manager.begin_lifecycle().await;
-        let current_core = crate::config::Config::verge()
-            .latest()
-            .clash_core
-            .unwrap_or_default();
+        let current_core: ClashCore = self.nyanpasu.get_app_config().await?.core.into();
         tracing::debug!("current core: {}", current_core);
 
-        let runtime_paths = if current_core == self.core_type {
-            let resolver = crate::utils::path::PathResolver::from_env()?;
-            let runtime_paths = crate::client::RuntimePaths::from_resolver(&resolver)?;
+        let restart = if current_core == self.core_type {
             tracing::debug!("stopping core to replace");
-            lifecycle.stop_core().await?;
-            Some(runtime_paths)
+            self.nyanpasu.stop_core().await?;
+            true
         } else {
-            None
+            false
         };
         #[cfg(target_os = "windows")]
         let target_core = format!("{}.exe", self.core_type);
@@ -274,9 +274,9 @@ impl Updater {
             }
         };
 
-        if let Some(runtime_paths) = runtime_paths.as_ref() {
+        if restart {
             self.dispatch_state(UpdaterState::Restarting);
-            lifecycle.run_core_from(runtime_paths.product()).await?;
+            self.nyanpasu.reconcile_core().await?;
         }
 
         Ok(())

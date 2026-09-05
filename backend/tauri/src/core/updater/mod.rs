@@ -219,7 +219,11 @@ impl UpdaterManager {
         Ok(())
     }
 
-    pub async fn update_core(&mut self, core_type: &ClashCore) -> Result<usize> {
+    pub async fn update_core(
+        &mut self,
+        core_type: &ClashCore,
+        nyanpasu: crate::client::NyanpasuClient,
+    ) -> Result<usize> {
         self.mirror_speed_test().await?;
         let (artifact, tag) = self
             .manifest_version
@@ -229,6 +233,7 @@ impl UpdaterManager {
         let updater = Arc::new(
             instance::UpdaterBuilder::new()
                 .set_client(self.client.clone())
+                .set_nyanpasu_client(nyanpasu)
                 .set_core_type(*core_type)
                 .set_mirror(mirror)
                 .set_artifact(artifact)

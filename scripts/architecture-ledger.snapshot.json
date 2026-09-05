@@ -4,30 +4,29 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 120,
+      "total": 101,
       "byKey": {
-        "Config::verge()": 93,
-        "Config::clash()": 27
+        "Config::verge()": 76,
+        "Config::clash()": 25
       }
     },
     "service_globals": {
-      "total": 80,
+      "total": 57,
       "byKey": {
-        "CoreManager::global()": 18,
         "ProxiesGuard::global()": 14,
         "Handle::global()": 11,
-        "Self::global()": 10,
+        "Self::global()": 9,
         "Sysopt::global()": 8,
         "WindowManager::global()": 8,
-        "Logger::global()": 5,
         "Hotkey::global()": 3,
-        "UpdaterManager::global()": 3
+        "UpdaterManager::global()": 3,
+        "Logger::global()": 1
       }
     },
     "migration_markers": {
-      "total": 19,
+      "total": 9,
       "byKey": {
-        "TODO(actor-migration)": 17,
+        "TODO(actor-migration)": 7,
         "FIXME(actor-migration)": 2
       }
     },
@@ -36,9 +35,9 @@
       "byKey": {
         "IVerge": 175,
         "IClashTemp": 30,
-        "LegacyVergeBridge": 29,
+        "LegacyVergeBridge": 28,
+        "VergeLegacyBridge": 19,
         "ClashLegacyBridge": 18,
-        "VergeLegacyBridge": 18,
         "LegacyVergePatchRoute": 9,
         "LegacyClashBridge": 8,
         "LegacyWindowBridge": 7,
@@ -58,8 +57,6 @@
     "backend/tauri/src/bridge/mod.rs",
     "backend/tauri/src/bridge/verge.rs",
     "backend/tauri/src/bridge/window.rs",
-    "backend/tauri/src/client/core_bridge.rs",
-    "backend/tauri/src/client/process_core_bridge.rs",
     "backend/tauri/src/enhance/artifact_bridge.rs"
   ]
 }

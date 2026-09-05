@@ -731,8 +731,7 @@ mod tests {
     use crate::{
         bridge::LEGACY_CONFIG_TEST_LOCK as INTERLEAVING_TEST_LOCK,
         client::{
-            ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet,
-            LegacyRunningConfigPatchBridge, LegacyVergeDomain, MockRunningCoreBridge,
+            ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet, LegacyVergeDomain,
             NoopUiEventSink, NyanpasuClient,
         },
         config::{
@@ -1068,6 +1067,7 @@ mod tests {
         );
         let legacy_verge_path = temp_config_path(dir, "nyanpasu-config.yaml");
         let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths).unwrap();
+        let (core_v2, service) = crate::client::tests::test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
             paths,
             runtime_paths,
@@ -1077,8 +1077,8 @@ mod tests {
                 clash,
             },
             ui_sink: Arc::new(NoopUiEventSink),
-            core: Arc::new(MockRunningCoreBridge::new()),
-            clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
+            core_v2,
+            service,
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
         })
         .expect("client should construct with typed config actors");

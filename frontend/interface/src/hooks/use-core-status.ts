@@ -15,12 +15,13 @@ export function useCoreStatus() {
         return null
       }
 
-      const [status, startAt, type] = result
+      const status =
+        result.state && 'Running' in result.state ? 'Running' : result.state
 
       return {
         status,
-        startAt,
-        type,
+        startAt: result.state_changed_at,
+        type: result.host,
       }
     },
   })

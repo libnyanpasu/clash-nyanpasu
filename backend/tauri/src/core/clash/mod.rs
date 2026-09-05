@@ -5,7 +5,6 @@ use specta::Type;
 use tauri_specta::Event;
 
 pub mod api;
-pub mod core;
 pub mod proxies;
 pub mod ws;
 
@@ -15,6 +14,30 @@ pub static CLASH_API_DEFAULT_BACKOFF_STRATEGY: Lazy<ExponentialBuilder> = Lazy::
         .with_max_delay(std::time::Duration::from_secs(5))
         .with_max_times(5)
 });
+
+// TODO: support system path search via a config or flag
+// FIXME: move this fn to nyanpasu-utils
+/// Search the binary path of the core: Data Dir -> Sidecar Dir
+pub fn find_binary_path(
+    core_type: &nyanpasu_utils::core::CoreType,
+) -> std::io::Result<std::path::PathBuf> {
+    let data_dir = crate::utils::dirs::app_data_dir()
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::NotFound, err.to_string()))?;
+    let binary_path = data_dir.join(core_type.get_executable_name());
+    if binary_path.exists() {
+        return Ok(binary_path);
+    }
+    let app_dir = crate::utils::dirs::app_install_dir()
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::NotFound, err.to_string()))?;
+    let binary_path = app_dir.join(core_type.get_executable_name());
+    if binary_path.exists() {
+        return Ok(binary_path);
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("{} not found", core_type.get_executable_name()),
+    ))
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type, Event)]
 pub struct ClashConnectionsEvent(pub ws::ClashConnectionsConnectorEvent);

@@ -261,11 +261,14 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
     let _ = nyanpasu_utils::runtime::block_on(async {
         if let Some(client) = client.as_ref() {
             client.shutdown().await;
+            let report = client.shutdown_core().await;
+            if let Err(error) = report.stop {
+                log::error!("failed to stop core: {error}");
+            }
         }
         if let Err(e) = widget_manager.stop().await {
             log::error!("failed to stop widget manager: {e:?}");
         };
-        crate::core::CoreManager::global().stop_core().await
     });
     #[cfg(windows)]
     crate::shutdown_hook::set_ready_for_shutdown();

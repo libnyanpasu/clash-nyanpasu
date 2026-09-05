@@ -341,8 +341,7 @@ pub fn check_core_permission(core: &nyanpasu_utils::core::CoreType) -> anyhow::R
     use nix::unistd::{Gid, Group as NixGroup, Uid, User};
     use std::os::unix::fs::MetadataExt;
 
-    let core_path =
-        crate::core::clash::core::find_binary_path(core).context("clash core not found")?;
+    let core_path = crate::core::find_binary_path(core).context("clash core not found")?;
     let metadata = std::fs::metadata(&core_path).context("failed to get core metadata")?;
     let uid = metadata.uid();
     let gid = metadata.gid();

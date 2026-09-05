@@ -87,7 +87,7 @@ impl CoreFacade {
             .map(|revision| {
                 let epoch = Epoch::new(revision.epoch).ok_or_else(|| {
                     CoreError::new(
-                        CoreErrorKind::InvalidConfig,
+                        CoreErrorKind::Internal,
                         "the applied revision reported epoch 0, which is not a valid epoch"
                             .to_owned(),
                         false,
@@ -643,6 +643,33 @@ mod tests {
             .reconcile(ClashCore::Mihomo, &document, spec)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reconcile_reports_a_zero_epoch_status_revision_as_an_internal_error() {
+        let zero_epoch = RevisionIdInfo {
+            epoch: 0,
+            generation: 9,
+            effective_hash: "effective".into(),
+        };
+        let local = RecordingEndpoint::new(ExecutionHost::Local, Some(zero_epoch));
+        let (facade, _) = facade(local).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let spec = CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        };
+
+        let error = facade
+            .reconcile(ClashCore::Mihomo, &document, spec)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.kind, Some(CoreErrorKind::Internal));
+        assert!(!error.retryable);
     }
 
     #[tokio::test]

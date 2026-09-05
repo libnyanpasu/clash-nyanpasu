@@ -24,9 +24,9 @@
       }
     },
     "migration_markers": {
-      "total": 9,
+      "total": 10,
       "byKey": {
-        "TODO(actor-migration)": 7,
+        "TODO(actor-migration)": 8,
         "FIXME(actor-migration)": 2
       }
     },

@@ -65,6 +65,11 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
         })
     }
 
+    // TODO(actor-migration): temporary bridge to the process-wide
+    // `nyanpasu_ipc::client::shortcuts::Client` shortcut.
+    // Reason: the IPC client is not yet injected from the composition root.
+    // Remove when: `ServiceHostAdapter`'s constructor accepts the client as a
+    // dependency and this call is replaced with the injected instance.
     fn endpoint(&self) -> EndpointHandle {
         Arc::new(ServiceEndpoint::new(
             nyanpasu_ipc::client::shortcuts::Client::service_default().clone(),

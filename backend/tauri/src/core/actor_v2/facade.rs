@@ -63,9 +63,15 @@ impl CoreFacade {
         document: &serde_yaml::Mapping,
         core_spec: CoreSpec,
     ) -> Result<ReconcileReport, CoreError> {
+        // Admission-time authoritative read (F2), not the router's cached
+        // projection: the cache is refreshed only by the 2s pump, so a
+        // second reconcile inside one pump interval would otherwise submit
+        // the pre-first-reconcile revision and the runtime would answer
+        // `RevisionConflict`.
         let expected_applied = self
             .core
-            .status()
+            .refresh_status()
+            .await?
             .snapshot
             .and_then(|snapshot| snapshot.revision);
         let core_type: nyanpasu_utils::core::CoreType = (&core).into();

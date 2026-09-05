@@ -235,6 +235,15 @@ pub enum CoreActorMessage {
         submission: CoreSubmission,
         reply: RpcReplyPort<Result<SubmitTicket, CoreError>>,
     },
+    /// Admission-time authoritative status read (F2): the router's cached
+    /// projection is refreshed only by the 2s pump, so a caller that needs a
+    /// CAS token newer than that cache -- `CoreFacade::reconcile` -- asks for
+    /// one here instead. Running inside the mailbox makes `state.generation`
+    /// and the connected endpoint current by construction, the same fence
+    /// `EndpointEvent` uses against a retired endpoint's frames.
+    RefreshStatus {
+        reply: RpcReplyPort<Result<CoreStatusProjection, CoreError>>,
+    },
     /// Explicit ownership transfer. The endpoint is built by the caller; the
     /// actor proves the source dead before adopting it.
     ChangeHost {
@@ -664,6 +673,44 @@ impl Actor for CoreActor {
                 let _ = reply.send(result);
             }
 
+            CoreActorMessage::RefreshStatus { reply } => {
+                // Slot dispatch and error mapping mirror `Submit` exactly:
+                // the same endpoint, the same bound, the same refusals.
+                let result = match &state.slot {
+                    EndpointSlot::Connected(handle) => {
+                        let endpoint = handle.clone();
+                        match tokio::time::timeout(state.status_timeout, endpoint.status()).await {
+                            Ok(Ok(snapshot)) => {
+                                state.set_snapshot(snapshot);
+                                Ok(state.projection())
+                            }
+                            Ok(Err(error)) => Err(error),
+                            Err(_) => Err(CoreError::new(
+                                CoreErrorKind::BackendUnavailable,
+                                "the endpoint did not answer the status read within its bound",
+                                true,
+                            )),
+                        }
+                    }
+                    EndpointSlot::HandingOff { .. } => Err(CoreError::new(
+                        CoreErrorKind::OperationConflict,
+                        "a host handoff is in progress",
+                        true,
+                    )),
+                    EndpointSlot::Degraded { desired, reason } => Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        format!("the {desired:?} endpoint is degraded: {reason}"),
+                        true,
+                    )),
+                    EndpointSlot::ShutDown { .. } => Err(CoreError::new(
+                        CoreErrorKind::ShuttingDown,
+                        "the core router is shut down",
+                        false,
+                    )),
+                };
+                let _ = reply.send(result);
+            }
+
             CoreActorMessage::ChangeHost { target, reply } => {
                 self.change_host(&myself, state, target, reply).await;
             }
@@ -682,6 +729,14 @@ impl Actor for CoreActor {
             } => {
                 // Stale frames from an abandoned endpoint are dropped, never
                 // merged (fencing use #1).
+                //
+                // A pump read started before a `RefreshStatus` admission can
+                // still land here afterwards and momentarily republish an
+                // older snapshot. That is only a transient regression of the
+                // *displayed* status: `RefreshStatus` re-reads the endpoint
+                // itself for its CAS token rather than trusting this cache,
+                // so admission never observes the stale value this race can
+                // produce here.
                 if generation == state.generation
                     && !matches!(state.slot, EndpointSlot::ShutDown { .. })
                 {
@@ -1062,6 +1117,27 @@ impl CoreClient {
             CoreError::new(
                 CoreErrorKind::BackendUnavailable,
                 "the caller-side submit budget elapsed before the router answered; the submission may already have been admitted, and retrying with the same operation id attaches to it idempotently rather than starting a second operation",
+                true,
+            ),
+        )
+        .await?
+    }
+
+    /// Authoritative status read, admission-time rather than the 2s-refresh
+    /// cache [`Self::status`] returns. `CoreFacade::reconcile` uses this for
+    /// its CAS token so two reconciles inside one pump interval each see the
+    /// revision the other just produced (F2).
+    pub async fn refresh_status(&self) -> Result<CoreStatusProjection, CoreError> {
+        self.call(
+            |reply| CoreActorMessage::RefreshStatus { reply },
+            // Same bound as `submit` (F4): the handler's one bounded
+            // endpoint read uses `status_timeout`, so the caller has to
+            // outlast that leg or it reports `Internal` for a read the
+            // actor is about to answer honestly with `BackendUnavailable`.
+            self.submit_budget,
+            CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "the caller-side submit budget elapsed before the router answered the status refresh; the endpoint may still be reachable, retry once it responds",
                 true,
             ),
         )

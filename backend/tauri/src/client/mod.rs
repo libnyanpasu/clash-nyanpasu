@@ -1640,6 +1640,18 @@ pub(crate) mod tests {
     pub(crate) struct TestControlEndpoint {
         fail: bool,
         submissions: std::sync::atomic::AtomicUsize,
+        /// The endpoint's current applied revision (finding 2's CAS
+        /// enforcement). Starts non-`None` so the router's very first pump
+        /// read seeds the projection with a real baseline, and advances on
+        /// every accepted reconcile so a stale `expected_applied` can be
+        /// told apart from a fresh one the way the real runtime's
+        /// `apply_config` does.
+        revision: StdMutex<nyanpasu_ipc::api::status::RevisionIdInfo>,
+        /// Terminal results, keyed by operation id, computed once at
+        /// `submit` time so `wait_operation` replays that decision instead
+        /// of re-running (and re-advancing) the CAS check.
+        operations:
+            StdMutex<std::collections::HashMap<String, nyanpasu_ipc::api::core::v2::OperationInfo>>,
     }
 
     impl TestControlEndpoint {
@@ -1647,6 +1659,8 @@ pub(crate) mod tests {
             Arc::new(Self {
                 fail: false,
                 submissions: std::sync::atomic::AtomicUsize::new(0),
+                revision: StdMutex::new(Self::initial_revision()),
+                operations: StdMutex::new(std::collections::HashMap::new()),
             })
         }
 
@@ -1654,20 +1668,36 @@ pub(crate) mod tests {
             Arc::new(Self {
                 fail: true,
                 submissions: std::sync::atomic::AtomicUsize::new(0),
+                revision: StdMutex::new(Self::initial_revision()),
+                operations: StdMutex::new(std::collections::HashMap::new()),
             })
+        }
+
+        fn initial_revision() -> nyanpasu_ipc::api::status::RevisionIdInfo {
+            nyanpasu_ipc::api::status::RevisionIdInfo {
+                epoch: 1,
+                generation: 1,
+                effective_hash: "effective".into(),
+            }
         }
 
         pub(crate) fn submissions(&self) -> usize {
             self.submissions.load(std::sync::atomic::Ordering::SeqCst)
         }
 
+        /// Computes and records the terminal result for `submission`.
+        /// `Reconcile` enforces CAS the way the real runtime's
+        /// `apply_config` does: `expected_applied: None` skips the check, a
+        /// `Some(r)` that disagrees with the tracked revision fails with
+        /// `revision_conflict`, and an accepted reconcile advances it.
         fn operation(
             &self,
-            id: nyanpasu_core_manager::OperationId,
+            submission: &crate::core::actor_v2::endpoint::CoreSubmission,
         ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
+            let id = submission.envelope.operation_id.to_string();
             if self.fail {
-                nyanpasu_ipc::api::core::v2::OperationInfo {
-                    id: id.to_string(),
+                return nyanpasu_ipc::api::core::v2::OperationInfo {
+                    id,
                     phase: nyanpasu_ipc::api::core::v2::OperationPhase::Failed,
                     output: None,
                     error: Some(nyanpasu_ipc::api::core::v2::OperationErrorInfo {
@@ -1675,9 +1705,62 @@ pub(crate) mod tests {
                         message: "reconcile boom".into(),
                         retryable: false,
                     }),
+                };
+            }
+            let nyanpasu_core_manager::CoreCommand::Reconcile(request) =
+                &submission.envelope.command
+            else {
+                return successful_reconcile(submission.envelope.operation_id);
+            };
+            let mut current = self.revision.lock().unwrap();
+            if let Some(expected) = &request.expected_applied {
+                let stale = expected.epoch.get() != current.epoch
+                    || expected.generation != current.generation
+                    || expected.effective_hash != current.effective_hash;
+                if stale {
+                    return nyanpasu_ipc::api::core::v2::OperationInfo {
+                        id,
+                        phase: nyanpasu_ipc::api::core::v2::OperationPhase::Failed,
+                        output: None,
+                        error: Some(nyanpasu_ipc::api::core::v2::OperationErrorInfo {
+                            kind: Some("revision_conflict".into()),
+                            message: format!(
+                                "revision conflict: expected epoch={} generation={} \
+                                 effective_hash={}, actual epoch={} generation={} \
+                                 effective_hash={}",
+                                expected.epoch.get(),
+                                expected.generation,
+                                expected.effective_hash,
+                                current.epoch,
+                                current.generation,
+                                current.effective_hash,
+                            ),
+                            retryable: true,
+                        }),
+                    };
                 }
-            } else {
-                successful_reconcile(id)
+            }
+            current.generation += 1;
+            let applied = current.clone();
+            nyanpasu_ipc::api::core::v2::OperationInfo {
+                id,
+                phase: nyanpasu_ipc::api::core::v2::OperationPhase::Succeeded,
+                output: Some(
+                    nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(
+                        nyanpasu_ipc::api::core::v2::ReconcileOutcomeInfo {
+                            outcome: nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+                            revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                                epoch: applied.epoch,
+                                generation: applied.generation,
+                                source_hash: "source".into(),
+                                effective_hash: applied.effective_hash,
+                            },
+                            warning: None,
+                            failed_apply: None,
+                        },
+                    ),
+                ),
+                error: None,
             }
         }
     }
@@ -1700,7 +1783,12 @@ pub(crate) mod tests {
             Box::pin(async move {
                 self.submissions
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Ok(self.operation(submission.envelope.operation_id))
+                let info = self.operation(&submission);
+                self.operations
+                    .lock()
+                    .unwrap()
+                    .insert(info.id.clone(), info.clone());
+                Ok(info)
             })
         }
 
@@ -1712,7 +1800,13 @@ pub(crate) mod tests {
             'a,
             Option<nyanpasu_ipc::api::core::v2::OperationInfo>,
         > {
-            Box::pin(async move { Some(self.operation(id)) })
+            Box::pin(async move {
+                self.operations
+                    .lock()
+                    .unwrap()
+                    .get(&id.to_string())
+                    .cloned()
+            })
         }
 
         fn status<'a>(
@@ -1730,7 +1824,7 @@ pub(crate) mod tests {
                         reason: None,
                     }),
                     state_changed_at: 0,
-                    revision: None,
+                    revision: Some(self.revision.lock().unwrap().clone()),
                     healthy: Some(true),
                 })
             })
@@ -2952,6 +3046,71 @@ pub(crate) mod tests {
             client.rebuild_running_config().await.expect("reconcile");
             assert!(endpoint.submissions() >= 1);
         });
+    }
+
+    /// F2 regression: `reconcile_core`'s CAS token must come from an
+    /// admission-time read of the endpoint, not the router's projection,
+    /// which the pump refreshes only every 2s. Two reconciles run back to
+    /// back with no sleep in between, so that pump cannot have ticked; the
+    /// fake enforces CAS the way the real runtime does, so a reconcile that
+    /// reads the stale cached revision submits a token one generation behind
+    /// and gets rejected.
+    #[test]
+    fn two_reconciles_in_one_pump_interval_both_get_a_fresh_cas_token() {
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            // Wait for the pump's very first read so the router's cached
+            // projection is seeded with the endpoint's revision before
+            // either reconcile below runs. Without this, both reconciles
+            // would submit `expected_applied: None` (no cached revision
+            // yet), which never conflicts, and the test could not tell a
+            // stale cached read from a fresh one.
+            //
+            // The pump publishes the refreshed projection as an event
+            // rather than on any fixed schedule this test can bound, so
+            // wait on that notification instead of a fixed number of
+            // yields: a bounded busy-wait can spuriously fail a correct
+            // implementation if the pump simply has not run yet. Subscribe
+            // before the first check -- a broadcast receiver only observes
+            // events sent after it subscribes, so checking first would risk
+            // missing the one update that seeds the projection.
+            let mut status_events = client.subscribe_core_events();
+            while client.core_status().snapshot.is_none() {
+                match status_events.recv().await {
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            assert!(
+                client.core_status().snapshot.is_some(),
+                "the pump never seeded the router's cached projection; without a baseline \
+                 revision both reconciles below submit expected_applied: None, which never \
+                 conflicts, and this test would pass without exercising the CAS check at all"
+            );
+
+            client
+                .reconcile_core()
+                .await
+                .expect("the first reconcile establishes a new revision");
+            // No sleep here: this relies on the second reconcile starting
+            // within one pump interval of the first, not on proof that the
+            // pump cannot have run -- the two calls run back to back with
+            // no await point that yields to the pump's 2s timer in between.
+            client.reconcile_core().await.expect(
+                "the second reconcile must re-read the endpoint's current revision rather than \
+                 the router's pump-refreshed cache; using the cache submits the revision from \
+                 before the first reconcile, and the fake endpoint rejects it exactly as the \
+                 real runtime would",
+            );
+        });
+        assert_eq!(endpoint.submissions(), 2);
     }
 
     #[test]

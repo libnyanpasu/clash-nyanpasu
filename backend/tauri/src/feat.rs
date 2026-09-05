@@ -388,8 +388,6 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
 
         if tun_mode.is_some() {
             log::debug!(target: "app", "toggle tun mode");
-            #[allow(unused_mut)]
-            let mut flag = false;
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
                 use crate::utils::dirs::check_core_permission;
@@ -401,21 +399,12 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
                     log::error!(target: "app", "clash core is not granted the necessary permissions, grant it: {e:?}");
                 }).is_ok_and(|v| !v) {
                     log::debug!(target: "app", "grant core permission, and restart core");
-                    flag = true;
                 }
             }
-            let stopped = client
-                .core_status()
-                .snapshot
-                .and_then(|snapshot| snapshot.state)
-                .is_some_and(|state| matches!(state, CoreStateDetail::Stopped { .. }));
-            if flag || stopped {
-                log::debug!(target: "app", "core is stopped, restart core");
-                client.regenerate_and_restart_for_legacy().await?;
-            } else {
-                log::debug!(target: "app", "update core config");
-                update_core_config(&client).await?;
-            }
+            // The reconcile with the newly committed `tun.enable` value now
+            // happens in `LegacyVergeBridge::run_legacy_verge_mutation`,
+            // after the typed commit this function's caller performs
+            // (AGENTS.md section 10: commit first, then side effects).
         }
 
         if auto_launch.is_some() {
@@ -478,21 +467,6 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
         Err(err) => {
             Config::verge().discard();
             Err(err)
-        }
-    }
-}
-
-/// 更新配置 — regenerate+apply through the injected client (no process-global bridge).
-async fn update_core_config(client: &crate::client::NyanpasuClient) -> Result<()> {
-    match client.regenerate_and_apply_for_legacy().await {
-        Ok(_) => {
-            handle::Handle::refresh_clash();
-            handle::Handle::notice_message(&Message::SetConfig(Ok(())));
-            Ok(())
-        }
-        Err(err) => {
-            handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err:?}"))));
-            Err(err.into())
         }
     }
 }

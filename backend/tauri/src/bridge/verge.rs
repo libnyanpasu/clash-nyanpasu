@@ -273,6 +273,11 @@ impl LegacyVergeBridge {
         // Remove when: side effects are prepared and committed by typed domain services.
         let desired = self.legacy_store.snapshot()?;
         let patch = legacy_patch_between(&previous, &desired)?;
+        // Captured before `patch` is moved into `desired.patch_config(patch)`
+        // below: the post-commit reconcile must build the runtime config from
+        // the just-committed typed state, never from the pre-commit draft
+        // (AGENTS.md section 10: commit first, then side effects).
+        let reconcile_tun = patch.enable_tun_mode.is_some();
         let restore = self
             .legacy_store
             .prepare_restore(&managed.legacy_verge_path, previous)
@@ -302,7 +307,28 @@ impl LegacyVergeBridge {
             .apply_typed_config_patch_plan(plan, move || finalize.commit())
             .await
         {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                if reconcile_tun {
+                    // Reconcile now that the typed commit landed, so the
+                    // runtime config is built from the newly committed
+                    // `tun.enable` rather than the stale value `mutate()`
+                    // (feat::patch_verge) would have reconciled against
+                    // before this commit ran. A reconcile failure here must
+                    // not undo the successful commit: report it the same way
+                    // the commit-phase failures above already do.
+                    managed
+                        .client
+                        .rebuild_running_config()
+                        .await
+                        .map_err(|error| {
+                            Self::legacy_mutation_partial(
+                                anyhow::anyhow!(format!("{error:#}")),
+                                Some(error),
+                            )
+                        })?;
+                }
+                Ok(())
+            }
             Err(error) => Err(Self::legacy_mutation_partial(
                 anyhow::anyhow!(format!("{error:#}")),
                 Some(error),
@@ -729,7 +755,7 @@ fn network_widget_to_legacy(
 mod tests {
     use super::*;
     use crate::{
-        bridge::LEGACY_CONFIG_TEST_LOCK as INTERLEAVING_TEST_LOCK,
+        bridge::{LEGACY_CONFIG_TEST_LOCK as INTERLEAVING_TEST_LOCK, clash::LegacyClashBridge},
         client::{
             ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet, LegacyVergeDomain,
             NoopUiEventSink, NyanpasuClient,
@@ -2227,6 +2253,256 @@ mod tests {
                 before.session.state.window_state
             );
             assert_eq!(after.clash.version, before.clash.version + 1);
+        });
+    }
+
+    /// Test-only double for the finding-1 acceptance test below: a
+    /// `ControlEndpoint` that records the config bytes of every submitted
+    /// reconcile, so the test can parse the YAML and assert which
+    /// `tun.enable` value the production code actually reconciled with.
+    struct RecordingReconcileEndpoint {
+        submitted_configs: StdMutex<Vec<Vec<u8>>>,
+    }
+
+    impl RecordingReconcileEndpoint {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                submitted_configs: StdMutex::new(Vec::new()),
+            })
+        }
+
+        fn reconcile_count(&self) -> usize {
+            self.submitted_configs.lock().unwrap().len()
+        }
+
+        fn last_tun_enable(&self) -> bool {
+            let submitted = self.submitted_configs.lock().unwrap();
+            let bytes = submitted
+                .last()
+                .expect("at least one reconcile must have been submitted");
+            let document: serde_yaml::Value =
+                serde_yaml::from_slice(bytes).expect("submitted config must be valid YAML");
+            // The builtin tun transform omits the `tun` block entirely when
+            // disabled and no base profile already had one (builtin.rs's
+            // `apply_tun`), so a missing block means disabled.
+            document
+                .get("tun")
+                .and_then(|tun| tun.get("enable"))
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+        }
+    }
+
+    impl crate::core::actor_v2::endpoint::ControlEndpoint for RecordingReconcileEndpoint {
+        fn host(&self) -> crate::core::actor_v2::endpoint::ExecutionHost {
+            crate::core::actor_v2::endpoint::ExecutionHost::Local
+        }
+
+        fn submit<'a>(
+            &'a self,
+            submission: crate::core::actor_v2::endpoint::CoreSubmission,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            std::result::Result<
+                nyanpasu_ipc::api::core::v2::OperationInfo,
+                nyanpasu_core_manager::CoreError,
+            >,
+        > {
+            Box::pin(async move {
+                if let nyanpasu_core_manager::CoreCommand::Reconcile(request) =
+                    &submission.envelope.command
+                {
+                    let nyanpasu_core_manager::ConfigInput::Inline { bytes, .. } = &request.config;
+                    self.submitted_configs.lock().unwrap().push(bytes.clone());
+                }
+                Ok(recording_endpoint_successful_reconcile(
+                    submission.envelope.operation_id,
+                ))
+            })
+        }
+
+        fn wait_operation<'a>(
+            &'a self,
+            id: nyanpasu_core_manager::OperationId,
+            _timeout: std::time::Duration,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            Option<nyanpasu_ipc::api::core::v2::OperationInfo>,
+        > {
+            Box::pin(async move { Some(recording_endpoint_successful_reconcile(id)) })
+        }
+
+        fn status<'a>(
+            &'a self,
+        ) -> crate::core::actor_v2::endpoint::BoxFuture<
+            'a,
+            std::result::Result<
+                crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+                nyanpasu_core_manager::CoreError,
+            >,
+        > {
+            Box::pin(async {
+                Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                    state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
+                        reason: None,
+                    }),
+                    state_changed_at: 0,
+                    revision: None,
+                    healthy: Some(true),
+                })
+            })
+        }
+    }
+
+    fn recording_endpoint_successful_reconcile(
+        id: nyanpasu_core_manager::OperationId,
+    ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
+        nyanpasu_ipc::api::core::v2::OperationInfo {
+            id: id.to_string(),
+            phase: nyanpasu_ipc::api::core::v2::OperationPhase::Succeeded,
+            output: Some(
+                nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(
+                    nyanpasu_ipc::api::core::v2::ReconcileOutcomeInfo {
+                        outcome: nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+                        revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                            epoch: 1,
+                            generation: 1,
+                            source_hash: "source".into(),
+                            effective_hash: "effective".into(),
+                        },
+                        warning: None,
+                        failed_apply: None,
+                    },
+                ),
+            ),
+            error: None,
+        }
+    }
+
+    fn test_bridge_with_recording_endpoint(
+        dir: &TempDir,
+    ) -> (
+        NyanpasuClient,
+        LegacyVergeBridge,
+        Arc<RecordingReconcileEndpoint>,
+    ) {
+        let clash_store = Config::clash();
+        *clash_store.draft() = IClashTemp::template();
+        clash_store.apply();
+        let verge_store = Config::verge();
+        *verge_store.draft() = IVerge::default();
+        verge_store.apply();
+
+        let paths = crate::utils::path::PathResolver::with_base_dirs(
+            dir.path().into(),
+            dir.path().join("data"),
+        );
+        let legacy_verge_path = temp_config_path(dir, "nyanpasu-config.yaml");
+        let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths).unwrap();
+        let endpoint = RecordingReconcileEndpoint::new();
+        let (core_v2, service) =
+            crate::client::tests::test_v2_clients_with_endpoint(endpoint.clone());
+        let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            paths,
+            runtime_paths,
+            bridges: LegacyBridgeSet {
+                verge: Arc::new(LegacyVergeBridge::default()),
+                window: Arc::new(NoopWindowBridge),
+                // Real bridge: the acceptance test below depends on the
+                // Clash actor's genuine legacy-mirror projection landing in
+                // `Config::verge()` before the post-commit reconcile reads
+                // it. A noop double would hide that projection entirely.
+                clash: Arc::new(LegacyClashBridge::default()),
+            },
+            ui_sink: Arc::new(NoopUiEventSink),
+            core_v2,
+            service,
+            system_dns: Arc::new(crate::client::NoopSystemDnsCache),
+        })
+        .expect("client should construct with typed config actors");
+        let bridge = LegacyVergeBridge::new(
+            client.clone(),
+            legacy_verge_path,
+            Arc::new(ConfigLegacyVergeStore::default()),
+        );
+        (client, bridge, endpoint)
+    }
+
+    /// Finding 1 acceptance test: `feat::patch_verge` writes the legacy
+    /// draft only (no reconcile); `run_legacy_verge_mutation` must reconcile
+    /// once, after the typed commit, with the newly committed `tun.enable`
+    /// value. Deleting the post-commit `rebuild_running_config()` call added
+    /// for this fix (`bridge/verge.rs`, `run_legacy_verge_mutation`) turns
+    /// this test red: no reconcile is ever submitted and `reconcile_count()`
+    /// stays 0 for both toggles.
+    ///
+    /// Drives `run_legacy_verge_mutation` itself — the function this fix
+    /// changes — rather than `patch_verge_config` -> `feat::patch_verge`:
+    /// `feat::patch_verge`'s tun branch falls through to
+    /// `handle::Handle::update_systray_part()`, which unconditionally bails
+    /// without a live `AppHandle` (none exists in `cargo test --lib`, and
+    /// this crate has no tauri test-mock harness). The mutation closure
+    /// below reproduces exactly the legacy-draft effect `feat::patch_verge`
+    /// would commit, matching the same OS-side-effect-free pattern already
+    /// used by `legacy_mutation_reseeds_typed_actors_without_os_side_effects`.
+    ///
+    /// Drives the natural enable-then-disable round trip. The fixture wires
+    /// the real `LegacyClashBridge` (not a noop double): the Clash actor's
+    /// `commit()` (`state/clash_config.rs`) projects the typed
+    /// `enable_tun_mode` into the legacy `Config::verge()` mirror as part of
+    /// the same saga that commits this mutation's typed patch, before
+    /// `ConfigPreparedLegacyVergeCommit::commit()`'s `preserve_typed_projection`
+    /// step re-reads that mirror — so the mirror is already fresh by the
+    /// time each toggle's reconcile fires, and both toggles can assert the
+    /// submitted `tun.enable` against the value that call just committed.
+    #[test]
+    fn tun_toggle_reconciles_with_newly_committed_value() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (_client, bridge, endpoint) = test_bridge_with_recording_endpoint(&dir);
+
+        tauri::async_runtime::block_on(async {
+            bridge
+                .run_legacy_verge_mutation(|| async {
+                    Config::verge().draft().patch_config(IVerge {
+                        enable_tun_mode: Some(true),
+                        ..IVerge::default()
+                    });
+                    Config::verge().apply();
+                    Ok(())
+                })
+                .await
+                .expect("enabling tun mode should succeed");
+            assert_eq!(
+                endpoint.reconcile_count(),
+                1,
+                "enabling tun must submit exactly one reconcile"
+            );
+            assert!(
+                endpoint.last_tun_enable(),
+                "the reconcile must carry the newly committed tun.enable = true"
+            );
+
+            bridge
+                .run_legacy_verge_mutation(|| async {
+                    Config::verge().draft().patch_config(IVerge {
+                        enable_tun_mode: Some(false),
+                        ..IVerge::default()
+                    });
+                    Config::verge().apply();
+                    Ok(())
+                })
+                .await
+                .expect("disabling tun mode should succeed");
+            assert_eq!(
+                endpoint.reconcile_count(),
+                2,
+                "disabling tun must submit exactly one more reconcile"
+            );
+            assert!(
+                !endpoint.last_tun_enable(),
+                "the reconcile must carry the newly committed tun.enable = false"
+            );
         });
     }
 }

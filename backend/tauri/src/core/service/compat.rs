@@ -106,7 +106,7 @@ mod tests {
 
     use super::{
         REQUIRED_SERVICE_MAJOR, REQUIRED_SERVICE_MIN, STATUS_V1_4_5_FIXTURE,
-        STATUS_V2_0_0_RC1_FIXTURE, ServiceCompat, parse_service_version,
+        STATUS_V2_0_0_RC1_FIXTURE, ServiceCompat, parse_service_version, required_service_min,
     };
 
     fn parse_fixture(fixture: &'static str) -> StatusInfo<'static> {
@@ -246,5 +246,53 @@ mod tests {
         let v1 = parse_service_version("1.4.5").expect("v1 version must parse");
 
         assert!(rc > v1);
+    }
+
+    /// Reads the `version` key out of the `[package]` table of a Cargo manifest
+    /// without pulling in a `toml` dependency, mirroring the line-scan approach
+    /// `scripts/check.ts` uses to read the same manifest.
+    fn parse_package_version(manifest: &str) -> semver::Version {
+        let raw = manifest
+            .lines()
+            .skip_while(|line| line.trim() != "[package]")
+            .skip(1)
+            .take_while(|line| !line.trim_start().starts_with('['))
+            .find_map(|line| {
+                let rest = line.trim().strip_prefix("version")?;
+                let rest = rest.trim_start().strip_prefix('=')?.trim();
+                let rest = rest.strip_prefix('"')?;
+                let end = rest.find('"')?;
+                Some(rest[..end].to_owned())
+            })
+            .expect("[package] table must declare a version key");
+
+        semver::Version::parse(&raw).expect("bundled nyanpasu-service version must be valid semver")
+    }
+
+    /// This is the tie the review finding asked for: `REQUIRED_SERVICE_MIN` is a
+    /// hand-maintained constant, and the bundled daemon binary comes from
+    /// whatever version `backend/nyanpasu-runtime/nyanpasu_service/Cargo.toml`
+    /// currently declares. If the constant is ever bumped ahead of that
+    /// manifest, every checkout would download and ship a daemon that this
+    /// very gate then rejects at runtime. Deleting this assertion (or reading
+    /// a different file) is the only way to make this test blind to that
+    /// regression.
+    #[test]
+    fn required_min_never_exceeds_the_bundled_daemon_version() {
+        const MANIFEST: &str =
+            include_str!("../../../../nyanpasu-runtime/nyanpasu_service/Cargo.toml");
+
+        let bundled = parse_package_version(MANIFEST);
+
+        assert!(
+            required_service_min() <= bundled,
+            "REQUIRED_SERVICE_MIN ({REQUIRED_SERVICE_MIN}) exceeds the bundled \
+             nyanpasu-service crate version ({bundled}); the app would reject its \
+             own daemon"
+        );
+
+        // The gate rejects a mismatched major in either direction, so a bundled
+        // daemon with a higher major would also be refused.
+        assert_eq!(bundled.major, REQUIRED_SERVICE_MAJOR);
     }
 }

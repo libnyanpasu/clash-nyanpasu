@@ -477,6 +477,17 @@ async function resolveResource(
   return { file, version, size, speed, cached: false };
 }
 
+// Reads a `<targetFile>.version` stamp written next to a cached sidecar
+// target. Returns null when the stamp is missing or unreadable so callers
+// treat that the same as "no valid cache".
+async function readVersionStamp(stampPath: string): Promise<string | null> {
+  try {
+    return (await Deno.readTextFile(stampPath)).trim();
+  } catch {
+    return null;
+  }
+}
+
 async function resolveSidecar(
   binInfo: BinInfo | Promise<BinInfo>,
   options?: ResolveOptions,
@@ -486,10 +497,21 @@ async function resolveSidecar(
 
   const sidecarDir = path.join(TAURI_APP_DIR, "sidecar");
   const sidecarPath = path.join(sidecarDir, targetFile);
+  const versionStampPath = `${sidecarPath}.version`;
 
   await ensureDir(sidecarDir);
 
-  if (!options?.force && (await exists(sidecarPath))) {
+  // nyanpasu-service's cached target is only trusted alongside a version
+  // stamp file (`<targetFile>.version`, written after a successful
+  // materialization below) whose contents match the requested version.
+  // Without a matching stamp - missing, stale, or --force - the daemon is
+  // re-downloaded and the target is re-materialized from the archive.
+  const cachedTargetIsValid = name === "nyanpasu-service"
+    ? (await exists(sidecarPath)) &&
+      (await readVersionStamp(versionStampPath)) === version
+    : await exists(sidecarPath);
+
+  if (!options?.force && cachedTargetIsValid) {
     return {
       file: targetFile,
       version,
@@ -534,6 +556,10 @@ async function resolveSidecar(
       if (platform !== "win32") {
         await Deno.chmod(sidecarPath, 0o755);
       }
+    }
+
+    if (name === "nyanpasu-service" && version) {
+      await Deno.writeTextFile(versionStampPath, version);
     }
 
     debugLog(colorize`resolve {green ${name}} finished`);
@@ -705,7 +731,7 @@ async function getNyanpasuServiceInfo(): Promise<BinInfo> {
     version,
     targetFile: `${name}-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile: `${name}${isWin ? ".exe" : ""}`,
-    tmpFile: `${name}-${SIDECAR_HOST}.${urlExt}`,
+    tmpFile: `${name}-${version}-${SIDECAR_HOST}.${urlExt}`,
     downloadURL:
       `https://github.com/${SERVICE_REPO}/releases/download/${version}/${name}-${SIDECAR_HOST}.${urlExt}`,
   };

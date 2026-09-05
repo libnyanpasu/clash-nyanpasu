@@ -195,7 +195,7 @@ fn map_local_outcome(outcome: &ApplyOutcome) -> ReconcileOutcomeInfo {
     ReconcileOutcomeInfo {
         outcome: kind,
         revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
-            epoch: revision.epoch,
+            epoch: revision.epoch.get(),
             generation: revision.generation,
             source_hash: revision.source_hash.clone(),
             effective_hash: revision.effective_hash.clone(),
@@ -211,20 +211,24 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
         ManagerCoreState::Stopped { reason } => Some(CoreStateDetail::Stopped {
             reason: reason.as_ref().map(|reason| reason.to_string()),
         }),
-        ManagerCoreState::Starting { epoch } => Some(CoreStateDetail::Starting { epoch: *epoch }),
+        ManagerCoreState::Starting { epoch } => {
+            Some(CoreStateDetail::Starting { epoch: epoch.get() })
+        }
         ManagerCoreState::Running { epoch, pid } => Some(CoreStateDetail::Running {
-            epoch: *epoch,
+            epoch: epoch.get(),
             pid: *pid,
         }),
         ManagerCoreState::Restarting { epoch, attempt } => Some(CoreStateDetail::Restarting {
-            epoch: *epoch,
+            epoch: epoch.get(),
             attempt: *attempt,
         }),
         ManagerCoreState::Switching { from, to } => Some(CoreStateDetail::Switching {
-            from: *from,
-            to: *to,
+            from: from.map(|epoch| epoch.get()),
+            to: to.get(),
         }),
-        ManagerCoreState::Stopping { epoch } => Some(CoreStateDetail::Stopping { epoch: *epoch }),
+        ManagerCoreState::Stopping { epoch } => {
+            Some(CoreStateDetail::Stopping { epoch: epoch.get() })
+        }
         // `CoreState` is `#[non_exhaustive]`; an unknown future state stays
         // unknown. Folding it into `Stopped` is how a router invents a stop
         // proof it never received.
@@ -238,7 +242,7 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
         state_changed_at: status.changed_at,
         revision: status.revision.as_ref().map(|revision| {
             nyanpasu_ipc::api::status::RevisionIdInfo {
-                epoch: revision.epoch,
+                epoch: revision.epoch.get(),
                 generation: revision.generation,
                 effective_hash: revision.effective_hash.clone(),
             }
@@ -371,7 +375,7 @@ pub(super) fn wire_submit_request(
                 expected_digest: expected_digest.clone().map(Cow::Owned),
                 expected_applied: request.expected_applied.as_ref().map(|revision| {
                     nyanpasu_ipc::api::status::RevisionIdInfo {
-                        epoch: revision.epoch,
+                        epoch: revision.epoch.get(),
                         generation: revision.generation,
                         effective_hash: revision.effective_hash.clone(),
                     }

@@ -5,7 +5,7 @@ use std::time::Duration;
 use futures_util::future::{BoxFuture, FutureExt, Shared};
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{
-    ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec,
+    ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec, Epoch,
     InstanceOptions, OperationId, ReconcileRequest, RevisionId,
 };
 use nyanpasu_ipc::api::core::v2::{OperationInfo, OperationOutputInfo, OperationPhase};
@@ -75,11 +75,29 @@ impl CoreFacade {
                     false,
                 )
             })?;
-        let expected_applied = intent.expected_applied.map(|revision| RevisionId {
-            epoch: revision.epoch,
-            generation: revision.generation,
-            effective_hash: revision.effective_hash,
-        });
+        // `expected_applied` is the optimistic-concurrency guard: apply only if
+        // the manager is still on this revision. The wire carries the epoch as a
+        // plain `u64`, and `Epoch` rejects zero. Dropping the guard on a zero
+        // would turn a guarded apply into an unguarded one, so a value we cannot
+        // express is an error rather than `None`.
+        let expected_applied = intent
+            .expected_applied
+            .map(|revision| {
+                let epoch = Epoch::new(revision.epoch).ok_or_else(|| {
+                    CoreError::new(
+                        CoreErrorKind::InvalidConfig,
+                        "the applied revision reported epoch 0, which is not a valid epoch"
+                            .to_owned(),
+                        false,
+                    )
+                })?;
+                Ok::<_, CoreError>(RevisionId {
+                    epoch,
+                    generation: revision.generation,
+                    effective_hash: revision.effective_hash,
+                })
+            })
+            .transpose()?;
         let submission = CoreSubmission {
             envelope: CoreCommandEnvelope {
                 operation_id: OperationId::generate(),
@@ -524,7 +542,7 @@ mod tests {
         assert_eq!(
             request.expected_applied,
             Some(RevisionId {
-                epoch: expected.epoch,
+                epoch: Epoch::new(expected.epoch).expect("the fixture epoch is nonzero"),
                 generation: expected.generation,
                 effective_hash: expected.effective_hash,
             })

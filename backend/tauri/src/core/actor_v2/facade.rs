@@ -8,7 +8,9 @@ use nyanpasu_core_manager::{
     ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec, Epoch,
     InstanceOptions, OperationId, ReconcileRequest, RevisionId,
 };
-use nyanpasu_ipc::api::core::v2::{OperationInfo, OperationOutputInfo, OperationPhase};
+use nyanpasu_ipc::api::core::v2::{
+    OperationInfo, OperationOutputInfo, OperationPhase, ReconcileOutcomeKind,
+};
 use tokio::sync::OnceCell;
 
 use super::{
@@ -114,8 +116,28 @@ impl CoreFacade {
             core_type: Some(core_type),
         };
         let output = self.submit_and_wait(submission).await?;
-        if !matches!(output, OperationOutputInfo::Reconciled(_)) {
-            return Err(unexpected_output("reconcile", &output));
+        let outcome = match &output {
+            OperationOutputInfo::Reconciled(outcome) => outcome,
+            _ => return Err(unexpected_output("reconcile", &output)),
+        };
+        if let Some(warning) = &outcome.warning {
+            tracing::warn!("core reconcile completed with a durability warning: {warning}");
+        }
+        // `RolledBack` is an `Ok` transaction from the runtime's point of view
+        // (the manager cleanly restored the previous revision), but the
+        // caller's desired config never took effect. Reporting it as success
+        // here would let profile activation and config patches claim success
+        // while the old config keeps running, so this is the choke point that
+        // turns it into a non-retryable error instead.
+        if outcome.outcome == ReconcileOutcomeKind::RolledBack {
+            return Err(CoreError::new(
+                CoreErrorKind::ApplyFailed,
+                format!(
+                    "core reconcile was rolled back to the previous revision: {}",
+                    outcome.failed_apply.as_deref().unwrap_or("unknown reason")
+                ),
+                false,
+            ));
         }
         Ok(ReconcileReport {
             output,
@@ -335,6 +357,7 @@ mod tests {
         submissions: Mutex<Vec<CoreSubmission>>,
         stops: AtomicUsize,
         calls: Arc<Mutex<Vec<&'static str>>>,
+        reconcile_outcome: Mutex<ReconcileOutcomeInfo>,
     }
 
     impl RecordingEndpoint {
@@ -350,23 +373,31 @@ mod tests {
                 submissions: Mutex::new(Vec::new()),
                 stops: AtomicUsize::new(0),
                 calls: Arc::new(Mutex::new(Vec::new())),
+                reconcile_outcome: Mutex::new(ReconcileOutcomeInfo {
+                    outcome: ReconcileOutcomeKind::Noop,
+                    revision: ConfigRevisionInfo {
+                        epoch: 1,
+                        generation: 2,
+                        source_hash: "source".into(),
+                        effective_hash: "effective".into(),
+                    },
+                    warning: None,
+                    failed_apply: None,
+                }),
             })
         }
 
-        fn operation(submission: &CoreSubmission) -> OperationInfo {
+        /// Overrides the outcome the next `Reconcile` submissions answer with,
+        /// so a test can drive the facade through a non-default terminal
+        /// outcome such as `RolledBack`.
+        fn set_reconcile_outcome(&self, outcome: ReconcileOutcomeInfo) {
+            *self.reconcile_outcome.lock().unwrap() = outcome;
+        }
+
+        fn operation(&self, submission: &CoreSubmission) -> OperationInfo {
             let output = match submission.envelope.command {
                 CoreCommand::Reconcile(_) => {
-                    OperationOutputInfo::Reconciled(ReconcileOutcomeInfo {
-                        outcome: ReconcileOutcomeKind::Noop,
-                        revision: ConfigRevisionInfo {
-                            epoch: 1,
-                            generation: 2,
-                            source_hash: "source".into(),
-                            effective_hash: "effective".into(),
-                        },
-                        warning: None,
-                        failed_apply: None,
-                    })
+                    OperationOutputInfo::Reconciled(self.reconcile_outcome.lock().unwrap().clone())
                 }
                 CoreCommand::Stop => OperationOutputInfo::Stopped,
                 CoreCommand::Recover => OperationOutputInfo::Recovered,
@@ -394,7 +425,7 @@ mod tests {
                 if matches!(submission.envelope.command, CoreCommand::Stop) {
                     self.stops.fetch_add(1, Ordering::SeqCst);
                 }
-                let info = Self::operation(&submission);
+                let info = self.operation(&submission);
                 self.submissions.lock().unwrap().push(submission);
                 Ok(info)
             })
@@ -411,7 +442,7 @@ mod tests {
                     .unwrap()
                     .iter()
                     .find(|submission| submission.envelope.operation_id == id)
-                    .map(Self::operation)
+                    .map(|submission| self.operation(submission))
             })
         }
 
@@ -548,6 +579,70 @@ mod tests {
             })
         );
         assert_eq!(submissions[0].core_type, Some((&ClashCore::Mihomo).into()));
+    }
+
+    #[tokio::test]
+    async fn reconcile_reports_a_rolled_back_outcome_as_an_apply_failed_error() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        local.set_reconcile_outcome(ReconcileOutcomeInfo {
+            outcome: ReconcileOutcomeKind::RolledBack,
+            revision: ConfigRevisionInfo {
+                epoch: 1,
+                generation: 2,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            warning: None,
+            failed_apply: Some("boom".into()),
+        });
+        let (facade, _) = facade(local).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let spec = CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        };
+
+        let error = facade
+            .reconcile(ClashCore::Mihomo, &document, spec)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.kind, Some(CoreErrorKind::ApplyFailed));
+        assert!(!error.retryable);
+        assert!(error.message.contains("boom"));
+    }
+
+    #[tokio::test]
+    async fn reconcile_still_succeeds_when_the_outcome_only_carries_a_durability_warning() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        local.set_reconcile_outcome(ReconcileOutcomeInfo {
+            outcome: ReconcileOutcomeKind::Patched,
+            revision: ConfigRevisionInfo {
+                epoch: 1,
+                generation: 2,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            warning: Some("durability uncertain".into()),
+            failed_apply: None,
+        });
+        let (facade, _) = facade(local).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let spec = CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        };
+
+        facade
+            .reconcile(ClashCore::Mihomo, &document, spec)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

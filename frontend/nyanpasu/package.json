@@ -79,7 +79,7 @@
     "meta-json-schema": "1.19.30",
     "monaco-yaml": "5.5.1",
     "nanoid": "6.0.1",
-    "sass-embedded": "1.103.1",
+    "sass-embedded": "1.104.0",
     "shiki": "4.4.3",
     "unplugin-auto-import": "21.1.0",
     "unplugin-icons": "23.0.1",

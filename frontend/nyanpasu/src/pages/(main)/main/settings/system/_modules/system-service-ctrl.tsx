@@ -1,3 +1,4 @@
+import { AnimatePresence } from 'framer-motion'
 import { startCase } from 'lodash-es'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ import { cn } from '@nyanpasu/utils'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   SettingsCard,
+  SettingsCardAnimatedItem,
   SettingsCardContent,
   SettingsCardFooter,
 } from '../../_modules/settings-card'
@@ -87,6 +89,37 @@ const ServiceDetailButton = () => {
         </Card>
       </ModalContent>
     </Modal>
+  )
+}
+
+const ServiceCompatWarning = () => {
+  const { query } = useSystemService()
+
+  const compat = query.data?.compat
+
+  const warning =
+    compat?.kind === 'incompatible'
+      ? m.settings_system_proxy_system_service_ctrl_incompatible({
+          version: compat.server_version,
+          required: compat.required_major,
+        })
+      : compat?.kind === 'unparsable'
+        ? m.settings_system_proxy_system_service_ctrl_unparsable({
+            version: compat.server_version,
+          })
+        : null
+
+  return (
+    <AnimatePresence initial={false}>
+      {warning && (
+        <SettingsCardAnimatedItem
+          className="text-error"
+          data-slot="system-service-compat-warning"
+        >
+          {warning}
+        </SettingsCardAnimatedItem>
+      )}
+    </AnimatePresence>
   )
 }
 
@@ -291,6 +324,8 @@ export default function SystemServiceCtrl() {
           name="Service Status"
           value={startCase(query.data?.status)}
         />
+
+        <ServiceCompatWarning />
       </SettingsCardContent>
 
       <SettingsCardFooter className="flex-wrap-reverse gap-2">

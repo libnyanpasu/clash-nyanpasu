@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.19.30",
-    "mihomo_alpha": "alpha-0159cf4",
+    "mihomo_alpha": "alpha-fd74ecb",
     "clash_rs": "v0.10.8",
     "clash_premium": "2023-09-05-gdcc8d87",
     "clash_rs_alpha": "0.10.8-alpha+sha.b0538e8",
@@ -58,5 +58,5 @@
       "darwin-x64": "meow-{}-x86_64-apple-darwin.tar.gz"
     }
   },
-  "updated_at": "2026-09-04T22:21:27.385Z"
+  "updated_at": "2026-09-05T22:19:55.086Z"
 }

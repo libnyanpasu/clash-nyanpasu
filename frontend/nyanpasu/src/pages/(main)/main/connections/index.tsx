@@ -24,12 +24,16 @@ import { ClashConnectionItem, useClashConnections } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
-  ColumnDef,
-  ColumnSizingState,
+  columnResizingFeature,
+  columnSizingFeature,
+  columnVisibilityFeature,
+  createSortedRowModel,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
+  type ColumnDef,
+  type ColumnSizingState,
   type Updater,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -42,6 +46,14 @@ export type ConnectionRow = ClashConnectionItem & {
   downloadSpeed: number
   uploadSpeed: number
 }
+
+const features = tableFeatures({
+  rowSortingFeature,
+  columnSizingFeature,
+  columnResizingFeature,
+  columnVisibilityFeature,
+  sortedRowModel: createSortedRowModel(),
+})
 
 const COLUMN_SIZING_STORAGE_KEY = 'connections-column-sizing-v2'
 
@@ -124,7 +136,7 @@ const Viewer = ({ search }: { search: string }) => {
         {
           header: 'Downloaded',
           accessorFn: ({ download }) => parseTraffic(download).join(' '),
-          sortingFn: (rowA, rowB) =>
+          sortFn: (rowA, rowB) =>
             rowA.original.download - rowB.original.download,
           size: 120,
           cell: (info) => (
@@ -136,8 +148,7 @@ const Viewer = ({ search }: { search: string }) => {
         {
           header: 'Uploaded',
           accessorFn: ({ upload }) => parseTraffic(upload).join(' '),
-          sortingFn: (rowA, rowB) =>
-            rowA.original.upload - rowB.original.upload,
+          sortFn: (rowA, rowB) => rowA.original.upload - rowB.original.upload,
           size: 120,
           cell: (info) => (
             <span>{parseTraffic(info.row.original.upload).join(' ')}</span>
@@ -147,7 +158,7 @@ const Viewer = ({ search }: { search: string }) => {
           header: 'DL Speed',
           accessorFn: ({ downloadSpeed }) =>
             parseTraffic(downloadSpeed).join(' ') + '/s',
-          sortingFn: (rowA, rowB) =>
+          sortFn: (rowA, rowB) =>
             rowA.original.downloadSpeed - rowB.original.downloadSpeed,
           size: 120,
           cell: (info) => (
@@ -160,7 +171,7 @@ const Viewer = ({ search }: { search: string }) => {
           header: 'UL Speed',
           accessorFn: ({ uploadSpeed }) =>
             parseTraffic(uploadSpeed).join(' ') + '/s',
-          sortingFn: (rowA, rowB) =>
+          sortFn: (rowA, rowB) =>
             rowA.original.uploadSpeed - rowB.original.uploadSpeed,
           size: 120,
           cell: (info) => (
@@ -195,7 +206,7 @@ const Viewer = ({ search }: { search: string }) => {
         {
           header: 'Time',
           accessorFn: ({ start }) => dayjs(start).fromNow(),
-          sortingFn: (rowA, rowB) =>
+          sortFn: (rowA, rowB) =>
             dayjs(rowA.original.start).diff(rowB.original.start),
           size: 120,
           cell: (info) => (
@@ -241,19 +252,18 @@ const Viewer = ({ search }: { search: string }) => {
             </HighlightText>
           ),
         },
-      ] satisfies Array<ColumnDef<ConnectionRow>>,
+      ] satisfies Array<ColumnDef<typeof features, ConnectionRow>>,
     [search],
   )
 
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data,
     columns,
     state: {
       columnSizing,
     },
     onColumnSizingChange: handleColumnSizingChange,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
   })
@@ -402,13 +412,15 @@ const Viewer = ({ search }: { search: string }) => {
                 }}
                 data={row.original}
               >
-                {row.getVisibleCells().map(({ column, id, getContext }) => (
+                {row.getVisibleCells().map((cell) => (
                   <td
-                    key={id}
+                    key={cell.id}
                     className="border-outline-variant/30 max-w-0 truncate border-b px-3 text-sm"
-                    style={{ width: column.getSize() + extraWidthPerColumn }}
+                    style={{
+                      width: cell.column.getSize() + extraWidthPerColumn,
+                    }}
                   >
-                    {flexRender(column.columnDef.cell, getContext())}
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
               </TableRow>

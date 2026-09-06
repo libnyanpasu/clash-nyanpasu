@@ -5,16 +5,24 @@ import { useClashRules } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
+  columnVisibilityFeature,
+  createSortedRowModel,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/rules/')({
   component: RouteComponent,
+})
+
+const features = tableFeatures({
+  rowSortingFeature,
+  columnVisibilityFeature,
+  sortedRowModel: createSortedRowModel(),
 })
 
 const Viewer = ({ search }: { search: string }) => {
@@ -56,7 +64,8 @@ const Viewer = ({ search }: { search: string }) => {
 
   const virtualItems = rowVirtualizer.getVirtualItems()
 
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data: filteredRules,
     columns: [
       {
@@ -96,8 +105,6 @@ const Viewer = ({ search }: { search: string }) => {
     //   sorting,
     // },
     // onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     debugTable: true,
   })
 
@@ -136,9 +143,9 @@ const Viewer = ({ search }: { search: string }) => {
                   transform: `translateY(${offset}px)`,
                 }}
               >
-                {row.getVisibleCells().map(({ column, id, getContext }) => (
-                  <td key={id} data-slot="rules-virtual-td">
-                    {flexRender(column.columnDef.cell, getContext())}
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id} data-slot="rules-virtual-td">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
               </tr>

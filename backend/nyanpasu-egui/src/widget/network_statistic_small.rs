@@ -128,8 +128,7 @@ impl NyanpasuNetworkStatisticSmallWidget {
                         eprintln!("Failed to receive message: {e}");
                         if matches!(
                             e,
-                            ipc_channel::ipc::IpcError::Disconnected
-                                | ipc_channel::ipc::IpcError::Io(_)
+                            ipc_channel::IpcError::Disconnected | ipc_channel::IpcError::Io(_)
                         ) {
                             let _ = this.handle_message(Message::Stop);
                             break;

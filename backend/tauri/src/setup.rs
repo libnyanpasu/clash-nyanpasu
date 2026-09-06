@@ -68,6 +68,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
+        binary_installer: Arc::new(crate::client::lifecycle::ports::FsBinaryInstaller),
     })
     .context("Failed to setup nyanpasu client")?;
     forward_actor_events(app_handle, client.clone());

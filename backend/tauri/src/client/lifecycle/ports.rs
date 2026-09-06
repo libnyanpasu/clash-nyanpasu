@@ -1,0 +1,154 @@
+use std::{path::PathBuf, sync::Arc};
+
+use async_trait::async_trait;
+use tempfile::TempDir;
+
+use super::super::{SessionPortResolver, runtime};
+use crate::enhance::{
+    EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
+    runtime_snapshot_data_from_artifact,
+};
+
+/// Owns the staging directory until installation and its restart have finished.
+pub struct PreparedCoreBinary {
+    pub target: crate::config::nyanpasu::ClashCore,
+    pub source: PathBuf,
+    pub destination: PathBuf,
+    pub staging: Arc<TempDir>,
+    pub progress: Arc<dyn BinaryInstallProgress>,
+}
+
+pub trait BinaryInstallProgress: Send + Sync + 'static {
+    fn restarting(&self);
+    /// The actor delivers the terminal result even when the requester stopped waiting.
+    fn finished(&self, error: Option<&str>);
+}
+
+#[async_trait]
+pub trait BinaryInstaller: Send + Sync + 'static {
+    async fn install(&self, artifact: &PreparedCoreBinary) -> anyhow::Result<()>;
+}
+
+pub struct FsBinaryInstaller;
+
+#[async_trait]
+impl BinaryInstaller for FsBinaryInstaller {
+    async fn install(&self, artifact: &PreparedCoreBinary) -> anyhow::Result<()> {
+        if let Err(error) = tokio::fs::copy(&artifact.source, &artifact.destination).await {
+            tracing::warn!(%error, "core copy failed; requesting elevated installation");
+            let source = artifact.source.clone();
+            let destination = artifact.destination.clone();
+            // The blocking task itself retains the staging files if its waiter dies.
+            let staging = artifact.staging.clone();
+            let status = tokio::task::spawn_blocking(move || {
+                let _staging = staging;
+                #[cfg(target_os = "windows")]
+                {
+                    let source = source
+                        .to_str()
+                        .ok_or_else(|| anyhow::anyhow!("non-UTF-8 source"))?;
+                    let destination = destination
+                        .to_str()
+                        .ok_or_else(|| anyhow::anyhow!("non-UTF-8 destination"))?;
+                    Ok::<_, anyhow::Error>(
+                        runas::Command::new("cmd")
+                            .args(&[
+                                "/C",
+                                "copy",
+                                "/Y",
+                                source,
+                                destination.trim_start_matches(r"\\?\"),
+                            ])
+                            .status()?,
+                    )
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    Ok::<_, anyhow::Error>(
+                        runas::Command::new("cp")
+                            .arg("-f")
+                            .arg(source)
+                            .arg(destination)
+                            .status()?,
+                    )
+                }
+            })
+            .await??;
+            anyhow::ensure!(status.success(), "failed to copy core: {status}");
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub(in crate::client) trait RuntimeBuildPort: Send + Sync + 'static {
+    fn core_spec(
+        &self,
+        core: &nyanpasu_config::application::ClashCore,
+    ) -> anyhow::Result<nyanpasu_core_manager::CoreSpec>;
+    async fn build(
+        &self,
+        revision: runtime::RuntimeRevision,
+        profiles: Arc<nyanpasu_config::profile::Profiles>,
+        clash: nyanpasu_config::clash::config::ClashConfig,
+        app: nyanpasu_config::application::NyanpasuAppConfig,
+    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>>;
+    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()>;
+}
+
+pub(in crate::client) struct FsRuntimeBuildAdapter {
+    pub profiles_dir: PathBuf,
+    pub paths: runtime::RuntimePaths,
+    pub ports: Arc<SessionPortResolver>,
+}
+
+#[async_trait]
+impl RuntimeBuildPort for FsRuntimeBuildAdapter {
+    fn core_spec(
+        &self,
+        core: &nyanpasu_config::application::ClashCore,
+    ) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+        super::super::runtime_core_spec(core)
+    }
+
+    async fn build(
+        &self,
+        revision: runtime::RuntimeRevision,
+        profiles: Arc<nyanpasu_config::profile::Profiles>,
+        clash: nyanpasu_config::clash::config::ClashConfig,
+        app: nyanpasu_config::application::NyanpasuAppConfig,
+    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
+        let resolved_ports = self.ports.resolve(&clash)?;
+        let profiles_dir = self.profiles_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let core = app.core;
+            let builtin_enabled = app.enable_builtin_enhanced;
+            let content = FsProfileContentSource::new(profiles_dir);
+            let scripts = EnhanceScriptRunner::new()?;
+            let input = RuntimeBuildInput {
+                profiles: profiles.clone(),
+                clash,
+                app,
+                resolved_ports,
+            };
+            let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
+            let data =
+                runtime_snapshot_data_from_artifact(&artifact, &profiles, core, builtin_enabled)?;
+            let yaml = format!(
+                "# Generated by Clash Nyanpasu\n\n{}",
+                serde_yaml::to_string(&data.config)?
+            );
+            Ok(Arc::new(runtime::RuntimeSnapshot::from_data(
+                revision,
+                core,
+                Arc::from(yaml.into_bytes()),
+                data,
+            )))
+        })
+        .await?
+    }
+
+    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
+        runtime::write_product(self.paths.product().as_std_path(), snapshot.product_bytes()).await
+    }
+}

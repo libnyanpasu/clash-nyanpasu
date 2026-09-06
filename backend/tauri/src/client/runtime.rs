@@ -6,10 +6,7 @@ use std::{
     fs::OpenOptions,
     io::Write,
     path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 
@@ -33,21 +30,19 @@ impl RuntimeRevision {
     }
 }
 
-pub(crate) struct RuntimeRevisionAllocator(AtomicU64);
+pub(crate) struct RuntimeRevisionAllocator(u64);
 
 impl RuntimeRevisionAllocator {
     pub(crate) fn new() -> Self {
-        Self(AtomicU64::new(0))
+        Self(0)
     }
 
-    pub(crate) fn allocate(&self) -> anyhow::Result<RuntimeRevision> {
-        let previous = self
+    pub(crate) fn allocate(&mut self) -> anyhow::Result<RuntimeRevision> {
+        self.0 = self
             .0
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                value.checked_add(1)
-            })
-            .map_err(|_| anyhow::anyhow!("runtime revision space exhausted"))?;
-        Ok(RuntimeRevision(previous + 1))
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("runtime revision space exhausted"))?;
+        Ok(RuntimeRevision(self.0))
     }
 }
 
@@ -102,16 +97,6 @@ impl RuntimeSnapshot {
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeLifecycleState {
     pub promoted: Option<Arc<RuntimeSnapshot>>,
-}
-
-/// Facade-held runtime lifecycle store. It is instance-owned and non-persistent:
-/// writers are serialized by `rebuild_gate`, while runtime IPC reads clone the
-/// Promoted snapshot. With no subscribers, a plain RwLock keeps lifecycle writes
-/// infallible after product promotion or a successful core apply/restart.
-pub type RuntimeLifecycleStore = tokio::sync::RwLock<RuntimeLifecycleState>;
-
-pub async fn new_runtime_lifecycle_store() -> anyhow::Result<RuntimeLifecycleStore> {
-    Ok(tokio::sync::RwLock::new(RuntimeLifecycleState::default()))
 }
 
 pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
@@ -415,7 +400,7 @@ mod tests {
 
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
-        let allocator = RuntimeRevisionAllocator::new();
+        let mut allocator = RuntimeRevisionAllocator::new();
         let first = allocator.allocate().expect("first revision");
         let second = allocator.allocate().expect("second revision");
 

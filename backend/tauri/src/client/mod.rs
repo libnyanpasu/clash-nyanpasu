@@ -2,6 +2,7 @@ mod application;
 mod clash_config;
 mod error;
 mod event_sink;
+pub mod lifecycle;
 mod ports;
 pub mod profiles;
 pub mod rebuild;
@@ -16,13 +17,9 @@ use self::{
 use crate::{
     core::actor_v2::{
         CoreClient as CoreClientV2, CoreStatusProjection, HandoffReport, ShutdownReport,
-        endpoint::{ExecutionHost, wire_core_type_to_kind},
-        facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
-        service_actor::{ServiceClient, ServiceHostStatus, ServicePhase},
-    },
-    enhance::{
-        EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
-        runtime_snapshot_data_from_artifact,
+        endpoint::ExecutionHost,
+        facade::{ReconcileReport, RecoverReport, StopReport},
+        service_actor::{ServiceClient, ServiceHostStatus},
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::{
@@ -75,6 +72,7 @@ pub struct ClientSetupArgs {
     pub core_v2: CoreClientV2,
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
+    pub binary_installer: Arc<dyn lifecycle::ports::BinaryInstaller>,
 }
 
 #[derive(Clone)]
@@ -199,14 +197,6 @@ async fn sync_legacy_mirrors(
     Ok(())
 }
 
-fn client_core_error(error: ClientError) -> nyanpasu_core_manager::CoreError {
-    nyanpasu_core_manager::CoreError::new(
-        nyanpasu_core_manager::CoreErrorKind::Internal,
-        error.to_string(),
-        false,
-    )
-}
-
 fn client_error_from_core(error: nyanpasu_core_manager::CoreError) -> ClientError {
     ClientError::Anyhow(anyhow::anyhow!(error))
 }
@@ -266,20 +256,8 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
-    core_v2: CoreFacade,
-    /// Serializes host handoff with service uninstall inside this app process.
-    host_transition: tokio::sync::Mutex<()>,
+    lifecycle: lifecycle::CoreLifecycleClient,
     system_dns: Arc<dyn SystemDnsCache>,
-    /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
-    /// core apply). The profiles actor only orders commits; without this gate
-    /// a slow rebuild started for an older commit can finish after a newer
-    /// one and overwrite the runtime with a stale snapshot.
-    rebuild_gate: tokio::sync::Mutex<()>,
-    /// Instance-owned background dirty coordinator (capacity-1 coalesce).
-    /// Request/reply regeneration calls typed facade methods directly.
-    rebuild: rebuild::RebuildCoordinator,
-    runtime_revisions: runtime::RuntimeRevisionAllocator,
-    runtime: runtime::RuntimeLifecycleStore,
 }
 
 #[allow(dead_code)]
@@ -293,11 +271,12 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
+            binary_installer,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
-        let (application, session_state, clash_config, profiles, runtime_store, ports, fs, rebuild) =
+        let (application, session_state, clash_config, profiles, ports, fs, dirty_rx) =
             tauri::async_runtime::block_on(async move {
                 runtime_paths_for_setup
                     .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
@@ -318,28 +297,26 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                 ));
-                let rebuild = rebuild::RebuildCoordinator::new();
+                let (notifier, dirty_rx) = lifecycle::DirtyNotifier::channel();
                 let profiles = profiles::ProfilesClient::new(
                     profiles_path,
                     file_service.clone() as Arc<dyn ProfileFsPort>,
                     file_service.clone() as Arc<dyn SubscriptionFetcher>,
                     file_service.clone() as Arc<dyn ProfileMaterializationPort>,
-                    Arc::new(rebuild.notifier()),
+                    Arc::new(notifier),
                 )
                 .await?;
-                let runtime_store = runtime::new_runtime_lifecycle_store().await?;
                 anyhow::Ok((
                     application,
                     session_state,
                     clash_config,
                     profiles,
-                    runtime_store,
                     ports,
                     file_service as Arc<dyn ProfileFsPort>,
-                    rebuild,
+                    dirty_rx,
                 ))
             })?;
-        let client = Self::with_parts(
+        tauri::async_runtime::block_on(Self::with_parts(
             application,
             session_state,
             clash_config,
@@ -352,15 +329,13 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
-            runtime_store,
-            rebuild,
-        );
-        client.start_rebuild_worker();
-        Ok(client)
+            dirty_rx,
+            binary_installer,
+        ))
     }
 
     #[allow(dead_code, clippy::too_many_arguments)]
-    fn with_parts(
+    async fn with_parts(
         application: ApplicationClient,
         session_state: SessionStateClient,
         clash_config: ClashConfigClient,
@@ -373,10 +348,26 @@ impl NyanpasuClient {
         core_v2: CoreClientV2,
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
-        runtime: runtime::RuntimeLifecycleStore,
-        rebuild: rebuild::RebuildCoordinator,
-    ) -> Self {
-        Self {
+        dirty_rx: tokio::sync::watch::Receiver<()>,
+        binary_installer: Arc<dyn lifecycle::ports::BinaryInstaller>,
+    ) -> anyhow::Result<Self> {
+        let lifecycle = lifecycle::CoreLifecycleClient::spawn(lifecycle::LifecycleArgs {
+            application: application.clone(),
+            clash: clash_config.clone(),
+            profiles: profiles.clone(),
+            core: core_v2,
+            service,
+            builder: Arc::new(lifecycle::ports::FsRuntimeBuildAdapter {
+                profiles_dir: profiles_dir.clone(),
+                paths: runtime_paths.clone(),
+                ports: ports.clone(),
+            }),
+            installer: binary_installer,
+            ui: ui_sink.clone(),
+            dirty: dirty_rx,
+        })
+        .await?;
+        Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 application,
                 session_state,
@@ -387,55 +378,18 @@ impl NyanpasuClient {
                 profiles_dir,
                 runtime_paths,
                 ui_sink,
-                core_v2: CoreFacade::new(core_v2, service),
-                host_transition: tokio::sync::Mutex::new(()),
+                lifecycle,
                 system_dns,
-                rebuild_gate: tokio::sync::Mutex::new(()),
-                rebuild,
-                runtime_revisions: runtime::RuntimeRevisionAllocator::new(),
-                runtime,
             }),
-        }
-    }
-
-    /// Start the capacity-1 dirty worker. The worker upgrades a `Weak` client
-    /// graph so shutdown/drop cannot form an Arc cycle.
-    fn start_rebuild_worker(&self) {
-        let weak = Arc::downgrade(&self.inner);
-        self.inner.rebuild.start_worker(move || {
-            let weak = weak.clone();
-            async move {
-                let Some(inner) = weak.upgrade() else {
-                    return Ok(());
-                };
-                NyanpasuClient { inner }
-                    .rebuild_running_config()
-                    .await
-                    .map_err(anyhow::Error::from)
-            }
-        });
-    }
-
-    /// Stop the instance-owned rebuild worker and await its exit.
-    ///
-    /// Contract (PR-4S S09):
-    /// - Shuts down only the capacity-1 dirty rebuild worker owned by this client graph.
-    /// - Does **not** act as a general service locator teardown.
-    /// Core shutdown is owned by [`Self::shutdown_core`] and is invoked once by
-    /// the application exit path after this worker has quiesced.
-    /// - Safe to call multiple times; post-shutdown dirty notifications are no-ops.
-    /// - An already in-flight rebuild is allowed to finish; coalesce waits abort.
-    pub async fn shutdown(&self) {
-        self.inner.rebuild.shutdown().await;
+        })
     }
 
     pub(crate) fn runtime_paths(&self) -> &RuntimePaths {
         &self.inner.runtime_paths
     }
 
-    #[cfg(test)]
-    pub(crate) fn rebuild_coordinator(&self) -> &rebuild::RebuildCoordinator {
-        &self.inner.rebuild
+    pub fn lifecycle_status(&self) -> lifecycle::LifecycleStatus {
+        self.inner.lifecycle.status()
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
@@ -446,353 +400,113 @@ impl NyanpasuClient {
     pub async fn reconcile_core(
         &self,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
-        self.reconcile_core_inner().await
-    }
-
-    /// The body of [`Self::reconcile_core`], without taking `rebuild_gate`.
-    ///
-    /// Only call this while already holding `rebuild_gate` (as
-    /// `reconcile_core` does, and as [`Self::replace_core_binary`] does for
-    /// its restart step) -- the gate is a `tokio::sync::Mutex`, which is not
-    /// reentrant, so locking it twice on the same call path deadlocks.
-    async fn reconcile_core_inner(
-        &self,
-    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        let snapshot = self
-            .regenerate_runtime_v2_inner()
-            .await
-            .map_err(client_core_error)?;
-        let core_spec = runtime_core_spec(&snapshot.target_core).map_err(|error| {
-            nyanpasu_core_manager::CoreError::new(
-                nyanpasu_core_manager::CoreErrorKind::BinaryNotFound,
-                error.to_string(),
-                false,
-            )
-        })?;
-        self.inner
-            .core_v2
-            .reconcile(snapshot.target_core, &snapshot.config, core_spec)
-            .await
-    }
-
-    /// Runs a caller-supplied binary-replacement step under the same
-    /// exclusion that serializes reconciles, so no competing reconcile or
-    /// host transition can start the executable while it is being replaced
-    /// on disk (finding 4: the updater used to stop, copy, and reconcile
-    /// with nothing held across the three steps, so any of the many other
-    /// reconcile entry points could restart the core from the old binary in
-    /// between and make the copy fail on Windows because it was running).
-    ///
-    /// `rebuild_gate` is taken once, for the whole body, before deciding
-    /// whether anything needs stopping (R5 regression, round 3): the
-    /// decision must reflect what the host actually has applied, not the
-    /// committed app config. `update_core` commits a new selection through
-    /// `replace_app_config` *before* it calls `reconcile_core` -- but only
-    /// `reconcile_core` takes this gate; the config commit itself runs
-    /// gate-free. So a config-only read taken here can still observe the
-    /// previous core as "selected" while a concurrent `update_core` has
-    /// already committed (gate-free) and is now waiting on this same gate to
-    /// start applying a different one (or the reverse, once that reconcile
-    /// has landed and released the gate). Deciding from either config alone
-    /// can land on the wrong side of that race and either skip a stop the
-    /// disk copy needs, or copy over a binary a concurrent switch has since
-    /// started.
-    ///
-    /// The decision instead reads the host's status via
-    /// `core_v2.refresh_status()` once the gate is held -- an authoritative,
-    /// in-mailbox endpoint read, not the router's cached projection. A stop
-    /// is skipped only when the status proves the core is already `Stopped`,
-    /// or the applied core's kind is known to be a kind other than
-    /// `target`'s; anything else -- including an unknown `state` or an
-    /// unknown `applied_kind` -- counts as "may still be `target`", the same
-    /// conservative rule
-    /// [`CoreStatusSnapshot`](crate::core::actor_v2::endpoint::CoreStatusSnapshot)
-    /// documents for its own fields. Whenever a stop was needed, `replace`
-    /// is also told to restart afterwards, so the committed desired core
-    /// comes back up even if it differs from `target`; otherwise the
-    /// restart decision falls back to whether the committed desired core
-    /// equals `target`. A `CoreErrorKind::NotStarted` from the stop itself
-    /// (nothing was actually running) is treated as "nothing to stop", not
-    /// a failed replacement.
-    ///
-    /// Neither a proven `Stopped` status nor a `NotStarted` stop answer is
-    /// proof the executable is actually dead (R6a): `CoreManager::stop`
-    /// takes the manager's current-instance slot before confirming the
-    /// process exited, so a stop that times out quarantines the epoch and
-    /// republishes `Stopped` with no applied kind while the process may
-    /// still be running -- and a later `NotStarted` answer leaves that
-    /// quarantine unresolved. `recover_core()` is the actual death proof: it
-    /// reaps every quarantined epoch by identity and is a no-op when
-    /// nothing is quarantined, so it runs unconditionally after the stop
-    /// step above, for every branch including a proven-`Stopped` status and
-    /// a skipped stop. If it fails, the replacement aborts before `replace`
-    /// runs rather than risk copying over a binary that may still be
-    /// executing.
-    ///
-    /// The stop, the recovery, and the restart all go through gate-free
-    /// paths (`stop_core` and `recover_core` never take the gate, and the
-    /// restart uses [`Self::reconcile_core_inner`]) so the non-reentrant
-    /// gate is not locked twice. `replace` receives the restart decision so
-    /// the caller can dispatch its own restart-related state at the right
-    /// point.
-    ///
-    /// On the service host, the applied kind is always reported as unknown
-    /// (see `map_service_status`'s `applied_kind`, R6b): the daemon's own
-    /// identity can lag its published state by one reconcile cycle, so a
-    /// replacement there always takes the conservative stop-and-restart
-    /// path while a core is running, regardless of `target`'s kind. The
-    /// local host keeps the kind-based skip described above. Identity is
-    /// therefore treated as unknown wherever it cannot be proven, and a
-    /// recovery that cannot prove death aborts the replacement by design.
-    pub async fn replace_core_binary<F, Fut>(
-        &self,
-        target: crate::config::nyanpasu::ClashCore,
-        replace: F,
-    ) -> Result<()>
-    where
-        F: FnOnce(bool) -> Fut,
-        Fut: std::future::Future<Output = anyhow::Result<()>>,
-    {
-        let _rebuild = self.inner.rebuild_gate.lock().await;
-        let desired: crate::config::nyanpasu::ClashCore = self.get_app_config().await?.core.into();
-        let status = self
-            .inner
-            .core_v2
-            .refresh_status()
-            .await
-            .map_err(client_error_from_core)?;
-        let (state, applied_kind) = match status.snapshot {
-            Some(snapshot) => (snapshot.state, snapshot.applied_kind),
-            None => (None, None),
-        };
-        let not_proven_stopped = !matches!(
-            state,
-            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
-        );
-        let target_type: nyanpasu_utils::core::CoreType = (&target).into();
-        let target_kind = wire_core_type_to_kind(&target_type);
-        let needs_stop =
-            not_proven_stopped && (applied_kind.is_none() || applied_kind == target_kind);
-        let restart_after = desired == target || needs_stop;
-        if needs_stop {
-            match self.stop_core().await {
-                Ok(_) => {}
-                Err(error)
-                    if error.kind == Some(nyanpasu_core_manager::CoreErrorKind::NotStarted) => {}
-                Err(error) => return Err(client_error_from_core(error)),
-            }
-        }
-        // R6a: the death proof, unconditionally, for every branch above --
-        // see the doc comment. Abort before `replace` runs if recovery
-        // itself cannot prove the core is dead.
-        self.recover_core().await.map_err(client_error_from_core)?;
-        replace(restart_after).await?;
-        if restart_after {
-            self.reconcile_core_inner()
-                .await
-                .map(|_| ())
-                .map_err(client_error_from_core)?;
-        }
-        Ok(())
-    }
-
-    pub async fn update_core(
-        &self,
-        core: nyanpasu_config::application::ClashCore,
-    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        let mut app = self.get_app_config().await.map_err(client_core_error)?;
-        app.core = core;
-        self.replace_app_config(app)
-            .await
-            .map_err(client_core_error)?;
-        self.reconcile_core().await
+        self.inner.lifecycle.reconcile().await
     }
 
     pub async fn stop_core(
         &self,
     ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_v2.stop().await
+        self.inner.lifecycle.stop_core().await
     }
 
     pub async fn recover_core(
         &self,
     ) -> std::result::Result<RecoverReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_v2.recover().await
-    }
-
-    pub async fn change_execution_host(
-        &self,
-        host: ExecutionHost,
-    ) -> std::result::Result<HandoffReport, nyanpasu_core_manager::CoreError> {
-        let _transition = self.inner.host_transition.lock().await;
-        self.inner.core_v2.change_execution_host(host).await
-    }
-
-    /// A completed handoff adopts the target with the runtime *stopped* -- see
-    /// [`HandoffReport::Completed`], which leaves the reconcile to the facade.
-    /// Skipping it reports a successful host switch and leaves the user with no
-    /// core running on the host they just switched to.
-    async fn reconcile_after_handoff(
-        &self,
-        report: HandoffReport,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        match report {
-            // Nothing moved, so nothing was stopped.
-            HandoffReport::NoChange => Ok(()),
-            HandoffReport::Completed { .. } => self.reconcile_core().await.map(|_| ()),
-        }
-    }
-
-    pub async fn set_execution_host(
-        &self,
-        service_mode: bool,
-    ) -> Result<runtime::MutationOutcome<()>> {
-        let _transition = self.inner.host_transition.lock().await;
-        let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.enable_service_mode = Some(service_mode);
-        self.patch_app_config(patch).await?;
-
-        let effect = if service_mode {
-            match self
-                .inner
-                .core_v2
-                .change_execution_host(ExecutionHost::Service)
-                .await
-            {
-                Ok(report) => self.reconcile_after_handoff(report).await,
-                Err(error) => Err(error),
-            }
-        } else {
-            match self
-                .inner
-                .core_v2
-                .change_execution_host(ExecutionHost::Local)
-                .await
-            {
-                Ok(report) => match self.reconcile_after_handoff(report).await {
-                    // Only once the core is back up on Local is the daemon
-                    // safe to stop; stopping it first would leave the user
-                    // with nothing running.
-                    Ok(()) => {
-                        let phase = self.service_status().phase;
-                        if matches!(
-                            phase,
-                            ServicePhase::NotInstalled | ServicePhase::DaemonStopped
-                        ) {
-                            Ok(())
-                        } else {
-                            self.inner.core_v2.stop_service().await
-                        }
-                    }
-                    Err(error) => Err(error),
-                },
-                Err(error) => Err(error),
-            }
-        };
-
-        let degradations = effect.err().map_or_else(Vec::new, |error| {
-            vec![runtime::Degradation {
-                phase: runtime::DegradationPhase::SystemEffect,
-                code: "service_host_transition_failed".into(),
-                message: error.message,
-                retryable: error.retryable,
-            }]
-        });
-        Ok(runtime::MutationOutcome::from_parts((), degradations))
-    }
-
-    pub fn core_status(&self) -> CoreStatusProjection {
-        self.inner.core_v2.core_status()
-    }
-
-    pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
-        self.inner.core_v2.subscribe_core_events()
-    }
-
-    pub fn service_status(&self) -> ServiceHostStatus {
-        self.inner.core_v2.service_status()
-    }
-
-    pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
-        self.inner.core_v2.subscribe_service_events()
+        self.inner.lifecycle.recover_core().await
     }
 
     pub async fn probe_service(
         &self,
     ) -> std::result::Result<ServiceHostStatus, nyanpasu_core_manager::CoreError> {
-        self.inner.core_v2.probe_service().await
+        self.inner.lifecycle.probe_service().await
     }
 
-    /// Boot-time execution-host restore.
-    ///
-    /// The core actor always spawns on the Local endpoint, so a session that
-    /// persisted service mode has to hand the runtime over before the first
-    /// reconcile decides where the core comes up. Without this the app boots
-    /// every service-mode user onto a local child process.
-    ///
-    /// A failing adoption leaves the app on Local rather than failing the boot:
-    /// that is what the legacy `RunType` classification did when the daemon
-    /// was not reachable, and the caller logs the degradation. No reconcile
-    /// happens here -- the boot sequence runs one immediately afterwards, and
-    /// a second would start the core twice.
-    ///
-    /// It adopts, and never converges. The legacy classification picked Service
-    /// only while the IPC was connected, so booting never installed or started
-    /// the daemon -- and never raised a UAC prompt -- on the user's behalf.
-    /// Reading a phase here and then calling the converging path would not be
-    /// the same guarantee, because the daemon can stop in between; the actor
-    /// decides from the one probe it takes itself.
-    pub async fn restore_execution_host(&self) -> Result<()> {
-        if !self.get_app_config().await?.enable_service_mode {
-            return Ok(());
-        }
-        let _transition = self.inner.host_transition.lock().await;
+    pub async fn replace_core_binary(
+        &self,
+        artifact: lifecycle::ports::PreparedCoreBinary,
+    ) -> Result<()> {
         self.inner
-            .core_v2
-            .adopt_service_host()
+            .lifecycle
+            .replace_binary(artifact)
             .await
-            .map_err(client_error_from_core)?;
-        Ok(())
+            .map_err(client_error_from_core)
     }
-
+    pub async fn update_core(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
+        self.inner.lifecycle.select_core(core).await
+    }
+    pub async fn change_execution_host(
+        &self,
+        host: ExecutionHost,
+    ) -> std::result::Result<HandoffReport, nyanpasu_core_manager::CoreError> {
+        self.inner.lifecycle.change_host(host).await
+    }
+    pub async fn set_execution_host(
+        &self,
+        service_mode: bool,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        self.inner
+            .lifecycle
+            .set_execution_host(service_mode)
+            .await
+            .map_err(client_error_from_core)
+    }
+    pub fn core_status(&self) -> CoreStatusProjection {
+        self.inner.lifecycle.core_status()
+    }
+    pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
+        self.inner.lifecycle.core_events()
+    }
+    pub fn service_status(&self) -> ServiceHostStatus {
+        self.inner.lifecycle.service_status()
+    }
+    pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
+        self.inner.lifecycle.service_events()
+    }
+    pub async fn restore_execution_host(&self) -> Result<()> {
+        self.inner
+            .lifecycle
+            .restore_host()
+            .await
+            .map_err(client_error_from_core)
+    }
     pub async fn install_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_v2.install_service().await
+        self.inner.lifecycle.install_service().await
     }
 
     pub async fn start_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_v2.start_service().await
+        self.inner.lifecycle.start_service().await
     }
 
     pub async fn stop_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_v2.stop_service().await
+        self.inner.lifecycle.stop_service().await
     }
 
     pub async fn restart_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_v2.stop_service().await?;
-        self.inner.core_v2.start_service().await
-    }
-
-    pub async fn shutdown_core(&self) -> ShutdownReport {
-        self.inner.core_v2.shutdown().await
+        self.inner.lifecycle.restart_service().await
     }
 
     pub async fn uninstall_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        let _transition = self.inner.host_transition.lock().await;
-        if self.core_status().host == ExecutionHost::Service {
-            return Err(nyanpasu_core_manager::CoreError::new(
-                nyanpasu_core_manager::CoreErrorKind::OperationConflict,
-                "handoff to the local host before uninstalling the service",
-                false,
-            ));
-        }
-        self.inner.core_v2.uninstall_service().await
+        self.inner.lifecycle.uninstall_service().await
+    }
+
+    pub async fn shutdown_core(&self) -> ShutdownReport {
+        self.inner
+            .lifecycle
+            .shutdown()
+            .await
+            .unwrap_or_else(|error| ShutdownReport {
+                stop: Err(error),
+                final_status: self.core_status().snapshot,
+            })
     }
 
     pub async fn flush_system_dns_cache(&self) -> Result<()> {
@@ -1550,28 +1264,11 @@ impl NyanpasuClient {
     }
 
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
-        self.inner.runtime.read().await.promoted.clone()
+        self.inner.lifecycle.runtime().promoted
     }
 
     pub(crate) async fn runtime_lifecycle_state(&self) -> runtime::RuntimeLifecycleState {
-        self.inner.runtime.read().await.clone()
-    }
-
-    async fn publish_promoted(&self, snapshot: Arc<runtime::RuntimeSnapshot>) -> Result<()> {
-        let mut lifecycle = self.inner.runtime.write().await;
-        if lifecycle
-            .promoted
-            .as_ref()
-            .is_some_and(|current| current.revision >= snapshot.revision)
-        {
-            return Err(ClientError::Custom(format!(
-                "runtime promoted revision must advance (current: {:?}, next: {})",
-                lifecycle.promoted.as_ref().map(|item| item.revision.get()),
-                snapshot.revision.get()
-            )));
-        }
-        lifecycle.promoted = Some(snapshot);
-        Ok(())
+        self.inner.lifecycle.runtime()
     }
 
     pub(crate) fn runtime_product_path(&self) -> &camino::Utf8Path {
@@ -1609,80 +1306,6 @@ impl NyanpasuClient {
             .await
             .map(|_| ())
             .map_err(client_error_from_core)
-    }
-
-    async fn regenerate_runtime_v2_inner(&self) -> Result<Arc<runtime::RuntimeSnapshot>> {
-        let revision = self
-            .inner
-            .runtime_revisions
-            .allocate()
-            .map_err(ClientError::Anyhow)?;
-        let profiles = self.inner.profiles.get().await?;
-        let clash = self.get_clash_config().await?;
-        let app = self.get_app_config().await?;
-        let snapshot = self
-            .derive_runtime_snapshot(revision, profiles, clash, app)
-            .await?;
-        runtime::write_product(
-            self.inner.runtime_paths.product().as_std_path(),
-            snapshot.product_bytes(),
-        )
-        .await
-        .map_err(ClientError::Anyhow)?;
-        self.publish_promoted(snapshot.clone()).await?;
-        Ok(snapshot)
-    }
-
-    async fn derive_runtime_snapshot(
-        &self,
-        revision: runtime::RuntimeRevision,
-        profiles: Arc<Profiles>,
-        clash: ClashConfig,
-        app: NyanpasuAppConfig,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
-        let resolved_ports = self
-            .inner
-            .ports
-            .resolve(&clash)
-            .map_err(ClientError::Anyhow)?;
-        let profiles_dir = self.inner.profiles_dir.clone();
-        let core = app.core;
-        let builtin_enabled = app.enable_builtin_enhanced;
-        let (data, yaml) = tokio::task::spawn_blocking(
-            move || -> anyhow::Result<(runtime::RuntimeSnapshotData, String)> {
-                let content = FsProfileContentSource::new(profiles_dir);
-                let scripts = EnhanceScriptRunner::new()?;
-                let input = RuntimeBuildInput {
-                    profiles: profiles.clone(),
-                    clash,
-                    app,
-                    resolved_ports,
-                };
-                let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
-                let data = runtime_snapshot_data_from_artifact(
-                    &artifact,
-                    &profiles,
-                    core,
-                    builtin_enabled,
-                )?;
-                let yaml = format!(
-                    "# Generated by Clash Nyanpasu\n\n{}",
-                    serde_yaml::to_string(&data.config)?
-                );
-                Ok((data, yaml))
-            },
-        )
-        .await
-        .map_err(|error| ClientError::Custom(format!("runtime build task failed: {error}")))?
-        .map_err(ClientError::Anyhow)?;
-        let product_bytes: Arc<[u8]> = Arc::from(yaml.into_bytes());
-        let snapshot = Arc::new(runtime::RuntimeSnapshot::from_data(
-            revision,
-            core,
-            product_bytes.clone(),
-            data,
-        ));
-        Ok(snapshot)
     }
 }
 
@@ -1787,11 +1410,12 @@ pub(crate) mod tests {
         )>,
         /// Scripts whether the next `Recover` submission fails (R6a): the
         /// death-proof step must abort `replace_core_binary` before the
-        /// closure runs when recovery itself cannot prove the core is dead.
+        /// installer runs when recovery itself cannot prove the core is dead.
         /// Defaults to `false` so existing tests, which never scripted
         /// `Recover` before it became an unconditional step, keep seeing it
         /// succeed.
         recover_should_fail: std::sync::atomic::AtomicBool,
+        result_missing: std::sync::atomic::AtomicBool,
     }
 
     impl TestControlEndpoint {
@@ -1803,6 +1427,7 @@ pub(crate) mod tests {
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
                 recover_should_fail: std::sync::atomic::AtomicBool::new(false),
+                result_missing: std::sync::atomic::AtomicBool::new(false),
             })
         }
 
@@ -1814,6 +1439,7 @@ pub(crate) mod tests {
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
                 recover_should_fail: std::sync::atomic::AtomicBool::new(false),
+                result_missing: std::sync::atomic::AtomicBool::new(false),
             })
         }
 
@@ -1839,6 +1465,11 @@ pub(crate) mod tests {
         }
 
         /// Scripts whether the next `Recover` submission fails (R6a tests).
+        pub(crate) fn set_result_missing(&self, missing: bool) {
+            self.result_missing
+                .store(missing, std::sync::atomic::Ordering::SeqCst);
+        }
+
         pub(crate) fn set_recover_should_fail(&self, should_fail: bool) {
             self.recover_should_fail
                 .store(should_fail, std::sync::atomic::Ordering::SeqCst);
@@ -1883,7 +1514,7 @@ pub(crate) mod tests {
             // R6a: `replace_core_binary` now submits `Recover` unconditionally
             // as the death proof, and the facade rejects any other output for
             // it. Scriptable to fail so a test can prove the replacement
-            // aborts before its closure runs when recovery cannot prove the
+            // aborts before its installer runs when recovery cannot prove the
             // core dead.
             if matches!(
                 submission.envelope.command,
@@ -1997,6 +1628,12 @@ pub(crate) mod tests {
             id: nyanpasu_core_manager::OperationId,
             _timeout: std::time::Duration,
         ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
+            if self
+                .result_missing
+                .load(std::sync::atomic::Ordering::SeqCst)
+            {
+                return None;
+            }
             self.operations
                 .lock()
                 .unwrap()
@@ -2021,7 +1658,7 @@ pub(crate) mod tests {
         }
     }
 
-    struct HostTransitionEndpoint {
+    pub(crate) struct HostTransitionEndpoint {
         host: ExecutionHost,
         calls: Arc<StdMutex<Vec<&'static str>>>,
         operations:
@@ -2029,7 +1666,10 @@ pub(crate) mod tests {
     }
 
     impl HostTransitionEndpoint {
-        fn new(host: ExecutionHost, calls: Arc<StdMutex<Vec<&'static str>>>) -> Arc<Self> {
+        pub(crate) fn new(
+            host: ExecutionHost,
+            calls: Arc<StdMutex<Vec<&'static str>>>,
+        ) -> Arc<Self> {
             Arc::new(Self {
                 host,
                 calls,
@@ -2115,9 +1755,10 @@ pub(crate) mod tests {
         }
     }
 
-    struct HostTransitionServiceAdapter {
-        endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
-        calls: Arc<StdMutex<Vec<&'static str>>>,
+    pub(crate) struct HostTransitionServiceAdapter {
+        pub endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+        pub calls: Arc<StdMutex<Vec<&'static str>>>,
+        pub stopped: std::sync::atomic::AtomicBool,
     }
 
     #[async_trait::async_trait]
@@ -2125,6 +1766,14 @@ pub(crate) mod tests {
         async fn probe(
             &self,
         ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+            if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
+                return Ok(nyanpasu_ipc::types::StatusInfo {
+                    name: "test-service".into(),
+                    version: "2.0.0".into(),
+                    status: nyanpasu_ipc::types::ServiceStatus::Stopped,
+                    server: None,
+                });
+            }
             self.calls.lock().unwrap().push("ensure_ready");
             Ok(nyanpasu_ipc::types::StatusInfo {
                 name: std::borrow::Cow::Borrowed("test-service"),
@@ -2161,15 +1810,20 @@ pub(crate) mod tests {
         }
 
         async fn uninstall(&self) -> std::result::Result<(), String> {
+            self.calls.lock().unwrap().push("uninstall");
             Ok(())
         }
 
         async fn start_daemon(&self) -> std::result::Result<(), String> {
+            self.stopped
+                .store(false, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("start_daemon");
             Ok(())
         }
 
         async fn stop_daemon(&self) -> std::result::Result<(), String> {
+            self.stopped
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("stop_daemon");
             Ok(())
         }
@@ -2237,7 +1891,7 @@ pub(crate) mod tests {
         }
     }
 
-    struct IdleServiceAdapter;
+    pub(crate) struct IdleServiceAdapter;
 
     #[async_trait::async_trait]
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
@@ -2394,7 +2048,7 @@ pub(crate) mod tests {
         }
     }
 
-    async fn test_typed_config_clients(
+    pub(crate) async fn test_typed_config_clients(
         dir: &TempDir,
     ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
         let application = ApplicationClient::new(
@@ -2422,7 +2076,7 @@ pub(crate) mod tests {
         (application, session_state, clash_config)
     }
 
-    fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
+    pub(crate) fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
         let mut materialization = MockProfileMaterializationPort::new();
         materialization
             .expect_reconcile()
@@ -2491,11 +2145,11 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns,
-            crate::client::runtime::new_runtime_lifecycle_store()
-                .await
-                .expect("runtime state store"),
-            rebuild::RebuildCoordinator::new(),
+            lifecycle::DirtyNotifier::channel().1,
+            Arc::new(lifecycle::ports::FsBinaryInstaller),
         )
+        .await
+        .unwrap()
     }
 
     #[tokio::test]
@@ -2544,6 +2198,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
+            binary_installer: Arc::new(lifecycle::ports::FsBinaryInstaller),
         }
     }
 
@@ -2556,6 +2211,7 @@ pub(crate) mod tests {
         let adapter = Arc::new(HostTransitionServiceAdapter {
             endpoint: service_endpoint,
             calls: calls.clone(),
+            stopped: std::sync::atomic::AtomicBool::new(false),
         });
         let (core_v2, service) = std::thread::spawn(move || {
             tauri::async_runtime::block_on(async {
@@ -2722,13 +2378,13 @@ pub(crate) mod tests {
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
         ));
-        let rebuild = rebuild::RebuildCoordinator::new();
+        let (notifier, dirty_rx) = lifecycle::DirtyNotifier::channel();
         let profiles = profiles::ProfilesClient::new(
             temp_config_path(dir, "profiles.yaml"),
             file_service.clone() as Arc<dyn ProfileFsPort>,
             fetcher,
             file_service.clone() as Arc<dyn ProfileMaterializationPort>,
-            Arc::new(rebuild.notifier()),
+            Arc::new(notifier),
         )
         .await
         .expect("profiles client should be created");
@@ -2746,12 +2402,11 @@ pub(crate) mod tests {
             core_v2,
             service,
             Arc::new(NoopSystemDnsCache),
-            crate::client::runtime::new_runtime_lifecycle_store()
-                .await
-                .expect("runtime state store"),
-            rebuild,
-        );
-        client.start_rebuild_worker();
+            dirty_rx,
+            Arc::new(lifecycle::ports::FsBinaryInstaller),
+        )
+        .await
+        .unwrap();
         client
     }
 
@@ -2903,6 +2558,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
+            binary_installer: Arc::new(lifecycle::ports::FsBinaryInstaller),
         })
         .expect("client should construct with typed config actors");
 
@@ -3140,6 +2796,10 @@ pub(crate) mod tests {
                 ExecutionHost::Local,
                 "an absent daemon must not be installed and started by a boot restore"
             );
+            client
+                .reconcile_core()
+                .await
+                .expect("a refused adoption must still allow local boot");
         });
     }
 
@@ -3244,513 +2904,6 @@ pub(crate) mod tests {
             );
         });
         assert_eq!(endpoint.submissions(), 2);
-    }
-
-    /// F4 regression: `replace_core_binary` must hold `rebuild_gate` across
-    /// its whole body -- stop, the caller's replacement step, and the
-    /// restart reconcile -- so a competing `reconcile_core()` cannot start
-    /// the core from the old binary while the replacement is in flight.
-    ///
-    /// A fake replacement step parks (via a oneshot) right after the stop
-    /// and the death-proof recovery (R6a) have already reached the
-    /// endpoint. While parked, a concurrent `reconcile_core()` is
-    /// submitted: it must block on the gate and reach the endpoint only
-    /// after the replacement step is released. Removing the
-    /// `rebuild_gate.lock().await` at the top of `replace_core_binary`
-    /// turns this red, because the competing reconcile would then acquire
-    /// the (now separately locked) gate on its own and submit while the
-    /// replacement step is still parked.
-    #[test]
-    fn replace_core_binary_holds_the_gate_across_stop_replace_and_restart() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
-            for _ in 0..100 {
-                if client.core_status().snapshot.is_some() {
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
-
-            // `stop_first` is decided from the currently-selected core inside
-            // `replace_core_binary`, so passing that same core as `target`
-            // deterministically reproduces the `stop_first: true` case this
-            // test needs, regardless of which `ClashCore` variant is the
-            // default.
-            let target: crate::config::nyanpasu::ClashCore =
-                client.get_app_config().await.unwrap().core.into();
-
-            let (parked_tx, parked_rx) = tokio::sync::oneshot::channel::<()>();
-            let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
-
-            let replace_client = client.clone();
-            let replace_task = tokio::spawn(async move {
-                replace_client
-                    .replace_core_binary(target, move |restart: bool| async move {
-                        assert!(
-                            restart,
-                            "the replacement target is the currently selected core, so a \
-                             restart is expected"
-                        );
-                        parked_tx
-                            .send(())
-                            .map_err(|_| anyhow::anyhow!("test harness dropped parked_rx"))?;
-                        release_rx.await.ok();
-                        Ok(())
-                    })
-                    .await
-            });
-
-            parked_rx
-                .await
-                .expect("the replacement step should signal once parked, after the stop");
-            let submissions_while_parked = endpoint.submissions();
-            assert_eq!(
-                submissions_while_parked, 2,
-                "only the stop and the recover should have reached the endpoint before the \
-                 replacement step parks"
-            );
-
-            let reconcile_client = client.clone();
-            let reconcile_task =
-                tokio::spawn(async move { reconcile_client.reconcile_core().await });
-
-            // The competing reconcile has to acquire `rebuild_gate` before it
-            // can submit anything, and the parked replacement step still
-            // holds it. This wait only bounds how long we give a buggy,
-            // gate-free implementation to race ahead and submit; it does not
-            // gate the correctness of the assertion, which is the exact
-            // submission count.
-            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-            assert_eq!(
-                endpoint.submissions(),
-                submissions_while_parked,
-                "a competing reconcile_core() reached the endpoint while replace_core_binary was \
-                 still parked between the stop and the restart; the maintenance operation must \
-                 hold rebuild_gate for its entire body"
-            );
-
-            release_tx
-                .send(())
-                .expect("the replacement task should still be waiting on release_rx");
-
-            replace_task
-                .await
-                .expect("the replace task should not panic")
-                .expect("replace_core_binary should succeed once unparked");
-            reconcile_task
-                .await
-                .expect("the reconcile task should not panic")
-                .expect("the competing reconcile should complete once the gate is released");
-
-            assert_eq!(
-                endpoint.submissions(),
-                4,
-                "expected exactly the stop, the recover, the restart reconcile, and the \
-                 competing reconcile to reach the endpoint, in that order"
-            );
-        });
-    }
-
-    /// R1 regression (round 2): `replace_core_binary` must decide whether
-    /// to stop the core from the app config it reads *after* acquiring
-    /// `rebuild_gate`, not from a value a caller computed before ever
-    /// requesting the gate. The earlier shape took a precomputed
-    /// `stop_first: bool` from the caller (see the F4 test above); that
-    /// decision could go stale if a concurrent core switch committed a
-    /// different core in the window between the caller's read and the
-    /// gate, most dangerously turning into a skipped stop for a core a
-    /// concurrent switch has since started.
-    ///
-    /// This commits a core other than the default through `update_core` --
-    /// the same commit-then-reconcile path a concurrent core switch would
-    /// use -- and only then calls `replace_core_binary` for that
-    /// now-selected core. A `Stop` must reach the fake endpoint before the
-    /// replacement closure runs, proving the decision reflects the
-    /// committed state rather than whatever was selected before the commit.
-    #[test]
-    fn replace_core_binary_decides_stop_from_the_core_committed_under_the_gate() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
-            let default_core = client.get_app_config().await.unwrap().core;
-            let target = if default_core == nyanpasu_config::application::ClashCore::Mihomo {
-                nyanpasu_config::application::ClashCore::ClashPremium
-            } else {
-                nyanpasu_config::application::ClashCore::Mihomo
-            };
-
-            client
-                .update_core(target)
-                .await
-                .expect("committing and reconciling the new core selection should succeed");
-            let submissions_after_commit = endpoint.submissions();
-
-            let (parked_tx, parked_rx) = tokio::sync::oneshot::channel::<()>();
-            let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
-
-            let replace_client = client.clone();
-            let replace_task = tokio::spawn(async move {
-                replace_client
-                    .replace_core_binary(target.into(), move |restart: bool| async move {
-                        assert!(
-                            restart,
-                            "the replacement target is now the committed selected core, so a \
-                             restart is expected"
-                        );
-                        parked_tx
-                            .send(())
-                            .map_err(|_| anyhow::anyhow!("test harness dropped parked_rx"))?;
-                        release_rx.await.ok();
-                        Ok(())
-                    })
-                    .await
-            });
-
-            parked_rx
-                .await
-                .expect("the replacement step should signal once parked, after the stop");
-            assert_eq!(
-                endpoint.submissions(),
-                submissions_after_commit + 2,
-                "replace_core_binary must read the just-committed selected core under the gate \
-                 and, finding it equal to the replacement target, submit a Stop and then a \
-                 Recover before running the replacement closure"
-            );
-
-            release_tx
-                .send(())
-                .expect("the replace task should still be waiting on release_rx");
-            replace_task
-                .await
-                .expect("the replace task should not panic")
-                .expect("replace_core_binary should succeed once unparked");
-        });
-    }
-
-    /// R5 regression (round 3): the stop decision must reflect the host's
-    /// *applied* identity, not the committed desired config. The desired
-    /// core is patched to `core_b` with no reconcile, so nothing has
-    /// actually changed on the host; the fake status still reports `core_a`
-    /// as applied and running. `replace_core_binary(core_a, ...)` targets
-    /// the core that is actually running, so it must stop it and restart
-    /// afterwards even though the committed desired core is now `core_b`.
-    #[test]
-    fn replace_core_binary_stops_the_applied_core_even_when_a_different_core_is_desired() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
-            let core_a = client.get_app_config().await.unwrap().core;
-            let core_b = if core_a == nyanpasu_config::application::ClashCore::Mihomo {
-                nyanpasu_config::application::ClashCore::ClashPremium
-            } else {
-                nyanpasu_config::application::ClashCore::Mihomo
-            };
-            let mut patch = NyanpasuAppConfig::new_empty_patch();
-            patch.core = Some(core_b);
-            client
-                .patch_app_config(patch)
-                .await
-                .expect("patching the desired core alone must succeed");
-            assert_eq!(
-                endpoint.submissions(),
-                0,
-                "patching the config alone must not reconcile"
-            );
-
-            endpoint.set_status(
-                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
-                Some(runtime_core_spec(&core_a).unwrap().kind),
-            );
-
-            client
-                .replace_core_binary(core_a.into(), |restart| async move {
-                    assert!(
-                        restart,
-                        "a core that had to be stopped must always be restarted"
-                    );
-                    Ok(())
-                })
-                .await
-                .expect("replace_core_binary should succeed");
-
-            assert_eq!(
-                endpoint.submissions(),
-                3,
-                "expected exactly a stop, a recover, and a restart reconcile, even though the \
-                 committed desired core is the different core_b"
-            );
-        });
-    }
-
-    /// R5 regression (round 3): an applied core of a provably different kind
-    /// than `target` must not be stopped -- it cannot be the binary about to
-    /// be replaced. The committed desired core is left equal to the applied
-    /// one (`core_a`), so a wrongly config-driven decision would still find
-    /// a reason to restart; this isolates the kind comparison by keeping the
-    /// replacement closure running regardless.
-    #[test]
-    fn replace_core_binary_skips_the_stop_when_the_applied_kind_differs_from_the_target() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
-            let core_a = client.get_app_config().await.unwrap().core;
-            let core_b = if core_a == nyanpasu_config::application::ClashCore::Mihomo {
-                nyanpasu_config::application::ClashCore::ClashPremium
-            } else {
-                nyanpasu_config::application::ClashCore::Mihomo
-            };
-
-            endpoint.set_status(
-                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
-                Some(runtime_core_spec(&core_a).unwrap().kind),
-            );
-
-            let closure_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let closure_ran_flag = closure_ran.clone();
-            client
-                .replace_core_binary(core_b.into(), move |restart| async move {
-                    closure_ran_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                    assert!(
-                        !restart,
-                        "the applied core is a different kind than the target and the \
-                         committed desired core still equals the applied core, not the \
-                         target, so nothing should need stopping or restarting"
-                    );
-                    Ok(())
-                })
-                .await
-                .expect("replace_core_binary should succeed");
-
-            assert!(
-                closure_ran.load(std::sync::atomic::Ordering::SeqCst),
-                "the replacement closure must still run even when nothing needed stopping"
-            );
-            assert_eq!(
-                endpoint.submissions(),
-                1,
-                "the recover (R6a death proof) runs unconditionally even though nothing needed \
-                 stopping; no stop and no restart reconcile should be submitted"
-            );
-        });
-    }
-
-    /// R5 regression (round 3): an unknown applied kind must be treated the
-    /// same conservative way as an unknown state -- "may still be `target`"
-    /// -- so a stop is attempted rather than skipped.
-    #[test]
-    fn replace_core_binary_stops_when_the_applied_kind_is_unknown() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
-            let core_a = client.get_app_config().await.unwrap().core;
-            let core_b = if core_a == nyanpasu_config::application::ClashCore::Mihomo {
-                nyanpasu_config::application::ClashCore::ClashPremium
-            } else {
-                nyanpasu_config::application::ClashCore::Mihomo
-            };
-
-            endpoint.set_status(
-                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
-                None,
-            );
-
-            client
-                .replace_core_binary(core_b.into(), |restart| async move {
-                    assert!(
-                        restart,
-                        "an unknown applied kind must be treated as \"may be the target\""
-                    );
-                    Ok(())
-                })
-                .await
-                .expect("replace_core_binary should succeed");
-
-            assert_eq!(
-                endpoint.submissions(),
-                3,
-                "expected exactly a stop, a recover, and a restart reconcile"
-            );
-        });
-    }
-
-    /// R5 regression (round 3): a status that already proves the core
-    /// `Stopped` must skip the stop entirely; the restart decision then
-    /// falls back to whether the committed desired core equals `target`.
-    #[test]
-    fn replace_core_binary_skips_the_stop_when_the_status_proves_the_core_stopped() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
-            let target: crate::config::nyanpasu::ClashCore =
-                client.get_app_config().await.unwrap().core.into();
-
-            endpoint.set_status(
-                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
-                None,
-            );
-
-            client
-                .replace_core_binary(target, |restart| async move {
-                    assert!(
-                        restart,
-                        "nothing needed stopping, but the committed desired core still \
-                         equals target, so the caller expects it running afterwards"
-                    );
-                    Ok(())
-                })
-                .await
-                .expect("replace_core_binary should succeed");
-
-            assert_eq!(
-                endpoint.submissions(),
-                2,
-                "a status that already proves Stopped must skip the stop but still submit the \
-                 recover (R6a death proof) and the restart reconcile"
-            );
-        });
-    }
-
-    /// R6a regression: neither `Stopped` nor a `NotStarted` stop answer is
-    /// proof the process is dead -- `CoreManager::stop` takes the manager's
-    /// current-instance slot before confirming the process exited, so a stop
-    /// that times out quarantines the epoch and republishes `Stopped` with no
-    /// applied kind while the executable may still be running. `recover_core`
-    /// is the actual death proof; when it cannot reap the quarantine, the
-    /// replacement must abort *before* the closure runs rather than risk
-    /// copying over a still-live binary. Deleting the
-    /// `self.recover_core().await.map_err(...)?` call in
-    /// `replace_core_binary` (client/mod.rs) turns this red: the closure
-    /// would run and the call would return `Ok`.
-    #[test]
-    fn replace_core_binary_aborts_when_recovery_cannot_prove_the_core_is_dead() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
-            let target: crate::config::nyanpasu::ClashCore =
-                client.get_app_config().await.unwrap().core.into();
-
-            endpoint.set_status(
-                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
-                    reason: Some("timed out waiting for the process to exit".into()),
-                }),
-                None,
-            );
-            endpoint.set_recover_should_fail(true);
-
-            let closure_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let closure_ran_flag = closure_ran.clone();
-            let result = client
-                .replace_core_binary(target, move |_restart| async move {
-                    closure_ran_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                    Ok(())
-                })
-                .await;
-
-            assert!(
-                result.is_err(),
-                "a recovery failure must abort the replacement rather than let it succeed"
-            );
-            assert!(
-                !closure_ran.load(std::sync::atomic::Ordering::SeqCst),
-                "the replacement closure must never run when recovery cannot prove the core dead"
-            );
-        });
-    }
-
-    /// Counterpart to the test above: once `recover_core` succeeds -- even
-    /// after a status that already reports `Stopped` -- the replacement must
-    /// proceed. Also pins the submission count to the recover call itself
-    /// (no stop is needed here, and the target differs from the committed
-    /// desired core so no restart reconcile is needed either): deleting the
-    /// `self.recover_core().await.map_err(...)?` call in
-    /// `replace_core_binary` (client/mod.rs) would leave this at 0.
-    #[test]
-    fn replace_core_binary_runs_the_closure_once_recovery_proves_the_core_dead() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-        tauri::async_runtime::block_on(async {
-            let core_a = client.get_app_config().await.unwrap().core;
-            let core_b = if core_a == nyanpasu_config::application::ClashCore::Mihomo {
-                nyanpasu_config::application::ClashCore::ClashPremium
-            } else {
-                nyanpasu_config::application::ClashCore::Mihomo
-            };
-
-            endpoint.set_status(
-                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
-                    reason: Some("timed out waiting for the process to exit".into()),
-                }),
-                None,
-            );
-
-            let closure_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let closure_ran_flag = closure_ran.clone();
-            client
-                .replace_core_binary(core_b.into(), move |restart| async move {
-                    closure_ran_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                    assert!(
-                        !restart,
-                        "the committed desired core (core_a) differs from the target (core_b) \
-                         and nothing needed stopping, so no restart is expected"
-                    );
-                    Ok(())
-                })
-                .await
-                .expect("replace_core_binary should succeed once recovery proves the core dead");
-
-            assert!(
-                closure_ran.load(std::sync::atomic::Ordering::SeqCst),
-                "the replacement closure must run once recovery succeeds"
-            );
-            assert_eq!(
-                endpoint.submissions(),
-                1,
-                "the recover is the only submission expected here: the status already proves \
-                 Stopped (no stop needed) and the target differs from the committed desired \
-                 core (no restart needed)"
-            );
-        });
     }
 
     #[test]
@@ -4140,11 +3293,11 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
-                crate::client::runtime::new_runtime_lifecycle_store()
-                    .await
-                    .expect("runtime state store"),
-                rebuild::RebuildCoordinator::new(),
-            );
+                lifecycle::DirtyNotifier::channel().1,
+                Arc::new(lifecycle::ports::FsBinaryInstaller),
+            )
+            .await
+            .unwrap();
 
             let outcome = client
                 .create_profile(local_config_request("local"), Some("proxies: []\n".into()))

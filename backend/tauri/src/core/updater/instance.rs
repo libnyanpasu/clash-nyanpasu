@@ -5,7 +5,6 @@ use crate::{
     core::download::{DownloadSession, DownloadStatus},
 };
 use anyhow::anyhow;
-use runas::Command as RunasCommand;
 use serde::Serialize;
 use specta::Type;
 #[cfg(target_family = "unix")]
@@ -28,12 +27,26 @@ pub enum UpdaterState {
 
 pub(super) struct Updater {
     id: usize,
-    temp_dir: TempDir,
+    temp_dir: Arc<TempDir>,
     core_type: ClashCore,
     artifact: String,
-    inner: parking_lot::RwLock<UpdaterInner>,
+    inner: Arc<parking_lot::RwLock<UpdaterInner>>,
     downloader: Arc<DownloadSession>,
     nyanpasu: NyanpasuClient,
+}
+
+struct UpdaterInstallProgress(Arc<parking_lot::RwLock<UpdaterInner>>);
+
+impl crate::client::lifecycle::ports::BinaryInstallProgress for UpdaterInstallProgress {
+    fn restarting(&self) {
+        self.0.write().state = UpdaterState::Restarting;
+    }
+    fn finished(&self, error: Option<&str>) {
+        self.0.write().state = match error {
+            Some(error) => UpdaterState::Failed(error.to_owned()),
+            None => UpdaterState::Done,
+        };
+    }
 }
 
 struct UpdaterInner {
@@ -128,9 +141,9 @@ impl UpdaterBuilder {
         let downloader = Arc::new(DownloadSession::new(client, download_url, save_path).await?);
         Ok(Updater {
             id: rand::random::<u32>() as usize,
-            temp_dir,
+            temp_dir: Arc::new(temp_dir),
             core_type,
-            inner: parking_lot::RwLock::new(inner),
+            inner: Arc::new(parking_lot::RwLock::new(inner)),
             artifact,
             downloader,
             nyanpasu,
@@ -222,72 +235,13 @@ impl Updater {
             std::env::consts::EXE_SUFFIX
         ));
 
-        // `replace_core_binary` decides whether `self.core_type` needs
-        // stopping first from the host's own status, read under
-        // `rebuild_gate` after the gate is acquired -- not from a read made
-        // here, before the gate is even requested, and not from the
-        // committed app config either (R5 regression, round 3): a read made
-        // here could go stale if a concurrent core switch committed and
-        // reconciled a different core in the window between that read and
-        // the gate (R1 regression, round 2). The stop, the recovery that
-        // proves the core actually died (R6a), the copy below, and the
-        // restart reconcile (when the decision is to restart) all run under
-        // `NyanpasuClient`'s `rebuild_gate`, so no competing reconcile can
-        // restart the core from the old binary between the stop and the
-        // copy (finding 4).
         self.nyanpasu
-            .replace_core_binary(self.core_type, move |restart: bool| async move {
-                tracing::debug!("copying core to {:?}", target_core);
-                match tokio::fs::copy(tmp_core_path.clone(), target_core.clone()).await {
-                    Ok(size) => {
-                        tracing::debug!("copied core to {:?} ({} bytes)", target_core, size);
-                    }
-                    Err(err) => {
-                        tracing::warn!(
-                            "failed to copy core: {}, trying to use elevated permission to copy and override core",
-                            err
-                        );
-                        let mut target_core_str = target_core.to_str().unwrap().to_string();
-                        if target_core_str.starts_with("\\\\?\\") {
-                            target_core_str = target_core_str[4..].to_string();
-                        }
-                        tracing::debug!("tmp core path: {:?}", tmp_core_path);
-                        tracing::debug!("target core path: {:?}", target_core_str);
-                        // 防止 UAC 弹窗堵塞主线程
-                        let status_code = tokio::task::spawn_blocking(move || {
-                            #[cfg(target_os = "windows")]
-                            {
-                                RunasCommand::new("cmd")
-                                    .args(&[
-                                        "/C",
-                                        "copy",
-                                        "/Y",
-                                        tmp_core_path.to_str().unwrap(),
-                                        &target_core_str,
-                                    ])
-                                    .status()
-                            }
-                            #[cfg(not(target_os = "windows"))]
-                            {
-                                RunasCommand::new("cp")
-                                    .args(&["-f", tmp_core_path.to_str().unwrap(), &target_core_str])
-                                    .status()
-                            }
-                        })
-                        .await??;
-                        if !status_code.success() {
-                            anyhow::bail!("failed to copy core: {}", status_code);
-                        }
-                    }
-                };
-                // Dispatched here, right after the copy and before
-                // `replace_core_binary` runs its restart reconcile, to match
-                // the state transition's original position between the copy
-                // and the restart.
-                if restart {
-                    self.dispatch_state(UpdaterState::Restarting);
-                }
-                Ok(())
+            .replace_core_binary(crate::client::lifecycle::ports::PreparedCoreBinary {
+                target: self.core_type,
+                source: tmp_core_path,
+                destination: target_core,
+                staging: self.temp_dir.clone(),
+                progress: Arc::new(UpdaterInstallProgress(self.inner.clone())),
             })
             .await?;
 
@@ -317,7 +271,11 @@ impl Updater {
         }
         if let Err(e) = self.replace_core().await {
             tracing::error!("failed to replace core: {}", e);
-            self.dispatch_state(UpdaterState::Failed(e.to_string()));
+            // The terminal notification can race the requester's timeout.
+            let mut inner = self.inner.write();
+            if !matches!(inner.state, UpdaterState::Done) {
+                inner.state = UpdaterState::Failed(e.to_string());
+            }
             return;
         }
         self.dispatch_state(UpdaterState::Done);

@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence } from 'motion/react'
 import { PropsWithChildren, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import z from 'zod'

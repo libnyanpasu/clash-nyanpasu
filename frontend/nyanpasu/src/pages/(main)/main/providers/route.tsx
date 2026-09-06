@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import { ComponentProps } from 'react'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { Button } from '@/components/ui/button'

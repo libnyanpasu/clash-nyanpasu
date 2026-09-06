@@ -3,7 +3,7 @@ import {
   motion,
   useSpring,
   type Transition,
-} from 'framer-motion'
+} from 'motion/react'
 import { PropsWithChildren, useLayoutEffect, useRef } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { cn } from '@nyanpasu/utils'

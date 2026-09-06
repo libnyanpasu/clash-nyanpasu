@@ -1,7 +1,7 @@
 import CloudDownloadRounded from '~icons/material-symbols/cloud-download-rounded'
 import FileOpenRounded from '~icons/material-symbols/file-open-rounded'
 import NoteStackAddRounded from '~icons/material-symbols/note-stack-add-rounded'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence } from 'motion/react'
 import { ComponentProps, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'

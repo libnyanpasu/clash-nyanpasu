@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useIsPresent, Variants } from 'framer-motion'
+import { AnimatePresence, motion, useIsPresent, Variants } from 'motion/react'
 import { ComponentProps, useRef } from 'react'
 import {
   Outlet,

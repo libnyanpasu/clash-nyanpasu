@@ -1,5 +1,5 @@
-import { AnimatePresence } from 'framer-motion'
 import { startCase } from 'lodash-es'
+import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'

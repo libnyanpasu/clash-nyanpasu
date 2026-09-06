@@ -2293,64 +2293,50 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait]
     impl crate::core::actor_v2::endpoint::ControlEndpoint for RecordingReconcileEndpoint {
         fn host(&self) -> crate::core::actor_v2::endpoint::ExecutionHost {
             crate::core::actor_v2::endpoint::ExecutionHost::Local
         }
 
-        fn submit<'a>(
-            &'a self,
+        async fn submit(
+            &self,
             submission: crate::core::actor_v2::endpoint::CoreSubmission,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            std::result::Result<
-                nyanpasu_ipc::api::core::v2::OperationInfo,
-                nyanpasu_core_manager::CoreError,
-            >,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::v2::OperationInfo,
+            nyanpasu_core_manager::CoreError,
         > {
-            Box::pin(async move {
-                if let nyanpasu_core_manager::CoreCommand::Reconcile(request) =
-                    &submission.envelope.command
-                {
-                    let nyanpasu_core_manager::ConfigInput::Inline { bytes, .. } = &request.config;
-                    self.submitted_configs.lock().unwrap().push(bytes.clone());
-                }
-                Ok(recording_endpoint_successful_reconcile(
-                    submission.envelope.operation_id,
-                ))
-            })
+            if let nyanpasu_core_manager::CoreCommand::Reconcile(request) =
+                &submission.envelope.command
+            {
+                let nyanpasu_core_manager::ConfigInput::Inline { bytes, .. } = &request.config;
+                self.submitted_configs.lock().unwrap().push(bytes.clone());
+            }
+            Ok(recording_endpoint_successful_reconcile(
+                submission.envelope.operation_id,
+            ))
         }
 
-        fn wait_operation<'a>(
-            &'a self,
+        async fn wait_operation(
+            &self,
             id: nyanpasu_core_manager::OperationId,
             _timeout: std::time::Duration,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            Option<nyanpasu_ipc::api::core::v2::OperationInfo>,
-        > {
-            Box::pin(async move { Some(recording_endpoint_successful_reconcile(id)) })
+        ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
+            Some(recording_endpoint_successful_reconcile(id))
         }
 
-        fn status<'a>(
-            &'a self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            std::result::Result<
-                crate::core::actor_v2::endpoint::CoreStatusSnapshot,
-                nyanpasu_core_manager::CoreError,
-            >,
+        async fn status(
+            &self,
+        ) -> std::result::Result<
+            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_core_manager::CoreError,
         > {
-            Box::pin(async {
-                Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
-                    state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
-                        reason: None,
-                    }),
-                    state_changed_at: 0,
-                    revision: None,
-                    healthy: Some(true),
-                    applied_kind: None,
-                })
+            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+                state_changed_at: 0,
+                revision: None,
+                healthy: Some(true),
+                applied_kind: None,
             })
         }
     }

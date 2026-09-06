@@ -23,7 +23,7 @@ use nyanpasu_ipc::api::{
 use super::{
     CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport, STOP_WAIT,
     ShutdownReport,
-    endpoint::{BoxFuture, ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost},
+    endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost},
 };
 
 /// The three answers a host gives are scripted independently, because the
@@ -168,69 +168,61 @@ fn snapshot(state: CoreStateDetail) -> CoreStatusSnapshot {
     }
 }
 
+#[async_trait::async_trait]
 impl ControlEndpoint for FakeEndpoint {
     fn host(&self) -> ExecutionHost {
         self.host
     }
 
-    fn submit<'a>(
-        &'a self,
-        submission: CoreSubmission,
-    ) -> BoxFuture<'a, Result<OperationInfo, CoreError>> {
-        Box::pin(async move {
-            if self.hang_submit.load(Ordering::SeqCst) {
-                self.never.notified().await;
-                unreachable!("nothing notifies `never`");
-            }
-            self.submits.fetch_add(1, Ordering::SeqCst);
-            *self.last_core_type.lock().unwrap() = Some(submission.core_type.clone());
-            let envelope = submission.envelope;
-            let id = envelope.operation_id.to_string();
-            if matches!(envelope.command, CoreCommand::Stop) {
-                self.stops.fetch_add(1, Ordering::SeqCst);
-            }
-            Ok(OperationInfo {
-                id: self.echo_id.lock().unwrap().clone().unwrap_or(id),
-                phase: OperationPhase::Queued,
-                output: None,
-                error: None,
-            })
+    async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
+        if self.hang_submit.load(Ordering::SeqCst) {
+            self.never.notified().await;
+            unreachable!("nothing notifies `never`");
+        }
+        self.submits.fetch_add(1, Ordering::SeqCst);
+        *self.last_core_type.lock().unwrap() = Some(submission.core_type.clone());
+        let envelope = submission.envelope;
+        let id = envelope.operation_id.to_string();
+        if matches!(envelope.command, CoreCommand::Stop) {
+            self.stops.fetch_add(1, Ordering::SeqCst);
+        }
+        Ok(OperationInfo {
+            id: self.echo_id.lock().unwrap().clone().unwrap_or(id),
+            phase: OperationPhase::Queued,
+            output: None,
+            error: None,
         })
     }
 
-    fn wait_operation<'a>(
-        &'a self,
+    async fn wait_operation(
+        &self,
         id: OperationId,
         _timeout: std::time::Duration,
-    ) -> BoxFuture<'a, Option<OperationInfo>> {
-        Box::pin(async move {
-            self.waits.fetch_add(1, Ordering::SeqCst);
-            // The gate lives on the long poll, which is where a real stop
-            // spends its time.
-            if self.gate_stop.load(Ordering::SeqCst) {
-                self.stop_started.notify_one();
-                self.release_stop.notified().await;
-            }
-            if matches!(*self.stop_result.lock().unwrap(), StopScript::Lost) {
-                return None;
-            }
-            Some(self.stop_info(id.to_string()))
-        })
+    ) -> Option<OperationInfo> {
+        self.waits.fetch_add(1, Ordering::SeqCst);
+        // The gate lives on the long poll, which is where a real stop
+        // spends its time.
+        if self.gate_stop.load(Ordering::SeqCst) {
+            self.stop_started.notify_one();
+            self.release_stop.notified().await;
+        }
+        if matches!(*self.stop_result.lock().unwrap(), StopScript::Lost) {
+            return None;
+        }
+        Some(self.stop_info(id.to_string()))
     }
 
-    fn status<'a>(&'a self) -> BoxFuture<'a, Result<CoreStatusSnapshot, CoreError>> {
-        Box::pin(async move {
-            if self.hang_status.load(Ordering::SeqCst) {
-                let _dropped = self.status_dropped.lock().unwrap().take();
-                self.never.notified().await;
-                unreachable!("nothing notifies `never`");
-            }
-            self.status
-                .lock()
-                .unwrap()
-                .clone()
-                .map_err(|reason| CoreError::new(CoreErrorKind::BackendUnavailable, reason, true))
-        })
+    async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
+        if self.hang_status.load(Ordering::SeqCst) {
+            let _dropped = self.status_dropped.lock().unwrap().take();
+            self.never.notified().await;
+            unreachable!("nothing notifies `never`");
+        }
+        self.status
+            .lock()
+            .unwrap()
+            .clone()
+            .map_err(|reason| CoreError::new(CoreErrorKind::BackendUnavailable, reason, true))
     }
 }
 

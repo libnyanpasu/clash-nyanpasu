@@ -1,8 +1,8 @@
 mod application;
 mod clash_config;
+pub mod core_lifecycle;
 mod error;
 mod event_sink;
-pub mod lifecycle;
 mod ports;
 pub mod profiles;
 pub mod rebuild;
@@ -72,7 +72,7 @@ pub struct ClientSetupArgs {
     pub core_v2: CoreClientV2,
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
-    pub binary_installer: Arc<dyn lifecycle::ports::BinaryInstaller>,
+    pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
 }
 
 #[derive(Clone)]
@@ -256,7 +256,7 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
-    lifecycle: lifecycle::CoreLifecycleClient,
+    core_lifecycle: core_lifecycle::CoreLifecycleClient,
     system_dns: Arc<dyn SystemDnsCache>,
 }
 
@@ -297,7 +297,7 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                 ));
-                let (notifier, dirty_rx) = lifecycle::DirtyNotifier::channel();
+                let (notifier, dirty_rx) = core_lifecycle::DirtyNotifier::channel();
                 let profiles = profiles::ProfilesClient::new(
                     profiles_path,
                     file_service.clone() as Arc<dyn ProfileFsPort>,
@@ -349,24 +349,25 @@ impl NyanpasuClient {
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
         dirty_rx: tokio::sync::watch::Receiver<()>,
-        binary_installer: Arc<dyn lifecycle::ports::BinaryInstaller>,
+        binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     ) -> anyhow::Result<Self> {
-        let lifecycle = lifecycle::CoreLifecycleClient::spawn(lifecycle::LifecycleArgs {
-            application: application.clone(),
-            clash: clash_config.clone(),
-            profiles: profiles.clone(),
-            core: core_v2,
-            service,
-            builder: Arc::new(lifecycle::ports::FsRuntimeBuildAdapter {
-                profiles_dir: profiles_dir.clone(),
-                paths: runtime_paths.clone(),
-                ports: ports.clone(),
-            }),
-            installer: binary_installer,
-            ui: ui_sink.clone(),
-            dirty: dirty_rx,
-        })
-        .await?;
+        let core_lifecycle =
+            core_lifecycle::CoreLifecycleClient::spawn(core_lifecycle::CoreLifecycleArgs {
+                application: application.clone(),
+                clash: clash_config.clone(),
+                profiles: profiles.clone(),
+                core: core_v2,
+                service,
+                builder: Arc::new(core_lifecycle::adapters::FsRuntimeBuildAdapter {
+                    profiles_dir: profiles_dir.clone(),
+                    paths: runtime_paths.clone(),
+                    ports: ports.clone(),
+                }),
+                installer: binary_installer,
+                ui: ui_sink.clone(),
+                dirty: dirty_rx,
+            })
+            .await?;
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 application,
@@ -378,7 +379,7 @@ impl NyanpasuClient {
                 profiles_dir,
                 runtime_paths,
                 ui_sink,
-                lifecycle,
+                core_lifecycle,
                 system_dns,
             }),
         })
@@ -388,8 +389,8 @@ impl NyanpasuClient {
         &self.inner.runtime_paths
     }
 
-    pub fn lifecycle_status(&self) -> lifecycle::LifecycleStatus {
-        self.inner.lifecycle.status()
+    pub fn core_lifecycle_status(&self) -> core_lifecycle::CoreLifecycleStatus {
+        self.inner.core_lifecycle.status()
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
@@ -400,33 +401,33 @@ impl NyanpasuClient {
     pub async fn reconcile_core(
         &self,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.reconcile().await
+        self.inner.core_lifecycle.reconcile().await
     }
 
     pub async fn stop_core(
         &self,
     ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.stop_core().await
+        self.inner.core_lifecycle.stop_core().await
     }
 
     pub async fn recover_core(
         &self,
     ) -> std::result::Result<RecoverReport, nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.recover_core().await
+        self.inner.core_lifecycle.recover_core().await
     }
 
     pub async fn probe_service(
         &self,
     ) -> std::result::Result<ServiceHostStatus, nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.probe_service().await
+        self.inner.core_lifecycle.probe_service().await
     }
 
     pub async fn replace_core_binary(
         &self,
-        artifact: lifecycle::ports::PreparedCoreBinary,
+        artifact: core_lifecycle::ports::PreparedCoreBinary,
     ) -> Result<()> {
         self.inner
-            .lifecycle
+            .core_lifecycle
             .replace_binary(artifact)
             .await
             .map_err(client_error_from_core)
@@ -435,39 +436,39 @@ impl NyanpasuClient {
         &self,
         core: nyanpasu_config::application::ClashCore,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.select_core(core).await
+        self.inner.core_lifecycle.select_core(core).await
     }
     pub async fn change_execution_host(
         &self,
         host: ExecutionHost,
     ) -> std::result::Result<HandoffReport, nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.change_host(host).await
+        self.inner.core_lifecycle.change_host(host).await
     }
     pub async fn set_execution_host(
         &self,
         service_mode: bool,
     ) -> Result<runtime::MutationOutcome<()>> {
         self.inner
-            .lifecycle
+            .core_lifecycle
             .set_execution_host(service_mode)
             .await
             .map_err(client_error_from_core)
     }
     pub fn core_status(&self) -> CoreStatusProjection {
-        self.inner.lifecycle.core_status()
+        self.inner.core_lifecycle.core_status()
     }
     pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
-        self.inner.lifecycle.core_events()
+        self.inner.core_lifecycle.core_events()
     }
     pub fn service_status(&self) -> ServiceHostStatus {
-        self.inner.lifecycle.service_status()
+        self.inner.core_lifecycle.service_status()
     }
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
-        self.inner.lifecycle.service_events()
+        self.inner.core_lifecycle.service_events()
     }
     pub async fn restore_execution_host(&self) -> Result<()> {
         self.inner
-            .lifecycle
+            .core_lifecycle
             .restore_host()
             .await
             .map_err(client_error_from_core)
@@ -475,32 +476,32 @@ impl NyanpasuClient {
     pub async fn install_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.install_service().await
+        self.inner.core_lifecycle.install_service().await
     }
 
     pub async fn start_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.start_service().await
+        self.inner.core_lifecycle.start_service().await
     }
 
     pub async fn stop_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.stop_service().await
+        self.inner.core_lifecycle.stop_service().await
     }
 
     pub async fn restart_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.restart_service().await
+        self.inner.core_lifecycle.restart_service().await
     }
 
     pub async fn uninstall_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.lifecycle.uninstall_service().await
+        self.inner.core_lifecycle.uninstall_service().await
     }
 
     pub async fn shutdown_core(&self) -> ShutdownReport {
         self.inner
-            .lifecycle
+            .core_lifecycle
             .shutdown()
             .await
             .unwrap_or_else(|error| ShutdownReport {
@@ -1264,11 +1265,11 @@ impl NyanpasuClient {
     }
 
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
-        self.inner.lifecycle.runtime().promoted
+        self.inner.core_lifecycle.runtime().promoted
     }
 
     pub(crate) async fn runtime_lifecycle_state(&self) -> runtime::RuntimeLifecycleState {
-        self.inner.lifecycle.runtime()
+        self.inner.core_lifecycle.runtime()
     }
 
     pub(crate) fn runtime_product_path(&self) -> &camino::Utf8Path {
@@ -2145,8 +2146,8 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns,
-            lifecycle::DirtyNotifier::channel().1,
-            Arc::new(lifecycle::ports::FsBinaryInstaller),
+            core_lifecycle::DirtyNotifier::channel().1,
+            Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         )
         .await
         .unwrap()
@@ -2198,7 +2199,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
-            binary_installer: Arc::new(lifecycle::ports::FsBinaryInstaller),
+            binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         }
     }
 
@@ -2378,7 +2379,7 @@ pub(crate) mod tests {
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
         ));
-        let (notifier, dirty_rx) = lifecycle::DirtyNotifier::channel();
+        let (notifier, dirty_rx) = core_lifecycle::DirtyNotifier::channel();
         let profiles = profiles::ProfilesClient::new(
             temp_config_path(dir, "profiles.yaml"),
             file_service.clone() as Arc<dyn ProfileFsPort>,
@@ -2403,7 +2404,7 @@ pub(crate) mod tests {
             service,
             Arc::new(NoopSystemDnsCache),
             dirty_rx,
-            Arc::new(lifecycle::ports::FsBinaryInstaller),
+            Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         )
         .await
         .unwrap();
@@ -2558,7 +2559,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
-            binary_installer: Arc::new(lifecycle::ports::FsBinaryInstaller),
+            binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         })
         .expect("client should construct with typed config actors");
 
@@ -3293,8 +3294,8 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
-                lifecycle::DirtyNotifier::channel().1,
-                Arc::new(lifecycle::ports::FsBinaryInstaller),
+                core_lifecycle::DirtyNotifier::channel().1,
+                Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             )
             .await
             .unwrap();

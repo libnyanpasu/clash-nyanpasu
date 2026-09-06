@@ -11,7 +11,7 @@ use struct_patch::Patch;
 use tokio::sync::Notify;
 
 struct BlockingBuilder {
-    delegate: ports::FsRuntimeBuildAdapter,
+    delegate: adapters::FsRuntimeBuildAdapter,
     calls: AtomicUsize,
     entered: Notify,
     release: Notify,
@@ -75,7 +75,7 @@ async fn dirty_graph(
         ))
         .unwrap();
     let builder = Arc::new(BlockingBuilder {
-        delegate: ports::FsRuntimeBuildAdapter {
+        delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths,
             ports: Arc::new(super::super::SessionPortResolver::default()),
@@ -85,14 +85,14 @@ async fn dirty_graph(
         release: Notify::new(),
     });
     let client = CoreLifecycleClient::spawn_with_ticks(
-        LifecycleArgs {
+        CoreLifecycleArgs {
             application: application.clone(),
             clash,
             profiles,
             core,
             service,
             builder: builder.clone(),
-            installer: Arc::new(ports::FsBinaryInstaller),
+            installer: Arc::new(adapters::FsBinaryInstaller),
             ui: Arc::new(super::super::NoopUiEventSink),
             dirty,
         },
@@ -243,8 +243,8 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         endpoint.entered.notified().await;
         let mut uninstall = Box::pin(client.uninstall_service());
         assert!(uninstall.as_mut().now_or_never().is_none());
-        barrier(&client.inner.lifecycle).await;
-        assert_eq!(client.lifecycle_status().queued.len(), 1);
+        barrier(&client.inner.core_lifecycle).await;
+        assert_eq!(client.core_lifecycle_status().queued.len(), 1);
         assert!(!calls.lock().unwrap().contains(&"uninstall"));
         endpoint.release.notify_one();
         assert!(matches!(
@@ -390,15 +390,15 @@ fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation(
             2,
             "stop and death proof precede installation"
         );
-        let active = f.client.lifecycle_status().active.unwrap();
+        let active = f.client.core_lifecycle_status().active.unwrap();
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
         assert!(staging.exists());
         let mut reconcile = Box::pin(f.client.reconcile_core());
         assert!(reconcile.as_mut().now_or_never().is_none());
-        barrier(&f.client.inner.lifecycle).await;
-        assert_eq!(f.client.lifecycle_status().active, Some(active));
-        assert_eq!(f.client.lifecycle_status().queued.len(), 1);
+        barrier(&f.client.inner.core_lifecycle).await;
+        assert_eq!(f.client.core_lifecycle_status().active, Some(active));
+        assert_eq!(f.client.core_lifecycle_status().queued.len(), 1);
         assert_eq!(f.endpoint.submissions(), 2);
         // Status reads stay responsive while the installer is parked.
         let _ = f.client.core_status();
@@ -413,7 +413,7 @@ fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation(
         assert!(!staging.exists());
         assert!(
             f.client
-                .lifecycle_status()
+                .core_lifecycle_status()
                 .completed
                 .iter()
                 .any(|r| r.id == active && r.error.is_none())
@@ -504,8 +504,8 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         assert!(reconcile.as_mut().now_or_never().is_none());
         let mut shutdown = Box::pin(f.client.shutdown_core());
         assert!(shutdown.as_mut().now_or_never().is_none());
-        barrier(&f.client.inner.lifecycle).await;
-        assert!(f.client.lifecycle_status().shutting_down);
+        barrier(&f.client.inner.core_lifecycle).await;
+        assert!(f.client.core_lifecycle_status().shutting_down);
         assert_eq!(
             reconcile.await.unwrap_err().kind,
             Some(CoreErrorKind::OperationConflict)
@@ -526,8 +526,8 @@ fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
     let f = Fixture::new(true, false, false);
     tauri::async_runtime::block_on(async {
         let (artifact, progress) = f.artifact(ClashCore::Mihomo);
-        let lifecycle = &f.client.inner.lifecycle;
-        let mut timed = Box::pin(lifecycle.call_with_timeout(
+        let core_lifecycle = &f.client.inner.core_lifecycle;
+        let mut timed = Box::pin(core_lifecycle.call_with_timeout(
             Command::ReplaceCoreBinary(artifact),
             Duration::from_millis(20),
         ));
@@ -537,23 +537,23 @@ fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
             Err(error) => error,
             Ok(_) => panic!("parked installation must time out"),
         };
-        assert_eq!(error.operation_id, f.client.lifecycle_status().active);
+        assert_eq!(error.operation_id, f.client.core_lifecycle_status().active);
         let mut pending = Vec::new();
         for _ in 0..MAX_PENDING {
-            let mut call = Box::pin(lifecycle.reconcile());
+            let mut call = Box::pin(core_lifecycle.reconcile());
             assert!(call.as_mut().now_or_never().is_none());
             pending.push(call);
         }
-        barrier(lifecycle).await;
-        assert_eq!(lifecycle.status().queued.len(), MAX_PENDING);
+        barrier(core_lifecycle).await;
+        assert_eq!(core_lifecycle.status().queued.len(), MAX_PENDING);
         assert_eq!(
-            lifecycle.reconcile().await.unwrap_err().kind,
+            core_lifecycle.reconcile().await.unwrap_err().kind,
             Some(CoreErrorKind::OperationConflict)
         );
         assert_eq!(f.endpoint.submissions(), 2);
         let mut shutdown = Box::pin(f.client.shutdown_core());
         assert!(shutdown.as_mut().now_or_never().is_none());
-        barrier(lifecycle).await;
+        barrier(core_lifecycle).await;
         for call in pending {
             assert!(call.await.is_err());
         }
@@ -575,7 +575,7 @@ fn failed_installation_does_not_restart_and_a_panic_fails_admission_closed() {
             assert!(f.client.replace_core_binary(artifact).await.is_err());
             assert!(!progress.0.load(Ordering::SeqCst));
             assert_eq!(f.endpoint.submissions(), 2);
-            assert_eq!(f.client.lifecycle_status().uncertain, panic);
+            assert_eq!(f.client.core_lifecycle_status().uncertain, panic);
             if panic {
                 assert_eq!(
                     f.client.reconcile_core().await.unwrap_err().kind,
@@ -596,9 +596,9 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
         f.endpoint.set_result_missing(true);
         let error = f.client.reconcile_core().await.unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
-        assert!(f.client.lifecycle_status().uncertain);
+        assert!(f.client.core_lifecycle_status().uncertain);
         assert!(f.client.promoted_runtime().await.is_some());
-        let status = f.client.lifecycle_status();
+        let status = f.client.core_lifecycle_status();
         let result = status
             .completed
             .iter()

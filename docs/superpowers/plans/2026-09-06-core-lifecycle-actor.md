@@ -11,7 +11,9 @@ cycle. Work in an isolated worktree on `refactor/core-lifecycle-actor`.
 
 ## Design
 
-- `NyanpasuClient` delegates complete lifecycle requests to `CoreLifecycleClient`.
+- `NyanpasuClient` delegates complete core lifecycle requests to `CoreLifecycleClient`.
+  This coordinates core workflows; application startup and shutdown orchestration
+  remain outside this actor. Its status API is `core_lifecycle_status()`.
 - `CoreLifecycleActor` admits at most one mutating operation at a time, has a
   bounded pending queue, coalesces dirty rebuild requests, and owns shutdown.
 - A supervised operation task reports completion to the actor. Caller timeout
@@ -56,8 +58,11 @@ cycle. Work in an isolated worktree on `refactor/core-lifecycle-actor`.
 - Initialized both runtime submodules at their pinned commits. Only sidecar and
   resources point to the main checkout. Cargo target and the Rust-only frontend
   placeholder are local to this worktree; no frontend dependencies were needed.
-- Implemented `client/lifecycle/{mod,workflow,ports}.rs`. The facade holds only a
-  typed lifecycle client plus its other existing domain dependencies. Core status
+- Implementation lives in `client/core_lifecycle/{mod,workflow,ports,adapters}.rs`.
+  Ports define dependencies; concrete filesystem implementations live in adapters.
+  The active request, task handle, and shutdown flag form one `ActiveOperation`.
+  The facade holds only a typed core lifecycle client plus its other existing
+  domain dependencies. Core status
   subscriptions use a read-only `CoreObserver`, without mutation capability.
 - The coordinator owns a 32-request pending queue and retains 32 recent results.
   A 180-second caller deadline does not cancel admitted or queued operations;
@@ -106,3 +111,17 @@ client::rebuild::tests::legacy_regen_inputs_conversion_reflects_drafted_fields`:
   smoke test was performed.
 - Validation logs are retained under the worktree's gitignored
   `backend/tauri/tmp/lifecycle-checks/` directory.
+
+## Core naming and state simplification verification
+
+- On macOS, `cargo test -p clash-nyanpasu --lib client::core_lifecycle::tests
+--locked --offline`: 11 passed. The related `client::rebuild::tests::s09_`
+  filter: 3 passed, covering shared coordinator ownership, independent graphs,
+  and legacy entry-point delegation.
+- Both runs used `TAURI_CONFIG='{"bundle":{"externalBin":[]}}'` because the
+  local sidecar downloads lack `meow-aarch64-apple-darwin`. This verifies Rust
+  behavior with fake endpoints/installers, not sidecar packaging. Compilation
+  required network access for embedded JS modules, and rebuild tests required
+  local port probing outside the sandbox.
+- Formatting checks on changed Rust files and `git diff --check` passed.
+  No old module path, facade field, or lifecycle status API references remain.

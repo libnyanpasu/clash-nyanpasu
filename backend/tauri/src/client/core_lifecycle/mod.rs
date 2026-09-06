@@ -1,4 +1,6 @@
-//! Application lifecycle admission. Only this actor dispatches mutating workflows.
+//! Core lifecycle workflow admission: serializes runtime reconciliation, host changes,
+//! binary replacement, and core shutdown above the lower-level CoreClient.
+pub(crate) mod adapters;
 pub mod ports;
 mod workflow;
 
@@ -21,7 +23,7 @@ use crate::{
     state::profiles::ports::RebuildNotifier,
 };
 use ports::{BinaryInstaller, PreparedCoreBinary, RuntimeBuildPort};
-use workflow::LifecycleWorkflow;
+use workflow::CoreLifecycleWorkflow;
 
 const MAX_PENDING: usize = 32;
 const CALL_WAIT: Duration = Duration::from_secs(180);
@@ -44,19 +46,19 @@ impl RebuildNotifier for DirtyNotifier {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct LifecycleStatus {
+pub struct CoreLifecycleStatus {
     pub active: Option<OperationId>,
     pub queued: Vec<OperationId>,
     pub shutting_down: bool,
     pub uncertain: bool,
     /// Bounded recent results, including calls whose caller stopped waiting.
-    pub completed: VecDeque<LifecycleOperationResult>,
+    pub completed: VecDeque<CoreLifecycleOperationResult>,
 }
 
 // Diagnostic records returned by the facade for callers recovering a timed-out RPC.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct LifecycleOperationResult {
+pub struct CoreLifecycleOperationResult {
     pub id: OperationId,
     pub error: Option<String>,
     pub backend_operation_id: Option<OperationId>,
@@ -106,7 +108,7 @@ enum Message {
     Request(Request),
     Completed {
         id: OperationId,
-        workflow: Box<LifecycleWorkflow>,
+        workflow: Box<CoreLifecycleWorkflow>,
         result: Result<Output, CoreError>,
     },
     DirtyTick,
@@ -117,23 +119,27 @@ enum Message {
 
 struct CoreLifecycleActor;
 
-struct LifecycleState {
-    workflow: Option<Box<LifecycleWorkflow>>,
-    active: Option<Response>,
-    task: Option<tokio::task::JoinHandle<()>>,
-    active_shutdown: bool,
+struct ActiveOperation {
+    response: Response,
+    task: tokio::task::JoinHandle<()>,
+    shutdown: bool,
+}
+
+struct CoreLifecycleState {
+    workflow: Option<Box<CoreLifecycleWorkflow>>,
+    active: Option<ActiveOperation>,
     pending: VecDeque<Request>,
     dirty_rx: watch::Receiver<()>,
     dirty: bool,
     timer: Option<tokio::task::JoinHandle<()>>,
-    status: watch::Sender<LifecycleStatus>,
+    status: watch::Sender<CoreLifecycleStatus>,
     shutdown: Option<ShutdownReport>,
     closing: bool,
     shutdown_waiters: Vec<Response>,
     abandoned: bool,
 }
 
-pub(super) struct LifecycleArgs {
+pub(super) struct CoreLifecycleArgs {
     pub application: super::application::ApplicationClient,
     pub clash: super::clash_config::ClashConfigClient,
     pub profiles: super::profiles::ProfilesClient,
@@ -146,9 +152,9 @@ pub(super) struct LifecycleArgs {
 }
 
 struct ActorArgs {
-    workflow: LifecycleWorkflow,
+    workflow: CoreLifecycleWorkflow,
     dirty: watch::Receiver<()>,
-    status: watch::Sender<LifecycleStatus>,
+    status: watch::Sender<CoreLifecycleStatus>,
     schedule_dirty_ticks: bool,
 }
 
@@ -156,10 +162,10 @@ fn conflict(message: &str) -> CoreError {
     CoreError::new(CoreErrorKind::OperationConflict, message, true)
 }
 
-impl LifecycleState {
+impl CoreLifecycleState {
     fn publish(&self) {
         self.status.send_modify(|status| {
-            status.active = self.active.as_ref().map(|r| r.id);
+            status.active = self.active.as_ref().map(|op| op.response.id);
             status.queued = self
                 .pending
                 .iter()
@@ -175,7 +181,7 @@ impl LifecycleState {
             if status.completed.len() == MAX_PENDING {
                 status.completed.pop_front();
             }
-            status.completed.push_back(LifecycleOperationResult {
+            status.completed.push_back(CoreLifecycleOperationResult {
                 id: request.id,
                 error: match &result {
                     Err(error) => Some(error.to_string()),
@@ -198,7 +204,7 @@ impl LifecycleState {
         if let Some(reply) = request.reply {
             let _ = reply.send(result.map_err(|error| error.with_operation(request.id)));
         } else if let Err(error) = result {
-            tracing::warn!(%error, "background lifecycle operation failed");
+            tracing::warn!(%error, "background core lifecycle operation failed");
         }
     }
 
@@ -226,7 +232,7 @@ impl LifecycleState {
             self.status.send_modify(|status| status.uncertain = true);
             self.dirty = false;
             while let Some(request) = self.pending.pop_front() {
-                self.settle(request.response, Err(CoreError::new(CoreErrorKind::OperationConflict, "previous lifecycle operation has an uncertain outcome; restart the application before further mutations", false)));
+                self.settle(request.response, Err(CoreError::new(CoreErrorKind::OperationConflict, "previous core lifecycle operation has an uncertain outcome; restart the application before further mutations", false)));
             }
         }
         let request = if self.closing {
@@ -264,11 +270,10 @@ impl LifecycleState {
             };
             let id = response.id;
             let actor = myself.clone();
-            self.active_shutdown = matches!(command, Command::Shutdown);
-            self.active = Some(response);
+            let shutdown = matches!(command, Command::Shutdown);
             // Ownership moves into exactly one tracked task, never a shared lock.
             // Dropping an RPC waiter cannot cancel the task or admit another one.
-            self.task = Some(tokio::spawn(async move {
+            let task = tokio::spawn(async move {
                 let progress = match &command {
                     Command::ReplaceCoreBinary(artifact) => Some(artifact.progress.clone()),
                     _ => None,
@@ -281,7 +286,7 @@ impl LifecycleState {
                     Err(_) => {
                         workflow.uncertain = true;
                         Err(workflow::domain_error(
-                            "lifecycle workflow panicked; execution state is uncertain",
+                            "core lifecycle workflow panicked; execution state is uncertain",
                         ))
                     }
                 };
@@ -301,7 +306,12 @@ impl LifecycleState {
                     workflow,
                     result,
                 });
-            }));
+            });
+            self.active = Some(ActiveOperation {
+                response,
+                task,
+                shutdown,
+            });
         }
         self.publish();
     }
@@ -309,22 +319,20 @@ impl LifecycleState {
 
 impl Actor for CoreLifecycleActor {
     type Msg = Message;
-    type State = LifecycleState;
+    type State = CoreLifecycleState;
     type Arguments = ActorArgs;
 
     async fn pre_start(
         &self,
         myself: ActorRef<Message>,
         args: ActorArgs,
-    ) -> Result<LifecycleState, ActorProcessingErr> {
+    ) -> Result<CoreLifecycleState, ActorProcessingErr> {
         let timer = args
             .schedule_dirty_ticks
             .then(|| myself.send_interval(DIRTY_WINDOW, || Message::DirtyTick));
-        Ok(LifecycleState {
+        Ok(CoreLifecycleState {
             workflow: Some(Box::new(args.workflow)),
             active: None,
-            task: None,
-            active_shutdown: false,
             pending: VecDeque::new(),
             dirty_rx: args.dirty,
             dirty: false,
@@ -341,7 +349,7 @@ impl Actor for CoreLifecycleActor {
         &self,
         myself: ActorRef<Message>,
         message: Message,
-        state: &mut LifecycleState,
+        state: &mut CoreLifecycleState,
     ) -> Result<(), ActorProcessingErr> {
         match message {
             Message::Request(request) => {
@@ -373,18 +381,16 @@ impl Actor for CoreLifecycleActor {
                 workflow,
                 mut result,
             } => {
-                if state.active.as_ref().map(|r| r.id) != Some(id) {
+                if state.active.as_ref().map(|op| op.response.id) != Some(id) {
                     return Ok(());
                 }
-                if let Some(task) = state.task.take() {
-                    let _ = task.await;
-                }
-                let request = state.active.take().expect("matched active operation");
+                let active = state.active.take().expect("matched active operation");
+                let _ = active.task.await;
                 state.status.send_modify(|status| {
                     status.active = None;
                     status.uncertain = workflow.uncertain;
                 });
-                if state.active_shutdown
+                if active.shutdown
                     && let Err(error) = result
                 {
                     result = Ok(Output::Shutdown(ShutdownReport {
@@ -400,7 +406,7 @@ impl Actor for CoreLifecycleActor {
                     }
                 }
                 state.workflow = Some(workflow);
-                state.settle(request, result);
+                state.settle(active.response, result);
             }
             Message::DirtyTick => {
                 if !state.closing && state.dirty_rx.has_changed().unwrap_or(false) {
@@ -424,15 +430,15 @@ impl Actor for CoreLifecycleActor {
     async fn post_stop(
         &self,
         _myself: ActorRef<Message>,
-        state: &mut LifecycleState,
+        state: &mut CoreLifecycleState,
     ) -> Result<(), ActorProcessingErr> {
         if let Some(timer) = state.timer.take() {
             timer.abort();
         }
         // An admitted task is allowed to finish even if the actor is stopped.
         // In particular, never cancel installation while its blocking copy runs.
-        if let Some(task) = state.task.take() {
-            let _ = task.await;
+        if let Some(active) = state.active.take() {
+            let _ = active.task.await;
         }
         Ok(())
     }
@@ -441,7 +447,7 @@ impl Actor for CoreLifecycleActor {
 struct ClientInner {
     actor: ActorRef<Message>,
     runtime: watch::Receiver<runtime::RuntimeLifecycleState>,
-    status: watch::Receiver<LifecycleStatus>,
+    status: watch::Receiver<CoreLifecycleStatus>,
     core: crate::core::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
 }
@@ -460,27 +466,27 @@ macro_rules! method {
         pub async fn $name(&self) -> Result<$output, CoreError> {
             match self.call($command).await? {
                 Output::$variant(result) => Ok(result),
-                _ => Err(workflow::domain_error("unexpected lifecycle reply")),
+                _ => Err(workflow::domain_error("unexpected core lifecycle reply")),
             }
         }
     };
 }
 
 impl CoreLifecycleClient {
-    pub async fn spawn(args: LifecycleArgs) -> anyhow::Result<Self> {
+    pub async fn spawn(args: CoreLifecycleArgs) -> anyhow::Result<Self> {
         Self::spawn_with_ticks(args, true).await
     }
 
     // Tests drive DirtyTick through the mailbox without racing a wall-clock timer.
     async fn spawn_with_ticks(
-        args: LifecycleArgs,
+        args: CoreLifecycleArgs,
         schedule_dirty_ticks: bool,
     ) -> anyhow::Result<Self> {
         let (runtime_tx, runtime) = watch::channel(runtime::RuntimeLifecycleState::default());
-        let (status_tx, status) = watch::channel(LifecycleStatus::default());
+        let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
-        let workflow = LifecycleWorkflow {
+        let workflow = CoreLifecycleWorkflow {
             application: args.application,
             clash: args.clash,
             profiles: args.profiles,
@@ -525,12 +531,12 @@ impl CoreLifecycleClient {
         match self.0.actor.call(|reply| Message::Request(Request { command, response: Response { id, reply: Some(reply) } }), Some(timeout)).await {
             Ok(CallResult::Success(result)) => result,
             Ok(CallResult::Timeout) => Err(CoreError::new(CoreErrorKind::BackendUnavailable,
-                "lifecycle wait timed out; the operation may still be queued or running; inspect lifecycle_status before retrying", false).with_operation(id)),
-            _ => Err(CoreError::new(CoreErrorKind::Internal, "lifecycle actor is unavailable; operation outcome is unknown", false).with_operation(id)),
+                "core lifecycle wait timed out; the operation may still be queued or running; inspect core_lifecycle_status before retrying", false).with_operation(id)),
+            _ => Err(CoreError::new(CoreErrorKind::Internal, "core lifecycle actor is unavailable; operation outcome is unknown", false).with_operation(id)),
         }
     }
 
-    pub fn status(&self) -> LifecycleStatus {
+    pub fn status(&self) -> CoreLifecycleStatus {
         self.0.status.borrow().clone()
     }
     pub fn runtime(&self) -> runtime::RuntimeLifecycleState {

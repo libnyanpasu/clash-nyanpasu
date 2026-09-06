@@ -1106,7 +1106,7 @@ mod tests {
             core_v2,
             service,
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
-            binary_installer: Arc::new(crate::client::lifecycle::ports::FsBinaryInstaller),
+            binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path, legacy_store);
@@ -2406,7 +2406,7 @@ mod tests {
             core_v2,
             service,
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
-            binary_installer: Arc::new(crate::client::lifecycle::ports::FsBinaryInstaller),
+            binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(

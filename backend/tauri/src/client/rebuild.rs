@@ -1,4 +1,4 @@
-//! Legacy regeneration entries delegate to the lifecycle actor.
+//! Legacy regeneration entries delegate to the core lifecycle actor.
 use super::{ClientError, NyanpasuClient, Result};
 use nyanpasu_config::{application::NyanpasuAppConfig, clash::config::ClashConfig};
 
@@ -289,8 +289,8 @@ mod tests {
         .unwrap();
         let clone = client.clone();
         assert!(std::ptr::eq(
-            &client.inner.lifecycle,
-            &clone.inner.lifecycle
+            &client.inner.core_lifecycle,
+            &clone.inner.core_lifecycle
         ));
     }
 

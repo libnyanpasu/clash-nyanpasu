@@ -37,7 +37,7 @@ pub(super) struct Updater {
 
 struct UpdaterInstallProgress(Arc<parking_lot::RwLock<UpdaterInner>>);
 
-impl crate::client::lifecycle::ports::BinaryInstallProgress for UpdaterInstallProgress {
+impl crate::client::core_lifecycle::ports::BinaryInstallProgress for UpdaterInstallProgress {
     fn restarting(&self) {
         self.0.write().state = UpdaterState::Restarting;
     }
@@ -236,7 +236,7 @@ impl Updater {
         ));
 
         self.nyanpasu
-            .replace_core_binary(crate::client::lifecycle::ports::PreparedCoreBinary {
+            .replace_core_binary(crate::client::core_lifecycle::ports::PreparedCoreBinary {
                 target: self.core_type,
                 source: tmp_core_path,
                 destination: target_core,

@@ -20,7 +20,7 @@ use crate::core::actor_v2::{
     service_actor::ServicePhase,
 };
 
-pub(super) struct LifecycleWorkflow {
+pub(super) struct CoreLifecycleWorkflow {
     pub application: ApplicationClient,
     pub clash: ClashConfigClient,
     pub profiles: ProfilesClient,
@@ -38,7 +38,7 @@ pub(super) fn domain_error(error: impl std::fmt::Display) -> CoreError {
     CoreError::new(CoreErrorKind::Internal, error.to_string(), false)
 }
 
-impl LifecycleWorkflow {
+impl CoreLifecycleWorkflow {
     pub async fn execute(&mut self, command: Command) -> Result<Output, CoreError> {
         let result = self.execute_inner(command).await;
         self.uncertain |= self.core.outcome_uncertain();

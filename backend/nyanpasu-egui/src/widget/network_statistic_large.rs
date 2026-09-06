@@ -233,9 +233,9 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
         egui::Rgba::TRANSPARENT.to_array()
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let this = self.inner.read();
-        let visuals = &ctx.style().visuals;
+        let visuals = &ui.style().visuals;
 
         egui::CentralPanel::default()
             .frame(
@@ -244,9 +244,9 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                     .fill(if visuals.dark_mode { DARK_MODE_BACKGROUND_COLOR } else { LIGHT_MODE_BACKGROUND_COLOR })
                     .inner_margin(Margin::symmetric(9, 6)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 if ui.interact(ui.max_rect(), Id::new("window-drag"), Sense::drag()).dragged() {
-                    ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+                    ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
                 }
 
                 let available_height = ui.available_height();

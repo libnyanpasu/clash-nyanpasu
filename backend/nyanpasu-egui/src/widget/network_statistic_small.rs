@@ -198,8 +198,8 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
         egui::Rgba::TRANSPARENT.to_array()
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let visuals = &ctx.style().visuals;
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let visuals = &ui.style().visuals;
         let this = self.state.read();
 
         egui::CentralPanel::default()
@@ -213,12 +213,12 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
                     })
                     .inner_margin(Margin::same(4)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 if ui
                     .interact(ui.max_rect(), Id::new("window-drag"), Sense::drag())
                     .dragged()
                 {
-                    ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+                    ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
                 }
                 ui.horizontal(|ui| {
                     ui.allocate_ui(Vec2::new(24.0, 24.0), |ui| {

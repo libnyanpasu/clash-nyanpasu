@@ -21,7 +21,23 @@ export default function SystemServiceSwitch() {
 
   const { query } = useSystemService()
 
-  const disabled = query.data?.status === 'not_installed'
+  const notInstalled = query.data?.status === 'not_installed'
+
+  // fail-closed 兼容门（backend/tauri/src/core/service/compat.rs）：这两态下
+  // RunType::classify 永远退回 Normal，开关打开也不会走 Service backend。
+  const compatKind = query.data?.compat.kind
+
+  const compatBlocked =
+    compatKind === 'incompatible' || compatKind === 'unparsable'
+
+  // 不兼容时只拦「打开」，已开启的仍可关闭——否则用户会被锁死在一个无效的 ON 状态。
+  const disabled = notInstalled || (compatBlocked && !serviceMode.value)
+
+  const hint = compatBlocked
+    ? m.settings_system_proxy_service_mode_incompatible_tooltip()
+    : notInstalled
+      ? m.settings_system_proxy_service_mode_disabled_tooltip()
+      : null
 
   const handleServiceMode = useLockFn(async () => {
     try {
@@ -61,11 +77,9 @@ export default function SystemServiceSwitch() {
           </div>
         </TooltipTrigger>
 
-        {disabled && (
+        {hint && (
           <TooltipContent>
-            <span>
-              {m.settings_system_proxy_service_mode_disabled_tooltip()}
-            </span>
+            <span>{hint}</span>
           </TooltipContent>
         )}
       </Tooltip>

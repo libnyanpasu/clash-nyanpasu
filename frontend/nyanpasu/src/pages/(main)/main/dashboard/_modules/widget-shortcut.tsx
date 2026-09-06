@@ -124,50 +124,59 @@ const CoreStatusBadge = () => {
   const { data: coreStatus } = useCoreStatus()
 
   const message = useMemo<string>(() => {
-    // core is running, we check if it's running by service or by child process
-    if (coreStatus?.status === 'Running') {
-      if (serviceStatus?.server?.core_infos.state === 'Running') {
-        return m.dashboard_widget_core_status_running_by_service()
-      } else {
-        return m.dashboard_widget_core_status_running_by_child_process()
-      }
+    // 两条查询都还没答复：此时落到下面的真值表会断言"内核已停 + 服务未安装"
+    // 两件尚未确立的事实，冷启动时用户第一眼看到的就是这个假状态。
+    if (!coreStatus || !serviceStatus) {
+      return m.dashboard_widget_core_status_loading()
     }
 
-    let stopedMessage
+    // 谁在跑内核由本进程的 RunType 决定，而不是 daemon 自报的 core_infos：
+    // 服务模式关闭时残留的 daemon、或兼容门 fail-closed 后被降级成 normal 的
+    // 会话，daemon 都可能仍在跑它自己的内核，那不是本 App 的那一个。
+    const byService = coreStatus.type === 'service'
+
+    // core is running, we check if it's running by service or by child process
+    if (coreStatus.status === 'Running') {
+      return byService
+        ? m.dashboard_widget_core_status_running_by_service()
+        : m.dashboard_widget_core_status_running_by_child_process()
+    }
+
     let serviceMessage
 
-    if (serviceStatus?.status === 'running') {
+    if (serviceStatus.status === 'running') {
       serviceMessage = m.dashboard_widget_core_service_running()
-
-      // service returned core status, but it's not running, so it's stopped by service
-      if (
-        serviceStatus?.server?.core_infos.state !== 'Running' &&
-        serviceStatus?.server?.core_infos.state.Stopped
-      ) {
-        stopedMessage = m.dashboard_widget_core_stopped_by_service_with_message(
-          {
-            message: serviceStatus?.server.core_infos.state.Stopped,
-          },
-        )
-      } else {
-        stopedMessage = m.dashboard_widget_core_stopped_by_service_unknown()
-      }
-    }
-
-    // service is not running, so core is either stopped by service or not installed
-    if (serviceStatus?.status === 'stopped') {
+    } else if (serviceStatus.status === 'stopped') {
       serviceMessage = m.dashboard_widget_core_service_stopped()
     } else {
       serviceMessage = m.dashboard_widget_core_service_not_installed()
     }
 
+    let stopedMessage
+
+    // 先取 service 上报的内核状态；server 为空时整条链短路成 undefined，
+    // 后续访问都走这个局部变量，不再有非对称可选链。
+    const serviceCoreState = serviceStatus.server?.core_infos.state
+
     // core is stopped, but we don't know why, so we check the core status
     const coreStopReason =
-      coreStatus?.status && typeof coreStatus.status === 'object'
+      coreStatus.status && typeof coreStatus.status === 'object'
         ? coreStatus.status.Stopped?.reason
         : undefined
 
-    if (coreStopReason) {
+    if (
+      byService &&
+      serviceStatus.status === 'running' &&
+      serviceCoreState !== undefined &&
+      serviceCoreState !== 'Running'
+    ) {
+      // service 明确报告了内核已停：这一分支优先于本地 core status。
+      stopedMessage = serviceCoreState.Stopped
+        ? m.dashboard_widget_core_stopped_by_service_with_message({
+            message: serviceCoreState.Stopped,
+          })
+        : m.dashboard_widget_core_stopped_by_service_unknown()
+    } else if (coreStopReason) {
       stopedMessage = m.dashboard_widget_core_stopped_with_message({
         message: coreStopReason,
       })

@@ -197,6 +197,7 @@ export const DATA_SLOTS = [
   'switch-thumb-loading',
   'switch-thumb-loading-circular-progress',
   'system-launch-container',
+  'system-service-compat-warning',
   'system-service-container',
   'system-service-ctrl-item',
   'system-service-ctrl-item-name',

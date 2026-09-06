@@ -700,8 +700,10 @@ pub async fn clash_api_get_version(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_rules() -> Result<clash::api::RulesRes> {
-    Ok(clash::api::get_rules().await?)
+pub async fn clash_api_get_rules(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::RulesRes> {
+    Ok(client.clash_rules().await?)
 }
 
 #[tauri::command]
@@ -712,8 +714,11 @@ pub async fn clash_api_get_providers_rules() -> Result<clash::api::ProvidersRule
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_update_providers_rules(name: String) -> Result<()> {
-    Ok(clash::api::update_providers_rules_group(&name).await?)
+pub async fn clash_api_update_providers_rules(
+    client: State<'_, NyanpasuClient>,
+    name: String,
+) -> Result<()> {
+    Ok(client.update_clash_rule_provider(name).await?)
 }
 
 #[tauri::command]

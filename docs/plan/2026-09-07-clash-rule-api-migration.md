@@ -38,8 +38,7 @@ refresh is a mutation and is not retried automatically.
 
 ## Remaining callers
 
-Provider listing still needs response-model work: optional metadata and unknown
-string enum values must retain their meaning across cores. Config, proxy/cache,
+Provider listing is covered by [the next migration](2026-09-07-rule-provider-api-migration.md), including optional metadata and unknown string enum values. Config, proxy/cache,
 policy and stream migration remain as listed in the preceding plan. This PR
 migrates the complete rule-read and explicit rule-provider-refresh call paths.
 

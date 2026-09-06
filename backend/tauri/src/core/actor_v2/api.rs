@@ -104,6 +104,13 @@ impl ApiClient {
         }
     }
 
+    pub async fn rule_providers(
+        &self,
+    ) -> Result<indexmap::IndexMap<clash_api::RuleProviderName, clash_api::RuleProvider>, ApiError>
+    {
+        self.execute(self.client.rule_providers()).await
+    }
+
     pub async fn rules(&self) -> Result<Vec<clash_api::Rule>, ApiError> {
         self.execute(self.client.rules()).await
     }
@@ -313,6 +320,37 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), api.revoked.cancelled())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn provider_reads_preserve_order_and_reject_retired_instances() {
+        let (url, server) = server(Router::new().route(
+            "/providers/rules/",
+            get(|| async {
+                Response::builder()
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"providers":{"z":{"name":"z"},"a":{"name":"a"}}}"#,
+                    ))
+                    .unwrap()
+            }),
+        ))
+        .await;
+        let endpoint = endpoint(url);
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let api = core.api_client().await.unwrap();
+        let providers = api.rule_providers().await.unwrap();
+        assert_eq!(
+            providers
+                .keys()
+                .map(|name| name.as_str())
+                .collect::<Vec<_>>(),
+            ["z", "a"]
+        );
+        endpoint.binding.send_replace(None);
+        assert!(matches!(api.rule_providers().await, Err(ApiError::Stale)));
+        core.actor.stop(None);
+        server.abort();
     }
 
     #[tokio::test]

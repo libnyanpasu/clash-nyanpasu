@@ -82,14 +82,6 @@ pub async fn get_configs() -> Result<ClashConfig> {
     Ok(resp)
 }
 
-/// GET /providers/rules
-#[instrument]
-pub async fn get_providers_rules() -> Result<ProvidersRulesRes> {
-    let path = "/providers/rules";
-    let resp: ProvidersRulesRes = perform_request((Method::GET, path)).await?.json().await?;
-    Ok(resp)
-}
-
 /// PUT /configs
 /// path 是绝对路径
 #[instrument]

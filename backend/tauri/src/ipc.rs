@@ -708,8 +708,10 @@ pub async fn clash_api_get_rules(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_providers_rules() -> Result<clash::api::ProvidersRulesRes> {
-    Ok(clash::api::get_providers_rules().await?)
+pub async fn clash_api_get_providers_rules(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::ProvidersRulesRes> {
+    Ok(client.clash_rule_providers().await?)
 }
 
 #[tauri::command]

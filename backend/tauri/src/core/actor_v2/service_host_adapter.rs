@@ -13,56 +13,42 @@ use super::{
 
 pub struct OsServiceHostAdapter;
 
+#[async_trait::async_trait]
 impl ServiceHostAdapter for OsServiceHostAdapter {
-    fn probe(
-        &self,
-    ) -> super::endpoint::BoxFuture<'_, Result<nyanpasu_ipc::types::StatusInfo<'static>, String>>
-    {
-        Box::pin(async {
-            crate::core::service::control::status()
-                .await
-                .map_err(|e| e.to_string())
-        })
+    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        crate::core::service::control::status()
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    fn install(&self) -> super::endpoint::BoxFuture<'_, Result<(), String>> {
-        Box::pin(async {
-            crate::core::service::control::install_service()
-                .await
-                .map_err(|e| e.to_string())
-        })
+    async fn install(&self) -> Result<(), String> {
+        crate::core::service::control::install_service()
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    fn uninstall(&self) -> super::endpoint::BoxFuture<'_, Result<(), String>> {
-        Box::pin(async {
-            crate::core::service::control::uninstall_service()
-                .await
-                .map_err(|e| e.to_string())
-        })
+    async fn uninstall(&self) -> Result<(), String> {
+        crate::core::service::control::uninstall_service()
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    fn start_daemon(&self) -> super::endpoint::BoxFuture<'_, Result<(), String>> {
-        Box::pin(async {
-            crate::core::service::control::start_service()
-                .await
-                .map_err(|e| e.to_string())
-        })
+    async fn start_daemon(&self) -> Result<(), String> {
+        crate::core::service::control::start_service()
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    fn stop_daemon(&self) -> super::endpoint::BoxFuture<'_, Result<(), String>> {
-        Box::pin(async {
-            crate::core::service::control::stop_service()
-                .await
-                .map_err(|e| e.to_string())
-        })
+    async fn stop_daemon(&self) -> Result<(), String> {
+        crate::core::service::control::stop_service()
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    fn update(&self) -> super::endpoint::BoxFuture<'_, Result<(), String>> {
-        Box::pin(async {
-            crate::core::service::control::update_service()
-                .await
-                .map_err(|e| e.to_string())
-        })
+    async fn update(&self) -> Result<(), String> {
+        crate::core::service::control::update_service()
+            .await
+            .map_err(|e| e.to_string())
     }
 
     // TODO(actor-migration): temporary bridge to the process-wide

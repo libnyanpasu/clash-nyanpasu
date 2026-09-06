@@ -1719,54 +1719,42 @@ pub(crate) mod tests {
 
     struct IdleEndpoint;
 
+    #[async_trait::async_trait]
     impl crate::core::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
         fn host(&self) -> ExecutionHost {
             ExecutionHost::Local
         }
 
-        fn submit<'a>(
-            &'a self,
+        async fn submit(
+            &self,
             submission: crate::core::actor_v2::endpoint::CoreSubmission,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            std::result::Result<
-                nyanpasu_ipc::api::core::v2::OperationInfo,
-                nyanpasu_core_manager::CoreError,
-            >,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::v2::OperationInfo,
+            nyanpasu_core_manager::CoreError,
         > {
-            Box::pin(async move { Ok(successful_reconcile(submission.envelope.operation_id)) })
+            Ok(successful_reconcile(submission.envelope.operation_id))
         }
 
-        fn wait_operation<'a>(
-            &'a self,
+        async fn wait_operation(
+            &self,
             id: nyanpasu_core_manager::OperationId,
             _timeout: std::time::Duration,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            Option<nyanpasu_ipc::api::core::v2::OperationInfo>,
-        > {
-            Box::pin(async move { Some(successful_reconcile(id)) })
+        ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
+            Some(successful_reconcile(id))
         }
 
-        fn status<'a>(
-            &'a self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            std::result::Result<
-                crate::core::actor_v2::endpoint::CoreStatusSnapshot,
-                nyanpasu_core_manager::CoreError,
-            >,
+        async fn status(
+            &self,
+        ) -> std::result::Result<
+            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_core_manager::CoreError,
         > {
-            Box::pin(async {
-                Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
-                    state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
-                        reason: None,
-                    }),
-                    state_changed_at: 0,
-                    revision: None,
-                    healthy: Some(true),
-                    applied_kind: None,
-                })
+            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+                state_changed_at: 0,
+                revision: None,
+                healthy: Some(true),
+                applied_kind: None,
             })
         }
     }
@@ -1981,68 +1969,54 @@ pub(crate) mod tests {
         }
     }
 
+    #[async_trait::async_trait]
     impl crate::core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         fn host(&self) -> ExecutionHost {
             ExecutionHost::Local
         }
 
-        fn submit<'a>(
-            &'a self,
+        async fn submit(
+            &self,
             submission: crate::core::actor_v2::endpoint::CoreSubmission,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            std::result::Result<
-                nyanpasu_ipc::api::core::v2::OperationInfo,
-                nyanpasu_core_manager::CoreError,
-            >,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::v2::OperationInfo,
+            nyanpasu_core_manager::CoreError,
         > {
-            Box::pin(async move {
-                self.submissions
-                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                let info = self.operation(&submission);
-                self.operations
-                    .lock()
-                    .unwrap()
-                    .insert(info.id.clone(), info.clone());
-                Ok(info)
-            })
+            self.submissions
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let info = self.operation(&submission);
+            self.operations
+                .lock()
+                .unwrap()
+                .insert(info.id.clone(), info.clone());
+            Ok(info)
         }
 
-        fn wait_operation<'a>(
-            &'a self,
+        async fn wait_operation(
+            &self,
             id: nyanpasu_core_manager::OperationId,
             _timeout: std::time::Duration,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            Option<nyanpasu_ipc::api::core::v2::OperationInfo>,
-        > {
-            Box::pin(async move {
-                self.operations
-                    .lock()
-                    .unwrap()
-                    .get(&id.to_string())
-                    .cloned()
-            })
+        ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
+            self.operations
+                .lock()
+                .unwrap()
+                .get(&id.to_string())
+                .cloned()
         }
 
-        fn status<'a>(
-            &'a self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            std::result::Result<
-                crate::core::actor_v2::endpoint::CoreStatusSnapshot,
-                nyanpasu_core_manager::CoreError,
-            >,
+        async fn status(
+            &self,
+        ) -> std::result::Result<
+            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_core_manager::CoreError,
         > {
-            Box::pin(async {
-                let (state, applied_kind) = self.status_override.lock().unwrap().clone();
-                Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
-                    state,
-                    state_changed_at: 0,
-                    revision: Some(self.revision.lock().unwrap().clone()),
-                    healthy: Some(true),
-                    applied_kind,
-                })
+            let (state, applied_kind) = self.status_override.lock().unwrap().clone();
+            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                state,
+                state_changed_at: 0,
+                revision: Some(self.revision.lock().unwrap().clone()),
+                healthy: Some(true),
+                applied_kind,
             })
         }
     }
@@ -2064,93 +2038,79 @@ pub(crate) mod tests {
         }
     }
 
+    #[async_trait::async_trait]
     impl crate::core::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint {
         fn host(&self) -> ExecutionHost {
             self.host
         }
 
-        fn submit<'a>(
-            &'a self,
+        async fn submit(
+            &self,
             submission: crate::core::actor_v2::endpoint::CoreSubmission,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            std::result::Result<
-                nyanpasu_ipc::api::core::v2::OperationInfo,
-                nyanpasu_core_manager::CoreError,
-            >,
+        ) -> std::result::Result<
+            nyanpasu_ipc::api::core::v2::OperationInfo,
+            nyanpasu_core_manager::CoreError,
         > {
-            Box::pin(async move {
-                let output = match submission.envelope.command {
-                    nyanpasu_core_manager::CoreCommand::Stop => {
-                        if self.host == ExecutionHost::Service {
-                            self.calls.lock().unwrap().push("handoff_to_local");
-                        }
-                        nyanpasu_ipc::api::core::v2::OperationOutputInfo::Stopped
+            let output = match submission.envelope.command {
+                nyanpasu_core_manager::CoreCommand::Stop => {
+                    if self.host == ExecutionHost::Service {
+                        self.calls.lock().unwrap().push("handoff_to_local");
                     }
-                    nyanpasu_core_manager::CoreCommand::Reconcile(_) => {
-                        self.calls.lock().unwrap().push(match self.host {
-                            ExecutionHost::Local => "reconcile_local",
-                            ExecutionHost::Service => "reconcile_service",
-                        });
-                        successful_reconcile(submission.envelope.operation_id)
-                            .output
-                            .unwrap()
-                    }
-                    _ => successful_reconcile(submission.envelope.operation_id)
+                    nyanpasu_ipc::api::core::v2::OperationOutputInfo::Stopped
+                }
+                nyanpasu_core_manager::CoreCommand::Reconcile(_) => {
+                    self.calls.lock().unwrap().push(match self.host {
+                        ExecutionHost::Local => "reconcile_local",
+                        ExecutionHost::Service => "reconcile_service",
+                    });
+                    successful_reconcile(submission.envelope.operation_id)
                         .output
-                        .unwrap(),
-                };
-                let info = nyanpasu_ipc::api::core::v2::OperationInfo {
-                    id: submission.envelope.operation_id.to_string(),
-                    phase: nyanpasu_ipc::api::core::v2::OperationPhase::Succeeded,
-                    output: Some(output),
-                    error: None,
-                };
-                self.operations
-                    .lock()
-                    .unwrap()
-                    .insert(info.id.clone(), info.clone());
-                Ok(info)
-            })
+                        .unwrap()
+                }
+                _ => successful_reconcile(submission.envelope.operation_id)
+                    .output
+                    .unwrap(),
+            };
+            let info = nyanpasu_ipc::api::core::v2::OperationInfo {
+                id: submission.envelope.operation_id.to_string(),
+                phase: nyanpasu_ipc::api::core::v2::OperationPhase::Succeeded,
+                output: Some(output),
+                error: None,
+            };
+            self.operations
+                .lock()
+                .unwrap()
+                .insert(info.id.clone(), info.clone());
+            Ok(info)
         }
 
-        fn wait_operation<'a>(
-            &'a self,
+        async fn wait_operation(
+            &self,
             id: nyanpasu_core_manager::OperationId,
             _timeout: std::time::Duration,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            Option<nyanpasu_ipc::api::core::v2::OperationInfo>,
-        > {
-            Box::pin(async move {
-                self.operations
-                    .lock()
-                    .unwrap()
-                    .get(&id.to_string())
-                    .cloned()
-            })
+        ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
+            self.operations
+                .lock()
+                .unwrap()
+                .get(&id.to_string())
+                .cloned()
         }
 
-        fn status<'a>(
-            &'a self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            'a,
-            std::result::Result<
-                crate::core::actor_v2::endpoint::CoreStatusSnapshot,
-                nyanpasu_core_manager::CoreError,
-            >,
+        async fn status(
+            &self,
+        ) -> std::result::Result<
+            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_core_manager::CoreError,
         > {
-            Box::pin(async {
-                Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
-                    state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Running {
-                        epoch: 1,
-                        pid: 7,
-                    }),
-                    state_changed_at: 0,
-                    revision: None,
-                    healthy: Some(true),
-                    applied_kind: None,
-                })
+            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Running {
+                    epoch: 1,
+                    pid: 7,
+                }),
+                state_changed_at: 0,
+                revision: None,
+                healthy: Some(true),
+                applied_kind: None,
             })
         }
     }
@@ -2160,87 +2120,62 @@ pub(crate) mod tests {
         calls: Arc<StdMutex<Vec<&'static str>>>,
     }
 
+    #[async_trait::async_trait]
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
-        fn probe(
+        async fn probe(
             &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            '_,
-            std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String>,
-        > {
-            Box::pin(async move {
-                self.calls.lock().unwrap().push("ensure_ready");
-                Ok(nyanpasu_ipc::types::StatusInfo {
-                    name: std::borrow::Cow::Borrowed("test-service"),
+        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+            self.calls.lock().unwrap().push("ensure_ready");
+            Ok(nyanpasu_ipc::types::StatusInfo {
+                name: std::borrow::Cow::Borrowed("test-service"),
+                version: std::borrow::Cow::Borrowed("2.0.0"),
+                status: nyanpasu_ipc::types::ServiceStatus::Running,
+                server: Some(nyanpasu_ipc::api::status::StatusResBody {
                     version: std::borrow::Cow::Borrowed("2.0.0"),
-                    status: nyanpasu_ipc::types::ServiceStatus::Running,
-                    server: Some(nyanpasu_ipc::api::status::StatusResBody {
-                        version: std::borrow::Cow::Borrowed("2.0.0"),
-                        core_infos: nyanpasu_ipc::api::status::CoreInfos {
-                            r#type: None,
-                            state: nyanpasu_ipc::api::status::CoreState::Running,
-                            state_changed_at: 0,
-                            config_path: None,
-                            controller: None,
-                            health: None,
-                            revision: None,
-                            detail: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
-                                reason: None,
-                            }),
-                        },
-                        runtime_infos: nyanpasu_ipc::api::status::RuntimeInfos {
-                            service_data_dir: std::borrow::Cow::Owned(Default::default()),
-                            service_config_dir: std::borrow::Cow::Owned(Default::default()),
-                            nyanpasu_config_dir: std::borrow::Cow::Owned(Default::default()),
-                            nyanpasu_data_dir: std::borrow::Cow::Owned(Default::default()),
-                        },
-                        logs: None,
-                    }),
-                })
+                    core_infos: nyanpasu_ipc::api::status::CoreInfos {
+                        r#type: None,
+                        state: nyanpasu_ipc::api::status::CoreState::Running,
+                        state_changed_at: 0,
+                        config_path: None,
+                        controller: None,
+                        health: None,
+                        revision: None,
+                        detail: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
+                            reason: None,
+                        }),
+                    },
+                    runtime_infos: nyanpasu_ipc::api::status::RuntimeInfos {
+                        service_data_dir: std::borrow::Cow::Owned(Default::default()),
+                        service_config_dir: std::borrow::Cow::Owned(Default::default()),
+                        nyanpasu_config_dir: std::borrow::Cow::Owned(Default::default()),
+                        nyanpasu_data_dir: std::borrow::Cow::Owned(Default::default()),
+                    },
+                    logs: None,
+                }),
             })
         }
 
-        fn install(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async move {
-                self.calls.lock().unwrap().push("install");
-                Ok(())
-            })
+        async fn install(&self) -> std::result::Result<(), String> {
+            self.calls.lock().unwrap().push("install");
+            Ok(())
         }
 
-        fn uninstall(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async { Ok(()) })
+        async fn uninstall(&self) -> std::result::Result<(), String> {
+            Ok(())
         }
 
-        fn start_daemon(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async move {
-                self.calls.lock().unwrap().push("start_daemon");
-                Ok(())
-            })
+        async fn start_daemon(&self) -> std::result::Result<(), String> {
+            self.calls.lock().unwrap().push("start_daemon");
+            Ok(())
         }
 
-        fn stop_daemon(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async move {
-                self.calls.lock().unwrap().push("stop_daemon");
-                Ok(())
-            })
+        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+            self.calls.lock().unwrap().push("stop_daemon");
+            Ok(())
         }
 
-        fn update(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async { Ok(()) })
+        async fn update(&self) -> std::result::Result<(), String> {
+            Ok(())
         }
 
         fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
@@ -2304,56 +2239,37 @@ pub(crate) mod tests {
 
     struct IdleServiceAdapter;
 
+    #[async_trait::async_trait]
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
-        fn probe(
+        async fn probe(
             &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<
-            '_,
-            std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String>,
-        > {
-            Box::pin(async {
-                Ok(nyanpasu_ipc::types::StatusInfo {
-                    name: std::borrow::Cow::Borrowed("test-service"),
-                    version: std::borrow::Cow::Borrowed("test"),
-                    status: nyanpasu_ipc::types::ServiceStatus::NotInstalled,
-                    server: None,
-                })
+        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+            Ok(nyanpasu_ipc::types::StatusInfo {
+                name: std::borrow::Cow::Borrowed("test-service"),
+                version: std::borrow::Cow::Borrowed("test"),
+                status: nyanpasu_ipc::types::ServiceStatus::NotInstalled,
+                server: None,
             })
         }
 
-        fn install(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async { Ok(()) })
+        async fn install(&self) -> std::result::Result<(), String> {
+            Ok(())
         }
 
-        fn uninstall(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async { Ok(()) })
+        async fn uninstall(&self) -> std::result::Result<(), String> {
+            Ok(())
         }
 
-        fn start_daemon(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async { Ok(()) })
+        async fn start_daemon(&self) -> std::result::Result<(), String> {
+            Ok(())
         }
 
-        fn stop_daemon(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async { Ok(()) })
+        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+            Ok(())
         }
 
-        fn update(
-            &self,
-        ) -> crate::core::actor_v2::endpoint::BoxFuture<'_, std::result::Result<(), String>>
-        {
-            Box::pin(async { Ok(()) })
+        async fn update(&self) -> std::result::Result<(), String> {
+            Ok(())
         }
 
         fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {

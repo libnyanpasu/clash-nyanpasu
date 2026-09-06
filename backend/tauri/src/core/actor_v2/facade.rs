@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use futures_util::future::{BoxFuture, FutureExt, Shared};
+use futures::future::{BoxFuture, FutureExt, Shared};
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{
     ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec, Epoch,
@@ -361,7 +361,7 @@ mod tests {
 
     use super::*;
     use crate::core::actor_v2::{
-        endpoint::{BoxFuture, ControlEndpoint, CoreStatusSnapshot},
+        endpoint::{ControlEndpoint, CoreStatusSnapshot},
         service_actor::ServiceHostAdapter,
     };
 
@@ -427,47 +427,39 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait]
     impl ControlEndpoint for RecordingEndpoint {
         fn host(&self) -> ExecutionHost {
             self.host
         }
 
-        fn submit<'a>(
-            &'a self,
-            submission: CoreSubmission,
-        ) -> BoxFuture<'a, Result<OperationInfo, CoreError>> {
-            Box::pin(async move {
-                if matches!(submission.envelope.command, CoreCommand::Stop) {
-                    self.stops.fetch_add(1, Ordering::SeqCst);
-                }
-                let info = self.operation(&submission);
-                self.submissions.lock().unwrap().push(submission);
-                Ok(info)
-            })
+        async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
+            if matches!(submission.envelope.command, CoreCommand::Stop) {
+                self.stops.fetch_add(1, Ordering::SeqCst);
+            }
+            let info = self.operation(&submission);
+            self.submissions.lock().unwrap().push(submission);
+            Ok(info)
         }
 
-        fn wait_operation<'a>(
-            &'a self,
+        async fn wait_operation(
+            &self,
             id: OperationId,
             _timeout: Duration,
-        ) -> BoxFuture<'a, Option<OperationInfo>> {
-            Box::pin(async move {
-                self.submissions
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .find(|submission| submission.envelope.operation_id == id)
-                    .map(|submission| self.operation(submission))
-            })
+        ) -> Option<OperationInfo> {
+            self.submissions
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|submission| submission.envelope.operation_id == id)
+                .map(|submission| self.operation(submission))
         }
 
-        fn status<'a>(&'a self) -> BoxFuture<'a, Result<CoreStatusSnapshot, CoreError>> {
-            Box::pin(async move {
-                if self.host == ExecutionHost::Service {
-                    self.calls.lock().unwrap().push("change_host");
-                }
-                Ok(self.status.clone())
-            })
+        async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
+            if self.host == ExecutionHost::Service {
+                self.calls.lock().unwrap().push("change_host");
+            }
+            Ok(self.status.clone())
         }
     }
 
@@ -476,52 +468,51 @@ mod tests {
         calls: Arc<Mutex<Vec<&'static str>>>,
     }
 
+    #[async_trait::async_trait]
     impl ServiceHostAdapter for ReadyService {
-        fn probe(&self) -> BoxFuture<'_, Result<StatusInfo<'static>, String>> {
-            Box::pin(async move {
-                self.calls.lock().unwrap().push("ensure_ready");
-                Ok(StatusInfo {
-                    name: Cow::Borrowed("nyanpasu-service"),
-                    version: Cow::Borrowed("test"),
-                    status: ServiceStatus::Running,
-                    server: Some(StatusResBody {
-                        version: Cow::Borrowed("2.0.0"),
-                        core_infos: CoreInfos {
-                            r#type: None,
-                            state: CoreState::Running,
-                            state_changed_at: 1,
-                            config_path: None,
-                            controller: None,
-                            health: None,
-                            revision: None,
-                            detail: Some(CoreStateDetail::Stopped { reason: None }),
-                        },
-                        runtime_infos: RuntimeInfos {
-                            service_data_dir: Cow::Owned(Default::default()),
-                            service_config_dir: Cow::Owned(Default::default()),
-                            nyanpasu_config_dir: Cow::Owned(Default::default()),
-                            nyanpasu_data_dir: Cow::Owned(Default::default()),
-                        },
-                        logs: None,
-                    }),
-                })
+        async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+            self.calls.lock().unwrap().push("ensure_ready");
+            Ok(StatusInfo {
+                name: Cow::Borrowed("nyanpasu-service"),
+                version: Cow::Borrowed("test"),
+                status: ServiceStatus::Running,
+                server: Some(StatusResBody {
+                    version: Cow::Borrowed("2.0.0"),
+                    core_infos: CoreInfos {
+                        r#type: None,
+                        state: CoreState::Running,
+                        state_changed_at: 1,
+                        config_path: None,
+                        controller: None,
+                        health: None,
+                        revision: None,
+                        detail: Some(CoreStateDetail::Stopped { reason: None }),
+                    },
+                    runtime_infos: RuntimeInfos {
+                        service_data_dir: Cow::Owned(Default::default()),
+                        service_config_dir: Cow::Owned(Default::default()),
+                        nyanpasu_config_dir: Cow::Owned(Default::default()),
+                        nyanpasu_data_dir: Cow::Owned(Default::default()),
+                    },
+                    logs: None,
+                }),
             })
         }
 
-        fn install(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async { Ok(()) })
+        async fn install(&self) -> Result<(), String> {
+            Ok(())
         }
-        fn uninstall(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async { Ok(()) })
+        async fn uninstall(&self) -> Result<(), String> {
+            Ok(())
         }
-        fn start_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async { Ok(()) })
+        async fn start_daemon(&self) -> Result<(), String> {
+            Ok(())
         }
-        fn stop_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async { Ok(()) })
+        async fn stop_daemon(&self) -> Result<(), String> {
+            Ok(())
         }
-        fn update(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async { Ok(()) })
+        async fn update(&self) -> Result<(), String> {
+            Ok(())
         }
         fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
             self.endpoint.clone()

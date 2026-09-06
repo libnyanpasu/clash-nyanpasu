@@ -1,4 +1,4 @@
-//! Application-facing orchestration over the core and service actors.
+//! Control-protocol helpers owned by the application lifecycle workflow.
 
 use std::time::Duration;
 
@@ -46,6 +46,9 @@ pub struct CoreFacade {
     core: CoreClient,
     service: ServiceClient,
     shutdown: OnceCell<SharedShutdown>,
+    // Lost mutation replies must not release the application's execution domain.
+    // Terminal operation failures and failed read-only preflights do not set this.
+    outcome_uncertain: bool,
 }
 
 impl CoreFacade {
@@ -54,11 +57,28 @@ impl CoreFacade {
             core,
             service,
             shutdown: OnceCell::new(),
+            outcome_uncertain: false,
         }
     }
 
+    pub(crate) fn outcome_uncertain(&self) -> bool {
+        self.outcome_uncertain
+    }
+
+    fn observe_mutation<T>(&mut self, result: Result<T, CoreError>) -> Result<T, CoreError> {
+        if let Err(error) = &result
+            && matches!(
+                error.kind,
+                Some(CoreErrorKind::BackendUnavailable | CoreErrorKind::Internal)
+            )
+        {
+            self.outcome_uncertain = true;
+        }
+        result
+    }
+
     pub async fn reconcile(
-        &self,
+        &mut self,
         core: ClashCore,
         document: &serde_yaml::Mapping,
         core_spec: CoreSpec,
@@ -151,7 +171,7 @@ impl CoreFacade {
         })
     }
 
-    pub async fn stop(&self) -> Result<StopReport, CoreError> {
+    pub async fn stop(&mut self) -> Result<StopReport, CoreError> {
         let output = self.command(CoreCommand::Stop).await?;
         if output != OperationOutputInfo::Stopped {
             return Err(unexpected_output("stop", &output));
@@ -162,7 +182,7 @@ impl CoreFacade {
         })
     }
 
-    pub async fn recover(&self) -> Result<RecoverReport, CoreError> {
+    pub async fn recover(&mut self) -> Result<RecoverReport, CoreError> {
         let output = self.command(CoreCommand::Recover).await?;
         if output != OperationOutputInfo::Recovered {
             return Err(unexpected_output("recover", &output));
@@ -174,22 +194,27 @@ impl CoreFacade {
     }
 
     pub async fn change_execution_host(
-        &self,
+        &mut self,
         host: ExecutionHost,
     ) -> Result<HandoffReport, CoreError> {
         let target = match host {
             ExecutionHost::Local => self.core.initial_endpoint(),
-            ExecutionHost::Service => self.service.ensure_ready().await?,
+            ExecutionHost::Service => {
+                let result = self.service.ensure_ready().await;
+                self.observe_mutation(result)?
+            }
         };
-        self.core.change_host(target).await
+        let result = self.core.change_host(target).await;
+        self.observe_mutation(result)
     }
 
     /// Move to the Service host only if the daemon is already `Ready`, never
     /// by converging one. Boot uses this to restore a persisted host without
     /// installing or starting a service on the user's behalf.
-    pub async fn adopt_service_host(&self) -> Result<HandoffReport, CoreError> {
+    pub async fn adopt_service_host(&mut self) -> Result<HandoffReport, CoreError> {
         let target = self.service.adopt_if_ready().await?;
-        self.core.change_host(target).await
+        let result = self.core.change_host(target).await;
+        self.observe_mutation(result)
     }
 
     pub fn core_status(&self) -> CoreStatusProjection {
@@ -204,36 +229,32 @@ impl CoreFacade {
         self.core.refresh_status().await
     }
 
-    pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
-        self.core.subscribe_events()
-    }
-
     pub fn service_status(&self) -> ServiceHostStatus {
         self.service.status()
-    }
-
-    pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
-        self.service.subscribe()
     }
 
     pub async fn probe_service(&self) -> Result<ServiceHostStatus, CoreError> {
         self.service.probe().await
     }
 
-    pub async fn install_service(&self) -> Result<(), CoreError> {
-        self.service.install().await
+    pub async fn install_service(&mut self) -> Result<(), CoreError> {
+        let result = self.service.install().await;
+        self.observe_mutation(result)
     }
 
-    pub async fn start_service(&self) -> Result<(), CoreError> {
-        self.service.start_daemon().await
+    pub async fn start_service(&mut self) -> Result<(), CoreError> {
+        let result = self.service.start_daemon().await;
+        self.observe_mutation(result)
     }
 
-    pub async fn stop_service(&self) -> Result<(), CoreError> {
-        self.service.stop_daemon().await
+    pub async fn stop_service(&mut self) -> Result<(), CoreError> {
+        let result = self.service.stop_daemon().await;
+        self.observe_mutation(result)
     }
 
-    pub async fn uninstall_service(&self) -> Result<(), CoreError> {
-        self.service.uninstall().await
+    pub async fn uninstall_service(&mut self) -> Result<(), CoreError> {
+        let result = self.service.uninstall().await;
+        self.observe_mutation(result)
     }
 
     pub async fn shutdown(&self) -> ShutdownReport {
@@ -259,7 +280,7 @@ impl CoreFacade {
             .await
     }
 
-    async fn command(&self, command: CoreCommand) -> Result<OperationOutputInfo, CoreError> {
+    async fn command(&mut self, command: CoreCommand) -> Result<OperationOutputInfo, CoreError> {
         self.submit_and_wait(CoreSubmission {
             envelope: CoreCommandEnvelope {
                 operation_id: OperationId::generate(),
@@ -271,15 +292,17 @@ impl CoreFacade {
     }
 
     async fn submit_and_wait(
-        &self,
+        &mut self,
         submission: CoreSubmission,
     ) -> Result<OperationOutputInfo, CoreError> {
-        let ticket = self.core.submit(submission).await?;
+        let result = self.core.submit(submission).await;
+        let ticket = self.observe_mutation(result)?;
         let info = ticket
             .endpoint
             .wait_operation(ticket.id, OPERATION_WAIT)
             .await
             .ok_or_else(|| {
+                self.outcome_uncertain = true;
                 CoreError::new(
                     CoreErrorKind::BackendUnavailable,
                     "the admitted core operation disappeared before reaching a terminal state",
@@ -287,6 +310,9 @@ impl CoreFacade {
                 )
                 .with_operation(ticket.id)
             })?;
+        if matches!(info.phase, OperationPhase::Queued | OperationPhase::Running) {
+            self.outcome_uncertain = true;
+        }
         terminal_output(info, ticket.id)
     }
 }
@@ -551,7 +577,7 @@ mod tests {
             effective_hash: "old-effective".into(),
         };
         let local = RecordingEndpoint::new(ExecutionHost::Local, Some(expected.clone()));
-        let (facade, _) = facade(local.clone()).await;
+        let (mut facade, _) = facade(local.clone()).await;
         wait_for_snapshot(&facade.core).await;
         let document = serde_yaml::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
@@ -601,7 +627,7 @@ mod tests {
             warning: None,
             failed_apply: Some("boom".into()),
         });
-        let (facade, _) = facade(local).await;
+        let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
         let document = serde_yaml::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
@@ -635,7 +661,7 @@ mod tests {
             warning: Some("durability uncertain".into()),
             failed_apply: None,
         });
-        let (facade, _) = facade(local).await;
+        let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
         let document = serde_yaml::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
@@ -659,7 +685,7 @@ mod tests {
             effective_hash: "effective".into(),
         };
         let local = RecordingEndpoint::new(ExecutionHost::Local, Some(zero_epoch));
-        let (facade, _) = facade(local).await;
+        let (mut facade, _) = facade(local).await;
         wait_for_snapshot(&facade.core).await;
         let document = serde_yaml::from_str("mode: rule\n").unwrap();
         let spec = CoreSpec {
@@ -676,6 +702,10 @@ mod tests {
 
         assert_eq!(error.kind, Some(CoreErrorKind::Internal));
         assert!(!error.retryable);
+        assert!(
+            !facade.outcome_uncertain(),
+            "validation failed before any mutation was submitted"
+        );
     }
 
     #[tokio::test]
@@ -693,7 +723,7 @@ mod tests {
     #[tokio::test]
     async fn change_execution_host_to_service_ensures_ready_first() {
         let local = RecordingEndpoint::new(ExecutionHost::Local, None);
-        let (facade, calls) = facade(local).await;
+        let (mut facade, calls) = facade(local).await;
 
         facade
             .change_execution_host(ExecutionHost::Service)

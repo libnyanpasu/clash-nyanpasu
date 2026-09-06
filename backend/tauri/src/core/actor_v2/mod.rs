@@ -4,7 +4,8 @@
 //! (§3–§5). The actor owns exactly four things — the active endpoint slot, the
 //! `ControllerGeneration`, the subscription pump, and the projection channels.
 //! Lifecycle truth, transactions, compensation and quarantine live only inside
-//! each host's `CoreControl`.
+//! each host's `CoreControl`. Application workflows are serialized above this
+//! router by `CoreLifecycleActor`; direct router submissions still obey I-R1.
 //!
 //! Invariants:
 //! - **I-R1**: at most one `Connected` endpoint. A handoff moves the slot to
@@ -1040,7 +1041,30 @@ pub struct CoreClient {
     shutdown_budget: Duration,
 }
 
+/// Read-only projection access; carries no mutation capability.
+#[derive(Clone)]
+pub(crate) struct CoreObserver {
+    status: watch::Receiver<CoreStatusProjection>,
+    events: broadcast::Sender<CoreStatusProjection>,
+}
+
+impl CoreObserver {
+    pub fn status(&self) -> CoreStatusProjection {
+        self.status.borrow().clone()
+    }
+    pub fn subscribe_events(&self) -> broadcast::Receiver<CoreStatusProjection> {
+        self.events.subscribe()
+    }
+}
+
 impl CoreClient {
+    pub(crate) fn observer(&self) -> CoreObserver {
+        CoreObserver {
+            status: self.status_rx.clone(),
+            events: self.events_tx.clone(),
+        }
+    }
+
     /// Spawns the router over its initial endpoint.
     pub async fn spawn(initial: EndpointHandle) -> Result<Self, ractor::SpawnErr> {
         Self::spawn_with_bounds(initial, PUMP_STATUS_TIMEOUT, STOP_WAIT).await

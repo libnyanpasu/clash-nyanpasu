@@ -35,19 +35,19 @@ cycle. Work in an isolated worktree on `refactor/core-lifecycle-actor`.
 ## Implementation and verification
 
 - [x] Inventory callers, regression tests, and bootstrap dependencies; initialize
-  worktree/submodules, symlink only sidecar/resources, create Rust frontend stub.
+      worktree/submodules, symlink only sidecar/resources, create Rust frontend stub.
 - [x] Extract lifecycle workflows and infrastructure ports; preserve existing
-  ordering and error semantics with focused regression tests.
+      ordering and error semantics with focused regression tests.
 - [x] Implement coordinator and typed client, bounded admission, completion
-  identity, dirty coalescing, timeout/status reporting, and shutdown.
+      identity, dirty coalescing, timeout/status reporting, and shutdown.
 - [x] Wire bootstrap and migrate facade, updater, dirty notifications and runtime
-  projections. Remove both gates, obsolete worker and closure replacement API.
+      projections. Remove both gates, obsolete worker and closure replacement API.
 - [x] Deterministically test handoff/uninstall and replacement/reconcile
-  exclusion, dirty changes during execution, canceled callers, failure paths,
-  shutdown, and temporary artifact lifetime. Use acknowledgments, not sleeps.
+      exclusion, dirty changes during execution, canceled callers, failure paths,
+      shutdown, and temporary artifact lifetime. Use acknowledgments, not sleeps.
 - [x] Run formatting, focused tests, and applicable Cargo checks. Review diff
-  for hidden bypasses, globals, actor state shared through locks, and unrelated
-  edits; record exact results and any environmental limitations here.
+      for hidden bypasses, globals, actor state shared through locks, and unrelated
+      edits; record exact results and any environmental limitations here.
 
 ## Execution notes
 
@@ -84,19 +84,19 @@ cycle. Work in an isolated worktree on `refactor/core-lifecycle-actor`.
 ## Validation
 
 - Baseline before implementation: `cargo test -p clash-nyanpasu --lib client::
-  --no-default-features`: 150 passed, one existing failure in
+--no-default-features`: 150 passed, one existing failure in
   `client::rebuild::tests::legacy_regen_inputs_conversion_reflects_drafted_fields`
   (`missing field unified-delay`). That schema fixture is outside this migration.
 - Final `cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu
-  --lib --all-features client:: -- --skip
-  client::rebuild::tests::legacy_regen_inputs_conversion_reflects_drafted_fields`:
+--lib --all-features client:: -- --skip
+client::rebuild::tests::legacy_regen_inputs_conversion_reflects_drafted_fields`:
   **148 passed**, including 11 lifecycle tests. The single known baseline
   failure was explicitly excluded; it was also reproduced after the migration
   before running this focused verification.
 - Full-feature `core::actor_v2` regression: 68 passed.
 - `cargo fmt --manifest-path backend/Cargo.toml --all -- --check`: passed.
 - `cargo clippy --manifest-path backend/Cargo.toml -p clash-nyanpasu
-  --all-features --lib`: passed; existing unrelated warnings remain. No warnings
+--all-features --lib`: passed; existing unrelated warnings remain. No warnings
   point to the new lifecycle implementation.
 - `git diff --check`: passed. Reviewed production mutation call sites: the
   application facade and updater use the coordinator; no old gate, callback

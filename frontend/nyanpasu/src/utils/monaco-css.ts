@@ -4,9 +4,9 @@
  */
 
 // Ensure CSS and LESS basic language support is loaded
-import 'monaco-editor/esm/vs/basic-languages/css/css.contribution.js'
-import 'monaco-editor/esm/vs/basic-languages/less/less.contribution.js'
-import 'monaco-editor/esm/vs/language/css/monaco.contribution.js'
+import 'monaco-editor/languages/definitions/css/register'
+import 'monaco-editor/languages/definitions/less/register'
+import 'monaco-editor/languages/features/css/register'
 import { DATA_SLOTS } from '@/generated/data-slots.gen'
 import type { Monaco } from '@monaco-editor/react'
 

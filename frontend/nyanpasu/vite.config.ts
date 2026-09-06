@@ -116,6 +116,13 @@ export default defineConfig(({ command, mode }) => {
         },
         { find: '@nyanpasu/utils', replacement: path.resolve('../utils/src') },
         { find: '~', replacement: path.resolve('.') },
+        {
+          // monaco-worker-manager (monaco-yaml dep) still imports the pre-0.56
+          // deep `monaco-editor/esm/vs/*` paths; rewrite them to specifiers the
+          // new exports map resolves to the same files.
+          find: /^monaco-editor\/esm\/vs\//,
+          replacement: 'monaco-editor/',
+        },
       ],
       dedupe: ['react', 'react-dom'],
     },

@@ -1,5 +1,3 @@
-use backon::ExponentialBuilder;
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri_specta::Event;
@@ -7,13 +5,6 @@ use tauri_specta::Event;
 pub mod api;
 pub mod proxies;
 pub mod ws;
-
-pub static CLASH_API_DEFAULT_BACKOFF_STRATEGY: Lazy<ExponentialBuilder> = Lazy::new(|| {
-    ExponentialBuilder::default()
-        .with_min_delay(std::time::Duration::from_millis(50))
-        .with_max_delay(std::time::Duration::from_secs(5))
-        .with_max_times(5)
-});
 
 // TODO: support system path search via a config or flag
 // FIXME: move this fn to nyanpasu-utils

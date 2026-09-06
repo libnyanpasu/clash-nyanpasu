@@ -80,10 +80,13 @@ pub fn restart_clash_core(app_handle: &AppHandle) {
 }
 
 // 切换模式 rule/global/direct/script mode
-pub fn change_clash_mode(mode: String) {
+pub fn change_clash_mode(app_handle: &AppHandle, mode: String) {
+    let client = app_handle
+        .state::<crate::client::NyanpasuClient>()
+        .inner()
+        .clone();
     let mut mapping = Mapping::new();
     mapping.insert(Value::from("mode"), mode.clone().into());
-    let (tx, rx) = tokio::sync::oneshot::channel();
     tauri::async_runtime::spawn(async move {
         log::debug!(target: "app", "change clash mode to {mode}");
 
@@ -99,13 +102,8 @@ pub fn change_clash_mode(mode: String) {
             }
             Err(err) => log::error!(target: "app", "{err:?}"),
         }
-        if tx.send(()).is_err() {
-            log::error!(target: "app::change_clash_mode", "failed to send tx");
-        }
+        client.request_proxy_refresh();
     });
-
-    // refresh proxies
-    update_proxies_buff(Some(rx));
 
     // Interrupt connections based on configuration
     tauri::async_runtime::spawn(async move {
@@ -513,26 +511,6 @@ pub fn copy_clash_env(app_handle: &AppHandle, option: &CopyEnvOption) {
             }
         }
     }
-}
-
-pub fn update_proxies_buff(rx: Option<tokio::sync::oneshot::Receiver<()>>) {
-    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
-
-    tauri::async_runtime::spawn(async move {
-        if let Some(rx) = rx
-            && let Err(e) = rx.await
-        {
-            log::error!(target: "app::clash::proxies", "update proxies buff by rx failed: {e}");
-        }
-        match ProxiesGuard::global().update().await {
-            Ok(_) => {
-                log::debug!(target: "app::clash::proxies", "update proxies buff success");
-            }
-            Err(e) => {
-                log::error!(target: "app::clash::proxies", "update proxies buff failed: {e}");
-            }
-        }
-    });
 }
 
 #[cfg(test)]

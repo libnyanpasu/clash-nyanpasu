@@ -26,7 +26,7 @@ pub enum Message {
     SetConfig(Result<(), String>),
 }
 
-const STATE_CHANGED_URI: &str = "nyanpasu://mutation";
+pub(crate) const STATE_CHANGED_URI: &str = "nyanpasu://mutation";
 const NOTIFY_MESSAGE_URI: &str = "nyanpasu://notice-message";
 
 impl Handle {
@@ -65,12 +65,6 @@ impl Handle {
     pub fn refresh_profiles() {
         if let Some(window) = Self::global().get_window() {
             log_err!(window.emit(STATE_CHANGED_URI, StateChanged::Profiles));
-        }
-    }
-
-    pub fn mutate_proxies() {
-        if let Some(window) = Self::global().get_window() {
-            log_err!(window.emit(STATE_CHANGED_URI, StateChanged::Proxies));
         }
     }
 

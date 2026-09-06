@@ -4,6 +4,8 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import {
   CLASH_CONFIG_QUERY_KEY,
   CLASH_INFO_QUERY_KEY,
+  CLASH_PROXIES_PROVIDER_QUERY_KEY,
+  CLASH_PROXIES_QUERY_KEY,
   CLASH_VERSION_QUERY_KEY,
   NYANPASU_BACKEND_EVENT_NAME,
   NYANPASU_SETTING_QUERY_KEY,
@@ -45,7 +47,8 @@ const PROFILES_MUTATION_KEYS = [
 ]
 
 const PROXIES_MUTATION_KEYS = [
-  // TODO: key.includes('getProxies')
+  CLASH_PROXIES_QUERY_KEY,
+  CLASH_PROXIES_PROVIDER_QUERY_KEY,
 ] as const
 
 export const MutationProvider = ({ children }: PropsWithChildren) => {

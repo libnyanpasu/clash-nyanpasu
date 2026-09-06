@@ -170,60 +170,23 @@ impl From<ProxyProviderItem> for ProxyItem {
     }
 }
 
-/// GET /proxies
-/// 获取代理列表
-#[instrument]
-pub async fn get_proxies() -> Result<ProxiesRes> {
-    let path = "/proxies";
-    let resp: ProxiesRes = perform_request((Method::GET, path)).await?.json().await?;
-    Ok(resp)
-}
-
-/// GET /proxies/{name}
-/// 获取单个代理
-/// name: 代理名称
-/// 返回代理的配置
-///
-#[allow(dead_code)]
-#[instrument]
-pub async fn get_proxy(name: String) -> Result<ProxyItem> {
-    let path = format!("/proxies/{name}");
-    let resp: ProxyItem = perform_request((Method::GET, path.as_str()))
-        .await?
-        .json()
-        .await?;
-    Ok(resp)
-}
-
-/// PUT /proxies/{group}
-/// 选择代理
-/// group: 代理分组名称
-/// name: 代理名称
-#[instrument]
-pub async fn update_proxy(group: &str, name: &str) -> Result<()> {
-    let path = format!("/proxies/{group}");
-
-    let mut data = HashMap::new();
-    data.insert("name", name);
-
-    let _ = perform_request((Method::PUT, path.as_str(), Data(data))).await?;
-    Ok(())
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 pub enum VehicleType {
     File,
     #[serde(rename = "HTTP")]
     Http,
     Compatible,
-    Unknown,
+    Inline,
+    #[serde(untagged)]
+    Unknown(String),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub enum ProviderType {
     Proxy,
     Rule,
-    Unknown,
+    #[serde(untagged)]
+    Unknown(String),
 }
 
 impl Display for ProviderType {
@@ -231,7 +194,7 @@ impl Display for ProviderType {
         match self {
             ProviderType::Proxy => write!(f, "Proxy"),
             ProviderType::Rule => write!(f, "Rule"),
-            ProviderType::Unknown => write!(f, "Unknown"),
+            ProviderType::Unknown(value) => write!(f, "{value}"),
         }
     }
 }
@@ -277,53 +240,6 @@ pub struct ProvidersProxiesRes {
     pub providers: IndexMap<String, ProxyProviderItem>,
 }
 
-/// GET /providers/proxies
-/// 获取所有代理集合的所有代理信息
-#[instrument]
-pub async fn get_providers_proxies() -> Result<ProvidersProxiesRes> {
-    let path = "/providers/proxies";
-    let resp: ProvidersProxiesRes = perform_request((Method::GET, path)).await?.json().await?;
-    Ok(resp)
-}
-
-/// GET /providers/proxies/:name
-/// 获取单个代理集合的所有代理信息
-/// group: 代理集合名称
-#[allow(dead_code)]
-#[instrument]
-pub async fn get_providers_proxies_group(group: String) -> Result<ProxyProviderItem> {
-    let path = format!("/providers/proxies/{group}");
-    let resp: ProxyProviderItem = perform_request((Method::GET, path.as_str()))
-        .await?
-        .json()
-        .await?;
-    Ok(resp)
-}
-
-/// PUT /providers/proxies/:name
-/// 更新代理集合
-/// name: 代理集合名称
-#[instrument]
-pub async fn update_providers_proxies_group(name: &str) -> Result<()> {
-    let path = format!("/providers/proxies/{name}");
-    let _ = perform_request((Method::PUT, path.as_str())).await?;
-    Ok(())
-}
-
-/// GET /providers/proxies/:name/healthcheck
-/// 获取代理集合的健康检查
-/// name: 代理集合名称
-#[allow(dead_code)]
-#[instrument]
-pub async fn get_providers_proxies_healthcheck(name: String) -> Result<Mapping> {
-    let path = format!("/providers/proxies/{name}/healthcheck");
-    let resp: Mapping = perform_request((Method::GET, path.as_str()))
-        .await?
-        .json()
-        .await?;
-    Ok(resp)
-}
-
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
 pub struct DelayRes {
     pub delay: u64,
@@ -333,8 +249,8 @@ pub struct DelayRes {
 #[instrument]
 fn clash_client_info() -> Result<(String, HeaderMap)> {
     // TODO(actor-migration): temporary bridge to legacy controller configuration.
-    // Reason: remaining config/proxy/rule and policy callers require the actor
-    // and cross-core response migrations in docs/plan/2026-09-06-clash-api-migration.md.
+    // Reason: config writes and connection-interruption policies still need
+    // lifecycle/config reconciliation migration before using the bound API.
     // Remove when: those callers use the injected instance-bound ApiClient.
     let client = { Config::clash().data().get_client_info() };
 

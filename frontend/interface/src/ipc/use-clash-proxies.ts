@@ -74,7 +74,7 @@ export const useClashProxies = () => {
           ])
         },
         mutateSelect: async () => {
-          await commands.selectProxy(groupName, proxy.name)
+          unwrapResult(await commands.selectProxy(groupName, proxy.name))
           await proxies.refetch()
         },
       })

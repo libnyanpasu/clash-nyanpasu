@@ -40,7 +40,7 @@ response decoding cannot infer complete metadata from those capabilities.
 ## Remaining migration
 
 This completes the rule-provider listing path after rule reads and provider
-refresh were migrated in the previous PR. Config responses/writes, proxy cache
+refresh were migrated in the previous PR. Config reads are covered by [the next migration](2026-09-07-clash-config-read-migration.md). Config writes, proxy cache
 ownership and workflows, policy-triggered actions, and guarded streams remain.
 
 ## Delivery and validation

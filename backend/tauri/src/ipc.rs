@@ -677,8 +677,10 @@ pub async fn clash_api_get_proxy_delay(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_configs() -> Result<clash::api::ClashConfig> {
-    Ok(clash::api::get_configs().await?)
+pub async fn clash_api_get_configs(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::ClashConfig> {
+    Ok(client.clash_configs().await?)
 }
 
 #[tauri::command]

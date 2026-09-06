@@ -74,14 +74,6 @@ pub struct ProvidersRulesRes {
     pub providers: IndexMap<String, RuleProviderItem>,
 }
 
-/// GET /configs
-#[instrument]
-pub async fn get_configs() -> Result<ClashConfig> {
-    let path = "/configs";
-    let resp: ClashConfig = perform_request((Method::GET, path)).await?.json().await?;
-    Ok(resp)
-}
-
 /// PUT /configs
 /// path 是绝对路径
 #[instrument]

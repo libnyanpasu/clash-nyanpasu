@@ -104,6 +104,10 @@ impl ApiClient {
         }
     }
 
+    pub async fn configs(&self) -> Result<clash_api::RuntimeConfig, ApiError> {
+        self.execute(self.client.configs()).await
+    }
+
     pub async fn rule_providers(
         &self,
     ) -> Result<indexmap::IndexMap<clash_api::RuleProviderName, clash_api::RuleProvider>, ApiError>
@@ -320,6 +324,25 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), api.revoked.cancelled())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn config_reads_accept_partial_responses_and_reject_retired_instances() {
+        let (url, server) = server(Router::new().route(
+            "/configs",
+            get(|| async { Json(serde_json::json!({"mixed-port":7890,"mode":"rule"})) }),
+        ))
+        .await;
+        let endpoint = endpoint(url);
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let api = core.api_client().await.unwrap();
+        let config = api.configs().await.unwrap();
+        assert_eq!(config.mixed_port, Some(7890));
+        assert_eq!(config.allow_lan, None);
+        endpoint.binding.send_replace(None);
+        assert!(matches!(api.configs().await, Err(ApiError::Stale)));
+        core.actor.stop(None);
+        server.abort();
     }
 
     #[tokio::test]

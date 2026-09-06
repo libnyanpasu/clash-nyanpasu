@@ -184,7 +184,7 @@ fn get_device_model() -> String {
     {
         return name;
     }
-    whoami::devicename()
+    whoami::devicename().unwrap_or_default()
 }
 
 #[cfg(target_os = "macos")]
@@ -198,7 +198,7 @@ fn get_device_model() -> String {
             return model;
         }
     }
-    whoami::devicename()
+    whoami::devicename().unwrap_or_default()
 }
 
 #[cfg(target_os = "linux")]
@@ -209,12 +209,12 @@ fn get_device_model() -> String {
             return name;
         }
     }
-    whoami::devicename()
+    whoami::devicename().unwrap_or_default()
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
 fn get_device_model() -> String {
-    whoami::devicename()
+    whoami::devicename().unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------

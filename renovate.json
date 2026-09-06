@@ -62,5 +62,6 @@
       "matchPackageNames": ["/vitest/", "/cypress/", "/wdio/"]
     }
   ],
-  "prConcurrentLimit": 30
+  "prConcurrentLimit": 30,
+  "cloneSubmodules": true
 }

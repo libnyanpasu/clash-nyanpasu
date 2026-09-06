@@ -72,6 +72,24 @@ pub struct CoreSubmission {
 /// read and deliberately not routed through the actor mailbox.
 #[async_trait::async_trait]
 pub trait ControlEndpoint: Send + Sync {
+    /// The applied process binding; absent means no usable API. Old hosts must
+    /// fail explicitly rather than reconstructing credentials from globals.
+    async fn api_connection(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>, CoreError> {
+        Err(CoreError::new(
+            CoreErrorKind::BackendUnavailable,
+            "the endpoint does not expose instance-bound API access",
+            false,
+        ))
+    }
+
+    /// Ordered lifecycle notifications, used to wake API revocation checks.
+    /// The periodic authority check also covers lost/coalesced notifications.
+    async fn api_changes(&self) -> Result<Option<ApiChanges>, CoreError> {
+        Ok(None)
+    }
+
     fn host(&self) -> ExecutionHost;
 
     /// Admission into the host's executor. Returns the operation's
@@ -89,6 +107,8 @@ pub trait ControlEndpoint: Send + Sync {
 // Local host: the in-process CoreControl.
 // ---------------------------------------------------------------------------
 
+pub type ApiChanges = std::pin::Pin<Box<dyn futures::Stream<Item = Result<(), CoreError>> + Send>>;
+
 pub struct LocalEndpoint {
     control: CoreControl,
 }
@@ -101,6 +121,45 @@ impl LocalEndpoint {
 
 #[async_trait::async_trait]
 impl ControlEndpoint for LocalEndpoint {
+    async fn api_connection(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>, CoreError> {
+        let Some(connection) = self.control.api_connection().await else {
+            return Ok(None);
+        };
+        let controller = match connection.controller.host {
+            clash_api::Host::Http(url) => {
+                nyanpasu_ipc::api::status::CoreControllerInfo::Http(url.to_string())
+            }
+            clash_api::Host::UnixSocket(path) => {
+                nyanpasu_ipc::api::status::CoreControllerInfo::UnixSocket(path)
+            }
+            clash_api::Host::NamedPipe(path) => {
+                nyanpasu_ipc::api::status::CoreControllerInfo::NamedPipe(path)
+            }
+            _ => {
+                return Err(CoreError::new(
+                    CoreErrorKind::BackendUnavailable,
+                    "unsupported API transport",
+                    false,
+                ));
+            }
+        };
+        Ok(Some(nyanpasu_ipc::api::core::v2::CoreApiConnection {
+            instance_id: connection.instance_id.to_string(),
+            controller,
+            secret: connection.controller.secret,
+        }))
+    }
+
+    async fn api_changes(&self) -> Result<Option<ApiChanges>, CoreError> {
+        let changes = futures::stream::unfold(self.control.subscribe(), |mut rx| async move {
+            rx.changed().await.ok()?;
+            Some((Ok(()), rx))
+        });
+        Ok(Some(Box::pin(changes)))
+    }
+
     fn host(&self) -> ExecutionHost {
         ExecutionHost::Local
     }
@@ -286,6 +345,32 @@ fn map_client_error(error: nyanpasu_ipc::client::ClientError) -> CoreError {
 
 #[async_trait::async_trait]
 impl ControlEndpoint for ServiceEndpoint {
+    async fn api_connection(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>, CoreError> {
+        self.client
+            .core_api_connection()
+            .await
+            .map_err(map_client_error)
+    }
+
+    async fn api_changes(&self) -> Result<Option<ApiChanges>, CoreError> {
+        use futures::StreamExt;
+        let changes = self
+            .client
+            .events()
+            .await
+            .map_err(map_client_error)?
+            .filter_map(|event| async move {
+                match event {
+                    Ok(nyanpasu_ipc::api::ws::events::Event::CoreStatusChanged(_)) => Some(Ok(())),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(map_client_error(error))),
+                }
+            });
+        Ok(Some(Box::pin(changes)))
+    }
+
     fn host(&self) -> ExecutionHost {
         ExecutionHost::Service
     }
@@ -471,6 +556,7 @@ mod tests {
 
     fn infos(detail: Option<CoreStateDetail>) -> CoreInfos {
         CoreInfos {
+            instance_id: None,
             r#type: None,
             // Deliberately the shape a stopped core would publish: the point
             // is that the coarse state must not be consulted at all.

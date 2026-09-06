@@ -82,14 +82,6 @@ pub async fn get_configs() -> Result<ClashConfig> {
     Ok(resp)
 }
 
-/// GET /version
-#[instrument]
-pub async fn get_version() -> Result<ClashVersion> {
-    let path = "/version";
-    let resp: ClashVersion = perform_request((Method::GET, path)).await?.json().await?;
-    Ok(resp)
-}
-
 /// GET /rules
 #[instrument]
 pub async fn get_rules() -> Result<RulesRes> {
@@ -112,23 +104,6 @@ pub async fn update_providers_rules_group(name: &str) -> Result<()> {
     let path = format!("/providers/rules/{name}");
     let _ = perform_request((Method::PUT, path.as_str())).await?;
     Ok(())
-}
-
-/// GET /group/:name/delay
-#[instrument]
-pub async fn get_group_delay(group: String, url: Option<String>) -> Result<HashMap<String, u32>> {
-    let path = format!("/group/{group}/delay");
-    let default_url = "http://www.gstatic.com/generate_204";
-    let test_url = url
-        .map(|s| if s.is_empty() { default_url.into() } else { s })
-        .unwrap_or(default_url.into());
-
-    let query = Query([("timeout", "10000"), ("url", &test_url)]);
-    let resp: HashMap<String, u32> = perform_request((Method::GET, path.as_str(), query))
-        .await?
-        .json()
-        .await?;
-    Ok(resp)
 }
 
 /// PUT /configs
@@ -383,42 +358,16 @@ pub async fn get_providers_proxies_healthcheck(name: String) -> Result<Mapping> 
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
 pub struct DelayRes {
-    delay: u64,
-}
-
-fn proxy_delay_path(name: &str, provider: Option<&str>) -> String {
-    match provider {
-        Some(provider) => format!("/providers/proxies/{provider}/{name}/healthcheck"),
-        None => format!("/proxies/{name}/delay"),
-    }
-}
-
-/// GET /proxies/{name}/delay or
-/// GET /providers/proxies/{provider}/{name}/healthcheck
-/// 获取代理延迟
-#[instrument]
-pub async fn get_proxy_delay(
-    name: String,
-    provider: Option<String>,
-    test_url: Option<String>,
-) -> Result<DelayRes> {
-    let path = proxy_delay_path(&name, provider.as_deref());
-    let default_url = "http://www.gstatic.com/generate_204";
-    let test_url = test_url
-        .map(|s| if s.is_empty() { default_url.into() } else { s })
-        .unwrap_or(default_url.into());
-
-    let query = Query([("timeout", "10000"), ("url", &test_url)]);
-    let resp: DelayRes = perform_request((Method::GET, path.as_str(), query))
-        .await?
-        .json()
-        .await?;
-    Ok(resp)
+    pub delay: u64,
 }
 
 /// 根据clash info获取clash服务地址和请求头
 #[instrument]
 fn clash_client_info() -> Result<(String, HeaderMap)> {
+    // TODO(actor-migration): temporary bridge to legacy controller configuration.
+    // Reason: remaining config/proxy/rule and policy callers require the actor
+    // and cross-core response migrations in docs/plan/2026-09-06-clash-api-migration.md.
+    // Remove when: those callers use the injected instance-bound ApiClient.
     let client = { Config::clash().data().get_client_info() };
 
     let server = format!("http://{}", client.server);
@@ -435,29 +384,25 @@ fn clash_client_info() -> Result<(String, HeaderMap)> {
 }
 
 /// The Request Parameters
-struct PerformRequest<D = (), Q = ()> {
+struct PerformRequest<D = ()> {
     method: reqwest::Method,
     path: String,
-    query: Option<Q>,
     data: Option<D>,
 }
-/// A newtype wrapper for query parameters
-struct Query<T>(T);
 /// A newtype wrapper for request body
 struct Data<T>(T);
 
-impl From<(reqwest::Method, &str)> for PerformRequest<(), ()> {
+impl From<(reqwest::Method, &str)> for PerformRequest<()> {
     fn from((method, path): (reqwest::Method, &str)) -> Self {
         Self {
             method,
             path: path.to_string(),
             data: None,
-            query: None,
         }
     }
 }
 
-impl<T> From<(reqwest::Method, &str, Data<T>)> for PerformRequest<T, ()>
+impl<T> From<(reqwest::Method, &str, Data<T>)> for PerformRequest<T>
 where
     T: Serialize,
 {
@@ -466,38 +411,6 @@ where
             method,
             path: path.to_string(),
             data: Some(data),
-            query: None,
-        }
-    }
-}
-
-impl<T> From<(reqwest::Method, &str, Query<T>)> for PerformRequest<(), T>
-where
-    T: Serialize,
-{
-    fn from((method, path, Query(query)): (reqwest::Method, &str, Query<T>)) -> Self {
-        Self {
-            method,
-            path: path.to_string(),
-            data: None,
-            query: Some(query),
-        }
-    }
-}
-
-impl<D, Q> From<(reqwest::Method, &str, Query<Q>, Data<D>)> for PerformRequest<D, Q>
-where
-    D: Serialize,
-    Q: Serialize,
-{
-    fn from(
-        (method, path, Query(query), Data(data)): (reqwest::Method, &str, Query<Q>, Data<D>),
-    ) -> Self {
-        Self {
-            method,
-            path: path.to_string(),
-            data: Some(data),
-            query: Some(query),
         }
     }
 }
@@ -505,20 +418,13 @@ where
 #[instrument(skip_all, fields(
     method = tracing::field::Empty,
     url = tracing::field::Empty,
-    query = tracing::field::Empty,
     data = tracing::field::Empty,
 ))]
-async fn perform_request<D, Q>(param: impl Into<PerformRequest<D, Q>>) -> Result<reqwest::Response>
+async fn perform_request<D>(param: impl Into<PerformRequest<D>>) -> Result<reqwest::Response>
 where
-    Q: Serialize + core::fmt::Debug,
     D: Serialize + core::fmt::Debug,
 {
-    let PerformRequest {
-        method,
-        path,
-        data,
-        query,
-    } = param.into();
+    let PerformRequest { method, path, data } = param.into();
     let (host, headers) = clash_client_info().context("failed to get clash client info")?;
     let base_url = Url::parse(&host).context("failed to parse host")?;
     let opts = url::Url::options().base_url(Some(&base_url));
@@ -527,16 +433,12 @@ where
     let span = tracing::Span::current();
     span.record("method", tracing::field::display(&method));
     span.record("url", tracing::field::display(&url));
-    span.record("query", tracing::field::debug(&query));
     span.record("data", tracing::field::debug(&data));
 
     async {
         let client = reqwest::ClientBuilder::new().no_proxy().build()?;
         let mut builder = client.request(method.clone(), url.clone()).headers(headers);
 
-        if let Some(query) = &query {
-            builder = builder.query(query);
-        }
         if let Some(data) = &data {
             builder = builder.json(data);
         }
@@ -567,7 +469,7 @@ where
         Ok(resp)
     }
     .await
-    .inspect_err(|e| tracing::error!(method = %method, url = %url, query = ?query, data = ?data, "failed to perform request: {:?}", e))
+    .inspect_err(|e| tracing::error!(method = %method, url = %url, data = ?data, "failed to perform request: {:?}", e))
 }
 
 /// 缩短clash的日志
@@ -615,15 +517,6 @@ pub fn parse_check_output(log: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn proxy_delay_path_selects_endpoint_by_provider() {
-        assert_eq!(proxy_delay_path("node", None), "/proxies/node/delay");
-        assert_eq!(
-            proxy_delay_path("node", Some("subscription")),
-            "/providers/proxies/subscription/node/healthcheck"
-        );
-    }
 
     #[test]
     fn subscription_info_deserializes_pascal_case() {

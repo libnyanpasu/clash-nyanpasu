@@ -26,6 +26,7 @@ semver = "1.0"
 # Local Dependencies
 nyanpasu-ipc = { workspace = true }
 nyanpasu-core-manager = { workspace = true }
+clash-api = { workspace = true }
 nyanpasu-macro = { path = "../nyanpasu-macro" }
 nyanpasu-core = { path = "../nyanpasu-core" }
 nyanpasu-config = { path = "../nyanpasu-config" }

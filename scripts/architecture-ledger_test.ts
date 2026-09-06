@@ -1,6 +1,6 @@
 /**
  * Fixture-only tests for the S10 architecture ledger gate.
- * Does not scan the live repository; all inputs are in-memory fixtures.
+ * Does not scan the live repository; inputs are in-memory or temporary fixtures.
  */
 import {
   assert,
@@ -10,6 +10,7 @@ import {
 } from "jsr:@std/assert@1";
 import {
   cfgInnerEnablesTest,
+  collectRustFiles,
   createBuckets,
   evaluateGate,
   isBridgePath,
@@ -655,4 +656,26 @@ fn braces_in_string() {
       k.includes("app_home_dir")
     ),
   );
+});
+
+Deno.test("collectRustFiles: a tmp ancestor does not exclude the worktree", async () => {
+  const fixture = await Deno.makeTempDir();
+  const repo = `${fixture}/tmp/worktree`;
+  try {
+    for (const dir of ["src", "tmp", "target", "nyanpasu-runtime"]) {
+      await Deno.mkdir(`${repo}/backend/${dir}`, { recursive: true });
+      await Deno.writeTextFile(
+        `${repo}/backend/${dir}/sample.rs`,
+        "fn sample() {}",
+      );
+    }
+    const files = await collectRustFiles(["backend"], repo);
+    assertEquals(files.length, 1);
+    assertEquals(
+      await Deno.realPath(files[0]),
+      await Deno.realPath(`${repo}/backend/src/sample.rs`),
+    );
+  } finally {
+    await Deno.remove(fixture, { recursive: true });
+  }
 });

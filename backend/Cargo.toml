@@ -43,6 +43,7 @@ nyanpasu-ipc = { path = "nyanpasu-runtime/nyanpasu_ipc", features = [
   "client",
   "specta",
 ] } # IPC bridge between the UI process and service process
+clash-api = { path = "nyanpasu-runtime/crates/clash-api" }
 nyanpasu-core-manager = { path = "nyanpasu-runtime/crates/nyanpasu-core-manager" } # Local-host CoreControl (v2 control plane)
 
 # --- forks ---

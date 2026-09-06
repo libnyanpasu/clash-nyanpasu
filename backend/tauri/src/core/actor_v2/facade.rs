@@ -505,6 +505,7 @@ mod tests {
                 server: Some(StatusResBody {
                     version: Cow::Borrowed("2.0.0"),
                     core_infos: CoreInfos {
+                        instance_id: None,
                         r#type: None,
                         state: CoreState::Running,
                         state_changed_at: 1,

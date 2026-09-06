@@ -9,13 +9,10 @@ use crate::{
 };
 use anyhow::Context;
 use chrono::Local;
+use indexmap::IndexMap;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, VecDeque},
-    path::PathBuf,
-    result::Result as StdResult,
-};
+use std::{collections::VecDeque, path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
 use struct_patch::Patch as _;
 use sysproxy::Sysproxy;
@@ -670,14 +667,12 @@ pub async fn inspect_updater(updater_id: usize) -> Result<updater::UpdaterSummar
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_proxy_delay(
+    client: State<'_, NyanpasuClient>,
     name: String,
     provider: Option<String>,
     url: Option<String>,
 ) -> Result<clash::api::DelayRes> {
-    match clash::api::get_proxy_delay(name, provider, url).await {
-        Ok(res) => Ok(res),
-        Err(err) => Err(err.into()),
-    }
+    Ok(client.proxy_delay(name, provider, url).await?)
 }
 
 #[tauri::command]
@@ -688,14 +683,19 @@ pub async fn clash_api_get_configs() -> Result<clash::api::ClashConfig> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_delete_connections(id: Option<String>) -> Result<()> {
-    Ok(clash::api::delete_connections(id.as_deref()).await?)
+pub async fn clash_api_delete_connections(
+    client: State<'_, NyanpasuClient>,
+    id: Option<String>,
+) -> Result<()> {
+    Ok(client.close_clash_connections(id).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_version() -> Result<clash::api::ClashVersion> {
-    Ok(clash::api::get_version().await?)
+pub async fn clash_api_get_version(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::ClashVersion> {
+    Ok(client.clash_version().await?)
 }
 
 #[tauri::command]
@@ -719,10 +719,11 @@ pub async fn clash_api_update_providers_rules(name: String) -> Result<()> {
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_group_delay(
+    client: State<'_, NyanpasuClient>,
     group: String,
     url: Option<String>,
-) -> Result<HashMap<String, u32>> {
-    Ok(clash::api::get_group_delay(group, url).await?)
+) -> Result<IndexMap<String, u32>> {
+    Ok(client.group_delay(group, url).await?)
 }
 
 #[tauri::command]

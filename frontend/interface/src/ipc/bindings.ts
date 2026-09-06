@@ -617,9 +617,9 @@ export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
  *
  *  A deliberately separate type from `clash_api::Host`: clash-api is an
  *  internal dependency of the core manager and must not leak into the wire
- *  dependency tree. The controller secret is never carried here — it comes
- *  from the caller's own config, and the IPC transport's only gate is the
- *  socket ACL.
+ *  dependency tree. The controller secret is never carried here. Clients read
+ *  applied credentials through the private `/v2/core/api-connection` endpoint;
+ *  the IPC transport's authorization gate is the socket ACL.
  */
 export type CoreControllerInfo =
   | ({ NamedPipe: string } & { Http?: never; UnixSocket?: never })
@@ -648,6 +648,7 @@ export type CoreHealthState = 'Starting' | 'Healthy' | 'Unhealthy'
 export type CoreInfos = CoreInfos_Serialize | CoreInfos_Deserialize
 
 export type CoreInfos_Deserialize = {
+  instance_id?: string | null
   type: CoreType | null
   state: CoreState
   state_changed_at: number
@@ -663,6 +664,7 @@ export type CoreInfos_Deserialize = {
 }
 
 export type CoreInfos_Serialize = {
+  instance_id?: string | null
   type: CoreType | null
   state: CoreState
   state_changed_at: number

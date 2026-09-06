@@ -7,7 +7,10 @@ use std::{
 };
 
 use async_fs::create_dir_all;
-use boa_engine::{Context, JsNativeError, JsResult, JsString, Module, module::ModuleLoader};
+use boa_engine::{
+    Context, JsNativeError, JsResult, Module,
+    module::{ModuleLoader, ModuleRequest},
+};
 use boa_parser::Source;
 use mime::Mime;
 // Tokio sync is not runtime related
@@ -84,10 +87,10 @@ impl ModuleLoader for HttpModuleLoader {
     async fn load_imported_module(
         self: Rc<Self>,
         _referrer: boa_engine::module::Referrer,
-        specifier: JsString,
+        request: ModuleRequest,
         context: &RefCell<&mut Context>,
     ) -> JsResult<Module> {
-        let url = specifier.to_std_string_escaped();
+        let url = request.specifier().to_std_string_escaped();
         let url = Url::from_str(&url).expect("invalid url"); // SAFETY: `url` is a valid URL, if it's not, its caller side issue
         let cache_path = self.mapping_cache_dir(&url);
         let parent_dir = cache_path

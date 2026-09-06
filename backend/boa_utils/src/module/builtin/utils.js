@@ -9,5 +9,7 @@ import YAML from 'nyan:yaml'
  */
 export function yaml(strings, ...values) {
   const str = String.raw({ raw: strings }, ...values)
-  return YAML.parse(dedent(str))
+  // dedent ignores unindented lines when computing the common margin.
+  // A zero-indent YAML root must keep its children's indentation.
+  return YAML.parse(/^\S/m.test(str) ? str : dedent(str))
 }

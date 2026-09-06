@@ -1,6 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
-use boa_engine::{Context, JsResult, JsString, Module, module::ModuleLoader};
+use boa_engine::{
+    Context, JsResult, Module,
+    module::{ModuleLoader, ModuleRequest},
+};
 use url::Url;
 
 use crate::module::builtin::{BUILTIN_MODULE_PREFIX, BuiltinModuleLoader};
@@ -36,27 +39,27 @@ impl ModuleLoader for CombineModuleLoader {
     async fn load_imported_module(
         self: Rc<Self>,
         referrer: boa_engine::module::Referrer,
-        specifier: JsString,
+        request: ModuleRequest,
         context: &RefCell<&mut Context>,
     ) -> JsResult<Module> {
-        let specifier_str = specifier.to_std_string_escaped();
+        let specifier_str = request.specifier().to_std_string_escaped();
         match Url::parse(&specifier_str) {
             Ok(url) if url.scheme() == "http" || url.scheme() == "https" => {
                 self.http
                     .clone()
-                    .load_imported_module(referrer, specifier, context)
+                    .load_imported_module(referrer, request, context)
                     .await
             }
             _ => {
                 if specifier_str.starts_with(BUILTIN_MODULE_PREFIX) {
                     self.builtin
                         .clone()
-                        .load_imported_module(referrer, specifier, context)
+                        .load_imported_module(referrer, request, context)
                         .await
                 } else {
                     self.simple
                         .clone()
-                        .load_imported_module(referrer, specifier, context)
+                        .load_imported_module(referrer, request, context)
                         .await
                 }
             }

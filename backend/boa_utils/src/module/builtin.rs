@@ -1,9 +1,11 @@
 use std::{cell::RefCell, io::Read, rc::Rc};
 
 use anyhow::Context as _;
-use boa_engine::{Context, JsNativeError, JsResult, JsString, Module, module::ModuleLoader};
+use boa_engine::{
+    Context, JsNativeError, JsResult, Module,
+    module::{ModuleLoader, ModuleRequest},
+};
 use boa_parser::Source;
-use include_compress_bytes::include_bytes_brotli;
 use include_url_macro::include_url_bytes_with_brotli;
 use phf::phf_map;
 
@@ -15,9 +17,6 @@ static BUILTIN_MODULES: phf::Map<&str, &[u8]> = phf_map! {
     "yaml" => include_url_bytes_with_brotli!("https://fastly.jsdelivr.net/npm/yaml@2.8.1/+esm"),
     "dedent" => include_url_bytes_with_brotli!("https://fastly.jsdelivr.net/npm/dedent@1.7.0/+esm"),
     "js-base64" => include_url_bytes_with_brotli!("https://fastly.jsdelivr.net/npm/js-base64@3.7.8/+esm"),
-
-    // Local utils,
-    "utils" => include_bytes_brotli!("./builtin/utils.js"),
 };
 
 /// A ModuleLoader load resources from builtin static resources
@@ -27,14 +26,18 @@ impl ModuleLoader for BuiltinModuleLoader {
     async fn load_imported_module(
         self: Rc<Self>,
         _referrer: boa_engine::module::Referrer,
-        specifier: JsString,
+        request: ModuleRequest,
         context: &RefCell<&mut Context>,
     ) -> JsResult<Module> {
-        let specifier_str = specifier.to_std_string_escaped();
+        let specifier_str = request.specifier().to_std_string_escaped();
         let result: Result<_, anyhow::Error> = (|| {
             let module_name = specifier_str
                 .strip_prefix(BUILTIN_MODULE_PREFIX)
                 .context("Not builtin module prefix")?;
+            // Embed the local helper directly so Cargo tracks source changes.
+            if module_name == "utils" {
+                return Ok(include_bytes!("builtin/utils.js").to_vec());
+            }
             log::trace!("Trying to reading builtin module: {}", module_name);
             let module_data = BUILTIN_MODULES
                 .get(module_name)
@@ -73,6 +76,131 @@ mod tests {
     use boa_engine::{JsValue, job::SimpleJobExecutor};
 
     use super::*;
+
+    fn evaluate_builtin_json(source: &str) -> JsResult<serde_json::Value> {
+        use boa_engine::{builtins::promise::PromiseState, js_string};
+
+        let mut context = Context::builder()
+            .job_executor(Rc::new(SimpleJobExecutor::new()))
+            .module_loader(Rc::new(BuiltinModuleLoader))
+            .build()?;
+        let module = Module::parse(Source::from_bytes(source), None, &mut context)?;
+        let promise = module.load_link_evaluate(&mut context);
+        context.run_jobs()?;
+        assert!(
+            matches!(promise.state(), PromiseState::Fulfilled(_)),
+            "module failed: {:?}",
+            promise.state()
+        );
+        let result = module
+            .namespace(&mut context)
+            .get(js_string!("default"), &mut context)?;
+        Ok(result.to_json(&mut context)?.expect("JSON export"))
+    }
+
+    #[test_log::test]
+    fn dedent_preserves_relative_indentation() -> JsResult<()> {
+        for input in [
+            "\n    a:\n     b: 1\n     c: 2\n",
+            "\n  a:\n    b: 1\n\n    c: 2\n",
+            "\r\n    a:\r\n      b: 1\r\n      c: 2\r\n",
+        ] {
+            let source = format!(
+                "import dedent from 'nyan:dedent';
+                 import YAML from 'nyan:yaml';
+                 export default YAML.parse(dedent({}));",
+                serde_json::to_string(input).unwrap()
+            );
+            assert_eq!(
+                evaluate_builtin_json(&source)?,
+                serde_json::json!({"a": {"b": 1.0, "c": 2.0}}),
+                "{input:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test_log::test]
+    fn dedent_tag_preserves_nested_interpolation() -> JsResult<()> {
+        let source = r#"
+            import dedent from 'nyan:dedent';
+            import YAML from 'nyan:yaml';
+            export default YAML.parse(dedent`
+                a:
+                  b: ${"first"}
+                  c:
+                    - ${"second"}
+                    - ${"third"}
+            `);
+        "#;
+        assert_eq!(
+            evaluate_builtin_json(source)?,
+            serde_json::json!({
+                "a": {"b": "first", "c": ["second", "third"]}
+            })
+        );
+        Ok(())
+    }
+
+    #[test_log::test]
+    fn yaml_preserves_nested_mappings() -> JsResult<()> {
+        for template in [
+            "a:\n b: 1\n c: 2",
+            "\na:\n b: 1\n c: 2\n",
+            "\n    a:\n     b: 1\n     c: 2\n",
+            "\n    a:\n      b: 1\n\n      c: 2\n",
+            "\r\na:\r\n  b: 1\r\n  c: 2\r\n",
+            "a:\n b: ${1}\n c: ${2}",
+        ] {
+            let source =
+                format!("import {{ yaml }} from 'nyan:utils'; export default yaml`{template}`;");
+            assert_eq!(
+                evaluate_builtin_json(&source)?,
+                serde_json::json!({"a": {"b": 1.0, "c": 2.0}}),
+                "{template:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test_log::test]
+    fn yaml_preserves_empty_child_values() -> JsResult<()> {
+        let source = "import { yaml } from 'nyan:utils'; export default yaml`a:\n b:\n c:\n`;";
+        assert_eq!(
+            evaluate_builtin_json(source)?,
+            serde_json::json!({"a": {"b": null, "c": null}})
+        );
+        Ok(())
+    }
+
+    #[test_log::test]
+    fn yaml_preserves_sequences_scalars_and_root_siblings() -> JsResult<()> {
+        let source = r#"
+            import { yaml } from 'nyan:utils';
+            export default yaml`a:
+  b:
+    - name: first
+      enabled: true
+    - name: second
+      enabled: false
+  c: |
+    first line
+      indented line
+sibling: null
+`;
+        "#;
+        assert_eq!(
+            evaluate_builtin_json(source)?,
+            serde_json::json!({
+                "a": {
+                    "b": [{"name": "first", "enabled": true}, {"name": "second", "enabled": false}],
+                    "c": "first line\n  indented line\n"
+                },
+                "sibling": null
+            })
+        );
+        Ok(())
+    }
 
     #[test_log::test]
     fn test_builtin_module_loader() -> JsResult<()> {

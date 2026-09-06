@@ -4,7 +4,7 @@ use anyhow::Result;
 use clash_api::{DelayQuery, ProviderName, ProxyName};
 use indexmap::IndexMap;
 
-use crate::core::clash::api::{ClashVersion, DelayRes};
+use crate::core::clash::api::{ClashRule, ClashVersion, DelayRes, RulesRes};
 
 use super::NyanpasuClient;
 
@@ -16,6 +16,30 @@ fn delay_query(url: Option<String>) -> Result<DelayQuery> {
 }
 
 impl NyanpasuClient {
+    pub async fn clash_rules(&self) -> Result<RulesRes> {
+        let rules = self.inner.core_api.api_client().await?.rules().await?;
+        Ok(RulesRes {
+            rules: rules
+                .into_iter()
+                .map(|rule| ClashRule {
+                    r#type: rule.rule_type,
+                    payload: rule.payload,
+                    proxy: rule.proxy,
+                })
+                .collect(),
+        })
+    }
+
+    pub async fn update_clash_rule_provider(&self, name: String) -> Result<()> {
+        self.inner
+            .core_api
+            .api_client()
+            .await?
+            .update_rule_provider(&clash_api::RuleProviderName::new(name))
+            .await?;
+        Ok(())
+    }
+
     pub async fn clash_version(&self) -> Result<ClashVersion> {
         let version = self.inner.core_api.api_client().await?.version().await?;
         Ok(ClashVersion {

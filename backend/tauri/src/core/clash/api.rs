@@ -82,28 +82,12 @@ pub async fn get_configs() -> Result<ClashConfig> {
     Ok(resp)
 }
 
-/// GET /rules
-#[instrument]
-pub async fn get_rules() -> Result<RulesRes> {
-    let path = "/rules";
-    let resp: RulesRes = perform_request((Method::GET, path)).await?.json().await?;
-    Ok(resp)
-}
-
 /// GET /providers/rules
 #[instrument]
 pub async fn get_providers_rules() -> Result<ProvidersRulesRes> {
     let path = "/providers/rules";
     let resp: ProvidersRulesRes = perform_request((Method::GET, path)).await?.json().await?;
     Ok(resp)
-}
-
-/// PUT /providers/rules/:name
-#[instrument]
-pub async fn update_providers_rules_group(name: &str) -> Result<()> {
-    let path = format!("/providers/rules/{name}");
-    let _ = perform_request((Method::PUT, path.as_str())).await?;
-    Ok(())
 }
 
 /// PUT /configs

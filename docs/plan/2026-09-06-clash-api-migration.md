@@ -130,12 +130,12 @@ that version from the pinned runtime manifest.
 
 ### Remaining migration inventory
 
-| Callers                                                    | Required next change                                                                                                                                                  |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| configs / rules / providers REST reads in `ipc.rs`         | Make cross-core response absence explicit in clash-api before replacing old optional DTOs. Rule also requires `index` and `size`, which the old DTO does not require. |
-| `ProxiesGuard`, tray proxy actions, provider updates       | Introduce injected ProxiesActor ownership and migrate its cache, notifications and selection workflow together.                                                       |
-| `feat::change_clash_mode`, `ConnectionInterruptionService` | Move policy inputs and post-commit side effects into injected application workflows; do not add a second config writer.                                               |
-| `ClashConnectionsActor` and widget/UI subscriptions        | Guard typed stream consumption and queued messages by capability identity, then migrate shared history ownership and UI sinks.                                        |
+| Callers                                                    | Required next change                                                                                                                                                                                               |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| configs / provider REST reads in `ipc.rs`                  | Make cross-core response absence and unknown enum values explicit before replacing old optional DTOs. Rule reads and provider refresh are covered by [the next migration](2026-09-07-clash-rule-api-migration.md). |
+| `ProxiesGuard`, tray proxy actions, provider updates       | Introduce injected ProxiesActor ownership and migrate its cache, notifications and selection workflow together.                                                                                                    |
+| `feat::change_clash_mode`, `ConnectionInterruptionService` | Move policy inputs and post-commit side effects into injected application workflows; do not add a second config writer.                                                                                            |
+| `ClashConnectionsActor` and widget/UI subscriptions        | Guard typed stream consumption and queued messages by capability identity, then migrate shared history ownership and UI sinks.                                                                                     |
 
 The remaining legacy controller lookup is explicitly marked `TODO(actor-migration)`
 with this plan as its reason/removal condition. New callers must use the facade.

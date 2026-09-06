@@ -104,6 +104,17 @@ impl ApiClient {
         }
     }
 
+    pub async fn rules(&self) -> Result<Vec<clash_api::Rule>, ApiError> {
+        self.execute(self.client.rules()).await
+    }
+
+    pub async fn update_rule_provider(
+        &self,
+        name: &clash_api::RuleProviderName,
+    ) -> Result<(), ApiError> {
+        self.execute(self.client.update_rule_provider(name)).await
+    }
+
     pub async fn version(&self) -> Result<Version, ApiError> {
         self.execute(self.client.version()).await
     }
@@ -302,6 +313,46 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), api.revoked.cancelled())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn rules_and_provider_refresh_use_the_bound_client() {
+        use axum::{extract::Path, http::StatusCode, routing::put};
+        let (url, server) = server(
+            Router::new()
+                .route(
+                    "/rules/",
+                    get(|| async {
+                        Json(serde_json::json!({"rules":[
+                            {"type":"Match","payload":"","proxy":"DIRECT"}
+                        ]}))
+                    }),
+                )
+                .route(
+                    "/providers/rules/{name}/",
+                    put(|Path(name): Path<String>| async move {
+                        assert_eq!(name, "rules/日本 ?#");
+                        StatusCode::NO_CONTENT
+                    }),
+                ),
+        )
+        .await;
+        let endpoint = endpoint(url);
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let api = core.api_client().await.unwrap();
+        let rules = api.rules().await.unwrap();
+        assert_eq!(rules[0].proxy, "DIRECT");
+        assert_eq!(rules[0].index, None);
+        let provider = clash_api::RuleProviderName::new("rules/日本 ?#");
+        api.update_rule_provider(&provider).await.unwrap();
+        endpoint.binding.send_replace(None);
+        assert!(matches!(api.rules().await, Err(ApiError::Stale)));
+        assert!(matches!(
+            api.update_rule_provider(&provider).await,
+            Err(ApiError::Stale)
+        ));
+        core.actor.stop(None);
+        server.abort();
     }
 
     #[tokio::test]

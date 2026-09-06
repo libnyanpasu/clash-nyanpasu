@@ -401,9 +401,7 @@ export type ClashConnectionsConnectorEvent =
   | { kind: 'update'; data: ClashConnectionsInfo }
 
 export type ClashConnectionsConnectorState =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
+  'disconnected' | 'connecting' | 'connected'
 
 export type ClashConnectionsEvent = ClashConnectionsConnectorEvent
 
@@ -417,12 +415,7 @@ export type ClashConnectionsInfo = {
 export type ClashCore = ClashCore_Serialize | ClashCore_Deserialize
 
 export type ClashCoreType =
-  | 'mihomo'
-  | 'mihomo-alpha'
-  | 'clash-rs'
-  | 'clash-rs-alpha'
-  | 'clash'
-  | 'meow'
+  'mihomo' | 'mihomo-alpha' | 'clash-rs' | 'clash-rs-alpha' | 'clash' | 'meow'
 
 export type ClashCore_Deserialize =
   | 'clash'
@@ -435,12 +428,7 @@ export type ClashCore_Deserialize =
   | 'meow'
 
 export type ClashCore_Serialize =
-  | 'clash'
-  | 'clash-rs'
-  | 'mihomo'
-  | 'mihomo-alpha'
-  | 'clash-rs-alpha'
-  | 'meow'
+  'clash' | 'clash-rs' | 'mihomo' | 'mihomo-alpha' | 'clash-rs-alpha' | 'meow'
 
 export type ClashInfo = {
   /**  clash core port */
@@ -520,8 +508,7 @@ export type ClashWsTraffic = {
 }
 
 export type CompositionConfig =
-  | CompositionConfig_Serialize
-  | CompositionConfig_Deserialize
+  CompositionConfig_Serialize | CompositionConfig_Deserialize
 
 export type CompositionConfig_Deserialize = {
   /**
@@ -557,8 +544,7 @@ export type CompositionMemberRole = 'base' | 'contributor'
 
 /**  A profile that can produce a complete config and can be selected by current. */
 export type ConfigDefinition =
-  | ConfigDefinition_Serialize
-  | ConfigDefinition_Deserialize
+  ConfigDefinition_Serialize | ConfigDefinition_Deserialize
 
 /**  A profile that can produce a complete config and can be selected by current. */
 export type ConfigDefinition_Deserialize =
@@ -820,10 +806,7 @@ export type DownloadStatus = {
 
 /**  The high-level state of a download session. */
 export type DownloaderState =
-  | 'idle'
-  | 'downloading'
-  | { failed: string }
-  | 'finished'
+  'idle' | 'downloading' | { failed: string } | 'finished'
 
 /**
  *  Type of content the editor window displays.
@@ -869,9 +852,7 @@ export type EnvInfo = {
 export type ExecutionHost = 'local' | 'service'
 
 export type ExternalControllerPortStrategy =
-  | 'fixed'
-  | 'random'
-  | 'allow_fallback'
+  'fixed' | 'random' | 'allow_fallback'
 
 export type ExternalMode = 'symlink' | 'mirror'
 
@@ -1329,12 +1310,7 @@ export type LoggingLevel_Deserialize =
   | 'error'
 
 export type LoggingLevel_Serialize =
-  | 'silent'
-  | 'trace'
-  | 'debug'
-  | 'info'
-  | 'warn'
-  | 'error'
+  'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
 
 /**  A path relative to the application-managed profile directory. */
 export type ManagedProfilePath = string
@@ -1350,8 +1326,7 @@ export type ManifestVersionLatest = {
 
 /**  Stable read location used by parsers and processors. */
 export type MaterializedFile =
-  | MaterializedFile_Serialize
-  | MaterializedFile_Deserialize
+  MaterializedFile_Serialize | MaterializedFile_Deserialize
 
 /**  Stable read location used by parsers and processors. */
 export type MaterializedFile_Deserialize = {
@@ -1380,8 +1355,7 @@ export type MutationOutcome<T> =
 export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
 
 export type NewProfileRequest =
-  | NewProfileRequest_Serialize
-  | NewProfileRequest_Deserialize
+  NewProfileRequest_Serialize | NewProfileRequest_Deserialize
 
 export type NewProfileRequest_Deserialize = {
   metadata: ProfileMetadata_Deserialize
@@ -1396,8 +1370,7 @@ export type NewProfileRequest_Serialize = {
 }
 
 export type OverlayTransform =
-  | OverlayTransform_Serialize
-  | OverlayTransform_Deserialize
+  OverlayTransform_Serialize | OverlayTransform_Deserialize
 
 export type OverlayTransform_Deserialize = {
   source: ProfileSource_Deserialize
@@ -1408,8 +1381,7 @@ export type OverlayTransform_Serialize = {
 }
 
 export type PatchRuntimeConfig =
-  | PatchRuntimeConfig_Serialize
-  | PatchRuntimeConfig_Deserialize
+  PatchRuntimeConfig_Serialize | PatchRuntimeConfig_Deserialize
 
 export type PatchRuntimeConfig_Deserialize = {
   'allow-lan'?: boolean | null
@@ -1437,8 +1409,7 @@ export type PostProcessingOutput = {
 
 /**  Top-level semantic split. */
 export type ProfileDefinition =
-  | ProfileDefinition_Serialize
-  | ProfileDefinition_Deserialize
+  ProfileDefinition_Serialize | ProfileDefinition_Deserialize
 
 /**  Top-level semantic split. */
 export type ProfileDefinition_Deserialize =
@@ -1459,8 +1430,7 @@ export type ProfileDefinition_Serialize =
     })
 
 export type ProfileDocument =
-  | ProfileDocument_Serialize
-  | ProfileDocument_Deserialize
+  ProfileDocument_Serialize | ProfileDocument_Deserialize
 
 export type ProfileDocument_Deserialize = {
   current?: ProfileId | null
@@ -1496,12 +1466,10 @@ export type ProfileItem_Serialize = {
 
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata =
-  | ProfileMetadata_Serialize
-  | ProfileMetadata_Deserialize
+  ProfileMetadata_Serialize | ProfileMetadata_Deserialize
 
 export type ProfileMetadataPatch =
-  | ProfileMetadataPatch_Serialize
-  | ProfileMetadataPatch_Deserialize
+  ProfileMetadataPatch_Serialize | ProfileMetadataPatch_Deserialize
 
 export type ProfileMetadataPatch_Deserialize = {
   name: string | null
@@ -1895,8 +1863,7 @@ export type ProfileValidationError =
 export type ProviderType = 'Proxy' | 'Rule' | 'Unknown'
 
 export type ProvidersProxiesRes =
-  | ProvidersProxiesRes_Serialize
-  | ProvidersProxiesRes_Deserialize
+  ProvidersProxiesRes_Serialize | ProvidersProxiesRes_Deserialize
 
 export type ProvidersProxiesRes_Deserialize = {
   providers?: { [key in string]: ProxyProviderItem_Deserialize }
@@ -1931,8 +1898,7 @@ export type Proxies_Serialize = {
 }
 
 export type ProxyGroupItem =
-  | ProxyGroupItem_Serialize
-  | ProxyGroupItem_Deserialize
+  ProxyGroupItem_Serialize | ProxyGroupItem_Deserialize
 
 export type ProxyGroupItem_Deserialize = {
   name: string
@@ -2002,8 +1968,7 @@ export type ProxyItem_Serialize = {
 }
 
 export type ProxyProviderItem =
-  | ProxyProviderItem_Serialize
-  | ProxyProviderItem_Deserialize
+  ProxyProviderItem_Serialize | ProxyProviderItem_Deserialize
 
 export type ProxyProviderItem_Deserialize = {
   name: string
@@ -2028,8 +1993,7 @@ export type ProxyProviderItem_Serialize = {
 }
 
 export type RemoteProfileOptionsPatch =
-  | RemoteProfileOptionsPatch_Serialize
-  | RemoteProfileOptionsPatch_Deserialize
+  RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize
 
 export type RemoteProfileOptionsPatch_Deserialize = {
   user_agent?: string | null
@@ -2098,8 +2062,7 @@ export type SchemeRequestReceivedEvent = {
 export type ScriptRuntime = 'javascript' | 'lua'
 
 export type ScriptTransform =
-  | ScriptTransform_Serialize
-  | ScriptTransform_Deserialize
+  ScriptTransform_Serialize | ScriptTransform_Deserialize
 
 export type ScriptTransform_Deserialize = {
   source: ProfileSource_Deserialize
@@ -2138,8 +2101,7 @@ export type ServiceCompat =
  *  second copy of core state.
  */
 export type ServiceHostStatus =
-  | ServiceHostStatus_Serialize
-  | ServiceHostStatus_Deserialize
+  ServiceHostStatus_Serialize | ServiceHostStatus_Deserialize
 
 /**
  *  The watch projection (UI settings page + facade). Daemon state, never a
@@ -2194,8 +2156,7 @@ export type ServicePhase =
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
 
 export type ServiceStatusChangedEvent =
-  | ServiceStatusChangedEvent_Serialize
-  | ServiceStatusChangedEvent_Deserialize
+  ServiceStatusChangedEvent_Serialize | ServiceStatusChangedEvent_Deserialize
 
 export type ServiceStatusChangedEvent_Deserialize =
   ServiceHostStatus_Deserialize
@@ -2208,8 +2169,7 @@ export type ServiceStatusChangedEvent_Serialize = ServiceHostStatus_Serialize
  *  wire 是原结构的严格超集，前端既有消费点不受影响。
  */
 export type ServiceStatusInfo =
-  | ServiceStatusInfo_Serialize
-  | ServiceStatusInfo_Deserialize
+  ServiceStatusInfo_Serialize | ServiceStatusInfo_Deserialize
 
 /**
  *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
@@ -2286,8 +2246,7 @@ export type StorageValueChangedEvent = {
 }
 
 export type SubscriptionInfo =
-  | SubscriptionInfo_Serialize
-  | SubscriptionInfo_Deserialize
+  SubscriptionInfo_Serialize | SubscriptionInfo_Deserialize
 
 export type SubscriptionInfo_Deserialize =
   | {
@@ -2321,8 +2280,7 @@ export type SubscriptionInfo_Serialize = {
 
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition =
-  | TransformDefinition_Serialize
-  | TransformDefinition_Deserialize
+  TransformDefinition_Serialize | TransformDefinition_Deserialize
 
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition_Deserialize =
@@ -2345,8 +2303,7 @@ export type TransformDefinition_Serialize =
   | { type: 'script'; source: ProfileSource_Serialize; runtime: ScriptRuntime }
 
 export type TransformOwner =
-  | { type: 'global' }
-  | { type: 'config'; uid: ProfileId }
+  { type: 'global' } | { type: 'config'; uid: ProfileId }
 
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 

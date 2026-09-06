@@ -310,12 +310,12 @@ impl CompositionConfig {
 
 ### `tests/mutators.rs`
 
-| 测试名                                       | 验证内容                                                                                                                                                                                                                           |
+| 测试名 | 验证内容 |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------- |
-| `list_ops_dedup_remove_and_move`             | `list_add` 去重、`list_remove` 幂等、`list_move` 边界安全，证明三个 list-op 原语的正确性                                                                                                                                           |
-| `top_level_setters_and_global_transforms`    | `set_current`/`clear_current`/`set_valid`/`add                                                                                                                                                                                     | move | remove_global_transform`均按预期工作，证明顶层 setter 覆盖旧`current`/`valid`/chain 需求 |
+| `list_ops_dedup_remove_and_move` | `list_add` 去重、`list_remove` 幂等、`list_move` 边界安全，证明三个 list-op 原语的正确性 |
+| `top_level_setters_and_global_transforms` | `set_current`/`clear_current`/`set_valid`/`add                                                                                                                                                                                     | move | remove_global_transform`均按预期工作，证明顶层 setter 覆盖旧`current`/`valid`/chain 需求 |
 | `item_atomic_replacement_and_metadata_patch` | `apply_metadata_patch` 仅改元数据；`set_source` 在有 source 的 Transform 上成功返回 `true`；`set_definition` 切换到 `CompositionConfig` 后 `source()` 返回 `None`，`set_source` 返回 `false`，证明原子替换与 source 缺失的安全处理 |
-| `composition_contributor_ops`                | `set_base`/`add_contributor`/`move_contributor`/`remove_contributor` 正确管理 `extend_proxies_from`，去重有效，证明 Composition 的 list-op 需求                                                                                    |
+| `composition_contributor_ops` | `set_base`/`add_contributor`/`move_contributor`/`remove_contributor` 正确管理 `extend_proxies_from`，去重有效，证明 Composition 的 list-op 需求 |
 
 ---
 

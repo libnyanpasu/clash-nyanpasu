@@ -86,9 +86,7 @@ function isKeyframesAtRule(s: string): boolean {
 }
 
 type Token =
-  | { kind: 'text'; value: string }
-  | { kind: 'open' }
-  | { kind: 'close' }
+  { kind: 'text'; value: string } | { kind: 'open' } | { kind: 'close' }
 
 /**
  * Tokenize a CSS source string into text segments, `{`, and `}` tokens,

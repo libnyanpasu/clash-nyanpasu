@@ -221,8 +221,7 @@ export function FileDropZone({
     // In Tauri, try to get file path from the file object
     // If not available, use FileReader API
     const filePath = (file as File & { path?: string }).path as
-      | string
-      | undefined
+      string | undefined
 
     if (filePath) {
       // File path is available (Tauri native drag & drop)
@@ -250,8 +249,7 @@ export function FileDropZone({
 
     // In Tauri, file input may have path property
     const filePath = (file as File & { path?: string }).path as
-      | string
-      | undefined
+      string | undefined
 
     if (filePath) {
       // File path is available (Tauri file dialog)

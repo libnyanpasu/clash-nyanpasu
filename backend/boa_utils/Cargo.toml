@@ -25,7 +25,6 @@ url = "2"
 log = "0.4"
 anyhow = "1.0"
 include_url_macro = { workspace = true }
-include-compress-bytes = { workspace = true }
 phf = { version = "0.14.0", features = ["macros"] }
 
 # for cacheing

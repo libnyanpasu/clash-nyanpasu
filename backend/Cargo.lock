@@ -1269,7 +1269,6 @@ dependencies = [
  "brotli",
  "futures-concurrency",
  "futures-util",
- "include-compress-bytes",
  "include_url_macro",
  "indoc",
  "log",
@@ -1599,12 +1598,6 @@ name = "cargo-emit"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d1d6b8077d27443822a547d1ef816eadd2dc4a75de9105aff614192729cf6d3"
-
-[[package]]
-name = "cargo-emit"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1582e1c9e755dd6ad6b224dcffb135d199399a4568d454bd89fe515ca8425695"
 
 [[package]]
 name = "cargo-platform"
@@ -4981,26 +4974,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89194689a993ab15268672e99e7b0e19da2da3268ac682e8f02d29d4d1434cd7"
 
 [[package]]
-name = "include-compress-bytes"
-version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/include-compress-bytes?rev=4e4f25b794ed0b9a323a893bcdaf22f5024ab58a#4e4f25b794ed0b9a323a893bcdaf22f5024ab58a"
-dependencies = [
- "brotli",
- "cargo-emit 0.2.1",
- "proc-macro2",
- "quote",
- "sha2 0.10.9",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "include_url_macro"
 version = "0.1.0"
 source = "git+https://github.com/libnyanpasu/include_url_macro?rev=fbe47bd71047892a218e3166a2a1bac474488218#fbe47bd71047892a218e3166a2a1bac474488218"
 dependencies = [
  "brotli",
  "bytes",
- "cargo-emit 0.1.1",
+ "cargo-emit",
  "proc-macro2",
  "quote",
  "reqwest 0.12.28",

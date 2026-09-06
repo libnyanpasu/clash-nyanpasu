@@ -5,7 +5,7 @@ use clash_api::{DelayQuery, ProviderName, ProxyName};
 use indexmap::IndexMap;
 
 use crate::core::clash::api::{
-    ClashRule, ClashVersion, DelayRes, ProvidersRulesRes, RuleProviderItem, RulesRes,
+    ClashConfig, ClashRule, ClashVersion, DelayRes, ProvidersRulesRes, RuleProviderItem, RulesRes,
 };
 
 use super::NyanpasuClient;
@@ -18,6 +18,10 @@ fn delay_query(url: Option<String>) -> Result<DelayQuery> {
 }
 
 impl NyanpasuClient {
+    pub async fn clash_configs(&self) -> Result<ClashConfig> {
+        config_item(self.inner.core_api.api_client().await?.configs().await?)
+    }
+
     pub async fn clash_rule_providers(&self) -> Result<ProvidersRulesRes> {
         let providers = self
             .inner
@@ -133,9 +137,60 @@ fn rule_provider_item(provider: clash_api::RuleProvider) -> Result<RuleProviderI
     })
 }
 
+fn config_item(config: clash_api::RuntimeConfig) -> Result<ClashConfig> {
+    Ok(ClashConfig {
+        port: config.port.map(u16::try_from).transpose()?,
+        socket_port: config.socket_port.map(u16::try_from).transpose()?,
+        socks_port: config.socks_port.map(u16::try_from).transpose()?,
+        mixed_port: config.mixed_port.map(u16::try_from).transpose()?,
+        redir_port: config.redir_port.map(u16::try_from).transpose()?,
+        tproxy_port: config.tproxy_port.map(u16::try_from).transpose()?,
+        mode: config.mode.map(|value| value.as_str().to_owned()),
+        log_level: config.log_level.map(|value| value.as_str().to_owned()),
+        allow_lan: config.allow_lan,
+        ipv6: config.ipv6,
+        external_controller: config.external_controller,
+        secret: config.secret,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::rule_provider_item;
+
+    #[test]
+    fn config_dto_preserves_absence_unknown_modes_and_valid_port_bounds() {
+        let config = serde_json::from_value(serde_json::json!({
+            "mode":"future-mode", "log-level":"trace", "mixed-port":0,
+            "port":65535, "ipv6":false, "external-controller":"127.0.0.1:9090",
+            "secret":"fixture-secret", "socket-port":100
+        }))
+        .unwrap();
+        let dto = super::config_item(config).unwrap();
+        assert_eq!(dto.mode.as_deref(), Some("future-mode"));
+        assert_eq!(dto.log_level.as_deref(), Some("trace"));
+        assert_eq!(dto.mixed_port, Some(0));
+        assert_eq!(dto.port, Some(65535));
+        assert_eq!(dto.ipv6, Some(false));
+        assert_eq!(dto.socket_port, Some(100));
+        assert_eq!(dto.secret.as_deref(), Some("fixture-secret"));
+        assert!(dto.socks_port.is_none());
+        assert!(dto.allow_lan.is_none());
+        for field in [
+            "port",
+            "socket-port",
+            "socks-port",
+            "mixed-port",
+            "redir-port",
+            "tproxy-port",
+        ] {
+            for port in [-1, 65536] {
+                let mut value = serde_json::json!({});
+                value[field] = port.into();
+                assert!(super::config_item(serde_json::from_value(value).unwrap()).is_err());
+            }
+        }
+    }
 
     #[test]
     fn provider_dto_preserves_unknown_values_and_absence() {

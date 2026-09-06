@@ -362,9 +362,9 @@ mod utils {
         let source_text = script.trim_matches(['\t', '\n', '\r', ' ']);
         let result = Parser::new(&allocator, source_text, source_type).parse();
 
-        if !result.errors.is_empty() {
+        if !result.diagnostics.is_empty() {
             let mut errors = String::new();
-            for error in result.errors {
+            for error in result.diagnostics {
                 errors.push_str(&format!(
                     "{:?}\n",
                     error.with_source_code(source_text.to_string())

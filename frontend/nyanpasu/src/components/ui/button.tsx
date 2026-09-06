@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from 'class-variance-authority'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { Slot } from 'radix-ui'
 import { lazy, Suspense, useCallback } from 'react'
 import { chains } from '@/utils/chain'

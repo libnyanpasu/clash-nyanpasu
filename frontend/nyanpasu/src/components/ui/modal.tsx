@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { Dialog as DialogPrimitive, Slot } from 'radix-ui'
 import { ComponentProps, createContext, useContext, useId } from 'react'
 import { cn } from '@nyanpasu/utils'

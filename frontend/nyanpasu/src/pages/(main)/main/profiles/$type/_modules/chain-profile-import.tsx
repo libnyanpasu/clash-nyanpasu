@@ -1,6 +1,6 @@
 import NoteStackAddRounded from '~icons/material-symbols/note-stack-add-rounded'
 import dayjs from 'dayjs'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence } from 'motion/react'
 import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import z from 'zod'

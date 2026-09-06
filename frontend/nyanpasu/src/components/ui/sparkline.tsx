@@ -1,6 +1,6 @@
 import * as d3 from 'd3'
-import { animate } from 'framer-motion'
 import { cloneDeep } from 'lodash-es'
+import { animate } from 'motion/react'
 import { ComponentPropsWithoutRef, useEffect, useRef } from 'react'
 import { cn } from '@nyanpasu/utils'
 

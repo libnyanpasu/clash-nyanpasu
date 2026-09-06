@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { AnimatedItem } from '@/components/ui/animated-item'

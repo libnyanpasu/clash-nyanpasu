@@ -1,6 +1,6 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
 import DoneRounded from '~icons/material-symbols/done-rounded'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'

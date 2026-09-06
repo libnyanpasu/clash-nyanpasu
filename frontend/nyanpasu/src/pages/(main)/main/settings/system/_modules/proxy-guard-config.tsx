@@ -1,5 +1,5 @@
-import { AnimatePresence } from 'framer-motion'
 import { isNumber } from 'lodash-es'
+import { AnimatePresence } from 'motion/react'
 import { useCallback, useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import { ComponentProps } from 'react'
 import { cn } from '@nyanpasu/utils'
 

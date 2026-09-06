@@ -4,7 +4,7 @@ import {
   domAnimation,
   LazyMotion,
   motion,
-} from 'framer-motion'
+} from 'motion/react'
 import { Key, MouseEvent, useCallback, useState } from 'react'
 
 export type RippleConfig = {

@@ -1,4 +1,4 @@
-import { isMotionComponent, motion, type HTMLMotionProps } from 'framer-motion'
+import { isMotionComponent, motion, type HTMLMotionProps } from 'motion/react'
 import {
   isValidElement,
   useMemo,

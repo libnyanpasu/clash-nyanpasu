@@ -31,9 +31,11 @@ authors = ["zzzgydi", "keiko233"]
 # These crates come from the `backend/nyanpasu-runtime` submodule; the gitlink is
 # the pin. `scripts/check.ts` derives the sidecar version from that submodule's
 # `nyanpasu_service/Cargo.toml` and downloads the release tagged with it, so the
-# IPC client and the `nyanpasu-service` binary follow one pin -- but only as far
-# as that crate version has been bumped. A gitlink ahead of the last version bump
-# downloads a daemon older than the protocol these crates speak.
+# IPC client and the `nyanpasu-service` binary follow one pin -- but only while
+# the gitlink sits on a released tag. Keep it there. A gitlink moved past the
+# last version bump still reports the old crate version, so `prepare:check`
+# fetches a daemon older than the protocol these crates compile against, and
+# the compat gate cannot see the difference from a version string alone.
 nyanpasu-utils = { path = "nyanpasu-runtime/crates/nyanpasu-utils", features = [
   "specta",
 ] }

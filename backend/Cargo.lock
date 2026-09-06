@@ -1816,7 +1816,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clash-api"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.2"
 dependencies = [
  "backon",
  "chrono",
@@ -6405,7 +6405,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-manager"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.2"
 dependencies = [
  "camino",
  "chrono",
@@ -6428,7 +6428,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-metadata"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.2"
 dependencies = [
  "constcat",
  "enumset",
@@ -6471,7 +6471,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.2"
 dependencies = [
  "anyhow",
  "derive_builder",

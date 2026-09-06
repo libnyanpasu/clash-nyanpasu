@@ -12,7 +12,8 @@ use std::{
 use tokio::sync::Notify;
 
 use nyanpasu_core_manager::{
-    CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, OperationId,
+    ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec,
+    InstanceOptions, OperationId, ReconcileRequest,
 };
 use nyanpasu_ipc::api::{
     core::v2::{OperationErrorInfo, OperationInfo, OperationOutputInfo, OperationPhase},
@@ -20,7 +21,8 @@ use nyanpasu_ipc::api::{
 };
 
 use super::{
-    CoreActorMessage, CoreClient, EndpointConnectivity, HandoffReport, STOP_WAIT, ShutdownReport,
+    CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport, STOP_WAIT,
+    ShutdownReport,
     endpoint::{BoxFuture, ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost},
 };
 
@@ -57,6 +59,7 @@ struct FakeEndpoint {
     /// call and then wedged would (F4).
     hang_submit: AtomicBool,
     never: Notify,
+    last_core_type: Mutex<Option<Option<nyanpasu_utils::core::CoreType>>>,
 }
 
 /// How the fake host answers a stop. Nothing here is derived from `status`.
@@ -92,6 +95,7 @@ impl FakeEndpoint {
             status_dropped: Mutex::new(None),
             hang_submit: AtomicBool::new(false),
             never: Notify::new(),
+            last_core_type: Mutex::new(None),
         })
     }
 
@@ -160,6 +164,7 @@ fn snapshot(state: CoreStateDetail) -> CoreStatusSnapshot {
         state_changed_at: 0,
         revision: None,
         healthy: None,
+        applied_kind: None,
     }
 }
 
@@ -170,7 +175,7 @@ impl ControlEndpoint for FakeEndpoint {
 
     fn submit<'a>(
         &'a self,
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
     ) -> BoxFuture<'a, Result<OperationInfo, CoreError>> {
         Box::pin(async move {
             if self.hang_submit.load(Ordering::SeqCst) {
@@ -178,6 +183,8 @@ impl ControlEndpoint for FakeEndpoint {
                 unreachable!("nothing notifies `never`");
             }
             self.submits.fetch_add(1, Ordering::SeqCst);
+            *self.last_core_type.lock().unwrap() = Some(submission.core_type.clone());
+            let envelope = submission.envelope;
             let id = envelope.operation_id.to_string();
             if matches!(envelope.command, CoreCommand::Stop) {
                 self.stops.fetch_add(1, Ordering::SeqCst);
@@ -227,11 +234,68 @@ impl ControlEndpoint for FakeEndpoint {
     }
 }
 
-fn reconcile_envelope() -> CoreCommandEnvelope {
-    CoreCommandEnvelope {
-        operation_id: OperationId::generate(),
-        command: CoreCommand::Recover,
+fn reconcile_envelope() -> CoreSubmission {
+    CoreSubmission {
+        envelope: CoreCommandEnvelope {
+            operation_id: OperationId::generate(),
+            command: CoreCommand::Recover,
+        },
+        core_type: None,
     }
+}
+
+#[tokio::test]
+async fn an_alpha_core_reaches_the_service_wire_intact() {
+    use camino::Utf8PathBuf;
+    use nyanpasu_core_manager::CoreKind;
+    use nyanpasu_ipc::api::core::v2::CoreCommandInfo;
+    use nyanpasu_utils::core::{ClashCoreType, CoreType};
+
+    let service = FakeEndpoint::new(
+        ExecutionHost::Service,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    let client = CoreClient::spawn(service.clone()).await.unwrap();
+    let alpha = CoreType::Clash(ClashCoreType::MihomoAlpha);
+    let envelope = CoreCommandEnvelope {
+        operation_id: OperationId::generate(),
+        command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
+            core: CoreSpec {
+                kind: CoreKind::Mihomo,
+                binary_path: Utf8PathBuf::from("mihomo-alpha"),
+                version: None,
+                features: vec![],
+            },
+            config: ConfigInput::Inline {
+                bytes: b"proxies: []".to_vec(),
+                expected_digest: None,
+            },
+            options: InstanceOptions::default(),
+            expected_applied: None,
+        })),
+    };
+
+    client
+        .submit(CoreSubmission {
+            envelope: envelope.clone(),
+            core_type: Some(alpha.clone()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(*service.last_core_type.lock().unwrap(), Some(Some(alpha)));
+
+    let request = super::endpoint::wire_submit_request(&CoreSubmission {
+        envelope,
+        core_type: None,
+    })
+    .unwrap();
+    let CoreCommandInfo::Reconcile { core_type, .. } = request.command else {
+        panic!("expected reconcile wire command");
+    };
+    assert_eq!(
+        core_type.into_owned(),
+        CoreType::Clash(ClashCoreType::Mihomo)
+    );
 }
 
 #[tokio::test]
@@ -409,6 +473,7 @@ async fn a_lost_stop_result_with_an_unknown_status_is_not_a_stop_proof() {
         state_changed_at: 0,
         revision: None,
         healthy: None,
+        applied_kind: None,
     });
     let service = FakeEndpoint::new(
         ExecutionHost::Service,
@@ -919,6 +984,38 @@ async fn a_degraded_shutdown_reports_that_no_stop_was_attempted() {
     assert_eq!(local.stops.load(Ordering::SeqCst), 0);
 }
 
+#[tokio::test]
+async fn a_second_shutdown_replays_the_same_report() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+
+    let first = client.shutdown().await.unwrap();
+    assert_eq!(client.status().connectivity, EndpointConnectivity::ShutDown);
+    let second = client.shutdown().await.unwrap();
+
+    assert_eq!(first.stop, second.stop);
+    assert_eq!(first.final_status, second.final_status);
+    assert_eq!(local.stops.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_submit_after_shutdown_is_refused_as_shutting_down() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let client = CoreClient::spawn(local).await.unwrap();
+
+    client.shutdown().await.unwrap();
+    let error = client.submit(reconcile_envelope()).await.unwrap_err();
+
+    assert_eq!(error.kind, Some(CoreErrorKind::ShuttingDown));
+    assert!(!error.retryable);
+}
+
 /// Minor-A2: an endpoint that accepts the read and never answers must degrade
 /// the projection. Unbounded, the pump would wait on it forever and the app
 /// would keep showing the last frame as if it were current.
@@ -1108,16 +1205,40 @@ fn handoff_budget_outlasts_every_internal_leg_it_covers() {
     assert!(super::handoff_budget(super::PUMP_STATUS_TIMEOUT, STOP_WAIT) > production_worst_case);
 }
 
-/// The coherence requirement's shutdown half: `Shutdown` never preflights a
-/// target, so its worst case is the stop's three legs (admission, long poll,
-/// status fallback) without the extra `status_timeout` `change_host` spends
-/// on the preflight.
+/// The coherence requirement's shutdown half. Standing alone, `Shutdown` never
+/// preflights a target, so its worst case is the stop's three legs (admission,
+/// long poll, status fallback). But it does not always stand alone: a shutdown
+/// that arrives during a handoff is deferred and settled by that handoff's
+/// continuation, after waiting out the preflight leg `change_host` holds the
+/// mailbox for. The budget has to outlast that longer path too, or it expires
+/// exactly when the actor answers honestly.
 #[test]
 fn shutdown_budget_outlasts_every_internal_leg_it_covers() {
     let status_timeout = Duration::from_millis(50);
     let stop_wait = Duration::from_millis(100);
-    let worst_case = status_timeout * 3 + stop_wait;
-    assert!(super::shutdown_budget(status_timeout, stop_wait) > worst_case);
+
+    let standalone = status_timeout * 3 + stop_wait;
+    assert!(super::shutdown_budget(status_timeout, stop_wait) > standalone);
+
+    let deferred_behind_a_handoff = status_timeout * 4 + stop_wait;
+    assert!(
+        super::shutdown_budget(status_timeout, stop_wait) > deferred_behind_a_handoff,
+        "a shutdown deferred by a concurrent handoff must outlast the preflight leg too"
+    );
+}
+
+/// The production numbers this closes, in the shape of the A1 defect it
+/// repeats: the previous three-leg budget was byte-for-byte the worst case a
+/// shutdown deferred behind a handoff can honestly take.
+#[test]
+fn the_old_shutdown_budget_equalled_the_deferred_worst_case() {
+    let deferred_worst_case = super::PUMP_STATUS_TIMEOUT * 4 + STOP_WAIT;
+    let old_budget = super::PUMP_STATUS_TIMEOUT * 3 + STOP_WAIT + super::CALL_BUDGET_SLACK;
+    assert_eq!(
+        old_budget, deferred_worst_case,
+        "the equality is the bug: the caller could give up as the actor answered"
+    );
+    assert!(super::shutdown_budget(super::PUMP_STATUS_TIMEOUT, STOP_WAIT) > deferred_worst_case);
 }
 
 /// The coherence requirement's submit half: once F4 bounds the `Submit`
@@ -1222,7 +1343,7 @@ async fn a_submit_queued_behind_other_work_is_reported_retryable_not_internal() 
         client
             .actor
             .cast(CoreActorMessage::Submit {
-                envelope: reconcile_envelope(),
+                submission: reconcile_envelope(),
                 reply: reply.into(),
             })
             .unwrap();

@@ -6,13 +6,13 @@
 //!
 use crate::{
     config::*,
-    core::{service::ipc::get_ipc_state, *},
+    core::*,
     log_err,
     utils::{self, help::get_clash_external_port, resolve},
 };
 use anyhow::{Result, bail};
 use handle::Message;
-use nyanpasu_ipc::api::status::CoreState;
+use nyanpasu_ipc::api::status::CoreStateDetail;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 use std::future::Future;
@@ -53,9 +53,20 @@ pub fn toggle_dashboard() {
 }
 
 // 重启clash
-pub fn restart_clash_core() {
-    tauri::async_runtime::spawn(async {
-        match CoreManager::global().run_core().await {
+pub fn restart_clash_core(app_handle: &AppHandle) {
+    let client = app_handle
+        .try_state::<crate::client::NyanpasuClient>()
+        .map(|state| state.inner().clone());
+    tauri::async_runtime::spawn(async move {
+        let result = match client {
+            Some(client) => client.reconcile_core().await.map(|_| ()),
+            None => Err(nyanpasu_core_manager::CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::BackendUnavailable,
+                "NyanpasuClient is not available",
+                true,
+            )),
+        };
+        match result {
             Ok(_) => {
                 handle::Handle::refresh_clash();
                 handle::Handle::notice_message(&Message::SetConfig(Ok(())));
@@ -237,7 +248,12 @@ pub(crate) fn requires_core_restart(patch: &Mapping) -> bool {
 /// land without a corresponding apply (use `regenerate_and_apply_for_legacy`).
 #[allow(dead_code)]
 pub async fn patch_clash(client: crate::client::NyanpasuClient, patch: Mapping) -> Result<()> {
-    patch_clash_with_rebuild(patch, |restart| {
+    let core_running = client
+        .core_status()
+        .snapshot
+        .and_then(|snapshot| snapshot.state)
+        .is_some_and(|state| matches!(state, CoreStateDetail::Running { .. }));
+    patch_clash_with_rebuild(patch, core_running, |restart| {
         let client = client.clone();
         async move {
             if restart {
@@ -251,7 +267,11 @@ pub async fn patch_clash(client: crate::client::NyanpasuClient, patch: Mapping) 
     .await
 }
 
-pub async fn patch_clash_with_rebuild<F, Fut, T>(patch: Mapping, rebuild: F) -> Result<T>
+pub async fn patch_clash_with_rebuild<F, Fut, T>(
+    patch: Mapping,
+    core_running: bool,
+    rebuild: F,
+) -> Result<T>
 where
     F: FnOnce(bool) -> Fut,
     Fut: Future<Output = Result<T>>,
@@ -289,10 +309,7 @@ where
                 let strategy = Config::verge()
                     .latest()
                     .get_external_controller_port_strategy();
-                let core_state = crate::core::CoreManager::global().status().await;
-                if matches!(core_state.0.as_ref(), &CoreState::Running)
-                    && get_clash_external_port(&strategy, port).is_err()
-                {
+                if core_running && get_clash_external_port(&strategy, port).is_err() {
                     Config::clash().discard();
                     bail!("can not select fixed: current port is not available.");
                 }
@@ -356,47 +373,38 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
     let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
-        let ipc_state = get_ipc_state();
-        if let Some(service_mode) = service_mode
-            && ipc_state.is_connected()
-        {
+        if let Some(service_mode) = service_mode {
             log::debug!(target: "app", "change service mode to {}", service_mode);
-
-            client.regenerate_and_restart_for_legacy().await?;
+            let outcome = client.set_execution_host(service_mode).await?;
+            for degradation in outcome.degradations() {
+                log::warn!(
+                    target: "app",
+                    "service mode committed with degradation {}: {}",
+                    degradation.code,
+                    degradation.message
+                );
+            }
         }
 
         if tun_mode.is_some() {
             log::debug!(target: "app", "toggle tun mode");
-            #[allow(unused_mut)]
-            let mut flag = false;
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
                 use crate::utils::dirs::check_core_permission;
                 let current_core = Config::verge().data().clash_core.unwrap_or_default();
                 let current_core: nyanpasu_utils::core::CoreType = (&current_core).into();
-                let service_state = crate::core::service::ipc::get_ipc_state();
-                if !service_state.is_connected() && check_core_permission(&current_core).inspect_err(|e| {
+                let service_host = client.core_status().host
+                    == crate::core::actor_v2::endpoint::ExecutionHost::Service;
+                if !service_host && check_core_permission(&current_core).inspect_err(|e| {
                     log::error!(target: "app", "clash core is not granted the necessary permissions, grant it: {e:?}");
                 }).is_ok_and(|v| !v) {
                     log::debug!(target: "app", "grant core permission, and restart core");
-                    flag = true;
                 }
             }
-            let (state, _, _) = CoreManager::global().status().await;
-            if flag || matches!(state.as_ref(), CoreState::Stopped(_)) {
-                log::debug!(target: "app", "core is stopped, restart core");
-                client.regenerate_and_restart_for_legacy().await?;
-            } else {
-                log::debug!(target: "app", "update core config");
-                #[cfg(target_os = "macos")]
-                let _ = CoreManager::global()
-                    .change_default_network_dns(tun_mode.unwrap_or(false))
-                    .await
-                    .inspect_err(
-                        |e| log::error!(target: "app", "failed to set system dns: {:?}", e),
-                    );
-                update_core_config(&client).await?;
-            }
+            // The reconcile with the newly committed `tun.enable` value now
+            // happens in `LegacyVergeBridge::run_legacy_verge_mutation`,
+            // after the typed commit this function's caller performs
+            // (AGENTS.md section 10: commit first, then side effects).
         }
 
         if auto_launch.is_some() {
@@ -459,21 +467,6 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
         Err(err) => {
             Config::verge().discard();
             Err(err)
-        }
-    }
-}
-
-/// 更新配置 — regenerate+apply through the injected client (no process-global bridge).
-async fn update_core_config(client: &crate::client::NyanpasuClient) -> Result<()> {
-    match client.regenerate_and_apply_for_legacy().await {
-        Ok(_) => {
-            handle::Handle::refresh_clash();
-            handle::Handle::notice_message(&Message::SetConfig(Ok(())));
-            Ok(())
-        }
-        Err(err) => {
-            handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err:?}"))));
-            Err(err.into())
         }
     }
 }

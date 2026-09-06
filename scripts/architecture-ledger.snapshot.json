@@ -4,43 +4,42 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 120,
+      "total": 107,
       "byKey": {
-        "Config::verge()": 93,
-        "Config::clash()": 27
+        "Config::verge()": 81,
+        "Config::clash()": 26
       }
     },
     "service_globals": {
-      "total": 80,
+      "total": 57,
       "byKey": {
-        "CoreManager::global()": 18,
         "ProxiesGuard::global()": 14,
         "Handle::global()": 11,
-        "Self::global()": 10,
+        "Self::global()": 9,
         "Sysopt::global()": 8,
         "WindowManager::global()": 8,
-        "Logger::global()": 5,
         "Hotkey::global()": 3,
-        "UpdaterManager::global()": 3
+        "UpdaterManager::global()": 3,
+        "Logger::global()": 1
       }
     },
     "migration_markers": {
-      "total": 19,
+      "total": 10,
       "byKey": {
-        "TODO(actor-migration)": 17,
+        "TODO(actor-migration)": 8,
         "FIXME(actor-migration)": 2
       }
     },
     "legacy_dto_refs": {
-      "total": 300,
+      "total": 311,
       "byKey": {
-        "IVerge": 175,
-        "IClashTemp": 30,
-        "LegacyVergeBridge": 29,
+        "IVerge": 180,
+        "IClashTemp": 31,
+        "LegacyVergeBridge": 31,
+        "VergeLegacyBridge": 19,
         "ClashLegacyBridge": 18,
-        "VergeLegacyBridge": 18,
+        "LegacyClashBridge": 10,
         "LegacyVergePatchRoute": 9,
-        "LegacyClashBridge": 8,
         "LegacyWindowBridge": 7,
         "legacy_iverge_from_typed": 3,
         "typed_patches_from_legacy_patch": 2,
@@ -58,8 +57,6 @@
     "backend/tauri/src/bridge/mod.rs",
     "backend/tauri/src/bridge/verge.rs",
     "backend/tauri/src/bridge/window.rs",
-    "backend/tauri/src/client/core_bridge.rs",
-    "backend/tauri/src/client/process_core_bridge.rs",
     "backend/tauri/src/enhance/artifact_bridge.rs"
   ]
 }

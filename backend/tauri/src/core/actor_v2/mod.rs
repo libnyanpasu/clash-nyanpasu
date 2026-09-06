@@ -30,8 +30,11 @@
 //!   same answer any other lost reply gives.
 
 pub mod endpoint;
+pub mod facade;
 pub mod intent;
+pub mod local_host;
 pub mod service_actor;
+pub mod service_host_adapter;
 
 use std::time::Duration;
 
@@ -43,7 +46,9 @@ use nyanpasu_core_manager::{
 };
 use nyanpasu_ipc::api::core::v2::{OperationInfo, OperationOutputInfo, OperationPhase};
 
-use endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost};
+use endpoint::{
+    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle, ExecutionHost,
+};
 
 /// Monotonic owner fence. Incremented exactly once per completed handoff;
 /// stale pump frames and stale down reports are dropped by comparing it.
@@ -92,11 +97,21 @@ fn handoff_budget(status_timeout: Duration, stop_wait: Duration) -> Duration {
     status_timeout * 4 + stop_wait + CALL_BUDGET_SLACK
 }
 
-/// Caller bound for [`CoreClient::shutdown`]. Same stop legs as
-/// [`handoff_budget`] minus the preflight — shutdown never probes a target —
-/// so three `status_timeout` legs plus `stop_wait`.
+/// Caller bound for [`CoreClient::shutdown`]. Shutdown never probes a target,
+/// so its own stop is the same three `status_timeout` legs as
+/// [`handoff_budget`] minus the preflight, plus `stop_wait`.
+///
+/// It still has to cover a fourth `status_timeout`, because shutdown is not
+/// always the thing occupying the actor. A shutdown that lands while
+/// `change_host` is running is deferred into `pending_shutdown` and settled by
+/// the handoff continuation, and before that it waits out the preflight leg
+/// `change_host` spends holding the mailbox on its way to `HandingOff`. Budget
+/// only for the three and the caller's deadline equals that path exactly:
+/// production had `3 * 10s + 60s + 10s` slack against a 100s worst case, so it
+/// could elapse at the very instant the actor produced its honest report — and
+/// the facade's shared future then caches the timeout-shaped report forever.
 fn shutdown_budget(status_timeout: Duration, stop_wait: Duration) -> Duration {
-    status_timeout * 3 + stop_wait + CALL_BUDGET_SLACK
+    status_timeout * 4 + stop_wait + CALL_BUDGET_SLACK
 }
 
 /// Caller bound for [`CoreClient::submit`]. The `Submit` handler bounds its
@@ -116,9 +131,11 @@ pub struct CoreStatusProjection {
     pub snapshot: Option<CoreStatusSnapshot>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case", tag = "kind")]
 pub enum EndpointConnectivity {
     Connected,
+    ShutDown,
     HandingOff {
         from: ExecutionHost,
         to: ExecutionHost,
@@ -130,6 +147,44 @@ pub enum EndpointConnectivity {
         reason: String,
     },
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+pub struct CoreStatusInfo {
+    pub host: ExecutionHost,
+    pub connectivity: EndpointConnectivity,
+    pub generation: u64,
+    pub state: Option<nyanpasu_ipc::api::status::CoreStateDetail>,
+    pub state_changed_at: i64,
+    pub revision: Option<nyanpasu_ipc::api::status::RevisionIdInfo>,
+    pub healthy: Option<bool>,
+}
+
+impl From<CoreStatusProjection> for CoreStatusInfo {
+    fn from(status: CoreStatusProjection) -> Self {
+        let snapshot = status.snapshot;
+        Self {
+            host: status.host,
+            connectivity: status.connectivity,
+            generation: status.generation,
+            state: snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.state.clone()),
+            state_changed_at: snapshot
+                .as_ref()
+                .map_or_default(|snapshot| snapshot.state_changed_at),
+            revision: snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.revision.clone()),
+            healthy: snapshot.and_then(|snapshot| snapshot.healthy),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct ServiceStatusChangedEvent(pub service_actor::ServiceHostStatus);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HandoffReport {
@@ -177,8 +232,17 @@ pub enum CoreActorMessage {
     /// Routed through the mailbox so it serializes with `ChangeHost`: while a
     /// handoff runs, no submit can land on the wrong host (I-R1).
     Submit {
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
         reply: RpcReplyPort<Result<SubmitTicket, CoreError>>,
+    },
+    /// Admission-time authoritative status read (F2): the router's cached
+    /// projection is refreshed only by the 2s pump, so a caller that needs a
+    /// CAS token newer than that cache -- `CoreFacade::reconcile` -- asks for
+    /// one here instead. Running inside the mailbox makes `state.generation`
+    /// and the connected endpoint current by construction, the same fence
+    /// `EndpointEvent` uses against a retired endpoint's frames.
+    RefreshStatus {
+        reply: RpcReplyPort<Result<CoreStatusProjection, CoreError>>,
     },
     /// Explicit ownership transfer. The endpoint is built by the caller; the
     /// actor proves the source dead before adopting it.
@@ -229,6 +293,9 @@ pub struct CoreActorArgs {
 
 enum EndpointSlot {
     Connected(EndpointHandle),
+    ShutDown {
+        report: ShutdownReport,
+    },
     /// The stop-and-prove leg is in flight. Exhaustive matching on this enum
     /// is what makes "routed something during a handoff" a compile error
     /// rather than a race.
@@ -306,6 +373,12 @@ impl CoreActorState {
                 },
                 snapshot,
             },
+            EndpointSlot::ShutDown { .. } => CoreStatusProjection {
+                host: self.status_tx.borrow().host,
+                generation: self.generation,
+                connectivity: EndpointConnectivity::ShutDown,
+                snapshot,
+            },
         }
     }
 
@@ -360,12 +433,15 @@ async fn stop_and_confirm(
     call_timeout: Duration,
     stop_wait: Duration,
 ) -> Result<Option<OperationInfo>, CoreError> {
-    let envelope = CoreCommandEnvelope {
-        operation_id: OperationId::generate(),
-        command: CoreCommand::Stop,
+    let submission = CoreSubmission {
+        envelope: CoreCommandEnvelope {
+            operation_id: OperationId::generate(),
+            command: CoreCommand::Stop,
+        },
+        core_type: None,
     };
-    let requested = envelope.operation_id;
-    let admitted = tokio::time::timeout(call_timeout, endpoint.submit(envelope))
+    let requested = submission.envelope.operation_id;
+    let admitted = tokio::time::timeout(call_timeout, endpoint.submit(submission))
         .await
         .map_err(|_| {
             CoreError::new(
@@ -534,17 +610,20 @@ impl Actor for CoreActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            CoreActorMessage::Submit { envelope, reply } => {
+            CoreActorMessage::Submit { submission, reply } => {
                 let result = match &state.slot {
                     EndpointSlot::Connected(handle) => {
                         let endpoint = handle.clone();
-                        let operation_id = envelope.operation_id;
+                        let operation_id = submission.envelope.operation_id;
                         // F4: an endpoint that accepts the call and never
                         // answers must not park the mailbox behind it — the
                         // same bound the preflight and the stop admission
                         // use, so it never outlasts the caller's own budget.
-                        match tokio::time::timeout(state.status_timeout, endpoint.submit(envelope))
-                            .await
+                        match tokio::time::timeout(
+                            state.status_timeout,
+                            endpoint.submit(submission),
+                        )
+                        .await
                         {
                             Ok(Ok(admitted)) if admitted.id != operation_id.to_string() => {
                                 // F8: a syntactically fine id that is not the
@@ -585,6 +664,49 @@ impl Actor for CoreActor {
                         format!("the {desired:?} endpoint is degraded: {reason}"),
                         true,
                     )),
+                    EndpointSlot::ShutDown { .. } => Err(CoreError::new(
+                        CoreErrorKind::ShuttingDown,
+                        "the core router is shut down",
+                        false,
+                    )),
+                };
+                let _ = reply.send(result);
+            }
+
+            CoreActorMessage::RefreshStatus { reply } => {
+                // Slot dispatch and error mapping mirror `Submit` exactly:
+                // the same endpoint, the same bound, the same refusals.
+                let result = match &state.slot {
+                    EndpointSlot::Connected(handle) => {
+                        let endpoint = handle.clone();
+                        match tokio::time::timeout(state.status_timeout, endpoint.status()).await {
+                            Ok(Ok(snapshot)) => {
+                                state.set_snapshot(snapshot);
+                                Ok(state.projection())
+                            }
+                            Ok(Err(error)) => Err(error),
+                            Err(_) => Err(CoreError::new(
+                                CoreErrorKind::BackendUnavailable,
+                                "the endpoint did not answer the status read within its bound",
+                                true,
+                            )),
+                        }
+                    }
+                    EndpointSlot::HandingOff { .. } => Err(CoreError::new(
+                        CoreErrorKind::OperationConflict,
+                        "a host handoff is in progress",
+                        true,
+                    )),
+                    EndpointSlot::Degraded { desired, reason } => Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        format!("the {desired:?} endpoint is degraded: {reason}"),
+                        true,
+                    )),
+                    EndpointSlot::ShutDown { .. } => Err(CoreError::new(
+                        CoreErrorKind::ShuttingDown,
+                        "the core router is shut down",
+                        false,
+                    )),
                 };
                 let _ = reply.send(result);
             }
@@ -607,7 +729,17 @@ impl Actor for CoreActor {
             } => {
                 // Stale frames from an abandoned endpoint are dropped, never
                 // merged (fencing use #1).
-                if generation == state.generation {
+                //
+                // A pump read started before a `RefreshStatus` admission can
+                // still land here afterwards and momentarily republish an
+                // older snapshot. That is only a transient regression of the
+                // *displayed* status: `RefreshStatus` re-reads the endpoint
+                // itself for its CAS token rather than trusting this cache,
+                // so admission never observes the stale value this race can
+                // produce here.
+                if generation == state.generation
+                    && !matches!(state.slot, EndpointSlot::ShutDown { .. })
+                {
                     state.set_snapshot(snapshot);
                 }
             }
@@ -640,6 +772,10 @@ impl Actor for CoreActor {
             }
 
             CoreActorMessage::Shutdown { reply } => {
+                if let EndpointSlot::ShutDown { report } = &state.slot {
+                    let _ = reply.send(report.clone());
+                    return Ok(());
+                }
                 if let Some(pump) = state.pump.take() {
                     pump.abort();
                 }
@@ -663,17 +799,22 @@ impl Actor for CoreActor {
                         true,
                     )),
                     EndpointSlot::HandingOff { .. } => unreachable!("deferred above"),
+                    EndpointSlot::ShutDown { .. } => unreachable!("replayed above"),
                 };
                 // Reported, never swallowed: the report is the structural fix
                 // for the audited fake-Stopped.
                 if let Err(error) = &stop {
                     tracing::error!("shutdown stop failed: {error}");
                 }
-                let _ = reply.send(ShutdownReport {
+                let report = ShutdownReport {
                     stop,
                     final_status: state.snapshot.clone(),
-                });
-                myself.stop(Some("shutdown".into()));
+                };
+                state.slot = EndpointSlot::ShutDown {
+                    report: report.clone(),
+                };
+                state.publish();
+                let _ = reply.send(report);
             }
         }
         Ok(())
@@ -696,6 +837,14 @@ impl CoreActor {
         target: EndpointHandle,
         reply: RpcReplyPort<Result<HandoffReport, CoreError>>,
     ) {
+        if matches!(state.slot, EndpointSlot::ShutDown { .. }) {
+            let _ = reply.send(Err(CoreError::new(
+                CoreErrorKind::ShuttingDown,
+                "the core router is shut down",
+                false,
+            )));
+            return;
+        }
         if matches!(state.slot, EndpointSlot::HandingOff { .. }) {
             let _ = reply.send(Err(CoreError::new(
                 CoreErrorKind::OperationConflict,
@@ -746,6 +895,7 @@ impl CoreActor {
             }
             EndpointSlot::Connected(current) => Some(current.clone()),
             EndpointSlot::HandingOff { .. } => unreachable!("refused above"),
+            EndpointSlot::ShutDown { .. } => unreachable!("refused above"),
         };
 
         let Some(source) = source else {
@@ -815,10 +965,13 @@ impl CoreActor {
                 stop: result,
                 final_status: state.snapshot.clone(),
             };
+            state.slot = EndpointSlot::ShutDown {
+                report: report.clone(),
+            };
+            state.publish();
             for shutdown_reply in state.pending_shutdown.drain(..) {
                 let _ = shutdown_reply.send(report.clone());
             }
-            myself.stop(Some("shutdown".into()));
             return;
         }
 
@@ -875,6 +1028,7 @@ impl CoreActor {
 #[derive(Clone)]
 pub struct CoreClient {
     actor: ActorRef<CoreActorMessage>,
+    initial_endpoint: EndpointHandle,
     status_rx: watch::Receiver<CoreStatusProjection>,
     events_tx: broadcast::Sender<CoreStatusProjection>,
     /// Caller bounds derived from the injected `status_timeout`/`stop_wait`
@@ -911,7 +1065,7 @@ impl CoreClient {
             None,
             CoreActor,
             CoreActorArgs {
-                initial,
+                initial: initial.clone(),
                 status_tx,
                 events_tx: events_tx.clone(),
                 status_timeout,
@@ -921,6 +1075,7 @@ impl CoreClient {
         .await?;
         Ok(Self {
             actor,
+            initial_endpoint: initial,
             status_rx,
             events_tx,
             submit_budget: submit_budget(status_timeout),
@@ -942,9 +1097,13 @@ impl CoreClient {
         self.events_tx.subscribe()
     }
 
-    pub async fn submit(&self, envelope: CoreCommandEnvelope) -> Result<SubmitTicket, CoreError> {
+    pub(crate) fn initial_endpoint(&self) -> EndpointHandle {
+        self.initial_endpoint.clone()
+    }
+
+    pub async fn submit(&self, submission: CoreSubmission) -> Result<SubmitTicket, CoreError> {
         self.call(
-            |reply| CoreActorMessage::Submit { envelope, reply },
+            |reply| CoreActorMessage::Submit { submission, reply },
             self.submit_budget,
             // Mailbox residence, not a wedged endpoint, is the likely cause
             // once the caller's own budget already outlasts the `Submit`
@@ -958,6 +1117,27 @@ impl CoreClient {
             CoreError::new(
                 CoreErrorKind::BackendUnavailable,
                 "the caller-side submit budget elapsed before the router answered; the submission may already have been admitted, and retrying with the same operation id attaches to it idempotently rather than starting a second operation",
+                true,
+            ),
+        )
+        .await?
+    }
+
+    /// Authoritative status read, admission-time rather than the 2s-refresh
+    /// cache [`Self::status`] returns. `CoreFacade::reconcile` uses this for
+    /// its CAS token so two reconciles inside one pump interval each see the
+    /// revision the other just produced (F2).
+    pub async fn refresh_status(&self) -> Result<CoreStatusProjection, CoreError> {
+        self.call(
+            |reply| CoreActorMessage::RefreshStatus { reply },
+            // Same bound as `submit` (F4): the handler's one bounded
+            // endpoint read uses `status_timeout`, so the caller has to
+            // outlast that leg or it reports `Internal` for a read the
+            // actor is about to answer honestly with `BackendUnavailable`.
+            self.submit_budget,
+            CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "the caller-side submit budget elapsed before the router answered the status refresh; the endpoint may still be reachable, retry once it responds",
                 true,
             ),
         )

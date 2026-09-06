@@ -5,7 +5,7 @@ use std::borrow::Cow;
 pub fn grant_permission(core: &nyanpasu_utils::core::CoreType) -> anyhow::Result<()> {
     use std::process::Command;
 
-    let path = crate::core::clash::core::find_binary_path(&core)
+    let path = crate::core::find_binary_path(&core)
         .map_err(|_| anyhow::anyhow!("clash core not found"))?
         .canonicalize()?
         .to_string_lossy()

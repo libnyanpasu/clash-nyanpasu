@@ -15,8 +15,8 @@
 use std::{borrow::Cow, future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use nyanpasu_core_manager::{
-    ApplyOutcome, CoreCommandEnvelope, CoreControl, CoreError, CoreErrorKind, OperationId,
-    OperationOutput, OperationState,
+    ApplyOutcome, CoreCommandEnvelope, CoreControl, CoreError, CoreErrorKind, CoreKind,
+    OperationId, OperationOutput, OperationState,
 };
 use nyanpasu_ipc::api::{
     core::v2::{
@@ -31,7 +31,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// Which controller owns the runtime. The app perceives the difference in
 /// exactly two places: this tag on the endpoint slot, and the handoff
 /// protocol.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionHost {
     Local,
@@ -52,6 +52,21 @@ pub struct CoreStatusSnapshot {
     pub revision: Option<nyanpasu_ipc::api::status::RevisionIdInfo>,
     /// Healthy / unhealthy, when the host reports it.
     pub healthy: Option<bool>,
+    /// The kind of core the host has actually applied -- not the desired
+    /// config. `None` when the host does not report an applied identity at
+    /// all (an old daemon with no `type`, or a manager that has never
+    /// applied anything). `CoreKind` collapses alpha channels on purpose: a
+    /// running mihomo-alpha and a running mihomo both report `Mihomo`, and a
+    /// consumer deciding whether an applied core "may be" some target must
+    /// treat them the same way it treats an unknown `state` -- as a fact it
+    /// cannot rule out, not as a mismatch.
+    pub applied_kind: Option<CoreKind>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CoreSubmission {
+    pub envelope: CoreCommandEnvelope,
+    pub core_type: Option<nyanpasu_utils::core::CoreType>,
 }
 
 /// One host's control plane, as the router consumes it. Submit is the only
@@ -64,7 +79,7 @@ pub trait ControlEndpoint: Send + Sync {
     /// admission-time snapshot; the transaction survives this future's drop.
     fn submit<'a>(
         &'a self,
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
     ) -> BoxFuture<'a, Result<OperationInfo, CoreError>>;
 
     /// Long-poll the host's registry. `None` = unknown/evicted id (recover by
@@ -99,10 +114,10 @@ impl ControlEndpoint for LocalEndpoint {
 
     fn submit<'a>(
         &'a self,
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
     ) -> BoxFuture<'a, Result<OperationInfo, CoreError>> {
         Box::pin(async move {
-            let handle = self.control.submit(envelope)?;
+            let handle = self.control.submit(submission.envelope)?;
             Ok(map_local_operation(handle.id(), handle.state()))
         })
     }
@@ -189,7 +204,7 @@ fn map_local_outcome(outcome: &ApplyOutcome) -> ReconcileOutcomeInfo {
     ReconcileOutcomeInfo {
         outcome: kind,
         revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
-            epoch: revision.epoch,
+            epoch: revision.epoch.get(),
             generation: revision.generation,
             source_hash: revision.source_hash.clone(),
             effective_hash: revision.effective_hash.clone(),
@@ -205,20 +220,24 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
         ManagerCoreState::Stopped { reason } => Some(CoreStateDetail::Stopped {
             reason: reason.as_ref().map(|reason| reason.to_string()),
         }),
-        ManagerCoreState::Starting { epoch } => Some(CoreStateDetail::Starting { epoch: *epoch }),
+        ManagerCoreState::Starting { epoch } => {
+            Some(CoreStateDetail::Starting { epoch: epoch.get() })
+        }
         ManagerCoreState::Running { epoch, pid } => Some(CoreStateDetail::Running {
-            epoch: *epoch,
+            epoch: epoch.get(),
             pid: *pid,
         }),
         ManagerCoreState::Restarting { epoch, attempt } => Some(CoreStateDetail::Restarting {
-            epoch: *epoch,
+            epoch: epoch.get(),
             attempt: *attempt,
         }),
         ManagerCoreState::Switching { from, to } => Some(CoreStateDetail::Switching {
-            from: *from,
-            to: *to,
+            from: from.map(|epoch| epoch.get()),
+            to: to.get(),
         }),
-        ManagerCoreState::Stopping { epoch } => Some(CoreStateDetail::Stopping { epoch: *epoch }),
+        ManagerCoreState::Stopping { epoch } => {
+            Some(CoreStateDetail::Stopping { epoch: epoch.get() })
+        }
         // `CoreState` is `#[non_exhaustive]`; an unknown future state stays
         // unknown. Folding it into `Stopped` is how a router invents a stop
         // proof it never received.
@@ -232,7 +251,7 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
         state_changed_at: status.changed_at,
         revision: status.revision.as_ref().map(|revision| {
             nyanpasu_ipc::api::status::RevisionIdInfo {
-                epoch: revision.epoch,
+                epoch: revision.epoch.get(),
                 generation: revision.generation,
                 effective_hash: revision.effective_hash.clone(),
             }
@@ -241,6 +260,7 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
             .health
             .as_ref()
             .map(|health| matches!(health.state, nyanpasu_core_manager::HealthState::Healthy)),
+        applied_kind: status.spec.as_ref().map(|spec| spec.kind),
     }
 }
 
@@ -289,10 +309,10 @@ impl ControlEndpoint for ServiceEndpoint {
 
     fn submit<'a>(
         &'a self,
-        envelope: CoreCommandEnvelope,
+        submission: CoreSubmission,
     ) -> BoxFuture<'a, Result<OperationInfo, CoreError>> {
         Box::pin(async move {
-            let request = wire_submit_request(&envelope)?;
+            let request = wire_submit_request(&submission)?;
             self.client
                 .submit_core(&request)
                 .await
@@ -338,10 +358,11 @@ impl ControlEndpoint for ServiceEndpoint {
 /// The wire form of a local envelope. Only `Reconcile`, `Stop` and `Recover`
 /// travel; a local-only command (`Shutdown`) aimed at the daemon is a caller
 /// bug reported as such rather than silently dropped.
-fn wire_submit_request(
-    envelope: &CoreCommandEnvelope,
+pub(super) fn wire_submit_request(
+    submission: &CoreSubmission,
 ) -> Result<CoreSubmitReq<'static>, CoreError> {
     use nyanpasu_core_manager::{ConfigInput, CoreCommand};
+    let envelope = &submission.envelope;
     let command = match &envelope.command {
         CoreCommand::Reconcile(request) => {
             let ConfigInput::Inline {
@@ -356,12 +377,15 @@ fn wire_submit_request(
                 )
             })?;
             CoreCommandInfo::Reconcile {
-                core_type: Cow::Owned(app_core_kind_to_type(request.core.kind)?),
+                core_type: Cow::Owned(match &submission.core_type {
+                    Some(core_type) => core_type.clone(),
+                    None => app_core_kind_to_type(request.core.kind)?,
+                }),
                 config: Cow::Owned(config),
                 expected_digest: expected_digest.clone().map(Cow::Owned),
                 expected_applied: request.expected_applied.as_ref().map(|revision| {
                     nyanpasu_ipc::api::status::RevisionIdInfo {
-                        epoch: revision.epoch,
+                        epoch: revision.epoch.get(),
                         generation: revision.generation,
                         effective_hash: revision.effective_hash.clone(),
                     }
@@ -384,11 +408,9 @@ fn wire_submit_request(
     })
 }
 
-/// Lossy by construction: `CoreKind` collapses the alpha channel (the daemon
-/// resolves the binary from the full `CoreType`). Known limitation, on the
-/// audit ledger: the bridge-stage facade must carry the intent's own
-/// `CoreType` to the service endpoint instead of round-tripping through the
-/// kind. `Meow` has no wire `CoreType` today and cannot be requested.
+/// Fallback used only when a caller did not carry the intent's full
+/// `CoreType`. `CoreKind` collapses alpha channels, so facade submissions
+/// always provide the original type. `Meow` has no fallback wire type.
 fn app_core_kind_to_type(
     kind: nyanpasu_core_manager::CoreKind,
 ) -> Result<nyanpasu_utils::core::CoreType, CoreError> {
@@ -407,6 +429,33 @@ fn app_core_kind_to_type(
     }
 }
 
+/// The reverse of [`app_core_kind_to_type`]: a wire `CoreType`, collapsed to
+/// the coarser `CoreKind` the same way a local `CoreSpec` is built (see
+/// `local_host::core_spec`). `SingBox` has no `CoreKind` counterpart yet and
+/// stays `None` -- the same "unmapped variant stays unknown" rule
+/// `map_local_status` applies to a future `CoreState`.
+///
+/// Used to derive the *target*'s kind inside `replace_core_binary`
+/// (`client::NyanpasuClient`), not the service host's *applied* kind --
+/// `map_service_status` no longer feeds its `applied_kind` through this
+/// function; see that field's comment (R6b).
+pub(crate) fn wire_core_type_to_kind(
+    core_type: &nyanpasu_utils::core::CoreType,
+) -> Option<CoreKind> {
+    use nyanpasu_utils::core::{ClashCoreType, CoreType};
+    match core_type {
+        CoreType::Clash(ClashCoreType::Mihomo | ClashCoreType::MihomoAlpha) => {
+            Some(CoreKind::Mihomo)
+        }
+        CoreType::Clash(ClashCoreType::ClashRust | ClashCoreType::ClashRustAlpha) => {
+            Some(CoreKind::ClashRust)
+        }
+        CoreType::Clash(ClashCoreType::ClashPremium) => Some(CoreKind::ClashPremium),
+        CoreType::Clash(ClashCoreType::Meow) => Some(CoreKind::Meow),
+        CoreType::SingBox => None,
+    }
+}
+
 fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
     CoreStatusSnapshot {
         // A daemon too old to publish `detail` leaves this unknown. The coarse
@@ -421,6 +470,21 @@ fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
                 nyanpasu_ipc::api::status::CoreHealthState::Healthy
             )
         }),
+        // R6b: the daemon assembles `/v2/core/status` from the manager
+        // status plus a *separate* `requested_core` watch that a spawned
+        // task updates only after `handle.wait()` returns
+        // (`manager_bridge.rs`'s `watch_reconcile_echo`), while the app's
+        // operation poll returns independently from the control registry.
+        // Immediately after a service-side switch, the app can therefore
+        // observe the new state with the old `type` still echoed, which
+        // would read as "a different kind is applied" and wrongly skip a
+        // stop `replace_core_binary` needs. The durable fix is a daemon
+        // projection derived from the same manager snapshot the status
+        // itself comes from (a runtime follow-up, out of scope here); until
+        // then, the service host's applied identity is always unknown, so
+        // replacing a core while one is running on this host always takes
+        // the conservative stop-and-restart path.
+        applied_kind: None,
     }
 }
 

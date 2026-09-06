@@ -1,10 +1,8 @@
 use super::shared::{self, CoreTypeMeta};
 use crate::{
+    client::NyanpasuClient,
     config::nyanpasu::ClashCore,
-    core::{
-        CoreManager,
-        download::{DownloadSession, DownloadStatus},
-    },
+    core::download::{DownloadSession, DownloadStatus},
 };
 use anyhow::anyhow;
 use runas::Command as RunasCommand;
@@ -35,6 +33,7 @@ pub(super) struct Updater {
     artifact: String,
     inner: parking_lot::RwLock<UpdaterInner>,
     downloader: Arc<DownloadSession>,
+    nyanpasu: NyanpasuClient,
 }
 
 struct UpdaterInner {
@@ -54,6 +53,7 @@ pub(super) struct UpdaterBuilder {
     mirror: Option<String>,
     artifact: Option<String>,
     tag: Option<CoreTypeMeta>,
+    nyanpasu: Option<NyanpasuClient>,
 }
 
 impl UpdaterBuilder {
@@ -64,11 +64,17 @@ impl UpdaterBuilder {
             mirror: None,
             artifact: None,
             tag: None,
+            nyanpasu: None,
         }
     }
 
     pub fn set_client(mut self, client: reqwest::Client) -> Self {
         self.client = Some(client);
+        self
+    }
+
+    pub fn set_nyanpasu_client(mut self, client: NyanpasuClient) -> Self {
+        self.nyanpasu = Some(client);
         self
     }
 
@@ -102,6 +108,9 @@ impl UpdaterBuilder {
             .ok_or(anyhow::anyhow!("artifact is required"))?;
         let tag = self.tag.ok_or(anyhow::anyhow!("tag is required"))?;
         let mirror = self.mirror.ok_or(anyhow::anyhow!("mirror is required"))?;
+        let nyanpasu = self
+            .nyanpasu
+            .ok_or(anyhow::anyhow!("nyanpasu client is required"))?;
 
         let temp_dir = TempDir::new()?;
         let inner = UpdaterInner {
@@ -124,6 +133,7 @@ impl UpdaterBuilder {
             inner: parking_lot::RwLock::new(inner),
             artifact,
             downloader,
+            nyanpasu,
         })
     }
 }
@@ -198,26 +208,7 @@ impl Updater {
 
     async fn replace_core(&self) -> anyhow::Result<()> {
         self.dispatch_state(UpdaterState::Replacing);
-        let core_manager = CoreManager::global();
-        // TODO(actor-migration): temporary bridge to the legacy global core manager.
-        // Reason: the updater has not yet been injected with the core lifecycle port.
-        // Remove when: the updater receives the lifecycle port through the composition root.
-        let lifecycle = core_manager.begin_lifecycle().await;
-        let current_core = crate::config::Config::verge()
-            .latest()
-            .clash_core
-            .unwrap_or_default();
-        tracing::debug!("current core: {}", current_core);
 
-        let runtime_paths = if current_core == self.core_type {
-            let resolver = crate::utils::path::PathResolver::from_env()?;
-            let runtime_paths = crate::client::RuntimePaths::from_resolver(&resolver)?;
-            tracing::debug!("stopping core to replace");
-            lifecycle.stop_core().await?;
-            Some(runtime_paths)
-        } else {
-            None
-        };
         #[cfg(target_os = "windows")]
         let target_core = format!("{}.exe", self.core_type);
         #[cfg(not(target_os = "windows"))]
@@ -225,59 +216,80 @@ impl Updater {
         let core_dir = tauri::utils::platform::current_exe()?;
         let core_dir = core_dir.parent().ok_or(anyhow!("failed to get core dir"))?;
         let target_core = core_dir.join(target_core);
-        tracing::debug!("copying core to {:?}", target_core);
         let tmp_core_path = self.temp_dir.path().join(format!(
             "{}{}",
             self.core_type,
             std::env::consts::EXE_SUFFIX
         ));
-        match tokio::fs::copy(tmp_core_path.clone(), target_core.clone()).await {
-            Ok(size) => {
-                tracing::debug!("copied core to {:?} ({} bytes)", target_core, size);
-            }
-            Err(err) => {
-                tracing::warn!(
-                    "failed to copy core: {}, trying to use elevated permission to copy and override core",
-                    err
-                );
-                let mut target_core_str = target_core.to_str().unwrap().to_string();
-                if target_core_str.starts_with("\\\\?\\") {
-                    target_core_str = target_core_str[4..].to_string();
-                }
-                tracing::debug!("tmp core path: {:?}", tmp_core_path);
-                tracing::debug!("target core path: {:?}", target_core_str);
-                // 防止 UAC 弹窗堵塞主线程
-                let status_code = tokio::task::spawn_blocking(move || {
-                    #[cfg(target_os = "windows")]
-                    {
-                        RunasCommand::new("cmd")
-                            .args(&[
-                                "/C",
-                                "copy",
-                                "/Y",
-                                tmp_core_path.to_str().unwrap(),
-                                &target_core_str,
-                            ])
-                            .status()
-                    }
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        RunasCommand::new("cp")
-                            .args(&["-f", tmp_core_path.to_str().unwrap(), &target_core_str])
-                            .status()
-                    }
-                })
-                .await??;
-                if !status_code.success() {
-                    anyhow::bail!("failed to copy core: {}", status_code);
-                }
-            }
-        };
 
-        if let Some(runtime_paths) = runtime_paths.as_ref() {
-            self.dispatch_state(UpdaterState::Restarting);
-            lifecycle.run_core_from(runtime_paths.product()).await?;
-        }
+        // `replace_core_binary` decides whether `self.core_type` needs
+        // stopping first from the host's own status, read under
+        // `rebuild_gate` after the gate is acquired -- not from a read made
+        // here, before the gate is even requested, and not from the
+        // committed app config either (R5 regression, round 3): a read made
+        // here could go stale if a concurrent core switch committed and
+        // reconciled a different core in the window between that read and
+        // the gate (R1 regression, round 2). The stop, the recovery that
+        // proves the core actually died (R6a), the copy below, and the
+        // restart reconcile (when the decision is to restart) all run under
+        // `NyanpasuClient`'s `rebuild_gate`, so no competing reconcile can
+        // restart the core from the old binary between the stop and the
+        // copy (finding 4).
+        self.nyanpasu
+            .replace_core_binary(self.core_type, move |restart: bool| async move {
+                tracing::debug!("copying core to {:?}", target_core);
+                match tokio::fs::copy(tmp_core_path.clone(), target_core.clone()).await {
+                    Ok(size) => {
+                        tracing::debug!("copied core to {:?} ({} bytes)", target_core, size);
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            "failed to copy core: {}, trying to use elevated permission to copy and override core",
+                            err
+                        );
+                        let mut target_core_str = target_core.to_str().unwrap().to_string();
+                        if target_core_str.starts_with("\\\\?\\") {
+                            target_core_str = target_core_str[4..].to_string();
+                        }
+                        tracing::debug!("tmp core path: {:?}", tmp_core_path);
+                        tracing::debug!("target core path: {:?}", target_core_str);
+                        // 防止 UAC 弹窗堵塞主线程
+                        let status_code = tokio::task::spawn_blocking(move || {
+                            #[cfg(target_os = "windows")]
+                            {
+                                RunasCommand::new("cmd")
+                                    .args(&[
+                                        "/C",
+                                        "copy",
+                                        "/Y",
+                                        tmp_core_path.to_str().unwrap(),
+                                        &target_core_str,
+                                    ])
+                                    .status()
+                            }
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                RunasCommand::new("cp")
+                                    .args(&["-f", tmp_core_path.to_str().unwrap(), &target_core_str])
+                                    .status()
+                            }
+                        })
+                        .await??;
+                        if !status_code.success() {
+                            anyhow::bail!("failed to copy core: {}", status_code);
+                        }
+                    }
+                };
+                // Dispatched here, right after the copy and before
+                // `replace_core_binary` runs its restart reconcile, to match
+                // the state transition's original position between the copy
+                // and the restart.
+                if restart {
+                    self.dispatch_state(UpdaterState::Restarting);
+                }
+                Ok(())
+            })
+            .await?;
 
         Ok(())
     }

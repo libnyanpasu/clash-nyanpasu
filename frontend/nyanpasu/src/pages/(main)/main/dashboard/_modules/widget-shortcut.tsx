@@ -162,9 +162,14 @@ const CoreStatusBadge = () => {
     }
 
     // core is stopped, but we don't know why, so we check the core status
-    if (coreStatus?.status.Stopped) {
+    const coreStopReason =
+      coreStatus?.status && typeof coreStatus.status === 'object'
+        ? coreStatus.status.Stopped?.reason
+        : undefined
+
+    if (coreStopReason) {
       stopedMessage = m.dashboard_widget_core_stopped_with_message({
-        message: coreStatus.status.Stopped,
+        message: coreStopReason,
       })
     } else {
       stopedMessage = m.dashboard_widget_core_stopped_unknown()

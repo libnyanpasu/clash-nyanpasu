@@ -51,6 +51,19 @@ impl Default for ClashCore {
     }
 }
 
+impl From<nyanpasu_config::application::ClashCore> for ClashCore {
+    fn from(core: nyanpasu_config::application::ClashCore) -> Self {
+        match core {
+            nyanpasu_config::application::ClashCore::ClashPremium => Self::ClashPremium,
+            nyanpasu_config::application::ClashCore::ClashRs => Self::ClashRs,
+            nyanpasu_config::application::ClashCore::Mihomo => Self::Mihomo,
+            nyanpasu_config::application::ClashCore::MihomoAlpha => Self::MihomoAlpha,
+            nyanpasu_config::application::ClashCore::ClashRsAlpha => Self::ClashRsAlpha,
+            nyanpasu_config::application::ClashCore::Meow => Self::Meow,
+        }
+    }
+}
+
 impl From<ClashCore> for String {
     fn from(core: ClashCore) -> Self {
         match core {

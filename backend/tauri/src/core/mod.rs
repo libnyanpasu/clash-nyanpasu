@@ -15,6 +15,6 @@ pub mod tray;
 pub mod updater;
 #[cfg(windows)]
 pub mod win_uwp;
-pub use self::clash::core::*;
+pub use self::clash::find_binary_path;
 pub mod migration;
 pub mod state;

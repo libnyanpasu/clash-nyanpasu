@@ -259,6 +259,7 @@ struct NyanpasuClientInner {
     ui_sink: Arc<dyn UiEventSink>,
     core_lifecycle: core_lifecycle::CoreLifecycleClient,
     core_api: CoreClientV2,
+    proxies: crate::core::proxies::ProxiesClient,
     system_dns: Arc<dyn SystemDnsCache>,
 }
 
@@ -370,6 +371,7 @@ impl NyanpasuClient {
                 dirty: dirty_rx,
             })
             .await?;
+        let proxies = crate::core::proxies::ProxiesClient::spawn(core_v2.clone()).await?;
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 application,
@@ -383,6 +385,7 @@ impl NyanpasuClient {
                 ui_sink,
                 core_lifecycle,
                 core_api: core_v2,
+                proxies,
                 system_dns,
             }),
         })

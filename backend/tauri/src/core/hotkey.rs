@@ -100,13 +100,13 @@ impl HotkeyFunc {
     }
 
     /// Execute the hotkey action
-    fn execute(&self) {
+    fn execute(&self, app_handle: &tauri::AppHandle) {
         match self {
             HotkeyFunc::OpenOrCloseDashboard => feat::toggle_dashboard(),
-            HotkeyFunc::ClashModeRule => feat::change_clash_mode("rule".into()),
-            HotkeyFunc::ClashModeGlobal => feat::change_clash_mode("global".into()),
-            HotkeyFunc::ClashModeDirect => feat::change_clash_mode("direct".into()),
-            HotkeyFunc::ClashModeScript => feat::change_clash_mode("script".into()),
+            HotkeyFunc::ClashModeRule => feat::change_clash_mode(app_handle, "rule".into()),
+            HotkeyFunc::ClashModeGlobal => feat::change_clash_mode(app_handle, "global".into()),
+            HotkeyFunc::ClashModeDirect => feat::change_clash_mode(app_handle, "direct".into()),
+            HotkeyFunc::ClashModeScript => feat::change_clash_mode(app_handle, "script".into()),
             HotkeyFunc::ToggleSystemProxy => feat::toggle_system_proxy(),
             HotkeyFunc::EnableSystemProxy => feat::enable_system_proxy(),
             HotkeyFunc::DisableSystemProxy => feat::disable_system_proxy(),
@@ -261,10 +261,10 @@ impl Hotkey {
 
         let hotkey_func: HotkeyFunc = func.trim().parse()?;
 
-        manager.on_shortcut(hotkey, move |_app_handle, hotkey, ev| {
+        manager.on_shortcut(hotkey, move |app_handle, hotkey, ev| {
             if let ShortcutState::Pressed = ev.state {
                 tracing::info!("hotkey pressed: {}", hotkey);
-                hotkey_func.execute();
+                hotkey_func.execute(app_handle);
             }
         })?;
 

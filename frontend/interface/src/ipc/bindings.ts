@@ -1892,7 +1892,7 @@ export type ProfileValidationError =
       UnsupportedRemoteUrlScheme?: never
     })
 
-export type ProviderType = 'Proxy' | 'Rule' | 'Unknown'
+export type ProviderType = 'Proxy' | 'Rule' | string
 
 export type ProvidersProxiesRes =
   | ProvidersProxiesRes_Serialize
@@ -2381,7 +2381,7 @@ export type UpdaterSummary = {
   downloader: DownloadStatus
 }
 
-export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Unknown'
+export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
 
 /**  Message for inter-window communication */
 export type WindowMessageEvent = {

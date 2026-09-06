@@ -14,28 +14,6 @@ pub struct ConnectionInfo {
 pub struct ConnectionInterruptionService;
 
 impl ConnectionInterruptionService {
-    /// Interrupt connections when proxy changes
-    pub async fn on_proxy_change() -> Result<()> {
-        let config = Config::verge().data().clone();
-        let break_when = config.break_when_proxy_change.unwrap_or_default();
-
-        match break_when {
-            crate::config::nyanpasu::BreakWhenProxyChange::None => {
-                // Do nothing
-                Ok(())
-            }
-            crate::config::nyanpasu::BreakWhenProxyChange::Chain => {
-                // TODO: Implement chain-based connection interruption
-                // This would require tracking which connections use which proxy chains
-                // For now, we'll fall back to closing all connections
-                api::delete_connections(None).await
-            }
-            crate::config::nyanpasu::BreakWhenProxyChange::All => {
-                api::delete_connections(None).await
-            }
-        }
-    }
-
     /// Interrupt connections when profile changes
     pub async fn on_profile_change() -> Result<()> {
         let config = Config::verge().data().clone();

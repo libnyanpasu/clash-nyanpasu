@@ -457,8 +457,8 @@ pub async fn patch_clash_config(
     client.reconcile_core().await?;
     // A mode change rewrites the proxy groups; warm the cache the same way the
     // pre-facade patch path did, or the next read serves the old groups until
-    // the guard's freshness window lapses.
-    crate::feat::update_proxies_buff(None);
+    // the actor cache's freshness window lapses.
+    client.request_proxy_refresh();
     Ok(())
 }
 
@@ -737,60 +737,42 @@ pub async fn clash_api_get_group_delay(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_providers_proxies() -> Result<clash::api::ProvidersProxiesRes> {
-    Ok(clash::api::get_providers_proxies().await?)
+pub async fn clash_api_get_providers_proxies(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::ProvidersProxiesRes> {
+    Ok(client.proxy_providers().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_proxies() -> Result<crate::core::clash::proxies::Proxies> {
-    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
-    {
-        let guard = ProxiesGuard::global().read();
-        if guard.is_updated() {
-            return Ok(guard.inner().clone());
-        }
-    }
-    match ProxiesGuard::global().update().await {
-        Ok(_) => {
-            let proxies = ProxiesGuard::global().read().inner().clone();
-            Ok(proxies)
-        }
-        Err(err) => Err(err.into()),
-    }
+pub async fn get_proxies(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::core::clash::proxies::Proxies> {
+    Ok(client.get_proxies().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn mutate_proxies() -> Result<crate::core::clash::proxies::Proxies> {
-    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
-    (ProxiesGuard::global().update().await)?;
-    Ok(ProxiesGuard::global().read().inner().clone())
+pub async fn mutate_proxies(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::core::clash::proxies::Proxies> {
+    Ok(client.refresh_proxies().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn select_proxy(group: String, name: String) -> Result<()> {
-    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
-    (ProxiesGuard::global().select_proxy(&group, &name).await)?;
-
-    // Interrupt connections based on configuration
-    let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_proxy_change()
-        .await;
-
-    Ok(())
+pub async fn select_proxy(
+    client: State<'_, NyanpasuClient>,
+    group: String,
+    name: String,
+) -> Result<()> {
+    Ok(client.select_proxy(group, name).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_proxy_provider(name: String) -> Result<()> {
-    use crate::core::clash::{
-        api,
-        proxies::{ProxiesGuard, ProxiesGuardExt},
-    };
-    (api::update_providers_proxies_group(&name).await)?;
-    (ProxiesGuard::global().update().await)?;
-    Ok(())
+pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: String) -> Result<()> {
+    Ok(client.update_proxy_provider(name).await?)
 }
 
 #[tauri::command]

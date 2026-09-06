@@ -18,6 +18,40 @@ fn delay_query(url: Option<String>) -> Result<DelayQuery> {
 }
 
 impl NyanpasuClient {
+    pub async fn get_proxies(&self) -> Result<crate::core::clash::proxies::Proxies> {
+        self.inner.proxies.get(false).await
+    }
+    pub async fn refresh_proxies(&self) -> Result<crate::core::clash::proxies::Proxies> {
+        self.inner.proxies.get(true).await
+    }
+    pub async fn proxy_providers(&self) -> Result<crate::core::clash::api::ProvidersProxiesRes> {
+        self.inner.proxies.providers().await
+    }
+    pub async fn select_proxy(&self, group: String, name: String) -> Result<()> {
+        use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
+        let strategy = self
+            .get_clash_config()
+            .await?
+            .break_connection
+            .on_proxy_change;
+        // FIXME(actor-migration): ProxyGroup retains the legacy close-all fallback.
+        // New code must use chain-aware interruption. Remove after connection tracking supplies group membership.
+        let interrupt = !matches!(strategy, ProxyChangeBreakMode::Off);
+        self.inner.proxies.select(group, name, interrupt).await
+    }
+    pub async fn update_proxy_provider(&self, name: String) -> Result<()> {
+        self.inner.proxies.update_provider(name).await
+    }
+    pub fn request_proxy_refresh(&self) {
+        self.inner.proxies.request_refresh();
+    }
+    pub fn proxies_snapshot(&self) -> crate::core::clash::proxies::Proxies {
+        self.inner.proxies.snapshot()
+    }
+    pub fn subscribe_proxy_changes(&self) -> tokio::sync::watch::Receiver<()> {
+        self.inner.proxies.subscribe()
+    }
+
     pub async fn clash_configs(&self) -> Result<ClashConfig> {
         config_item(self.inner.core_api.api_client().await?.configs().await?)
     }

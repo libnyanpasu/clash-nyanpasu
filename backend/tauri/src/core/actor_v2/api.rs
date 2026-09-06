@@ -104,6 +104,49 @@ impl ApiClient {
         }
     }
 
+    pub(crate) fn is_revoked(&self) -> bool {
+        self.revoked.is_cancelled()
+    }
+
+    pub(crate) fn same_instance(&self, other: &Self) -> bool {
+        !self.is_revoked() && !other.is_revoked() && self.binding == other.binding
+    }
+
+    pub(crate) async fn cancelled(&self) {
+        self.revoked.cancelled().await;
+    }
+
+    pub async fn proxy_snapshot(
+        &self,
+    ) -> Result<
+        (
+            indexmap::IndexMap<clash_api::ProxyName, clash_api::Proxy>,
+            indexmap::IndexMap<clash_api::ProviderName, clash_api::ProxyProvider>,
+        ),
+        ApiError,
+    > {
+        self.execute(async {
+            tokio::try_join!(self.client.proxies(), self.client.proxy_providers())
+        })
+        .await
+    }
+
+    pub async fn select_proxy(
+        &self,
+        group: &ProxyName,
+        target: &ProxyName,
+    ) -> Result<(), ApiError> {
+        self.execute(
+            self.client
+                .select_proxy(clash_api::ProxySelection { group, target }),
+        )
+        .await
+    }
+
+    pub async fn update_proxy_provider(&self, name: &ProviderName) -> Result<(), ApiError> {
+        self.execute(self.client.update_proxy_provider(name)).await
+    }
+
     pub async fn configs(&self) -> Result<clash_api::RuntimeConfig, ApiError> {
         self.execute(self.client.configs()).await
     }
@@ -216,7 +259,7 @@ impl Drop for ApiLease {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::sync::Arc;
 
     use axum::{Json, Router, body::Body, response::Response, routing::get};
@@ -235,9 +278,9 @@ mod tests {
         },
     };
 
-    struct Endpoint {
+    pub(crate) struct Endpoint {
         host: ExecutionHost,
-        binding: watch::Sender<Option<CoreApiConnection>>,
+        pub(crate) binding: watch::Sender<Option<CoreApiConnection>>,
     }
 
     #[async_trait::async_trait]
@@ -299,7 +342,7 @@ mod tests {
         }
     }
 
-    fn endpoint(url: String) -> Arc<Endpoint> {
+    pub(crate) fn endpoint(url: String) -> Arc<Endpoint> {
         let (binding, _) = watch::channel(Some(CoreApiConnection {
             instance_id: "first-process".into(),
             controller: CoreControllerInfo::Http(url),
@@ -311,7 +354,7 @@ mod tests {
         })
     }
 
-    async fn server(router: Router) -> (String, tokio::task::JoinHandle<()>) {
+    pub(crate) async fn server(router: Router) -> (String, tokio::task::JoinHandle<()>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/", listener.local_addr().unwrap());
         let task = tokio::spawn(async move {

@@ -1,43 +1,14 @@
+// TODO(actor-migration): compatibility bridge for legacy tray settings snapshots.
+// Reason: synchronous menu construction still reads the legacy settings mirror.
+// Remove when: tray settings snapshots are injected into menu construction.
 use crate::{
     config::{Config, nyanpasu::ProxiesSelectorMode},
-    core::{
-        clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
-        handle::Handle,
-    },
+    core::clash::proxies::Proxies,
 };
-use anyhow::Context;
 use indexmap::IndexMap;
-use tauri::{AppHandle, Manager, Runtime, menu::MenuBuilder};
+use tauri::{AppHandle, Emitter, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
-
-#[instrument]
-async fn loop_task() {
-    loop {
-        match ProxiesGuard::global().update().await {
-            Ok(_) => {
-                debug!("update proxies success");
-            }
-            Err(e) => {
-                warn!("update proxies failed: {:?}", e);
-            }
-        }
-        {
-            let guard = ProxiesGuard::global().read();
-            if guard.updated_at() == 0 {
-                error!("proxies not updated yet!!!!");
-                // TODO: add a error dialog or notification, and panic?
-            }
-
-            // else {
-            //     let proxies = guard.inner();
-            //     let str = simd_json::to_string_pretty(proxies).unwrap();
-            //     debug!(target: "tray", "proxies info: {:?}", str);
-            // }
-        }
-        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await; // TODO: add a config to control the interval
-    }
-}
 
 type GroupName = String;
 type ProxyName = String;
@@ -140,83 +111,52 @@ fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies) -> TrayUpd
     }
 }
 
-#[instrument]
-pub async fn proxies_updated_receiver() {
-    let (mut rx, mut tray_proxies_holder) = {
-        let guard = ProxiesGuard::global().read();
-        let proxies = guard.inner().to_owned();
-        let mode = crate::utils::config::get_current_clash_mode();
-        (
-            guard.get_receiver(),
-            to_tray_proxies(mode.as_str(), &proxies),
-        )
-    };
-
-    loop {
-        match rx.recv().await {
-            Ok(_) => {
-                debug!("proxies updated");
-                if Handle::global().app_handle.lock().is_none() {
-                    warn!("app handle not found");
-                    continue;
-                }
-                Handle::mutate_proxies();
-                {
-                    let is_tray_selector_enabled = Config::verge()
-                        .latest()
-                        .clash_tray_selector
-                        .unwrap_or_default()
-                        != ProxiesSelectorMode::Hidden;
-                    if !is_tray_selector_enabled {
-                        continue;
-                    }
-                }
-                // Do diff check
-                let mode = crate::utils::config::get_current_clash_mode();
-                let current_tray_proxies =
-                    to_tray_proxies(mode.as_str(), ProxiesGuard::global().read().inner());
-
-                match diff_proxies(&tray_proxies_holder, &current_tray_proxies) {
-                    TrayUpdateType::Full => {
-                        debug!("should do full update");
-
-                        tray_proxies_holder = current_tray_proxies;
-                        match Handle::emit("update_systray", ()) {
-                            Ok(_) => {
-                                debug!("update systray success");
-                            }
-                            Err(e) => {
-                                warn!("update systray failed: {:?}", e);
-                            }
-                        }
-                    }
-                    TrayUpdateType::Part(action_list) => {
-                        debug!("should do partial update, op list: {:?}", action_list);
-                        tray_proxies_holder = current_tray_proxies;
-                        platform_impl::update_selected_proxies(&action_list);
-                        debug!("update selected proxies success");
-                    }
-                    _ => {}
-                }
-            }
-            Err(e) => {
-                warn!("proxies updated receiver failed: {:?}", e);
-            }
+#[instrument(skip(app_handle, client))]
+pub async fn proxies_updated_receiver(
+    app_handle: AppHandle,
+    client: crate::client::NyanpasuClient,
+) {
+    let mut rx = client.subscribe_proxy_changes();
+    let mode = crate::utils::config::get_current_clash_mode();
+    let mut tray_proxies_holder = to_tray_proxies(mode.as_str(), &client.proxies_snapshot());
+    while rx.changed().await.is_ok() {
+        let _ = app_handle.emit(
+            crate::core::handle::STATE_CHANGED_URI,
+            crate::core::handle::StateChanged::Proxies,
+        );
+        let is_tray_selector_enabled = Config::verge()
+            .latest()
+            .clash_tray_selector
+            .unwrap_or_default()
+            != ProxiesSelectorMode::Hidden;
+        if !is_tray_selector_enabled {
+            continue;
         }
+        let mode = crate::utils::config::get_current_clash_mode();
+        let current = to_tray_proxies(mode.as_str(), &client.proxies_snapshot());
+        match diff_proxies(&tray_proxies_holder, &current) {
+            TrayUpdateType::Full => {
+                let _ = app_handle.emit("update_systray", ());
+            }
+            TrayUpdateType::Part(actions) => platform_impl::update_selected_proxies(&actions),
+            TrayUpdateType::None => {}
+        }
+        tray_proxies_holder = current;
     }
 }
 
-pub fn setup_proxies() {
-    tauri::async_runtime::spawn(loop_task());
-    tauri::async_runtime::spawn(proxies_updated_receiver());
+pub fn setup_proxies(app_handle: &AppHandle) {
+    let client = app_handle
+        .state::<crate::client::NyanpasuClient>()
+        .inner()
+        .clone();
+    client.request_proxy_refresh();
+    tauri::async_runtime::spawn(proxies_updated_receiver(app_handle.clone(), client));
 }
 
 mod platform_impl {
     use super::{GroupName, ProxyName, ProxySelectAction, TrayProxyItem};
-    use crate::{
-        config::nyanpasu::ProxiesSelectorMode,
-        core::{clash::proxies::ProxiesGuard, handle::Handle},
-    };
+    use crate::{config::nyanpasu::ProxiesSelectorMode, core::handle::Handle};
     use bimap::BiMap;
     use once_cell::sync::Lazy;
     use parking_lot::Mutex;
@@ -311,7 +251,9 @@ mod platform_impl {
             ProxiesSelectorMode::Normal => menu.separator(),
             ProxiesSelectorMode::Submenu => menu,
         };
-        let proxies = ProxiesGuard::global().read().inner().to_owned();
+        let proxies = app_handle
+            .state::<crate::client::NyanpasuClient>()
+            .proxies_snapshot();
         let mode = crate::utils::config::get_current_clash_mode();
         let tray_proxies = super::to_tray_proxies(mode.as_str(), &proxies);
         let items = generate_selectors::<R>(app_handle, &tray_proxies)?;
@@ -489,7 +431,7 @@ impl<R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'_, 
 }
 
 #[instrument]
-pub fn on_system_tray_event(event: &str) {
+pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
     if !event.starts_with("proxy_node_") {
         return; // bypass non-select event
     }
@@ -514,22 +456,15 @@ pub fn on_system_tray_event(event: &str) {
         }
     };
 
-    let wrapper = move || -> anyhow::Result<()> {
-        tracing::debug!("received select proxy event: {} {}", group, name);
-        tauri::async_runtime::block_on(async move {
-            ProxiesGuard::global()
-                .select_proxy(&group, &name)
-                .await
-                .with_context(|| format!("select proxy failed, {group} {name}, cause: "))?;
-
-            debug!("select proxy success: {} {}", group, name);
-            Ok::<(), anyhow::Error>(())
-        })?;
-        Ok(())
-    };
-
-    if let Err(e) = wrapper() {
-        // TODO: add a error dialog or notification
-        error!("on_system_tray_event failed: {:?}", e);
-    }
+    let client = app_handle
+        .state::<crate::client::NyanpasuClient>()
+        .inner()
+        .clone();
+    tauri::async_runtime::spawn(async move {
+        debug!("received select proxy event: {} {}", group, name);
+        match client.select_proxy(group.clone(), name.clone()).await {
+            Ok(()) => debug!("select proxy success: {} {}", group, name),
+            Err(error) => error!("select proxy failed, {} {}: {:#}", group, name, error),
+        }
+    });
 }

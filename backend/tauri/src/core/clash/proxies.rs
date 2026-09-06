@@ -1,18 +1,11 @@
 /// This module is used to manage the proxies for the Tauri application.
 /// It is used to provide the unite interface between tray and frontend.
 /// TODO: add a diff algorithm to reduce the data transfer, and the rerendering of the tray menu.
-use super::{CLASH_API_DEFAULT_BACKOFF_STRATEGY, api};
-use adler::adler32;
+use super::api;
 use anyhow::Result;
-use backon::Retryable;
 use indexmap::IndexMap;
-use log::warn;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::sync::{Arc, OnceLock};
-use tokio::{sync::broadcast, try_join};
-use tracing_attributes::instrument;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
@@ -66,10 +59,6 @@ pub struct Proxies {
     pub proxies: Vec<api::ProxyItem>,
 }
 
-async fn fetch_proxies() -> Result<(api::ProxiesRes, api::ProvidersProxiesRes)> {
-    try_join!(api::get_proxies(), api::get_providers_proxies())
-}
-
 fn provider_proxy_map(
     providers: &IndexMap<String, api::ProxyProviderItem>,
 ) -> IndexMap<String, api::ProxyItem> {
@@ -103,11 +92,10 @@ fn resolve_proxy(
 }
 
 impl Proxies {
-    #[instrument]
-    pub async fn fetch() -> Result<Self> {
-        let (inner_proxies, providers_proxies) = fetch_proxies
-            .retry(*CLASH_API_DEFAULT_BACKOFF_STRATEGY)
-            .await?;
+    pub fn from_responses(
+        inner_proxies: api::ProxiesRes,
+        providers_proxies: api::ProvidersProxiesRes,
+    ) -> Result<Self> {
         let inner_proxies = inner_proxies.proxies;
         // 1. filter out the Http or File type provider proxies
         let providers_proxies: IndexMap<String, api::ProxyProviderItem> = {
@@ -204,94 +192,6 @@ impl Proxies {
             records: inner_proxies,
             proxies,
         })
-    }
-}
-
-pub struct ProxiesGuard {
-    inner: Proxies,
-    checksum: Option<u32>,
-    updated_at: u64,
-    sender: broadcast::Sender<()>,
-}
-
-impl ProxiesGuard {
-    pub fn global() -> &'static Arc<RwLock<ProxiesGuard>> {
-        static PROXIES: OnceLock<Arc<RwLock<ProxiesGuard>>> = OnceLock::new();
-        PROXIES.get_or_init(|| {
-            let (tx, _) = broadcast::channel(5); // 默认提供 5 个消费位置，提供一定的缓冲
-            Arc::new(RwLock::new(ProxiesGuard {
-                checksum: None,
-                sender: tx,
-                inner: Proxies::default(),
-                updated_at: 0,
-            }))
-        })
-    }
-
-    pub fn get_receiver(&self) -> broadcast::Receiver<()> {
-        self.sender.subscribe()
-    }
-
-    pub fn replace(&mut self, proxies: Proxies, checksum: u32) {
-        let now = chrono::Utc::now().timestamp() as u64;
-        self.inner = proxies;
-        self.checksum = Some(checksum);
-        self.updated_at = now;
-
-        if let Err(e) = self.sender.send(()) {
-            warn!(
-                target: "clash::proxies",
-                "send update signal failed: {e:?}"
-            );
-        }
-    }
-
-    // pub async fn select_proxy(&mut self, group: &str, name: &str) -> Result<()> {
-    //     api::update_proxy(group, name).await?;
-    //     self.update().await?;
-    //     Ok(())
-    // }
-
-    pub fn inner(&self) -> &Proxies {
-        &self.inner
-    }
-
-    pub fn updated_at(&self) -> u64 {
-        self.updated_at
-    }
-
-    pub fn is_updated(&self) -> bool {
-        let now = chrono::Utc::now().timestamp() as u64;
-        now - self.updated_at <= 3
-    }
-}
-
-pub trait ProxiesGuardExt {
-    async fn update(&self) -> Result<()>;
-    async fn select_proxy(&self, group: &str, name: &str) -> Result<()>;
-}
-
-type ProxiesGuardSingleton = &'static Arc<RwLock<ProxiesGuard>>;
-impl ProxiesGuardExt for ProxiesGuardSingleton {
-    async fn update(&self) -> Result<()> {
-        let proxies = Proxies::fetch().await?;
-        let buf = serde_json::to_string(&proxies)?;
-        let checksum = adler32(buf.as_bytes())?;
-        {
-            let reader = self.read();
-            if reader.checksum == Some(checksum) {
-                return Ok(());
-            }
-        }
-        let mut writer = self.write();
-        writer.replace(proxies, checksum);
-        Ok(())
-    }
-
-    async fn select_proxy(&self, group: &str, name: &str) -> Result<()> {
-        api::update_proxy(group, name).await?;
-        self.update().await?;
-        Ok(())
     }
 }
 

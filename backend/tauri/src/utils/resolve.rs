@@ -239,7 +239,7 @@ pub fn resolve_setup(app: &mut App) {
     }
 
     // test job
-    proxies::setup_proxies();
+    proxies::setup_proxies(app.app_handle());
     crate::core::storage::register_web_storage_listener(app.app_handle());
 }
 

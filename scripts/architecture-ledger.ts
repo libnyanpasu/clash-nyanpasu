@@ -455,10 +455,13 @@ function matchAll(
   return out;
 }
 
-async function collectRustFiles(roots: string[]): Promise<string[]> {
+export async function collectRustFiles(
+  roots: string[],
+  repoRoot = ROOT,
+): Promise<string[]> {
   const files: string[] = [];
   for (const root of roots) {
-    const abs = path.isAbsolute(root) ? root : path.join(ROOT, root);
+    const abs = path.isAbsolute(root) ? root : path.join(repoRoot, root);
     try {
       const st = await Deno.stat(abs);
       if (!st.isDirectory) continue;
@@ -475,7 +478,7 @@ async function collectRustFiles(roots: string[]): Promise<string[]> {
         skip: [/[/\\]target[/\\]/, /[/\\]node_modules[/\\]/],
       })
     ) {
-      const parts = entry.path.split(path.SEPARATOR);
+      const parts = path.relative(repoRoot, entry.path).split(path.SEPARATOR);
       if (parts.some((p) => SKIP_DIR_NAMES.has(p))) continue;
       if (!isRustSource(entry.path)) continue;
       files.push(entry.path);

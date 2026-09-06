@@ -865,6 +865,7 @@ mod tests {
             let server = (installed && running && !blind).then(|| StatusResBody {
                 version: Cow::Owned(version.clone()),
                 core_infos: CoreInfos {
+                    instance_id: None,
                     r#type: None,
                     // The coarse projection a real daemon publishes: every
                     // transitional detail collapses into one of these two

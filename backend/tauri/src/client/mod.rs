@@ -1,4 +1,5 @@
 mod application;
+mod clash_api;
 mod clash_config;
 pub mod core_lifecycle;
 mod error;
@@ -257,6 +258,7 @@ struct NyanpasuClientInner {
     runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
     core_lifecycle: core_lifecycle::CoreLifecycleClient,
+    core_api: CoreClientV2,
     system_dns: Arc<dyn SystemDnsCache>,
 }
 
@@ -356,7 +358,7 @@ impl NyanpasuClient {
                 application: application.clone(),
                 clash: clash_config.clone(),
                 profiles: profiles.clone(),
-                core: core_v2,
+                core: core_v2.clone(),
                 service,
                 builder: Arc::new(core_lifecycle::adapters::FsRuntimeBuildAdapter {
                     profiles_dir: profiles_dir.clone(),
@@ -380,6 +382,7 @@ impl NyanpasuClient {
                 runtime_paths,
                 ui_sink,
                 core_lifecycle,
+                core_api: core_v2,
                 system_dns,
             }),
         })
@@ -1783,6 +1786,7 @@ pub(crate) mod tests {
                 server: Some(nyanpasu_ipc::api::status::StatusResBody {
                     version: std::borrow::Cow::Borrowed("2.0.0"),
                     core_infos: nyanpasu_ipc::api::status::CoreInfos {
+                        instance_id: None,
                         r#type: None,
                         state: nyanpasu_ipc::api::status::CoreState::Running,
                         state_changed_at: 0,

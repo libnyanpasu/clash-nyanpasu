@@ -1,8 +1,8 @@
 //! CoreActor v2: endpoint router + status projection, nothing else.
 //!
 //! Normative design: `docs/design/2026-08-12-core-actor-v2-app-integration.md`
-//! (§3–§5). The actor owns exactly four things — the active endpoint slot, the
-//! `ControllerGeneration`, the subscription pump, and the projection channels.
+//! (§3–§5). The actor owns the active endpoint slot, `ControllerGeneration`,
+//! the subscription pump, projection channels, and revocable API leases.
 //! Lifecycle truth, transactions, compensation and quarantine live only inside
 //! each host's `CoreControl`. Application workflows are serialized above this
 //! router by `CoreLifecycleActor`; direct router submissions still obey I-R1.
@@ -30,6 +30,7 @@
 //!   dropped and the caller sees `Internal: the core router is gone` — the
 //!   same answer any other lost reply gives.
 
+pub mod api;
 pub mod endpoint;
 pub mod facade;
 pub mod intent;
@@ -230,6 +231,9 @@ impl std::fmt::Debug for SubmitTicket {
 }
 
 pub enum CoreActorMessage {
+    ApiClient {
+        reply: RpcReplyPort<Result<api::ApiClient, api::ApiError>>,
+    },
     /// Routed through the mailbox so it serializes with `ChangeHost`: while a
     /// handoff runs, no submit can land on the wrong host (I-R1).
     Submit {
@@ -315,6 +319,7 @@ enum EndpointSlot {
 }
 
 pub struct CoreActorState {
+    api: Option<api::ApiLease>,
     slot: EndpointSlot,
     generation: ControllerGeneration,
     /// The active host's latest snapshot. Owned here rather than read back out
@@ -573,6 +578,7 @@ impl Actor for CoreActor {
         });
         let pump = spawn_pump(myself, args.initial.clone(), 0, args.status_timeout);
         Ok(CoreActorState {
+            api: None,
             slot: EndpointSlot::Connected(args.initial),
             generation: 0,
             snapshot: None,
@@ -591,6 +597,7 @@ impl Actor for CoreActor {
         _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        state.api.take();
         // The pump outlives the mailbox otherwise: it holds an `ActorRef` and
         // an endpoint, and a status read in flight keeps both alive.
         if let Some(pump) = state.pump.take() {
@@ -611,6 +618,49 @@ impl Actor for CoreActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            CoreActorMessage::ApiClient { reply } => {
+                let result = match &state.slot {
+                    EndpointSlot::Connected(endpoint) => {
+                        match tokio::time::timeout(state.status_timeout, endpoint.api_connection())
+                            .await
+                        {
+                            Ok(Ok(Some(binding))) => {
+                                if state
+                                    .api
+                                    .as_ref()
+                                    .is_some_and(|lease| lease.client.matches(&binding))
+                                {
+                                    Ok(state.api.as_ref().expect("checked above").client.clone())
+                                } else {
+                                    state.api.take();
+                                    match api::ApiClient::new(binding, endpoint.clone()) {
+                                        Ok(client) => {
+                                            state.api = Some(api::ApiLease::new(client.clone()));
+                                            Ok(client)
+                                        }
+                                        Err(error) => Err(error),
+                                    }
+                                }
+                            }
+                            result => {
+                                state.api.take();
+                                Err(api::ApiError::Unavailable(match result {
+                                    Ok(Ok(None)) => {
+                                        "no running process exposes a usable API".into()
+                                    }
+                                    Ok(Err(error)) => error.to_string(),
+                                    Err(_) => "API binding read timed out".into(),
+                                    _ => unreachable!(),
+                                }))
+                            }
+                        }
+                    }
+                    _ => Err(api::ApiError::Unavailable(
+                        "the core endpoint is not connected".into(),
+                    )),
+                };
+                let _ = reply.send(result);
+            }
             CoreActorMessage::Submit { submission, reply } => {
                 let result = match &state.slot {
                     EndpointSlot::Connected(handle) => {
@@ -757,6 +807,7 @@ impl Actor for CoreActor {
                     // Honest terminal: desired host stays committed, nothing
                     // falls back silently (I-R2).
                     Some(desired) => {
+                        state.api.take();
                         state.slot = EndpointSlot::Degraded { desired, reason };
                         state.publish();
                     }
@@ -773,6 +824,7 @@ impl Actor for CoreActor {
             }
 
             CoreActorMessage::Shutdown { reply } => {
+                state.api.take();
                 if let EndpointSlot::ShutDown { report } = &state.slot {
                     let _ = reply.send(report.clone());
                     return Ok(());
@@ -910,6 +962,7 @@ impl CoreActor {
         // Phase: StoppingSource — no StopProof, no next owner. The source's
         // pump keeps running: its frames are still this generation's truth
         // until ownership actually moves.
+        state.api.take();
         state.slot = EndpointSlot::HandingOff {
             from: source.clone(),
             target,
@@ -1014,6 +1067,7 @@ impl CoreActor {
         // publish is what keeps the new generation's first frame from carrying
         // the old owner's state forward.
         state.snapshot = None;
+        state.api.take();
         state.slot = EndpointSlot::Connected(target.clone());
         state.publish();
         state.pump = Some(spawn_pump(
@@ -1058,6 +1112,23 @@ impl CoreObserver {
 }
 
 impl CoreClient {
+    pub async fn api_client(&self) -> Result<api::ApiClient, api::ApiError> {
+        let reply = self
+            .actor
+            .call(
+                |reply| CoreActorMessage::ApiClient { reply },
+                Some(self.submit_budget),
+            )
+            .await
+            .map_err(|error| api::ApiError::Unavailable(error.to_string()))?;
+        match reply {
+            ractor::rpc::CallResult::Success(result) => result,
+            _ => Err(api::ApiError::Unavailable(
+                "core actor did not answer API acquisition".into(),
+            )),
+        }
+    }
+
     pub(crate) fn observer(&self) -> CoreObserver {
         CoreObserver {
             status: self.status_rx.clone(),

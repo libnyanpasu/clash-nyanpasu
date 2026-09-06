@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::BTreeMap};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -30,7 +30,7 @@ pub struct EnvInfo<'a> {
     // pub service_info: xxx
 }
 
-pub type CoreInfo<'a> = HashMap<Cow<'a, str>, Cow<'a, str>>;
+pub type CoreInfo<'a> = BTreeMap<Cow<'a, str>, Cow<'a, str>>;
 
 pub fn collect_envs<'a>() -> Result<EnvInfo<'a>, std::io::Error> {
     let mut system = sysinfo::System::new_all();
@@ -60,7 +60,7 @@ pub fn collect_envs<'a>() -> Result<EnvInfo<'a>, std::io::Error> {
         memory: Cow::Owned(SizeFormatter::new(system.total_memory(), BINARY).to_string()),
     };
 
-    let mut core = HashMap::new();
+    let mut core = BTreeMap::new();
     for c in CoreType::get_supported_cores() {
         let name: &str = c.as_ref();
 

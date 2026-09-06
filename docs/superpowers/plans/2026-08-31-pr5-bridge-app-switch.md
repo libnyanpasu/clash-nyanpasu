@@ -293,14 +293,14 @@ impl NyanpasuClient {
 
 ### S2 — `OsServiceHostAdapter`（生产适配器）
 
-| 项        | 内容                                                                                                                                                                                                                                                                                                                                                                                           |
+| 项 | 内容 |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | --------------------------------------------------- |
-| 新文件    | `backend/tauri/src/core/actor_v2/service_host_adapter.rs`                                                                                                                                                                                                                                                                                                                                      |
-| 内容      | `pub struct OsServiceHostAdapter;` 实现 `ServiceHostAdapter`（`service_actor.rs:34-43`）：<br>`probe` → `crate::core::service::control::status()`（`control.rs:326`）；`install/uninstall/start_daemon/stop_daemon/update` → `control.rs:54/145/184/230/102`；`endpoint()` → `Arc::new(ServiceEndpoint::new(nyanpasu_ipc::client::Client::service_default().clone()))`。<br>错误一律 `map_err( | e   | e.to*string())`（trait 要求 `Result<*, String>`）。 |
-| 同卡改动  | 摘除 `control.rs` 对 `ipc.rs` statics 的副作用：删 `control.rs:96-97`、`:224-225`、`:319-320`（`HEALTH_CHECK_RUNNING` + `spawn_health_check`）与 `control.rs:175`、`:270`（`KILL_FLAG`）。这些语义由 `ServiceActor` 的观察循环与相位机替代（`service_actor.rs:143/168-214`）                                                                                                                   |
-| 不做      | 不动 `control.rs` 的 OS 机制本体（SCM / launchd / systemd 调用），它就是 AGENTS §8 说的边界适配器                                                                                                                                                                                                                                                                                              |
-| 验证      | `cargo build -p clash-nyanpasu --lib`；`cargo test -p clash-nyanpasu --lib`（`core::service::*` 14 个测试中依赖被删 statics 的必须同步删除/改写，其余保持绿）。**本卡无单元测试**——纯 OS 边界透传，可测的部分（compat 分类、相位判定）已在 `service_actor.rs` 的 fake 测试里；这一点如实记录在文件头 doc 注释                                                                                  |
-| fake/真核 | 不需要真 daemon；行为验证留到 §7 冒烟                                                                                                                                                                                                                                                                                                                                                          |
+| 新文件 | `backend/tauri/src/core/actor_v2/service_host_adapter.rs` |
+| 内容 | `pub struct OsServiceHostAdapter;` 实现 `ServiceHostAdapter`（`service_actor.rs:34-43`）：<br>`probe` → `crate::core::service::control::status()`（`control.rs:326`）；`install/uninstall/start_daemon/stop_daemon/update` → `control.rs:54/145/184/230/102`；`endpoint()` → `Arc::new(ServiceEndpoint::new(nyanpasu_ipc::client::Client::service_default().clone()))`。<br>错误一律 `map_err( | e   | e.to*string())`（trait 要求 `Result<*, String>`）。 |
+| 同卡改动 | 摘除 `control.rs` 对 `ipc.rs` statics 的副作用：删 `control.rs:96-97`、`:224-225`、`:319-320`（`HEALTH_CHECK_RUNNING` + `spawn_health_check`）与 `control.rs:175`、`:270`（`KILL_FLAG`）。这些语义由 `ServiceActor` 的观察循环与相位机替代（`service_actor.rs:143/168-214`） |
+| 不做 | 不动 `control.rs` 的 OS 机制本体（SCM / launchd / systemd 调用），它就是 AGENTS §8 说的边界适配器 |
+| 验证 | `cargo build -p clash-nyanpasu --lib`；`cargo test -p clash-nyanpasu --lib`（`core::service::*` 14 个测试中依赖被删 statics 的必须同步删除/改写，其余保持绿）。**本卡无单元测试**——纯 OS 边界透传，可测的部分（compat 分类、相位判定）已在 `service_actor.rs` 的 fake 测试里；这一点如实记录在文件头 doc 注释 |
+| fake/真核 | 不需要真 daemon；行为验证留到 §7 冒烟 |
 
 ### S3 — L3：facade 携带原 `CoreType`
 

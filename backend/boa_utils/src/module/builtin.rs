@@ -1,7 +1,10 @@
 use std::{cell::RefCell, io::Read, rc::Rc};
 
 use anyhow::Context as _;
-use boa_engine::{Context, JsNativeError, JsResult, JsString, Module, module::ModuleLoader};
+use boa_engine::{
+    Context, JsNativeError, JsResult, Module,
+    module::{ModuleLoader, ModuleRequest},
+};
 use boa_parser::Source;
 use include_compress_bytes::include_bytes_brotli;
 use include_url_macro::include_url_bytes_with_brotli;
@@ -27,10 +30,10 @@ impl ModuleLoader for BuiltinModuleLoader {
     async fn load_imported_module(
         self: Rc<Self>,
         _referrer: boa_engine::module::Referrer,
-        specifier: JsString,
+        request: ModuleRequest,
         context: &RefCell<&mut Context>,
     ) -> JsResult<Module> {
-        let specifier_str = specifier.to_std_string_escaped();
+        let specifier_str = request.specifier().to_std_string_escaped();
         let result: Result<_, anyhow::Error> = (|| {
             let module_name = specifier_str
                 .strip_prefix(BUILTIN_MODULE_PREFIX)

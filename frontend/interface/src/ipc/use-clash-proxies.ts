@@ -110,8 +110,7 @@ export const useClashProxies = () => {
 
   const getQueryData = () => {
     return queryClient.getQueryData([CLASH_PROXIES_QUERY_KEY]) as
-      | ClashProxiesQuery
-      | undefined
+      ClashProxiesQuery | undefined
   }
 
   const setQueryData = (data: ClashProxiesQuery) => {

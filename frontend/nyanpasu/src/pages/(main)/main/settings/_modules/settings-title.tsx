@@ -1,5 +1,5 @@
 import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { ComponentProps, useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'

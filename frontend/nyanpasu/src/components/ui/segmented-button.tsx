@@ -1,6 +1,6 @@
 import Check from '~icons/material-symbols/check-rounded'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import { ToggleGroup as ToggleGroupPrimitive } from 'radix-ui'
 import {
   ComponentProps,

@@ -2,11 +2,7 @@ export interface VergeConfig {
   app_log_level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | string
   language?: string
   clash_core?:
-    | 'mihomo'
-    | 'mihomo-alpha'
-    | 'clash-rs'
-    | 'clash-rs-alpha'
-    | 'clash'
+    'mihomo' | 'mihomo-alpha' | 'clash-rs' | 'clash-rs-alpha' | 'clash'
   theme_mode?: 'light' | 'dark' | 'system'
   theme_blur?: boolean
   traffic_graph?: boolean

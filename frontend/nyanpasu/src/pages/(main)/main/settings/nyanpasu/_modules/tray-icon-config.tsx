@@ -1,6 +1,6 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import DeviceResetRounded from '~icons/material-symbols/device-reset-rounded'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { TrayImage } from '@/components/ui/image'

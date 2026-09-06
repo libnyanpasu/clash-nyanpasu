@@ -1,4 +1,4 @@
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence } from 'motion/react'
 import { ComponentProps, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'

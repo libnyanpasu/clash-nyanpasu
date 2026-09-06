@@ -4,7 +4,7 @@ import FilterNoneRounded from '~icons/material-symbols/filter-none-outline-round
 import HorizontalRuleRounded from '~icons/material-symbols/horizontal-rule-rounded'
 import PushPin from '~icons/material-symbols/push-pin'
 import PushPinOutline from '~icons/material-symbols/push-pin-outline'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { ComponentProps, useCallback } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
 import useWindowMaximized from '@/hooks/use-window-maximized'

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import { ComponentProps } from 'react'
 import { AnimatedItem } from '@/components/ui/animated-item'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'

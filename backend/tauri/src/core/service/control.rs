@@ -15,7 +15,7 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> 
         }
         #[cfg(not(windows))]
         {
-            whoami::username()
+            whoami::username()?
         }
     };
     let data_dir = app_data_dir()?;

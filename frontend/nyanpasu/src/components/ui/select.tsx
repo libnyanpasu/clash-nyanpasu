@@ -1,7 +1,7 @@
 import ArrowDropDown from '~icons/material-symbols/arrow-drop-down-rounded'
 import Check from '~icons/material-symbols/check-rounded'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { Select as SelectPrimitive } from 'radix-ui'
 import {
   ComponentProps,

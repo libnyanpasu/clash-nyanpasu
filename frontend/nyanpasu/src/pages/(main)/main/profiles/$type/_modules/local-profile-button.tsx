@@ -1,7 +1,7 @@
 import UploadFileRounded from '~icons/material-symbols/upload-file-rounded'
 import dayjs from 'dayjs'
 import { filesize } from 'filesize'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence } from 'motion/react'
 import { PropsWithChildren, useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import z from 'zod'

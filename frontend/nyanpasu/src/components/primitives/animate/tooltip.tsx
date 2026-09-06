@@ -4,7 +4,7 @@ import {
   motion,
   type HTMLMotionProps,
   type Transition,
-} from 'framer-motion'
+} from 'motion/react'
 import {
   useCallback,
   useEffect,

@@ -1,4 +1,4 @@
-import { clamp, motion, Transition } from 'framer-motion'
+import { clamp, motion, Transition } from 'motion/react'
 import { ComponentProps } from 'react'
 import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'

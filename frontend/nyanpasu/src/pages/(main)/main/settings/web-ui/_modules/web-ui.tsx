@@ -3,7 +3,7 @@ import AllInboxRounded from '~icons/material-symbols/all-inbox-outline-rounded'
 import DeleteRounded from '~icons/material-symbols/delete-rounded'
 import EditSquareRounded from '~icons/material-symbols/edit-square-rounded'
 import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   ChangeEvent,
   PropsWithChildren,

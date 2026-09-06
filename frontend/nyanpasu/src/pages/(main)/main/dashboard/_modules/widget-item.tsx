@@ -1,5 +1,5 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'motion/react'
 import { Button } from '@/components/ui/button'
 import { DndGridItem, DndGridItemProps } from '@/components/ui/dnd-grid'
 import { useDndGridContext } from '@/components/ui/dnd-grid/context'

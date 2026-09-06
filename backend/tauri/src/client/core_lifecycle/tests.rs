@@ -47,6 +47,7 @@ async fn dirty_graph(
     DirtyNotifier,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
+    super::super::clash_config::ClashConfigClient,
 ) {
     use super::super::tests::{
         IdleServiceAdapter, test_materialization_port, test_typed_config_clients,
@@ -87,7 +88,7 @@ async fn dirty_graph(
     let client = CoreLifecycleClient::spawn_with_ticks(
         CoreLifecycleArgs {
             application: application.clone(),
-            clash,
+            clash: clash.clone(),
             profiles,
             core,
             service,
@@ -100,7 +101,7 @@ async fn dirty_graph(
     )
     .await
     .unwrap();
-    (client, notifier, builder, application)
+    (client, notifier, builder, application, clash)
 }
 
 async fn tick(client: &CoreLifecycleClient) {
@@ -111,7 +112,7 @@ async fn tick(client: &CoreLifecycleClient) {
 #[tokio::test]
 async fn dirty_during_build_coalesces_and_eventually_applies_the_new_snapshot() {
     let dir = tempfile::tempdir().unwrap();
-    let (client, notifier, builder, application) = dirty_graph(&dir).await;
+    let (client, notifier, builder, application, _) = dirty_graph(&dir).await;
     for _ in 0..8 {
         notifier.request_rebuild();
     }
@@ -145,7 +146,7 @@ async fn dirty_during_build_coalesces_and_eventually_applies_the_new_snapshot() 
 async fn shutdown_discards_dirty_before_start_and_after_an_active_build() {
     for active in [false, true] {
         let dir = tempfile::tempdir().unwrap();
-        let (client, notifier, builder, _) = dirty_graph(&dir).await;
+        let (client, notifier, builder, _, _) = dirty_graph(&dir).await;
         if active {
             notifier.request_rebuild();
             tick(&client).await;
@@ -620,8 +621,8 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
 async fn dirty_notifications_and_shutdown_are_isolated_between_graphs() {
     let dir_a = tempfile::tempdir().unwrap();
     let dir_b = tempfile::tempdir().unwrap();
-    let (a, notify_a, build_a, _) = dirty_graph(&dir_a).await;
-    let (b, notify_b, build_b, _) = dirty_graph(&dir_b).await;
+    let (a, notify_a, build_a, _, _) = dirty_graph(&dir_a).await;
+    let (b, notify_b, build_b, _, _) = dirty_graph(&dir_b).await;
     notify_a.request_rebuild();
     tick(&a).await;
     tick(&b).await;
@@ -636,4 +637,225 @@ async fn dirty_notifications_and_shutdown_are_isolated_between_graphs() {
     b.shutdown().await.unwrap();
     assert_eq!(build_a.calls.load(Ordering::SeqCst), 1);
     assert_eq!(build_b.calls.load(Ordering::SeqCst), 1);
+}
+
+fn override_patch(
+    value: serde_json::Value,
+) -> nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
+    serde_json::from_value(value).unwrap()
+}
+
+#[test]
+fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let client =
+        NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint.clone()))
+            .unwrap();
+    tauri::async_runtime::block_on(async {
+        let (left, right) = tokio::join!(
+            client.patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"}))),
+            client.patch_runtime_overrides(override_patch(serde_json::json!({"ipv6":true})))
+        );
+        assert!(left.unwrap().degradations().is_empty());
+        assert!(right.unwrap().degradations().is_empty());
+        let saved =
+            serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap();
+        assert_eq!(saved["mode"], "global");
+        assert_eq!(saved["ipv6"], true);
+        let applied = client.runtime_lifecycle_state().await.promoted.unwrap();
+        assert_eq!(applied.config["mode"].as_str(), Some("global"));
+        assert_eq!(applied.config["ipv6"].as_bool(), Some(true));
+        assert_eq!(applied.revision.get(), 2);
+        assert_eq!(endpoint.submissions(), 2);
+    });
+}
+
+#[test]
+fn config_reconcile_failure_reports_committed_state_without_replaying() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::failing();
+    let args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    let config_path = args.paths.clash_config_path();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    tauri::async_runtime::block_on(async {
+        let outcome = client
+            .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"direct"})))
+            .await
+            .unwrap();
+        assert_eq!(outcome.degradations().len(), 1);
+        assert_eq!(outcome.degradations()[0].code, "config_reconcile_failed");
+        assert!(
+            outcome.degradations()[0]
+                .message
+                .contains("configuration saved")
+        );
+        assert_eq!(endpoint.submissions(), 1);
+        let persisted: nyanpasu_config::clash::config::ClashConfig =
+            serde_yaml::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(persisted.overrides).unwrap()["mode"],
+            "direct"
+        );
+        assert_eq!(
+            serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
+            "direct"
+        );
+    });
+}
+
+struct RejectConfigMirror(AtomicBool);
+impl crate::state::mirror::ClashLegacyBridge for RejectConfigMirror {
+    fn prepare(
+        &self,
+        _: &nyanpasu_config::clash::config::ClashConfig,
+    ) -> anyhow::Result<Box<dyn crate::state::mirror::PreparedLegacyMirror>> {
+        anyhow::ensure!(
+            !self.0.load(Ordering::SeqCst),
+            "config preparation rejected"
+        );
+        Ok(Box::new(crate::state::mirror::NoopPreparedLegacyMirror))
+    }
+    fn snapshot_legacy(&self) -> anyhow::Result<nyanpasu_config::clash::config::ClashConfig> {
+        Ok(Default::default())
+    }
+}
+
+#[test]
+fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let bridge = Arc::new(RejectConfigMirror(AtomicBool::new(false)));
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    args.bridges.clash = bridge.clone();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = client.inner.clash_config.get().await.unwrap();
+        bridge.0.store(true, Ordering::SeqCst);
+        assert!(
+            client
+                .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
+                .await
+                .is_err()
+        );
+        let after = client.inner.clash_config.get().await.unwrap();
+        assert_eq!(after.version, before.version);
+        assert_eq!(
+            serde_json::to_value(after.state).unwrap(),
+            serde_json::to_value(before.state).unwrap()
+        );
+        assert_eq!(endpoint.submissions(), 0);
+        assert!(client.runtime_lifecycle_state().await.promoted.is_none());
+    });
+}
+
+#[tokio::test]
+async fn config_write_waits_for_active_lifecycle_work_before_committing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, _, builder, _, clash) = dirty_graph(&dir).await;
+    let active = {
+        let client = client.clone();
+        tokio::spawn(async move { client.reconcile().await })
+    };
+    builder.entered.notified().await;
+    let mut patch = Box::pin(
+        client.patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"}))),
+    );
+    assert!(patch.as_mut().now_or_never().is_none());
+    barrier(&client).await;
+    assert_eq!(client.status().queued.len(), 1);
+    assert_eq!(
+        serde_json::to_value(clash.get().await.unwrap().state.overrides).unwrap()["mode"],
+        "rule",
+        "queued writes must not commit ahead of lifecycle admission"
+    );
+    assert_eq!(builder.calls.load(Ordering::SeqCst), 1);
+    builder.release.notify_one();
+    active.await.unwrap().unwrap();
+    assert!(patch.await.unwrap().degradations().is_empty());
+    let config = &client.runtime().promoted.unwrap().config;
+    assert_eq!(config["mode"].as_str(), Some("global"));
+    assert_eq!(builder.calls.load(Ordering::SeqCst), 2);
+    client.shutdown().await.unwrap();
+}
+
+#[test]
+fn config_persistence_failure_leaves_state_unchanged_and_never_reconciles() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    let path = args.paths.clash_config_path();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = client.inner.clash_config.get().await.unwrap();
+        if path.exists() {
+            std::fs::remove_file(&path).unwrap();
+        }
+        std::fs::create_dir_all(&path).unwrap();
+        assert!(
+            client
+                .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
+                .await
+                .is_err()
+        );
+        let after = client.inner.clash_config.get().await.unwrap();
+        assert_eq!(after.version, before.version);
+        assert_eq!(
+            serde_json::to_value(after.state).unwrap(),
+            serde_json::to_value(before.state).unwrap()
+        );
+        assert_eq!(endpoint.submissions(), 0);
+    });
+}
+
+struct FailingConfigTray {
+    refreshed: AtomicUsize,
+}
+impl UiEventSink for FailingConfigTray {
+    fn state_changed(&self, _: crate::core::handle::StateChanged) {
+        self.refreshed.fetch_add(1, Ordering::SeqCst);
+    }
+    fn notice_message(&self, _: &crate::core::handle::Message) {}
+    fn update_systray(&self) -> crate::client::Result<()> {
+        Ok(())
+    }
+    fn update_systray_part(&self) -> crate::client::Result<()> {
+        Err(anyhow::anyhow!("tray refresh rejected").into())
+    }
+}
+
+#[test]
+fn config_ui_failure_is_degraded_after_successful_reconcile() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let ui = Arc::new(FailingConfigTray {
+        refreshed: AtomicUsize::new(0),
+    });
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    args.ui_sink = ui.clone();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    tauri::async_runtime::block_on(async {
+        let outcome = client
+            .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
+            .await
+            .unwrap();
+        assert_eq!(endpoint.submissions(), 1);
+        assert_eq!(ui.refreshed.load(Ordering::SeqCst), 1);
+        assert_eq!(outcome.degradations().len(), 1);
+        assert_eq!(outcome.degradations()[0].code, "config_tray_refresh_failed");
+        assert_eq!(
+            outcome.degradations()[0].phase,
+            runtime::DegradationPhase::UiEffect
+        );
+        assert_eq!(
+            client
+                .runtime_lifecycle_state()
+                .await
+                .promoted
+                .unwrap()
+                .config["mode"]
+                .as_str(),
+            Some("global")
+        );
+    });
 }

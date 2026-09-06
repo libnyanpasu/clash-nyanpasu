@@ -66,6 +66,7 @@ pub struct CoreLifecycleOperationResult {
 
 pub(super) enum Command {
     Reconcile,
+    PatchRuntimeOverrides(nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch),
     SelectCore(ClashCore),
     ChangeHost(ExecutionHost),
     SetExecutionHost(bool),
@@ -565,6 +566,16 @@ impl CoreLifecycleClient {
         }
     }
     method!(shutdown, Command::Shutdown, Shutdown, ShutdownReport);
+
+    pub async fn patch_runtime_overrides(
+        &self,
+        patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
+    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
+        match self.call(Command::PatchRuntimeOverrides(patch)).await? {
+            Output::Mutation(result) => Ok(result),
+            _ => unreachable!(),
+        }
+    }
 
     pub async fn select_core(&self, core: ClashCore) -> Result<ReconcileReport, CoreError> {
         match self.call(Command::SelectCore(core)).await? {

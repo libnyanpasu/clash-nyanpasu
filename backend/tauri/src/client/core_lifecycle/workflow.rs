@@ -48,6 +48,36 @@ impl CoreLifecycleWorkflow {
     async fn execute_inner(&mut self, command: Command) -> Result<Output, CoreError> {
         match command {
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile().await?)),
+            Command::PatchRuntimeOverrides(patch) => {
+                self.clash
+                    .patch_overrides(patch)
+                    .await
+                    .map_err(domain_error)?;
+                let mut degradations = Vec::new();
+                if let Err(error) = self.reconcile().await {
+                    degradations.push(runtime::Degradation {
+                        phase: runtime::DegradationPhase::RuntimeApply,
+                        code: "config_reconcile_failed".into(),
+                        message: format!(
+                            "configuration saved, but core reconciliation failed: {error}"
+                        ),
+                        retryable: error.retryable,
+                    });
+                }
+                self.ui.refresh_clash();
+                if let Err(error) = self.ui.update_systray_part() {
+                    degradations.push(runtime::Degradation {
+                        phase: runtime::DegradationPhase::UiEffect,
+                        code: "config_tray_refresh_failed".into(),
+                        message: error.to_string(),
+                        retryable: true,
+                    });
+                }
+                Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
+                    (),
+                    degradations,
+                )))
+            }
             Command::RuntimeDirty => {
                 self.reconcile().await?;
                 self.ui.refresh_clash();

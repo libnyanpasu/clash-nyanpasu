@@ -4,10 +4,10 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 106,
+      "total": 104,
       "byKey": {
         "Config::verge()": 80,
-        "Config::clash()": 26
+        "Config::clash()": 24
       }
     },
     "service_globals": {
@@ -23,20 +23,20 @@
       }
     },
     "migration_markers": {
-      "total": 13,
+      "total": 14,
       "byKey": {
-        "TODO(actor-migration)": 10,
+        "TODO(actor-migration)": 11,
         "FIXME(actor-migration)": 3
       }
     },
     "legacy_dto_refs": {
-      "total": 311,
+      "total": 312,
       "byKey": {
         "IVerge": 180,
         "IClashTemp": 31,
         "LegacyVergeBridge": 31,
+        "ClashLegacyBridge": 19,
         "VergeLegacyBridge": 19,
-        "ClashLegacyBridge": 18,
         "LegacyClashBridge": 10,
         "LegacyVergePatchRoute": 9,
         "LegacyWindowBridge": 7,

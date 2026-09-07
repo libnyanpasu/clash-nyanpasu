@@ -123,19 +123,19 @@ export const SYSTEM_ACCENT_COLOR_QUERY_KEY = 'system-accent-color'
 /**
  * Maximum connections history length, used by clash ws provider to limit connections history length
  */
-export const MAX_CONNECTIONS_HISTORY = 32
+export { MAX_CONNECTIONS_HISTORY } from '../provider/clash-ws-state'
 
 /**
  * Maximum memory history length, used by clash ws provider to limit memory history length
  */
-export const MAX_MEMORY_HISTORY = 32
+export { MAX_MEMORY_HISTORY } from '../provider/clash-ws-state'
 
 /**
  * Maximum traffic history length, used by clash ws provider to limit traffic history length
  */
-export const MAX_TRAFFIC_HISTORY = 32
+export { MAX_TRAFFIC_HISTORY } from '../provider/clash-ws-state'
 
 /**
  * Maximum logs history length, used by clash ws provider to limit logs history length
  */
-export const MAX_LOGS_HISTORY = 1024
+export { MAX_LOGS_HISTORY } from '../provider/clash-ws-state'

@@ -466,14 +466,10 @@ export type ClashWsConnectionSnapshot = {
   connections: any | null
 }
 
-export type ClashWsEvent =
-  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'connections_updated'; data: ClashWsConnectionSnapshot }
-  | { kind: 'log_appended'; data: ClashWsLog }
-  | { kind: 'traffic_updated'; data: ClashWsTraffic }
-  | { kind: 'memory_updated'; data: ClashWsMemory }
-  | { kind: 'recording_changed'; data: ClashWsRecording }
-  | { kind: 'history_cleared'; data: ClashWsKind }
+export type ClashWsEvent = {
+  sequence: number
+  update: ClashWsUpdate
+}
 
 export type ClashWsKind = 'connections' | 'logs' | 'traffic' | 'memory'
 
@@ -496,6 +492,7 @@ export type ClashWsRecording = {
 }
 
 export type ClashWsSnapshot = {
+  sequence: number
   state: ClashConnectionsConnectorState
   recording: ClashWsRecording
   connections: ClashWsConnectionSnapshot[]
@@ -508,6 +505,16 @@ export type ClashWsTraffic = {
   up: number
   down: number
 }
+
+export type ClashWsUpdate =
+  | { kind: 'reset'; data: ClashWsSnapshot }
+  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
+  | { kind: 'connections_updated'; data: ClashWsConnectionSnapshot }
+  | { kind: 'log_appended'; data: ClashWsLog }
+  | { kind: 'traffic_updated'; data: ClashWsTraffic }
+  | { kind: 'memory_updated'; data: ClashWsMemory }
+  | { kind: 'recording_changed'; data: ClashWsRecording }
+  | { kind: 'history_cleared'; data: ClashWsKind }
 
 export type CompositionConfig =
   CompositionConfig_Serialize | CompositionConfig_Deserialize

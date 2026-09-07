@@ -1,6 +1,7 @@
 mod application;
 mod clash_api;
 mod clash_config;
+mod clash_streams;
 pub mod core_lifecycle;
 mod error;
 mod event_sink;
@@ -260,6 +261,7 @@ struct NyanpasuClientInner {
     core_lifecycle: core_lifecycle::CoreLifecycleClient,
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
+    streams: crate::core::clash::ws::StreamsClient,
     system_dns: Arc<dyn SystemDnsCache>,
 }
 
@@ -372,6 +374,7 @@ impl NyanpasuClient {
             })
             .await?;
         let proxies = crate::core::proxies::ProxiesClient::spawn(core_v2.clone()).await?;
+        let streams = crate::core::clash::ws::StreamsClient::spawn(core_v2.clone()).await?;
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 application,
@@ -386,6 +389,7 @@ impl NyanpasuClient {
                 core_lifecycle,
                 core_api: core_v2,
                 proxies,
+                streams,
                 system_dns,
             }),
         })

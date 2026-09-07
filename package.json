@@ -39,6 +39,7 @@
     "knip": "knip",
     "test": "run-p test:*",
     "test:architecture-ledger": "deno test --config scripts/deno.jsonc -A scripts/architecture-ledger_test.ts",
+    "test:clash-ws": "node --test scripts/clash-ws-state.test.mjs",
     "test:backend": "cargo test --manifest-path ./backend/Cargo.toml --all-features",
     "fmt": "run-p fmt:*",
     "fmt:backend": "cargo fmt --manifest-path ./backend/Cargo.toml --all",

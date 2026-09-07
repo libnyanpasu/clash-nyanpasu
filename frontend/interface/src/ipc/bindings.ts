@@ -2164,14 +2164,14 @@ export type RuntimeInspectionContent = {
 
 export type RuntimeInspectionDiff = {
   parent_id: number
-  /**  JSON Patch operations serialized as YAML; an empty sequence means unchanged. */
-  yaml: string
+  before_yaml: string
 }
 
 export type RuntimeInspectionNode = {
   id: number
   tag: OperatorTag
   next: number[]
+  has_logs: boolean
   /**  None means unchanged or no comparison baseline (including independent roots). */
   changed_fields: string[] | null
 }

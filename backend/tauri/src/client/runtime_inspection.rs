@@ -27,6 +27,7 @@ pub struct RuntimeInspectionNode {
     pub id: u32,
     pub tag: OperatorTag,
     pub next: Vec<u32>,
+    pub has_logs: bool,
     /// None means unchanged or no comparison baseline (including independent roots).
     pub changed_fields: Option<Vec<String>>,
 }
@@ -41,8 +42,7 @@ pub struct RuntimeInspectionContent {
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct RuntimeInspectionDiff {
     pub parent_id: u32,
-    /// JSON Patch operations serialized as YAML; an empty sequence means unchanged.
-    pub yaml: String,
+    pub before_yaml: String,
 }
 
 impl RuntimeSnapshot {
@@ -60,6 +60,11 @@ impl RuntimeSnapshot {
                 .enumerate()
                 .map(|(id, node)| RuntimeInspectionNode {
                     id: id as u32,
+                    has_logs: self
+                        .inspection
+                        .step_logs
+                        .iter()
+                        .any(|log| log.key == node.key && !log.entries.is_empty()),
                     tag: node.tag.clone(),
                     next: node.next.clone().unwrap_or_default(),
                     changed_fields: node
@@ -92,11 +97,15 @@ impl RuntimeSnapshot {
             diff: self
                 .inspection
                 .graph
-                .diff_from_parent(node_id)
-                .map(|(parent_id, patch)| -> anyhow::Result<_> {
+                .comparison_parent(node_id)
+                .map(|parent_id| -> anyhow::Result<_> {
                     Ok(RuntimeInspectionDiff {
                         parent_id,
-                        yaml: serde_yaml::to_string(&patch)?,
+                        before_yaml: serde_yaml::to_string(
+                            &self.inspection.graph.nodes[parent_id as usize]
+                                .snapshot
+                                .config,
+                        )?,
                     })
                 })
                 .transpose()?,
@@ -187,6 +196,7 @@ pub(crate) mod tests {
         assert_eq!(summary.nodes.len(), 1);
         assert_eq!(summary.nodes[0].tag, OperatorTag::BareRoot);
         assert_eq!(summary.nodes[0].changed_fields, None);
+        assert!(summary.nodes[0].has_logs);
         let content = snapshot
             .inspection_content(&summary.snapshot_id, 0)
             .unwrap();
@@ -249,6 +259,7 @@ pub(crate) mod tests {
                 .unwrap();
             let config: serde_json::Value = serde_yaml::from_str(&content.yaml).unwrap();
             assert!(content.logs.is_empty());
+            assert!(!node.has_logs);
             match node.tag {
                 OperatorTag::FileConfigRoot { .. } => {
                     assert_eq!(node.changed_fields, None);
@@ -260,15 +271,29 @@ pub(crate) mod tests {
                     assert_eq!(config["mode"], "global");
                     let diff = content.diff.unwrap();
                     assert_eq!(diff.parent_id, summary.root_id);
-                    let patch: serde_json::Value = serde_yaml::from_str(&diff.yaml).unwrap();
-                    assert_eq!(
-                        patch,
-                        serde_json::json!([{"op": "replace", "path": "/mode", "value": "global"}])
-                    );
+                    let before: serde_json::Value =
+                        serde_yaml::from_str(&diff.before_yaml).unwrap();
+                    assert_eq!(before, serde_json::json!({"mode": "rule"}));
                 }
                 _ => panic!("unexpected child"),
             }
         }
+    }
+
+    #[test]
+    fn inspection_does_not_count_empty_log_entries_as_activity() {
+        let mut snapshot = snapshot();
+        let mut data = inspection_data();
+        data.step_logs[0].entries.clear();
+        data.step_logs.push(StepLog {
+            key: nyanpasu_config::runtime::snapshot::SnapshotNodeKey::Builtin {
+                selected_profile_id: None,
+                step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::Finalizing,
+            },
+            entries: vec![StepLogEntry::new(StepLogLevel::Info, "another step")],
+        });
+        snapshot.inspection = Arc::new(data);
+        assert!(!snapshot.inspection_summary().nodes[0].has_logs);
     }
 
     #[test]

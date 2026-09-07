@@ -416,7 +416,13 @@
   "inspect_selected": "当前配置",
   "inspect_base": "组合基底",
   "inspect_contributor": "代理贡献来源",
-  "inspect_diff": "差异 · YAML",
-  "inspect_diff_description": "JSON Patch 差异操作，相对于步骤",
-  "inspect_diff_independent": "这是独立快照，没有比较基线。"
+  "inspect_diff": "差异",
+  "inspect_diff_description": "变更相对于步骤",
+  "inspect_diff_independent": "这是独立快照，没有比较基线。",
+  "inspect_show_all": "显示完整处理链",
+  "inspect_filtered_empty": "没有步骤修改配置或产生日志。开启完整处理链可查看所有步骤。",
+  "inspect_diff_loading": "正在计算差异…",
+  "inspect_old_line": "原行号",
+  "inspect_new_line": "新行号",
+  "inspect_change": "变更"
 }

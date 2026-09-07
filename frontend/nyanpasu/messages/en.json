@@ -416,7 +416,13 @@
   "inspect_selected": "Selected profile",
   "inspect_base": "Composition base",
   "inspect_contributor": "Proxy contributor",
-  "inspect_diff": "Diff · YAML",
-  "inspect_diff_description": "JSON Patch operations relative to step",
-  "inspect_diff_independent": "This is an independent snapshot with no comparison baseline."
+  "inspect_diff": "Diff",
+  "inspect_diff_description": "Changes relative to step",
+  "inspect_diff_independent": "This is an independent snapshot with no comparison baseline.",
+  "inspect_show_all": "Show full process chain",
+  "inspect_filtered_empty": "No steps changed the configuration or produced logs. Turn on the full process chain to inspect all steps.",
+  "inspect_diff_loading": "Computing changes…",
+  "inspect_old_line": "Old line",
+  "inspect_new_line": "New line",
+  "inspect_change": "Change"
 }

@@ -294,6 +294,9 @@ importers:
       dayjs:
         specifier: 1.11.23
         version: 1.11.23
+      diff:
+        specifier: 8.0.2
+        version: 8.0.2
       less:
         specifier: 4.9.1
         version: 4.9.1(supports-color@10.2.2)

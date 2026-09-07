@@ -2,7 +2,7 @@
 
 ## Scope and assumptions
 
-Show the latest promoted runtime pipeline in the existing Profile Inspect route, read-only, including structural diffs. Promoted means generated/published, not necessarily applied by the core. No preview execution, historical archive, editing, rollback, or new actor is needed.
+Show the latest promoted runtime pipeline in the existing Profile Inspect route, read-only, including line diffs. Promoted means generated/published, not necessarily applied by the core. No preview execution, historical archive, editing, rollback, or new actor is needed.
 
 ## Plan
 
@@ -22,7 +22,7 @@ Completed the read-only facade/IPC path and Profile Inspect browser. The runtime
 
 Passed on macOS:
 
-- `cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib runtime_inspection --offline` (4 tests, including real build/facade integration with injected adapters).
+- `cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib runtime_inspection --offline` (5 tests, including real build/facade integration with injected adapters).
 - The `client::runtime` test filter (16 tests), `enhance::artifact_bridge`, and `export_typescript_bindings`.
 - `cargo clippy --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib --tests --offline` (existing repository warnings remain).
 - Interface and application TypeScript checks, affected-file Prettier/Oxlint, Cargo formatting, and architecture ledger gate.
@@ -35,6 +35,10 @@ The integration fixture binds local ephemeral ports, and existing compile-time J
 
 Use a container-width breakpoint (40rem of available inspection width) for the step/content columns. Reuse the existing Shiki 4.4.3 highlighter with lazy YAML grammar loading and light/dark themes; show plain text while highlighting loads or if it fails. Source matching and cancellation prevent an old highlight result from appearing after a node switch.
 
-Preserve SnapshotBaseline in the materialized graph and compute JSON Patch against the actual comparison parent. The node-content DTO serializes these operations to YAML alongside the parent ID: an empty list is unchanged, while no diff denotes an independent baseline. Stored archive layout/version is unchanged. This first diff view displays structural operations rather than line-oriented unified diffs.
+Preserve SnapshotBaseline in the materialized graph and expose the comparison parent's YAML in the same node-content response as the current YAML. Independent roots have no diff; identical before/after text has no changes. Stored archive layout/version is unchanged.
 
-Additional validation: 23 domain snapshot tests with persistence enabled; 4 inspection tests; regenerated bindings; TypeScript, Oxlint and Stylelint; headless Chrome verifies syntax tokens, theme colors, container-width columns, diff selection and independent roots, refresh/stale handling, and narrow layout.
+The default view is a unified YAML line diff with red deletions, green additions, old/new line numbers and three context lines per hunk. The existing locked jsdiff version is a direct frontend dependency; its asynchronous structuredPatch API avoids blocking the UI during diff calculation. Full YAML remains available with Shiki highlighting.
+
+The node summary carries has_logs, which only counts non-empty entries for that node's semantic key. By default the navigation shows nodes with changed fields or logs. An explicit full-process-chain switch reveals all nodes; selection falls back to the first visible node when filtering hides it. An empty filtered chain does not fetch node content and offers the full-chain switch.
+
+Additional validation: 23 domain snapshot tests with persistence enabled; 5 inspection tests; regenerated bindings; TypeScript, Oxlint and Stylelint; headless Chrome verifies syntax tokens, theme colors, container-width columns, default diff, red/green rows, old/new line numbers, log-only/quiet filtering, full-chain toggle and selection fallback, independent roots, refresh/stale handling, and narrow layout.

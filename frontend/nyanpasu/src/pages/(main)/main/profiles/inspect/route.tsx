@@ -4,6 +4,7 @@ import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@/components/ui/segmented-button'
+import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
 import {
   commands,
@@ -12,8 +13,9 @@ import {
   type OperatorTag,
   type RuntimeInspection,
 } from '@nyanpasu/interface'
-import { useQuery } from '@tanstack/react-query'
+import { skipToken, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import DiffViewer from './_modules/diff-viewer'
 import YamlViewer from './_modules/yaml-viewer'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
@@ -104,16 +106,26 @@ function RouteComponent() {
 }
 
 function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
-  const [selectedId, setSelectedId] = useState(snapshot.root_id)
-  const [view, setView] = useState('yaml')
-  const selected = snapshot.nodes.find((node) => node.id === selectedId)
+  const [showAll, setShowAll] = useState(false)
+  const [selectedId, setSelectedId] = useState<number>()
+  const [view, setView] = useState('diff')
+  const nodes = showAll
+    ? snapshot.nodes
+    : snapshot.nodes.filter(
+        (node) => node.has_logs || (node.changed_fields?.length ?? 0) > 0,
+      )
+  const selected = nodes.find((node) => node.id === selectedId) ?? nodes[0]
   const content = useQuery({
-    queryKey: ['runtime-inspection-node', snapshot.snapshot_id, selectedId],
-    queryFn: async () =>
-      unwrapResult(
-        await commands.inspectRuntimeNode(snapshot.snapshot_id, selectedId),
-      ),
-    enabled: selected !== undefined,
+    queryKey: ['runtime-inspection-node', snapshot.snapshot_id, selected?.id],
+    queryFn: selected
+      ? async () =>
+          unwrapResult(
+            await commands.inspectRuntimeNode(
+              snapshot.snapshot_id,
+              selected.id,
+            ),
+          )
+      : skipToken,
     retry: false,
     refetchOnWindowFocus: false,
     gcTime: 0,
@@ -126,25 +138,36 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
         {m.inspect_revision()} {snapshot.revision}
       </p>
       <div className="grid min-w-0 gap-4 @[40rem]:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
-        <nav
-          aria-label={m.inspect_steps()}
-          className="flex max-h-[65vh] flex-col gap-1 overflow-auto"
-        >
-          {snapshot.nodes.map((node) => (
-            <button
-              key={node.id}
-              type="button"
-              aria-current={selectedId === node.id ? 'step' : undefined}
-              onClick={() => setSelectedId(node.id)}
-              className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary rounded-lg p-3 text-left text-sm focus-visible:outline-2"
-            >
-              <span className="text-on-surface-variant mr-2">
-                #{node.id + 1}
-              </span>
-              {stepLabel(node.tag)}
-            </button>
-          ))}
-        </nav>
+        <div className="flex min-w-0 flex-col gap-3">
+          <label className="flex items-center justify-between gap-2 text-sm">
+            {m.inspect_show_all()}
+            <Switch checked={showAll} onCheckedChange={setShowAll} />
+          </label>
+          <nav
+            aria-label={m.inspect_steps()}
+            className="flex max-h-[65vh] flex-col gap-1 overflow-auto"
+          >
+            {nodes.map((node) => (
+              <button
+                key={node.id}
+                type="button"
+                aria-current={selected?.id === node.id ? 'step' : undefined}
+                onClick={() => setSelectedId(node.id)}
+                className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary rounded-lg p-3 text-left text-sm focus-visible:outline-2"
+              >
+                <span className="text-on-surface-variant mr-2">
+                  #{node.id + 1}
+                </span>
+                {stepLabel(node.tag)}
+              </button>
+            ))}
+          </nav>
+        </div>
+        {!selected && (
+          <p role="status" className="text-on-surface-variant text-sm">
+            {m.inspect_filtered_empty()}
+          </p>
+        )}
         {selected && (
           <div className="flex min-w-0 flex-col gap-3">
             <h2 className="font-medium">
@@ -158,7 +181,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                   ? m.inspect_unchanged()
                   : selected.changed_fields.join(', ')}
             </div>
-            {selected.next.length > 0 && (
+            {showAll && selected.next.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span>{m.inspect_next()}</span>
                 {selected.next.map((id) => (
@@ -200,9 +223,9 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                       {m.inspect_diff_description()} #
                       {content.data.diff.parent_id + 1}
                     </p>
-                    <YamlViewer
-                      code={content.data.diff.yaml}
-                      label={m.inspect_diff()}
+                    <DiffViewer
+                      before={content.data.diff.before_yaml}
+                      after={content.data.yaml}
                     />
                   </>
                 ) : (

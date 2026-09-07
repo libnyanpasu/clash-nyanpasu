@@ -102,19 +102,6 @@ pub fn change_clash_mode(app_handle: &AppHandle, mode: String) {
                 for degradation in outcome.degradations() {
                     log::warn!("{}: {}", degradation.code, degradation.message);
                 }
-                if outcome
-                    .degradations()
-                    .iter()
-                    .any(|d| d.code == "config_reconcile_failed")
-                {
-                    return;
-                }
-                // TODO(actor-migration): compatibility bridge for mode interruption policy.
-                // Reason: connection-interruption policies migrate separately from config writes.
-                // Remove when: the typed lifecycle workflow owns mode interruption.
-                if let Err(error) = crate::core::connection_interruption::ConnectionInterruptionService::on_mode_change().await {
-                    log::warn!("mode changed, but connection interruption failed: {error}");
-                }
             }
             Err(error) => log::error!("mode change failed: {error:#}"),
         }

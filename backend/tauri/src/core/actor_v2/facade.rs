@@ -77,6 +77,25 @@ impl CoreFacade {
         result
     }
 
+    pub(crate) async fn api_client_if_running(
+        &self,
+    ) -> Result<Option<super::api::ApiClient>, super::api::ApiError> {
+        let status = self
+            .core
+            .refresh_status()
+            .await
+            .map_err(|error| super::api::ApiError::Unavailable(error.to_string()))?;
+        // Only an authoritative Stopped state proves there were no source connections.
+        // Unknown state must still try the binding instead of silently skipping policy.
+        if matches!(
+            status.snapshot.and_then(|s| s.state),
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+        ) {
+            return Ok(None);
+        }
+        self.core.api_client().await.map(Some)
+    }
+
     pub async fn reconcile(
         &mut self,
         core: ClashCore,

@@ -629,3 +629,6 @@ impl CoreLifecycleClient {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod connection_policy_tests;

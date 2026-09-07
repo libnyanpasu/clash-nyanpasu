@@ -645,6 +645,12 @@ fn override_patch(
     serde_json::from_value(value).unwrap()
 }
 
+async fn disable_mode_interruption(client: &NyanpasuClient) {
+    let mut config = client.get_clash_config().await.unwrap();
+    config.break_connection.on_mode_change = false;
+    client.replace_clash_config(config).await.unwrap();
+}
+
 #[test]
 fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
     let dir = tempfile::tempdir().unwrap();
@@ -653,6 +659,7 @@ fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
         NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint.clone()))
             .unwrap();
     tauri::async_runtime::block_on(async {
+        disable_mode_interruption(&client).await;
         let (left, right) = tokio::join!(
             client.patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"}))),
             client.patch_runtime_overrides(override_patch(serde_json::json!({"ipv6":true})))
@@ -679,6 +686,7 @@ fn config_reconcile_failure_reports_committed_state_without_replaying() {
     let config_path = args.paths.clash_config_path();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        disable_mode_interruption(&client).await;
         let outcome = client
             .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"direct"})))
             .await
@@ -730,6 +738,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     args.bridges.clash = bridge.clone();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        disable_mode_interruption(&client).await;
         let before = client.inner.clash_config.get().await.unwrap();
         bridge.0.store(true, Ordering::SeqCst);
         assert!(
@@ -753,6 +762,9 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
 async fn config_write_waits_for_active_lifecycle_work_before_committing() {
     let dir = tempfile::tempdir().unwrap();
     let (client, _, builder, _, clash) = dirty_graph(&dir).await;
+    let mut config = clash.get().await.unwrap().state;
+    config.break_connection.on_mode_change = false;
+    clash.replace(config).await.unwrap();
     let active = {
         let client = client.clone();
         tokio::spawn(async move { client.reconcile().await })
@@ -787,6 +799,7 @@ fn config_persistence_failure_leaves_state_unchanged_and_never_reconciles() {
     let path = args.paths.clash_config_path();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        disable_mode_interruption(&client).await;
         let before = client.inner.clash_config.get().await.unwrap();
         if path.exists() {
             std::fs::remove_file(&path).unwrap();
@@ -835,6 +848,7 @@ fn config_ui_failure_is_degraded_after_successful_reconcile() {
     args.ui_sink = ui.clone();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        disable_mode_interruption(&client).await;
         let outcome = client
             .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
             .await

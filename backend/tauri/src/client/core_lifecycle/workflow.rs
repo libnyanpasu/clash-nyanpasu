@@ -49,12 +49,31 @@ impl CoreLifecycleWorkflow {
         match command {
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile().await?)),
             Command::PatchRuntimeOverrides(patch) => {
+                let policy = self
+                    .clash
+                    .get()
+                    .await
+                    .map_err(domain_error)?
+                    .state
+                    .break_connection;
+                let interruption = if patch.mode.is_some() && policy.on_mode_change {
+                    Some(self.core.api_client_if_running().await)
+                } else {
+                    None
+                };
                 self.clash
                     .patch_overrides(patch)
                     .await
                     .map_err(domain_error)?;
                 let mut degradations = Vec::new();
-                if let Err(error) = self.reconcile().await {
+                let reconciled = self.reconcile().await;
+                // A confirmed process replacement already removed the source connections.
+                let replaced = reconciled.as_ref().is_ok_and(|report| {
+                    use nyanpasu_ipc::api::core::v2::{OperationOutputInfo, ReconcileOutcomeKind};
+                    matches!(&report.output, OperationOutputInfo::Reconciled(outcome)
+                        if matches!(outcome.outcome, ReconcileOutcomeKind::Started | ReconcileOutcomeKind::Restarted | ReconcileOutcomeKind::Switched))
+                });
+                if let Err(error) = reconciled {
                     degradations.push(runtime::Degradation {
                         phase: runtime::DegradationPhase::RuntimeApply,
                         code: "config_reconcile_failed".into(),
@@ -63,6 +82,25 @@ impl CoreLifecycleWorkflow {
                         ),
                         retryable: error.retryable,
                     });
+                }
+                if degradations.is_empty()
+                    && !replaced
+                    && let Some(source) = interruption
+                {
+                    let result = match source {
+                        Ok(Some(api)) => api.close_all_connections().await,
+                        Ok(None) => Ok(()),
+                        Err(error) => Err(error),
+                    };
+                    match result {
+                        Ok(()) => {}
+                        Err(error) => degradations.push(runtime::Degradation {
+                            phase: runtime::DegradationPhase::SystemEffect,
+                            code: "mode_interruption_failed".into(),
+                            message: format!("configuration applied, but source-instance connection interruption failed: {error}"),
+                            retryable: false,
+                        }),
+                    }
                 }
                 self.ui.refresh_clash();
                 if let Err(error) = self.ui.update_systray_part() {

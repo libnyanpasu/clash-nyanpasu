@@ -28,3 +28,12 @@ export async function formatAnsi(str: string) {
     },
   })
 }
+
+export async function highlightYaml(code: string) {
+  const instance = await getShikiSingleton()
+  await instance.loadLanguage(import('shiki/langs/yaml.mjs'))
+  return instance.codeToHtml(code, {
+    lang: 'yaml',
+    themes: { light: 'min-light', dark: 'nord' },
+  })
+}

@@ -231,6 +231,7 @@ pub enum SnapshotBaseline {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct ConfigSnapshotState<C> {
     pub snapshot: ConfigSnapshot,
+    pub baseline: SnapshotBaseline,
     /// The operator that generated this snapshot.
     pub tag: OperatorTag,
     /// Semantic position key derived from `tag` at materialization time.
@@ -239,10 +240,16 @@ pub struct ConfigSnapshotState<C> {
 }
 
 impl<C> ConfigSnapshotState<C> {
-    pub fn new(snapshot: ConfigSnapshot, tag: OperatorTag, next: Option<Vec<C>>) -> Self {
+    pub fn new(
+        snapshot: ConfigSnapshot,
+        tag: OperatorTag,
+        baseline: SnapshotBaseline,
+        next: Option<Vec<C>>,
+    ) -> Self {
         let key = tag.node_key();
         Self {
             snapshot,
+            baseline,
             tag,
             key,
             next,
@@ -255,6 +262,27 @@ impl<C> ConfigSnapshotState<C> {
 pub struct ConfigSnapshotsGraph {
     pub nodes: Vec<ConfigSnapshotState<Idx>>,
     pub root_id: Idx,
+}
+
+impl ConfigSnapshotsGraph {
+    /// A structural diff against the comparison parent, not an independent
+    /// branch's attachment point. None means the node has no comparison baseline.
+    pub fn diff_from_parent(&self, node_id: Idx) -> Option<(Idx, Patch)> {
+        let node = self.nodes.get(node_id as usize)?;
+        if node.baseline == SnapshotBaseline::Independent {
+            return None;
+        }
+        let (parent_id, parent) = self.nodes.iter().enumerate().find(|(_, parent)| {
+            parent
+                .next
+                .as_ref()
+                .is_some_and(|children| children.contains(&node_id))
+        })?;
+        Some((
+            parent_id as Idx,
+            json_patch::diff(&parent.snapshot.config, &node.snapshot.config),
+        ))
+    }
 }
 
 /// Storage payload: keyframe (`Full`) or relative `Delta` against the parent node.
@@ -794,6 +822,7 @@ impl StoredConfigSnapshotsGraph {
                 config: config.clone(),
                 changed_fields,
             },
+            baseline: state.baseline,
             tag: state.tag.clone(),
             key: state.tag.node_key(),
             next: next.clone(),
@@ -1223,6 +1252,54 @@ mod tests {
         let patch = json_patch::diff(&before, &after);
         let fields = changed_fields_from_patch(&patch).unwrap();
         assert!(fields.contains("a/b.~1"));
+    }
+
+    #[test]
+    fn parent_diff_round_trips_changes_and_distinguishes_unchanged_from_independent() {
+        let before = json!({"a/b": {"~key": 1}, "remove": true, "list": [1, 2]});
+        let after = json!({"a/b": {"~key": 2}, "added": "value", "list": [2]});
+        let mut builder =
+            ConfigSnapshotsBuilder::new_root(value(before.clone()), selected_file_root("primary"));
+        builder
+            .push(
+                builtin_step("primary", BuiltinStepKind::GuardOverrides),
+                value(after.clone()),
+            )
+            .unwrap();
+        builder
+            .push(
+                builtin_step("primary", BuiltinStepKind::Finalizing),
+                value(after.clone()),
+            )
+            .unwrap();
+        let graph = builder.build().unwrap();
+        assert!(graph.diff_from_parent(graph.root_id).is_none());
+        let (parent, patch) = graph.diff_from_parent(1).unwrap();
+        assert_eq!(parent, graph.root_id);
+        let mut reconstructed = before;
+        json_patch::patch(&mut reconstructed, &patch).unwrap();
+        assert_eq!(reconstructed, after);
+        assert!(
+            patch
+                .0
+                .iter()
+                .any(|op| matches!(op, PatchOperation::Add(_)))
+        );
+        assert!(
+            patch
+                .0
+                .iter()
+                .any(|op| matches!(op, PatchOperation::Remove(_)))
+        );
+        assert!(
+            patch
+                .0
+                .iter()
+                .any(|op| matches!(op, PatchOperation::Replace(_)))
+        );
+        let (parent, patch) = graph.diff_from_parent(2).unwrap();
+        assert_eq!(parent, 1);
+        assert!(patch.0.is_empty());
     }
 
     #[test]

@@ -2,13 +2,13 @@
 
 ## Scope and assumptions
 
-Show the latest promoted runtime pipeline in the existing Profile Inspect route, read-only. Promoted means generated/published, not necessarily applied by the core. No preview execution, historical archive, editing, rollback, or new actor is needed.
+Show the latest promoted runtime pipeline in the existing Profile Inspect route, read-only, including structural diffs. Promoted means generated/published, not necessarily applied by the core. No preview execution, historical archive, editing, rollback, or new actor is needed.
 
 ## Plan
 
 1. Preserve the pipeline graph and step logs in the immutable runtime snapshot owned by the existing lifecycle. Project a narrow inspection read model through NyanpasuClient and thin Tauri commands. Fetch metadata first and YAML/logs for one node on demand. Reject node requests after the selected snapshot is replaced; never mix builds.
    Verification: projection tests cover branches, logs, missing nodes, and stale snapshot requests.
-2. Replace the Profile Inspect placeholder with a step browser, source metadata, changed fields, read-only YAML, logs, refresh, and loading/error/empty states. Use generated TypeScript bindings and explicit query keys per snapshot/node.
+2. Replace the Profile Inspect placeholder with a step browser, source metadata, changed fields, highlighted read-only YAML and diff, logs, refresh, and loading/error/empty states. Use generated TypeScript bindings and explicit query keys per snapshot/node.
    Verification: TypeScript checks, formatting/lint, and frontend build.
 3. Run focused Rust tests and regenerate bindings, inspect the final diff, then create one atomic feature commit and a PR against main with validation evidence and limitations.
 
@@ -30,3 +30,11 @@ Passed on macOS:
 - Headless Chrome with a temporary isolated harness and mocked IPC: node selection, YAML/logs, stale request errors, refresh/reset, empty/error states, and 390px layout without horizontal overflow. The harness was removed after validation.
 
 The integration fixture binds local ephemeral ports, and existing compile-time JS embedding fetches CDN modules; those checks require network/local-port access. Browser checks use mock IPC, not a live Tauri/core session. Retaining materialized snapshots increases memory with pipeline size; no history is retained. The graph represents branches, not a chronological execution trace; changed-fields metadata may be absent for unchanged steps or independent baselines.
+
+## YAML highlighting and diff display
+
+Use a container-width breakpoint (40rem of available inspection width) for the step/content columns. Reuse the existing Shiki 4.4.3 highlighter with lazy YAML grammar loading and light/dark themes; show plain text while highlighting loads or if it fails. Source matching and cancellation prevent an old highlight result from appearing after a node switch.
+
+Preserve SnapshotBaseline in the materialized graph and compute JSON Patch against the actual comparison parent. The node-content DTO serializes these operations to YAML alongside the parent ID: an empty list is unchanged, while no diff denotes an independent baseline. Stored archive layout/version is unchanged. This first diff view displays structural operations rather than line-oriented unified diffs.
+
+Additional validation: 23 domain snapshot tests with persistence enabled; 4 inspection tests; regenerated bindings; TypeScript, Oxlint and Stylelint; headless Chrome verifies syntax tokens, theme colors, container-width columns, diff selection and independent roots, refresh/stale handling, and narrow layout.

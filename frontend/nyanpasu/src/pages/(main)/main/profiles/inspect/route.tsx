@@ -1,5 +1,9 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  SegmentedButton,
+  SegmentedButtonItem,
+} from '@/components/ui/segmented-button'
 import { m } from '@/paraglide/messages'
 import {
   commands,
@@ -10,6 +14,7 @@ import {
 } from '@nyanpasu/interface'
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import YamlViewer from './_modules/yaml-viewer'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
   component: RouteComponent,
@@ -63,7 +68,7 @@ function RouteComponent() {
   })
 
   return (
-    <section className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+    <section className="@container flex min-w-0 flex-1 flex-col gap-4 p-4 md:p-6">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">{m.inspect_title()}</h1>
@@ -100,6 +105,7 @@ function RouteComponent() {
 
 function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
   const [selectedId, setSelectedId] = useState(snapshot.root_id)
+  const [view, setView] = useState('yaml')
   const selected = snapshot.nodes.find((node) => node.id === selectedId)
   const content = useQuery({
     queryKey: ['runtime-inspection-node', snapshot.snapshot_id, selectedId],
@@ -119,7 +125,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
         {m.inspect_generated()} · {snapshot.target_core} ·{' '}
         {m.inspect_revision()} {snapshot.revision}
       </p>
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
+      <div className="grid min-w-0 gap-4 @[40rem]:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
         <nav
           aria-label={m.inspect_steps()}
           className="flex max-h-[65vh] flex-col gap-1 overflow-auto"
@@ -170,17 +176,40 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
             )}
             {content.isSuccess && (
               <>
-                <label htmlFor="snapshot-yaml" className="text-sm font-medium">
-                  {m.inspect_yaml()}
-                </label>
-                <textarea
-                  id="snapshot-yaml"
-                  readOnly
-                  spellCheck={false}
-                  value={content.data.yaml}
-                  className="bg-surface text-on-surface focus-visible:outline-primary h-[55vh] min-h-64 w-full resize-y rounded-lg p-4 font-mono text-xs whitespace-pre focus-visible:outline-2"
-                  wrap="off"
-                />
+                <SegmentedButton
+                  className="max-w-sm"
+                  size="sm"
+                  value={view}
+                  onValueChange={(value) => {
+                    if (value) setView(value)
+                  }}
+                >
+                  <SegmentedButtonItem value="yaml">YAML</SegmentedButtonItem>
+                  <SegmentedButtonItem value="diff">
+                    {m.inspect_diff()}
+                  </SegmentedButtonItem>
+                </SegmentedButton>
+                {view === 'yaml' ? (
+                  <YamlViewer
+                    code={content.data.yaml}
+                    label={m.inspect_yaml()}
+                  />
+                ) : content.data.diff ? (
+                  <>
+                    <p className="text-on-surface-variant text-sm">
+                      {m.inspect_diff_description()} #
+                      {content.data.diff.parent_id + 1}
+                    </p>
+                    <YamlViewer
+                      code={content.data.diff.yaml}
+                      label={m.inspect_diff()}
+                    />
+                  </>
+                ) : (
+                  <p role="status" className="text-on-surface-variant text-sm">
+                    {m.inspect_diff_independent()}
+                  </p>
+                )}
                 <h3 className="text-sm font-medium">{m.inspect_logs()}</h3>
                 {content.data.logs.length === 0 ? (
                   <p className="text-on-surface-variant text-sm">

@@ -2158,7 +2158,14 @@ export type RuntimeInspection = {
 
 export type RuntimeInspectionContent = {
   yaml: string
+  diff: RuntimeInspectionDiff | null
   logs: StepLogEntry[]
+}
+
+export type RuntimeInspectionDiff = {
+  parent_id: number
+  /**  JSON Patch operations serialized as YAML; an empty sequence means unchanged. */
+  yaml: string
 }
 
 export type RuntimeInspectionNode = {

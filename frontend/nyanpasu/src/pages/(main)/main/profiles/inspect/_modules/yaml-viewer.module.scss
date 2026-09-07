@@ -1,0 +1,12 @@
+.viewer pre {
+  min-width: fit-content;
+  min-height: 100%;
+  padding: 1rem;
+  margin: 0;
+}
+
+:global(.dark) .viewer :global(.shiki),
+:global(.dark) .viewer :global(.shiki span) {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+}

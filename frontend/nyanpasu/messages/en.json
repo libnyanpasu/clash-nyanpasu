@@ -415,5 +415,8 @@
   "inspect_finalizing": "Finalize configuration",
   "inspect_selected": "Selected profile",
   "inspect_base": "Composition base",
-  "inspect_contributor": "Proxy contributor"
+  "inspect_contributor": "Proxy contributor",
+  "inspect_diff": "Diff · YAML",
+  "inspect_diff_description": "JSON Patch operations relative to step",
+  "inspect_diff_independent": "This is an independent snapshot with no comparison baseline."
 }

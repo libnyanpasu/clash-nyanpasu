@@ -415,5 +415,8 @@
   "inspect_finalizing": "完成設定",
   "inspect_selected": "目前設定",
   "inspect_base": "組合基底",
-  "inspect_contributor": "代理貢獻來源"
+  "inspect_contributor": "代理貢獻來源",
+  "inspect_diff": "差異 · YAML",
+  "inspect_diff_description": "JSON Patch 差異操作，相對於步驟",
+  "inspect_diff_independent": "這是獨立快照，沒有比較基準。"
 }

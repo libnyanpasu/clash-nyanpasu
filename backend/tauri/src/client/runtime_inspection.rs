@@ -34,7 +34,15 @@ pub struct RuntimeInspectionNode {
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct RuntimeInspectionContent {
     pub yaml: String,
+    pub diff: Option<RuntimeInspectionDiff>,
     pub logs: Vec<StepLogEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct RuntimeInspectionDiff {
+    pub parent_id: u32,
+    /// JSON Patch operations serialized as YAML; an empty sequence means unchanged.
+    pub yaml: String,
 }
 
 impl RuntimeSnapshot {
@@ -81,6 +89,17 @@ impl RuntimeSnapshot {
             .ok_or_else(|| anyhow::anyhow!("runtime snapshot node does not exist"))?;
         Ok(RuntimeInspectionContent {
             yaml: serde_yaml::to_string(&node.snapshot.config)?,
+            diff: self
+                .inspection
+                .graph
+                .diff_from_parent(node_id)
+                .map(|(parent_id, patch)| -> anyhow::Result<_> {
+                    Ok(RuntimeInspectionDiff {
+                        parent_id,
+                        yaml: serde_yaml::to_string(&patch)?,
+                    })
+                })
+                .transpose()?,
             logs: self
                 .inspection
                 .step_logs
@@ -176,6 +195,7 @@ pub(crate) mod tests {
             serde_json::json!({"mode": "rule"})
         );
         assert_eq!(content.logs[0].message, "built");
+        assert!(content.diff.is_none());
     }
 
     #[test]
@@ -233,10 +253,18 @@ pub(crate) mod tests {
                 OperatorTag::FileConfigRoot { .. } => {
                     assert_eq!(node.changed_fields, None);
                     assert_eq!(config["mode"], "direct");
+                    assert!(content.diff.is_none());
                 }
                 OperatorTag::BuiltinStep { .. } => {
                     assert_eq!(node.changed_fields, Some(vec!["mode".to_string()]));
                     assert_eq!(config["mode"], "global");
+                    let diff = content.diff.unwrap();
+                    assert_eq!(diff.parent_id, summary.root_id);
+                    let patch: serde_json::Value = serde_yaml::from_str(&diff.yaml).unwrap();
+                    assert_eq!(
+                        patch,
+                        serde_json::json!([{"op": "replace", "path": "/mode", "value": "global"}])
+                    );
                 }
                 _ => panic!("unexpected child"),
             }

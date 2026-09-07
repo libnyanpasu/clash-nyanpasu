@@ -146,18 +146,12 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn get_system_locale() -> String {
-    tauri_plugin_os::locale().unwrap_or("en-US".to_string())
-}
-
-pub fn mapping_to_i18n_key(locale_key: &str) -> &'static str {
-    if locale_key.starts_with("zh-TW") {
-        "zh-TW"
-    } else if locale_key.starts_with("zh-") {
-        "zh-CN"
-    } else {
-        "en"
-    }
+/// Resolve the UI language from the OS locale, as the canonical i18n key.
+///
+/// The key names a `rust_i18n` bundle in `backend/tauri/locales` and a paraglide
+/// locale in the frontend; both use the same lowercase spelling.
+pub fn detect_system_i18n_key() -> &'static str {
+    nyanpasu_config::application::default_i18n_language().as_str()
 }
 
 pub fn get_clash_external_port(

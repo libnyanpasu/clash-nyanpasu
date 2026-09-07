@@ -1,4 +1,4 @@
-language: zh-CN
+language: zh-cn
 theme_color: '#1867c0'
 network_statistic_widget: large
 clash_core: mihomo

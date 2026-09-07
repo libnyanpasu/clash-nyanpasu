@@ -108,11 +108,7 @@ pub fn run() -> std::io::Result<()> {
         }
     }
     // Use system locale as default
-    let locale = {
-        let locale = utils::help::get_system_locale();
-        utils::help::mapping_to_i18n_key(&locale)
-    };
-    rust_i18n::set_locale(locale.to_lowercase().as_str());
+    rust_i18n::set_locale(utils::help::detect_system_i18n_key());
 
     if single_instance_result
         .as_ref()

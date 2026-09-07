@@ -466,10 +466,7 @@ impl IVerge {
     pub fn template() -> Self {
         Self {
             clash_core: Some(ClashCore::default()),
-            language: {
-                let locale = crate::utils::help::get_system_locale();
-                Some(crate::utils::help::mapping_to_i18n_key(&locale).into())
-            },
+            language: Some(crate::utils::help::detect_system_i18n_key().into()),
             app_log_level: Some(logging::LoggingLevel::default()),
             theme_mode: Some("system".into()),
             traffic_graph: Some(true),

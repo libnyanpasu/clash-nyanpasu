@@ -8,6 +8,7 @@ mod ports;
 pub mod profiles;
 pub mod rebuild;
 pub mod runtime;
+pub mod runtime_inspection;
 mod session_state;
 mod system_dns;
 
@@ -2613,6 +2614,51 @@ pub(crate) mod tests {
         client.reconcile_core().await.unwrap();
         assert!(client.promoted_runtime().await.is_some());
         assert!(client.runtime_product_path().exists());
+    }
+
+    #[tokio::test]
+    async fn runtime_inspection_tracks_promoted_builds() {
+        let dir = tempdir().unwrap();
+        let client = test_client(&dir).await;
+        assert!(client.inspect_runtime().await.is_none());
+        assert!(client.inspect_runtime_node("missing", 0).await.is_err());
+        client.reconcile_core().await.unwrap();
+        let first = client.inspect_runtime().await.unwrap();
+        assert!(!first.nodes.is_empty());
+        let final_node = first
+            .nodes
+            .iter()
+            .find(|node| {
+                matches!(
+                    node.tag,
+                    nyanpasu_config::runtime::snapshot::OperatorTag::BuiltinStep {
+                        step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::Finalizing,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        let content = client
+            .inspect_runtime_node(&first.snapshot_id, final_node.id)
+            .await
+            .unwrap();
+        let config: serde_yaml::Mapping = serde_yaml::from_str(&content.yaml).unwrap();
+        assert_eq!(config, client.promoted_runtime().await.unwrap().config);
+        client.reconcile_core().await.unwrap();
+        let second = client.inspect_runtime().await.unwrap();
+        assert_ne!(first.snapshot_id, second.snapshot_id);
+        assert!(
+            client
+                .inspect_runtime_node(&first.snapshot_id, first.root_id)
+                .await
+                .is_err()
+        );
+        assert!(
+            client
+                .inspect_runtime_node(&second.snapshot_id, second.root_id)
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]

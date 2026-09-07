@@ -51,10 +51,12 @@ pub(crate) struct RuntimeSnapshotData {
     pub config: Mapping,
     pub exists_keys: Vec<String>,
     pub postprocessing_output: PostProcessingOutput,
+    pub(crate) inspection: Arc<super::runtime_inspection::RuntimeInspectionData>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RuntimeSnapshot {
+    pub(crate) inspection_id: String,
     pub revision: RuntimeRevision,
     pub target_core: ClashCore,
     pub product_sha256: [u8; 32],
@@ -62,6 +64,7 @@ pub struct RuntimeSnapshot {
     pub config: Mapping,
     pub exists_keys: Vec<String>,
     pub postprocessing_output: PostProcessingOutput,
+    pub(crate) inspection: Arc<super::runtime_inspection::RuntimeInspectionData>,
 }
 
 impl RuntimeSnapshot {
@@ -73,6 +76,7 @@ impl RuntimeSnapshot {
     ) -> Self {
         let product_sha256 = Sha256::digest(&product_bytes).into();
         Self {
+            inspection_id: nanoid::nanoid!(),
             revision,
             target_core,
             product_sha256,
@@ -80,6 +84,7 @@ impl RuntimeSnapshot {
             config: data.config,
             exists_keys: data.exists_keys,
             postprocessing_output: data.postprocessing_output,
+            inspection: data.inspection,
         }
     }
 
@@ -511,6 +516,7 @@ mod tests {
             config: Mapping::new(),
             exists_keys: Vec::new(),
             postprocessing_output: PostProcessingOutput::default(),
+            inspection: Arc::new(super::super::runtime_inspection::tests::inspection_data()),
         };
         let first = RuntimeSnapshot::from_data(
             RuntimeRevision(1),

@@ -369,6 +369,24 @@ pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<Strin
 
 #[tauri::command]
 #[specta::specta]
+pub async fn inspect_runtime(
+    client: State<'_, NyanpasuClient>,
+) -> Result<Option<crate::client::runtime_inspection::RuntimeInspection>> {
+    Ok(client.inspect_runtime().await)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn inspect_runtime_node(
+    client: State<'_, NyanpasuClient>,
+    snapshot_id: String,
+    node_id: u32,
+) -> Result<crate::client::runtime_inspection::RuntimeInspectionContent> {
+    Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
     Ok(client
         .promoted_runtime()

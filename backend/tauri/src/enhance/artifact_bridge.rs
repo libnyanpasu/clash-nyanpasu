@@ -90,7 +90,7 @@ pub(crate) fn map_postprocessing(
 }
 
 pub fn runtime_snapshot_data_from_artifact(
-    artifact: &RuntimeArtifact,
+    artifact: RuntimeArtifact,
     profiles: &Profiles,
     core: ClashCore,
     builtin_enabled: bool,
@@ -110,10 +110,15 @@ pub fn runtime_snapshot_data_from_artifact(
     } else {
         Vec::new()
     };
+    let postprocessing_output = map_postprocessing(&artifact.step_logs, profiles, &builtin_names);
     Ok(crate::client::runtime::RuntimeSnapshotData {
         config,
         exists_keys,
-        postprocessing_output: map_postprocessing(&artifact.step_logs, profiles, &builtin_names),
+        inspection: std::sync::Arc::new(crate::client::runtime_inspection::RuntimeInspectionData {
+            graph: artifact.graph,
+            step_logs: artifact.step_logs,
+        }),
+        postprocessing_output,
     })
 }
 

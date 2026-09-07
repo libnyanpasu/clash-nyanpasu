@@ -47,6 +47,7 @@ pub enum Mode {
     Rule,
     Global,
     Direct,
+    Script,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type, Patch)]

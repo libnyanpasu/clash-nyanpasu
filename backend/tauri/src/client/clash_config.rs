@@ -2,7 +2,9 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
-use nyanpasu_config::clash::config::{ClashConfig, ClashConfigPatch};
+use nyanpasu_config::clash::config::{
+    ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
+};
 use nyanpasu_core::state::PersistentStateManagerSetup;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
@@ -73,6 +75,17 @@ impl ClashConfigClient {
     pub async fn patch(&self, patch: ClashConfigPatch) -> anyhow::Result<ClashConfigSnapshot> {
         self.call(
             |reply| ClashConfigActorMessage::Patch { patch, reply },
+            None,
+        )
+        .await
+    }
+
+    pub async fn patch_overrides(
+        &self,
+        patch: ClashGuardOverridesPatch,
+    ) -> anyhow::Result<ClashConfigSnapshot> {
+        self.call(
+            |reply| ClashConfigActorMessage::PatchOverrides { patch, reply },
             None,
         )
         .await
@@ -236,5 +249,21 @@ mod tests {
                 panic!("unexpected conflict at version {actual_version}")
             }
         }
+    }
+    #[tokio::test]
+    async fn concurrent_override_patches_preserve_unrelated_fields() {
+        let (client, _dir) = test_client().await;
+        let before = serde_json::to_value(client.get().await.unwrap().state.overrides).unwrap();
+        let left = serde_json::from_value(serde_json::json!({"mode":"script"})).unwrap();
+        let right = serde_json::from_value(serde_json::json!({"allow-lan":true})).unwrap();
+        let (left, right) =
+            tokio::join!(client.patch_overrides(left), client.patch_overrides(right));
+        left.unwrap();
+        right.unwrap();
+        let after = serde_json::to_value(client.get().await.unwrap().state.overrides).unwrap();
+        assert_eq!(after["mode"], "script");
+        assert_eq!(after["allow-lan"], true);
+        assert_eq!(after["secret"], before["secret"]);
+        assert_eq!(after["ipv6"], before["ipv6"]);
     }
 }

@@ -32,7 +32,9 @@ export const commands = {
     typedError<string[], string>(__TAURI_INVOKE('get_clash_logs')),
   /**  patch clash runtime config */
   patchClashConfig: (payload: PatchRuntimeConfig_Deserialize) =>
-    typedError<null, string>(__TAURI_INVOKE('patch_clash_config', { payload })),
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('patch_clash_config', { payload }),
+    ),
   changeClashCore: (
     clashCore:
       | 'clash'

@@ -558,6 +558,20 @@ impl NyanpasuClient {
         Ok(client.get().await?.state)
     }
 
+    pub async fn patch_runtime_overrides(
+        &self,
+        patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let outcome = self
+            .inner
+            .core_lifecycle
+            .patch_runtime_overrides(patch)
+            .await
+            .map_err(client_error_from_core)?;
+        self.request_proxy_refresh();
+        Ok(outcome)
+    }
+
     pub async fn patch_clash_config(&self, patch: ClashConfigPatch) -> Result<()> {
         let client = self.inner.clash_config.clone();
         client.patch(patch).await?;

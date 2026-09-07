@@ -14,7 +14,7 @@ use anyhow::{Result, bail};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreStateDetail;
 use serde::{Deserialize, Serialize};
-use serde_yaml::{Mapping, Value};
+use serde_yaml::Mapping;
 use std::future::Future;
 use strum::EnumString;
 use tauri::{AppHandle, Manager};
@@ -85,31 +85,39 @@ pub fn change_clash_mode(app_handle: &AppHandle, mode: String) {
         .state::<crate::client::NyanpasuClient>()
         .inner()
         .clone();
-    let mut mapping = Mapping::new();
-    mapping.insert(Value::from("mode"), mode.clone().into());
     tauri::async_runtime::spawn(async move {
-        log::debug!(target: "app", "change clash mode to {mode}");
-
-        match clash::api::patch_configs(&mapping).await {
-            Ok(_) => {
-                // 更新配置
-                Config::clash().data().patch_config(mapping);
-
-                if Config::clash().data().save_config().is_ok() {
-                    handle::Handle::refresh_clash();
-                    log_err!(handle::Handle::update_systray_part());
+        let mode = match mode.parse::<nyanpasu_config::clash::config::overrides::Mode>() {
+            Ok(mode) => mode,
+            Err(error) => {
+                log::error!("invalid clash mode: {error}");
+                return;
+            }
+        };
+        let patch = nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
+            mode: Some(mode),
+            ..Default::default()
+        };
+        match client.patch_runtime_overrides(patch).await {
+            Ok(outcome) => {
+                for degradation in outcome.degradations() {
+                    log::warn!("{}: {}", degradation.code, degradation.message);
+                }
+                if outcome
+                    .degradations()
+                    .iter()
+                    .any(|d| d.code == "config_reconcile_failed")
+                {
+                    return;
+                }
+                // TODO(actor-migration): compatibility bridge for mode interruption policy.
+                // Reason: connection-interruption policies migrate separately from config writes.
+                // Remove when: the typed lifecycle workflow owns mode interruption.
+                if let Err(error) = crate::core::connection_interruption::ConnectionInterruptionService::on_mode_change().await {
+                    log::warn!("mode changed, but connection interruption failed: {error}");
                 }
             }
-            Err(err) => log::error!(target: "app", "{err:?}"),
+            Err(error) => log::error!("mode change failed: {error:#}"),
         }
-        client.request_proxy_refresh();
-    });
-
-    // Interrupt connections based on configuration
-    tauri::async_runtime::spawn(async move {
-        let _ =
-            crate::core::connection_interruption::ConnectionInterruptionService::on_mode_change()
-                .await;
     });
 }
 

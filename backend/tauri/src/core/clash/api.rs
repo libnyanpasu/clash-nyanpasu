@@ -3,12 +3,8 @@ use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use reqwest::{Method, StatusCode, header::HeaderMap};
 use serde::{Deserialize, Serialize};
-use serde_yaml::Mapping;
 use specta::Type;
-use std::{
-    collections::HashMap,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 use tracing_attributes::instrument;
 use url::Url;
 
@@ -72,28 +68,6 @@ pub struct RuleProviderItem {
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 pub struct ProvidersRulesRes {
     pub providers: IndexMap<String, RuleProviderItem>,
-}
-
-/// PUT /configs
-/// path 是绝对路径
-#[instrument]
-pub async fn put_configs(config_path: &str) -> Result<()> {
-    let path = "/configs";
-
-    let mut data = HashMap::new();
-    data.insert("path", config_path);
-
-    let _ = perform_request((Method::PUT, path, Data(data))).await?;
-
-    Ok(())
-}
-
-/// PATCH /configs
-#[instrument]
-pub async fn patch_configs(config: &Mapping) -> Result<()> {
-    let path = "/configs";
-    let _ = perform_request((Method::PATCH, path, Data(config))).await?;
-    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
@@ -249,8 +223,8 @@ pub struct DelayRes {
 #[instrument]
 fn clash_client_info() -> Result<(String, HeaderMap)> {
     // TODO(actor-migration): temporary bridge to legacy controller configuration.
-    // Reason: config writes and connection-interruption policies still need
-    // lifecycle/config reconciliation migration before using the bound API.
+    // Reason: remaining connection-interruption policies still need
+    // lifecycle migration before using the bound API.
     // Remove when: those callers use the injected instance-bound ApiClient.
     let client = { Config::clash().data().get_client_info() };
 
@@ -267,65 +241,23 @@ fn clash_client_info() -> Result<(String, HeaderMap)> {
     Ok((server, headers))
 }
 
-/// The Request Parameters
-struct PerformRequest<D = ()> {
-    method: reqwest::Method,
-    path: String,
-    data: Option<D>,
-}
-/// A newtype wrapper for request body
-struct Data<T>(T);
-
-impl From<(reqwest::Method, &str)> for PerformRequest<()> {
-    fn from((method, path): (reqwest::Method, &str)) -> Self {
-        Self {
-            method,
-            path: path.to_string(),
-            data: None,
-        }
-    }
-}
-
-impl<T> From<(reqwest::Method, &str, Data<T>)> for PerformRequest<T>
-where
-    T: Serialize,
-{
-    fn from((method, path, Data(data)): (reqwest::Method, &str, Data<T>)) -> Self {
-        Self {
-            method,
-            path: path.to_string(),
-            data: Some(data),
-        }
-    }
-}
-
 #[instrument(skip_all, fields(
     method = tracing::field::Empty,
     url = tracing::field::Empty,
-    data = tracing::field::Empty,
 ))]
-async fn perform_request<D>(param: impl Into<PerformRequest<D>>) -> Result<reqwest::Response>
-where
-    D: Serialize + core::fmt::Debug,
-{
-    let PerformRequest { method, path, data } = param.into();
+async fn perform_request((method, path): (Method, &str)) -> Result<reqwest::Response> {
     let (host, headers) = clash_client_info().context("failed to get clash client info")?;
     let base_url = Url::parse(&host).context("failed to parse host")?;
     let opts = url::Url::options().base_url(Some(&base_url));
-    let url = opts.parse(&path).context("failed to parse path")?;
+    let url = opts.parse(path).context("failed to parse path")?;
 
     let span = tracing::Span::current();
     span.record("method", tracing::field::display(&method));
     span.record("url", tracing::field::display(&url));
-    span.record("data", tracing::field::debug(&data));
 
     async {
         let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-        let mut builder = client.request(method.clone(), url.clone()).headers(headers);
-
-        if let Some(data) = &data {
-            builder = builder.json(data);
-        }
+        let builder = client.request(method.clone(), url.clone()).headers(headers);
 
         let resp = builder.send().await?;
 
@@ -353,7 +285,9 @@ where
         Ok(resp)
     }
     .await
-    .inspect_err(|e| tracing::error!(method = %method, url = %url, data = ?data, "failed to perform request: {:?}", e))
+    .inspect_err(
+        |e| tracing::error!(method = %method, url = %url, "failed to perform request: {:?}", e),
+    )
 }
 
 /// 缩短clash的日志

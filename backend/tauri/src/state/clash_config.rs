@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::Context as _;
-use nyanpasu_config::clash::config::{ClashConfig, ClashConfigPatch};
+use nyanpasu_config::clash::config::{
+    ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
+};
 use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
@@ -34,6 +36,10 @@ pub enum ClashConfigActorMessage {
     Get(RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>),
     Patch {
         patch: ClashConfigPatch,
+        reply: RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>,
+    },
+    PatchOverrides {
+        patch: ClashGuardOverridesPatch,
         reply: RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>,
     },
     Replace {
@@ -147,6 +153,11 @@ impl Actor for ClashConfigActor {
                 }
                 .await;
                 let _ = reply.send(result);
+            }
+            ClashConfigActorMessage::PatchOverrides { patch, reply } => {
+                let mut next = state.manager.snapshot_handle().load().state.clone();
+                next.overrides.apply(patch);
+                let _ = reply.send(Self::commit(state, next).await);
             }
             ClashConfigActorMessage::Replace { state: next, reply } => {
                 let _ = reply.send(Self::commit(state, next).await);

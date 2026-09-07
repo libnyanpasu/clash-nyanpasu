@@ -14,7 +14,6 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use struct_patch::Patch as _;
 use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
@@ -436,7 +435,7 @@ pub struct PatchRuntimeConfig {
 pub async fn patch_clash_config(
     client: State<'_, NyanpasuClient>,
     payload: PatchRuntimeConfig,
-) -> Result {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     // Explicit-field whitelist so future DTO fields never auto-leak into logs.
     tracing::debug!(
         allow_lan = ?payload.allow_lan,
@@ -449,17 +448,7 @@ pub async fn patch_clash_config(
     let overrides = serde_yaml::from_value::<
         nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
     >(serde_yaml::to_value(payload)?)?;
-    let mut clash = client.get_clash_config().await?;
-    clash.overrides.apply(overrides);
-    let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
-    patch.overrides = Some(clash.overrides);
-    client.patch_clash_config(patch).await?;
-    client.reconcile_core().await?;
-    // A mode change rewrites the proxy groups; warm the cache the same way the
-    // pre-facade patch path did, or the next read serves the old groups until
-    // the actor cache's freshness window lapses.
-    client.request_proxy_refresh();
-    Ok(())
+    Ok(client.patch_runtime_overrides(overrides).await?)
 }
 
 #[tauri::command]

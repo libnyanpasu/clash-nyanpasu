@@ -56,9 +56,17 @@ export const useProxyMode = () => {
       throw new Error('Script mode is only available for Clash Premium')
     }
 
-    await commands.clashApiDeleteConnections(null)
+    const outcome = await clashConfig.upsert.mutateAsync({ mode })
+    if (
+      outcome?.status === 'committed_degraded' &&
+      outcome.degradations.some(
+        (item) => item.code === 'config_reconcile_failed',
+      )
+    ) {
+      return
+    }
 
-    await clashConfig.upsert.mutateAsync({ mode })
+    await commands.clashApiDeleteConnections(null)
   }
 
   return {

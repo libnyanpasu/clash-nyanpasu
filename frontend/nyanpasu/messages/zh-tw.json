@@ -421,7 +421,6 @@
   "inspect_diff_independent": "這是獨立快照，沒有比較基準。",
   "inspect_show_all": "顯示完整處理鏈",
   "inspect_filtered_empty": "沒有步驟修改設定或產生日誌。開啟完整處理鏈可查看所有步驟。",
-  "inspect_diff_loading": "正在計算差異…",
   "inspect_old_line": "原行號",
   "inspect_new_line": "新行號",
   "inspect_change": "變更"

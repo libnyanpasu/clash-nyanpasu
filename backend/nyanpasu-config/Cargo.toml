@@ -48,6 +48,7 @@ tracing-subscriber = { version = "0.3", features = [
 ] }
 language-tags = { version = "0.3.2", features = ["serde"] }
 csscolorparser = { version = "0.8.3", features = ["serde"] }
+similar = "3.2"
 
 [dev-dependencies]
 ciborium = "0.2.2"

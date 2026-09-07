@@ -96,6 +96,19 @@ fn whitelist_filter_keeps_only_allowed_and_is_noop_when_disabled() {
 }
 
 #[test]
+fn whitelist_preserves_retained_field_and_nested_order() {
+    let config = value(json!({
+        "mode": "rule", "proxies": [{"name": "a", "type": "direct"}],
+        "custom": true, "rules": ["MATCH,DIRECT"]
+    }));
+    let filtered = whitelist_filter(&config, &stage1_fields(&[]), true);
+    assert_eq!(
+        serde_json::to_string(&filtered.to_json()).unwrap(),
+        r#"{"proxies":[{"name":"a","type":"direct"}],"rules":["MATCH,DIRECT"]}"#,
+    );
+}
+
+#[test]
 fn guard_inserts_override_keys_and_resolved_ports() {
     let overrides = fixed_overrides();
     let guard = GuardInputs {
@@ -248,4 +261,42 @@ fn cache_does_not_merge_into_existing_profile_key() {
     let config = value(json!({ "profile": { "do-not-override": true } }));
     let result = finalize(&config, &tun_off(), false).to_json();
     assert_eq!(result["profile"], json!({ "do-not-override": true }));
+}
+
+#[test]
+fn filtering_large_config_does_not_create_spurious_block_moves() {
+    use crate::runtime::{
+        snapshot::{BuiltinStepKind, ConfigSnapshotsBuilder, OperatorTag},
+        value::ConfigValue,
+    };
+    use std::sync::Arc;
+    let config = Arc::new(
+        ConfigValue::try_from(serde_json::json!({
+            "mode": "rule",
+            "proxies": (0..5000).map(|i| format!("proxy{i}")).collect::<Vec<_>>(),
+            "rules": (0..5000).map(|i| format!("DOMAIN,host{i},DIRECT")).collect::<Vec<_>>(),
+        }))
+        .unwrap(),
+    );
+    let filtered = Arc::new(whitelist_filter(&config, &stage1_fields(&[]), true));
+    let mut builder = ConfigSnapshotsBuilder::new_root(config, OperatorTag::BareRoot);
+    builder
+        .push(
+            OperatorTag::BuiltinStep {
+                selected_profile_id: None,
+                step: BuiltinStepKind::WhitelistFieldFilter,
+            },
+            filtered,
+        )
+        .unwrap();
+    let graph = builder.build().unwrap();
+    let after = serde_yaml_ng::to_string(&graph.nodes[1].snapshot.config).unwrap();
+    let hunks = graph.nodes[0].snapshot.diff_yaml_to(&after).unwrap();
+    let changes: Vec<_> = hunks
+        .iter()
+        .flat_map(|h| &h.lines)
+        .filter(|l| !l.starts_with(' '))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(changes, ["-mode: rule"]);
 }

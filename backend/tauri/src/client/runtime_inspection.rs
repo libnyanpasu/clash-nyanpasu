@@ -1,7 +1,7 @@
 //! Read-only projections of one immutable, promoted pipeline build.
 use nyanpasu_config::runtime::{
     executor::{StepLog, StepLogEntry},
-    snapshot::{ConfigSnapshotsGraph, OperatorTag},
+    snapshot::{ConfigSnapshotsGraph, OperatorTag, SnapshotDiffHunk},
 };
 use serde::Serialize;
 
@@ -42,7 +42,7 @@ pub struct RuntimeInspectionContent {
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct RuntimeInspectionDiff {
     pub parent_id: u32,
-    pub before_yaml: String,
+    pub hunks: Vec<SnapshotDiffHunk>,
 }
 
 impl RuntimeSnapshot {
@@ -92,8 +92,8 @@ impl RuntimeSnapshot {
             .nodes
             .get(node_id as usize)
             .ok_or_else(|| anyhow::anyhow!("runtime snapshot node does not exist"))?;
+        let yaml = serde_yaml::to_string(&node.snapshot.config)?;
         Ok(RuntimeInspectionContent {
-            yaml: serde_yaml::to_string(&node.snapshot.config)?,
             diff: self
                 .inspection
                 .graph
@@ -101,14 +101,13 @@ impl RuntimeSnapshot {
                 .map(|parent_id| -> anyhow::Result<_> {
                     Ok(RuntimeInspectionDiff {
                         parent_id,
-                        before_yaml: serde_yaml::to_string(
-                            &self.inspection.graph.nodes[parent_id as usize]
-                                .snapshot
-                                .config,
-                        )?,
+                        hunks: self.inspection.graph.nodes[parent_id as usize]
+                            .snapshot
+                            .diff_yaml_to(&yaml)?,
                     })
                 })
                 .transpose()?,
+            yaml,
             logs: self
                 .inspection
                 .step_logs
@@ -271,9 +270,7 @@ pub(crate) mod tests {
                     assert_eq!(config["mode"], "global");
                     let diff = content.diff.unwrap();
                     assert_eq!(diff.parent_id, summary.root_id);
-                    let before: serde_json::Value =
-                        serde_yaml::from_str(&diff.before_yaml).unwrap();
-                    assert_eq!(before, serde_json::json!({"mode": "rule"}));
+                    assert_eq!(diff.hunks[0].lines, ["-mode: rule", "+mode: global"]);
                 }
                 _ => panic!("unexpected child"),
             }

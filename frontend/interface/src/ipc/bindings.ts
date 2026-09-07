@@ -2164,7 +2164,7 @@ export type RuntimeInspectionContent = {
 
 export type RuntimeInspectionDiff = {
   parent_id: number
-  before_yaml: string
+  hunks: SnapshotDiffHunk[]
 }
 
 export type RuntimeInspectionNode = {
@@ -2332,6 +2332,15 @@ export type ServiceStatusInfo_Serialize = {
   compat: ServiceCompat
   phase: ServicePhase
   restart_attempts: number
+}
+
+export type SnapshotDiffHunk = {
+  old_start: number
+  old_lines: number
+  new_start: number
+  new_lines: number
+  /**  Unified diff lines, including their space, plus, or minus prefix. */
+  lines: string[]
 }
 
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize

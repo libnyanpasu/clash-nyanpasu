@@ -1,39 +1,8 @@
-import { structuredPatch } from 'diff'
-import { useEffect, useState } from 'react'
 import { m } from '@/paraglide/messages'
+import type { SnapshotDiffHunk } from '@nyanpasu/interface'
 
-type Patch = NonNullable<ReturnType<typeof structuredPatch>>
-
-export default function DiffViewer({
-  before,
-  after,
-}: {
-  before: string
-  after: string
-}) {
-  const [result, setResult] = useState<{
-    before: string
-    after: string
-    patch: Patch
-  }>()
-
-  useEffect(() => {
-    let cancelled = false
-    structuredPatch('before', 'after', before, after, undefined, undefined, {
-      context: 3,
-      callback: (patch) => {
-        if (!cancelled) setResult({ before, after, patch })
-      },
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [before, after])
-
-  if (!result || result.before !== before || result.after !== after) {
-    return <p role="status">{m.inspect_diff_loading()}</p>
-  }
-  if (result.patch.hunks.length === 0) {
+export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
+  if (hunks.length === 0) {
     return <p role="status">{m.inspect_unchanged()}</p>
   }
 
@@ -53,16 +22,16 @@ export default function DiffViewer({
             <th>YAML</th>
           </tr>
         </thead>
-        {result.patch.hunks.map((hunk) => {
-          let oldLine = hunk.oldStart
-          let newLine = hunk.newStart
+        {hunks.map((hunk) => {
+          let oldLine = hunk.old_start
+          let newLine = hunk.new_start
           return (
-            <tbody key={`${hunk.oldStart}-${hunk.newStart}`}>
+            <tbody key={`${hunk.old_start}-${hunk.new_start}`}>
               <tr className="bg-blue-50 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200">
                 <td
                   colSpan={4}
                   className="px-3 py-2 whitespace-pre"
-                >{`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`}</td>
+                >{`@@ -${hunk.old_start},${hunk.old_lines} +${hunk.new_start},${hunk.new_lines} @@`}</td>
               </tr>
               {hunk.lines.map((line, index) => {
                 const sign = line[0]

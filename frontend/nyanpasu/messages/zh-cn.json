@@ -421,7 +421,6 @@
   "inspect_diff_independent": "这是独立快照，没有比较基线。",
   "inspect_show_all": "显示完整处理链",
   "inspect_filtered_empty": "没有步骤修改配置或产生日志。开启完整处理链可查看所有步骤。",
-  "inspect_diff_loading": "正在计算差异…",
   "inspect_old_line": "原行号",
   "inspect_new_line": "新行号",
   "inspect_change": "变更"

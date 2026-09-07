@@ -223,10 +223,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                       {m.inspect_diff_description()} #
                       {content.data.diff.parent_id + 1}
                     </p>
-                    <DiffViewer
-                      before={content.data.diff.before_yaml}
-                      after={content.data.yaml}
-                    />
+                    <DiffViewer hunks={content.data.diff.hunks} />
                   </>
                 ) : (
                   <p role="status" className="text-on-surface-variant text-sm">

@@ -35,10 +35,20 @@ The integration fixture binds local ephemeral ports, and existing compile-time J
 
 Use a container-width breakpoint (40rem of available inspection width) for the step/content columns. Reuse the existing Shiki 4.4.3 highlighter with lazy YAML grammar loading and light/dark themes; show plain text while highlighting loads or if it fails. Source matching and cancellation prevent an old highlight result from appearing after a node switch.
 
-Preserve SnapshotBaseline in the materialized graph and expose the comparison parent's YAML in the same node-content response as the current YAML. Independent roots have no diff; identical before/after text has no changes. Stored archive layout/version is unchanged.
+Preserve SnapshotBaseline in the materialized graph and expose backend-computed comparison hunks in the same node-content response as the current YAML. Independent roots have no diff; identical before/after text has no changes. Stored archive layout/version is unchanged.
 
-The default view is a unified YAML line diff with red deletions, green additions, old/new line numbers and three context lines per hunk. The existing locked jsdiff version is a direct frontend dependency; its asynchronous structuredPatch API avoids blocking the UI during diff calculation. Full YAML remains available with Shiki highlighting.
+The default view is a unified YAML line diff with red deletions, green additions, old/new line numbers and three context lines per hunk. A pure snapshot helper computes the hunks on the backend blocking worker with Similar/Myers and a 200ms search budget; the frontend only renders the returned lines. The budget limits the diff search, not serialization, IPC, or rendering. Full YAML remains available with Shiki highlighting.
 
 The node summary carries has_logs, which only counts non-empty entries for that node's semantic key. By default the navigation shows nodes with changed fields or logs. An explicit full-process-chain switch reveals all nodes; selection falls back to the first visible node when filtering hides it. An empty filtered chain does not fetch node content and offers the full-chain switch.
 
 Additional validation: 23 domain snapshot tests with persistence enabled; 5 inspection tests; regenerated bindings; TypeScript, Oxlint and Stylelint; headless Chrome verifies syntax tokens, theme colors, container-width columns, default diff, red/green rows, old/new line numbers, log-only/quiet filtering, full-chain toggle and selection fallback, independent roots, refresh/stale handling, and narrow layout.
+
+## Backend diff and ordering investigation
+
+1. Move YAML line comparison into a pure snapshot helper, keep IPC behind the facade and its existing blocking worker, remove frontend jsdiff. Verify hunk offsets, unchanged/independent nodes, and 10,000-line inputs.
+2. Reproduce spurious ordering changes in snapshot materialization. JSON Patch remove uses swap_remove; object equality also ignores intentional reorder-only changes. Keep a full keyframe when patch replay cannot preserve the executor's exact order, including nested objects. Verify filtering preserves source order and snapshot round trips preserve order.
+3. Regenerate bindings, validate frontend/build and browser rendering, then update the review PR.
+
+The whitelist retains DEFAULT_FIELDS plus configured valid entries from OTHERS_FIELDS, removes top-level guarded/unknown fields, and preserves retained order. GuardOverrides reapplies application-owned values. Finalizing intentionally sorts top-level keys as HANDLE_FIELDS, OTHERS_FIELDS, DEFAULT_FIELDS, then remaining keys. That real final ordering remains visible; the snapshot fix removes artificial reorders introduced by delta storage. The archive schema is unchanged; previously encoded deltas cannot recover order that was never stored.
+
+Backend-diff validation passed: 141 domain tests with persistence, 5 facade inspection tests, binding generation, TypeScript/Oxlint, production build, and the mocked-IPC browser suite. The 10,000-entry whitelist fixture produces only `-mode: rule`, with no block moves. Debug diff-only timings were approximately 33–34ms for two edits and 35–38ms for complete replacement; these are local observations, not latency guarantees.

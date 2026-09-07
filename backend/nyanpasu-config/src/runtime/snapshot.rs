@@ -1,5 +1,8 @@
 //! A snapshot of the clash config processing.
 
+mod diff;
+pub use diff::SnapshotDiffHunk;
+
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -350,17 +353,41 @@ impl Default for KeyframePolicy {
 
 impl KeyframePolicy {
     fn encode(&self, parent: &ConfigValue, current: Arc<ConfigValue>) -> SnapshotPayload {
-        let parent_json = parent.to_json();
+        let mut parent_json = parent.to_json();
         let current_json = current.to_json();
         let patch = json_patch::diff(&parent_json, &current_json);
         let patch_len = serialized_len(&patch);
         let full_len = serialized_len(&current_json).max(1);
 
         if (patch_len as f32) > (full_len as f32 * self.delta_to_full_ratio) {
+            return SnapshotPayload::Full(current);
+        }
+        // JSON Patch ignores object order, and remove uses swap_remove.
+        // Keep a keyframe if replay would misrepresent the executor's YAML.
+        if json_patch::patch(&mut parent_json, &patch).is_err()
+            || !same_object_order(&parent_json, &current_json)
+        {
             SnapshotPayload::Full(current)
         } else {
             SnapshotPayload::Delta(patch)
         }
+    }
+}
+
+fn same_object_order(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    match (left, right) {
+        (serde_json::Value::Object(left), serde_json::Value::Object(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|((lk, lv), (rk, rv))| lk == rk && same_object_order(lv, rv))
+        }
+        (serde_json::Value::Array(left), serde_json::Value::Array(right)) => {
+            left.len() == right.len()
+                && left.iter().zip(right).all(|(l, r)| same_object_order(l, r))
+        }
+        _ => left == right,
     }
 }
 
@@ -1224,6 +1251,50 @@ mod tests {
         let mut applied = before;
         json_patch::patch(&mut applied, &patch).unwrap();
         assert_eq!(applied, after);
+    }
+
+    #[test]
+    fn materialization_preserves_order_after_removal_and_reordering() {
+        let original = json!({"mode": "rule", "proxies": ["a", "b"], "rules": ["MATCH,DIRECT"]});
+        for (parent, current) in [
+            (
+                original.clone(),
+                json!({"proxies": ["a", "b"], "rules": ["MATCH,DIRECT"]}),
+            ),
+            (
+                original,
+                json!({"rules": ["MATCH,DIRECT"], "proxies": ["a", "b"], "mode": "rule"}),
+            ),
+            (
+                json!({"proxies": [{"a": 1, "b": 2, "c": 3}]}),
+                json!({"proxies": [{"b": 2, "c": 3}]}),
+            ),
+            (
+                json!({"proxies": [{"b": 2, "c": 3}]}),
+                json!({"proxies": [{"b": 2, "a": 1, "c": 3}]}),
+            ),
+        ] {
+            let parent = value(parent);
+            let current = value(current);
+            let mut builder = ConfigSnapshotsBuilder::new_root_with_keyframe_policy(
+                parent.clone(),
+                OperatorTag::BareRoot,
+                KeyframePolicy {
+                    delta_to_full_ratio: 10.0,
+                },
+            );
+            builder
+                .push(
+                    builtin_step("primary", BuiltinStepKind::Finalizing),
+                    current.clone(),
+                )
+                .unwrap();
+            let graph = builder.build().unwrap();
+            assert_eq!(
+                serde_json::to_string(&graph.nodes[1].snapshot.config).unwrap(),
+                serde_json::to_string(&current.to_json()).unwrap(),
+            );
+        }
     }
 
     #[test]

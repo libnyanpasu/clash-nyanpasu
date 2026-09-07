@@ -4,10 +4,10 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 101,
+      "total": 100,
       "byKey": {
         "Config::verge()": 78,
-        "Config::clash()": 23
+        "Config::clash()": 22
       }
     },
     "service_globals": {

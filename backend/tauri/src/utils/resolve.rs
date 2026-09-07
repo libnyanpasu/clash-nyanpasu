@@ -195,11 +195,16 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("init widget manager");
     log_err!(tauri::async_runtime::block_on(async {
         crate::widget::setup(app, {
-            let manager = app.state::<crate::core::clash::ws::ClashConnectionsConnector>();
-            manager.subscribe()
+            app.state::<crate::client::NyanpasuClient>()
+                .subscribe_clash_connections()
         })
         .await
     }));
+
+    log_err!(tauri::async_runtime::block_on(
+        app.state::<crate::client::NyanpasuClient>()
+            .start_clash_streams()
+    ));
 
     #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");

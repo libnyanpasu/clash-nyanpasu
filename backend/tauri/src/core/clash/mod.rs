@@ -67,40 +67,60 @@ fn dev_sidecar_binary_path(
 #[derive(Serialize, Deserialize, Debug, Clone, Type, Event)]
 pub struct ClashConnectionsEvent(pub ws::ClashConnectionsConnectorEvent);
 
-pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Result<()> {
-    let ws_connector = ws::ClashConnectionsConnector::new();
-    manager.manage(ws_connector.clone());
-    let app_handle = manager.app_handle().clone();
-
-    tauri::async_runtime::spawn(async move {
-        // TODO: refactor it while clash core manager use tauri event dispatcher to notify the core state changed
-        {
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-
-            // TODO: clash-rs ws authorization is not working
-            match ws_connector.start().await {
-                Ok(_) => {
-                    tracing::info!(
-                        "ws_connector started successfully clash-rs may be errored here."
-                    );
-                }
-                // TODO: wait for clash-rs to fix
-                Err(e) => {
-                    tracing::error!("ws_connector failed to start: {:?}", e);
-                }
-            }
+// Tauri owns only event-forwarding tasks; stream state lives in StreamsActor.
+struct StreamEventBridge(Vec<tauri::async_runtime::JoinHandle<()>>);
+impl Drop for StreamEventBridge {
+    fn drop(&mut self) {
+        for task in &self.0 {
+            task.abort();
         }
-        let mut rx = ws_connector.subscribe();
-        let mut ws_rx = ws_connector.subscribe_ws();
-        let ws_app_handle = app_handle.clone();
-        tauri::async_runtime::spawn(async move {
-            while let Ok(event) = ws_rx.recv().await {
-                event.emit(&ws_app_handle).unwrap();
+    }
+}
+
+pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Result<()> {
+    use tokio::sync::broadcast::error::RecvError;
+    let client = manager
+        .state::<crate::client::NyanpasuClient>()
+        .inner()
+        .clone();
+    let mut rx = client.subscribe_clash_connections();
+    let mut ws_rx = client.subscribe_clash_ws();
+    let app = manager.app_handle().clone();
+    let connection_task = tauri::async_runtime::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    if let Err(error) = ClashConnectionsEvent(event).emit(&app) {
+                        tracing::warn!(%error, "failed to emit connections event");
+                    }
+                }
+                Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Closed) => break,
             }
-        });
-        while let Ok(event) = rx.recv().await {
-            ClashConnectionsEvent(event).emit(&app_handle).unwrap();
         }
     });
+    let app = manager.app_handle().clone();
+    let ws_task = tauri::async_runtime::spawn(async move {
+        loop {
+            let event = match ws_rx.recv().await {
+                Ok(event) => event,
+                Err(RecvError::Lagged(_)) => match client.clash_ws_snapshot().await {
+                    Ok(snapshot) => ws::ClashWsEvent {
+                        sequence: snapshot.sequence,
+                        update: ws::ClashWsUpdate::Reset(Box::new(snapshot)),
+                    },
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to resync Clash streams");
+                        continue;
+                    }
+                },
+                Err(RecvError::Closed) => break,
+            };
+            if let Err(error) = event.emit(&app) {
+                tracing::warn!(%error, "failed to emit Clash stream event");
+            }
+        }
+    });
+    manager.manage(StreamEventBridge(vec![connection_task, ws_task]));
     Ok(())
 }

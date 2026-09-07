@@ -116,6 +116,32 @@ impl ApiClient {
         self.revoked.cancelled().await;
     }
 
+    pub async fn connections_ws(
+        &self,
+    ) -> Result<ApiStream<clash_api::ConnectionsSnapshot>, ApiError> {
+        let stream = self
+            .execute(self.client.connections_ws(Default::default()))
+            .await?;
+        Ok(ApiStream::new(self.clone(), stream))
+    }
+
+    pub async fn logs_ws(&self) -> Result<ApiStream<clash_api::LogEntry>, ApiError> {
+        let stream = self
+            .execute(self.client.logs_ws(Default::default()))
+            .await?;
+        Ok(ApiStream::new(self.clone(), stream))
+    }
+
+    pub async fn traffic_ws(&self) -> Result<ApiStream<clash_api::Traffic>, ApiError> {
+        let stream = self.execute(self.client.traffic_ws()).await?;
+        Ok(ApiStream::new(self.clone(), stream))
+    }
+
+    pub async fn memory_ws(&self) -> Result<ApiStream<clash_api::Memory>, ApiError> {
+        let stream = self.execute(self.client.memory_ws()).await?;
+        Ok(ApiStream::new(self.clone(), stream))
+    }
+
     pub async fn proxy_snapshot(
         &self,
     ) -> Result<
@@ -202,6 +228,42 @@ impl ApiClient {
 
     pub async fn close_all_connections(&self) -> Result<(), ApiError> {
         self.execute(self.client.close_all_connections()).await
+    }
+}
+
+/// An owned subscription bound to the same capability for its entire lifetime.
+/// Idle reads have no deadline; cancellation drops the socket, and each decoded
+/// frame must pass the authoritative binding check before delivery.
+pub struct ApiStream<T> {
+    api: ApiClient,
+    stream: Option<clash_api::WebSocketStream<T>>,
+}
+
+impl<T> ApiStream<T> {
+    fn new(api: ApiClient, stream: clash_api::WebSocketStream<T>) -> Self {
+        Self {
+            api,
+            stream: Some(stream),
+        }
+    }
+
+    pub async fn next(&mut self) -> Option<Result<T, ApiError>> {
+        use futures_util::StreamExt;
+        let stream = self.stream.as_mut()?;
+        let result = tokio::select! {
+            biased;
+            _ = self.api.cancelled() => Some(Err(ApiError::Stale)),
+            frame = stream.next() => match frame {
+                Some(frame) => Some(self.api.execute(async { frame }).await),
+                None => None,
+            },
+        };
+        if result.is_none()
+            || matches!(&result, Some(Err(error)) if !matches!(error, ApiError::Protocol(clash_api::Error::Decode { .. })))
+        {
+            self.stream.take();
+        }
+        result
     }
 }
 
@@ -585,5 +647,84 @@ pub(crate) mod tests {
         let new = core.api_client().await.unwrap();
         assert!(!new.revoked.is_cancelled());
         core.actor.stop(None);
+    }
+}
+
+#[cfg(test)]
+mod stream_tests {
+    use super::{
+        tests::{endpoint, server},
+        *,
+    };
+    use crate::core::actor_v2::CoreClient;
+    use axum::{
+        Router,
+        extract::{State, WebSocketUpgrade, ws::Message},
+        response::IntoResponse,
+        routing::get,
+    };
+    use tokio::sync::mpsc;
+
+    async fn idle(
+        State(closed): State<mpsc::UnboundedSender<()>>,
+        ws: WebSocketUpgrade,
+    ) -> impl IntoResponse {
+        ws.on_upgrade(move |mut socket| async move {
+            socket
+                .send(Message::Text(r#"{"up":1,"down":2}"#.into()))
+                .await
+                .unwrap();
+            while socket.recv().await.is_some() {}
+            let _ = closed.send(());
+        })
+    }
+
+    #[tokio::test]
+    async fn websocket_keeps_hot_patch_binding_and_releases_idle_socket_on_revocation() {
+        for change in ["instance", "secret", "controller", "shutdown"] {
+            let (closed, mut rx) = mpsc::unbounded_channel();
+            let (url, server) = server(
+                Router::new()
+                    .route("/traffic", get(idle))
+                    .with_state(closed),
+            )
+            .await;
+            let endpoint = endpoint(url.clone());
+            let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+            let api = core.api_client().await.unwrap();
+            let mut stream = api.traffic_ws().await.unwrap();
+            endpoint.binding.send_modify(|_| {});
+            assert!(core.api_client().await.unwrap().same_instance(&api));
+            assert_eq!(stream.next().await.unwrap().unwrap().up.get(), 1);
+            if change == "shutdown" {
+                core.shutdown().await.unwrap();
+            } else {
+                endpoint.binding.send_modify(|binding| {
+                    let binding = binding.as_mut().unwrap();
+                    match change {
+                        "instance" => binding.instance_id = "replacement".into(),
+                        "secret" => binding.secret = Some("changed".into()),
+                        "controller" => {
+                            binding.controller =
+                                CoreControllerInfo::Http(format!("{url}replacement/"))
+                        }
+                        _ => unreachable!(),
+                    }
+                });
+                core.api_client().await.unwrap();
+            }
+            assert!(matches!(
+                tokio::time::timeout(Duration::from_secs(2), stream.next())
+                    .await
+                    .unwrap(),
+                Some(Err(ApiError::Stale))
+            ));
+            assert!(stream.next().await.is_none());
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            server.abort();
+        }
     }
 }

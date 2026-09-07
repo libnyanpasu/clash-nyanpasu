@@ -6,17 +6,18 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
-import { commands, events, type ClashWsKind } from '../ipc/bindings'
 import {
-  MAX_CONNECTIONS_HISTORY,
-  MAX_LOGS_HISTORY,
-  MAX_MEMORY_HISTORY,
-  MAX_TRAFFIC_HISTORY,
-} from '../ipc/consts'
+  commands,
+  events,
+  type ClashWsEvent,
+  type ClashWsKind,
+  type ClashWsSnapshot,
+} from '../ipc/bindings'
 import type { ClashConnection } from '../ipc/use-clash-connections'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
+import { applyClashWsEvent } from './clash-ws-state'
 
 const ClashWSContext = createContext<{
   connections: ClashConnection[]
@@ -38,170 +39,113 @@ export const useClashWSContext = () => {
   return context
 }
 
-const queryKeyForKind = (kind: ClashWsKind) => {
-  switch (kind) {
-    case 'connections':
-      return 'connections'
-    case 'logs':
-      return 'logs'
-    case 'traffic':
-      return 'traffic'
-    case 'memory':
-      return 'memory'
-  }
-}
-
-const appendLimited = <T,>(items: T[] | undefined, item: T, limit: number) => {
-  const next = [...(items || []), item]
-
-  if (next.length > limit) {
-    next.shift()
-  }
-
-  return next
-}
-
 export const ClashWSProvider = ({ children }: PropsWithChildren) => {
-  const [connections, setConnections] = useState<ClashConnection[]>([])
-  const [logs, setLogs] = useState<ClashLog[]>([])
-  const [traffic, setTraffic] = useState<ClashTraffic[]>([])
-  const [memory, setMemory] = useState<ClashMemory[]>([])
+  const [snapshot, setSnapshot] = useState<ClashWsSnapshot>()
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
 
   useEffect(() => {
-    commands.getClashWsSnapshot().then((result) => {
-      if (result.status === 'error') {
-        console.error('Failed to load clash websocket snapshot', result.error)
-        setError(result.error)
-        setIsLoading(false)
-        return
-      }
+    let disposed = false
+    let current: ClashWsSnapshot | undefined
+    let syncing = false
+    let pending: ClashWsEvent[] = []
+    let unlisten: (() => void) | undefined
 
-      const snapshot = result.data
-      setConnections(
-        snapshot.connections.map((connection) => ({
-          ...connection,
-          memory: connection.memory ?? undefined,
-          connections:
-            (connection.connections as ClashConnection['connections']) ??
-            undefined,
-        })),
-      )
-      setLogs(snapshot.logs as ClashLog[])
-      setTraffic(snapshot.traffic as ClashTraffic[])
-      setMemory(snapshot.memory as ClashMemory[])
-      setIsLoading(false)
-    })
-  }, [])
-
-  useEffect(() => {
-    const unlistenPromise = events.clashWsEvent.listen((event) => {
-      const payload = event.payload
-
-      switch (payload.kind) {
-        case 'connections_updated': {
-          setConnections((current) =>
-            appendLimited(
-              current,
-              {
-                ...payload.data,
-                memory: payload.data.memory ?? undefined,
-                connections:
-                  (payload.data
-                    .connections as ClashConnection['connections']) ??
-                  undefined,
-              },
-              MAX_CONNECTIONS_HISTORY,
-            ),
-          )
-          break
-        }
-        case 'log_appended': {
-          setLogs((current) =>
-            appendLimited(current, payload.data as ClashLog, MAX_LOGS_HISTORY),
-          )
-          break
-        }
-        case 'traffic_updated': {
-          setTraffic((current) =>
-            appendLimited(
-              current,
-              payload.data as ClashTraffic,
-              MAX_TRAFFIC_HISTORY,
-            ),
-          )
-          break
-        }
-        case 'memory_updated': {
-          setMemory((current) =>
-            appendLimited(
-              current,
-              payload.data as ClashMemory,
-              MAX_MEMORY_HISTORY,
-            ),
-          )
-          break
-        }
-        case 'recording_changed':
-          break
-        case 'history_cleared': {
-          switch (queryKeyForKind(payload.data)) {
-            case 'connections':
-              setConnections([])
+    const resync = async () => {
+      if (syncing || disposed) return
+      syncing = true
+      try {
+        do {
+          const result = await commands.getClashWsSnapshot()
+          if (disposed) return
+          if (result.status === 'error') throw result.error
+          if (!current || result.data.sequence >= current.sequence)
+            current = result.data
+          const buffered = pending
+          pending = []
+          let gap = false
+          for (const event of buffered) {
+            const next = applyClashWsEvent(current, event)
+            if (!next) {
+              gap = true
               break
-            case 'logs':
-              setLogs([])
-              break
-            case 'traffic':
-              setTraffic([])
-              break
-            case 'memory':
-              setMemory([])
-              break
+            }
+            current = next
           }
-          break
-        }
-        case 'state_changed':
-          break
+          if (!gap) break
+        } while (!disposed)
+        setSnapshot(current)
+        setError(null)
+      } catch (error) {
+        if (!disposed) setError(error)
+      } finally {
+        syncing = false
+        if (!disposed) setIsLoading(false)
       }
-    })
+    }
+
+    // Subscribe before requesting the snapshot. The bounded buffer plus sequence
+    // checks also covers slow IPC, event loss, and StrictMode effect teardown.
+    events.clashWsEvent
+      .listen(({ payload }) => {
+        if (disposed) return
+        if (syncing || !current) {
+          pending = [...pending, payload].slice(-256)
+          resync()
+          return
+        }
+        const next = applyClashWsEvent(current, payload)
+        if (!next) {
+          pending = [payload]
+          resync()
+          return
+        }
+        current = next
+        setSnapshot(next)
+      })
+      .then((stop) => {
+        if (disposed) {
+          stop()
+          return
+        }
+        unlisten = stop
+        resync()
+      })
+      .catch((error) => {
+        if (!disposed) {
+          setError(error)
+          setIsLoading(false)
+        }
+      })
 
     return () => {
-      unlistenPromise.then((unlisten) => unlisten())
+      disposed = true
+      unlisten?.()
     }
   }, [])
 
   const clearHistory = useCallback(async (kind: ClashWsKind) => {
     const result = await commands.clearClashWsHistory(kind)
-
-    if (result.status === 'error') {
-      throw result.error
-    }
-
-    switch (kind) {
-      case 'connections':
-        setConnections([])
-        break
-      case 'logs':
-        setLogs([])
-        break
-      case 'traffic':
-        setTraffic([])
-        break
-      case 'memory':
-        setMemory([])
-        break
-    }
+    if (result.status === 'error') throw result.error
+    // The sequenced history_cleared event orders this against later samples.
   }, [])
+
+  const connections: ClashConnection[] = (snapshot?.connections ?? []).map(
+    (connection) => ({
+      ...connection,
+      memory: connection.memory ?? undefined,
+      connections:
+        (connection.connections as ClashConnection['connections']) ?? undefined,
+    }),
+  )
 
   return (
     <ClashWSContext.Provider
       value={{
         connections,
-        logs,
-        traffic,
-        memory,
+        logs: (snapshot?.logs ?? []) as ClashLog[],
+        traffic: (snapshot?.traffic ?? []) as ClashTraffic[],
+        memory: (snapshot?.memory ?? []) as ClashMemory[],
         isLoading,
         error,
         clearHistory,

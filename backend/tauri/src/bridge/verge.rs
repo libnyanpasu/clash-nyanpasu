@@ -226,6 +226,12 @@ impl LegacyVergeBridge {
                 let clash = managed.client.get_clash_config().await?;
                 let legacy_clash = super::yaml_convert(&clash.overrides)?;
                 let plan = Self::typed_patch_plan(base.clone(), &payload, &legacy_clash)?;
+                let channel_changed = payload
+                    .clash_control_channel
+                    .is_some_and(|v| Some(v) != base.clash_control_channel)
+                    || payload
+                        .clash_ipc_disable_http_controller
+                        .is_some_and(|v| Some(v) != base.clash_ipc_disable_http_controller);
                 let mut desired = base;
                 desired.patch_config(payload.clone());
                 let prepared = self
@@ -233,6 +239,15 @@ impl LegacyVergeBridge {
                     .prepare_commit(&managed.legacy_verge_path, desired)?;
                 self.apply_typed_config_patch_plan(plan, move || prepared.commit())
                     .await?;
+                if channel_changed {
+                    managed
+                        .client
+                        .apply_control_channel()
+                        .await
+                        .map_err(|error| {
+                            Self::legacy_mutation_partial(anyhow::anyhow!("{error:#}"), Some(error))
+                        })?;
+                }
             }
             LegacyVergePatchRoute::LegacySideEffects => {
                 let client = self.managed()?.client.clone();
@@ -277,7 +292,9 @@ impl LegacyVergeBridge {
         // below: the post-commit reconcile must build the runtime config from
         // the just-committed typed state, never from the pre-commit draft
         // (AGENTS.md section 10: commit first, then side effects).
-        let reconcile_tun = patch.enable_tun_mode.is_some();
+        let channel_changed = patch.clash_control_channel.is_some()
+            || patch.clash_ipc_disable_http_controller.is_some();
+        let reconcile_tun = patch.enable_tun_mode.is_some() || channel_changed;
         let restore = self
             .legacy_store
             .prepare_restore(&managed.legacy_verge_path, previous)
@@ -316,16 +333,17 @@ impl LegacyVergeBridge {
                     // before this commit ran. A reconcile failure here must
                     // not undo the successful commit: report it the same way
                     // the commit-phase failures above already do.
-                    managed
-                        .client
-                        .rebuild_running_config()
-                        .await
-                        .map_err(|error| {
-                            Self::legacy_mutation_partial(
-                                anyhow::anyhow!(format!("{error:#}")),
-                                Some(error),
-                            )
-                        })?;
+                    let result = if channel_changed {
+                        managed.client.apply_control_channel().await
+                    } else {
+                        managed.client.rebuild_running_config().await
+                    };
+                    result.map_err(|error| {
+                        Self::legacy_mutation_partial(
+                            anyhow::anyhow!(format!("{error:#}")),
+                            Some(error),
+                        )
+                    })?;
                 }
                 Ok(())
             }
@@ -586,6 +604,12 @@ pub(crate) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<Nyanpas
     {
         next.theme_color = value;
     }
+    if let Some(value) = legacy.clash_control_channel {
+        next.clash_control_channel = value;
+    }
+    if let Some(value) = legacy.clash_ipc_disable_http_controller {
+        next.clash_ipc_disable_http_controller = value;
+    }
     if let Some(value) = &legacy.clash_core
         && let Ok(value) = super::yaml_convert(value)
     {
@@ -662,6 +686,8 @@ fn apply_prepared_app_projection(target: &mut IVerge, projected: &IVerge) {
     target.proxy_guard_interval = projected.proxy_guard_interval;
     target.theme_color = projected.theme_color.clone();
     target.clash_core = projected.clash_core;
+    target.clash_control_channel = projected.clash_control_channel;
+    target.clash_ipc_disable_http_controller = projected.clash_ipc_disable_http_controller;
     target.hotkeys = projected.hotkeys.clone();
     target.default_latency_test = projected.default_latency_test.clone();
     target.enable_builtin_enhanced = projected.enable_builtin_enhanced;
@@ -702,6 +728,8 @@ pub(crate) fn apply_app_config_to_legacy_verge(
     draft.proxy_guard_interval = Some(snap.proxy_guard_interval);
     draft.theme_color = Some(super::yaml_convert(&snap.theme_color)?);
     draft.clash_core = Some(super::yaml_convert(snap.core)?);
+    draft.clash_control_channel = Some(snap.clash_control_channel);
+    draft.clash_ipc_disable_http_controller = Some(snap.clash_ipc_disable_http_controller);
     draft.hotkeys = Some(snap.hotkeys.clone());
     draft.default_latency_test = Some(snap.default_latency_test.clone());
     draft.enable_builtin_enhanced = Some(snap.enable_builtin_enhanced);
@@ -2333,6 +2361,7 @@ mod tests {
             nyanpasu_core_manager::CoreError,
         > {
             Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                controller: None,
                 state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
                 state_changed_at: 0,
                 revision: None,

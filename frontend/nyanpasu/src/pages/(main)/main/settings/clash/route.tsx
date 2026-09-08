@@ -8,6 +8,7 @@ import {
 } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
 import AllowLanSwitch from './_modules/allow-lan-switch'
+import ControlChannelSettings from './_modules/control-channel-settings'
 import CoreManagerCard from './_modules/core-manager-card'
 import FieldFilterCard from './_modules/field-filter-card'
 import FieldFilterSwitch from './_modules/field-filter-switch'
@@ -108,6 +109,8 @@ function RouteComponent() {
         <PatchSettings />
 
         <PortSettings />
+
+        <ControlChannelSettings />
 
         <CoreManagerSettings />
 

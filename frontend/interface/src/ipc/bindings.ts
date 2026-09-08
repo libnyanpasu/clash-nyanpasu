@@ -61,6 +61,9 @@ export const commands = {
     typedError<
       {
         snapshot_id: string
+        applied: boolean
+        effective_pending: boolean
+        effective_revision: ConfigRevisionInfo | null
         revision: string
         target_core: string
         root_id: number
@@ -68,6 +71,20 @@ export const commands = {
       } | null,
       string
     >(__TAURI_INVOKE('inspect_runtime')),
+  inspectAppliedRuntime: () =>
+    typedError<
+      {
+        snapshot_id: string
+        applied: boolean
+        effective_pending: boolean
+        effective_revision: ConfigRevisionInfo | null
+        revision: string
+        target_core: string
+        root_id: number
+        nodes: RuntimeInspectionNode[]
+      } | null,
+      string
+    >(__TAURI_INVOKE('inspect_applied_runtime')),
   inspectRuntimeNode: (snapshotId: string, nodeId: number) =>
     typedError<RuntimeInspectionContent, string>(
       __TAURI_INVOKE('inspect_runtime_node', { snapshotId, nodeId }),
@@ -400,7 +417,10 @@ export type BuildInfo = {
 
 /**  Built-in post-processing steps applied to the selected config. */
 export type BuiltinStepKind =
-  'guard_overrides' | 'whitelist_field_filter' | 'finalizing'
+  | 'guard_overrides'
+  | 'whitelist_field_filter'
+  | 'finalizing'
+  | 'core_controller'
 
 export type ClashConfig = {
   port: number | null
@@ -432,6 +452,8 @@ export type ClashConnectionsInfo = {
   downloadSpeed: number
   uploadSpeed: number
 }
+
+export type ClashControlChannel = 'prefer_ipc' | 'http_only'
 
 export type ClashCore = ClashCore_Serialize | ClashCore_Deserialize
 
@@ -797,6 +819,7 @@ export type CoreStateDetail =
 export type CoreStatusChangedEvent = CoreStatusInfo
 
 export type CoreStatusInfo = {
+  controller: CoreControllerInfo | null
   host: ExecutionHost
   connectivity: EndpointConnectivity
   generation: number
@@ -971,6 +994,8 @@ export type IVerge_Deserialize =
       web_ui_list: string[] | null
       /**  clash core path */
       clash_core: ClashCore_Deserialize | null
+      clash_control_channel: ClashControlChannel | null
+      clash_ipc_disable_http_controller: boolean | null
       /**
        *  hotkey map
        *  format: {func},{key}
@@ -1117,6 +1142,8 @@ export type IVerge_Serialize = {
   web_ui_list: string[] | null
   /**  clash core path */
   clash_core?: ClashCore_Serialize | null
+  clash_control_channel: ClashControlChannel | null
+  clash_ipc_disable_http_controller: boolean | null
   /**
    *  hotkey map
    *  format: {func},{key}
@@ -2157,6 +2184,9 @@ export type RuntimeInfos = {
 
 export type RuntimeInspection = {
   snapshot_id: string
+  applied: boolean
+  effective_pending: boolean
+  effective_revision: ConfigRevisionInfo | null
   revision: string
   target_core: string
   root_id: number

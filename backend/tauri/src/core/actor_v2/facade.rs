@@ -23,7 +23,16 @@ use super::{
 const OPERATION_WAIT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AppliedConfigBinding {
+    pub revision: nyanpasu_ipc::api::status::ConfigRevisionInfo,
+    pub host: ExecutionHost,
+    pub generation: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReconcileReport {
+    pub applied: AppliedConfigBinding,
+    pub effective_config: Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>,
     pub output: OperationOutputInfo,
     pub status: CoreStatusProjection,
 }
@@ -101,6 +110,7 @@ impl CoreFacade {
         core: ClashCore,
         document: &serde_yaml::Mapping,
         core_spec: CoreSpec,
+        local_ipc: nyanpasu_core_manager::LocalIpcSettings,
     ) -> Result<ReconcileReport, CoreError> {
         // Admission-time authoritative read (F2), not the router's cached
         // projection: the cache is refreshed only by the 2s pump, so a
@@ -114,8 +124,9 @@ impl CoreFacade {
             .snapshot
             .and_then(|snapshot| snapshot.revision);
         let core_type: nyanpasu_utils::core::CoreType = (&core).into();
-        let intent = RuntimeIntentBuilder::build(core_type.clone(), document, expected_applied)
-            .map_err(|error| {
+        let intent =
+            RuntimeIntentBuilder::build(core_type.clone(), document, expected_applied, local_ipc)
+                .map_err(|error| {
                 CoreError::new(
                     CoreErrorKind::InvalidConfig,
                     format!("failed to serialize runtime config: {error}"),
@@ -154,12 +165,16 @@ impl CoreFacade {
                         bytes: intent.config_text.into_bytes(),
                         expected_digest: Some(intent.digest),
                     },
-                    options: InstanceOptions::default(),
+                    options: InstanceOptions {
+                        local_ipc: Some(intent.local_ipc),
+                        ..InstanceOptions::default()
+                    },
                     expected_applied,
                 })),
             },
             core_type: Some(core_type),
         };
+        let applied_owner = self.core.status();
         let output = self.submit_and_wait(submission).await?;
         let outcome = match &output {
             OperationOutputInfo::Reconciled(outcome) => outcome,
@@ -184,9 +199,29 @@ impl CoreFacade {
                 false,
             ));
         }
+        let owner = applied_owner;
+        let effective_config = self
+            .core
+            .effective_config()
+            .await
+            .ok()
+            .flatten()
+            .filter(|snapshot| snapshot.revision == outcome.revision);
+        let status = self.core.status();
+        let effective_config = effective_config
+            .filter(|_| (owner.host, owner.generation) == (status.host, status.generation));
+        if effective_config.is_none() {
+            tracing::warn!("core applied configuration, but its effective snapshot is unavailable");
+        }
         Ok(ReconcileReport {
+            applied: AppliedConfigBinding {
+                revision: outcome.revision.clone(),
+                host: owner.host,
+                generation: owner.generation,
+            },
+            effective_config,
             output,
-            status: self.core.status(),
+            status,
         })
     }
 
@@ -424,6 +459,7 @@ mod tests {
             Arc::new(Self {
                 host,
                 status: CoreStatusSnapshot {
+                    controller: None,
                     state: Some(CoreStateDetail::Running { pid: 7, epoch: 1 }),
                     state_changed_at: 1,
                     revision,
@@ -608,7 +644,15 @@ mod tests {
         };
 
         facade
-            .reconcile(ClashCore::Mihomo, &document, spec)
+            .reconcile(
+                ClashCore::Mihomo,
+                &document,
+                spec,
+                nyanpasu_core_manager::LocalIpcSettings {
+                    policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
+                    keep_http_controller: true,
+                },
+            )
             .await
             .unwrap();
 
@@ -658,7 +702,15 @@ mod tests {
         };
 
         let error = facade
-            .reconcile(ClashCore::Mihomo, &document, spec)
+            .reconcile(
+                ClashCore::Mihomo,
+                &document,
+                spec,
+                nyanpasu_core_manager::LocalIpcSettings {
+                    policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
+                    keep_http_controller: true,
+                },
+            )
             .await
             .unwrap_err();
 
@@ -692,7 +744,15 @@ mod tests {
         };
 
         facade
-            .reconcile(ClashCore::Mihomo, &document, spec)
+            .reconcile(
+                ClashCore::Mihomo,
+                &document,
+                spec,
+                nyanpasu_core_manager::LocalIpcSettings {
+                    policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
+                    keep_http_controller: true,
+                },
+            )
             .await
             .unwrap();
     }
@@ -716,7 +776,15 @@ mod tests {
         };
 
         let error = facade
-            .reconcile(ClashCore::Mihomo, &document, spec)
+            .reconcile(
+                ClashCore::Mihomo,
+                &document,
+                spec,
+                nyanpasu_core_manager::LocalIpcSettings {
+                    policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
+                    keep_http_controller: true,
+                },
+            )
             .await
             .unwrap_err();
 

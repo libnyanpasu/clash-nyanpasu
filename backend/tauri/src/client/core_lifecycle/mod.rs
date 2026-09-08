@@ -66,6 +66,7 @@ pub struct CoreLifecycleOperationResult {
 
 pub(super) enum Command {
     Reconcile,
+    ApplyControlChannel,
     PatchRuntimeOverrides(nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch),
     SelectCore(ClashCore),
     ChangeHost(ExecutionHost),
@@ -141,6 +142,7 @@ struct CoreLifecycleState {
 }
 
 pub(super) struct CoreLifecycleArgs {
+    pub snapshots: runtime::RuntimeSnapshotStore,
     pub application: super::application::ApplicationClient,
     pub clash: super::clash_config::ClashConfigClient,
     pub profiles: super::profiles::ProfilesClient,
@@ -447,7 +449,7 @@ impl Actor for CoreLifecycleActor {
 
 struct ClientInner {
     actor: ActorRef<Message>,
-    runtime: watch::Receiver<runtime::RuntimeLifecycleState>,
+    runtime: runtime::RuntimeSnapshotStore,
     status: watch::Receiver<CoreLifecycleStatus>,
     core: crate::core::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
@@ -483,7 +485,7 @@ impl CoreLifecycleClient {
         args: CoreLifecycleArgs,
         schedule_dirty_ticks: bool,
     ) -> anyhow::Result<Self> {
-        let (runtime_tx, runtime) = watch::channel(runtime::RuntimeLifecycleState::default());
+        let runtime = args.snapshots;
         let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
@@ -495,7 +497,7 @@ impl CoreLifecycleClient {
             builder: args.builder,
             installer: args.installer,
             ui: args.ui,
-            runtime: runtime_tx,
+            runtime: runtime.clone(),
             revisions: runtime::RuntimeRevisionAllocator::new(),
             uncertain: false,
         };
@@ -540,8 +542,16 @@ impl CoreLifecycleClient {
     pub fn status(&self) -> CoreLifecycleStatus {
         self.0.status.borrow().clone()
     }
+    pub async fn apply_control_channel(&self) -> Result<(), CoreError> {
+        self.call(Command::ApplyControlChannel).await.map(|_| ())
+    }
+
+    pub(super) fn snapshot_store(&self) -> &runtime::RuntimeSnapshotStore {
+        &self.0.runtime
+    }
+
     pub fn runtime(&self) -> runtime::RuntimeLifecycleState {
-        self.0.runtime.borrow().clone()
+        self.0.runtime.read()
     }
     pub fn core_status(&self) -> CoreStatusProjection {
         self.0.core.status()

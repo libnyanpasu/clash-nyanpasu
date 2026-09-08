@@ -4,6 +4,14 @@ use specta::Type;
 use struct_patch::Patch;
 use url::Url;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ClashControlChannel {
+    #[default]
+    PreferIpc,
+    HttpOnly,
+}
+
 mod clash_core;
 mod i18n;
 mod logging;
@@ -117,6 +125,10 @@ pub struct NyanpasuAppConfig {
     /// clash core path
     #[patch(attribute(serde(alias = "clash_core")))]
     pub core: ClashCore,
+    #[serde(default)]
+    pub clash_control_channel: ClashControlChannel,
+    #[serde(default)]
+    pub clash_ipc_disable_http_controller: bool,
 
     /// hotkey map
     /// format: {func},{key}
@@ -199,6 +211,8 @@ impl Default for NyanpasuAppConfig {
             proxy_guard_interval: 30,
             theme_color: CssColor::from_rgba8(24, 103, 192, 255),
             core: ClashCore::default(),
+            clash_control_channel: ClashControlChannel::default(),
+            clash_ipc_disable_http_controller: false,
             hotkeys: Vec::new(),
             default_latency_test: "http://www.gstatic.com/generate_204".into(),
             enable_builtin_enhanced: true,

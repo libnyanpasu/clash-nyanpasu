@@ -423,5 +423,14 @@
   "inspect_filtered_empty": "No steps changed the configuration or produced logs. Turn on the full process chain to inspect all steps.",
   "inspect_old_line": "Old line",
   "inspect_new_line": "New line",
-  "inspect_change": "Change"
+  "inspect_change": "Change",
+  "settings_clash_control_channel_label": "Control Channel",
+  "settings_clash_control_channel_prefer_ipc": "Prefer IPC (HTTP fallback)",
+  "settings_clash_control_channel_http_only": "HTTP only",
+  "settings_clash_ipc_disable_http_label": "Disable HTTP external controller when IPC is available",
+  "settings_clash_ipc_disable_http_description": "Only applies when IPC is selected and available. Disables HTTP access for Web UI and third-party tools.",
+  "inspect_core_controller": "Core effective configuration",
+  "inspect_effective_pending": "Effective snapshot content pending",
+  "inspect_applied": "Applied",
+  "inspect_last_applied": "Last applied snapshot"
 }

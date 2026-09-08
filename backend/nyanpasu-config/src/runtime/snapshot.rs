@@ -76,6 +76,7 @@ pub enum BuiltinStepKind {
     GuardOverrides,
     WhitelistFieldFilter,
     Finalizing,
+    CoreController,
 }
 
 /// The pipeline operator that produced a snapshot node.
@@ -268,6 +269,48 @@ pub struct ConfigSnapshotsGraph {
 }
 
 impl ConfigSnapshotsGraph {
+    /// Append one materialized transition using the same patch semantics as the
+    /// recorder. Validate a candidate before replacing the graph: errors are atomic.
+    pub fn append_transition(
+        &mut self,
+        parent: Idx,
+        tag: OperatorTag,
+        config: serde_json::Value,
+    ) -> Result<Idx, SnapshotBuildError> {
+        let previous = self
+            .nodes
+            .get(parent as usize)
+            .ok_or(SnapshotBuildError::MissingChild {
+                parent_id: parent as usize,
+                child_id: parent as usize,
+            })?;
+        let fields =
+            changed_fields_from_patch(&json_patch::diff(&previous.snapshot.config, &config));
+        let id = Idx::try_from(self.nodes.len()).map_err(|_| SnapshotBuildError::IdOverflow {
+            node_id: self.nodes.len(),
+        })?;
+        let mut candidate = self.clone();
+        candidate.nodes[parent as usize]
+            .next
+            .get_or_insert_default()
+            .push(id);
+        candidate.nodes.push(ConfigSnapshotState::new(
+            ConfigSnapshot::new(config, fields),
+            tag,
+            SnapshotBaseline::Parent,
+            None,
+        ));
+        validate_tree_links(
+            candidate.root_id,
+            candidate
+                .nodes
+                .iter()
+                .map(|node| (node.baseline, node.next.as_deref().unwrap_or(&[]))),
+        )?;
+        *self = candidate;
+        Ok(id)
+    }
+
     /// The comparison parent, excluding an independent branch's attachment point.
     pub fn comparison_parent(&self, node_id: Idx) -> Option<Idx> {
         let node = self.nodes.get(node_id as usize)?;
@@ -865,15 +908,6 @@ impl StoredConfigSnapshotsGraph {
     /// reachable from the root, depth within [`MAX_MATERIALIZE_DEPTH`], an
     /// independent root, and no independent node carrying a delta payload.
     pub(crate) fn validate_tree_shape(&self) -> Result<(), SnapshotBuildError> {
-        let root = self.root_id as usize;
-        if root >= self.nodes.len() {
-            return Err(SnapshotBuildError::MissingRoot { root_id: root });
-        }
-
-        if self.nodes[root].baseline != SnapshotBaseline::Independent {
-            return Err(SnapshotBuildError::RootNotIndependent { root_id: root });
-        }
-
         for (node_id, node) in self.nodes.iter().enumerate() {
             if node.baseline == SnapshotBaseline::Independent
                 && matches!(node.snapshot.payload, SnapshotPayload::Delta(_))
@@ -881,63 +915,12 @@ impl StoredConfigSnapshotsGraph {
                 return Err(SnapshotBuildError::IndependentDelta { node_id });
             }
         }
-
-        let mut indegree = vec![0usize; self.nodes.len()];
-        for (parent_id, node) in self.nodes.iter().enumerate() {
-            for child in node.next.as_deref().unwrap_or(&[]) {
-                let child_id = *child as usize;
-                if child_id >= self.nodes.len() {
-                    return Err(SnapshotBuildError::MissingChild {
-                        parent_id,
-                        child_id,
-                    });
-                }
-                if child_id == parent_id {
-                    return Err(SnapshotBuildError::Cycle { node_id: parent_id });
-                }
-
-                indegree[child_id] += 1;
-                if indegree[child_id] > 1 {
-                    return Err(SnapshotBuildError::MultipleParents { node_id: child_id });
-                }
-            }
-        }
-
-        if indegree[root] != 0 {
-            return Err(SnapshotBuildError::MissingRoot { root_id: root });
-        }
-
-        let mut reachable = vec![false; self.nodes.len()];
-        let mut queue = VecDeque::from_iter([(root, 0usize)]);
-        while let Some((node_id, depth)) = queue.pop_front() {
-            if depth > MAX_MATERIALIZE_DEPTH {
-                return Err(SnapshotBuildError::DepthLimitExceeded {
-                    depth,
-                    max: MAX_MATERIALIZE_DEPTH,
-                });
-            }
-            if reachable[node_id] {
-                continue;
-            }
-            reachable[node_id] = true;
-
-            for child in self.nodes[node_id].next.as_deref().unwrap_or(&[]) {
-                queue.push_back((*child as usize, depth + 1));
-            }
-        }
-
-        let unreachable = reachable
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, seen)| (!*seen).then_some(idx))
-            .collect::<Vec<_>>();
-        if !unreachable.is_empty() {
-            return Err(SnapshotBuildError::Unreachable {
-                node_ids: unreachable,
-            });
-        }
-
-        Ok(())
+        validate_tree_links(
+            self.root_id,
+            self.nodes
+                .iter()
+                .map(|node| (node.baseline, node.next.as_deref().unwrap_or(&[]))),
+        )
     }
 }
 
@@ -1109,6 +1092,76 @@ pub mod persistence {
     }
 }
 
+fn validate_tree_links<'a>(
+    root_id: Idx,
+    links: impl IntoIterator<Item = (SnapshotBaseline, &'a [Idx])>,
+) -> Result<(), SnapshotBuildError> {
+    let nodes: Vec<_> = links.into_iter().collect();
+    let root = root_id as usize;
+    if root >= nodes.len() {
+        return Err(SnapshotBuildError::MissingRoot { root_id: root });
+    }
+    if nodes[root].0 != SnapshotBaseline::Independent {
+        return Err(SnapshotBuildError::RootNotIndependent { root_id: root });
+    }
+    let mut indegree = vec![0usize; nodes.len()];
+    for (parent_id, node) in nodes.iter().enumerate() {
+        for child in node.1 {
+            let child_id = *child as usize;
+            if child_id >= nodes.len() {
+                return Err(SnapshotBuildError::MissingChild {
+                    parent_id,
+                    child_id,
+                });
+            }
+            if child_id == parent_id {
+                return Err(SnapshotBuildError::Cycle { node_id: parent_id });
+            }
+
+            indegree[child_id] += 1;
+            if indegree[child_id] > 1 {
+                return Err(SnapshotBuildError::MultipleParents { node_id: child_id });
+            }
+        }
+    }
+
+    if indegree[root] != 0 {
+        return Err(SnapshotBuildError::MissingRoot { root_id: root });
+    }
+
+    let mut reachable = vec![false; nodes.len()];
+    let mut queue = VecDeque::from_iter([(root, 0usize)]);
+    while let Some((node_id, depth)) = queue.pop_front() {
+        if depth > MAX_MATERIALIZE_DEPTH {
+            return Err(SnapshotBuildError::DepthLimitExceeded {
+                depth,
+                max: MAX_MATERIALIZE_DEPTH,
+            });
+        }
+        if reachable[node_id] {
+            continue;
+        }
+        reachable[node_id] = true;
+
+        for child in nodes[node_id].1 {
+            queue.push_back((*child as usize, depth + 1));
+        }
+    }
+
+    let unreachable = reachable
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, seen)| (!*seen).then_some(idx))
+        .collect::<Vec<_>>();
+    if !unreachable.is_empty() {
+        return Err(SnapshotBuildError::Unreachable {
+            node_ids: unreachable,
+        });
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -1120,6 +1173,63 @@ mod tests {
         profile::ScriptRuntime,
         runtime::value::{ConfigValue, PathSegment},
     };
+
+    #[test]
+    fn appended_transitions_match_recorder_diff_semantics() {
+        let before = json!({"tun": {"enable": false}, "items": [1, 2]});
+        for after in [
+            before.clone(),
+            json!({"tun": {"enable": true}, "items": [1, 3, 4]}),
+        ] {
+            let tag = OperatorTag::BuiltinStep {
+                selected_profile_id: None,
+                step: BuiltinStepKind::CoreController,
+            };
+            let mut builder =
+                ConfigSnapshotsBuilder::new_root(value(before.clone()), OperatorTag::BareRoot);
+            let mut graph =
+                ConfigSnapshotsBuilder::new_root(value(before.clone()), OperatorTag::BareRoot)
+                    .build()
+                    .unwrap();
+            builder.push(tag.clone(), value(after.clone())).unwrap();
+            let expected = builder.build().unwrap();
+            let id = graph.append_transition(graph.root_id, tag, after).unwrap();
+            assert_eq!(graph, expected);
+            if graph.nodes[id as usize].snapshot.config == before {
+                assert!(graph.nodes[id as usize].snapshot.changed_fields.is_none());
+            } else {
+                let fields = graph.nodes[id as usize]
+                    .snapshot
+                    .changed_fields
+                    .as_ref()
+                    .unwrap();
+                assert!(fields.contains("tun.enable"));
+                assert!(fields.iter().any(|field| field.starts_with("items.")));
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_transition_leaves_the_graph_unchanged() {
+        let mut graph = ConfigSnapshotsBuilder::new_root(value(json!({})), OperatorTag::BareRoot)
+            .build()
+            .unwrap();
+        let original = graph.clone();
+        assert!(
+            graph
+                .append_transition(99, OperatorTag::BareRoot, json!({"x": 1}))
+                .is_err()
+        );
+        assert_eq!(graph, original);
+        graph.nodes[0].next = Some(vec![0]);
+        let invalid = graph.clone();
+        assert!(
+            graph
+                .append_transition(0, OperatorTag::BareRoot, json!({"x": 1}))
+                .is_err()
+        );
+        assert_eq!(graph, invalid);
+    }
 
     fn value(value: serde_json::Value) -> Arc<ConfigValue> {
         Arc::new(ConfigValue::try_from(value).unwrap())

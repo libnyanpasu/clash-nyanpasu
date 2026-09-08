@@ -40,6 +40,7 @@ pub enum ExecutionHost {
 /// No field here is ever derived by the router itself.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoreStatusSnapshot {
+    pub controller: Option<nyanpasu_ipc::api::status::CoreControllerInfo>,
     /// `None` means the host published no state this router can trust — an
     /// unmapped future variant, or a daemon that answered without a detail.
     /// No consumer may read it as `Stopped`: "we do not know" is the one
@@ -72,6 +73,12 @@ pub struct CoreSubmission {
 /// read and deliberately not routed through the actor mailbox.
 #[async_trait::async_trait]
 pub trait ControlEndpoint: Send + Sync {
+    async fn effective_config(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
+        Ok(None)
+    }
+
     /// The applied process binding; absent means no usable API. Old hosts must
     /// fail explicitly rather than reconstructing credentials from globals.
     async fn api_connection(
@@ -121,6 +128,33 @@ impl LocalEndpoint {
 
 #[async_trait::async_trait]
 impl ControlEndpoint for LocalEndpoint {
+    async fn effective_config(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
+        self.control
+            .effective_config()
+            .await
+            .map(|snapshot| {
+                Ok(nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
+                    instance_id: snapshot.instance_id.to_string(),
+                    revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                        epoch: snapshot.revision.epoch.get(),
+                        generation: snapshot.revision.generation,
+                        source_hash: snapshot.revision.source_hash.clone(),
+                        effective_hash: snapshot.revision.effective_hash.clone(),
+                    },
+                    config: serde_yaml::to_string(snapshot.config.as_ref()).map_err(|_| {
+                        CoreError::new(
+                            CoreErrorKind::Internal,
+                            "failed to serialize effective config",
+                            false,
+                        )
+                    })?,
+                })
+            })
+            .transpose()
+    }
+
     async fn api_connection(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>, CoreError> {
@@ -288,6 +322,7 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
         }
     };
     CoreStatusSnapshot {
+        controller: status.controller.as_ref().and_then(map_controller),
         state,
         state_changed_at: status.changed_at,
         revision: status.revision.as_ref().map(|revision| {
@@ -345,6 +380,16 @@ fn map_client_error(error: nyanpasu_ipc::client::ClientError) -> CoreError {
 
 #[async_trait::async_trait]
 impl ControlEndpoint for ServiceEndpoint {
+    async fn effective_config(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
+        self.client
+            .call::<nyanpasu_ipc::api::contract::CoreV2EffectiveConfig>(None)
+            .await
+            .map(|response| response.data.flatten())
+            .map_err(map_client_error)
+    }
+
     async fn api_connection(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>, CoreError> {
@@ -432,6 +477,20 @@ pub(super) fn wire_submit_request(
                 )
             })?;
             CoreCommandInfo::Reconcile {
+                local_ipc: request.options.local_ipc.map(|settings| {
+                    nyanpasu_ipc::api::core::v2::LocalIpcSettingsInfo {
+                        policy: match settings.policy {
+                            nyanpasu_core_manager::LocalIpcPolicy::Force => {
+                                nyanpasu_ipc::api::core::v2::LocalIpcPolicyInfo::Force
+                            }
+                            nyanpasu_core_manager::LocalIpcPolicy::Prefer => {
+                                nyanpasu_ipc::api::core::v2::LocalIpcPolicyInfo::Prefer
+                            }
+                            _ => nyanpasu_ipc::api::core::v2::LocalIpcPolicyInfo::Disable,
+                        },
+                        keep_http_controller: settings.keep_http_controller,
+                    }
+                }),
                 core_type: Cow::Owned(match &submission.core_type {
                     Some(core_type) => core_type.clone(),
                     None => app_core_kind_to_type(request.core.kind)?,
@@ -513,6 +572,7 @@ pub(crate) fn wire_core_type_to_kind(
 
 fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
     CoreStatusSnapshot {
+        controller: infos.controller.clone(),
         // A daemon too old to publish `detail` leaves this unknown. The coarse
         // `CoreInfos::state` cannot stand in: it collapses Starting and
         // Restarting into a Stopped shape, which would read as a stop proof.
@@ -625,5 +685,23 @@ mod tests {
         });
         assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
         assert!(error.retryable);
+    }
+}
+
+fn map_controller(
+    host: &nyanpasu_core_manager::Host,
+) -> Option<nyanpasu_ipc::api::status::CoreControllerInfo> {
+    use nyanpasu_core_manager::Host;
+    use nyanpasu_ipc::api::status::CoreControllerInfo;
+    match host {
+        Host::Http(url) => {
+            let mut url = url.clone();
+            let _ = url.set_username("");
+            let _ = url.set_password(None);
+            Some(CoreControllerInfo::Http(url.to_string()))
+        }
+        Host::UnixSocket(path) => Some(CoreControllerInfo::UnixSocket(path.clone())),
+        Host::NamedPipe(path) => Some(CoreControllerInfo::NamedPipe(path.clone())),
+        _ => None,
     }
 }

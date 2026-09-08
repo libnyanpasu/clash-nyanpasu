@@ -152,6 +152,7 @@ pub enum EndpointConnectivity {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
 pub struct CoreStatusInfo {
+    pub controller: Option<nyanpasu_ipc::api::status::CoreControllerInfo>,
     pub host: ExecutionHost,
     pub connectivity: EndpointConnectivity,
     pub generation: u64,
@@ -165,6 +166,7 @@ impl From<CoreStatusProjection> for CoreStatusInfo {
     fn from(status: CoreStatusProjection) -> Self {
         let snapshot = status.snapshot;
         Self {
+            controller: snapshot.as_ref().and_then(|s| s.controller.clone()),
             host: status.host,
             connectivity: status.connectivity,
             generation: status.generation,
@@ -231,6 +233,11 @@ impl std::fmt::Debug for SubmitTicket {
 }
 
 pub enum CoreActorMessage {
+    EffectiveConfig {
+        reply: RpcReplyPort<
+            Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError>,
+        >,
+    },
     ApiClient {
         reply: RpcReplyPort<Result<api::ApiClient, api::ApiError>>,
     },
@@ -618,6 +625,29 @@ impl Actor for CoreActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            CoreActorMessage::EffectiveConfig { reply } => {
+                let result = match &state.slot {
+                    EndpointSlot::Connected(endpoint) => match tokio::time::timeout(
+                        state.status_timeout,
+                        endpoint.effective_config(),
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => Err(CoreError::new(
+                            CoreErrorKind::BackendUnavailable,
+                            "effective config read timed out",
+                            true,
+                        )),
+                    },
+                    _ => Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        "core endpoint is not connected",
+                        true,
+                    )),
+                };
+                let _ = reply.send(result);
+            }
             CoreActorMessage::ApiClient { reply } => {
                 let result = match &state.slot {
                     EndpointSlot::Connected(endpoint) => {
@@ -1112,6 +1142,26 @@ impl CoreObserver {
 }
 
 impl CoreClient {
+    pub async fn effective_config(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
+        match self
+            .actor
+            .call(
+                |reply| CoreActorMessage::EffectiveConfig { reply },
+                Some(self.submit_budget),
+            )
+            .await
+        {
+            Ok(ractor::rpc::CallResult::Success(result)) => result,
+            _ => Err(CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "core actor did not answer effective config query",
+                true,
+            )),
+        }
+    }
+
     pub async fn api_client(&self) -> Result<api::ApiClient, api::ApiError> {
         let reply = self
             .actor

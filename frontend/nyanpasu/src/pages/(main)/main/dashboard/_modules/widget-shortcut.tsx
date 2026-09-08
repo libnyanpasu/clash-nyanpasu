@@ -248,6 +248,16 @@ const CurrentCoreCard = () => {
           >
             {currentCore?.currentVersion}
           </div>
+          <div className="text-xs" data-slot="core-control-channel">
+            {m.settings_clash_control_channel_label()}:{' '}
+            {coreStatus?.controller
+              ? 'Http' in coreStatus.controller
+                ? 'HTTP'
+                : 'NamedPipe' in coreStatus.controller
+                  ? 'IPC · Named Pipe'
+                  : 'IPC · Unix Socket'
+              : '—'}
+          </div>
         </div>
 
         <div

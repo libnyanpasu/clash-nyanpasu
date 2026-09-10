@@ -15,6 +15,9 @@ struct BlockingBuilder {
     calls: AtomicUsize,
     entered: Notify,
     release: Notify,
+    /// Scripts a runtime build that fails outright, so a test can drive a
+    /// caller through a non-retryable apply failure.
+    fail: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -33,6 +36,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
             self.entered.notify_one();
             self.release.notified().await;
         }
+        anyhow::ensure!(!self.fail.load(Ordering::SeqCst), "scripted build failure");
         self.delegate.build(revision, profiles, clash, app).await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
@@ -85,9 +89,29 @@ async fn dirty_graph_with_store(
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
 ) {
-    use super::super::tests::{
-        IdleServiceAdapter, test_materialization_port, test_typed_config_clients,
-    };
+    let core = CoreClient::spawn(TestControlEndpoint::succeeding())
+        .await
+        .unwrap();
+    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
+        .await
+        .unwrap();
+    dirty_graph_with_clients(dir, snapshots, core, service, false).await
+}
+
+async fn dirty_graph_with_clients(
+    dir: &tempfile::TempDir,
+    snapshots: runtime::RuntimeSnapshotStore,
+    core: CoreClient,
+    service: ServiceClient,
+    schedule_ticks: bool,
+) -> (
+    CoreLifecycleClient,
+    DirtyNotifier,
+    Arc<BlockingBuilder>,
+    super::super::application::ApplicationClient,
+    super::super::clash_config::ClashConfigClient,
+) {
+    use super::super::tests::{test_materialization_port, test_typed_config_clients};
     use crate::state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
     let (application, _, clash) = test_typed_config_clients(dir).await;
     let (notifier, dirty) = DirtyNotifier::channel();
@@ -100,11 +124,6 @@ async fn dirty_graph_with_store(
     )
     .await
     .unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
-    let core = CoreClient::spawn(endpoint).await.unwrap();
-    let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
-        .await
-        .unwrap();
     let paths =
         runtime::RuntimePaths::from_resolver(&crate::utils::path::PathResolver::with_base_dirs(
             dir.path().into(),
@@ -120,6 +139,7 @@ async fn dirty_graph_with_store(
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
         release: Notify::new(),
+        fail: AtomicBool::new(false),
     });
     let client = CoreLifecycleClient::spawn_with_ticks(
         CoreLifecycleArgs {
@@ -134,7 +154,7 @@ async fn dirty_graph_with_store(
             ui: Arc::new(super::super::NoopUiEventSink),
             dirty,
         },
-        false,
+        schedule_ticks,
     )
     .await
     .unwrap();
@@ -956,3 +976,6 @@ fn control_channel_application_does_not_start_a_stopped_core() {
         assert_eq!(f.endpoint.submissions(), 1);
     });
 }
+
+#[path = "service_recovery_tests.rs"]
+mod service_recovery;

@@ -2,6 +2,8 @@
 
 关联设计：`design.md`（同目录）
 
+> **2026-09-10 状态入口**：本任务卡为历史存档。当前控制面下沉实现、rc.5 接线、daemon 恢复及待人工 Service/DNS 验收见 [PR-5 收尾台账](../../../audit/2026-09-10-pr5-closeout.md)。
+
 > **⚠️ 方向变更（2026-08-12）**：本文件 §0 第 1/3 条约束与 PR-5a / PR-5b / PR-5c 三张卡片描述的 GUI `CoreActor` 所有权形态，已被控制面下沉方向取代，规范见 [`2026-08-12-core-actor-v2-app-integration.md`](../../../design/2026-08-12-core-actor-v2-app-integration.md)、[`2026-08-08-core-manager-control-plane-runtime-backend-design.md`](../../../design/2026-08-08-core-manager-control-plane-runtime-backend-design.md) 与 [`2026-08-12-core-actor-audit-verification.md`](../../../audit/2026-08-12-core-actor-audit-verification.md)。R0 与 PR-5-pre 两张卡片不受影响，仍是当前唯一权威实施范围；下方卡片内容保留存档，不再更新。
 
 ## 0. 全局约束

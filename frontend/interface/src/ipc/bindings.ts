@@ -2313,14 +2313,14 @@ export type ServicePhase =
   /**  Version gate failed closed: upgrade required, never downgraded to. */
   | 'incompatible'
   | 'restarting'
-  /**  Auto-restart budget spent; waits for an explicit `EnsureReady`. */
+  /**  Auto-restart budget spent; waits for `EnsureReady` or a successful explicit start. */
   | 'exhausted'
   | 'uninstalling'
   /**
    *  The probe itself failed or timed out (F5): what the daemon actually
    *  is cannot be determined. Never treated as `DaemonStopped` -- an
    *  unreachable daemon might still be holding a core open, so callers
-   *  that gate on "no core held" (the uninstall guard, `EndpointDown`'s
+   *  that gate on "no core held" (the uninstall guard, `RecoverEndpoint`'s
    *  restart) must refuse rather than proceed.
    */
   | 'unknown'

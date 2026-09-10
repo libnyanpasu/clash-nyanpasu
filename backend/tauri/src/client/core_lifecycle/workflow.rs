@@ -13,7 +13,7 @@ use super::{
     ports::{BinaryInstaller, PreparedCoreBinary, RuntimeBuildPort},
 };
 use crate::core::actor_v2::{
-    HandoffReport,
+    EndpointConnectivity, HandoffReport,
     endpoint::{ExecutionHost, wire_core_type_to_kind},
     facade::{CoreFacade, ReconcileReport},
     service_actor::ServicePhase,
@@ -31,6 +31,74 @@ pub(super) struct CoreLifecycleWorkflow {
     pub revisions: runtime::RuntimeRevisionAllocator,
     // A lost lower-level reply is not evidence its side effects have finished.
     pub uncertain: bool,
+    pub recovery: ServiceRecovery,
+    pub closing: tokio_util::sync::CancellationToken,
+}
+
+/// A connection retry budget, separate from the OS daemon restart budget the
+/// `ServiceActor` keeps: this one bounds IPC reconnections, that one bounds
+/// elevated daemon starts, and a caller can exhaust either without touching
+/// the other. Success does not re-arm it: repeated disconnects cannot create
+/// a restart loop. Explicit Service selection/start re-arms recovery.
+#[derive(Default)]
+pub(super) struct ServiceRecovery {
+    attempts: u8,
+    suppressed: bool,
+    intent: CoreIntent,
+    /// Queued ticks coalesce into one flag, so a tick that arrived during a
+    /// long attempt would otherwise fire the next one immediately. This is
+    /// what makes the interval a floor between attempts rather than between
+    /// their starts.
+    next_attempt: Option<tokio::time::Instant>,
+}
+
+/// What the workflow owes the core across a Service outage. The two committed
+/// states are exclusive by construction: a core the user stopped is never also
+/// a core waiting to be restored.
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum CoreIntent {
+    /// Nothing owed; the host's own published state is the only truth.
+    #[default]
+    Idle,
+    /// The user stopped the core. Snapshots outlive the stop that invalidated
+    /// them, so this is what keeps a stale `Running` frame from reading as a
+    /// reason to start the core again.
+    Stopped,
+    /// An outage interrupted a running core that is not back yet. It outlives
+    /// a single attempt because adopting a fresh endpoint drops the snapshot
+    /// it was derived from: nothing else records that the core should run.
+    Restore,
+}
+
+/// Connection recovery attempts per outage, spent by both the reconnection and
+/// the core restoration it may owe.
+const RECOVERY_BUDGET: u8 = 3;
+
+impl ServiceRecovery {
+    /// Explicit Service intent re-opens the budget. What is owed to the core is
+    /// deliberately untouched: neither a stop the user asked for nor a
+    /// restoration still owed is a connection concern.
+    fn rearm(&mut self) {
+        self.attempts = 0;
+        self.suppressed = false;
+        self.next_attempt = None;
+    }
+
+    /// A terminal failure: stop retrying, but keep what is owed so that an
+    /// explicit Service start can still finish the restoration it interrupted.
+    fn pause(&mut self) {
+        self.suppressed = true;
+    }
+
+    /// The user left the Service host: stop retrying and drop a restoration
+    /// that was only ever owed to that host. A stop the user asked for is not
+    /// dropped -- it outlives every host change.
+    fn suppress(&mut self) {
+        self.suppressed = true;
+        if self.intent == CoreIntent::Restore {
+            self.intent = CoreIntent::Idle;
+        }
+    }
 }
 
 pub(super) fn domain_error(error: impl std::fmt::Display) -> CoreError {
@@ -39,6 +107,11 @@ pub(super) fn domain_error(error: impl std::fmt::Display) -> CoreError {
 
 impl CoreLifecycleWorkflow {
     pub async fn execute(&mut self, command: Command) -> Result<Output, CoreError> {
+        // Before the command, not after: the degraded projection is the only
+        // record that a core was running, and every command that re-adopts an
+        // endpoint drops it. This is an observation of what is still visible,
+        // not a policy decision about the command.
+        self.capture_core_intent();
         let result = self.execute_inner(command).await;
         self.uncertain |= self.core.outcome_uncertain();
         result
@@ -46,6 +119,10 @@ impl CoreLifecycleWorkflow {
 
     async fn execute_inner(&mut self, command: Command) -> Result<Output, CoreError> {
         match command {
+            Command::RecoverServiceEndpoint => {
+                self.recover_service_endpoint().await?;
+                Ok(Output::Unit)
+            }
             Command::ApplyControlChannel => {
                 let status = self.core.refresh_status().await?;
                 if !matches!(
@@ -136,9 +213,12 @@ impl CoreLifecycleWorkflow {
                 self.application.patch(patch).await.map_err(domain_error)?;
                 Ok(Output::Reconcile(self.reconcile().await?))
             }
-            Command::ChangeHost(host) => Ok(Output::Handoff(
-                self.core.change_execution_host(host).await?,
-            )),
+            Command::ChangeHost(host) => {
+                let report = self.core.change_execution_host(host).await?;
+                self.follow_host();
+                self.note_interrupted_core(report.interrupted_running());
+                Ok(Output::Handoff(report))
+            }
             Command::SetExecutionHost(service_mode) => {
                 let mut patch = NyanpasuAppConfig::new_empty_patch();
                 patch.enable_service_mode = Some(service_mode);
@@ -166,7 +246,9 @@ impl CoreLifecycleWorkflow {
                     .state
                     .enable_service_mode
                 {
-                    self.core.adopt_service_host().await?;
+                    let report = self.core.adopt_service_host().await?;
+                    self.recovery.rearm();
+                    self.note_interrupted_core(report.interrupted_running());
                 }
                 Ok(Output::Unit)
             }
@@ -174,7 +256,14 @@ impl CoreLifecycleWorkflow {
                 self.replace_binary(artifact).await?;
                 Ok(Output::Unit)
             }
-            Command::StopCore => Ok(Output::Stop(self.core.stop().await?)),
+            Command::StopCore => {
+                // A stop the user asked for outlives both its own failure and
+                // the snapshot it invalidates: the projection can still say
+                // Running when the endpoint degrades a moment later, and
+                // recovery must not read that as a reason to start the core.
+                self.recovery.intent = CoreIntent::Stopped;
+                Ok(Output::Stop(self.core.stop().await?))
+            }
             Command::RecoverCore => Ok(Output::Recover(self.core.recover().await?)),
             Command::ProbeService => {
                 Ok(Output::Service(Box::new(self.core.probe_service().await?)))
@@ -185,15 +274,18 @@ impl CoreLifecycleWorkflow {
             }
             Command::StartService => {
                 self.core.start_service().await?;
+                self.recovery.rearm();
                 Ok(Output::Unit)
             }
             Command::StopService => {
+                self.recovery.suppress();
                 self.core.stop_service().await?;
                 Ok(Output::Unit)
             }
             Command::RestartService => {
                 self.core.stop_service().await?;
                 self.core.start_service().await?;
+                self.recovery.rearm();
                 Ok(Output::Unit)
             }
             Command::UninstallService => {
@@ -204,11 +296,146 @@ impl CoreLifecycleWorkflow {
                         false,
                     ));
                 }
+                // Past the ownership guard the intent is committed, so a
+                // half-finished uninstall still suppresses recovery. A refusal
+                // above changed nothing and must leave the policy alone.
+                self.recovery.suppress();
                 self.core.uninstall_service().await?;
                 Ok(Output::Unit)
             }
             Command::Shutdown => Ok(Output::Shutdown(self.core.shutdown().await)),
         }
+    }
+
+    /// Recovery policy follows the host a completed handoff actually landed
+    /// on. It is called only once ownership has moved: a refused or failed
+    /// handoff changes nothing, so an armed policy stays armed on a still-live
+    /// Service endpoint and an explicit suppression is not undone by a
+    /// rejection.
+    fn follow_host(&mut self) {
+        if self.core.core_status().host == ExecutionHost::Service {
+            self.recovery.rearm();
+        } else {
+            self.recovery.suppress();
+        }
+    }
+
+    /// Records that a running core was interrupted rather than stopped.
+    /// Suppressed recovery records nothing: the user has left the host, and
+    /// there is nothing to owe.
+    fn note_interrupted_core(&mut self, interrupted: bool) {
+        if interrupted && !self.recovery.suppressed && self.recovery.intent == CoreIntent::Idle {
+            self.recovery.intent = CoreIntent::Restore;
+        }
+    }
+
+    /// The same observation taken from the projection, for the case where no
+    /// handoff reports it: the endpoint degraded and nothing has replaced it
+    /// yet. The pump publishes asynchronously, so this can miss a degradation
+    /// that lands mid-command -- the handoff's own report is what closes that
+    /// window.
+    fn capture_core_intent(&mut self) {
+        let status = self.core.core_status();
+        self.note_interrupted_core(
+            matches!(
+                status.connectivity,
+                EndpointConnectivity::Degraded {
+                    desired: ExecutionHost::Service,
+                    ..
+                }
+            ) && matches!(
+                status.snapshot.and_then(|s| s.state),
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+            ),
+        );
+    }
+
+    /// What recovery exists to clear: a Service endpoint that stopped
+    /// answering, or a core the outage stopped that is not back yet.
+    fn recovery_incomplete(&self) -> bool {
+        let status = self.core.core_status();
+        matches!(
+            status.connectivity,
+            EndpointConnectivity::Degraded {
+                desired: ExecutionHost::Service,
+                ..
+            }
+        ) || (self.recovery.intent == CoreIntent::Restore && status.host == ExecutionHost::Service)
+    }
+
+    pub fn recovery_due(&self) -> bool {
+        !self.recovery.suppressed
+            && self.recovery.attempts < RECOVERY_BUDGET
+            && !self.closing.is_cancelled()
+            && self
+                .recovery
+                .next_attempt
+                .is_none_or(|at| tokio::time::Instant::now() >= at)
+            && self.recovery_incomplete()
+    }
+
+    async fn recover_service_endpoint(&mut self) -> Result<(), CoreError> {
+        if !self.recovery_due() {
+            return Ok(());
+        }
+        self.recovery.attempts += 1;
+        let result = self.recovery_attempt().await;
+        self.recovery.next_attempt = Some(tokio::time::Instant::now() + super::RECOVERY_INTERVAL);
+        if result.as_ref().is_err_and(|e: &CoreError| !e.retryable) {
+            // Paused, not abandoned: a terminal failure ends the automatic
+            // retries, and an explicit Service start still has a restoration
+            // to finish.
+            self.recovery.pause();
+        }
+        if self.recovery.attempts >= RECOVERY_BUDGET && self.recovery_incomplete() {
+            tracing::warn!(
+                "service endpoint recovery budget spent; explicitly select or start Service to re-arm"
+            );
+        }
+        result
+    }
+
+    async fn recovery_attempt(&mut self) -> Result<(), CoreError> {
+        if matches!(
+            self.core.core_status().connectivity,
+            EndpointConnectivity::Degraded { .. }
+        ) {
+            let report = self.core.recover_service_endpoint(&self.closing).await?;
+            self.note_interrupted_core(report.interrupted_running());
+        }
+        if self.closing.is_cancelled() || self.recovery.intent != CoreIntent::Restore {
+            return Ok(());
+        }
+        // A transport-only outage must not reapply or stop an already live
+        // runtime. Only restore a previously running core to a stopped host.
+        match self
+            .core
+            .refresh_status()
+            .await?
+            .snapshot
+            .and_then(|s| s.state)
+        {
+            // The runtime outlived the outage; there is nothing left to owe.
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. }) => {
+                self.recovery.intent = CoreIntent::Idle;
+            }
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+                if !self.closing.is_cancelled() =>
+            {
+                // Every phase boundary this workflow owns is checked, but a
+                // cancel landing inside the build or the submission still
+                // completes: abandoning a submitted config mid-flight would
+                // turn a known outcome into an uncertain one. It stays bounded
+                // because shutdown is serialized behind this operation and
+                // stops whatever it started.
+                self.reconcile().await?;
+                self.ui.refresh_clash();
+            }
+            // Any other state proves nothing about whether the core should be
+            // running, so the intent stays owed to the next attempt.
+            _ => {}
+        }
+        Ok(())
     }
 
     async fn set_host(&mut self, service_mode: bool) -> Result<(), CoreError> {
@@ -218,6 +445,10 @@ impl CoreLifecycleWorkflow {
             ExecutionHost::Local
         };
         let report = self.core.change_execution_host(host).await?;
+        // The host moved; the reconcile and daemon stop below are follow-up
+        // effects whose failure must not put the policy back on the old host.
+        self.follow_host();
+        self.note_interrupted_core(report.interrupted_running());
         if matches!(report, HandoffReport::Completed { .. }) {
             self.reconcile().await?;
         }
@@ -287,6 +518,10 @@ impl CoreLifecycleWorkflow {
                 Err(error) => tracing::warn!("effective config inspection unavailable: {error}"),
             }
         }
+        // An applied config is the only thing that discharges what is owed --
+        // it both restores an interrupted core and ends a user's stop. Clearing
+        // on entry would lose the intent to a failure halfway through.
+        self.recovery.intent = CoreIntent::Idle;
         Ok(report)
     }
 

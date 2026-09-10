@@ -70,7 +70,7 @@
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "24.13.3",
     "knip": "6.35.1",
-    "lint-staged": "17.5.0",
+    "lint-staged": "17.5.1",
     "npm-run-all2": "9.0.3",
     "oxlint": "1.82.0",
     "postcss": "8.5.28",

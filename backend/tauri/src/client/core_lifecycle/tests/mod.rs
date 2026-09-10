@@ -611,6 +611,13 @@ fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
             core_lifecycle.reconcile().await.unwrap_err().kind,
             Some(CoreErrorKind::OperationConflict)
         );
+        let (mut rejected, _) = f.artifact(ClashCore::ClashRs);
+        let terminal = Arc::new(TerminalProgress::default());
+        rejected.progress = terminal.clone();
+        assert!(core_lifecycle.replace_binary(rejected).await.is_err());
+        let outcomes = terminal.0.lock().unwrap().clone();
+        assert_eq!(outcomes.len(), 1);
+        assert!(outcomes[0].as_ref().unwrap().contains("queue is full"));
         assert_eq!(f.endpoint.submissions(), 2);
         let mut shutdown = Box::pin(f.client.shutdown_core());
         assert!(shutdown.as_mut().now_or_never().is_none());
@@ -978,4 +985,66 @@ fn control_channel_application_does_not_start_a_stopped_core() {
         f.client.apply_control_channel().await.unwrap();
         assert_eq!(f.endpoint.submissions(), 1);
     });
+}
+
+#[derive(Default)]
+struct TerminalProgress(std::sync::Mutex<Vec<Option<String>>>);
+impl BinaryInstallProgress for TerminalProgress {
+    fn restarting(&self) {
+        panic!("a rejected installation must not restart");
+    }
+    fn finished(&self, error: Option<&str>) {
+        self.0.lock().unwrap().push(error.map(str::to_owned));
+    }
+}
+
+#[test]
+fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_it() {
+    for panic in [false, true] {
+        let f = Fixture::new(true, false, panic);
+        tauri::async_runtime::block_on(async {
+            let (first, _) = start_replacement(&f).await;
+            let (mut queued, _) = f.artifact(ClashCore::ClashRs);
+            let terminal = Arc::new(TerminalProgress::default());
+            queued.progress = terminal.clone();
+            let client = &f.client.inner.core_lifecycle;
+            let result = client
+                .call_with_timeout(
+                    Command::ReplaceCoreBinary(queued),
+                    Duration::from_millis(20),
+                )
+                .await;
+            assert!(
+                matches!(result, Err(error) if error.kind == Some(CoreErrorKind::BackendUnavailable))
+            );
+            assert_eq!(client.status().queued.len(), 1);
+            assert!(terminal.0.lock().unwrap().is_empty());
+            if panic {
+                f.installer.release.notify_one();
+                assert!(first.await.unwrap().is_err());
+                barrier(client).await;
+                assert!(client.status().uncertain);
+            } else {
+                let mut shutdown = Box::pin(f.client.shutdown_core());
+                assert!(shutdown.as_mut().now_or_never().is_none());
+                barrier(client).await;
+                f.installer.release.notify_one();
+                first.await.unwrap().unwrap();
+                assert!(shutdown.await.stop.is_ok());
+            }
+            let outcomes = terminal.0.lock().unwrap().clone();
+            assert_eq!(
+                outcomes.len(),
+                1,
+                "rejected request must deliver exactly one terminal notification"
+            );
+            assert!(outcomes[0].as_ref().unwrap().contains(if panic {
+                "uncertain outcome"
+            } else {
+                "shutting down"
+            }));
+            assert_eq!(f.installer.calls.load(Ordering::SeqCst), 1);
+            assert!(client.status().queued.is_empty());
+        });
+    }
 }

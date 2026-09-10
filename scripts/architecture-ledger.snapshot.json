@@ -11,14 +11,13 @@
       }
     },
     "service_globals": {
-      "total": 41,
+      "total": 38,
       "byKey": {
         "Handle::global()": 10,
         "Self::global()": 8,
         "Sysopt::global()": 8,
         "WindowManager::global()": 8,
         "Hotkey::global()": 3,
-        "UpdaterManager::global()": 3,
         "Logger::global()": 1
       }
     },

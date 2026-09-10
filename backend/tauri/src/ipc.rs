@@ -610,11 +610,10 @@ pub fn open_web_url(url: String) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn fetch_latest_core_versions() -> Result<ManifestVersionLatest> {
-    let mut updater = updater::UpdaterManager::global().write().await; // It is intended to block here
-    (updater.fetch_latest().await)?;
-    // TODO: result key should be kebab-case
-    Ok(updater.get_latest_versions())
+pub async fn fetch_latest_core_versions(
+    client: State<'_, NyanpasuClient>,
+) -> Result<ManifestVersionLatest> {
+    Ok(client.fetch_latest_core_versions().await?)
 }
 
 #[tauri::command]
@@ -660,23 +659,16 @@ pub async fn update_core(
     client: State<'_, NyanpasuClient>,
     core_type: nyanpasu::ClashCore,
 ) -> Result<usize> {
-    let event_id = (updater::UpdaterManager::global()
-        .write()
-        .await
-        .update_core(&core_type, client.inner().clone())
-        .await)?;
-    Ok(event_id)
+    Ok(client.download_core_update(core_type).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn inspect_updater(updater_id: usize) -> Result<updater::UpdaterSummary> {
-    let updater = (updater::UpdaterManager::global()
-        .read()
-        .await
-        .inspect_updater(updater_id)
-        .ok_or(anyhow::anyhow!("updater is not exist")))?;
-    Ok(updater)
+pub async fn inspect_updater(
+    client: State<'_, NyanpasuClient>,
+    updater_id: usize,
+) -> Result<updater::UpdaterSummary> {
+    Ok(client.inspect_updater(updater_id).await?)
 }
 
 #[tauri::command]

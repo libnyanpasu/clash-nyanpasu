@@ -220,6 +220,22 @@ impl CoreLifecycleState {
         }
     }
 
+    fn reject(&mut self, request: Request, error: CoreError) {
+        if let Command::ReplaceCoreBinary(artifact) = &request.command {
+            // A timed-out installer may still reserve its updater task. Rejection
+            // before execution must settle that observer as well as the RPC.
+            let message = error.to_string();
+            if std::panic::catch_unwind(AssertUnwindSafe(|| {
+                artifact.progress.finished(Some(&message));
+            }))
+            .is_err()
+            {
+                tracing::error!("binary installation progress observer panicked");
+            }
+        }
+        self.settle(request.response, Err(error));
+    }
+
     fn close(&mut self) {
         self.closing = true;
         self.closing_token.cancel();
@@ -232,10 +248,7 @@ impl CoreLifecycleState {
         }
         self.dirty = false;
         while let Some(request) = self.pending.pop_front() {
-            self.settle(
-                request.response,
-                Err(conflict("core lifecycle is shutting down")),
-            );
+            self.reject(request, conflict("core lifecycle is shutting down"));
         }
     }
 
@@ -249,7 +262,7 @@ impl CoreLifecycleState {
             self.status.send_modify(|status| status.uncertain = true);
             self.dirty = false;
             while let Some(request) = self.pending.pop_front() {
-                self.settle(request.response, Err(CoreError::new(CoreErrorKind::OperationConflict, "previous core lifecycle operation has an uncertain outcome; restart the application before further mutations", false)));
+                self.reject(request, CoreError::new(CoreErrorKind::OperationConflict, "previous core lifecycle operation has an uncertain outcome; restart the application before further mutations", false));
             }
         }
         let request = if self.closing {
@@ -396,15 +409,9 @@ impl Actor for CoreLifecycleActor {
                         state.settle(request.response, Err(conflict("too many shutdown waiters")));
                     }
                 } else if state.closing {
-                    state.settle(
-                        request.response,
-                        Err(conflict("core lifecycle is shutting down")),
-                    );
+                    state.reject(request, conflict("core lifecycle is shutting down"));
                 } else if state.pending.len() >= MAX_PENDING {
-                    state.settle(
-                        request.response,
-                        Err(conflict("core lifecycle queue is full")),
-                    );
+                    state.reject(request, conflict("core lifecycle queue is full"));
                 } else {
                     state.pending.push_back(request);
                 }

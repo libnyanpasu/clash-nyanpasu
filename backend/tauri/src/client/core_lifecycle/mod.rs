@@ -72,6 +72,8 @@ pub(super) enum Command {
     Reconcile,
     ApplyControlChannel,
     PatchRuntimeOverrides(nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch),
+    ActivateProfile(Option<nyanpasu_config::profile::ProfileId>),
+    AutoActivateProfile(nyanpasu_config::profile::ProfileId),
     SelectCore(ClashCore),
     ChangeHost(ExecutionHost),
     SetExecutionHost(bool),
@@ -635,6 +637,24 @@ impl CoreLifecycleClient {
         }
     }
 
+    pub async fn activate_profile(
+        &self,
+        uid: Option<nyanpasu_config::profile::ProfileId>,
+    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
+        match self.call(Command::ActivateProfile(uid)).await? {
+            Output::Mutation(result) => Ok(result),
+            _ => unreachable!(),
+        }
+    }
+    pub async fn auto_activate_profile(
+        &self,
+        uid: nyanpasu_config::profile::ProfileId,
+    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
+        match self.call(Command::AutoActivateProfile(uid)).await? {
+            Output::Mutation(result) => Ok(result),
+            _ => unreachable!(),
+        }
+    }
     pub async fn select_core(&self, core: ClashCore) -> Result<ReconcileReport, CoreError> {
         match self.call(Command::SelectCore(core)).await? {
             Output::Reconcile(result) => Ok(result),

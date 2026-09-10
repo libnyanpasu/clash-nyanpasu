@@ -57,7 +57,13 @@ const createUpdatedProxy = (
 export const useClashProxies = () => {
   const queryClient = useQueryClient()
   const proxiesOptions = queries.getProxies()
-  const selectProxy = mutations.selectProxy
+  const selectProxyMutation = mutations.selectProxy
+
+  const selectProxy = useMutation({
+    mutationKey: selectProxyMutation.mutationKey,
+    mutationFn: async ({ group, name }: { group: string; name: string }) =>
+      unwrapResult(await invokeMutation(selectProxyMutation, [group, name])),
+  })
 
   const proxies = useQuery<ClashProxiesQuery | undefined>({
     queryKey: proxiesOptions.queryKey,
@@ -82,9 +88,7 @@ export const useClashProxies = () => {
           ])
         },
         mutateSelect: async () => {
-          unwrapResult(
-            await invokeMutation(selectProxy, [groupName, proxy.name]),
-          )
+          await selectProxy.mutateAsync({ group: groupName, name: proxy.name })
           await proxies.refetch()
         },
       })

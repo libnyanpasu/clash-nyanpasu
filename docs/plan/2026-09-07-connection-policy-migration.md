@@ -50,3 +50,27 @@ No runtime dependency change is required. Real GUI/core smoke tests were not run
 Remaining transport migration is the WebSocket connector. Enabling profile-change
 interruption and implementing precise chain-based closure are separate behavior
 changes, not replacements for active legacy callers.
+
+## PR-6 follow-up: profile and proxy policies
+
+The PR-6 implementation completes the behavior changes deferred above:
+
+- Explicit activation/deselection and conditional create/import activation now
+  enter CoreLifecycleActor. Deleting the current profile remains rejected by
+  domain validation; deleting other profiles does not introduce interruption. Only a change in the current profile triggers the
+  typed `on_profile_change` policy; editing profile contents retains the existing
+  rebuild path. Capture the source capability before committing, reconcile, then
+  close through that same capability. A failed reconcile skips closure; a failed
+  post-commit closure returns `profile_interruption_failed` degradation. Confirmed
+  core replacement and stopped sources need no additional closure.
+- ProxiesActor is the sole owner of proxy-selection interruption. `ProxyGroup`
+  reads connections from the selected source instance and closes only IDs whose
+  chains contain the selected group; `All` closes all and `Off` does neither.
+  Source revocation fences both the query and each close. Selection success is
+  returned as `MutationOutcome<()>`, with separate interruption/cache degradation
+  so IPC, tray and frontend do not report a successful selection as a failed
+  mutation or automatically repeat it.
+- Regression tests cover policy gates, actual profile changes, rejected commits,
+  reconcile/close failures, source replacement with the same URL, and lifecycle
+  admission while closure is pending. Proxy tests cover group membership and
+  post-selection failures without publishing responses from retired instances.

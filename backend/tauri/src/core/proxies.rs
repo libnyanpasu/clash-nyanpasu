@@ -1,7 +1,9 @@
 //! Actor-owned proxy cache shared by IPC and tray adapters.
 use std::{sync::Arc, time::Duration};
 
+use crate::client::runtime::{Degradation, DegradationPhase, MutationOutcome};
 use anyhow::{Context, Result};
+use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::{sync::watch, time::Instant};
 
@@ -26,8 +28,8 @@ enum Message {
     Select {
         group: String,
         name: String,
-        interrupt: bool,
-        reply: RpcReplyPort<Result<()>>,
+        strategy: ProxyChangeBreakMode,
+        reply: RpcReplyPort<Result<MutationOutcome<()>>>,
     },
     UpdateProvider {
         name: String,
@@ -164,27 +166,48 @@ impl State {
         actor: &ActorRef<Message>,
         group: String,
         name: String,
-        interrupt: bool,
-    ) -> Result<()> {
+        strategy: ProxyChangeBreakMode,
+    ) -> Result<MutationOutcome<()>> {
         self.clear();
         let api = self.core.api_client().await?;
-        api.select_proxy(&group.into(), &name.into()).await?;
-        let interruption = if interrupt {
-            api.close_all_connections()
-                .await
-                .map_err(anyhow::Error::from)
-        } else {
-            Ok(())
-        };
-        let refresh = self.refresh(actor, api).await;
-        match (interruption, refresh) {
-            (Ok(()), Ok(_)) => Ok(()),
-            (interrupt, refresh) => anyhow::bail!(
-                "proxy selection succeeded; connection interruption error: {:?}; cache refresh error: {:?}",
-                interrupt.err(),
-                refresh.err()
-            ),
+        api.select_proxy(&group.clone().into(), &name.into())
+            .await?;
+        // Keep every follow-up on the selection's revocable source capability.
+        let interruption = async {
+            match strategy {
+                ProxyChangeBreakMode::Off => {}
+                ProxyChangeBreakMode::All => api.close_all_connections().await?,
+                ProxyChangeBreakMode::ProxyGroup => {
+                    for connection in api.connections().await?.connections.unwrap_or_default() {
+                        if connection.chains.contains(&group) {
+                            api.close_connection(connection.id).await?;
+                        }
+                    }
+                }
+            }
+            Ok::<_, anyhow::Error>(())
         }
+        .await;
+        let mut degradations = Vec::new();
+        if let Err(error) = interruption {
+            degradations.push(Degradation {
+                phase: DegradationPhase::SystemEffect,
+                code: "proxy_interruption_failed".into(),
+                message: format!(
+                    "proxy selected, but source-instance connection interruption failed: {error}"
+                ),
+                retryable: false,
+            });
+        }
+        if let Err(error) = self.refresh(actor, api).await {
+            degradations.push(Degradation {
+                phase: DegradationPhase::UiEffect,
+                code: "proxy_cache_refresh_failed".into(),
+                message: format!("proxy selected, but cache refresh failed: {error}"),
+                retryable: true,
+            });
+        }
+        Ok(MutationOutcome::from_parts((), degradations))
     }
 }
 
@@ -245,13 +268,13 @@ impl Actor for ProxiesActor {
             Message::Select {
                 group,
                 name,
-                interrupt,
+                strategy,
                 reply,
             } => {
                 if reply.is_closed() {
                     return Ok(());
                 }
-                let _ = reply.send(state.select(&actor, group, name, interrupt).await);
+                let _ = reply.send(state.select(&actor, group, name, strategy).await);
             }
             Message::UpdateProvider { name, reply } => {
                 if reply.is_closed() {
@@ -352,11 +375,16 @@ impl ProxiesClient {
         );
         Ok(snapshot.providers.clone())
     }
-    pub async fn select(&self, group: String, name: String, interrupt: bool) -> Result<()> {
+    pub async fn select(
+        &self,
+        group: String,
+        name: String,
+        strategy: ProxyChangeBreakMode,
+    ) -> Result<MutationOutcome<()>> {
         self.call(|reply| Message::Select {
             group,
             name,
-            interrupt,
+            strategy,
             reply,
         })
         .await
@@ -471,6 +499,9 @@ mod tests {
         reads: AtomicUsize,
         fail_reads: AtomicBool,
         fail_mutation: AtomicBool,
+        fail_close: AtomicBool,
+        hold_connections: AtomicBool,
+        closed: Mutex<Vec<uuid::Uuid>>,
         hold_read: AtomicBool,
         hold_select: AtomicBool,
         entered: Notify,
@@ -536,7 +567,37 @@ mod tests {
     }
     async fn close(HttpState(f): HttpState<Arc<Fixture>>) -> StatusCode {
         f.calls.lock().unwrap().push("close");
-        StatusCode::NO_CONTENT
+        if f.fail_close.load(Ordering::SeqCst) {
+            StatusCode::SERVICE_UNAVAILABLE
+        } else {
+            StatusCode::NO_CONTENT
+        }
+    }
+    async fn connections(HttpState(f): HttpState<Arc<Fixture>>) -> Json<serde_json::Value> {
+        f.calls.lock().unwrap().push("connections");
+        if f.hold_connections.load(Ordering::SeqCst) {
+            f.entered.notify_one();
+            f.release.notified().await;
+        }
+        let connections: Vec<_> = [vec![NODE, GROUP, "GLOBAL"], vec!["other"], vec![GROUP]]
+            .into_iter()
+            .enumerate()
+            .map(|(index, chains)| {
+                serde_json::json!({
+                    "id": uuid::Uuid::from_u128(index as u128 + 1),
+                    "upload": 0, "download": 0, "start": "2026-01-01T00:00:00Z",
+                    "chains": chains, "rule": "Match", "rulePayload": ""
+                })
+            })
+            .collect();
+        Json(serde_json::json!({"downloadTotal": 0, "uploadTotal": 0, "connections": connections}))
+    }
+    async fn close_one(
+        HttpState(f): HttpState<Arc<Fixture>>,
+        Path(id): Path<uuid::Uuid>,
+    ) -> StatusCode {
+        f.closed.lock().unwrap().push(id);
+        close(HttpState(f)).await
     }
     async fn setup() -> (
         ProxiesClient,
@@ -551,7 +612,8 @@ mod tests {
             .route("/providers/proxies/", get(providers))
             .route("/proxies/{group}/", put(select))
             .route("/providers/proxies/{name}/", put(update))
-            .route("/connections", delete(close))
+            .route("/connections", get(connections).delete(close))
+            .route("/connections/{id}", delete(close_one))
             .with_state(fixture.clone());
         let (url, server) = server(router).await;
         let endpoint = endpoint(url);
@@ -593,14 +655,14 @@ mod tests {
         client.get(false).await.unwrap();
         fixture.calls.lock().unwrap().clear();
         client
-            .select(GROUP.into(), NODE.into(), true)
+            .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::All)
             .await
             .unwrap();
         assert_eq!(*fixture.calls.lock().unwrap(), ["select", "close", "read"]);
         assert_eq!(client.snapshot().groups[0].now.as_deref(), Some(NODE));
         fixture.calls.lock().unwrap().clear();
         client
-            .select(GROUP.into(), NODE.into(), false)
+            .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::Off)
             .await
             .unwrap();
         assert_eq!(*fixture.calls.lock().unwrap(), ["select", "read"]);
@@ -614,11 +676,11 @@ mod tests {
         let (client, _core, _, fixture, server) = setup().await;
         client.get(false).await.unwrap();
         fixture.fail_reads.store(true, Ordering::SeqCst);
-        let error = client
-            .select(GROUP.into(), NODE.into(), true)
+        let outcome = client
+            .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::All)
             .await
-            .unwrap_err();
-        assert!(error.to_string().contains("selection succeeded"));
+            .unwrap();
+        assert_eq!(outcome.degradations()[0].code, "proxy_cache_refresh_failed");
         assert!(client.snapshot().records.is_empty());
         assert_eq!(
             fixture
@@ -639,11 +701,71 @@ mod tests {
         fixture.fail_mutation.store(true, Ordering::SeqCst);
         assert!(
             client
-                .select(GROUP.into(), NODE.into(), true)
+                .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::All)
                 .await
                 .is_err()
         );
         assert_eq!(*fixture.calls.lock().unwrap(), ["select"]);
+        server.abort();
+    }
+    #[tokio::test]
+    async fn group_policy_closes_only_matching_chains() {
+        let (client, _core, _, fixture, server) = setup().await;
+        let outcome = client
+            .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::ProxyGroup)
+            .await
+            .unwrap();
+        assert!(outcome.degradations().is_empty());
+        assert_eq!(
+            *fixture.closed.lock().unwrap(),
+            [uuid::Uuid::from_u128(1), uuid::Uuid::from_u128(3)]
+        );
+        assert_eq!(
+            *fixture.calls.lock().unwrap(),
+            ["select", "connections", "close", "close", "read"]
+        );
+        server.abort();
+    }
+    #[tokio::test]
+    async fn interruption_failure_preserves_selection_and_refreshes_cache() {
+        for strategy in [ProxyChangeBreakMode::All, ProxyChangeBreakMode::ProxyGroup] {
+            let (client, _core, _, fixture, server) = setup().await;
+            fixture.fail_close.store(true, Ordering::SeqCst);
+            let outcome = client
+                .select(GROUP.into(), NODE.into(), strategy)
+                .await
+                .unwrap();
+            assert_eq!(outcome.degradations().len(), 1);
+            assert_eq!(outcome.degradations()[0].code, "proxy_interruption_failed");
+            assert!(!outcome.degradations()[0].retryable);
+            assert_eq!(*fixture.selected.lock().unwrap(), NODE);
+            assert!(!client.snapshot().records.is_empty());
+            server.abort();
+        }
+    }
+    #[tokio::test]
+    async fn replacement_during_chain_read_never_receives_closure_or_cache() {
+        let (client, core, endpoint, fixture, server) = setup().await;
+        fixture.hold_connections.store(true, Ordering::SeqCst);
+        let waiting = {
+            let client = client.clone();
+            tokio::spawn(async move {
+                client
+                    .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::ProxyGroup)
+                    .await
+            })
+        };
+        fixture.entered.notified().await;
+        endpoint
+            .binding
+            .send_modify(|binding| binding.as_mut().unwrap().instance_id = "replacement".into());
+        core.api_client().await.unwrap();
+        let outcome = waiting.await.unwrap().unwrap();
+        assert_eq!(outcome.degradations().len(), 2);
+        assert!(fixture.closed.lock().unwrap().is_empty());
+        assert_eq!(*fixture.calls.lock().unwrap(), ["select", "connections"]);
+        assert!(client.snapshot().records.is_empty());
+        fixture.release.notify_one();
         server.abort();
     }
     #[tokio::test]
@@ -693,7 +815,11 @@ mod tests {
         fixture.hold_select.store(true, Ordering::SeqCst);
         let first = {
             let client = client.clone();
-            tokio::spawn(async move { client.select(GROUP.into(), NODE.into(), false).await })
+            tokio::spawn(async move {
+                client
+                    .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::Off)
+                    .await
+            })
         };
         fixture.entered.notified().await;
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -703,7 +829,7 @@ mod tests {
             .cast(Message::Select {
                 group: GROUP.into(),
                 name: NODE.into(),
-                interrupt: true,
+                strategy: ProxyChangeBreakMode::All,
                 reply: tx.into(),
             })
             .unwrap();

@@ -1,13 +1,19 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryKey,
+} from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import {
-  commands,
+  mutations,
+  queries,
   type Proxies_Serialize,
   type ProxyGroupItem_Serialize,
   type ProxyItem_Serialize,
   type ProxyItemHistory,
 } from './bindings'
-import { CLASH_PROXIES_QUERY_KEY } from './consts'
+import { invokeMutation, invokeQuery } from './query-options'
 
 export type ClashDelayOptions = {
   url?: string
@@ -50,11 +56,13 @@ const createUpdatedProxy = (
 
 export const useClashProxies = () => {
   const queryClient = useQueryClient()
+  const proxiesOptions = queries.getProxies()
+  const selectProxy = mutations.selectProxy
 
   const proxies = useQuery<ClashProxiesQuery | undefined>({
-    queryKey: [CLASH_PROXIES_QUERY_KEY],
+    queryKey: proxiesOptions.queryKey,
     queryFn: async () => {
-      const result = unwrapResult(await commands.getProxies())
+      const result = unwrapResult(await invokeQuery(proxiesOptions))
 
       if (!result) {
         return
@@ -74,7 +82,9 @@ export const useClashProxies = () => {
           ])
         },
         mutateSelect: async () => {
-          unwrapResult(await commands.selectProxy(groupName, proxy.name))
+          unwrapResult(
+            await invokeMutation(selectProxy, [groupName, proxy.name]),
+          )
           await proxies.refetch()
         },
       })
@@ -109,22 +119,23 @@ export const useClashProxies = () => {
   })
 
   const getQueryData = () => {
-    return queryClient.getQueryData([CLASH_PROXIES_QUERY_KEY]) as
+    return queryClient.getQueryData(proxiesOptions.queryKey) as
       ClashProxiesQuery | undefined
   }
 
   const setQueryData = (data: ClashProxiesQuery) => {
-    queryClient.setQueryData([CLASH_PROXIES_QUERY_KEY], data)
+    queryClient.setQueryData<ClashProxiesQuery | undefined>(
+      proxiesOptions.queryKey as QueryKey,
+      data,
+    )
   }
 
   const updateProxiesDelay = useMutation({
     mutationFn: async (args: [string, string | null, ClashDelayOptions?]) => {
       const [name, provider, options] = args
       const res = unwrapResult(
-        await commands.clashApiGetProxyDelay(
-          name,
-          provider,
-          options?.url ?? null,
+        await invokeQuery(
+          queries.clashApiGetProxyDelay(name, provider, options?.url ?? null),
         ),
       )
       return {
@@ -170,7 +181,9 @@ export const useClashProxies = () => {
       const [group, options] = args
       return (
         unwrapResult(
-          await commands.clashApiGetGroupDelay(group, options?.url ?? null),
+          await invokeQuery(
+            queries.clashApiGetGroupDelay(group, options?.url ?? null),
+          ),
         ) ?? {}
       )
     },

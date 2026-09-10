@@ -1,7 +1,6 @@
-import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
-import { commands } from './bindings'
-import { NYANPASU_POST_PROCESSING_QUERY_KEY } from './consts'
+import { queries } from './bindings'
+import { unwrapQueryOptions } from './query-options'
 
 /**
  * Custom hook for fetching post-processing output using React Query.
@@ -12,12 +11,12 @@ import { NYANPASU_POST_PROCESSING_QUERY_KEY } from './consts'
  * The result is unwrapped using the `unwrapResult` utility function.
  */
 export const usePostProcessingOutput = () => {
-  const query = useQuery({
-    queryKey: [NYANPASU_POST_PROCESSING_QUERY_KEY],
-    queryFn: async () => {
-      return unwrapResult(await commands.getPostprocessingOutput())
-    },
-  })
+  const query = useQuery(
+    unwrapQueryOptions(
+      queries.getPostprocessingOutput(),
+      queries.getPostprocessingOutput().queryFn!,
+    ),
+  )
 
   return {
     ...query,

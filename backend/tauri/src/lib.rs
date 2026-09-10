@@ -190,7 +190,7 @@ pub fn run() -> std::io::Result<()> {
     }));
 
     // setup specta
-    let specta_builder = specta_export::build_specta_builder();
+    let (query_bindings, specta_builder) = specta_export::build_specta_builder();
 
     #[cfg(debug_assertions)]
     {
@@ -201,6 +201,11 @@ pub fn run() -> std::io::Result<()> {
             SPECTA_BINDINGS_PATH,
         ) {
             Ok(_) => {
+                if let Err(e) =
+                    specta_export::append_query_bindings(SPECTA_BINDINGS_PATH, &query_bindings)
+                {
+                    panic!("Failed to append TanStack Query bindings: {e}");
+                }
                 let npx_command = if cfg!(target_os = "windows") {
                     "npx.cmd"
                 } else {

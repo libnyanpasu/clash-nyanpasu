@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
-import { unwrapResult } from '../utils'
-import { commands } from './bindings'
-import { CLASH_RULES_QUERY_KEY } from './consts'
+import { queries } from './bindings'
+import { unwrapQueryOptions } from './query-options'
 
 export const useClashRules = () => {
-  const query = useQuery({
-    queryKey: [CLASH_RULES_QUERY_KEY],
-    queryFn: async () => unwrapResult(await commands.clashApiGetRules()),
-  })
+  const query = useQuery(
+    unwrapQueryOptions(
+      queries.clashApiGetRules(),
+      queries.clashApiGetRules().queryFn!,
+    ),
+  )
 
   return {
     ...query,

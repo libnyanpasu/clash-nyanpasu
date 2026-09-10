@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands } from './bindings'
+import { mutations, queries } from './bindings'
+import { invokeMutation, unwrapQueryOptions } from './query-options'
 
 /**
  * A custom hook that manages profile content data fetching and updating.
@@ -26,6 +27,8 @@ import { commands } from './bindings'
  */
 export const useProfileContent = (uid: string) => {
   const queryClient = useQueryClient()
+  const contentQuery = queries.readProfileFile(uid)
+  const saveProfile = mutations.saveProfileFile
 
   /**
    * A React Query hook that fetches profile content based on a user ID.
@@ -44,10 +47,7 @@ export const useProfileContent = (uid: string) => {
    * ```
    */
   const query = useQuery({
-    queryKey: ['profile-content', uid],
-    queryFn: async () => {
-      return unwrapResult(await commands.readProfileFile(uid))
-    },
+    ...unwrapQueryOptions(contentQuery, contentQuery.queryFn!),
     enabled: !!uid,
   })
 
@@ -66,11 +66,14 @@ export const useProfileContent = (uid: string) => {
    * @returns A mutation object that handles saving profile file data
    */
   const upsert = useMutation({
+    mutationKey: saveProfile.mutationKey,
     mutationFn: async (fileData: string) => {
-      return unwrapResult(await commands.saveProfileFile(uid, fileData))
+      return unwrapResult(await invokeMutation(saveProfile, [uid, fileData]))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile-content', uid] })
+      queryClient.invalidateQueries({
+        queryKey: contentQuery.queryKey,
+      })
     },
   })
 

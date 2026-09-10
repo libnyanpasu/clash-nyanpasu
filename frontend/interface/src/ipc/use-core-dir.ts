@@ -1,15 +1,11 @@
-import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
-import { commands } from './bindings'
-import { CORE_DIR_QUERY_KEY } from './consts'
+import { queries } from './bindings'
+import { unwrapQueryOptions } from './query-options'
 
 export const useCoreDir = () => {
-  const query = useQuery({
-    queryKey: [CORE_DIR_QUERY_KEY],
-    queryFn: async () => {
-      return unwrapResult(await commands.getCoreDir())
-    },
-  })
+  const query = useQuery(
+    unwrapQueryOptions(queries.getCoreDir(), queries.getCoreDir().queryFn!),
+  )
 
   return {
     ...query,

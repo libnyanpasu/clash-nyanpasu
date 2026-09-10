@@ -1,27 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { commands } from '../ipc/bindings'
+import { mutations, queries } from '../ipc/bindings'
+import { invokeMutation, invokeQuery } from '../ipc/query-options'
 import { unwrapResult } from '../utils'
-
-const HOTKEYS_QUERY_KEY = 'hotkeys'
 
 export function useHotkeys() {
   const queryClient = useQueryClient()
+  const hotkeysQuery = queries.getHotkeys()
+  const setHotkeys = mutations.setHotkeys
 
   const query = useQuery({
-    queryKey: [HOTKEYS_QUERY_KEY],
+    queryKey: hotkeysQuery.queryKey,
     queryFn: async () => {
-      const res = await commands.getHotkeys()
+      const res = await invokeQuery(hotkeysQuery)
       return unwrapResult(res) ?? []
     },
   })
 
   const update = useMutation({
+    mutationKey: setHotkeys.mutationKey,
     mutationFn: async (hotkeys: string[]) => {
-      return unwrapResult(await commands.setHotkeys(hotkeys))
+      return unwrapResult(await invokeMutation(setHotkeys, [hotkeys]))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: [HOTKEYS_QUERY_KEY],
+        queryKey: queries.getHotkeys().queryKey,
       })
     },
   })

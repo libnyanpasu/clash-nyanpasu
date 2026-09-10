@@ -1,24 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, type ClashConfig, type PatchRuntimeConfig } from './bindings'
-import { CLASH_CONFIG_QUERY_KEY } from './consts'
+import {
+  mutations,
+  queries,
+  type ClashConfig,
+  type PatchRuntimeConfig,
+} from './bindings'
+import { invokeMutation, unwrapQueryOptions } from './query-options'
 
 export const useClashConfig = () => {
   const queryClient = useQueryClient()
+  const configQuery = queries.clashApiGetConfigs()
+  const patchConfig = mutations.patchClashConfig
 
-  const query = useQuery<ClashConfig | undefined>({
-    queryKey: [CLASH_CONFIG_QUERY_KEY],
-    queryFn: async () => unwrapResult(await commands.clashApiGetConfigs()),
-  })
+  const query = useQuery<ClashConfig | undefined>(
+    unwrapQueryOptions(configQuery, configQuery.queryFn!),
+  )
 
   const upsert = useMutation({
+    mutationKey: patchConfig.mutationKey,
     mutationFn: async (payload: PatchRuntimeConfig & Partial<ClashConfig>) => {
       return unwrapResult(
-        await commands.patchClashConfig(payload as PatchRuntimeConfig),
+        await invokeMutation(patchConfig, [payload as PatchRuntimeConfig]),
       )
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [CLASH_CONFIG_QUERY_KEY] })
+      queryClient.invalidateQueries({
+        queryKey: configQuery.queryKey,
+      })
     },
   })
 

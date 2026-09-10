@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
-import { unwrapResult } from '../utils'
-import { commands } from './bindings'
-import { CLASH_VERSION_QUERY_KEY } from './consts'
+import { queries } from './bindings'
+import { unwrapQueryOptions } from './query-options'
 
 export const useClashVersion = () => {
-  const query = useQuery({
-    queryKey: [CLASH_VERSION_QUERY_KEY],
-    queryFn: async () => unwrapResult(await commands.clashApiGetVersion()),
-  })
+  const query = useQuery(
+    unwrapQueryOptions(
+      queries.clashApiGetVersion(),
+      queries.clashApiGetVersion().queryFn!,
+    ),
+  )
 
   return query
 }

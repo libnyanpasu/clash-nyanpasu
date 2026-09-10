@@ -1,7 +1,6 @@
-import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
-import { commands } from './bindings'
-import { CLASH_INFO_QUERY_KEY } from './consts'
+import { queries } from './bindings'
+import { unwrapQueryOptions } from './query-options'
 
 /**
  * A hook that retrieves and returns clash information using react-query.
@@ -14,12 +13,9 @@ import { CLASH_INFO_QUERY_KEY } from './consts'
  * error states, and the fetched data.
  */
 export const useClashInfo = () => {
-  const query = useQuery({
-    queryKey: [CLASH_INFO_QUERY_KEY],
-    queryFn: async () => {
-      return unwrapResult(await commands.getClashInfo())
-    },
-  })
+  const query = useQuery(
+    unwrapQueryOptions(queries.getClashInfo(), queries.getClashInfo().queryFn!),
+  )
 
   return {
     ...query,

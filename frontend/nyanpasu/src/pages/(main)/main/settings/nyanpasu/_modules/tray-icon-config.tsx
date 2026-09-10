@@ -13,7 +13,12 @@ import {
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
-import { commands, unwrapResult } from '@nyanpasu/interface'
+import {
+  invokeMutation,
+  mutations,
+  queries,
+  unwrapQueryOptions,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { useQuery } from '@tanstack/react-query'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -28,16 +33,11 @@ enum TrayIconMode {
 const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
   const [iconVersion, setIconVersion] = useState(0)
 
-  const isIconSet = useQuery({
-    queryKey: ['trayIcon', mode],
-    queryFn: async () => {
-      const path = await commands.isTrayIconSet(mode)
-
-      const result = unwrapResult(path)
-
-      return result !== null
-    },
-  })
+  const isIconSetQuery = queries.isTrayIconSet(mode)
+  const setTrayIcon = mutations.setTrayIcon
+  const isIconSet = useQuery(
+    unwrapQueryOptions(isIconSetQuery, isIconSetQuery.queryFn!),
+  )
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -62,7 +62,7 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
 
       setIsLoading(true)
 
-      await commands.setTrayIcon(mode, selected)
+      await invokeMutation(setTrayIcon, [mode, selected])
       await isIconSet.refetch()
       setIconVersion((prev) => prev + 1)
 
@@ -82,7 +82,7 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
   const handleResetIcon = useLockFn(async () => {
     try {
       // null means reset
-      await commands.setTrayIcon(mode, null)
+      await invokeMutation(setTrayIcon, [mode, null])
       await isIconSet.refetch()
       setIconVersion((prev) => prev + 1)
 

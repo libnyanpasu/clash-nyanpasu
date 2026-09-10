@@ -1,4 +1,5 @@
-type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E }
+export type Result<T, E> =
+  { status: 'ok'; data: T } | { status: 'error'; error: E }
 
 /**
  * Unwrap a Tauri/specta Result envelope.

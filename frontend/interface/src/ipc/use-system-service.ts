@@ -1,6 +1,7 @@
 import { unwrapResult } from '@interface/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { commands } from './bindings'
+import { mutations, queries } from './bindings'
+import { invokeMutation, unwrapQueryOptions } from './query-options'
 
 export type ServiceType = 'install' | 'uninstall' | 'start' | 'stop'
 
@@ -11,36 +12,39 @@ export type ServiceType = 'install' | 'uninstall' | 'start' | 'stop'
  */
 export const useSystemService = () => {
   const queryClient = useQueryClient()
+  const statusQuery = queries.statusService()
+  const installService = mutations.installService
+  const uninstallService = mutations.uninstallService
+  const startService = mutations.startService
+  const stopService = mutations.stopService
 
-  const query = useQuery({
-    queryKey: ['system-service'],
-    queryFn: async () => {
-      return unwrapResult(await commands.statusService())
-    },
-  })
+  const query = useQuery(unwrapQueryOptions(statusQuery, statusQuery.queryFn!))
 
   const upsert = useMutation({
+    mutationKey: installService.mutationKey,
     mutationFn: async (type: ServiceType) => {
       switch (type) {
         case 'install':
-          unwrapResult(await commands.installService())
+          unwrapResult(await invokeMutation(installService, []))
           break
 
         case 'uninstall':
-          unwrapResult(await commands.uninstallService())
+          unwrapResult(await invokeMutation(uninstallService, []))
           break
 
         case 'start':
-          unwrapResult(await commands.startService())
+          unwrapResult(await invokeMutation(startService, []))
           break
 
         case 'stop':
-          unwrapResult(await commands.stopService())
+          unwrapResult(await invokeMutation(stopService, []))
           break
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['system-service'] })
+      queryClient.invalidateQueries({
+        queryKey: statusQuery.queryKey,
+      })
     },
   })
 

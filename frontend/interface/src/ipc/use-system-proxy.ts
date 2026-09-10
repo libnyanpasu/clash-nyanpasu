@@ -1,8 +1,7 @@
 import useUpdateEffect from 'react-use/esm/useUpdateEffect'
 import { useQuery } from '@tanstack/react-query'
-import { unwrapResult } from '../utils'
-import { commands } from './bindings'
-import { NYANPASU_SYSTEM_PROXY_QUERY_KEY } from './consts'
+import { queries } from './bindings'
+import { unwrapQueryOptions } from './query-options'
 import { useSetting } from './use-settings'
 
 /**
@@ -17,10 +16,10 @@ import { useSetting } from './use-settings'
  */
 export const useSystemProxy = () => {
   const query = useQuery({
-    queryKey: [NYANPASU_SYSTEM_PROXY_QUERY_KEY],
-    queryFn: async () => {
-      return unwrapResult(await commands.getSysProxy())
-    },
+    ...unwrapQueryOptions(
+      queries.getSysProxy(),
+      queries.getSysProxy().queryFn!,
+    ),
     refetchInterval: 5000,
     refetchIntervalInBackground: true,
   })

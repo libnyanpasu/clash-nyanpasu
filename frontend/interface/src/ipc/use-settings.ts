@@ -2,11 +2,12 @@ import { merge } from 'lodash-es'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import {
-  commands,
+  mutations,
+  queries,
   type IVerge_Deserialize,
   type IVerge_Serialize,
 } from './bindings'
-import { NYANPASU_SETTING_QUERY_KEY } from './consts'
+import { invokeMutation, unwrapQueryOptions } from './query-options'
 
 /**
  * Custom hook for managing Verge configuration settings using React Query.
@@ -34,6 +35,8 @@ import { NYANPASU_SETTING_QUERY_KEY } from './consts'
  */
 export const useSettings = () => {
   const queryClient = useQueryClient()
+  const settingsQuery = queries.getVergeConfig()
+  const patchSettings = mutations.patchVergeConfig
 
   /**
    * A query hook that fetches Verge configuration settings.
@@ -45,12 +48,9 @@ export const useSettings = () => {
    * - error: Error object if the query fails
    * - other standard React Query properties
    */
-  const query = useQuery({
-    queryKey: [NYANPASU_SETTING_QUERY_KEY],
-    queryFn: async () => {
-      return unwrapResult(await commands.getVergeConfig())
-    },
-  })
+  const query = useQuery(
+    unwrapQueryOptions(settingsQuery, settingsQuery.queryFn!),
+  )
 
   /**
    * Mutation hook for updating Verge configuration settings
@@ -68,17 +68,18 @@ export const useSettings = () => {
    * ```
    */
   const upsert = useMutation({
+    mutationKey: patchSettings.mutationKey,
     // Partial to allow for partial updates
     mutationFn: async (options: Partial<IVerge_Serialize>) => {
       return unwrapResult(
-        await commands.patchVergeConfig(
+        await invokeMutation(patchSettings, [
           options as unknown as IVerge_Deserialize,
-        ),
+        ]),
       )
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: [NYANPASU_SETTING_QUERY_KEY],
+        queryKey: settingsQuery.queryKey,
       })
     },
   })

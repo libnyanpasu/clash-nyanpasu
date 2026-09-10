@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { unwrapResult } from '../utils'
-import { commands } from './bindings'
+import { queries } from './bindings'
+import { unwrapQueryOptions } from './query-options'
 
 /**
  * Custom hook for retrieving the runtime profile.
@@ -12,12 +12,12 @@ import { commands } from './bindings'
  * @returns An object containing the query state and helper methods related to the runtime profile.
  */
 export const useRuntimeProfile = () => {
-  const query = useQuery({
-    queryKey: ['runtime-profile'],
-    queryFn: async () => {
-      return unwrapResult(await commands.getRuntimeYaml())
-    },
-  })
+  const query = useQuery(
+    unwrapQueryOptions(
+      queries.getRuntimeYaml(),
+      queries.getRuntimeYaml().queryFn!,
+    ),
+  )
 
   return {
     ...query,

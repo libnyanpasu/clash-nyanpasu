@@ -2,16 +2,13 @@ import { kebabCase } from 'lodash-es'
 import { unwrapResult } from '@interface/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  commands,
+  mutations,
+  queries,
   type ClashCore,
   type ClashCore_Deserialize,
   type ClashCore_Serialize,
 } from './bindings'
-import {
-  CLASH_CORE_QUERY_KEY,
-  CLASH_VERSION_QUERY_KEY,
-  NYANPASU_SETTING_QUERY_KEY,
-} from './consts'
+import { invokeMutation, invokeQuery } from './query-options'
 
 export const ClashCores = {
   clash: 'Clash Premium',
@@ -32,9 +29,14 @@ export type ClashCoresDetail = {
 
 export const useClashCores = () => {
   const queryClient = useQueryClient()
+  const coreQueryKey = queries.getCoreVersion('clash').queryKey.slice(0, 1)
+  const fetchLatestCoreVersions = queries.fetchLatestCoreVersions()
+  const updateCoreCommand = mutations.updateCore
+  const changeClashCoreCommand = mutations.changeClashCore
+  const restartSidecarCommand = mutations.restartSidecar
 
   const query = useQuery({
-    queryKey: [CLASH_CORE_QUERY_KEY],
+    queryKey: coreQueryKey,
     queryFn: async () => {
       return await Object.keys(ClashCores).reduce(
         async (acc, key) => {
@@ -42,7 +44,9 @@ export const useClashCores = () => {
           try {
             const currentVersion =
               unwrapResult(
-                await commands.getCoreVersion(key as ClashCore_Deserialize),
+                await invokeQuery(
+                  queries.getCoreVersion(key as ClashCore_Deserialize),
+                ),
               ) ?? 'N/A'
 
             result[key as ClashCore_Serialize] = {
@@ -64,16 +68,17 @@ export const useClashCores = () => {
   })
 
   const fetchRemote = useMutation({
+    mutationKey: fetchLatestCoreVersions.queryKey,
     mutationFn: async () => {
-      const results = unwrapResult(await commands.fetchLatestCoreVersions())
+      const results = unwrapResult(await invokeQuery(fetchLatestCoreVersions))
 
       if (!results) {
         return
       }
 
-      const currentData = queryClient.getQueryData([
-        CLASH_CORE_QUERY_KEY,
-      ]) as ClashCoresInfo
+      const currentData = queryClient.getQueryData(
+        coreQueryKey,
+      ) as ClashCoresInfo
 
       if (currentData && results) {
         const updatedData = { ...currentData }
@@ -89,38 +94,44 @@ export const useClashCores = () => {
           }
         })
 
-        queryClient.setQueryData([CLASH_CORE_QUERY_KEY], updatedData)
+        queryClient.setQueryData(coreQueryKey, updatedData)
       }
       return results
     },
   })
 
   const updateCore = useMutation({
+    mutationKey: updateCoreCommand.mutationKey,
     mutationFn: async (core: ClashCore_Deserialize) => {
-      return unwrapResult(await commands.updateCore(core))
+      return unwrapResult(await invokeMutation(updateCoreCommand, [core]))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [CLASH_CORE_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: coreQueryKey })
     },
   })
 
   const upsert = useMutation({
+    mutationKey: changeClashCoreCommand.mutationKey,
     mutationFn: async (core: ClashCore_Deserialize) => {
-      return unwrapResult(await commands.changeClashCore(core))
+      return unwrapResult(await invokeMutation(changeClashCoreCommand, [core]))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [CLASH_CORE_QUERY_KEY] })
-      queryClient.invalidateQueries({ queryKey: [NYANPASU_SETTING_QUERY_KEY] })
-      queryClient.invalidateQueries({ queryKey: [CLASH_VERSION_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: coreQueryKey })
+      queryClient.invalidateQueries({
+        queryKey: queries.getVergeConfig().queryKey,
+      })
+      queryClient.invalidateQueries({
+        queryKey: queries.clashApiGetVersion().queryKey,
+      })
     },
   })
 
   const restartSidecar = async () => {
-    return await commands.restartSidecar()
+    return await invokeMutation(restartSidecarCommand, [])
   }
 
   const inspectUpdater = async (updaterId: number) => {
-    return unwrapResult(await commands.inspectUpdater(updaterId))
+    return unwrapResult(await invokeQuery(queries.inspectUpdater(updaterId)))
   }
 
   return {

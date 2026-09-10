@@ -9,7 +9,12 @@ import {
 } from '@/components/ui/modal'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { commands, unwrapResult } from '@nyanpasu/interface'
+import {
+  invokeMutation,
+  mutations,
+  queries,
+  unwrapQueryOptions,
+} from '@nyanpasu/interface'
 import { useQuery } from '@tanstack/react-query'
 import {
   SettingsCard,
@@ -20,22 +25,20 @@ import {
 } from '../../_modules/settings-card'
 
 export default function KVStorage() {
-  const query = useQuery({
-    queryKey: ['kv-storage'],
-    queryFn: async () => {
-      const result = await commands.getAllStorageItems()
-
-      return unwrapResult(result)
-    },
-  })
+  const storageQuery = queries.getAllStorageItems()
+  const clearStorage = mutations.clearStorage
+  const removeStorageItem = mutations.removeStorageItem
+  const query = useQuery(
+    unwrapQueryOptions(storageQuery, storageQuery.queryFn!),
+  )
 
   const handleClearAllTask = useLockFn(async () => {
-    await commands.clearStorage()
+    await invokeMutation(clearStorage, [])
     await query.refetch()
   })
 
   const handleRemoveItem = useLockFn(async (key: string) => {
-    await commands.removeStorageItem(key)
+    await invokeMutation(removeStorageItem, [key])
     await query.refetch()
   })
 

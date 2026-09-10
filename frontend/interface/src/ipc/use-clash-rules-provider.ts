@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, type RuleProviderItem } from './bindings'
-import { CLASH_RULES_PROVIDER_QUERY_KEY } from './consts'
+import { mutations, queries, type RuleProviderItem } from './bindings'
+import { invokeMutation, invokeQuery } from './query-options'
 
 export interface ClashRulesProviderQueryItem extends RuleProviderItem {
   mutate: () => Promise<void>
@@ -13,10 +13,12 @@ export type ClashRulesProviderQuery = Record<
 >
 
 export const useClashRulesProvider = () => {
+  const providersQuery = queries.clashApiGetProvidersRules()
+  const updateProvidersRules = mutations.clashApiUpdateProvidersRules
   const query = useQuery({
-    queryKey: [CLASH_RULES_PROVIDER_QUERY_KEY],
+    queryKey: providersQuery.queryKey,
     queryFn: async () => {
-      const result = unwrapResult(await commands.clashApiGetProvidersRules())
+      const result = unwrapResult(await invokeQuery(providersQuery))
 
       if (!result) return {}
 
@@ -28,7 +30,7 @@ export const useClashRulesProvider = () => {
           {
             ...value,
             mutate: async () => {
-              unwrapResult(await commands.clashApiUpdateProvidersRules(key))
+              unwrapResult(await invokeMutation(updateProvidersRules, [key]))
               await query.refetch()
             },
           },

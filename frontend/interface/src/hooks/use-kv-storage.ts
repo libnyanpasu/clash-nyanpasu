@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { commands, events } from '../ipc/bindings'
+import { events, mutations, queries } from '../ipc/bindings'
+import { invokeMutation, invokeQuery } from '../ipc/query-options'
 
 const LOCAL_CACHE_PREFIX = 'nyanpasu-kv-:'
 /** Mirrors the `WEB_STORAGE_KEY_PREFIX` constant on the backend. */
@@ -47,7 +48,8 @@ export interface UseKvStorageOptions<T> {
  * - Fetches the authoritative value from the backend on mount; the backend
  *   always wins.
  * - Listens for `StorageValueChangedEvent` so all open windows stay in sync.
- * - Writing calls `commands.setStorageItem` and optimistically updates local
+ * - Writing calls the generated `mutations.setStorageItem` binding and
+ *   optimistically updates local
  *   state; the subsequent backend event confirms the change.
  */
 export function useKvStorage<T>(
@@ -89,7 +91,7 @@ export function useKvStorage<T>(
     setValueState(getLocalCache(key, defaultValueRef.current))
     setIsLoading(true)
 
-    commands.getStorageItem(key).then((result) => {
+    Promise.resolve(invokeQuery(queries.getStorageItem(key))).then((result) => {
       if (result.status === 'ok') {
         if (result.data !== null) {
           try {
@@ -174,7 +176,10 @@ export function useKvStorage<T>(
       setValueState(resolved)
       setLocalCache(key, resolved)
 
-      const result = await commands.setStorageItem(key, serialized)
+      const result = await invokeMutation(mutations.setStorageItem, [
+        key,
+        serialized,
+      ])
 
       if (result.status === 'error') {
         console.error('[useKvStorage] setStorageItem failed:', result.error)
@@ -193,7 +198,7 @@ export function useKvStorage<T>(
 export const kvStorageDebug = {
   /** Returns all stored key-value pairs with values deserialized from JSON. */
   async getAll(): Promise<Record<string, unknown>> {
-    const result = await commands.getAllStorageItems()
+    const result = await invokeQuery(queries.getAllStorageItems())
 
     if (result.status === 'error') {
       throw new Error(result.error)
@@ -212,7 +217,7 @@ export const kvStorageDebug = {
 
   /** Removes every entry from the backend storage. */
   async clear(): Promise<void> {
-    const result = await commands.clearStorage()
+    const result = await invokeMutation(mutations.clearStorage, [])
 
     if (result.status === 'error') {
       throw new Error(result.error)

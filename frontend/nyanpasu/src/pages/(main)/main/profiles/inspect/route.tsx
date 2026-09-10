@@ -7,11 +7,12 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
 import {
-  commands,
-  unwrapResult,
+  queries,
+  unwrapQueryOptions,
   type ConfigExecutionRole,
   type OperatorTag,
   type RuntimeInspection,
+  type RuntimeInspectionContent,
 } from '@nyanpasu/interface'
 import { skipToken, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
@@ -65,14 +66,11 @@ function stepLabel(tag: OperatorTag): string {
 
 function RouteComponent() {
   const [appliedView, setAppliedView] = useState(false)
+  const inspectionQuery = appliedView
+    ? queries.inspectAppliedRuntime()
+    : queries.inspectRuntime()
   const inspection = useQuery({
-    queryKey: ['runtime-inspection', appliedView],
-    queryFn: async () =>
-      unwrapResult(
-        await (appliedView
-          ? commands.inspectAppliedRuntime()
-          : commands.inspectRuntime()),
-      ),
+    ...unwrapQueryOptions(inspectionQuery, inspectionQuery.queryFn!),
     refetchOnWindowFocus: false,
     retry: false,
   })
@@ -127,16 +125,17 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
         (node) => node.has_logs || (node.changed_fields?.length ?? 0) > 0,
       )
   const selected = nodes.find((node) => node.id === selectedId) ?? nodes[0]
-  const content = useQuery({
-    queryKey: ['runtime-inspection-node', snapshot.snapshot_id, selected?.id],
-    queryFn: selected
-      ? async () =>
-          unwrapResult(
-            await commands.inspectRuntimeNode(
-              snapshot.snapshot_id,
-              selected.id,
-            ),
-          )
+  const contentQuery = selected
+    ? queries.inspectRuntimeNode(snapshot.snapshot_id, selected.id)
+    : null
+  const content = useQuery<RuntimeInspectionContent>({
+    queryKey: contentQuery?.queryKey ?? [
+      'runtime-inspection-node',
+      snapshot.snapshot_id,
+      selected?.id,
+    ],
+    queryFn: contentQuery
+      ? unwrapQueryOptions(contentQuery, contentQuery.queryFn!).queryFn
       : skipToken,
     retry: false,
     refetchOnWindowFocus: false,

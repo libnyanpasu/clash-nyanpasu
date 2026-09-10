@@ -1,13 +1,13 @@
-import { commands } from '@interface/ipc'
-import { CLASH_CORE_STATUS_QUERY_KEY } from '@interface/ipc/consts'
+import { invokeQuery, queries } from '@interface/ipc'
 import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
 
 export function useCoreStatus() {
+  const statusOptions = queries.getCoreStatus()
   const query = useQuery({
-    queryKey: [CLASH_CORE_STATUS_QUERY_KEY],
+    queryKey: statusOptions.queryKey,
     queryFn: async () => {
-      const res = await commands.getCoreStatus()
+      const res = await invokeQuery(statusOptions)
 
       const result = unwrapResult(res)
 

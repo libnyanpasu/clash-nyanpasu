@@ -2016,6 +2016,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-plugin-updater",
  "tauri-specta",
+ "tauri-specta-query",
  "tempfile",
  "test-log",
  "thiserror 2.0.20",
@@ -10945,8 +10946,7 @@ dependencies = [
 [[package]]
 name = "tauri-specta"
 version = "2.0.0-rc.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee080f36d2ac17ce2f3a82fb53f02d664e8345457de51b56dad3c394dacc41a2"
+source = "git+https://github.com/specta-rs/tauri-specta.git?rev=373c25d080aa0ba909bd23b2b559947079e8dc75#373c25d080aa0ba909bd23b2b559947079e8dc75"
 dependencies = [
  "heck 0.5.0",
  "serde",
@@ -10963,14 +10963,26 @@ dependencies = [
 [[package]]
 name = "tauri-specta-macros"
 version = "2.0.0-rc.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a59dfdce06c98d8d211619bea5fdb39486d8a8c558e12b2d2ce255972320012"
+source = "git+https://github.com/specta-rs/tauri-specta.git?rev=373c25d080aa0ba909bd23b2b559947079e8dc75#373c25d080aa0ba909bd23b2b559947079e8dc75"
 dependencies = [
  "darling 0.23.0",
  "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "tauri-specta-query"
+version = "0.0.0"
+source = "git+https://github.com/specta-rs/tauri-specta.git?rev=373c25d080aa0ba909bd23b2b559947079e8dc75#373c25d080aa0ba909bd23b2b559947079e8dc75"
+dependencies = [
+ "heck 0.5.0",
+ "serde",
+ "serde_json",
+ "specta",
+ "tauri",
+ "tauri-specta",
 ]
 
 [[package]]

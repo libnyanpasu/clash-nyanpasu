@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useClashWSContext } from '@interface/provider/clash-ws-provider'
 import { unwrapResult } from '../utils'
-import { commands } from './bindings'
+import { mutations } from './bindings'
+import { invokeMutation } from './query-options'
 
 export type ClashConnection = {
   downloadTotal: number
@@ -48,10 +49,12 @@ export type ClashConnectionMetadata = {
 
 export const useClashConnections = () => {
   const { connections, isLoading, error } = useClashWSContext()
+  const deleteConnectionsCommand = mutations.clashApiDeleteConnections
   const [deleteError, setDeleteError] = useState<unknown>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   const deleteConnections = {
+    mutationKey: deleteConnectionsCommand.mutationKey,
     isPending: isDeleting,
     error: deleteError,
     mutateAsync: async (id?: string | null) => {
@@ -59,7 +62,9 @@ export const useClashConnections = () => {
       setDeleteError(null)
 
       try {
-        unwrapResult(await commands.clashApiDeleteConnections(id ?? null))
+        unwrapResult(
+          await invokeMutation(deleteConnectionsCommand, [id ?? null]),
+        )
       } catch (error) {
         setDeleteError(error)
         throw error

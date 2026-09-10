@@ -26,8 +26,14 @@ export * from './use-platform'
 export * from './use-system-accent-color'
 
 export { commands, events } from './bindings'
+export { mutations, queries } from './bindings'
 export type * from './bindings'
 export type { ClashDelayOptions } from './use-clash-proxies'
+export {
+  invokeMutation,
+  invokeQuery,
+  unwrapQueryOptions,
+} from './query-options'
 
 export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
 export type { RuleProviderItem as ClashProviderRule } from './bindings'

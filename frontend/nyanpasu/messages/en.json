@@ -1,5 +1,9 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
+  "proxies_delay_history_title": "Latency history",
+  "proxies_delay_history_empty": "No latency history yet",
+  "proxies_delay_history_recent": "Latest {count} tests · newest first",
+  "proxies_delay_history_failed": "Failed",
   "language": "English",
   "navbar_label_dashboard": "Dashboard",
   "navbar_label_proxies": "Proxies",

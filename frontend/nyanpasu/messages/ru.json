@@ -1,5 +1,9 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
+  "proxies_delay_history_title": "История задержки",
+  "proxies_delay_history_empty": "История задержки пока пуста",
+  "proxies_delay_history_recent": "Последние тесты: {count} · сначала новые",
+  "proxies_delay_history_failed": "Ошибка",
   "language": "Русский",
   "navbar_label_dashboard": "Панель управления",
   "navbar_label_proxies": "Прокси",

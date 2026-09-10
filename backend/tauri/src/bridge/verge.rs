@@ -604,12 +604,6 @@ pub(crate) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<Nyanpas
     {
         next.theme_color = value;
     }
-    if let Some(value) = legacy.clash_control_channel {
-        next.clash_control_channel = value;
-    }
-    if let Some(value) = legacy.clash_ipc_disable_http_controller {
-        next.clash_ipc_disable_http_controller = value;
-    }
     if let Some(value) = &legacy.clash_core
         && let Ok(value) = super::yaml_convert(value)
     {
@@ -686,8 +680,6 @@ fn apply_prepared_app_projection(target: &mut IVerge, projected: &IVerge) {
     target.proxy_guard_interval = projected.proxy_guard_interval;
     target.theme_color = projected.theme_color.clone();
     target.clash_core = projected.clash_core;
-    target.clash_control_channel = projected.clash_control_channel;
-    target.clash_ipc_disable_http_controller = projected.clash_ipc_disable_http_controller;
     target.hotkeys = projected.hotkeys.clone();
     target.default_latency_test = projected.default_latency_test.clone();
     target.enable_builtin_enhanced = projected.enable_builtin_enhanced;
@@ -728,8 +720,6 @@ pub(crate) fn apply_app_config_to_legacy_verge(
     draft.proxy_guard_interval = Some(snap.proxy_guard_interval);
     draft.theme_color = Some(super::yaml_convert(&snap.theme_color)?);
     draft.clash_core = Some(super::yaml_convert(snap.core)?);
-    draft.clash_control_channel = Some(snap.clash_control_channel);
-    draft.clash_ipc_disable_http_controller = Some(snap.clash_ipc_disable_http_controller);
     draft.hotkeys = Some(snap.hotkeys.clone());
     draft.default_latency_test = Some(snap.default_latency_test.clone());
     draft.enable_builtin_enhanced = Some(snap.enable_builtin_enhanced);

@@ -98,6 +98,12 @@ pub(crate) fn clash_config_from_legacy(
         ..ClashConfig::default()
     };
 
+    if let Some(value) = legacy_verge.clash_control_channel {
+        next.clash_control_channel = value;
+    }
+    if let Some(value) = legacy_verge.clash_ipc_disable_http_controller {
+        next.clash_ipc_disable_http_controller = value;
+    }
     if let Some(value) = legacy_verge.enable_tun_mode {
         next.enable_tun_mode = value;
     }
@@ -170,6 +176,8 @@ fn prepare_clash_overrides(projected: &mut IClashTemp, snap: &ClashConfig) -> an
 }
 
 pub(crate) fn apply_prepared_clash_verge_projection(target: &mut IVerge, projected: &IVerge) {
+    target.clash_control_channel = projected.clash_control_channel;
+    target.clash_ipc_disable_http_controller = projected.clash_ipc_disable_http_controller;
     target.enable_tun_mode = projected.enable_tun_mode;
     target.web_ui_list = projected.web_ui_list.clone();
     target.enable_clash_fields = projected.enable_clash_fields;
@@ -186,6 +194,8 @@ pub(crate) fn apply_clash_config_to_legacy_verge(
     draft: &mut IVerge,
     snap: &ClashConfig,
 ) -> anyhow::Result<()> {
+    draft.clash_control_channel = Some(snap.clash_control_channel);
+    draft.clash_ipc_disable_http_controller = Some(snap.clash_ipc_disable_http_controller);
     draft.enable_tun_mode = Some(snap.enable_tun_mode);
     draft.web_ui_list = Some(snap.web_ui_list.clone());
     draft.enable_clash_fields = Some(snap.enable_clash_fields);

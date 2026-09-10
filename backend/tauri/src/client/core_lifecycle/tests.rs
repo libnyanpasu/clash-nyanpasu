@@ -912,6 +912,33 @@ fn config_ui_failure_is_degraded_after_successful_reconcile() {
 }
 
 #[test]
+fn control_channel_reconcile_reads_committed_clash_config() {
+    use nyanpasu_config::clash::config::{ClashConfig, ClashControlChannel};
+    use nyanpasu_core_manager::LocalIpcPolicy;
+
+    let f = Fixture::new(false, false, false);
+    tauri::async_runtime::block_on(async {
+        for (channel, disable_http, policy) in [
+            (ClashControlChannel::HttpOnly, true, LocalIpcPolicy::Disable),
+            (
+                ClashControlChannel::PreferIpc,
+                false,
+                LocalIpcPolicy::Prefer,
+            ),
+        ] {
+            let mut patch = ClashConfig::new_empty_patch();
+            patch.clash_control_channel = Some(channel);
+            patch.clash_ipc_disable_http_controller = Some(disable_http);
+            f.client.patch_clash_config(patch).await.unwrap();
+            f.client.apply_control_channel().await.unwrap();
+            let settings = f.endpoint.local_ipc.lock().unwrap().unwrap();
+            assert_eq!(settings.policy, policy);
+            assert_eq!(settings.keep_http_controller, !disable_http);
+        }
+    });
+}
+
+#[test]
 fn control_channel_application_does_not_start_a_stopped_core() {
     let f = Fixture::new(false, false, false);
     tauri::async_runtime::block_on(async {

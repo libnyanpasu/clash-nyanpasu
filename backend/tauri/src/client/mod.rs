@@ -1425,6 +1425,7 @@ pub(crate) mod tests {
         effective_enabled: std::sync::atomic::AtomicBool,
         effective_queries: std::sync::atomic::AtomicUsize,
         submissions: std::sync::atomic::AtomicUsize,
+        pub(crate) local_ipc: StdMutex<Option<nyanpasu_core_manager::LocalIpcSettings>>,
         /// The endpoint's current applied revision (finding 2's CAS
         /// enforcement). Starts non-`None` so the router's very first pump
         /// read seeds the projection with a real baseline, and advances on
@@ -1465,6 +1466,7 @@ pub(crate) mod tests {
                 effective_enabled: std::sync::atomic::AtomicBool::new(false),
                 effective_queries: std::sync::atomic::AtomicUsize::new(0),
                 submissions: std::sync::atomic::AtomicUsize::new(0),
+                local_ipc: StdMutex::new(None),
                 revision: StdMutex::new(Self::initial_revision()),
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
@@ -1479,6 +1481,7 @@ pub(crate) mod tests {
                 effective_enabled: std::sync::atomic::AtomicBool::new(false),
                 effective_queries: std::sync::atomic::AtomicUsize::new(0),
                 submissions: std::sync::atomic::AtomicUsize::new(0),
+                local_ipc: StdMutex::new(None),
                 revision: StdMutex::new(Self::initial_revision()),
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
@@ -1591,6 +1594,7 @@ pub(crate) mod tests {
             else {
                 return successful_reconcile(submission.envelope.operation_id);
             };
+            *self.local_ipc.lock().unwrap() = request.options.local_ipc;
             let mut current = self.revision.lock().unwrap();
             if let Some(expected) = &request.expected_applied {
                 let stale = expected.epoch.get() != current.epoch

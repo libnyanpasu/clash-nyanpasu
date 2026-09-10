@@ -136,6 +136,14 @@ fn clash_patch_from_legacy_patch(patch: &IVerge, next: ClashConfig) -> Option<Cl
     let mut clash = ClashConfig::new_empty_patch();
     let mut touched = false;
 
+    if patch.clash_control_channel.is_some() {
+        clash.clash_control_channel = Some(next.clash_control_channel);
+        touched = true;
+    }
+    if patch.clash_ipc_disable_http_controller.is_some() {
+        clash.clash_ipc_disable_http_controller = Some(next.clash_ipc_disable_http_controller);
+        touched = true;
+    }
     if patch.enable_tun_mode.is_some() {
         clash.enable_tun_mode = Some(next.enable_tun_mode);
         touched = true;
@@ -182,4 +190,55 @@ where
 {
     let value = serde_yaml::to_value(value)?;
     Ok(serde_yaml::from_value(value)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nyanpasu_config::clash::config::ClashControlChannel;
+
+    #[test]
+    fn control_channel_patch_is_clash_owned_and_round_trips() {
+        let legacy = IVerge {
+            clash_control_channel: Some(ClashControlChannel::HttpOnly),
+            clash_ipc_disable_http_controller: Some(true),
+            ..IVerge::default()
+        };
+        let plan = typed_patches_from_legacy_patch(
+            IVerge::default(),
+            &legacy,
+            &serde_yaml::Mapping::new(),
+        )
+        .unwrap();
+        assert!(plan.application.is_none());
+        assert!(plan.session_state.is_none());
+        let mut clash = ClashConfig::default();
+        clash.apply(plan.clash_config.unwrap());
+        assert_eq!(clash.clash_control_channel, ClashControlChannel::HttpOnly);
+        assert!(clash.clash_ipc_disable_http_controller);
+
+        let projected = legacy_iverge_from_typed(
+            IVerge::default(),
+            &NyanpasuAppConfig::default(),
+            &PersistentState::default(),
+            &clash,
+        )
+        .unwrap();
+        assert_eq!(
+            projected.clash_control_channel,
+            legacy.clash_control_channel
+        );
+        assert_eq!(projected.clash_ipc_disable_http_controller, Some(true));
+
+        let patch = IVerge {
+            clash_ipc_disable_http_controller: Some(false),
+            ..IVerge::default()
+        };
+        let plan = typed_patches_from_legacy_patch(projected, &patch, &serde_yaml::Mapping::new())
+            .unwrap();
+        assert!(plan.application.is_none());
+        clash.apply(plan.clash_config.unwrap());
+        assert_eq!(clash.clash_control_channel, ClashControlChannel::HttpOnly);
+        assert!(!clash.clash_ipc_disable_http_controller);
+    }
 }

@@ -18,6 +18,14 @@ pub const DEFAULT_EXTERNAL_CONTROLLER_PORT: u16 = 9872;
 #[cfg(not(debug_assertions))]
 pub const DEFAULT_EXTERNAL_CONTROLLER_PORT: u16 = 17650;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ClashControlChannel {
+    #[default]
+    PreferIpc,
+    HttpOnly,
+}
+
 /// Clash Related Config
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
@@ -39,6 +47,11 @@ pub struct ClashConfig {
 
     /// 外部控制器端口策略
     pub external_controller: ExternalControllerStrategy,
+
+    #[serde(default)]
+    pub clash_control_channel: ClashControlChannel,
+    #[serde(default)]
+    pub clash_ipc_disable_http_controller: bool,
 
     /// Mixed Proxy(Socks5, HTTP) Port Strategy
     pub mixed_port: PortStrategy,
@@ -62,6 +75,21 @@ pub struct ClashConfig {
 mod patch_tests {
     use super::*;
     use struct_patch::Patch;
+
+    #[test]
+    fn old_clash_config_defaults_control_channel_without_application_fields() {
+        let mut yaml = serde_yaml_ng::to_value(ClashConfig::default()).unwrap();
+        let mapping = yaml.as_mapping_mut().unwrap();
+        mapping.remove("clash_control_channel");
+        mapping.remove("clash_ipc_disable_http_controller");
+        let config: ClashConfig = serde_yaml_ng::from_value(yaml).unwrap();
+        assert_eq!(config.clash_control_channel, ClashControlChannel::PreferIpc);
+        assert!(!config.clash_ipc_disable_http_controller);
+        let app =
+            serde_yaml_ng::to_value(crate::application::NyanpasuAppConfig::default()).unwrap();
+        assert!(app.get("clash_control_channel").is_none());
+        assert!(app.get("clash_ipc_disable_http_controller").is_none());
+    }
 
     /// `socks_port`/`http_port` are `Option<PortStrategy>` originals under the
     /// struct-level `skip_serializing_none` + field-level `double_option` combo:

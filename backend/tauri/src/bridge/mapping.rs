@@ -106,13 +106,13 @@ pub const IVERGE_FIELD_MAPPING: &[IVergeFieldMapping] = &[
     },
     IVergeFieldMapping {
         legacy: "clash_control_channel",
-        owner: LegacyFieldOwner::Application,
-        target: "NyanpasuAppConfig.clash_control_channel",
+        owner: LegacyFieldOwner::Clash,
+        target: "nyanpasu_config::clash::config::ClashConfig.clash_control_channel",
     },
     IVergeFieldMapping {
         legacy: "clash_ipc_disable_http_controller",
-        owner: LegacyFieldOwner::Application,
-        target: "NyanpasuAppConfig.clash_ipc_disable_http_controller",
+        owner: LegacyFieldOwner::Clash,
+        target: "nyanpasu_config::clash::config::ClashConfig.clash_ipc_disable_http_controller",
     },
     IVergeFieldMapping {
         legacy: "clash_core",

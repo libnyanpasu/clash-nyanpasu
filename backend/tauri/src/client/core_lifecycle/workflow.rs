@@ -240,15 +240,15 @@ impl CoreLifecycleWorkflow {
         let clash = self.clash.get().await.map_err(domain_error)?.state;
         let app = self.application.get().await.map_err(domain_error)?.state;
         let local_ipc = nyanpasu_core_manager::LocalIpcSettings {
-            policy: match app.clash_control_channel {
-                nyanpasu_config::application::ClashControlChannel::PreferIpc => {
+            policy: match clash.clash_control_channel {
+                nyanpasu_config::clash::config::ClashControlChannel::PreferIpc => {
                     nyanpasu_core_manager::LocalIpcPolicy::Prefer
                 }
-                nyanpasu_config::application::ClashControlChannel::HttpOnly => {
+                nyanpasu_config::clash::config::ClashControlChannel::HttpOnly => {
                     nyanpasu_core_manager::LocalIpcPolicy::Disable
                 }
             },
-            keep_http_controller: !app.clash_ipc_disable_http_controller,
+            keep_http_controller: !clash.clash_ipc_disable_http_controller,
         };
         let snapshot = self
             .builder

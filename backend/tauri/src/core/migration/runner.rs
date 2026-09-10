@@ -416,7 +416,7 @@ mod tests {
 
         // Each module advanced to the head of its step list.
         assert_eq!(runner.store.module_state("profiles").applied_revision, 3);
-        assert_eq!(runner.store.module_state("app_config").applied_revision, 3);
+        assert_eq!(runner.store.module_state("app_config").applied_revision, 4);
         assert_eq!(runner.store.module_state("storage").applied_revision, 1);
         assert_eq!(
             runner.store.module_state("typed_config").applied_revision,

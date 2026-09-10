@@ -101,7 +101,11 @@ export default defineConfig(({ command, mode }) => {
       paraglideVitePlugin({
         project: './project.inlang',
         outdir: './src/paraglide',
-        strategy: ['custom-extension'],
+        // `custom-extension` reports the locale cached from a previous run and
+        // returns undefined on a first launch, so `baseLocale` has to terminate
+        // the chain. `LanguageProvider` then applies the system-derived
+        // language the backend resolved.
+        strategy: ['custom-extension', 'baseLocale'],
       }),
     ],
     resolve: {

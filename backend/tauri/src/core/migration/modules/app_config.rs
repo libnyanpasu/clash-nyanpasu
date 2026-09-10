@@ -10,8 +10,15 @@ static LANGUAGE_OPTION: MigrateLanguageOption = MigrateLanguageOption;
 static THEME_SETTING: MigrateThemeSetting = MigrateThemeSetting;
 static NET_STAT_WIDGET_FLATTEN: MigrateNetworkStatisticWidgetFlatten =
     MigrateNetworkStatisticWidgetFlatten;
-static STEPS: [&dyn MigrationStep; 3] =
-    [&LANGUAGE_OPTION, &THEME_SETTING, &NET_STAT_WIDGET_FLATTEN];
+static LANGUAGE_CASE: MigrateLanguageCase = MigrateLanguageCase;
+// `LANGUAGE_CASE` must stay after `LANGUAGE_OPTION`: the latter rewrites `zh`
+// into the mixed-case `zh-CN` that the former then canonicalizes.
+static STEPS: [&dyn MigrationStep; 4] = [
+    &LANGUAGE_OPTION,
+    &THEME_SETTING,
+    &NET_STAT_WIDGET_FLATTEN,
+    &LANGUAGE_CASE,
+];
 
 const NETWORK_STATISTIC_WIDGET_KEY: &str = "network_statistic_widget";
 
@@ -34,6 +41,7 @@ impl ModuleMigrator for AppConfigMigrator {
         if needs_language_option_migration(&config)
             || needs_theme_setting_migration(&config)
             || needs_network_statistic_widget_migration(&config)
+            || needs_language_case_migration(&config)
         {
             Ok(0)
         } else {
@@ -229,12 +237,79 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateLanguageCase;
+
+impl MigrationStep for MigrateLanguageCase {
+    fn id(&self) -> &'static str {
+        "app_config/language_case"
+    }
+
+    fn module(&self) -> &'static str {
+        "app_config"
+    }
+
+    fn revision(&self) -> u64 {
+        4
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateLanguageCase"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+        let config_path = ctx.nyanpasu_config_path();
+        if !config_path.exists() {
+            return Ok(());
+        }
+        let raw = std::fs::read_to_string(&config_path)?;
+        let mut config: Mapping = serde_yaml::from_str(&raw)
+            .map_err(|e| anyhow::anyhow!("failed to parse config: {e}"))?;
+        let Some(canonical) = config.get("language").and_then(canonical_language) else {
+            return Ok(());
+        };
+        config.insert("language".into(), Value::String(canonical.to_string()));
+        let new_config = serde_yaml::to_string(&config)?;
+        crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+        Ok(())
+    }
+}
+
 fn current_revision() -> u64 {
     STEPS.last().map(|step| step.revision()).unwrap_or_default()
 }
 
 fn needs_language_option_migration(config: &Mapping) -> bool {
     config.get("language").is_some_and(|lang| lang == "zh")
+}
+
+fn needs_language_case_migration(config: &Mapping) -> bool {
+    config
+        .get("language")
+        .and_then(canonical_language)
+        .is_some()
+}
+
+/// Canonical spelling for a persisted `language` value, or `None` when the
+/// value is already canonical (or is not a language this build knows).
+///
+/// Older builds wrote mixed-case tags such as `zh-CN`, which no longer match the
+/// lowercase keys used by `rust_i18n`, the paraglide runtime, and dayjs.
+fn canonical_language(value: &Value) -> Option<&'static str> {
+    let raw = value.as_str()?;
+    let canonical = match raw.to_ascii_lowercase().as_str() {
+        "en" | "en-us" => "en",
+        "ko" => "ko",
+        "ru" => "ru",
+        "zh-cn" => "zh-cn",
+        "zh-tw" => "zh-tw",
+        _ => return None,
+    };
+    (canonical != raw).then_some(canonical)
 }
 
 fn needs_theme_setting_migration(config: &Mapping) -> bool {
@@ -349,5 +424,60 @@ mod tests {
     fn expand_mapping_is_noop() {
         let before = yaml("{ kind: enabled, value: large }");
         assert!(expand_value(&before).is_none());
+    }
+
+    #[test]
+    fn canonicalizes_mixed_case_language() {
+        let canonical = |raw: &str| canonical_language(&Value::String(raw.to_string()));
+        assert_eq!(canonical("zh-CN"), Some("zh-cn"));
+        assert_eq!(canonical("zh-TW"), Some("zh-tw"));
+        assert_eq!(canonical("en-US"), Some("en"));
+        assert_eq!(canonical("EN"), Some("en"));
+    }
+
+    #[test]
+    fn already_canonical_language_is_noop() {
+        for raw in ["en", "ko", "ru", "zh-cn", "zh-tw"] {
+            assert_eq!(canonical_language(&Value::String(raw.to_string())), None);
+        }
+    }
+
+    #[test]
+    fn unknown_language_is_noop() {
+        assert_eq!(canonical_language(&Value::String("fr".to_string())), None);
+        assert_eq!(canonical_language(&Value::Bool(true)), None);
+    }
+
+    #[test]
+    fn language_case_migration_is_detected() {
+        assert!(needs_language_case_migration(
+            yaml("language: zh-CN").as_mapping().unwrap()
+        ));
+        assert!(!needs_language_case_migration(
+            yaml("language: zh-cn").as_mapping().unwrap()
+        ));
+        assert!(!needs_language_case_migration(
+            yaml("theme_mode: dark").as_mapping().unwrap()
+        ));
+    }
+
+    #[test]
+    fn language_option_output_is_canonicalized_by_the_case_step() {
+        // `MigrateLanguageOption` rewrites `zh` into `zh-CN`; the case step has
+        // to run after it, or the chain leaves a non-canonical value behind.
+        let produced_by_language_option = Value::String("zh-CN".to_string());
+        assert_eq!(
+            canonical_language(&produced_by_language_option),
+            Some("zh-cn")
+        );
+        let case_step_position = STEPS
+            .iter()
+            .position(|step| step.id() == "app_config/language_case")
+            .unwrap();
+        let option_step_position = STEPS
+            .iter()
+            .position(|step| step.id() == "app_config/language_option")
+            .unwrap();
+        assert!(option_step_position < case_step_position);
     }
 }

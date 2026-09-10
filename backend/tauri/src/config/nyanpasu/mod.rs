@@ -472,10 +472,7 @@ impl IVerge {
                 nyanpasu_config::application::ClashControlChannel::default(),
             ),
             clash_ipc_disable_http_controller: Some(false),
-            language: {
-                let locale = crate::utils::help::get_system_locale();
-                Some(crate::utils::help::mapping_to_i18n_key(&locale).into())
-            },
+            language: Some(crate::utils::help::detect_system_i18n_key().into()),
             app_log_level: Some(logging::LoggingLevel::default()),
             theme_mode: Some("system".into()),
             traffic_graph: Some(true),

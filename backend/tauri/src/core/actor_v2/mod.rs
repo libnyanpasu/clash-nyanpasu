@@ -196,7 +196,30 @@ pub enum HandoffReport {
     NoChange,
     /// Ownership moved: the source's death is proven, the generation is
     /// advanced, and the runtime is *stopped* awaiting the facade's reconcile.
-    Completed { generation: ControllerGeneration },
+    Completed {
+        generation: ControllerGeneration,
+        /// The replaced owner was degraded and last seen running: its runtime
+        /// was lost, not stopped. Adoption clears the snapshot that said so,
+        /// and the pump can publish the degradation at any point during a
+        /// caller's handoff, so this reply is the only race-free record that
+        /// the caller still owes that core a restart. A proven stop is a
+        /// deliberate one and reports `false`.
+        interrupted_running: bool,
+    },
+}
+
+impl HandoffReport {
+    /// Whether this handoff replaced an owner that never proved it stopped
+    /// while it was last seen running.
+    pub fn interrupted_running(&self) -> bool {
+        matches!(
+            self,
+            Self::Completed {
+                interrupted_running: true,
+                ..
+            }
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -982,9 +1005,17 @@ impl CoreActor {
         };
 
         let Some(source) = source else {
+            // Read before adopting: this is the last turn in which the
+            // replaced owner's own snapshot still exists.
+            let interrupted_running = matches!(state.slot, EndpointSlot::Degraded { .. })
+                && matches!(
+                    state.snapshot.as_ref().and_then(|s| s.state.as_ref()),
+                    Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+                );
             self.adopt(myself, state, target);
             let _ = reply.send(Ok(HandoffReport::Completed {
                 generation: state.generation,
+                interrupted_running,
             }));
             return;
         };
@@ -1064,6 +1095,8 @@ impl CoreActor {
                 self.adopt(myself, state, target);
                 let _ = reply.send(Ok(HandoffReport::Completed {
                     generation: state.generation,
+                    // This leg exists because the source proved it stopped.
+                    interrupted_running: false,
                 }));
             }
             Err(error) => {

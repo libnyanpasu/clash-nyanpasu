@@ -276,7 +276,7 @@ impl CoreFacade {
     pub(crate) async fn recover_service_endpoint(
         &mut self,
         closing: &tokio_util::sync::CancellationToken,
-    ) -> Result<(), CoreError> {
+    ) -> Result<HandoffReport, CoreError> {
         let result = async {
             let endpoint = self.service.recover_endpoint().await?;
             if closing.is_cancelled() {
@@ -286,8 +286,7 @@ impl CoreFacade {
                     false,
                 ));
             }
-            self.core.change_host(endpoint).await?;
-            Ok(())
+            self.core.change_host(endpoint).await
         }
         .await;
         if let Err(error) = &result

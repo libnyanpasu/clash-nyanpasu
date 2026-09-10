@@ -15,6 +15,9 @@ struct BlockingBuilder {
     calls: AtomicUsize,
     entered: Notify,
     release: Notify,
+    /// Scripts a runtime build that fails outright, so a test can drive a
+    /// caller through a non-retryable apply failure.
+    fail: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -33,6 +36,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
             self.entered.notify_one();
             self.release.notified().await;
         }
+        anyhow::ensure!(!self.fail.load(Ordering::SeqCst), "scripted build failure");
         self.delegate.build(revision, profiles, clash, app).await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
@@ -135,6 +139,7 @@ async fn dirty_graph_with_clients(
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
         release: Notify::new(),
+        fail: AtomicBool::new(false),
     });
     let client = CoreLifecycleClient::spawn_with_ticks(
         CoreLifecycleArgs {

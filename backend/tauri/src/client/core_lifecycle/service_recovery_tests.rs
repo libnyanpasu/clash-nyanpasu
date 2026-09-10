@@ -104,6 +104,7 @@ struct RecoveryGraph {
     _dir: tempfile::TempDir,
     client: CoreLifecycleClient,
     daemon: Arc<RecoveringDaemon>,
+    builder: Arc<BlockingBuilder>,
 }
 
 impl RecoveryGraph {
@@ -157,6 +158,7 @@ impl RecoveryGraph {
             _dir: dir,
             client,
             daemon,
+            builder,
         }
     }
 
@@ -206,6 +208,27 @@ impl RecoveryGraph {
         )
         .await
         .unwrap()
+        .unwrap();
+    }
+
+    /// The pump is what puts a state into the projection, so a test that needs
+    /// the projection to carry a running core has to wait for that frame
+    /// instead of assuming the write it just scripted was already read.
+    async fn await_running_projection(&self) {
+        let mut events = self.client.core_events();
+        let running = |status: &CoreStatusProjection| {
+            matches!(
+                status.snapshot.as_ref().and_then(|s| s.state.as_ref()),
+                Some(CoreStateDetail::Running { .. })
+            )
+        };
+        if running(&self.client.core_status()) {
+            return;
+        }
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !running(&events.recv().await.unwrap()) {}
+        })
+        .await
         .unwrap();
     }
 
@@ -305,6 +328,273 @@ async fn explicit_service_stop_suppresses_recovery() {
     assert!(graph.client.status().active.is_none());
     assert_eq!(graph.daemon.probes.load(Ordering::SeqCst), probes);
     assert_eq!(graph.starts(), 0);
+    graph.client.shutdown().await.unwrap();
+}
+
+/// A command the workflow refuses before it does anything must not commit its
+/// intent: the Service host still owns a core that needs recovering.
+#[tokio::test]
+async fn a_rejected_uninstall_leaves_recovery_armed() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.outage(true).await;
+    assert_eq!(
+        graph.client.uninstall_service().await.unwrap_err().kind,
+        Some(CoreErrorKind::OperationConflict)
+    );
+    graph.attempt().await;
+    assert_eq!(graph.starts(), 1);
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+    graph.client.shutdown().await.unwrap();
+}
+
+/// The router refuses to claim a runtime it cannot prove stopped, so a Local
+/// handoff during an outage leaves the application on the degraded Service
+/// host. Suppressing recovery there would strand it permanently.
+#[tokio::test]
+async fn a_failed_local_handoff_leaves_recovery_armed_on_the_service_host() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.outage(true).await;
+    assert_eq!(
+        graph
+            .client
+            .change_host(ExecutionHost::Local)
+            .await
+            .unwrap_err()
+            .kind,
+        Some(CoreErrorKind::StopUnconfirmed)
+    );
+    assert_eq!(graph.client.core_status().host, ExecutionHost::Service);
+    graph.attempt().await;
+    assert_eq!(graph.starts(), 1);
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+    graph.client.shutdown().await.unwrap();
+}
+
+/// A stop the user asked for is not a snapshot: the projection can still say
+/// Running when the endpoint degrades right after, and recovery must not read
+/// that stale frame as a reason to start a deliberately stopped core.
+#[tokio::test]
+async fn a_deliberately_stopped_core_is_not_restarted_by_recovery() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.client.stop_core().await.unwrap();
+    graph
+        .daemon
+        .endpoint
+        .delegate
+        .set_status(Some(CoreStateDetail::Running { epoch: 1, pid: 7 }), None);
+    graph.await_running_projection().await;
+    graph.outage(true).await;
+    graph.attempt().await;
+    assert_eq!(graph.starts(), 1, "the daemon itself is still recovered");
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(
+        graph.daemon.endpoint.delegate.submissions(),
+        1,
+        "the stop, and nothing that starts the core again"
+    );
+    graph.client.shutdown().await.unwrap();
+}
+
+/// The pump publishes asynchronously, so a command can enter while the
+/// projection still says Connected and adopt after the degradation lands --
+/// the one ordering a projection read at command entry can never see. The
+/// handoff's own report is what carries the interrupted core across that
+/// adoption.
+#[tokio::test]
+async fn a_degradation_landing_mid_command_still_restores_the_core() {
+    let graph = RecoveryGraph::new(true).await;
+    // The daemon is already gone; the projection has not been told yet.
+    graph.daemon.block_start.store(true, Ordering::SeqCst);
+    graph.daemon.delegate.stopped.store(true, Ordering::SeqCst);
+    graph.await_running_projection().await;
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    let client = graph.client.clone();
+    let switch = tokio::spawn(async move { client.change_host(ExecutionHost::Service).await });
+    graph.daemon.start_entered.notified().await;
+    // The endpoint stops answering only now: the degradation is published
+    // while the handoff is already past its own entry check.
+    graph.outage(true).await;
+    graph.daemon.start_release.notify_one();
+    switch.await.unwrap().unwrap();
+    let generation = graph.client.core_status().generation;
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
+    graph.attempt().await;
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+    assert_eq!(
+        graph.client.core_status().generation,
+        generation,
+        "the restore reuses the endpoint the command adopted"
+    );
+    graph.client.shutdown().await.unwrap();
+}
+
+/// The stop guard is not cleared by a reconcile that failed, and re-arming the
+/// connection is not the same as asking for the core back.
+#[tokio::test]
+async fn a_user_stop_survives_a_failed_reconcile_and_a_service_rearm() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.client.stop_core().await.unwrap();
+    graph.builder.fail.store(true, Ordering::SeqCst);
+    assert!(graph.client.reconcile().await.is_err());
+    graph.builder.fail.store(false, Ordering::SeqCst);
+    graph.client.start_service().await.unwrap();
+    graph
+        .daemon
+        .endpoint
+        .delegate
+        .set_status(Some(CoreStateDetail::Running { epoch: 1, pid: 7 }), None);
+    graph.await_running_projection().await;
+    graph.outage(true).await;
+    graph.attempt().await;
+    assert_eq!(
+        graph.daemon.endpoint.delegate.submissions(),
+        1,
+        "the stop, and nothing that starts the core again"
+    );
+    graph.client.shutdown().await.unwrap();
+}
+
+/// An applied config is what ends the stop: after it the core is running by the
+/// user's own request, and a later outage owes it a restore again.
+#[tokio::test]
+async fn a_successful_reconcile_discharges_a_user_stop() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.client.stop_core().await.unwrap();
+    graph.client.reconcile().await.unwrap();
+    graph.await_running_projection().await;
+    graph.outage(true).await;
+    graph.attempt().await;
+    assert_eq!(
+        graph.daemon.endpoint.delegate.submissions(),
+        3,
+        "stop, the user's reconcile, and the restore the outage owed"
+    );
+    graph.client.shutdown().await.unwrap();
+}
+
+/// A rejection changes nothing, in either direction: the round-1 fix kept an
+/// armed policy armed, and the same rule has to keep an explicit suppression
+/// suppressed instead of re-arming it and resetting a spent budget.
+#[tokio::test]
+async fn a_failed_local_handoff_preserves_an_explicit_suppression() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.client.stop_service().await.unwrap();
+    graph.outage(true).await;
+    assert_eq!(
+        graph
+            .client
+            .change_host(ExecutionHost::Local)
+            .await
+            .unwrap_err()
+            .kind,
+        Some(CoreErrorKind::StopUnconfirmed)
+    );
+    let probes = graph.daemon.probes.load(Ordering::SeqCst);
+    graph.client.0.actor.cast(Message::RecoveryTick).unwrap();
+    barrier(&graph.client).await;
+    assert!(graph.client.status().active.is_none());
+    assert_eq!(graph.daemon.probes.load(Ordering::SeqCst), probes);
+    assert_eq!(graph.starts(), 0);
+    graph.client.shutdown().await.unwrap();
+}
+
+/// A terminal failure ends the automatic retries; it must not also destroy the
+/// restoration they were retrying, or the explicit start the user is told to
+/// perform would have nothing left to finish.
+#[tokio::test]
+async fn a_terminal_restore_failure_is_finished_by_an_explicit_service_start() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.outage(true).await;
+    graph.builder.fail.store(true, Ordering::SeqCst);
+    graph.attempt().await;
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected,
+        "the endpoint was adopted before the restore failed"
+    );
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
+    graph.builder.fail.store(false, Ordering::SeqCst);
+    graph.client.start_service().await.unwrap();
+    graph.attempt().await;
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+    graph.client.shutdown().await.unwrap();
+}
+
+/// The user can reconnect the host manually before the first recovery tick.
+/// That adoption drops the snapshot recovery would have read, so the intent is
+/// captured before the command runs, and the handoff report preserves it when
+/// the degradation only lands mid-command.
+#[tokio::test]
+async fn a_manual_reconnect_still_restores_the_interrupted_core() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.outage(true).await;
+    graph
+        .client
+        .change_host(ExecutionHost::Service)
+        .await
+        .unwrap();
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
+    graph.attempt().await;
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+    graph.client.shutdown().await.unwrap();
+}
+
+/// Reattaching the endpoint clears the degraded projection and the snapshot the
+/// running-core intent came from. A restoration that did not finish in that
+/// attempt has to be owed to the next one, driven by the intent rather than by
+/// connectivity, and must not re-adopt an endpoint that already answers.
+#[tokio::test]
+async fn an_unfinished_restore_survives_a_reconnected_endpoint() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.outage(true).await;
+    // The re-adopted host answers without a state: nothing proves the core
+    // should be started, so the attempt ends without restoring it.
+    graph.daemon.endpoint.delegate.set_status(None, None);
+    graph.attempt().await;
+    let generation = graph.client.core_status().generation;
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
+    graph
+        .daemon
+        .endpoint
+        .delegate
+        .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+    tokio::time::pause();
+    tokio::time::advance(RECOVERY_INTERVAL).await;
+    tokio::time::resume();
+    graph.attempt().await;
+    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+    assert_eq!(
+        graph.client.core_status().generation,
+        generation,
+        "a connected endpoint must not be re-adopted"
+    );
+    assert_eq!(graph.starts(), 1);
     graph.client.shutdown().await.unwrap();
 }
 

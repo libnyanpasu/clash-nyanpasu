@@ -1,5 +1,7 @@
 # PR-5 C-switch / D-switch 实施计划（app 仓，2026-08-31）
 
+> **2026-09-10 收尾状态**：本计划保留实施时基线；C/D-switch 已由 #5182 合并，rc.5 发布与版本接线已完成。daemon 故障恢复、审计关闭项及待人工 Service/DNS 验收见 [PR-5 收尾台账](../../audit/2026-09-10-pr5-closeout.md)。下文的待发布/待裁定表述不再作为当前状态依据。
+
 - **依据**：`docs/design/2026-08-12-core-actor-v2-app-integration.md`（规范正文）、`docs/design/2026-08-08-core-manager-control-plane-runtime-backend-design.md`（修订 A1–A6）、`docs/audit/2026-08-12-core-actor-audit-verification.md` §3/§4、`docs/audit/2026-08-13-v2-implementation-audit-guide.md`（模块图 + L1–L13 + 测试跑法）、`docs/superpowers/plans/2026-08-13-pr-abcd-implementation-plan.md` §0.2、`docs/design/actor-migration-roadmap.md` §6/§8
 - **基线**：app `origin/main` = `3d5a518d`（#5116 squash-merge）；submodule `backend/nyanpasu-runtime` gitlink = `6717e44`（`v2.0.0-rc.1-29-g6717e44`）
 - **本阶段定义**（2026-08-13 计划 §0.2 的 "C-switch" + D-switch）：把"并存不接线"的 v2 栈接进组合根与 Tauri 命令，吸收 legacy service ipc 形态，删除被取代的 GUI 核心生命周期形态，并关闭审计明确顺延到 bridge 阶段的结构项（L3 / L9 / L13 / L4）。

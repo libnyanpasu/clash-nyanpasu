@@ -85,9 +85,29 @@ async fn dirty_graph_with_store(
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
 ) {
-    use super::super::tests::{
-        IdleServiceAdapter, test_materialization_port, test_typed_config_clients,
-    };
+    let core = CoreClient::spawn(TestControlEndpoint::succeeding())
+        .await
+        .unwrap();
+    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
+        .await
+        .unwrap();
+    dirty_graph_with_clients(dir, snapshots, core, service, false).await
+}
+
+async fn dirty_graph_with_clients(
+    dir: &tempfile::TempDir,
+    snapshots: runtime::RuntimeSnapshotStore,
+    core: CoreClient,
+    service: ServiceClient,
+    schedule_ticks: bool,
+) -> (
+    CoreLifecycleClient,
+    DirtyNotifier,
+    Arc<BlockingBuilder>,
+    super::super::application::ApplicationClient,
+    super::super::clash_config::ClashConfigClient,
+) {
+    use super::super::tests::{test_materialization_port, test_typed_config_clients};
     use crate::state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
     let (application, _, clash) = test_typed_config_clients(dir).await;
     let (notifier, dirty) = DirtyNotifier::channel();
@@ -100,11 +120,6 @@ async fn dirty_graph_with_store(
     )
     .await
     .unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
-    let core = CoreClient::spawn(endpoint).await.unwrap();
-    let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
-        .await
-        .unwrap();
     let paths =
         runtime::RuntimePaths::from_resolver(&crate::utils::path::PathResolver::with_base_dirs(
             dir.path().into(),
@@ -134,7 +149,7 @@ async fn dirty_graph_with_store(
             ui: Arc::new(super::super::NoopUiEventSink),
             dirty,
         },
-        false,
+        schedule_ticks,
     )
     .await
     .unwrap();
@@ -956,3 +971,6 @@ fn control_channel_application_does_not_start_a_stopped_core() {
         assert_eq!(f.endpoint.submissions(), 1);
     });
 }
+
+#[path = "service_recovery_tests.rs"]
+mod service_recovery;

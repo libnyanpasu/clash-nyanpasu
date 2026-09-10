@@ -271,6 +271,33 @@ impl CoreFacade {
         self.observe_mutation(result)
     }
 
+    /// Re-adopt the same Service owner after a transport failure. Ordinary
+    /// unavailability is retryable; a lost actor reply remains fail-closed.
+    pub(crate) async fn recover_service_endpoint(
+        &mut self,
+        closing: &tokio_util::sync::CancellationToken,
+    ) -> Result<(), CoreError> {
+        let result = async {
+            let endpoint = self.service.recover_endpoint().await?;
+            if closing.is_cancelled() {
+                return Err(CoreError::new(
+                    CoreErrorKind::ShuttingDown,
+                    "service recovery cancelled by shutdown",
+                    false,
+                ));
+            }
+            self.core.change_host(endpoint).await?;
+            Ok(())
+        }
+        .await;
+        if let Err(error) = &result
+            && error.kind == Some(CoreErrorKind::Internal)
+        {
+            self.outcome_uncertain = true;
+        }
+        result
+    }
+
     pub fn core_status(&self) -> CoreStatusProjection {
         self.core.status()
     }

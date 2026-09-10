@@ -61,13 +61,13 @@ pub enum ServicePhase {
     /// Version gate failed closed: upgrade required, never downgraded to.
     Incompatible,
     Restarting,
-    /// Auto-restart budget spent; waits for an explicit `EnsureReady`.
+    /// Auto-restart budget spent; waits for `EnsureReady` or a successful explicit start.
     Exhausted,
     Uninstalling,
     /// The probe itself failed or timed out (F5): what the daemon actually
     /// is cannot be determined. Never treated as `DaemonStopped` -- an
     /// unreachable daemon might still be holding a core open, so callers
-    /// that gate on "no core held" (the uninstall guard, `EndpointDown`'s
+    /// that gate on "no core held" (the uninstall guard, `RecoverEndpoint`'s
     /// restart) must refuse rather than proceed.
     Unknown,
 }
@@ -120,13 +120,15 @@ pub enum ServiceActorMessage {
         reply: RpcReplyPort<Result<EndpointHandle, CoreError>>,
     },
     /// Explicit probe. It reports and never escapes: `Exhausted` is cleared
-    /// only by an explicit `EnsureReady`, which is the same rule as the
+    /// only by `EnsureReady` or a successful explicit start, matching the
     /// variant's own doc.
     Probe {
         reply: RpcReplyPort<ServiceHostStatus>,
     },
-    /// CoreActor feedback: the service endpoint stopped answering.
-    EndpointDown,
+    /// Recover a failed endpoint without installing or upgrading a daemon.
+    RecoverEndpoint {
+        reply: RpcReplyPort<Result<EndpointHandle, CoreError>>,
+    },
 }
 
 pub struct ServiceActor;
@@ -259,9 +261,57 @@ impl ServiceActorState {
         (result, compat, phase)
     }
 
+    async fn recover_endpoint(&mut self) -> Result<EndpointHandle, CoreError> {
+        if self.exhausted {
+            return Err(CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "daemon restart budget exhausted; explicitly reconnect the service host",
+                false,
+            ));
+        }
+        let (_, mut compat, mut phase) = self.probe_and_publish().await;
+        // An unreachable probe is not proof of death. Only the OS-confirmed
+        // stopped state permits a start; a live daemon needs a fresh endpoint.
+        if phase == ServicePhase::DaemonStopped {
+            if self.restart_attempts >= self.restart_budget {
+                self.exhausted = true;
+                self.publish(ServicePhase::Exhausted, ServiceCompat::Unknown);
+                return Err(CoreError::new(
+                    CoreErrorKind::BackendUnavailable,
+                    "daemon restart budget exhausted; explicitly reconnect the service host",
+                    false,
+                ));
+            }
+            self.restart_attempts += 1;
+            self.publish(ServicePhase::Restarting, ServiceCompat::Unknown);
+            let started =
+                tokio::time::timeout(self.command_timeout, self.adapter.start_daemon()).await;
+            let observed = self.probe_and_publish().await;
+            compat = observed.1;
+            phase = observed.2;
+            // A returned OS error is a completed attempt. A timeout can leave
+            // an elevated command running after its future is dropped.
+            started.map_err(|_| CoreError::new(
+                CoreErrorKind::Internal,
+                "daemon recovery start timed out; the elevated command may still be running",
+                false,
+            ))?.map_err(|error| Self::command_error("recovery start", error))?;
+        }
+        if phase == ServicePhase::Ready {
+            Ok(self.adapter.endpoint())
+        } else {
+            Err(CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                format!("daemon endpoint recovery did not reach Ready: {phase:?}"),
+                matches!(phase, ServicePhase::Unknown | ServicePhase::DaemonStopped)
+                    || (phase == ServicePhase::Incompatible && compat == ServiceCompat::Unknown),
+            ))
+        }
+    }
+
     /// The idempotent convergence: at most one install and one start per
-    /// call, then the gate decides. The only thing that clears the exhaustion
-    /// latch.
+    /// call, then the gate decides. Explicit convergence clears the exhaustion
+    /// latch; a successful explicit daemon start also re-arms it.
     async fn ensure_ready(&mut self) -> Result<EndpointHandle, CoreError> {
         self.exhausted = false;
         self.restart_attempts = 0;
@@ -483,6 +533,10 @@ impl Actor for ServiceActor {
                     .bounded(state.adapter.start_daemon())
                     .await
                     .map_err(|error| ServiceActorState::command_error("start", error));
+                if result.is_ok() {
+                    state.exhausted = false;
+                    state.restart_attempts = 0;
+                }
                 let _ = state.probe_and_publish().await;
                 let _ = reply.send(result);
             }
@@ -498,37 +552,8 @@ impl Actor for ServiceActor {
                 let _ = state.probe_and_publish().await;
                 let _ = reply.send(state.status_tx.borrow().clone());
             }
-            ServiceActorMessage::EndpointDown => {
-                if state.exhausted {
-                    // Honest terminal: nothing pulls the daemon back up until
-                    // someone explicitly asks for convergence.
-                    return Ok(());
-                }
-                let (_, _, phase) = state.probe_and_publish().await;
-                if phase != ServicePhase::DaemonStopped {
-                    // F7: starting is only ever right when the probe found
-                    // the daemon stopped. `Ready` means the daemon is fine
-                    // and the endpoint handle merely broke -- the CoreActor
-                    // re-adopts via a fresh ChangeHost. `Incompatible` and
-                    // `NotInstalled` have nothing a start would fix.
-                    // `Unknown` (F5) knows nothing, including whether the
-                    // daemon is even down -- starting into that ignorance is
-                    // exactly the "hung probe reads as Stopped" contract
-                    // violation this fixes. The probed phase is already
-                    // published above; the restart budget stays untouched.
-                    return Ok(());
-                }
-                if state.restart_attempts >= state.restart_budget {
-                    state.exhausted = true;
-                    state.publish(ServicePhase::Exhausted, ServiceCompat::Unknown);
-                    return Ok(());
-                }
-                state.restart_attempts += 1;
-                state.publish(ServicePhase::Restarting, ServiceCompat::Unknown);
-                if let Err(error) = state.bounded(state.adapter.start_daemon()).await {
-                    tracing::warn!("daemon auto-restart failed: {error}");
-                }
-                let _ = state.probe_and_publish().await;
+            ServiceActorMessage::RecoverEndpoint { reply } => {
+                let _ = reply.send(state.recover_endpoint().await);
             }
         }
         Ok(())
@@ -725,8 +750,13 @@ impl ServiceClient {
         .await
     }
 
-    pub fn report_endpoint_down(&self) {
-        let _ = self.actor.cast(ServiceActorMessage::EndpointDown);
+    pub async fn recover_endpoint(&self) -> Result<EndpointHandle, CoreError> {
+        self.call(
+            |reply| ServiceActorMessage::RecoverEndpoint { reply },
+            // Initial probe, optional start, and the post-start probe.
+            self.probe_budget + self.command_and_probe_budget,
+        )
+        .await?
     }
 
     async fn call<T: Send + 'static>(
@@ -795,6 +825,7 @@ mod tests {
         /// F6: `install` never resolves, so only the actor's own bound can
         /// end it.
         hang_install: AtomicBool,
+        hang_start: AtomicBool,
         stop_succeeds: AtomicBool,
         calls: Mutex<Vec<&'static str>>,
     }
@@ -813,6 +844,7 @@ mod tests {
                 fail_start: AtomicBool::new(false),
                 probe_fail: AtomicBool::new(false),
                 hang_install: AtomicBool::new(false),
+                hang_start: AtomicBool::new(false),
                 stop_succeeds: AtomicBool::new(true),
                 calls: Mutex::new(Vec::new()),
             })
@@ -922,6 +954,9 @@ mod tests {
         }
         async fn start_daemon(&self) -> Result<(), String> {
             self.starts.fetch_add(1, Ordering::SeqCst);
+            if self.hang_start.load(Ordering::SeqCst) {
+                return std::future::pending().await;
+            }
             if self.fail_start.load(Ordering::SeqCst) {
                 return Err("start refused".to_owned());
             }
@@ -1056,20 +1091,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn explicit_start_rearms_an_exhausted_daemon() {
+        let daemon = FakeDaemon::new(true, false, "2.0.0");
+        let client = ServiceClient::spawn(daemon, 0).await.unwrap();
+        assert!(client.recover_endpoint().await.is_err());
+        assert_eq!(client.status().phase, ServicePhase::Exhausted);
+        client.start_daemon().await.unwrap();
+        assert_eq!(client.status().phase, ServicePhase::Ready);
+        assert!(client.recover_endpoint().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn recovery_distinguishes_failed_start_from_an_unconfirmed_timeout() {
+        for hangs in [false, true] {
+            let daemon = FakeDaemon::new(true, false, "2.0.0");
+            daemon.fail_start.store(!hangs, Ordering::SeqCst);
+            daemon.hang_start.store(hangs, Ordering::SeqCst);
+            let client = ServiceClient::spawn_with_bounds(
+                daemon.clone(),
+                3,
+                std::time::Duration::from_millis(50),
+            )
+            .await
+            .unwrap();
+            let error = client.recover_endpoint().await.err().unwrap();
+            assert_eq!(error.retryable, !hangs);
+            assert_eq!(
+                error.kind,
+                Some(if hangs {
+                    CoreErrorKind::Internal
+                } else {
+                    CoreErrorKind::BackendUnavailable
+                })
+            );
+            assert_eq!(daemon.starts.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                client.probe().await.unwrap().phase,
+                ServicePhase::DaemonStopped
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn recovery_retries_a_live_daemon_without_a_status_response() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        let client = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
+        daemon.probe_blind.store(true, Ordering::SeqCst);
+        let error = client.recover_endpoint().await.err().unwrap();
+        assert!(error.retryable);
+        assert_eq!(daemon.starts.load(Ordering::SeqCst), 0);
+        daemon.probe_blind.store(false, Ordering::SeqCst);
+        assert!(client.recover_endpoint().await.is_ok());
+    }
+
+    #[tokio::test]
     async fn endpoint_down_restarts_within_budget_then_latches_exhausted() {
         let daemon = FakeDaemon::new(true, true, "2.0.0");
         let client = ServiceClient::spawn(daemon.clone(), 1).await.unwrap();
 
         // Daemon dies; the first report restarts it within budget.
         daemon.state.lock().unwrap().1 = false;
-        client.report_endpoint_down();
+        let _ = client.recover_endpoint().await;
         let status = client.probe().await.unwrap();
         assert_eq!(status.phase, ServicePhase::Ready);
         assert_eq!(daemon.starts.load(Ordering::SeqCst), 1);
 
         // Dies again with the budget spent: honest exhaustion latch.
         daemon.state.lock().unwrap().1 = false;
-        client.report_endpoint_down(); // attempt 2 > budget 1 -> Exhausted
+        let _ = client.recover_endpoint().await; // attempt 2 > budget 1 -> Exhausted
         let mut status_rx = client.subscribe();
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {
@@ -1161,14 +1250,14 @@ mod tests {
 
     /// M-11: the latch is a latch. A probe that happens to find the daemon up
     /// must not publish `Ready` for a host nobody re-armed, and must not let
-    /// the next `EndpointDown` restart it.
+    /// the next `RecoverEndpoint` restart it.
     #[tokio::test]
     async fn exhausted_survives_probes_until_an_explicit_ensure_ready() {
         let daemon = FakeDaemon::new(true, true, "2.0.0");
         let client = ServiceClient::spawn(daemon.clone(), 0).await.unwrap();
 
         daemon.state.lock().unwrap().1 = false;
-        client.report_endpoint_down();
+        let _ = client.recover_endpoint().await;
         let mut status_rx = client.subscribe();
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {
@@ -1187,7 +1276,7 @@ mod tests {
 
         // And a further down report does not pull it up behind our back.
         let starts = daemon.starts.load(Ordering::SeqCst);
-        client.report_endpoint_down();
+        let _ = client.recover_endpoint().await;
         assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Exhausted);
         assert_eq!(daemon.starts.load(Ordering::SeqCst), starts);
 
@@ -1290,7 +1379,7 @@ mod tests {
 
     /// F5 x F7: the literal contract this fixes -- the trait doc used to say
     /// a hung probe "answers Stopped-shaped", which is exactly the phase
-    /// `EndpointDown` restarts from. An unreachable probe must not start
+    /// `RecoverEndpoint` restarts from. An unreachable probe must not start
     /// anything: it does not know there is nothing already running.
     #[tokio::test]
     async fn endpoint_down_does_not_start_when_the_probe_fails() {
@@ -1299,7 +1388,7 @@ mod tests {
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
         let starts = daemon.starts.load(Ordering::SeqCst);
-        client.report_endpoint_down();
+        let _ = client.recover_endpoint().await;
         let status = client.probe().await.unwrap();
         assert_eq!(status.phase, ServicePhase::Unknown);
         assert_eq!(daemon.starts.load(Ordering::SeqCst), starts);
@@ -1342,7 +1431,7 @@ mod tests {
         assert_eq!(status.phase, ServicePhase::NotInstalled);
     }
 
-    /// F7: `EndpointDown` must only call `start_daemon` when the probed
+    /// F7: `RecoverEndpoint` must only call `start_daemon` when the probed
     /// phase is `DaemonStopped`. Pre-fix the guard excluded only `Ready`, so
     /// an incompatible-but-running daemon fell through to a pointless
     /// restart of a daemon that was never stopped.
@@ -1382,7 +1471,7 @@ mod tests {
         assert_eq!(client.status().phase, ServicePhase::Incompatible);
 
         let starts = daemon.starts.load(Ordering::SeqCst);
-        client.report_endpoint_down();
+        let _ = client.recover_endpoint().await;
         let status = client.probe().await.unwrap();
         assert_eq!(status.phase, ServicePhase::Incompatible);
         assert_eq!(daemon.starts.load(Ordering::SeqCst), starts);

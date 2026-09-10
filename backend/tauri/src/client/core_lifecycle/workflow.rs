@@ -13,7 +13,7 @@ use super::{
     ports::{BinaryInstaller, PreparedCoreBinary, RuntimeBuildPort},
 };
 use crate::core::actor_v2::{
-    HandoffReport,
+    EndpointConnectivity, HandoffReport,
     endpoint::{ExecutionHost, wire_core_type_to_kind},
     facade::{CoreFacade, ReconcileReport},
     service_actor::ServicePhase,
@@ -31,6 +31,19 @@ pub(super) struct CoreLifecycleWorkflow {
     pub revisions: runtime::RuntimeRevisionAllocator,
     // A lost lower-level reply is not evidence its side effects have finished.
     pub uncertain: bool,
+    pub recovery: ServiceRecovery,
+    pub closing: tokio_util::sync::CancellationToken,
+}
+
+/// A connection retry budget, separate from the OS daemon restart budget.
+/// Success does not re-arm it: repeated disconnects cannot create a restart
+/// loop. Explicit Service selection/start re-arms recovery.
+#[derive(Default)]
+pub(super) struct ServiceRecovery {
+    attempts: u8,
+    suppressed: bool,
+    core_stopped: bool,
+    next_attempt: Option<tokio::time::Instant>,
 }
 
 pub(super) fn domain_error(error: impl std::fmt::Display) -> CoreError {
@@ -39,6 +52,26 @@ pub(super) fn domain_error(error: impl std::fmt::Display) -> CoreError {
 
 impl CoreLifecycleWorkflow {
     pub async fn execute(&mut self, command: Command) -> Result<Output, CoreError> {
+        match &command {
+            Command::ChangeHost(ExecutionHost::Service)
+            | Command::SetExecutionHost(true)
+            | Command::RestoreExecutionHost
+            | Command::StartService
+            | Command::RestartService => {
+                self.recovery.attempts = 0;
+                self.recovery.suppressed = false;
+                self.recovery.next_attempt = None;
+            }
+            Command::ChangeHost(ExecutionHost::Local)
+            | Command::SetExecutionHost(false)
+            | Command::StopService
+            | Command::UninstallService
+            | Command::Shutdown => {
+                self.recovery.suppressed = true;
+            }
+            Command::StopCore => self.recovery.core_stopped = true,
+            _ => {}
+        }
         let result = self.execute_inner(command).await;
         self.uncertain |= self.core.outcome_uncertain();
         result
@@ -46,6 +79,10 @@ impl CoreLifecycleWorkflow {
 
     async fn execute_inner(&mut self, command: Command) -> Result<Output, CoreError> {
         match command {
+            Command::RecoverServiceEndpoint => {
+                self.recover_service_endpoint().await?;
+                Ok(Output::Unit)
+            }
             Command::ApplyControlChannel => {
                 let status = self.core.refresh_status().await?;
                 if !matches!(
@@ -211,6 +248,66 @@ impl CoreLifecycleWorkflow {
         }
     }
 
+    pub fn recovery_due(&self) -> bool {
+        !self.recovery.suppressed
+            && self.recovery.attempts < 3
+            && !self.closing.is_cancelled()
+            && self
+                .recovery
+                .next_attempt
+                .is_none_or(|at| tokio::time::Instant::now() >= at)
+            && matches!(
+                self.core.core_status().connectivity,
+                EndpointConnectivity::Degraded {
+                    desired: ExecutionHost::Service,
+                    ..
+                }
+            )
+    }
+
+    async fn recover_service_endpoint(&mut self) -> Result<(), CoreError> {
+        if !self.recovery_due() {
+            return Ok(());
+        }
+        self.recovery.attempts += 1;
+        let resume = !self.recovery.core_stopped
+            && matches!(
+                self.core.core_status().snapshot.and_then(|s| s.state),
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+            );
+        let result = async {
+            self.core.recover_service_endpoint(&self.closing).await?;
+            if self.closing.is_cancelled() {
+                return Ok(());
+            }
+            // A transport-only outage must not reapply or stop an already live
+            // runtime. Only restore a previously running core to a stopped host.
+            let status = self.core.refresh_status().await?;
+            if resume
+                && !self.closing.is_cancelled()
+                && matches!(
+                    status.snapshot.and_then(|s| s.state),
+                    Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+                )
+            {
+                self.reconcile().await?;
+                self.ui.refresh_clash();
+            }
+            Ok(())
+        }
+        .await;
+        self.recovery.next_attempt = Some(tokio::time::Instant::now() + super::RECOVERY_INTERVAL);
+        if result.as_ref().is_err_and(|e: &CoreError| !e.retryable) {
+            self.recovery.suppressed = true;
+        }
+        if self.recovery.attempts == 3 {
+            tracing::warn!(
+                "service endpoint recovery budget spent; explicitly select or start Service to re-arm"
+            );
+        }
+        result
+    }
+
     async fn set_host(&mut self, service_mode: bool) -> Result<(), CoreError> {
         let host = if service_mode {
             ExecutionHost::Service
@@ -233,6 +330,7 @@ impl CoreLifecycleWorkflow {
     }
 
     async fn reconcile(&mut self) -> Result<ReconcileReport, CoreError> {
+        self.recovery.core_stopped = false;
         let revision = self.revisions.allocate().map_err(domain_error)?;
         // These are independently committed snapshots. A dirty notification
         // arriving during this build schedules a later pass through the actor.

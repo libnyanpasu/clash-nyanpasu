@@ -22,10 +22,10 @@
       }
     },
     "migration_markers": {
-      "total": 12,
+      "total": 11,
       "byKey": {
         "TODO(actor-migration)": 9,
-        "FIXME(actor-migration)": 3
+        "FIXME(actor-migration)": 2
       }
     },
     "legacy_dto_refs": {

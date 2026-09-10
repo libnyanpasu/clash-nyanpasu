@@ -27,17 +27,17 @@ impl NyanpasuClient {
     pub async fn proxy_providers(&self) -> Result<crate::core::clash::api::ProvidersProxiesRes> {
         self.inner.proxies.providers().await
     }
-    pub async fn select_proxy(&self, group: String, name: String) -> Result<()> {
-        use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
+    pub async fn select_proxy(
+        &self,
+        group: String,
+        name: String,
+    ) -> Result<super::runtime::MutationOutcome<()>> {
         let strategy = self
             .get_clash_config()
             .await?
             .break_connection
             .on_proxy_change;
-        // FIXME(actor-migration): ProxyGroup retains the legacy close-all fallback.
-        // New code must use chain-aware interruption. Remove after connection tracking supplies group membership.
-        let interrupt = !matches!(strategy, ProxyChangeBreakMode::Off);
-        self.inner.proxies.select(group, name, interrupt).await
+        self.inner.proxies.select(group, name, strategy).await
     }
     pub async fn update_proxy_provider(&self, name: String) -> Result<()> {
         self.inner.proxies.update_provider(name).await

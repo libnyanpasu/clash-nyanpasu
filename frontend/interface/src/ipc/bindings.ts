@@ -343,7 +343,9 @@ export const commands = {
   restartService: () =>
     typedError<null, string>(__TAURI_INVOKE('restart_service')),
   selectProxy: (group: string, name: string) =>
-    typedError<null, string>(__TAURI_INVOKE('select_proxy', { group, name })),
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('select_proxy', { group, name }),
+    ),
   updateProxyProvider: (name: string) =>
     typedError<null, string>(__TAURI_INVOKE('update_proxy_provider', { name })),
   restartApplication: () =>

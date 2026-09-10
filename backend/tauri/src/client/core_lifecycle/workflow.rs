@@ -202,6 +202,94 @@ impl CoreLifecycleWorkflow {
                     degradations,
                 )))
             }
+            command @ (Command::ActivateProfile(_) | Command::AutoActivateProfile(_)) => {
+                let previous = self
+                    .profiles
+                    .get()
+                    .await
+                    .map_err(domain_error)?
+                    .current
+                    .clone();
+                let will_change = match &command {
+                    Command::ActivateProfile(uid) => *uid != previous,
+                    Command::AutoActivateProfile(_) => previous.is_none(),
+                    _ => unreachable!(),
+                };
+                let enabled = self
+                    .clash
+                    .get()
+                    .await
+                    .map_err(domain_error)?
+                    .state
+                    .break_connection
+                    .on_profile_change;
+                let source = if will_change && enabled {
+                    Some(self.core.api_client_if_running().await)
+                } else {
+                    None
+                };
+                let report = match command {
+                    Command::ActivateProfile(uid) => {
+                        Some(self.profiles.set_current(uid).await.map_err(domain_error)?)
+                    }
+                    Command::AutoActivateProfile(uid) => self
+                        .profiles
+                        .set_current_if_none(uid)
+                        .await
+                        .map_err(domain_error)?,
+                    _ => unreachable!(),
+                };
+                let Some(report) = report else {
+                    return Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
+                        (),
+                        Vec::new(),
+                    )));
+                };
+                let mut degradations: Vec<_> = report
+                    .degradations
+                    .iter()
+                    .map(super::super::NyanpasuClient::map_profile_degradation)
+                    .collect();
+                if report.affects_current {
+                    match self.reconcile().await {
+                        Err(error) => degradations.push(
+                            super::super::NyanpasuClient::map_runtime_rebuild_degradation(
+                                &super::super::client_error_from_core(error),
+                            ),
+                        ),
+                        Ok(reconciled) => {
+                            use nyanpasu_ipc::api::core::v2::{
+                                OperationOutputInfo, ReconcileOutcomeKind,
+                            };
+                            let replaced = matches!(&reconciled.output, OperationOutputInfo::Reconciled(outcome)
+                                if matches!(outcome.outcome, ReconcileOutcomeKind::Started | ReconcileOutcomeKind::Restarted | ReconcileOutcomeKind::Switched));
+                            if previous != report.snapshot.current
+                                && !replaced
+                                && let Some(source) = source
+                            {
+                                let result = match source {
+                                    Ok(Some(api)) => api.close_all_connections().await,
+                                    Ok(None) => Ok(()),
+                                    Err(error) => Err(error),
+                                };
+                                if let Err(error) = result {
+                                    degradations.push(runtime::Degradation {
+                                        phase: runtime::DegradationPhase::SystemEffect,
+                                        code: "profile_interruption_failed".into(),
+                                        message: format!("profile applied, but source-instance connection interruption failed: {error}"),
+                                        retryable: false,
+                                    });
+                                }
+                            }
+                            self.ui.refresh_clash();
+                        }
+                    }
+                }
+                Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
+                    (),
+                    degradations,
+                )))
+            }
             Command::RuntimeDirty => {
                 self.reconcile().await?;
                 self.ui.refresh_clash();

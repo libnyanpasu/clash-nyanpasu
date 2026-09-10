@@ -1032,7 +1032,7 @@ impl NyanpasuClient {
     /// Public wire for a post-commit auto-activation hard failure. Create/import
     /// already committed the profile, so this must never become `Err` that erases
     /// the `ProfileId`. VersionConflict is not special-cased as success.
-    fn auto_activation_failure_degradation(error: &ProfilesError) -> runtime::Degradation {
+    fn auto_activation_failure_degradation(error: &impl std::fmt::Display) -> runtime::Degradation {
         tracing::warn!(
             %error,
             "profile auto-activation failed after commit; retaining committed profile id",
@@ -1052,9 +1052,8 @@ impl NyanpasuClient {
     /// - `Ok(None)` → existing current won; no degradation
     /// - `Err(_)` → committed degradation, profile id retained by the caller
     async fn try_auto_activate_if_none(&self, uid: ProfileId) -> Vec<runtime::Degradation> {
-        match self.inner.profiles.set_current_if_none(uid).await {
-            Ok(Some(report)) => self.collect_post_commit_degradations(&report).await,
-            Ok(None) => Vec::new(),
+        match self.inner.core_lifecycle.auto_activate_profile(uid).await {
+            Ok(outcome) => outcome.into_parts().1,
             Err(error) => vec![Self::auto_activation_failure_degradation(&error)],
         }
     }
@@ -1236,8 +1235,11 @@ impl NyanpasuClient {
         &self,
         uid: Option<ProfileId>,
     ) -> Result<runtime::MutationOutcome<()>> {
-        let report = self.inner.profiles.set_current(uid).await?;
-        Ok(self.after_commit(&report).await)
+        self.inner
+            .core_lifecycle
+            .activate_profile(uid)
+            .await
+            .map_err(client_error_from_core)
     }
 
     pub async fn set_global_transforms(
@@ -2563,7 +2565,7 @@ pub(crate) mod tests {
         );
     }
 
-    fn minimal_file_profile_request() -> NewProfileRequest {
+    pub(crate) fn minimal_file_profile_request() -> NewProfileRequest {
         NewProfileRequest {
             metadata: ProfileMetadata {
                 name: "t".into(),

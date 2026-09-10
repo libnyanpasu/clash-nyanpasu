@@ -348,3 +348,240 @@ fn controller_rotation_invalidates_source_without_closing_through_new_credential
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
     });
 }
+
+async fn add_profile(f: &Fixture) -> nyanpasu_config::profile::ProfileId {
+    f.client
+        .add_profile(
+            crate::client::tests::minimal_file_profile_request(),
+            Some("proxies: []\n".into()),
+        )
+        .await
+        .unwrap()
+        .into_value()
+}
+
+#[test]
+fn profile_activation_and_deselection_interrupt_only_actual_current_changes() {
+    let f = Fixture::new(false);
+    tauri::async_runtime::block_on(async {
+        let uid = add_profile(&f).await;
+        assert!(
+            f.client
+                .activate_profile(Some(uid.clone()))
+                .await
+                .unwrap()
+                .degradations()
+                .is_empty()
+        );
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        f.calls.events.lock().unwrap().clear();
+        assert!(
+            f.client
+                .activate_profile(Some(uid.clone()))
+                .await
+                .unwrap()
+                .degradations()
+                .is_empty()
+        );
+        let other = add_profile(&f).await;
+        assert!(
+            f.client
+                .delete_profile(other)
+                .await
+                .unwrap()
+                .degradations()
+                .is_empty()
+        );
+        assert!(f.calls.events.lock().unwrap().is_empty());
+        assert!(f.client.delete_profile(uid.clone()).await.is_err());
+        assert!(f.calls.events.lock().unwrap().is_empty());
+        assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
+        assert!(
+            f.client
+                .activate_profile(None)
+                .await
+                .unwrap()
+                .degradations()
+                .is_empty()
+        );
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
+    });
+}
+
+#[test]
+fn profile_autoactivation_uses_policy_and_does_not_interrupt_an_existing_selection() {
+    for enabled in [false, true] {
+        let f = Fixture::new(false);
+        tauri::async_runtime::block_on(async {
+            let mut config = f.client.get_clash_config().await.unwrap();
+            config.break_connection.on_profile_change = enabled;
+            f.client.replace_clash_config(config).await.unwrap();
+            let first = f
+                .client
+                .create_profile(
+                    crate::client::tests::minimal_file_profile_request(),
+                    Some("proxies: []\n".into()),
+                )
+                .await
+                .unwrap();
+            assert!(first.degradations().is_empty());
+            assert_eq!(
+                *f.calls.events.lock().unwrap(),
+                if enabled {
+                    vec!["reconcile", "close"]
+                } else {
+                    vec!["reconcile"]
+                }
+            );
+            f.calls.events.lock().unwrap().clear();
+            f.client
+                .create_profile(
+                    crate::client::tests::minimal_file_profile_request(),
+                    Some("proxies: []\n".into()),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                f.client.get_profiles().await.unwrap().current,
+                Some(first.into_value())
+            );
+            assert!(f.calls.events.lock().unwrap().is_empty());
+        });
+    }
+}
+
+#[test]
+fn profile_reconcile_and_interruption_failures_keep_the_committed_selection() {
+    for fail_reconcile in [false, true] {
+        let f = Fixture::new(fail_reconcile);
+        f.calls.fail_close.store(true, Ordering::SeqCst);
+        tauri::async_runtime::block_on(async {
+            let uid = add_profile(&f).await;
+            let outcome = f.client.activate_profile(Some(uid.clone())).await.unwrap();
+            assert_eq!(outcome.degradations().len(), 1);
+            assert_eq!(
+                outcome.degradations()[0].code,
+                if fail_reconcile {
+                    "runtime_rebuild_failed"
+                } else {
+                    "profile_interruption_failed"
+                }
+            );
+            assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
+            assert_eq!(
+                *f.calls.events.lock().unwrap(),
+                if fail_reconcile {
+                    vec!["reconcile"]
+                } else {
+                    vec!["reconcile", "close"]
+                }
+            );
+        });
+    }
+}
+
+#[test]
+fn profile_replacement_never_receives_source_interruption() {
+    for reported in [false, true] {
+        let f = Fixture::new(false);
+        f.endpoint.replace.store(true, Ordering::SeqCst);
+        f.endpoint.report_restart.store(reported, Ordering::SeqCst);
+        tauri::async_runtime::block_on(async {
+            let uid = add_profile(&f).await;
+            let outcome = f.client.activate_profile(Some(uid)).await.unwrap();
+            if reported {
+                assert!(outcome.degradations().is_empty());
+            } else {
+                assert_eq!(
+                    outcome.degradations()[0].code,
+                    "profile_interruption_failed"
+                );
+            }
+            assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+        });
+    }
+}
+
+#[test]
+fn profile_mutations_cannot_overtake_pending_interruption() {
+    let f = Fixture::new(false);
+    tauri::async_runtime::block_on(async {
+        let uid = add_profile(&f).await;
+        f.calls.hold_close.store(true, Ordering::SeqCst);
+        let first = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            f.calls.entered.notified(),
+        )
+        .await
+        .unwrap();
+        let mut next = Box::pin(f.client.activate_profile(None));
+        assert!(next.as_mut().now_or_never().is_none());
+        f.client
+            .inner
+            .core_lifecycle
+            .0
+            .actor
+            .call(
+                super::Message::Barrier,
+                Some(std::time::Duration::from_secs(5)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(f.client.inner.core_lifecycle.status().queued.len(), 1);
+        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        f.calls.hold_close.store(false, Ordering::SeqCst);
+        f.calls.release.notify_one();
+        assert!(first.await.unwrap().unwrap().degradations().is_empty());
+        assert!(next.await.unwrap().degradations().is_empty());
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "close", "reconcile", "close"]
+        );
+    });
+}
+
+#[test]
+fn rejected_profile_activation_does_not_reconcile_or_interrupt() {
+    let f = Fixture::new(false);
+    tauri::async_runtime::block_on(async {
+        assert!(
+            f.client
+                .activate_profile(Some(nyanpasu_config::profile::ProfileId("missing".into())))
+                .await
+                .is_err()
+        );
+        assert!(f.calls.events.lock().unwrap().is_empty());
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
+    });
+}
+
+#[test]
+fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
+    for stopped in [false, true] {
+        let f = Fixture::new(false);
+        *f.endpoint.binding.lock().unwrap() = None;
+        if stopped {
+            f.endpoint
+                .delegate
+                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+        }
+        tauri::async_runtime::block_on(async {
+            let uid = add_profile(&f).await;
+            let outcome = f.client.activate_profile(Some(uid)).await.unwrap();
+            if stopped {
+                assert!(outcome.degradations().is_empty());
+            } else {
+                assert_eq!(
+                    outcome.degradations()[0].code,
+                    "profile_interruption_failed"
+                );
+            }
+            assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+        });
+    }
+}

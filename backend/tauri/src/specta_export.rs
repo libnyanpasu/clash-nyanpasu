@@ -28,6 +28,7 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ipc::get_runtime_yaml,
             ipc::get_runtime_exists,
             ipc::inspect_runtime,
+            ipc::inspect_applied_runtime,
             ipc::inspect_runtime_node,
             ipc::get_postprocessing_output,
             ipc::clash_api_get_proxy_delay,

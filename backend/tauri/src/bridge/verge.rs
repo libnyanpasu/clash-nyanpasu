@@ -226,6 +226,12 @@ impl LegacyVergeBridge {
                 let clash = managed.client.get_clash_config().await?;
                 let legacy_clash = super::yaml_convert(&clash.overrides)?;
                 let plan = Self::typed_patch_plan(base.clone(), &payload, &legacy_clash)?;
+                let channel_changed = payload
+                    .clash_control_channel
+                    .is_some_and(|v| Some(v) != base.clash_control_channel)
+                    || payload
+                        .clash_ipc_disable_http_controller
+                        .is_some_and(|v| Some(v) != base.clash_ipc_disable_http_controller);
                 let mut desired = base;
                 desired.patch_config(payload.clone());
                 let prepared = self
@@ -233,6 +239,15 @@ impl LegacyVergeBridge {
                     .prepare_commit(&managed.legacy_verge_path, desired)?;
                 self.apply_typed_config_patch_plan(plan, move || prepared.commit())
                     .await?;
+                if channel_changed {
+                    managed
+                        .client
+                        .apply_control_channel()
+                        .await
+                        .map_err(|error| {
+                            Self::legacy_mutation_partial(anyhow::anyhow!("{error:#}"), Some(error))
+                        })?;
+                }
             }
             LegacyVergePatchRoute::LegacySideEffects => {
                 let client = self.managed()?.client.clone();
@@ -277,7 +292,9 @@ impl LegacyVergeBridge {
         // below: the post-commit reconcile must build the runtime config from
         // the just-committed typed state, never from the pre-commit draft
         // (AGENTS.md section 10: commit first, then side effects).
-        let reconcile_tun = patch.enable_tun_mode.is_some();
+        let channel_changed = patch.clash_control_channel.is_some()
+            || patch.clash_ipc_disable_http_controller.is_some();
+        let reconcile_tun = patch.enable_tun_mode.is_some() || channel_changed;
         let restore = self
             .legacy_store
             .prepare_restore(&managed.legacy_verge_path, previous)
@@ -316,16 +333,17 @@ impl LegacyVergeBridge {
                     // before this commit ran. A reconcile failure here must
                     // not undo the successful commit: report it the same way
                     // the commit-phase failures above already do.
-                    managed
-                        .client
-                        .rebuild_running_config()
-                        .await
-                        .map_err(|error| {
-                            Self::legacy_mutation_partial(
-                                anyhow::anyhow!(format!("{error:#}")),
-                                Some(error),
-                            )
-                        })?;
+                    let result = if channel_changed {
+                        managed.client.apply_control_channel().await
+                    } else {
+                        managed.client.rebuild_running_config().await
+                    };
+                    result.map_err(|error| {
+                        Self::legacy_mutation_partial(
+                            anyhow::anyhow!(format!("{error:#}")),
+                            Some(error),
+                        )
+                    })?;
                 }
                 Ok(())
             }
@@ -2333,6 +2351,7 @@ mod tests {
             nyanpasu_core_manager::CoreError,
         > {
             Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                controller: None,
                 state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
                 state_changed_at: 0,
                 revision: None,

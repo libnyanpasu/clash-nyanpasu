@@ -359,6 +359,7 @@ impl NyanpasuClient {
     ) -> anyhow::Result<Self> {
         let core_lifecycle =
             core_lifecycle::CoreLifecycleClient::spawn(core_lifecycle::CoreLifecycleArgs {
+                snapshots: runtime::RuntimeSnapshotStore::default(),
                 application: application.clone(),
                 clash: clash_config.clone(),
                 profiles: profiles.clone(),
@@ -1319,6 +1320,16 @@ impl NyanpasuClient {
             .map_err(client_error_from_core)
     }
 
+    pub async fn apply_control_channel(&self) -> Result<()> {
+        self.inner
+            .core_lifecycle
+            .apply_control_channel()
+            .await
+            .map_err(client_error_from_core)?;
+        self.inner.ui_sink.refresh_clash();
+        Ok(())
+    }
+
     pub async fn rebuild_running_config(&self) -> Result<()> {
         self.reconcile_core()
             .await
@@ -1399,6 +1410,7 @@ pub(crate) mod tests {
             nyanpasu_core_manager::CoreError,
         > {
             Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                controller: None,
                 state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
                 state_changed_at: 0,
                 revision: None,
@@ -1410,7 +1422,10 @@ pub(crate) mod tests {
 
     pub(crate) struct TestControlEndpoint {
         fail: bool,
+        effective_enabled: std::sync::atomic::AtomicBool,
+        effective_queries: std::sync::atomic::AtomicUsize,
         submissions: std::sync::atomic::AtomicUsize,
+        pub(crate) local_ipc: StdMutex<Option<nyanpasu_core_manager::LocalIpcSettings>>,
         /// The endpoint's current applied revision (finding 2's CAS
         /// enforcement). Starts non-`None` so the router's very first pump
         /// read seeds the projection with a real baseline, and advances on
@@ -1448,7 +1463,10 @@ pub(crate) mod tests {
         pub(crate) fn succeeding() -> Arc<Self> {
             Arc::new(Self {
                 fail: false,
+                effective_enabled: std::sync::atomic::AtomicBool::new(false),
+                effective_queries: std::sync::atomic::AtomicUsize::new(0),
                 submissions: std::sync::atomic::AtomicUsize::new(0),
+                local_ipc: StdMutex::new(None),
                 revision: StdMutex::new(Self::initial_revision()),
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
@@ -1460,7 +1478,10 @@ pub(crate) mod tests {
         pub(crate) fn failing() -> Arc<Self> {
             Arc::new(Self {
                 fail: true,
+                effective_enabled: std::sync::atomic::AtomicBool::new(false),
+                effective_queries: std::sync::atomic::AtomicUsize::new(0),
                 submissions: std::sync::atomic::AtomicUsize::new(0),
+                local_ipc: StdMutex::new(None),
                 revision: StdMutex::new(Self::initial_revision()),
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
@@ -1573,6 +1594,7 @@ pub(crate) mod tests {
             else {
                 return successful_reconcile(submission.envelope.operation_id);
             };
+            *self.local_ipc.lock().unwrap() = request.options.local_ipc;
             let mut current = self.revision.lock().unwrap();
             if let Some(expected) = &request.expected_applied {
                 let stale = expected.epoch.get() != current.epoch
@@ -1667,6 +1689,36 @@ pub(crate) mod tests {
                 .cloned()
         }
 
+        async fn effective_config(
+            &self,
+        ) -> std::result::Result<
+            Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>,
+            nyanpasu_core_manager::CoreError,
+        > {
+            use std::sync::atomic::Ordering;
+            if !self.effective_enabled.load(Ordering::SeqCst) {
+                return Ok(None);
+            }
+            if self.effective_queries.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Err(nyanpasu_core_manager::CoreError::new(
+                    nyanpasu_core_manager::CoreErrorKind::BackendUnavailable,
+                    "snapshot temporarily unavailable",
+                    true,
+                ));
+            }
+            let current = self.revision.lock().unwrap().clone();
+            Ok(Some(nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
+                instance_id: "test-instance".into(),
+                revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                    epoch: current.epoch,
+                    generation: current.generation,
+                    source_hash: "source".into(),
+                    effective_hash: current.effective_hash,
+                },
+                config: "mode: rule\nexternal-controller-unix: /tmp/recovered.sock\n".into(),
+            }))
+        }
+
         async fn status(
             &self,
         ) -> std::result::Result<
@@ -1675,6 +1727,7 @@ pub(crate) mod tests {
         > {
             let (state, applied_kind) = self.status_override.lock().unwrap().clone();
             Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                controller: None,
                 state,
                 state_changed_at: 0,
                 revision: Some(self.revision.lock().unwrap().clone()),
@@ -1769,6 +1822,7 @@ pub(crate) mod tests {
             nyanpasu_core_manager::CoreError,
         > {
             Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+                controller: None,
                 state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Running {
                     epoch: 1,
                     pid: 7,
@@ -2647,7 +2701,13 @@ pub(crate) mod tests {
             .await
             .unwrap();
         let config: serde_yaml::Mapping = serde_yaml::from_str(&content.yaml).unwrap();
-        assert_eq!(config, client.promoted_runtime().await.unwrap().config);
+        let mut expected = client.promoted_runtime().await.unwrap().config.clone();
+        assert_ne!(
+            expected.get("secret").and_then(serde_yaml::Value::as_str),
+            Some("<redacted>")
+        );
+        expected.insert("secret".into(), "<redacted>".into());
+        assert_eq!(config, expected);
         client.reconcile_core().await.unwrap();
         let second = client.inspect_runtime().await.unwrap();
         assert_ne!(first.snapshot_id, second.snapshot_id);
@@ -2887,6 +2947,48 @@ pub(crate) mod tests {
             result.is_err(),
             "legacy callers rely on Err to discard their drafts"
         );
+    }
+
+    #[test]
+    fn inspection_recovers_a_successful_apply_without_reconciling_again() {
+        use std::sync::atomic::Ordering;
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let uid = client
+                .add_profile(
+                    minimal_file_profile_request(),
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .unwrap()
+                .into_value();
+            client.activate_profile(Some(uid)).await.unwrap();
+            endpoint.effective_enabled.store(true, Ordering::SeqCst);
+            client.rebuild_running_config().await.unwrap();
+            let state = client.inner.core_lifecycle.runtime();
+            assert!(state.pending.is_some());
+            assert!(state.promoted.as_ref().unwrap().effective.is_none());
+            let submitted = endpoint.submissions();
+            let inspection = client.inspect_runtime().await.unwrap();
+            assert!(inspection.applied);
+            assert!(!inspection.effective_pending);
+            assert!(inspection.nodes.iter().any(|node| matches!(
+                node.tag,
+                nyanpasu_config::runtime::snapshot::OperatorTag::BuiltinStep {
+                    step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::CoreController,
+                    ..
+                }
+            )));
+            assert_eq!(endpoint.submissions(), submitted);
+            assert!(client.inner.core_lifecycle.runtime().pending.is_none());
+            assert!(client.inspect_applied_runtime().await.unwrap().applied);
+        });
     }
 
     #[test]

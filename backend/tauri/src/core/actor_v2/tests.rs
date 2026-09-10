@@ -160,6 +160,7 @@ impl FakeEndpoint {
 
 fn snapshot(state: CoreStateDetail) -> CoreStatusSnapshot {
     CoreStatusSnapshot {
+        controller: None,
         state: Some(state),
         state_changed_at: 0,
         revision: None,
@@ -461,6 +462,7 @@ async fn a_lost_stop_result_with_an_unknown_status_is_not_a_stop_proof() {
     );
     local.script_stop(StopScript::Lost);
     *local.status.lock().unwrap() = Ok(CoreStatusSnapshot {
+        controller: None,
         state: None,
         state_changed_at: 0,
         revision: None,

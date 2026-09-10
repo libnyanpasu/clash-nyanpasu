@@ -16,6 +16,9 @@ pub(crate) struct RuntimeInspectionData {
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct RuntimeInspection {
     pub snapshot_id: String,
+    pub applied: bool,
+    pub effective_pending: bool,
+    pub effective_revision: Option<nyanpasu_ipc::api::status::ConfigRevisionInfo>,
     pub revision: String,
     pub target_core: String,
     pub root_id: u32,
@@ -46,9 +49,76 @@ pub struct RuntimeInspectionDiff {
 }
 
 impl RuntimeSnapshot {
+    pub(crate) fn with_effective_config(
+        &self,
+        effective: nyanpasu_ipc::api::core::v2::CoreEffectiveConfig,
+        host: crate::core::actor_v2::endpoint::ExecutionHost,
+        generation: u64,
+    ) -> anyhow::Result<Self> {
+        use nyanpasu_config::runtime::snapshot::BuiltinStepKind;
+        let binding = self
+            .applied_binding
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("effective snapshot has no successful apply binding"))?;
+        anyhow::ensure!(
+            binding.revision == effective.revision
+                && (binding.host, binding.generation) == (host, generation),
+            "effective snapshot does not match the applied build"
+        );
+        let mut inspection = self.inspection.as_ref().clone();
+        let parent = inspection
+            .graph
+            .nodes
+            .iter()
+            .position(|node| {
+                matches!(
+                    node.tag,
+                    OperatorTag::BuiltinStep {
+                        step: BuiltinStepKind::Finalizing,
+                        ..
+                    }
+                )
+            })
+            .ok_or_else(|| anyhow::anyhow!("runtime graph has no finalizing node"))?;
+        let selected_profile_id = match &inspection.graph.nodes[parent].tag {
+            OperatorTag::BuiltinStep {
+                selected_profile_id,
+                ..
+            } => selected_profile_id.clone(),
+            _ => unreachable!(),
+        };
+        let value: serde_yaml::Value = serde_yaml::from_str(&effective.config)?;
+        let config = serde_json::to_value(value)?;
+        inspection.graph.append_transition(
+            parent as u32,
+            OperatorTag::BuiltinStep {
+                selected_profile_id,
+                step: BuiltinStepKind::CoreController,
+            },
+            config,
+        )?;
+        let mut snapshot = self.clone();
+        snapshot.inspection_id = nanoid::nanoid!();
+        snapshot.inspection = std::sync::Arc::new(inspection);
+        snapshot.effective = Some(effective);
+        snapshot.effective_host = Some((host, generation));
+        Ok(snapshot)
+    }
+
     fn inspection_summary(&self) -> RuntimeInspection {
         RuntimeInspection {
             snapshot_id: self.inspection_id.clone(),
+            applied: false,
+            effective_pending: self.applied_binding.is_some() && self.effective.is_none(),
+            effective_revision: self
+                .effective
+                .as_ref()
+                .map(|effective| effective.revision.clone())
+                .or_else(|| {
+                    self.applied_binding
+                        .as_ref()
+                        .map(|binding| binding.revision.clone())
+                }),
             revision: self.revision.get().to_string(),
             target_core: self.target_core.to_string(),
             root_id: self.inspection.graph.root_id,
@@ -92,7 +162,7 @@ impl RuntimeSnapshot {
             .nodes
             .get(node_id as usize)
             .ok_or_else(|| anyhow::anyhow!("runtime snapshot node does not exist"))?;
-        let yaml = serde_yaml::to_string(&node.snapshot.config)?;
+        let yaml = serde_yaml::to_string(&redact_config(node.snapshot.config.clone()))?;
         Ok(RuntimeInspectionContent {
             diff: self
                 .inspection
@@ -101,9 +171,15 @@ impl RuntimeSnapshot {
                 .map(|parent_id| -> anyhow::Result<_> {
                     Ok(RuntimeInspectionDiff {
                         parent_id,
-                        hunks: self.inspection.graph.nodes[parent_id as usize]
-                            .snapshot
-                            .diff_yaml_to(&yaml)?,
+                        hunks: nyanpasu_config::runtime::snapshot::ConfigSnapshot::new_unchanged(
+                            redact_config(
+                                self.inspection.graph.nodes[parent_id as usize]
+                                    .snapshot
+                                    .config
+                                    .clone(),
+                            ),
+                        )
+                        .diff_yaml_to(&yaml)?,
                     })
                 })
                 .transpose()?,
@@ -121,9 +197,57 @@ impl RuntimeSnapshot {
 
 impl NyanpasuClient {
     pub async fn inspect_runtime(&self) -> Option<RuntimeInspection> {
-        self.promoted_runtime()
-            .await
-            .map(|snapshot| snapshot.inspection_summary())
+        self.recover_effective_snapshot().await;
+        let snapshot = self.promoted_runtime().await?;
+        Some(self.inspect_snapshot(&snapshot).await)
+    }
+
+    pub async fn inspect_applied_runtime(&self) -> Option<RuntimeInspection> {
+        self.recover_effective_snapshot().await;
+        let snapshot = self.inner.core_lifecycle.runtime().applied?;
+        Some(self.inspect_snapshot(&snapshot).await)
+    }
+
+    /// Inspection recovery is read-only with respect to the core. A newer
+    /// successful bind wins even if this query completes after another build.
+    async fn recover_effective_snapshot(&self) {
+        let store = self.inner.core_lifecycle.snapshot_store();
+        let Some(pending) = store.read().pending else {
+            return;
+        };
+        let Some(binding) = &pending.applied_binding else {
+            return;
+        };
+        let before = self.inner.core_api.status();
+        if (before.host, before.generation) != (binding.host, binding.generation) {
+            return;
+        }
+        let Ok(Some(effective)) = self.inner.core_api.effective_config().await else {
+            return;
+        };
+        let after = self.inner.core_api.status();
+        if (after.host, after.generation) != (binding.host, binding.generation)
+            || effective.revision != binding.revision
+        {
+            return;
+        }
+        match pending.with_effective_config(effective, binding.host, binding.generation) {
+            Ok(snapshot) => store.applied(&pending.inspection_id, std::sync::Arc::new(snapshot)),
+            Err(error) => tracing::warn!(%error, "effective inspection recovery failed"),
+        }
+    }
+
+    async fn inspect_snapshot(&self, snapshot: &RuntimeSnapshot) -> RuntimeInspection {
+        let mut summary = snapshot.inspection_summary();
+        if let Some(effective) = &snapshot.effective {
+            let before = self.inner.core_api.status();
+            let current = self.inner.core_api.effective_config().await.ok().flatten();
+            let after = self.inner.core_api.status();
+            summary.applied = snapshot.effective_host == Some((before.host, before.generation))
+                && (before.host, before.generation) == (after.host, after.generation)
+                && current.is_some_and(|current| current.revision == effective.revision);
+        }
+        summary
     }
 
     pub async fn inspect_runtime_node(
@@ -131,13 +255,49 @@ impl NyanpasuClient {
         snapshot_id: &str,
         node_id: u32,
     ) -> anyhow::Result<RuntimeInspectionContent> {
-        let snapshot = self.promoted_runtime().await.ok_or_else(|| {
-            anyhow::anyhow!("no promoted runtime snapshot; refresh the inspection")
-        })?;
+        let state = self.inner.core_lifecycle.runtime();
+        let snapshot = [state.promoted, state.applied]
+            .into_iter()
+            .flatten()
+            .find(|snapshot| snapshot.inspection_id == snapshot_id)
+            .ok_or_else(|| anyhow::anyhow!("runtime snapshot changed; refresh the inspection"))?;
         let snapshot_id = snapshot_id.to_owned();
         tokio::task::spawn_blocking(move || snapshot.inspection_content(&snapshot_id, node_id))
             .await?
     }
+}
+
+fn redact_config(mut value: serde_json::Value) -> serde_json::Value {
+    match &mut value {
+        serde_json::Value::Object(fields) => {
+            for (key, value) in fields {
+                if matches!(
+                    key.as_str(),
+                    "secret" | "password" | "token" | "private-key" | "auth-str" | "authentication"
+                ) {
+                    *value = serde_json::Value::String("<redacted>".into());
+                } else if matches!(
+                    key.as_str(),
+                    "external-controller" | "external-controller-tls"
+                ) {
+                    if let Some(address) = value.as_str()
+                        && let Some((_, authority)) = address.rsplit_once('@')
+                    {
+                        *value = serde_json::Value::String(format!("<redacted>@{authority}"));
+                    }
+                } else {
+                    *value = redact_config(std::mem::take(value));
+                }
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                *value = redact_config(std::mem::take(value));
+            }
+        }
+        _ => {}
+    }
+    value
 }
 
 #[cfg(test)]
@@ -184,6 +344,129 @@ pub(crate) mod tests {
                 inspection: Arc::new(inspection_data()),
             },
         )
+    }
+
+    #[test]
+    fn effective_config_is_a_separate_node_and_store_rejects_stale_reports() {
+        use crate::client::runtime::RuntimeSnapshotStore;
+        use nyanpasu_config::runtime::snapshot::BuiltinStepKind;
+        let input =
+            serde_json::json!({"external-controller": "127.0.0.1:9090", "secret": "private"});
+        let value = Arc::new(serde_json::from_value::<ConfigValue>(input.clone()).unwrap());
+        let mut graph = ConfigSnapshotsBuilder::new_root(value.clone(), OperatorTag::BareRoot);
+        graph
+            .push(
+                OperatorTag::BuiltinStep {
+                    selected_profile_id: None,
+                    step: BuiltinStepKind::Finalizing,
+                },
+                value,
+            )
+            .unwrap();
+        let mut generated = snapshot();
+        generated.config =
+            serde_yaml::from_str("external-controller: 127.0.0.1:9090\nsecret: private\n").unwrap();
+        generated.inspection = Arc::new(RuntimeInspectionData {
+            graph: graph.build().unwrap(),
+            step_logs: vec![],
+        });
+        let effective = nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
+            instance_id: "instance-1".into(),
+            revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                epoch: 1,
+                generation: 1,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            config: "external-controller-unix: /tmp/managed.sock\nsecret: private\n".into(),
+        };
+        generated.applied_binding = Some(crate::core::actor_v2::facade::AppliedConfigBinding {
+            revision: effective.revision.clone(),
+            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            generation: 1,
+        });
+        let applied = generated
+            .with_effective_config(
+                effective,
+                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                1,
+            )
+            .unwrap();
+        assert_eq!(
+            generated.config, applied.config,
+            "next rebuild must use the original source"
+        );
+        assert_eq!(generated.inspection.graph.nodes.len(), 2);
+        assert_eq!(applied.inspection.graph.nodes.len(), 3);
+        let node = applied
+            .inspection_content(&applied.inspection_id, 2)
+            .unwrap();
+        assert!(node.yaml.contains("/tmp/managed.sock"));
+        assert!(!node.yaml.contains("private"));
+        assert!(node.diff.is_some());
+        assert!(!format!("{:?}", node.diff).contains("private"));
+        let store = RuntimeSnapshotStore::default();
+        store.generated(Arc::new(generated.clone()));
+        store.bind_applied(Arc::new(generated.clone()));
+        store.applied("stale-build", Arc::new(applied.clone()));
+        assert!(store.read().applied.is_none());
+        store.applied(&generated.inspection_id, Arc::new(applied.clone()));
+        assert!(store.read().applied.is_some());
+        store.generated(Arc::new(generated.clone()));
+        assert!(
+            store.read().applied.is_some(),
+            "a rejected candidate must retain the last applied view"
+        );
+        let mut next = generated.clone();
+        next.inspection_id = "new-success".into();
+        next.applied_binding.as_mut().unwrap().revision.generation += 1;
+        let next = Arc::new(next);
+        store.generated(next.clone());
+        store.bind_applied(next.clone());
+        store.applied(&generated.inspection_id, Arc::new(applied.clone()));
+        assert_eq!(
+            store.read().pending.as_ref().unwrap().inspection_id,
+            "new-success"
+        );
+        let mut candidate = generated.clone();
+        candidate.inspection_id = "new-failed-build".into();
+        candidate.applied_binding = None;
+        store.generated(Arc::new(candidate));
+        let mut effective = applied.effective.clone().unwrap();
+        assert!(
+            next.with_effective_config(
+                effective.clone(),
+                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                1
+            )
+            .is_err()
+        );
+        effective.revision = next.applied_binding.as_ref().unwrap().revision.clone();
+        assert!(
+            next.with_effective_config(
+                effective.clone(),
+                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                2
+            )
+            .is_err()
+        );
+        let recovered = next
+            .with_effective_config(
+                effective,
+                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                1,
+            )
+            .unwrap();
+        store.applied(&next.inspection_id, Arc::new(recovered));
+        assert!(store.read().pending.is_none());
+        assert_eq!(
+            store.read().promoted.unwrap().inspection_id,
+            "new-failed-build"
+        );
+        assert_eq!(
+            store.read().applied.unwrap().applied_binding,
+            next.applied_binding
+        );
     }
 
     #[test]

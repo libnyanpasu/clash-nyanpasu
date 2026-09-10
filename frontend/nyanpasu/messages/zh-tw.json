@@ -423,5 +423,14 @@
   "inspect_filtered_empty": "沒有步驟修改設定或產生日誌。開啟完整處理鏈可查看所有步驟。",
   "inspect_old_line": "原行號",
   "inspect_new_line": "新行號",
-  "inspect_change": "變更"
+  "inspect_change": "變更",
+  "settings_clash_control_channel_label": "控制通道",
+  "settings_clash_control_channel_prefer_ipc": "IPC 優先（不可用時退回 HTTP）",
+  "settings_clash_control_channel_http_only": "僅 HTTP",
+  "settings_clash_ipc_disable_http_label": "IPC 可用時關閉 HTTP 外部控制器",
+  "settings_clash_ipc_disable_http_description": "僅在選擇 IPC 且可用時生效。關閉後 Web UI 和第三方工具無法透過 HTTP 存取。",
+  "inspect_core_controller": "核心有效設定",
+  "inspect_effective_pending": "等待取得有效快照內容",
+  "inspect_applied": "已套用",
+  "inspect_last_applied": "上次套用的快照"
 }

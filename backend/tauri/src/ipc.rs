@@ -377,6 +377,14 @@ pub async fn inspect_runtime(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn inspect_applied_runtime(
+    client: State<'_, NyanpasuClient>,
+) -> Result<Option<crate::client::runtime_inspection::RuntimeInspection>> {
+    Ok(client.inspect_applied_runtime().await)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn inspect_runtime_node(
     client: State<'_, NyanpasuClient>,
     snapshot_id: String,

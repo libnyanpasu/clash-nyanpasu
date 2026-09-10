@@ -3,7 +3,6 @@ use std::sync::Arc;
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use struct_patch::Patch;
-use tokio::sync::watch;
 
 use super::{
     super::{
@@ -28,7 +27,7 @@ pub(super) struct CoreLifecycleWorkflow {
     pub builder: Arc<dyn RuntimeBuildPort>,
     pub installer: Arc<dyn BinaryInstaller>,
     pub ui: Arc<dyn UiEventSink>,
-    pub runtime: watch::Sender<runtime::RuntimeLifecycleState>,
+    pub runtime: runtime::RuntimeSnapshotStore,
     pub revisions: runtime::RuntimeRevisionAllocator,
     // A lost lower-level reply is not evidence its side effects have finished.
     pub uncertain: bool,
@@ -47,6 +46,16 @@ impl CoreLifecycleWorkflow {
 
     async fn execute_inner(&mut self, command: Command) -> Result<Output, CoreError> {
         match command {
+            Command::ApplyControlChannel => {
+                let status = self.core.refresh_status().await?;
+                if !matches!(
+                    status.snapshot.and_then(|s| s.state),
+                    Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+                ) {
+                    self.reconcile().await?;
+                }
+                Ok(Output::Unit)
+            }
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile().await?)),
             Command::PatchRuntimeOverrides(patch) => {
                 let policy = self
@@ -230,6 +239,17 @@ impl CoreLifecycleWorkflow {
         let profiles = self.profiles.get().await.map_err(domain_error)?;
         let clash = self.clash.get().await.map_err(domain_error)?.state;
         let app = self.application.get().await.map_err(domain_error)?.state;
+        let local_ipc = nyanpasu_core_manager::LocalIpcSettings {
+            policy: match clash.clash_control_channel {
+                nyanpasu_config::clash::config::ClashControlChannel::PreferIpc => {
+                    nyanpasu_core_manager::LocalIpcPolicy::Prefer
+                }
+                nyanpasu_config::clash::config::ClashControlChannel::HttpOnly => {
+                    nyanpasu_core_manager::LocalIpcPolicy::Disable
+                }
+            },
+            keep_http_controller: !clash.clash_ipc_disable_http_controller,
+        };
         let snapshot = self
             .builder
             .build(revision, profiles, clash, app)
@@ -240,18 +260,34 @@ impl CoreLifecycleWorkflow {
             .await
             .map_err(domain_error)?;
         // Promoted means the product was published, not that the host applied it.
-        self.runtime.send_replace(runtime::RuntimeLifecycleState {
-            promoted: Some(snapshot.clone()),
-        });
+        self.runtime.generated(snapshot.clone());
         let spec = self
             .builder
             .core_spec(&snapshot.target_core)
             .map_err(|error| {
                 CoreError::new(CoreErrorKind::BinaryNotFound, error.to_string(), false)
             })?;
-        self.core
-            .reconcile(snapshot.target_core, &snapshot.config, spec)
-            .await
+        let report = self
+            .core
+            .reconcile(snapshot.target_core, &snapshot.config, spec, local_ipc)
+            .await?;
+        let mut bound = snapshot.as_ref().clone();
+        bound.applied_binding = Some(report.applied.clone());
+        let snapshot = Arc::new(bound);
+        self.runtime.bind_applied(snapshot.clone());
+        if let Some(effective) = report.effective_config.clone() {
+            match snapshot.with_effective_config(
+                effective,
+                report.applied.host,
+                report.applied.generation,
+            ) {
+                Ok(applied) => self
+                    .runtime
+                    .applied(&snapshot.inspection_id, Arc::new(applied)),
+                Err(error) => tracing::warn!("effective config inspection unavailable: {error}"),
+            }
+        }
+        Ok(report)
     }
 
     async fn replace_binary(&mut self, artifact: PreparedCoreBinary) -> Result<(), CoreError> {

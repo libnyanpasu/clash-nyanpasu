@@ -265,6 +265,8 @@ pub struct IVerge {
     /// clash core path
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clash_core: Option<ClashCore>,
+    pub clash_control_channel: Option<nyanpasu_config::clash::config::ClashControlChannel>,
+    pub clash_ipc_disable_http_controller: Option<bool>,
 
     /// hotkey map
     /// format: {func},{key}
@@ -466,6 +468,10 @@ impl IVerge {
     pub fn template() -> Self {
         Self {
             clash_core: Some(ClashCore::default()),
+            clash_control_channel: Some(
+                nyanpasu_config::clash::config::ClashControlChannel::default(),
+            ),
+            clash_ipc_disable_http_controller: Some(false),
             language: Some(crate::utils::help::detect_system_i18n_key().into()),
             app_log_level: Some(logging::LoggingLevel::default()),
             theme_mode: Some("system".into()),

@@ -57,6 +57,9 @@ pub(crate) struct RuntimeSnapshotData {
 #[derive(Debug, Clone)]
 pub struct RuntimeSnapshot {
     pub(crate) inspection_id: String,
+    pub(crate) applied_binding: Option<crate::core::actor_v2::facade::AppliedConfigBinding>,
+    pub(crate) effective_host: Option<(crate::core::actor_v2::endpoint::ExecutionHost, u64)>,
+    pub(crate) effective: Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>,
     pub revision: RuntimeRevision,
     pub target_core: ClashCore,
     pub product_sha256: [u8; 32],
@@ -77,6 +80,9 @@ impl RuntimeSnapshot {
         let product_sha256 = Sha256::digest(&product_bytes).into();
         Self {
             inspection_id: nanoid::nanoid!(),
+            applied_binding: None,
+            effective: None,
+            effective_host: None,
             revision,
             target_core,
             product_sha256,
@@ -102,6 +108,62 @@ impl RuntimeSnapshot {
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeLifecycleState {
     pub promoted: Option<Arc<RuntimeSnapshot>>,
+    pub applied: Option<Arc<RuntimeSnapshot>>,
+    /// A successful application whose effective inspection is not yet available.
+    pub(crate) pending: Option<Arc<RuntimeSnapshot>>,
+}
+
+/// One shared read/write boundary; watch is a private implementation detail.
+#[derive(Clone)]
+pub(crate) struct RuntimeSnapshotStore(tokio::sync::watch::Sender<RuntimeLifecycleState>);
+
+impl Default for RuntimeSnapshotStore {
+    fn default() -> Self {
+        Self(tokio::sync::watch::Sender::new(
+            RuntimeLifecycleState::default(),
+        ))
+    }
+}
+
+impl RuntimeSnapshotStore {
+    pub(crate) fn read(&self) -> RuntimeLifecycleState {
+        self.0.borrow().clone()
+    }
+    pub(crate) fn generated(&self, snapshot: Arc<RuntimeSnapshot>) {
+        self.0.send_modify(|state| state.promoted = Some(snapshot));
+    }
+    pub(crate) fn bind_applied(&self, snapshot: Arc<RuntimeSnapshot>) {
+        self.0.send_modify(|state| {
+            if snapshot.applied_binding.is_some()
+                && state
+                    .promoted
+                    .as_ref()
+                    .is_some_and(|source| source.inspection_id == snapshot.inspection_id)
+            {
+                state.promoted = Some(snapshot.clone());
+                state.pending = Some(snapshot);
+            }
+        });
+    }
+    pub(crate) fn applied(&self, source_id: &str, snapshot: Arc<RuntimeSnapshot>) {
+        self.0.send_modify(|state| {
+            if !state.pending.as_ref().is_some_and(|pending| {
+                pending.inspection_id == source_id
+                    && pending.applied_binding == snapshot.applied_binding
+            }) {
+                return;
+            }
+            if state
+                .promoted
+                .as_ref()
+                .is_some_and(|source| source.inspection_id == source_id)
+            {
+                state.promoted = Some(snapshot.clone());
+            }
+            state.applied = Some(snapshot);
+            state.pending = None;
+        });
+    }
 }
 
 pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {

@@ -381,5 +381,14 @@
   "common_off": "꺼짐",
   "common_enabled": "사용",
   "common_disabled": "사용 안 함",
-  "common_clear": "지우기"
+  "common_clear": "지우기",
+  "settings_clash_control_channel_label": "제어 채널",
+  "settings_clash_control_channel_prefer_ipc": "IPC 우선 (사용할 수 없으면 HTTP)",
+  "settings_clash_control_channel_http_only": "HTTP만 사용",
+  "settings_clash_ipc_disable_http_label": "IPC 사용 시 HTTP 외부 컨트롤러 비활성화",
+  "settings_clash_ipc_disable_http_description": "IPC를 선택하고 사용할 수 있을 때만 적용됩니다. Web UI와 타사 도구의 HTTP 접근이 비활성화됩니다.",
+  "inspect_core_controller": "코어에 적용된 설정",
+  "inspect_effective_pending": "유효한 스냅샷 내용을 기다리는 중",
+  "inspect_applied": "적용됨",
+  "inspect_last_applied": "마지막으로 적용한 스냅샷"
 }

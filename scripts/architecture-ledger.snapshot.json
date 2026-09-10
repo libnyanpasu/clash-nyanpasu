@@ -30,9 +30,9 @@
       }
     },
     "legacy_dto_refs": {
-      "total": 312,
+      "total": 321,
       "byKey": {
-        "IVerge": 180,
+        "IVerge": 186,
         "IClashTemp": 31,
         "LegacyVergeBridge": 31,
         "ClashLegacyBridge": 19,
@@ -40,8 +40,8 @@
         "LegacyClashBridge": 10,
         "LegacyVergePatchRoute": 9,
         "LegacyWindowBridge": 7,
-        "legacy_iverge_from_typed": 3,
-        "typed_patches_from_legacy_patch": 2,
+        "legacy_iverge_from_typed": 4,
+        "typed_patches_from_legacy_patch": 4,
         "IClash": 1
       }
     },

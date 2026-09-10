@@ -22,6 +22,10 @@ export function useCoreStatus() {
         status,
         startAt: result.state_changed_at,
         type: result.host,
+        controller:
+          status === 'Running' && result.connectivity.kind === 'connected'
+            ? result.controller
+            : null,
       }
     },
   })

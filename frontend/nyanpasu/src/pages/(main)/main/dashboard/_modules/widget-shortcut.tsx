@@ -1,3 +1,4 @@
+import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
 import { useMemo } from 'react'
 import {
   SystemProxyButton,
@@ -190,8 +191,8 @@ const CoreStatusBadge = () => {
   return (
     <div
       className={cn(
-        'flex h-6 min-w-0 items-center rounded-full text-sm',
-        'bg-surface-variant/50',
+        'flex h-6 max-w-full min-w-0 items-center rounded-full text-xs font-medium',
+        'bg-secondary-container/50 text-on-secondary-container',
       )}
       data-slot="core-status-badge"
     >
@@ -215,71 +216,89 @@ const CurrentCoreCard = () => {
 
   const isRunning = coreStatus?.status === 'Running'
 
+  const channel = coreStatus?.controller
+    ? 'Http' in coreStatus.controller
+      ? 'HTTP'
+      : 'NamedPipe' in coreStatus.controller
+        ? 'IPC · Named Pipe'
+        : 'IPC · Unix Socket'
+    : '—'
+
   return (
     <Button
       variant="raised"
       className={cn(
-        'group flex flex-1 items-center gap-4 rounded-2xl pr-3 pl-4',
-        'bg-surface-variant/30 hover:bg-surface-variant',
+        'group grid h-auto min-w-0 flex-1 grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)] rounded-[20px] px-2.5 py-0 text-left',
+        'bg-surface-variant/30 text-on-surface hover:bg-surface-variant/50 shadow-none hover:shadow-none focus:shadow-none',
+        'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
       )}
       data-running={String(isRunning)}
       data-slot="current-core-card"
       asChild
     >
       <Link to="/main/settings/clash">
-        <img
-          src={currentCoreIcon}
-          alt={currentCore?.name}
-          className="size-12 shrink-0"
-          data-slot="core-icon"
-        />
-
-        <div
-          className="flex flex-1 flex-col items-start gap-1 truncate"
-          data-slot="core-info"
-        >
-          <div className="font-semibold" data-slot="core-name">
-            {currentCore?.name}
+        <div className="flex w-full min-w-0 shrink-0 items-center gap-3">
+          <div className="bg-surface/60 grid size-10 shrink-0 place-items-center rounded-xl">
+            <img
+              src={currentCoreIcon}
+              alt=""
+              className="size-8 object-contain"
+              data-slot="core-icon"
+            />
           </div>
 
-          <div
-            className="text-zinc-700 dark:text-zinc-300"
-            data-slot="core-version"
-          >
-            {currentCore?.currentVersion}
+          <div className="min-w-0 flex-1" data-slot="core-info">
+            <div
+              className="truncate text-base leading-5 font-semibold"
+              title={currentCore?.name}
+              data-slot="core-name"
+            >
+              {currentCore?.name ?? '—'}
+            </div>
+            <div
+              className="text-on-surface-variant truncate text-xs leading-4 font-normal"
+              title={currentCore?.currentVersion}
+              data-slot="core-version"
+            >
+              {currentCore?.currentVersion ?? '—'}
+            </div>
           </div>
+
+          {coreStatus && (
+            <div
+              className={cn(
+                'flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+                isRunning
+                  ? 'bg-primary-container text-on-primary-container'
+                  : 'bg-surface-variant text-on-surface-variant',
+              )}
+              data-slot="core-status"
+            >
+              <span
+                className="size-1.5 shrink-0 rounded-full bg-current"
+                aria-hidden="true"
+                data-slot="core-status-indicator"
+              />
+              <span data-slot="core-status-text">
+                {isRunning
+                  ? m.dashboard_widget_core_status_running()
+                  : m.dashboard_widget_core_status_stopped()}
+              </span>
+            </div>
+          )}
         </div>
 
         <div
-          className="flex items-center gap-2 truncate pr-2"
-          data-slot="core-status"
+          className="border-outline-variant/40 text-on-surface-variant flex w-full min-w-0 items-center gap-2 border-t text-xs leading-4 font-normal"
+          data-slot="core-control-channel"
         >
-          <div className="truncate" data-slot="core-status-text">
-            {isRunning
-              ? m.dashboard_widget_core_status_running()
-              : m.dashboard_widget_core_status_stopped()}
-          </div>
-
-          <div
-            className="relative flex size-3 shrink-0"
-            data-slot="core-status-indicator"
-          >
-            <span
-              className={cn(
-                'absolute inline-flex size-full animate-ping rounded-full opacity-75',
-                'group-data-[running=true]:bg-green-500',
-                'group-data-[running=false]:opacity-0',
-              )}
-            />
-
-            <span
-              className={cn(
-                'relative inline-flex size-full rounded-full',
-                'group-data-[running=true]:bg-green-500',
-                'group-data-[running=false]:bg-gray-400',
-              )}
-            />
-          </div>
+          <span className="min-w-0 truncate">
+            {m.settings_clash_control_channel_label()}
+          </span>
+          <span className="text-on-surface ml-auto shrink-0 font-medium">
+            {channel}
+          </span>
+          <ChevronRightRounded className="size-4 shrink-0" aria-hidden="true" />
         </div>
       </Link>
     </Button>
@@ -293,15 +312,15 @@ export function CoreShortcutsWidget({
   return (
     <WidgetItem id={id} minW={4} minH={2} onCloseClick={onCloseClick}>
       <Card className="flex size-full flex-col justify-between">
-        <CardHeader>
-          <span className="shrink-0 font-bold">
+        <CardHeader className="shrink-0 gap-3 pt-3">
+          <span className="shrink-0 text-base font-medium">
             {m.dashboard_widget_core_status()}
           </span>
 
           <CoreStatusBadge />
         </CardHeader>
 
-        <CardContent className="flex-1">
+        <CardContent className="min-h-0 flex-1 pt-2 pb-3">
           <CurrentCoreCard />
         </CardContent>
       </Card>

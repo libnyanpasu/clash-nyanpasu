@@ -367,6 +367,7 @@ pub(crate) mod tests {
 
         async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
             Ok(CoreStatusSnapshot {
+                controller: None,
                 state: Some(if self.binding.borrow().is_some() {
                     CoreStateDetail::Running { epoch: 1, pid: 7 }
                 } else {

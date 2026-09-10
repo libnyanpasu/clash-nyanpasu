@@ -105,6 +105,16 @@ pub const IVERGE_FIELD_MAPPING: &[IVergeFieldMapping] = &[
         target: "nyanpasu_config::clash::config::ClashConfig.web_ui_list",
     },
     IVergeFieldMapping {
+        legacy: "clash_control_channel",
+        owner: LegacyFieldOwner::Clash,
+        target: "nyanpasu_config::clash::config::ClashConfig.clash_control_channel",
+    },
+    IVergeFieldMapping {
+        legacy: "clash_ipc_disable_http_controller",
+        owner: LegacyFieldOwner::Clash,
+        target: "nyanpasu_config::clash::config::ClashConfig.clash_ipc_disable_http_controller",
+    },
+    IVergeFieldMapping {
         legacy: "clash_core",
         owner: LegacyFieldOwner::Application,
         target: "NyanpasuAppConfig.core",
@@ -265,6 +275,8 @@ mod tests {
         "theme_color",
         "web_ui_list",
         "clash_core",
+        "clash_control_channel",
+        "clash_ipc_disable_http_controller",
         "hotkeys",
         "auto_close_connection",
         "break_when_proxy_change",

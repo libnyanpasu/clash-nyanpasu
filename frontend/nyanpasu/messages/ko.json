@@ -1,5 +1,9 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
+  "proxies_delay_history_title": "지연 시간 기록",
+  "proxies_delay_history_empty": "지연 시간 기록이 없습니다",
+  "proxies_delay_history_recent": "최근 {count}회 테스트 · 최신순",
+  "proxies_delay_history_failed": "실패",
   "language": "한국어",
   "navbar_label_dashboard": "대시보드",
   "navbar_label_proxies": "프록시",

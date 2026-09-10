@@ -2,6 +2,9 @@ import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
 import { ComponentProps, MouseEvent, useMemo } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
+import DelayHistory, {
+  DelayHistoryBar,
+} from '@/components/proxies/delay-history'
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
@@ -63,49 +66,52 @@ export default function ProxyNodeButton({
   }, [proxy.history])
 
   return (
-    <Button
-      variant="fab"
-      className={cn(
-        'flex w-full flex-col justify-center gap-1 px-2 text-left',
-        'group-data-[active=true]:bg-primary-container/75',
-        'dark:group-data-[active=true]:bg-surface-variant/50',
-        'group-data-[active=false]:bg-on-background/3',
-        'dark:group-data-[active=false]:bg-surface/30',
-        'group-data-[active=false]:shadow-none',
-        'group-data-[active=false]:hover:shadow-none',
-        'group-data-[active=false]:hover:bg-surface-variant/30',
-      )}
-      onClick={handleSelectProxy}
-      {...props}
-    >
-      <div className="flex items-center gap-2 px-2">
-        <div className="truncate text-sm font-medium">{proxy.name}</div>
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-2 overflow-hidden px-2">
-        <div className="flex items-center gap-1 overflow-hidden">
-          <FeatureChip label={proxy.type} variant="type" />
-          {proxy.udp && <FeatureChip label="UDP" />}
-          {proxy.xudp && <FeatureChip label="XUDP" />}
-          {proxy.tfo && <FeatureChip label="TFO" />}
+    <DelayHistory history={proxy.history}>
+      <Button
+        variant="fab"
+        className={cn(
+          'flex w-full flex-col justify-center gap-1 px-2 text-left',
+          'group-data-[active=true]:bg-primary-container/75',
+          'dark:group-data-[active=true]:bg-surface-variant/50',
+          'group-data-[active=false]:bg-on-background/3',
+          'dark:group-data-[active=false]:bg-surface/30',
+          'group-data-[active=false]:shadow-none',
+          'group-data-[active=false]:hover:shadow-none',
+          'group-data-[active=false]:hover:bg-surface-variant/30',
+        )}
+        onClick={handleSelectProxy}
+        {...props}
+      >
+        <div className="flex w-full items-center justify-between gap-2 px-2">
+          <div className="truncate text-sm font-medium">{proxy.name}</div>
+          <DelayHistoryBar history={proxy.history ?? []} />
         </div>
 
-        <Button
-          className="grid h-4 min-w-10 shrink-0 place-content-center px-2 text-center"
-          variant="raised"
-          onClick={handleDelayClick}
-          loading={delayTask.isPending}
-          asChild
-        >
-          {currentDelay > 0 ? (
-            <DelayChip delay={currentDelay} />
-          ) : (
-            <span>
-              <FlashOnRounded className="py-1" />
-            </span>
-          )}
-        </Button>
-      </div>
-    </Button>
+        <div className="flex w-full items-center justify-between gap-2 overflow-hidden px-2">
+          <div className="flex items-center gap-1 overflow-hidden">
+            <FeatureChip label={proxy.type} variant="type" />
+            {proxy.udp && <FeatureChip label="UDP" />}
+            {proxy.xudp && <FeatureChip label="XUDP" />}
+            {proxy.tfo && <FeatureChip label="TFO" />}
+          </div>
+
+          <Button
+            className="grid h-4 min-w-10 shrink-0 place-content-center px-2 text-center"
+            variant="raised"
+            onClick={handleDelayClick}
+            loading={delayTask.isPending}
+            asChild
+          >
+            {currentDelay > 0 ? (
+              <DelayChip delay={currentDelay} />
+            ) : (
+              <span>
+                <FlashOnRounded className="py-1" />
+              </span>
+            )}
+          </Button>
+        </div>
+      </Button>
+    </DelayHistory>
   )
 }

@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import {
   commands,
-  ProxyItemHistory,
   type Proxies_Serialize,
   type ProxyGroupItem_Serialize,
   type ProxyItem_Serialize,
+  type ProxyItemHistory,
 } from './bindings'
 import { CLASH_PROXIES_QUERY_KEY } from './consts'
 
@@ -200,10 +200,7 @@ export const useClashProxies = () => {
                   name: proxy.name,
                   delay: data[proxy.name],
                 })
-              : {
-                  ...proxy,
-                  history: [],
-                },
+              : proxy,
           ),
         },
         groups: oldData.groups.map((group) => ({
@@ -214,10 +211,7 @@ export const useClashProxies = () => {
                   name: proxy.name,
                   delay: data[proxy.name],
                 })
-              : {
-                  ...proxy,
-                  history: [],
-                },
+              : proxy,
           ),
         })),
       } satisfies ClashProxiesQuery

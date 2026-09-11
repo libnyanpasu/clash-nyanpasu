@@ -112,11 +112,15 @@ const LogLevelButton = ({
 }
 
 function RouteComponent() {
+  return <Outlet />
+}
+
+export function LogLevelsLayout({ children }: PropsWithChildren) {
   return (
     <SidebarProvider defaultOpen={false}>
       <div
         className={cn(
-          'relative flex min-h-0 w-full overflow-hidden',
+          'relative flex min-h-0 w-full flex-1 overflow-hidden',
           'divide-outline-variant divide-x',
         )}
       >
@@ -136,7 +140,7 @@ function RouteComponent() {
           </SidebarContent>
         </Sidebar>
 
-        <Outlet />
+        {children}
       </div>
     </SidebarProvider>
   )

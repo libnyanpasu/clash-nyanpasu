@@ -462,6 +462,7 @@
   "logs_search_incomplete": "本頁無符合記錄，載入更早記錄以繼續搜尋。",
   "logs_copy": "複製",
   "logs_copy_failed": "複製失敗，請選取原始記錄手動複製。",
+  "logs_view_json": "檢視 JSON",
   "logs_raw_record": "原始記錄與欄位",
   "logs_filters": "篩選條件",
   "logs_copied": "已複製",

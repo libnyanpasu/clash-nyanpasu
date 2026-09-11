@@ -17,6 +17,7 @@ type View = {
   files: LogFileInfo[]
   page: LogPage | null
   error: LogError | null
+  loadingOlder: boolean
   loading: boolean
   more: boolean
 }
@@ -25,6 +26,7 @@ const empty = (): View => ({
   files: [],
   page: null,
   error: null,
+  loadingOlder: false,
   loading: true,
   more: false,
 })
@@ -126,6 +128,7 @@ export function useFileLogs(
           rows,
           page,
           loading: false,
+          loadingOlder: requestOlder,
           error: null,
           more: floor ? false : direction === 'after' ? value.more : page.more,
         }))
@@ -146,12 +149,18 @@ export function useFileLogs(
             rows,
             page: null,
             loading: true,
+            loadingOlder: false,
             error: null,
             more: false,
           }))
           delay = 100
         } else {
-          setView((value) => ({ ...value, error: kind, loading: false }))
+          setView((value) => ({
+            ...value,
+            error: kind,
+            loading: false,
+            loadingOlder: false,
+          }))
           delay = Math.min(15_000, 1000 * 2 ** Math.min(++failures, 4))
           if (
             kind === 'unsupported' ||
@@ -167,7 +176,9 @@ export function useFileLogs(
     }
     controls.current = {
       older: () => {
+        if (requestOlder || !older || floor) return
         requestOlder = true
+        setView((value) => ({ ...value, loadingOlder: true }))
         poll()
       },
       clear: () => {
@@ -176,7 +187,12 @@ export function useFileLogs(
         tail = head
         rows = []
         requestOlder = false
-        setView((value) => ({ ...value, rows, more: false }))
+        setView((value) => ({
+          ...value,
+          rows,
+          more: false,
+          loadingOlder: false,
+        }))
       },
       latest: () => {
         epoch += 1
@@ -184,7 +200,12 @@ export function useFileLogs(
         older = null
         rows = []
         requestOlder = false
-        setView((value) => ({ ...value, rows, more: false }))
+        setView((value) => ({
+          ...value,
+          rows,
+          more: false,
+          loadingOlder: false,
+        }))
         poll()
       },
     }

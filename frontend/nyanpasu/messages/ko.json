@@ -420,6 +420,7 @@
   "logs_search_incomplete": "이 페이지에 일치하는 기록이 없습니다. 이전 기록을 불러와 검색을 계속하세요.",
   "logs_copy": "복사",
   "logs_copy_failed": "복사하지 못했습니다. 원본 기록을 선택하여 복사하세요.",
+  "logs_view_json": "JSON 보기",
   "logs_raw_record": "원본 기록 및 필드",
   "logs_filters": "필터",
   "logs_copied": "복사됨",

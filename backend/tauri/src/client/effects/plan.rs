@@ -1,7 +1,7 @@
 //! Pure projection + diff: which side effects a committed configuration change
 //! implies, and whether the runtime config has to be rebuilt.
 
-use std::time::Duration;
+use std::{collections::BTreeSet, time::Duration};
 
 use nyanpasu_config::{
     application::{
@@ -274,6 +274,37 @@ impl ApplicationEffectPlan {
     /// no trustworthy "before" snapshot exists.
     pub fn full(after: &ApplicationEffectInputs) -> Self {
         after.desired().into_patch().into()
+    }
+
+    /// Adds the desired value of every kind in `kinds` to this plan, taken from
+    /// `full`.
+    ///
+    /// Used to re-run effects whose previous dispatch degraded: a diff plan only
+    /// describes what changed, so a kind that failed earlier would otherwise
+    /// never be handed its value again. The `full` entry wins over a same-kind
+    /// entry already in the plan, because it is the wider of the two wherever
+    /// they differ (a full tray refresh subsumes a partial one) and the two are
+    /// projected from the same snapshot otherwise. The result keeps the
+    /// `EffectKind` ordering and holds at most one effect per kind.
+    pub fn with_retries(self, full: &ApplicationEffectPlan, kinds: &BTreeSet<EffectKind>) -> Self {
+        if kinds.is_empty() {
+            return self;
+        }
+
+        let mut effects: Vec<ApplicationEffect> = self
+            .effects
+            .into_iter()
+            .filter(|effect| !kinds.contains(&effect.kind()))
+            .collect();
+        effects.extend(
+            full.effects
+                .iter()
+                .filter(|effect| kinds.contains(&effect.kind()))
+                .cloned(),
+        );
+        effects.sort_by_key(ApplicationEffect::kind);
+
+        Self { effects }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -903,6 +934,84 @@ mod tests {
         assert_eq!(
             runtime_apply_kind(&before, &after),
             RuntimeApplyKind::Rebuild
+        );
+    }
+
+    #[test]
+    fn with_retries_of_an_empty_set_is_the_identity() {
+        let before = inputs();
+        let mut after = inputs();
+        after.app.language = I18nLanguage::Korean;
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+        let full = ApplicationEffectPlan::full(&after);
+
+        assert_eq!(plan.clone().with_retries(&full, &BTreeSet::new()), plan);
+    }
+
+    #[test]
+    fn with_retries_inserts_missing_kinds_in_kind_order() {
+        let before = inputs();
+        let mut after = inputs();
+        after.app.language = I18nLanguage::Korean;
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+        let full = ApplicationEffectPlan::full(&after);
+
+        let merged = plan.with_retries(
+            &full,
+            &BTreeSet::from([EffectKind::SystemProxy, EffectKind::Logger]),
+        );
+
+        assert_eq!(
+            kinds(&merged),
+            vec![
+                EffectKind::Locale,
+                EffectKind::Logger,
+                EffectKind::SystemProxy,
+                EffectKind::Tray,
+            ]
+        );
+        assert!(kinds(&merged).is_sorted(), "retries must keep plan order");
+    }
+
+    #[test]
+    fn with_retries_keeps_one_effect_per_kind() {
+        let before = inputs();
+        let mut after = inputs();
+        after.app.language = I18nLanguage::Korean;
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+        let full = ApplicationEffectPlan::full(&after);
+
+        let merged = plan.with_retries(&full, &BTreeSet::from([EffectKind::Locale]));
+
+        assert_eq!(kinds(&merged), vec![EffectKind::Locale, EffectKind::Tray]);
+        assert_eq!(
+            merged.effects()[0],
+            ApplicationEffect::Locale(I18nLanguage::Korean)
+        );
+    }
+
+    #[test]
+    fn a_retried_tray_refresh_widens_a_partial_one() {
+        let before = inputs();
+        let mut after = inputs();
+        after.app.enable_system_proxy = true;
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+        let full = ApplicationEffectPlan::full(&after);
+
+        assert_eq!(
+            plan.effects().last(),
+            Some(&ApplicationEffect::Tray(TrayRefresh::Part))
+        );
+
+        let merged = plan.with_retries(&full, &BTreeSet::from([EffectKind::Tray]));
+
+        assert_eq!(
+            kinds(&merged),
+            vec![EffectKind::SystemProxy, EffectKind::Tray]
+        );
+        assert_eq!(
+            merged.effects().last(),
+            Some(&ApplicationEffect::Tray(TrayRefresh::Full))
         );
     }
 

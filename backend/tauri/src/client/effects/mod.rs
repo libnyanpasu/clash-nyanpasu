@@ -8,12 +8,15 @@
 //! This module also owns the facade-side mutation pipeline: sample, commit,
 //! apply the runtime change, diff, then dispatch the peripheral effects.
 
-use std::{future::Future, sync::Arc};
+use std::{collections::BTreeSet, future::Future, sync::Arc};
 
 use self::{
-    plan::{ApplicationEffectInputs, ApplicationEffectPlan, RuntimeApplyKind, runtime_apply_kind},
+    plan::{
+        ApplicationEffectInputs, ApplicationEffectPlan, EffectKind, RuntimeApplyKind,
+        runtime_apply_kind,
+    },
     ports::ApplicationEffectsPort,
-    status::{EffectRevision, degradation_of},
+    status::{EffectHealth, EffectRevision, EffectStatus, degradation_of},
 };
 use super::{ClientError, NyanpasuClient, Result, runtime};
 
@@ -37,6 +40,14 @@ pub mod status;
 pub(crate) struct ApplicationEffects {
     gate: tokio::sync::Mutex<GateState>,
     port: Arc<dyn ApplicationEffectsPort>,
+    /// Kinds whose last dispatch degraded and asked to be retried.
+    ///
+    /// Bookkeeping owned by the facade pipeline, not shared actor state: a plan
+    /// is a pure `(before, after)` diff, so re-submitting the value that failed
+    /// would diff to nothing and report success while the effect owner still
+    /// holds the old one. A blocking mutex is enough because every access is a
+    /// short set update with no await inside.
+    pending_retry: parking_lot::Mutex<BTreeSet<EffectKind>>,
 }
 
 struct GateState {
@@ -57,6 +68,7 @@ impl ApplicationEffects {
         Self {
             gate: tokio::sync::Mutex::new(GateState { next_revision: 0 }),
             port,
+            pending_retry: parking_lot::Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -66,6 +78,29 @@ impl ApplicationEffects {
 
     fn port(&self) -> &Arc<dyn ApplicationEffectsPort> {
         &self.port
+    }
+
+    fn pending_retry(&self) -> BTreeSet<EffectKind> {
+        self.pending_retry.lock().clone()
+    }
+
+    /// Folds a dispatch result into the retry set. `Superseded` is left as is:
+    /// a newer revision owns that kind now and its own statuses decide.
+    fn record_retry_state(&self, statuses: &[EffectStatus]) {
+        let mut pending = self.pending_retry.lock();
+        for status in statuses {
+            match status.health {
+                EffectHealth::Degraded {
+                    retryable: true, ..
+                } => {
+                    pending.insert(status.kind);
+                }
+                EffectHealth::Superseded => {}
+                _ => {
+                    pending.remove(&status.kind);
+                }
+            }
+        }
     }
 }
 
@@ -140,8 +175,14 @@ impl NyanpasuClient {
             }
         };
 
+        // A resample failure leaves `after` unknown, so neither the diff nor a
+        // retry has a desired value to carry and the retry set stays untouched.
         let plan = after
-            .map(|after| ApplicationEffectPlan::diff(&before, &after))
+            .map(|after| {
+                let plan = ApplicationEffectPlan::diff(&before, &after);
+                let pending = self.inner.effects.pending_retry();
+                plan.with_retries(&ApplicationEffectPlan::full(&after), &pending)
+            })
             .unwrap_or_default();
         // Released before dispatch: an effect owner may block on the network
         // (PAC download), and a window-drag save must not queue behind it.
@@ -152,6 +193,7 @@ impl NyanpasuClient {
         // port would be the most frequent call in the process.
         if !plan.is_empty() {
             let statuses = self.inner.effects.port().apply(revision, plan).await;
+            self.inner.effects.record_retry_state(&statuses);
             degradations.extend(statuses.iter().filter_map(degradation_of));
         }
 
@@ -216,6 +258,7 @@ impl NyanpasuClient {
             .port()
             .apply(revision, ApplicationEffectPlan::full(&inputs))
             .await;
+        self.inner.effects.record_retry_state(&statuses);
         Ok(runtime::MutationOutcome::from_parts(
             (),
             statuses.iter().filter_map(degradation_of).collect(),

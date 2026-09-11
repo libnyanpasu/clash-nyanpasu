@@ -419,6 +419,64 @@ async fn guard_tick_reapplies_last_desired() {
 }
 
 #[tokio::test]
+async fn guard_tick_retries_a_failed_enable() {
+    // The guard is the only thing that runs again on its own, so an enable the
+    // OS refused has nowhere else to be retried.
+    let os = RecordingOsProxy::new();
+    os.fail_set(true);
+    let client = spawn_with_os(os.clone()).await;
+    client
+        .reconcile(
+            rev(1),
+            Some(proxy(true, Some(7890))),
+            Some(guard(true, Duration::from_secs(10))),
+            None,
+        )
+        .await;
+    assert!(os.writes().is_empty());
+    assert_eq!(client.status().await.applied_os_proxy, None);
+
+    os.fail_set(false);
+    client.tick_guard().await;
+
+    let expected = OsProxyConfig {
+        enable: true,
+        host: "127.0.0.1".to_owned(),
+        port: 7890,
+        bypass: BYPASS.to_owned(),
+    };
+    assert_eq!(os.last_write(), expected);
+    assert_eq!(client.status().await.applied_os_proxy, Some(expected));
+}
+
+#[tokio::test]
+async fn guard_tick_uses_the_newest_desired_port() {
+    let os = RecordingOsProxy::new();
+    let client = spawn_with_os(os.clone()).await;
+    client
+        .reconcile(
+            rev(1),
+            Some(proxy(true, Some(7890))),
+            Some(guard(true, Duration::from_secs(10))),
+            None,
+        )
+        .await;
+    os.fail_set(true);
+    client
+        .reconcile(rev(2), Some(proxy(true, Some(7891))), None, None)
+        .await;
+    os.fail_set(false);
+
+    client.tick_guard().await;
+
+    assert_eq!(
+        os.last_write().port,
+        7891,
+        "a refused port change must not leave the guard re-installing the old port"
+    );
+}
+
+#[tokio::test]
 async fn guard_tick_is_suppressed_while_pac_active() {
     let os = RecordingOsProxy::new();
     let mut pac = MockPacPort::new();

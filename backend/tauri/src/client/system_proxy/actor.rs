@@ -492,18 +492,29 @@ impl State {
         }
     }
 
+    /// A tick reconciles the latest *desired* proxy rather than the last value
+    /// the OS accepted. Re-applying the accepted one cannot heal anything: an
+    /// enable the OS refused was never accepted at all, and a refused port
+    /// change would have the guard re-installing the stale port forever.
     async fn guard_tick(&mut self) {
         // Under PAC the OS holds an auto-config URL, not a proxy endpoint;
         // writing one every tick is what made the two settings fight.
         if self.pac_active {
             return;
         }
-        let Some(config) = self.current.clone().filter(|config| config.enable) else {
+        let Some(desired) = self.desired.clone().filter(|desired| desired.enabled) else {
+            return;
+        };
+        let Some(config) = self.enable_config(&desired) else {
             return;
         };
         let os = self.os.clone();
-        if let Err(error) = blocking(move || os.set(&config)).await {
-            tracing::warn!(%error, "the proxy guard could not re-apply the system proxy");
+        let payload = config.clone();
+        match blocking(move || os.set(&payload)).await {
+            Ok(()) => self.current = Some(config),
+            Err(error) => {
+                tracing::warn!(%error, "the proxy guard could not re-apply the system proxy")
+            }
         }
     }
 
@@ -564,6 +575,7 @@ impl State {
             applied_revision: self.applied.max(),
             health: self.health.clone(),
             desired: self.desired.clone(),
+            applied_os_proxy: self.current.clone(),
             guard_active: self.guard_running.is_some(),
             guard_interval: self.guard_running,
             pac_active: self.pac_active,

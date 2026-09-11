@@ -163,47 +163,38 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
             return Ok(());
         };
 
-        if !hotkeys.is_empty() {
-            let application_path = ctx.application_config_path();
-            // `typed_config/split_legacy_config` builds this file and runs
-            // before this module. Failing loudly keeps the value in storage so
-            // the next launch retries, instead of dropping the user's hotkeys.
-            if !application_path.exists() {
-                anyhow::bail!(
-                    "cannot move hotkeys into the typed application config before it exists"
-                );
-            }
-
-            let raw = std::fs::read_to_string(&application_path)?;
-            let mut application: Mapping = serde_yaml::from_str(&raw)
-                .map_err(|e| anyhow::anyhow!("failed to parse the application config: {e}"))?;
-            let key = serde_yaml::Value::String(HOTKEYS_KEY.to_string());
-            // A non-empty typed value was written after the storage one and is
-            // therefore the newer of the two.
-            let typed_is_empty = application
-                .get(&key)
-                .and_then(|value| value.as_sequence())
-                .is_none_or(|existing| existing.is_empty());
-            if typed_is_empty {
-                application.insert(
-                    key,
-                    serde_yaml::Value::Sequence(
-                        hotkeys
-                            .iter()
-                            .map(|hotkey| serde_yaml::Value::String(hotkey.clone()))
-                            .collect(),
-                    ),
-                );
-                let serialized = serde_yaml::to_string(&application).map_err(|e| {
-                    anyhow::anyhow!("failed to serialize the application config: {e}")
-                })?;
-                crate::core::migration::fs::atomic_write(&application_path, serialized.as_bytes())?;
-                tracing::info!(
-                    "moved {} hotkeys from KV storage into the typed application config",
-                    hotkeys.len()
-                );
-            }
+        let application_path = ctx.application_config_path();
+        // `typed_config/split_legacy_config` builds this file and runs before
+        // this module. Failing loudly keeps the value in storage so the next
+        // launch retries, instead of dropping the user's hotkeys.
+        if !application_path.exists() {
+            anyhow::bail!("cannot move hotkeys into the typed application config before it exists");
         }
+
+        let raw = std::fs::read_to_string(&application_path)?;
+        let mut application: Mapping = serde_yaml::from_str(&raw)
+            .map_err(|e| anyhow::anyhow!("failed to parse the application config: {e}"))?;
+        // While this key exists the key-value store is the authority: it was
+        // the only place the hotkey editor wrote to and the only place startup
+        // read from, so whatever the typed config holds was never the user's
+        // choice. That includes an empty list, which means every binding was
+        // cleared on purpose and must not be resurrected.
+        application.insert(
+            serde_yaml::Value::String(HOTKEYS_KEY.to_string()),
+            serde_yaml::Value::Sequence(
+                hotkeys
+                    .iter()
+                    .map(|hotkey| serde_yaml::Value::String(hotkey.clone()))
+                    .collect(),
+            ),
+        );
+        let serialized = serde_yaml::to_string(&application)
+            .map_err(|e| anyhow::anyhow!("failed to serialize the application config: {e}"))?;
+        crate::core::migration::fs::atomic_write(&application_path, serialized.as_bytes())?;
+        tracing::info!(
+            "moved {} hotkeys from KV storage into the typed application config",
+            hotkeys.len()
+        );
 
         let storage = open_storage(ctx)?.expect("storage was readable a moment ago");
         storage
@@ -336,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn does_not_overwrite_non_empty_typed_hotkeys() {
+    fn kv_value_replaces_typed_hotkeys() {
         let mut fixture = Fixture::new(
             Some("hotkeys:\n  - clash_mode_rule,Control+Q\n"),
             Some(&["toggle_tun_mode,Control+T"]),
@@ -346,8 +337,22 @@ mod tests {
 
         assert_eq!(
             fixture.typed_hotkeys(),
-            vec!["clash_mode_rule,Control+Q".to_string()],
-            "the typed config is the authority and was written later"
+            vec!["toggle_tun_mode,Control+T".to_string()],
+            "the key-value store held the only list the user could still edit"
+        );
+        assert_eq!(fixture.kv_hotkeys(), None);
+    }
+
+    #[test]
+    fn explicitly_empty_kv_list_clears_typed_hotkeys() {
+        let mut fixture =
+            Fixture::new(Some("hotkeys:\n  - clash_mode_rule,Control+Q\n"), Some(&[]));
+
+        fixture.run().unwrap();
+
+        assert!(
+            fixture.typed_hotkeys().is_empty(),
+            "an empty stored list is a user who cleared every binding, not a missing value"
         );
         assert_eq!(fixture.kv_hotkeys(), None);
     }

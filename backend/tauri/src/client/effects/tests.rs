@@ -20,7 +20,7 @@ use struct_patch::Patch as _;
 use tempfile::{TempDir, tempdir};
 
 use super::{
-    plan::{ApplicationEffect, ApplicationEffectPlan},
+    plan::{ApplicationEffect, ApplicationEffectPlan, EffectKind},
     ports::ApplicationEffectsPort,
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
@@ -158,6 +158,78 @@ impl ApplicationEffectsPort for RecordingEffectsPort {
                         code: "injected_effect_failure",
                         message: "effect owner refused".to_owned(),
                         retryable: true,
+                    }
+                } else {
+                    EffectHealth::Healthy
+                },
+            })
+            .collect();
+        self.dispatches().push(Dispatch { revision, plan });
+        statuses
+    }
+
+    async fn shutdown(&self) -> Vec<EffectStatus> {
+        Vec::new()
+    }
+}
+
+/// Degrades one effect kind for the first `failing_dispatches` dispatches and
+/// reports everything healthy afterwards, so a retry can be observed succeeding.
+struct FlakyEffectsPort {
+    dispatches: StdMutex<Vec<Dispatch>>,
+    kind: EffectKind,
+    retryable: bool,
+    failing_dispatches: usize,
+}
+
+impl FlakyEffectsPort {
+    fn new(kind: EffectKind, retryable: bool, failing_dispatches: usize) -> Arc<Self> {
+        Arc::new(Self {
+            dispatches: StdMutex::new(Vec::new()),
+            kind,
+            retryable,
+            failing_dispatches,
+        })
+    }
+
+    fn dispatches(&self) -> std::sync::MutexGuard<'_, Vec<Dispatch>> {
+        self.dispatches
+            .lock()
+            .expect("dispatch log should not poison")
+    }
+
+    fn dispatch_count(&self) -> usize {
+        self.dispatches().len()
+    }
+
+    fn plan(&self, index: usize) -> ApplicationEffectPlan {
+        self.dispatches()
+            .get(index)
+            .map(|dispatch| dispatch.plan.clone())
+            .unwrap_or_else(|| panic!("dispatch {index} should have happened"))
+    }
+}
+
+#[async_trait::async_trait]
+impl ApplicationEffectsPort for FlakyEffectsPort {
+    async fn apply(
+        &self,
+        revision: EffectRevision,
+        plan: ApplicationEffectPlan,
+    ) -> Vec<EffectStatus> {
+        let failing = self.dispatch_count() < self.failing_dispatches;
+        let statuses = plan
+            .effects()
+            .iter()
+            .map(|effect| EffectStatus {
+                kind: effect.kind(),
+                desired_revision: revision,
+                applied_revision: revision,
+                health: if failing && effect.kind() == self.kind {
+                    EffectHealth::Degraded {
+                        code: "injected_effect_failure",
+                        message: "effect owner refused".to_owned(),
+                        retryable: self.retryable,
                     }
                 } else {
                     EffectHealth::Healthy
@@ -564,6 +636,86 @@ fn runtime_rebuild_failure_degrades_without_erasing_the_commit() {
                 .start_port,
             current.start_port + 1,
             "the commit stands even though the rebuild failed"
+        );
+    });
+}
+
+#[test]
+fn degraded_effect_is_retried_on_identical_resubmission() {
+    let dir = tempdir().expect("tempdir should be created");
+    let port = FlakyEffectsPort::new(EffectKind::Locale, true, 1);
+    let client = client_with(&dir, port.clone(), Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        let outcome = client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("a post-commit effect failure is not a commit failure");
+        assert!(
+            matches!(outcome, MutationOutcome::CommittedDegraded { .. }),
+            "the failing effect must be reported: {outcome:?}"
+        );
+
+        // The same value again: the diff is empty, so only the retry can put the
+        // locale back on the wire.
+        let outcome = client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("resubmitting the committed value should succeed");
+        assert!(
+            matches!(outcome, MutationOutcome::Applied { .. }),
+            "the retry succeeded, so nothing is degraded: {outcome:?}"
+        );
+        assert_eq!(port.dispatch_count(), 2, "the retry has to be dispatched");
+        let retried = port.plan(1);
+        assert_eq!(
+            retried.effects(),
+            [ApplicationEffect::Locale(I18nLanguage::Korean)],
+            "the retry carries the full desired value of the failed kind only"
+        );
+
+        // Once it succeeded the kind leaves the retry set, so an unchanged patch
+        // is a no-op again.
+        client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("a no-op patch should succeed");
+        assert_eq!(
+            port.dispatch_count(),
+            2,
+            "a healed effect must not be retried forever"
+        );
+    });
+}
+
+#[test]
+fn non_retryable_degradation_is_not_retried() {
+    let dir = tempdir().expect("tempdir should be created");
+    let port = FlakyEffectsPort::new(EffectKind::Locale, false, 1);
+    let client = client_with(&dir, port.clone(), Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        let outcome = client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("a post-commit effect failure is not a commit failure");
+        let degradations = degradations(&outcome);
+        assert!(
+            degradations
+                .iter()
+                .any(|degradation| !degradation.retryable),
+            "expected a non-retryable degradation: {degradations:?}"
+        );
+
+        client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("resubmitting the committed value should succeed");
+
+        assert_eq!(
+            port.dispatch_count(),
+            1,
+            "an effect that asked not to be retried must not be re-dispatched"
         );
     });
 }

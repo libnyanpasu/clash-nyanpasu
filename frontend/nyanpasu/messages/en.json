@@ -441,6 +441,7 @@
   "logs_source_core": "Core",
   "logs_source_app": "Application",
   "logs_source_service": "Service",
+  "date_time_open_calendar": "Open calendar",
   "logs_file_label": "Log file",
   "logs_current_file": "Current file (follow rotation)",
   "logs_target_label": "Target (exact match)",

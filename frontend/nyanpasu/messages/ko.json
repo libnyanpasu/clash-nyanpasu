@@ -399,6 +399,7 @@
   "logs_source_core": "코어",
   "logs_source_app": "앱",
   "logs_source_service": "서비스",
+  "date_time_open_calendar": "달력 열기",
   "logs_file_label": "로그 파일",
   "logs_current_file": "현재 파일 (순환 추적)",
   "logs_target_label": "Target (정확히 일치)",

@@ -1,5 +1,5 @@
 import FilterListRounded from '~icons/material-symbols/filter-list-rounded'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -51,11 +51,11 @@ function errorMessage(error: LogError) {
       return m.logs_source_unavailable()
   }
 }
-const inputClass =
-  'bg-surface-variant/30 text-on-surface border-outline-variant focus:border-primary focus:ring-primary h-11 min-w-0 w-full rounded-xl border px-3 text-sm outline-none focus:ring-1 [color-scheme:light] dark:[color-scheme:dark]'
+const DateTimeField = lazy(() => import('@/components/ui/date-time-field'))
 
 export default function FileLogs({ source }: { source: LogSource }) {
   const { level } = Route.useSearch()
+  const filterForm = useRef<HTMLFormElement>(null)
   const [following, setFollowing] = useState(true)
   const [unseen, setUnseen] = useState(0)
   const [filterOpen, setFilterOpen] = useState(false)
@@ -143,8 +143,20 @@ export default function FileLogs({ source }: { source: LogSource }) {
                 )}
               </Button>
             </ModalTrigger>
-            <ModalContent>
+            <ModalContent
+              onEscapeKeyDown={(event) => {
+                // The calendar portal stays inside this dialog's focus scope.
+                // Let its own Escape handler close it before dismissing the filters.
+                if (
+                  filterForm.current?.querySelector(
+                    '[data-slot="date-picker-popover"]',
+                  )
+                )
+                  event.preventDefault()
+              }}
+            >
               <form
+                ref={filterForm}
                 className="bg-surface text-on-surface flex max-h-[85dvh] w-[min(28rem,calc(100vw-2rem))] flex-col gap-5 overflow-auto rounded-3xl p-6"
                 onSubmit={(event) => {
                   event.preventDefault()
@@ -170,28 +182,27 @@ export default function FileLogs({ source }: { source: LogSource }) {
                       }
                     />
                   </div>
-                  <label className="text-on-surface-variant flex min-w-0 flex-col gap-1 text-xs">
-                    {m.logs_from_label()}
-                    <input
-                      className={inputClass}
-                      type="datetime-local"
+                  <Suspense
+                    fallback={
+                      <div
+                        className="bg-surface-variant/30 h-40 animate-pulse rounded-xl"
+                        aria-busy="true"
+                      />
+                    }
+                  >
+                    <DateTimeField
+                      label={m.logs_from_label()}
                       value={draft.from}
-                      onChange={(event) =>
-                        setDraft({ ...draft, from: event.target.value })
+                      onChange={(from) =>
+                        setDraft((value) => ({ ...value, from }))
                       }
                     />
-                  </label>
-                  <label className="text-on-surface-variant flex min-w-0 flex-col gap-1 text-xs">
-                    {m.logs_to_label()}
-                    <input
-                      className={inputClass}
-                      type="datetime-local"
+                    <DateTimeField
+                      label={m.logs_to_label()}
                       value={draft.to}
-                      onChange={(event) =>
-                        setDraft({ ...draft, to: event.target.value })
-                      }
+                      onChange={(to) => setDraft((value) => ({ ...value, to }))}
                     />
-                  </label>
+                  </Suspense>
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button

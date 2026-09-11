@@ -456,10 +456,6 @@ fn legacy_patch_between(previous: &IVerge, desired: &IVerge) -> anyhow::Result<I
 fn route_verge_patch(patch: &IVerge) -> LegacyVergePatchRoute {
     let legacy = patch.enable_service_mode.is_some()
         || patch.enable_tun_mode.is_some()
-        || patch.enable_auto_launch.is_some()
-        || patch.enable_system_proxy.is_some()
-        || patch.system_proxy_bypass.is_some()
-        || patch.enable_proxy_guard.is_some()
         || patch.hotkeys.is_some()
         || patch.language.is_some()
         || patch.app_log_level.is_some()
@@ -1752,6 +1748,12 @@ mod tests {
         assert_pure!(theme_color: "#112233".to_string());
         assert_pure!(traffic_graph: true);
         assert_pure!(theme_mode: "dark".to_string());
+        // Owned by the system proxy actor now: a patch that only carries one
+        // of these commits typed config and reconciles, with no legacy detour.
+        assert_pure!(enable_auto_launch: true);
+        assert_pure!(enable_system_proxy: true);
+        assert_pure!(system_proxy_bypass: "localhost".to_string());
+        assert_pure!(enable_proxy_guard: true);
     }
 
     #[test]
@@ -1770,10 +1772,6 @@ mod tests {
 
         assert_legacy!(enable_service_mode: true);
         assert_legacy!(enable_tun_mode: true);
-        assert_legacy!(enable_auto_launch: true);
-        assert_legacy!(enable_system_proxy: true);
-        assert_legacy!(system_proxy_bypass: "localhost".to_string());
-        assert_legacy!(enable_proxy_guard: true);
         assert_legacy!(hotkeys: Vec::<String>::new());
         assert_legacy!(language: "en".to_string());
         assert_legacy!(app_log_level: LoggingLevel::default());

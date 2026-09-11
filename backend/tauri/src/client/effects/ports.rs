@@ -4,9 +4,11 @@
 //! fan-out to actor clients and adapters stays inside the executor. There is no
 //! lookup API here, so this is not a service locator.
 
+#[cfg(test)]
+use super::status::EffectHealth;
 use super::{
     plan::ApplicationEffectPlan,
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectRevision, EffectStatus},
 };
 
 #[cfg_attr(test, mockall::automock)]
@@ -29,11 +31,14 @@ pub trait ApplicationEffectsPort: Send + Sync + 'static {
     async fn shutdown(&self) -> Vec<EffectStatus>;
 }
 
-/// Accepts every plan and changes nothing. Used where the composition root has
-/// no effect owners wired up yet, and in tests that only care about ordering.
+/// Accepts every plan and changes nothing. The composition root now assembles
+/// a real executor, so this is only for tests that care about the pipeline
+/// rather than about any particular effect.
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub struct NoopApplicationEffects;
 
+#[cfg(test)]
 #[async_trait::async_trait]
 impl ApplicationEffectsPort for NoopApplicationEffects {
     async fn apply(

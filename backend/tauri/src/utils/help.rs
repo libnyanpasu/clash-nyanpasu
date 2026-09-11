@@ -242,7 +242,6 @@ pub fn get_max_scale_factor() -> f64 {
 #[instrument(skip(app_handle))]
 pub fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
-    super::resolve::resolve_reset();
     let widget_manager = app_handle.state::<crate::widget::WidgetManager>();
     // Managed Tauri state — no process-global client lookup. The lifecycle
     // actor closes admission and drains active work before stopping the core,
@@ -254,6 +253,16 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
         .map(|state| state.inner().clone());
     let _ = nyanpasu_utils::runtime::block_on(async {
         if let Some(client) = client.as_ref() {
+            // Before the core stops: the proxy this process installed points at
+            // a port that is about to close, so the settings the app found go
+            // back first.
+            for degradation in client.shutdown_application_effects().await {
+                log::error!(
+                    "failed to restore a system effect on exit: {} ({})",
+                    degradation.message,
+                    degradation.code
+                );
+            }
             let _ = client.shutdown_logs().await;
             let report = client.shutdown_core().await;
             if let Err(error) = report.stop {

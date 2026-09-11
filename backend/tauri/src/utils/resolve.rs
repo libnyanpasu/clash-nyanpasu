@@ -229,8 +229,24 @@ pub fn resolve_setup(app: &mut App) {
         spawn_window_ready_timeout(app.app_handle().clone());
     }
 
-    log_err!(sysopt::Sysopt::global().init_launch());
-    log_err!(sysopt::Sysopt::global().init_sysproxy());
+    // Minimal startup wiring: one full reconcile hands the system proxy, PAC
+    // and auto-launch their desired values. Ordering this against silent start,
+    // panel restore and the panic path belongs to the startup/exit task.
+    log_err!(tauri::async_runtime::block_on(async {
+        let outcome = app
+            .state::<crate::client::NyanpasuClient>()
+            .reconcile_application_effects()
+            .await?;
+        for degradation in outcome.degradations() {
+            log::warn!(
+                target: "app",
+                "startup effect reconcile degraded {}: {}",
+                degradation.code,
+                degradation.message
+            );
+        }
+        <anyhow::Result<()>>::Ok(())
+    }));
 
     log_err!(handle::Handle::update_systray_part());
     log_err!(hotkey::Hotkey::global().init(app.app_handle().clone()));
@@ -271,11 +287,6 @@ fn spawn_window_ready_timeout(app_handle: AppHandle) {
             }
         });
     });
-}
-
-/// reset system proxy
-pub fn resolve_reset() {
-    log_err!(sysopt::Sysopt::global().reset_sysproxy());
 }
 
 /// Main window implementation (new UI)

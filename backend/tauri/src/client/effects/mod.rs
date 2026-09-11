@@ -24,6 +24,7 @@ use self::{
 };
 use super::{ClientError, NyanpasuClient, Result, runtime};
 
+pub mod executor;
 pub mod plan;
 pub mod ports;
 pub mod status;
@@ -279,8 +280,6 @@ impl NyanpasuClient {
     /// Full reconcile with no `before` snapshot: every effect is handed its
     /// desired value. Used at startup, where the OS state is whatever the last
     /// run left behind.
-    // Wired into startup by the system-proxy and startup/shutdown tasks.
-    #[allow(dead_code)]
     pub async fn reconcile_application_effects(&self) -> Result<runtime::MutationOutcome<()>> {
         let mut gate = self.inner.effects.gate().await;
         let inputs = self.effect_inputs().await?;
@@ -302,8 +301,6 @@ impl NyanpasuClient {
 
     /// Exit path: restore the system state the app found and drop its OS
     /// registrations. Never fails, because there is nothing left to abort.
-    // Wired into the exit path by the system-proxy and startup/shutdown tasks.
-    #[allow(dead_code)]
     pub async fn shutdown_application_effects(&self) -> Vec<runtime::Degradation> {
         self.inner
             .effects

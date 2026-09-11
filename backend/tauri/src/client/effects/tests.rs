@@ -640,6 +640,133 @@ fn runtime_rebuild_failure_degrades_without_erasing_the_commit() {
     });
 }
 
+/// The executor is the only thing between the pipeline and the effect owners,
+/// so what it must get right is the fan-out: one message per plan per owner,
+/// and an untouched pass-through for the kinds nobody owns yet.
+mod executor {
+    use std::sync::Arc;
+
+    use super::super::{
+        executor::ApplicationEffectExecutor,
+        plan::{ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
+        ports::ApplicationEffectsPort,
+        status::{EffectHealth, EffectRevision},
+    };
+    use crate::client::system_proxy::{
+        SystemProxyArgs, SystemProxyClient,
+        ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
+    };
+    use nyanpasu_config::{
+        application::NyanpasuAppConfig, clash::config::ClashConfig,
+        runtime::executor::ResolvedPortBindings,
+    };
+
+    fn resolved_ports() -> ResolvedPortBindings {
+        ResolvedPortBindings {
+            mixed_port: 7890,
+            port: None,
+            socks_port: None,
+            external_controller: None,
+        }
+    }
+
+    async fn executor() -> ApplicationEffectExecutor {
+        let mut os = MockOsProxyPort::new();
+        os.expect_set().returning(|_| Ok(()));
+        os.expect_get()
+            .returning(|| Err(anyhow::anyhow!("no system proxy is set")));
+        os.expect_default_bypass().return_const("bypass");
+        let mut auto_launch = MockAutoLaunchPort::new();
+        auto_launch.expect_is_enabled().returning(|| Ok(false));
+        auto_launch.expect_set_enabled().returning(|_| Ok(()));
+        let mut pac = MockPacPort::new();
+        pac.expect_is_supported().returning(|| false);
+
+        let system_proxy = SystemProxyClient::spawn(SystemProxyArgs {
+            os: Arc::new(os),
+            auto_launch: Arc::new(auto_launch),
+            pac: Arc::new(pac),
+            schedule_guard_ticks: false,
+        })
+        .await
+        .expect("the system proxy actor should spawn");
+        ApplicationEffectExecutor::new(system_proxy)
+    }
+
+    #[tokio::test]
+    async fn one_plan_reaches_the_system_proxy_actor_as_a_single_reconcile() {
+        let inputs = ApplicationEffectInputs::project(
+            &NyanpasuAppConfig {
+                enable_system_proxy: true,
+                enable_auto_launch: true,
+                enable_proxy_guard: true,
+                ..NyanpasuAppConfig::default()
+            },
+            &ClashConfig::default(),
+            Some(resolved_ports()),
+        );
+        let plan = ApplicationEffectPlan::full(&inputs);
+
+        let statuses = executor().await.apply(EffectRevision::new(1), plan).await;
+
+        // Three separate calls would carry the same revision, so the second and
+        // third would come back `Superseded`. All three healthy is the proof
+        // that they arrived in one message.
+        for kind in [
+            EffectKind::AutoLaunch,
+            EffectKind::SystemProxy,
+            EffectKind::ProxyGuard,
+        ] {
+            let status = statuses
+                .iter()
+                .find(|status| status.kind == kind)
+                .unwrap_or_else(|| panic!("{kind:?} should be reported"));
+            assert_eq!(status.health, EffectHealth::Healthy, "{kind:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn effects_without_an_owner_pass_through_as_healthy() {
+        let inputs = ApplicationEffectInputs::project(
+            &NyanpasuAppConfig::default(),
+            &ClashConfig::default(),
+            None,
+        );
+        let plan = ApplicationEffectPlan::full(&inputs);
+        let revision = EffectRevision::new(4);
+
+        let statuses = executor().await.apply(revision, plan.clone()).await;
+
+        assert_eq!(statuses.len(), plan.effects().len());
+        for (status, effect) in statuses.iter().zip(plan.effects()) {
+            assert_eq!(status.kind, effect.kind(), "the plan's order is preserved");
+        }
+        for kind in [
+            EffectKind::Locale,
+            EffectKind::Logger,
+            EffectKind::Hotkeys,
+            EffectKind::Widget,
+            EffectKind::Tray,
+        ] {
+            let status = statuses
+                .iter()
+                .find(|status| status.kind == kind)
+                .unwrap_or_else(|| panic!("{kind:?} should be reported"));
+            assert_eq!(status.health, EffectHealth::Healthy, "{kind:?}");
+            assert_eq!(status.applied_revision, revision);
+        }
+    }
+
+    #[tokio::test]
+    async fn shutdown_restores_the_system_proxy() {
+        let statuses = executor().await.shutdown().await;
+
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].kind, EffectKind::SystemProxy);
+        assert_eq!(statuses[0].health, EffectHealth::Healthy);
+    }
+}
+
 #[test]
 fn degraded_effect_is_retried_on_identical_resubmission() {
     let dir = tempdir().expect("tempdir should be created");

@@ -24,6 +24,7 @@ export * from './use-service-prompt'
 export * from './use-core-dir'
 export * from './use-platform'
 export * from './use-system-accent-color'
+export * from './use-file-logs'
 
 export { commands, events } from './bindings'
 export { mutations, queries } from './bindings'

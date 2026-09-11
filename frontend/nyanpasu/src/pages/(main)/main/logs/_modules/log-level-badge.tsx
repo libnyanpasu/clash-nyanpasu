@@ -15,8 +15,10 @@ export default function LogLevelBadge({
       className={cn(
         'inline-block rounded-full px-2 py-1 font-semibold uppercase',
         childrenLower === 'info' && 'text-blue-500',
-        childrenLower === 'warn' && 'text-yellow-500',
-        childrenLower === 'error' && 'text-red-500',
+        (childrenLower === 'warn' || childrenLower === 'warning') &&
+          'text-yellow-500',
+        (childrenLower === 'error' || childrenLower === 'fatal') &&
+          'text-red-500',
         className,
       )}
       {...props}

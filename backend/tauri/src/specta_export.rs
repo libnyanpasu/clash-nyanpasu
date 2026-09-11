@@ -11,6 +11,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     let command_set = CommandSet::<tauri::Wry>::new(
         collect_commands![
             // Read-only commands
+            ipc::list_log_files,
             ipc::get_sys_proxy,
             ipc::get_clash_info,
             ipc::get_clash_logs,
@@ -58,6 +59,9 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ],
         collect_commands![
             // Side-effecting commands
+            ipc::open_log_session,
+            ipc::query_logs,
+            ipc::close_log_session,
             ipc::flush_system_dns_cache,
             ipc::open_app_config_dir,
             ipc::open_app_data_dir,

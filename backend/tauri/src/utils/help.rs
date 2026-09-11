@@ -254,6 +254,7 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
         .map(|state| state.inner().clone());
     let _ = nyanpasu_utils::runtime::block_on(async {
         if let Some(client) = client.as_ref() {
+            let _ = client.shutdown_logs().await;
             let report = client.shutdown_core().await;
             if let Err(error) = report.stop {
                 log::error!("failed to stop core: {error}");

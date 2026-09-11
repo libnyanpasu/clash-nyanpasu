@@ -9,6 +9,10 @@ import * as __TAURI_EVENT from '@tauri-apps/api/event'
 
 /** Commands */
 export const commands = {
+  listLogFiles: (source: LogSource) =>
+    typedError<LogFileInfo[], LogError>(
+      __TAURI_INVOKE('list_log_files', { source }),
+    ),
   /**
    *  get the system proxy
    *  server field is the combination of host and port
@@ -171,6 +175,18 @@ export const commands = {
   getSystemAccentColor: () =>
     typedError<string | null, string>(
       __TAURI_INVOKE('get_system_accent_color'),
+    ),
+  openLogSession: (source: LogSource, request: OpenLogs) =>
+    typedError<LogSession, LogError>(
+      __TAURI_INVOKE('open_log_session', { source, request }),
+    ),
+  queryLogs: (source: LogSource, request: QueryLogs) =>
+    typedError<LogPage, LogError>(
+      __TAURI_INVOKE('query_logs', { source, request }),
+    ),
+  closeLogSession: (source: LogSource, session: string) =>
+    typedError<null, LogError>(
+      __TAURI_INVOKE('close_log_session', { source, session }),
     ),
   flushSystemDnsCache: () =>
     typedError<null, string>(__TAURI_INVOKE('flush_system_dns_cache')),
@@ -869,6 +885,8 @@ export type DeviceInfo = {
   memory: string
 }
 
+export type Direction = 'latest' | 'before' | 'after'
+
 /**  A snapshot of a download session's progress, polled by IPC. */
 export type DownloadStatus = {
   state: DownloaderState
@@ -944,6 +962,14 @@ export type FileConfig_Serialize = {
   source: ProfileSource_Serialize
   /**  Scoped post-processing transforms. */
   transforms?: ProfileId[]
+}
+
+export type Filter = {
+  levels: Level[]
+  target: string | null
+  from_ms: number | null
+  to_ms: number | null
+  text: string | null
 }
 
 export type GetSysProxyResponse = {
@@ -1245,6 +1271,9 @@ export type IVerge_Serialize = {
   tray_menu_close_behavior: TrayMenuCloseBehavior | null
 }
 
+export type Level =
+  'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'unknown'
+
 export type LocalBinding = LocalBinding_Serialize | LocalBinding_Deserialize
 
 export type LocalBinding_Deserialize =
@@ -1275,6 +1304,41 @@ export type LocalBinding_Serialize =
       mode: ExternalMode
     }
 
+export type LogCursor = {
+  generation: string
+  offset: string
+}
+
+export type LogError =
+  | 'unavailable'
+  | 'unsupported'
+  | 'session_expired'
+  | 'cursor_reset'
+  | 'file_gone'
+  | 'limit'
+  | 'invalid_request'
+
+export type LogFileInfo = {
+  id: string
+  name: string
+  bytes: string
+}
+
+export type LogPage = {
+  rows: LogRow[]
+  cursor: LogCursor
+  head: LogCursor
+  start: string
+  file: string
+  building: boolean
+  more: boolean
+  partial: boolean
+  malformed: string
+  truncated: string
+  indexed_bytes: string
+  file_bytes: string
+}
+
 /**
  *  Where this service writes logs.
  *
@@ -1285,17 +1349,9 @@ export type LocalBinding_Serialize =
  *  account the service runs under plus local administrators, so a caller
  *  running as an ordinary user generally cannot read them — surface the path
  *  for a support request rather than building a tail on it. Live core output is
- *  on the event stream; the service's own logs are not streamed at all.
- *
- *  TODO: that restriction is the open question here, not a settled posture. A
- *  user-level GUI reading the archive would need one of: a widened DACL (which
- *  means teaching `nyanpasu_utils::io::atomic_fs`'s hardener *and* its verifier
- *  a second acceptable shape — the verifier rejects user-readable DACLs today,
- *  so both move together or directory creation starts failing), some other
- *  grant mechanism, or an RPC that serves the archive so the directory stays
- *  closed. All three are acceptable; none is chosen yet. The two sites that
- *  would change are `log_sink::prepare_dir` and the service's own log directory
- *  setup.
+ *  on the event stream. The service's own files are queried through the bounded
+ *  `/v1/logs/*` session RPCs when `log_query_version` is present; directory
+ *  permissions remain unchanged and these logs never enter the event stream.
  */
 export type LogPathsInfo = LogPathsInfo_Serialize | LogPathsInfo_Deserialize
 
@@ -1309,17 +1365,9 @@ export type LogPathsInfo = LogPathsInfo_Serialize | LogPathsInfo_Deserialize
  *  account the service runs under plus local administrators, so a caller
  *  running as an ordinary user generally cannot read them — surface the path
  *  for a support request rather than building a tail on it. Live core output is
- *  on the event stream; the service's own logs are not streamed at all.
- *
- *  TODO: that restriction is the open question here, not a settled posture. A
- *  user-level GUI reading the archive would need one of: a widened DACL (which
- *  means teaching `nyanpasu_utils::io::atomic_fs`'s hardener *and* its verifier
- *  a second acceptable shape — the verifier rejects user-readable DACLs today,
- *  so both move together or directory creation starts failing), some other
- *  grant mechanism, or an RPC that serves the archive so the directory stays
- *  closed. All three are acceptable; none is chosen yet. The two sites that
- *  would change are `log_sink::prepare_dir` and the service's own log directory
- *  setup.
+ *  on the event stream. The service's own files are queried through the bounded
+ *  `/v1/logs/*` session RPCs when `log_query_version` is present; directory
+ *  permissions remain unchanged and these logs never enter the event stream.
  */
 export type LogPathsInfo_Deserialize = {
   /**
@@ -1345,17 +1393,9 @@ export type LogPathsInfo_Deserialize = {
  *  account the service runs under plus local administrators, so a caller
  *  running as an ordinary user generally cannot read them — surface the path
  *  for a support request rather than building a tail on it. Live core output is
- *  on the event stream; the service's own logs are not streamed at all.
- *
- *  TODO: that restriction is the open question here, not a settled posture. A
- *  user-level GUI reading the archive would need one of: a widened DACL (which
- *  means teaching `nyanpasu_utils::io::atomic_fs`'s hardener *and* its verifier
- *  a second acceptable shape — the verifier rejects user-readable DACLs today,
- *  so both move together or directory creation starts failing), some other
- *  grant mechanism, or an RPC that serves the archive so the directory stays
- *  closed. All three are acceptable; none is chosen yet. The two sites that
- *  would change are `log_sink::prepare_dir` and the service's own log directory
- *  setup.
+ *  on the event stream. The service's own files are queried through the bounded
+ *  `/v1/logs/*` session RPCs when `log_query_version` is present; directory
+ *  permissions remain unchanged and these logs never enter the event stream.
  */
 export type LogPathsInfo_Serialize = {
   /**
@@ -1370,6 +1410,24 @@ export type LogPathsInfo_Serialize = {
    */
   core_dir?: string | null
 }
+
+export type LogRow = {
+  id: string
+  timestamp: string | null
+  level: Level
+  target: string
+  message: string
+  raw: string
+  unparsed: boolean
+  truncated: boolean
+}
+
+export type LogSession = {
+  id: string
+  lease_ms: number
+}
+
+export type LogSource = 'app' | 'service'
 
 export type LogSpan = 'log' | 'info' | 'warn' | 'error'
 
@@ -1444,6 +1502,11 @@ export type NewProfileRequest_Serialize = {
   metadata: ProfileMetadata_Serialize
   /**  Add rewrites the materialized path to `{uid}.{ext}`. */
   definition: ProfileDefinition_Serialize
+}
+
+export type OpenLogs = {
+  request_id: string
+  file: string | null
 }
 
 /**  The pipeline operator that produced a snapshot node. */
@@ -2133,6 +2196,14 @@ export type ProxyProviderItem_Serialize = {
   expectedStatus?: string | null
 }
 
+export type QueryLogs = {
+  session: string
+  filter: Filter
+  direction: Direction
+  cursor: LogCursor | null
+  limit: number
+}
+
 export type RemoteProfileOptionsPatch =
   RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize
 
@@ -2395,6 +2466,8 @@ export type StatusResBody_Deserialize = {
    *  existing golden literal stays unchanged.
    */
   logs?: LogPathsInfo_Deserialize | null
+  /**  Optional viewer protocol; absence does not affect core control compatibility. */
+  log_query_version?: number | null
 }
 
 export type StatusResBody_Serialize = {
@@ -2408,6 +2481,8 @@ export type StatusResBody_Serialize = {
    *  existing golden literal stays unchanged.
    */
   logs?: LogPathsInfo_Serialize | null
+  /**  Optional viewer protocol; absence does not affect core control compatibility. */
+  log_query_version?: number | null
 }
 
 export type StepLogEntry = {
@@ -2619,6 +2694,11 @@ function makeEvent<T>(
 }
 
 export const queries = {
+  listLogFiles: (...args: Parameters<typeof commands.listLogFiles>) =>
+    queryOptions({
+      queryKey: ['listLogFiles', ...args],
+      queryFn: () => commands.listLogFiles(...args),
+    }),
   getSysProxy: (...args: Parameters<typeof commands.getSysProxy>) =>
     queryOptions({
       queryKey: ['getSysProxy', ...args],
@@ -2873,6 +2953,21 @@ export const queries = {
     }),
 }
 export const mutations = {
+  openLogSession: mutationOptions({
+    mutationKey: ['openLogSession'],
+    mutationFn: (input: Parameters<typeof commands.openLogSession>) =>
+      commands.openLogSession(...input),
+  }),
+  queryLogs: mutationOptions({
+    mutationKey: ['queryLogs'],
+    mutationFn: (input: Parameters<typeof commands.queryLogs>) =>
+      commands.queryLogs(...input),
+  }),
+  closeLogSession: mutationOptions({
+    mutationKey: ['closeLogSession'],
+    mutationFn: (input: Parameters<typeof commands.closeLogSession>) =>
+      commands.closeLogSession(...input),
+  }),
   flushSystemDnsCache: mutationOptions({
     mutationKey: ['flushSystemDnsCache'],
     mutationFn: (input: Parameters<typeof commands.flushSystemDnsCache>) =>

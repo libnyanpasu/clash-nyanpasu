@@ -5,6 +5,7 @@ mod clash_streams;
 pub mod core_lifecycle;
 mod error;
 mod event_sink;
+pub mod logs;
 mod ports;
 pub mod profiles;
 pub mod rebuild;
@@ -68,6 +69,7 @@ pub use runtime::RuntimePaths;
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
 pub struct ClientSetupArgs {
+    pub logging: logs::LoggingSetup,
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
     pub bridges: LegacyBridgeSet,
@@ -250,6 +252,8 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
+    app_logs: nyanpasu_logging::LogsClient,
+    service_logs: Arc<dyn logs::ServiceLogsPort>,
     application: ApplicationClient,
     session_state: SessionStateClient,
     clash_config: ClashConfigClient,
@@ -270,6 +274,7 @@ struct NyanpasuClientInner {
 impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
         let ClientSetupArgs {
+            logging,
             paths,
             runtime_paths,
             bridges,
@@ -323,6 +328,7 @@ impl NyanpasuClient {
                 ))
             })?;
         tauri::async_runtime::block_on(Self::with_parts(
+            logging,
             application,
             session_state,
             clash_config,
@@ -342,6 +348,7 @@ impl NyanpasuClient {
 
     #[allow(dead_code, clippy::too_many_arguments)]
     async fn with_parts(
+        logging: logs::LoggingSetup,
         application: ApplicationClient,
         session_state: SessionStateClient,
         clash_config: ClashConfigClient,
@@ -357,6 +364,8 @@ impl NyanpasuClient {
         dirty_rx: tokio::sync::watch::Receiver<()>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     ) -> anyhow::Result<Self> {
+        let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
+        let service_logs = logging.service;
         let core_lifecycle =
             core_lifecycle::CoreLifecycleClient::spawn(core_lifecycle::CoreLifecycleArgs {
                 snapshots: runtime::RuntimeSnapshotStore::default(),
@@ -379,6 +388,8 @@ impl NyanpasuClient {
         let streams = crate::core::clash::ws::StreamsClient::spawn(core_v2.clone()).await?;
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
+                app_logs,
+                service_logs,
                 application,
                 session_state,
                 clash_config,
@@ -1860,6 +1871,7 @@ pub(crate) mod tests {
                 version: std::borrow::Cow::Borrowed("2.0.0"),
                 status: nyanpasu_ipc::types::ServiceStatus::Running,
                 server: Some(nyanpasu_ipc::api::status::StatusResBody {
+                    log_query_version: None,
                     version: std::borrow::Cow::Borrowed("2.0.0"),
                     core_infos: nyanpasu_ipc::api::status::CoreInfos {
                         instance_id: None,
@@ -2190,6 +2202,74 @@ pub(crate) mod tests {
         test_client_with_system_dns(dir, Arc::new(NoopSystemDnsCache)).await
     }
 
+    #[test]
+    fn logs_facade_reads_app_files_and_degrades_service_independently() {
+        use crate::client::logs::LogSource;
+        use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
+        let dir = tempdir().unwrap();
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        std::fs::create_dir_all(paths.app_logs_dir()).unwrap();
+        std::fs::write(
+            paths
+                .app_logs_dir()
+                .join("clash-nyanpasu.2026-09-11.app.log"),
+            b"{\"level\":\"INFO\",\"fields\":{\"message\":\"app own log\"}}\n",
+        )
+        .unwrap();
+        let client = tauri::async_runtime::block_on(test_client(&dir));
+        tauri::async_runtime::block_on(async {
+            assert_eq!(
+                client.list_log_files(LogSource::App).await.unwrap().len(),
+                1
+            );
+            assert_eq!(
+                client.list_log_files(LogSource::Service).await.unwrap_err(),
+                LogError::Unsupported
+            );
+            let session = client
+                .open_log_session(
+                    LogSource::App,
+                    "window".into(),
+                    OpenLogs {
+                        request_id: "first".into(),
+                        file: None,
+                    },
+                )
+                .await
+                .unwrap();
+            let page = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                loop {
+                    let page = client
+                        .query_logs(
+                            LogSource::App,
+                            "window".into(),
+                            QueryLogs {
+                                session: session.id.clone(),
+                                filter: Filter::default(),
+                                direction: Direction::Latest,
+                                cursor: None,
+                                limit: 200,
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    if !page.building {
+                        break page;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(page.rows[0].message, "app own log");
+            client
+                .close_log_session(LogSource::App, "window".into(), session.id)
+                .await
+                .unwrap();
+            client.shutdown_logs().await.unwrap();
+        });
+    }
+
     async fn test_client_with_system_dns(
         dir: &TempDir,
         system_dns: Arc<dyn SystemDnsCache>,
@@ -2210,6 +2290,10 @@ pub(crate) mod tests {
             .expect("default ports should resolve");
         let (core_v2, service) = test_v2_clients();
         NyanpasuClient::with_parts(
+            logs::test_setup(
+                PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
+                    .app_logs_dir(),
+            ),
             application,
             session_state,
             clash_config,
@@ -2268,6 +2352,7 @@ pub(crate) mod tests {
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         let (core_v2, service) = test_v2_clients_with_endpoint(endpoint);
         ClientSetupArgs {
+            logging: logs::test_setup(paths.app_logs_dir()),
             paths,
             runtime_paths,
             bridges: LegacyBridgeSet {
@@ -2471,6 +2556,10 @@ pub(crate) mod tests {
         .expect("profiles client should be created");
         let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::with_parts(
+            logs::test_setup(
+                PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
+                    .app_logs_dir(),
+            ),
             application,
             session_state,
             clash_config,
@@ -2628,6 +2717,7 @@ pub(crate) mod tests {
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            logging: logs::test_setup(paths.app_logs_dir()),
             paths,
             runtime_paths,
             bridges: LegacyBridgeSet {
@@ -3451,6 +3541,10 @@ pub(crate) mod tests {
                 .expect("default ports");
             let (core_v2, service) = test_v2_clients();
             let client = NyanpasuClient::with_parts(
+                logs::test_setup(
+                    PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
+                        .app_logs_dir(),
+                ),
                 application,
                 session_state,
                 clash_config,

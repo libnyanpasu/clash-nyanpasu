@@ -584,6 +584,7 @@ mod tests {
                 version: Cow::Borrowed("test"),
                 status: ServiceStatus::Running,
                 server: Some(StatusResBody {
+                    log_query_version: None,
                     version: Cow::Borrowed("2.0.0"),
                     core_infos: CoreInfos {
                         instance_id: None,

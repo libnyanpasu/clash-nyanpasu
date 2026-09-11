@@ -25,6 +25,9 @@ semver = "1.0"
 [dependencies]
 # Local Dependencies
 nyanpasu-ipc = { workspace = true }
+nyanpasu-logging = { path = "../nyanpasu-runtime/crates/nyanpasu-logging", features = [
+  "specta",
+] }
 nyanpasu-core-manager = { workspace = true }
 clash-api = { workspace = true }
 nyanpasu-macro = { path = "../nyanpasu-macro" }
@@ -56,7 +59,6 @@ fs-err = { workspace = true }                                             # for 
 itertools = "0.15"                                                        # sweet iterator utilities
 rayon = "1.10"                                                            # for iterator parallel processing
 ambassador = "0.5.0"                                                      # for trait delegation
-derive_builder = "0.20"                                                   # for builder pattern
 strum = { version = "0.28", features = ["derive"] }                       # for enum string conversion
 struct-patch = "0.14"
 atomic_enum = "0.3.0"                                                     # for atomic enum
@@ -68,7 +70,6 @@ ractor = "0.16"
 dashmap = "6"
 indexmap = { version = "2.2.3", features = ["serde"] }
 bimap = "0.6.3"
-bumpalo = "3.17.0"                                     # a bump allocator for heap allocation
 rustc-hash = "2.1"
 
 # Terminal Utilities

@@ -5,7 +5,14 @@
 //! so the facade keeps one dependency and this stays a dispatcher rather than a
 //! service locator.
 
-use std::{collections::BTreeMap, future::Future, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use super::{
     plan::{
@@ -50,6 +57,15 @@ pub struct ApplicationEffectExecutor {
     /// except starting the widget, which is acceptable for the same reason the
     /// plan is ordered: these four effects are a single visual state.
     ui_applied: tokio::sync::Mutex<BTreeMap<EffectKind, EffectRevision>>,
+    /// Set by [`Self::shutdown`] before it restores anything.
+    ///
+    /// A plan admitted before the exit path began can still be mid-flight,
+    /// parked in the system proxy or hotkey step. Without this it resumes
+    /// afterwards and re-installs exactly what the shutdown just removed —
+    /// starting the widget again is the visible one. Written under
+    /// `ui_applied`, so a UI adapter call that has not started by then never
+    /// starts at all.
+    closed: AtomicBool,
 }
 
 impl ApplicationEffectExecutor {
@@ -71,6 +87,7 @@ impl ApplicationEffectExecutor {
             widget,
             tray,
             ui_applied: tokio::sync::Mutex::new(BTreeMap::new()),
+            closed: AtomicBool::new(false),
         }
     }
 
@@ -88,6 +105,9 @@ impl ApplicationEffectExecutor {
         apply: impl Future<Output = EffectStatus>,
     ) -> EffectStatus {
         let mut ui_applied = self.ui_applied.lock().await;
+        if self.is_closed() {
+            return shut_down(kind, revision);
+        }
         let applied = ui_applied.get(&kind).copied().unwrap_or_default();
         if revision <= applied {
             tracing::debug!(
@@ -169,12 +189,32 @@ impl ApplicationEffectExecutor {
         }
     }
 
+    /// The one UI effect that is never superseded.
+    ///
+    /// Every other effect carries a value, so an older one arriving late would
+    /// overwrite what a newer one installed. A refresh carries none: it
+    /// re-reads whatever the state now is, which makes a late one harmless and
+    /// a dropped one lossy. Dropping it is what left the menu in the old
+    /// language when a language change was overtaken by a partial refresh,
+    /// with nothing to rebuild it until the next menu-shaped change. Order
+    /// inside a plan still holds, because the dispatch loop runs the plan in
+    /// `EffectKind` order and the tray is last.
     async fn apply_tray(&self, revision: EffectRevision, refresh: TrayRefresh) -> EffectStatus {
+        // Not for staleness, only for the shutdown gate and to keep the
+        // refresh from interleaving with another plan's UI effects.
+        let _ui_applied = self.ui_applied.lock().await;
+        if self.is_closed() {
+            return shut_down(EffectKind::Tray, revision);
+        }
         let result = match refresh {
             TrayRefresh::Full => self.tray.refresh_full().await,
             TrayRefresh::Part => self.tray.refresh_part().await,
         };
         report(EffectKind::Tray, revision, "tray_refresh_failed", result)
+    }
+
+    fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
     }
 }
 
@@ -196,6 +236,12 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
         // the settled value of everything before it.
         let mut statuses = Vec::with_capacity(plan.effects().len());
         for effect in plan.effects() {
+            // Re-read per effect, not once: the shutdown can begin while this
+            // plan is parked in an effect owner.
+            if self.is_closed() {
+                statuses.push(shut_down(effect.kind(), revision));
+                continue;
+            }
             let status = match effect {
                 ApplicationEffect::Locale(language) => {
                     self.apply_ui(EffectKind::Locale, revision, async {
@@ -244,14 +290,8 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                     )
                     .await
                 }
-                ApplicationEffect::Tray(refresh) => {
-                    self.apply_ui(
-                        EffectKind::Tray,
-                        revision,
-                        self.apply_tray(revision, *refresh),
-                    )
-                    .await
-                }
+                // Deliberately not through `apply_ui`: see `apply_tray`.
+                ApplicationEffect::Tray(refresh) => self.apply_tray(revision, *refresh).await,
             };
             statuses.push(status);
         }
@@ -259,6 +299,13 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
     }
 
     async fn shutdown(&self) -> Vec<EffectStatus> {
+        {
+            // Under the UI lock: a plan already inside an adapter call runs to
+            // the end, but nothing new starts, so the widget cannot be started
+            // again after the stop below.
+            let _ui_applied = self.ui_applied.lock().await;
+            self.closed.store(true, Ordering::SeqCst);
+        }
         let revision = EffectRevision::default();
         let widget = match self.widget.stop().await {
             Ok(()) => healthy(EffectKind::Widget, revision),
@@ -314,6 +361,18 @@ fn report(
         // hands the same desired value to the same adapter again.
         Err(error) => degraded(kind, revision, code, format!("{error:#}"), true),
     }
+}
+
+/// Not retryable: the app is leaving, and a retry would re-install what the
+/// shutdown removed.
+fn shut_down(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
+    degraded(
+        kind,
+        revision,
+        "effects_shut_down",
+        "the application effects were shut down and stopped accepting plans".to_owned(),
+        false,
+    )
 }
 
 fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {

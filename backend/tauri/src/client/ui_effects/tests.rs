@@ -37,7 +37,7 @@ use crate::client::{
     },
     system_proxy::{
         SystemProxyArgs, SystemProxyClient,
-        ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig},
+        ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, PacPort},
     },
 };
 
@@ -99,16 +99,33 @@ async fn executor_with_os(
 ) -> ApplicationEffectExecutor {
     let mut pac = MockPacPort::new();
     pac.expect_is_supported().returning(|| false);
+    executor_with_ports(os, Arc::new(pac), locale, logger, widget, tray).await
+}
+
+/// The same executor with the PAC port injected too, so a test can park a plan
+/// exactly where the shutdown token reaches it.
+async fn executor_with_ports(
+    os: MockOsProxyPort,
+    pac: Arc<dyn PacPort>,
+    locale: Arc<dyn LocaleSink>,
+    logger: Arc<dyn LoggerRefresher>,
+    widget: Arc<dyn WidgetController>,
+    tray: Arc<dyn TrayRefresher>,
+) -> ApplicationEffectExecutor {
     let system_proxy = SystemProxyClient::spawn(SystemProxyArgs {
         os: Arc::new(os),
         auto_launch: Arc::new(MockAutoLaunchPort::new()),
-        pac: Arc::new(pac),
+        pac,
         schedule_guard_ticks: false,
     })
     .await
     .expect("the system proxy actor should spawn");
+    // The only registrar call a UI-shaped plan can reach is the shutdown's
+    // release; a plan that registers a shortcut spawns its own registrar.
+    let mut registrar = MockShortcutRegistrar::new();
+    registrar.expect_unregister_all().returning(|| Ok(()));
     let hotkeys = HotkeyClient::spawn(HotkeyArgs {
-        registrar: Arc::new(MockShortcutRegistrar::new()),
+        registrar: Arc::new(registrar),
         sink: Arc::new(MockHotkeyActionSink::new()),
     })
     .await
@@ -665,5 +682,213 @@ async fn a_plan_overtaken_mid_flight_does_not_re_apply_its_widget() {
             .as_slice(),
         [NetworkStatisticWidgetConfig::Disabled],
         "the widget keeps the newest desired state"
+    );
+}
+
+#[tokio::test]
+async fn late_full_tray_refresh_still_runs_after_a_newer_part_refresh() {
+    // A refresh carries no value, so dropping a late one loses the rebuild for
+    // good: the menu would stay in the old language until something else
+    // happened to rebuild it.
+    let log: CallLog = Arc::default();
+    let mut locale = MockLocaleSink::new();
+    let locale_log = log.clone();
+    locale.expect_set_locale().times(1).returning(move |_| {
+        record(&locale_log, "set_locale");
+        Ok(())
+    });
+    let mut tray = MockTrayRefresher::new();
+    let part_log = log.clone();
+    tray.expect_refresh_part().times(1).returning(move || {
+        let log = part_log.clone();
+        Box::pin(async move {
+            record(&log, "refresh_part");
+            Ok(())
+        })
+    });
+    let full_log = log.clone();
+    tray.expect_refresh_full().times(1).returning(move || {
+        let log = full_log.clone();
+        Box::pin(async move {
+            record(&log, "refresh_full");
+            Ok(())
+        })
+    });
+
+    let executor = executor(
+        Arc::new(locale),
+        Arc::new(MockLoggerRefresher::new()),
+        Arc::new(MockWidgetController::new()),
+        Arc::new(tray),
+    )
+    .await;
+
+    // Revision 2 only repaints the tray items and finishes first.
+    let default = NyanpasuAppConfig::default();
+    let part = ApplicationEffectPlan::diff(
+        &inputs(default.clone()),
+        &inputs(NyanpasuAppConfig {
+            enable_tray_text: !default.enable_tray_text,
+            ..default.clone()
+        }),
+    );
+    let newer = executor.apply(EffectRevision::new(2), part).await;
+    assert!(
+        newer
+            .iter()
+            .all(|status| status.health == EffectHealth::Healthy),
+        "{newer:?}"
+    );
+
+    // Revision 1 is the language change that was delayed behind it.
+    let full = ApplicationEffectPlan::diff(
+        &inputs(default.clone()),
+        &inputs(NyanpasuAppConfig {
+            language: I18nLanguage::Russian,
+            ..default
+        }),
+    );
+    let older = executor.apply(EffectRevision::new(1), full).await;
+
+    assert!(
+        older
+            .iter()
+            .all(|status| status.health == EffectHealth::Healthy),
+        "the rebuild is not superseded, because nothing newer performed one: {older:?}"
+    );
+    assert_eq!(
+        calls(&log),
+        vec!["refresh_part", "set_locale", "refresh_full"],
+        "the delayed rebuild still runs, and still runs after its own locale"
+    );
+}
+
+/// Parks the system-proxy step until the shutdown token fires, which is the
+/// first thing `SystemProxyClient::restore` does. A plan is therefore held at
+/// exactly the moment the exit path begins.
+struct ShutdownGatedPac {
+    started: tokio::sync::Notify,
+}
+
+impl ShutdownGatedPac {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            started: tokio::sync::Notify::new(),
+        })
+    }
+
+    async fn started(&self) {
+        self.started.notified().await;
+    }
+}
+
+#[async_trait::async_trait]
+impl PacPort for ShutdownGatedPac {
+    fn is_supported(&self) -> bool {
+        true
+    }
+
+    async fn apply(
+        &self,
+        _url: &url::Url,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> anyhow::Result<()> {
+        self.started.notify_one();
+        cancel.cancelled().await;
+        anyhow::bail!("the PAC download was abandoned by the shutdown")
+    }
+
+    fn disable(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn a_plan_in_flight_at_shutdown_does_not_restart_the_widget() {
+    let pac = ShutdownGatedPac::new();
+    let mut os = MockOsProxyPort::new();
+    os.expect_get()
+        .returning(|| Err(anyhow::anyhow!("no system proxy is set")));
+    os.expect_default_bypass().return_const("bypass");
+    os.expect_set().returning(|_: &OsProxyConfig| Ok(()));
+
+    let log: CallLog = Arc::default();
+    let mut widget = MockWidgetController::new();
+    let apply_log = log.clone();
+    widget.expect_apply().returning(move |_| {
+        record(&apply_log, "apply");
+        Box::pin(async { Ok(()) })
+    });
+    let stop_log = log.clone();
+    widget.expect_stop().times(1).returning(move || {
+        record(&stop_log, "stop");
+        Box::pin(async { Ok(()) })
+    });
+    let mut tray = MockTrayRefresher::new();
+    tray.expect_refresh_part()
+        .returning(|| Box::pin(async { Ok(()) }));
+
+    let executor = Arc::new(
+        executor_with_ports(
+            os,
+            pac.clone(),
+            Arc::new(MockLocaleSink::new()),
+            Arc::new(MockLoggerRefresher::new()),
+            Arc::new(widget),
+            Arc::new(tray),
+        )
+        .await,
+    );
+
+    // The plan turns the proxy on through PAC and enables the widget behind
+    // it, so it is parked before the widget step.
+    let plan = ApplicationEffectPlan::diff(
+        &proxied_inputs(NyanpasuAppConfig::default()),
+        &proxied_inputs(NyanpasuAppConfig {
+            enable_system_proxy: true,
+            pac_url: Some(
+                "http://example.test/proxy.pac"
+                    .parse()
+                    .expect("a valid url"),
+            ),
+            network_statistic_widget: NetworkStatisticWidgetConfig::Enabled(
+                StatisticWidgetVariant::Small,
+            ),
+            ..NyanpasuAppConfig::default()
+        }),
+    );
+    let in_flight = tokio::spawn({
+        let executor = executor.clone();
+        async move { executor.apply(EffectRevision::new(1), plan).await }
+    });
+    pac.started().await;
+
+    let shutdown = executor.shutdown().await;
+    let statuses = in_flight.await.expect("the parked plan completes");
+
+    let widget_status = statuses
+        .iter()
+        .find(|status| status.kind == EffectKind::Widget)
+        .expect("the plan carries the widget");
+    assert_eq!(
+        widget_status.health,
+        EffectHealth::Degraded {
+            code: "effects_shut_down",
+            message: "the application effects were shut down and stopped accepting plans"
+                .to_owned(),
+            retryable: false,
+        },
+        "{statuses:?}"
+    );
+    assert_eq!(
+        calls(&log),
+        vec!["stop"],
+        "a plan that was in flight must not start the widget the shutdown stopped"
+    );
+    assert!(
+        shutdown
+            .iter()
+            .all(|status| status.health == EffectHealth::Healthy),
+        "{shutdown:?}"
     );
 }

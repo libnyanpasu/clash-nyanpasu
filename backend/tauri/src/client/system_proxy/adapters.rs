@@ -7,6 +7,7 @@ use anyhow::{Context, anyhow};
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 use camino::Utf8PathBuf;
 use sysproxy::{Autoproxy, Sysproxy};
+use tokio_util::sync::CancellationToken;
 
 use super::ports::{AutoLaunchPort, OsProxyConfig, OsProxyPort, PacPort};
 
@@ -159,6 +160,9 @@ impl AutoLaunchPort for AutoLaunchBackend {
 const PAC_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 const PAC_MAX_RETRIES: u32 = 3;
 const PAC_RETRY_DELAY: Duration = Duration::from_secs(5);
+/// A PAC script is a small JavaScript file. The cap is what stops a hostile or
+/// misconfigured url from streaming an unbounded body into this process.
+const PAC_MAX_BODY: usize = 8 * 1024 * 1024;
 
 /// Downloads the PAC script, caches it and points the OS auto-config at the
 /// same URL. There is no local PAC server: the OS fetches the URL itself, and
@@ -177,18 +181,27 @@ impl HttpPacBackend {
         Ok(Self { client, cache_path })
     }
 
-    async fn download(&self, url: &url::Url) -> anyhow::Result<String> {
+    /// Every wait is raced against the token. Three attempts and their delays
+    /// add up to nearly two minutes, and this runs on the actor's mailbox: a
+    /// shutdown that had to wait it out would exit with the proxy still on.
+    async fn download(&self, url: &url::Url, cancel: &CancellationToken) -> anyhow::Result<String> {
         let mut last_error = None;
         for attempt in 1..=PAC_MAX_RETRIES {
-            match self.fetch(url).await {
-                Ok(script) => return Ok(script),
-                Err(error) => {
+            match cancel.run_until_cancelled(self.fetch(url)).await {
+                None => return Err(cancelled()),
+                Some(Ok(script)) => return Ok(script),
+                Some(Err(error)) => {
                     tracing::warn!(%error, attempt, "PAC download attempt failed");
                     last_error = Some(error);
                 }
             }
-            if attempt < PAC_MAX_RETRIES {
-                tokio::time::sleep(PAC_RETRY_DELAY).await;
+            if attempt < PAC_MAX_RETRIES
+                && cancel
+                    .run_until_cancelled(tokio::time::sleep(PAC_RETRY_DELAY))
+                    .await
+                    .is_none()
+            {
+                return Err(cancelled());
             }
         }
         Err(last_error
@@ -196,7 +209,7 @@ impl HttpPacBackend {
     }
 
     async fn fetch(&self, url: &url::Url) -> anyhow::Result<String> {
-        let response = self
+        let mut response = self
             .client
             .get(url.clone())
             .send()
@@ -206,10 +219,28 @@ impl HttpPacBackend {
         if !status.is_success() {
             anyhow::bail!("the PAC url answered with {status}");
         }
-        response
-            .text()
+        // Checked first where the server declares it, and again while reading,
+        // because the declaration is only a claim.
+        if let Some(length) = response.content_length()
+            && length > PAC_MAX_BODY as u64
+        {
+            anyhow::bail!(
+                "the PAC script declares {length} bytes, over the {PAC_MAX_BODY} allowed"
+            );
+        }
+
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
-            .context("failed to read the PAC script body")
+            .context("failed to read the PAC script body")?
+        {
+            if body.len() + chunk.len() > PAC_MAX_BODY {
+                anyhow::bail!("the PAC script is larger than the {PAC_MAX_BODY} bytes allowed");
+            }
+            body.extend_from_slice(&chunk);
+        }
+        String::from_utf8(body).context("the PAC script is not valid UTF-8")
     }
 
     async fn cache(&self, script: &str) {
@@ -233,14 +264,19 @@ impl PacPort for HttpPacBackend {
         Autoproxy::is_support()
     }
 
-    async fn apply(&self, url: &url::Url) -> anyhow::Result<()> {
-        let script = self.download(url).await?;
+    async fn apply(&self, url: &url::Url, cancel: CancellationToken) -> anyhow::Result<()> {
+        let script = self.download(url, &cancel).await?;
         // Validated before it is installed: an OS pointed at a script without
         // an entry point resolves every request to no proxy at all.
         if !script.contains("FindProxyForURL") {
             anyhow::bail!("the PAC script has no FindProxyForURL function");
         }
         self.cache(&script).await;
+        // The restore is already on its way to putting the original settings
+        // back, so installing this url now would outlive the app.
+        if cancel.is_cancelled() {
+            return Err(cancelled());
+        }
 
         let url = url.to_string();
         tokio::task::spawn_blocking(move || {
@@ -266,4 +302,8 @@ impl PacPort for HttpPacBackend {
         .set_auto_proxy()
         .context("failed to clear the PAC url")
     }
+}
+
+fn cancelled() -> anyhow::Error {
+    anyhow!("the PAC download was cancelled by the shutdown")
 }

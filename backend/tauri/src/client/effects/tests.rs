@@ -847,6 +847,46 @@ fn non_retryable_degradation_is_not_retried() {
     });
 }
 
+#[test]
+fn no_effects_are_dispatched_after_shutdown() {
+    let dir = tempdir().expect("tempdir should be created");
+    let port = RecordingEffectsPort::healthy();
+    let client = client_with(&dir, port.clone(), Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        client.shutdown_application_effects().await;
+
+        // A window-position save is enough to reach this during teardown.
+        let outcome = client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("a commit during teardown still has to succeed");
+        assert!(
+            matches!(outcome, MutationOutcome::Applied { .. }),
+            "{outcome:?}"
+        );
+        client
+            .reconcile_application_effects()
+            .await
+            .expect("a full reconcile after shutdown is a no-op, not an error");
+
+        assert_eq!(
+            port.dispatch_count(),
+            0,
+            "the owners restored the system state; re-installing it would outlive the app"
+        );
+        assert_eq!(
+            client
+                .get_app_config()
+                .await
+                .expect("config should read back")
+                .language,
+            I18nLanguage::Korean,
+            "the configuration is still committed"
+        );
+    });
+}
+
 /// Parks the first dispatch it receives until the test releases it, and
 /// degrades `kind` on the second. That is enough to invert completion order
 /// against revision order without a single sleep.

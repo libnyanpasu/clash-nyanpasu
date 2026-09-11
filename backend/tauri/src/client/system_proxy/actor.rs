@@ -9,6 +9,7 @@
 use std::{sync::Arc, time::Duration};
 
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, concurrency::JoinHandle};
+use tokio_util::sync::CancellationToken;
 
 use super::{
     SystemProxyStatus,
@@ -55,10 +56,20 @@ pub struct Args {
     pub schedule_guard_ticks: bool,
 }
 
+/// What the typed client hands the actor on top of the injected ports.
+pub(super) struct ActorArgs {
+    pub args: Args,
+    /// Fired by [`super::SystemProxyClient::restore`] before the restore
+    /// message is sent, so an in-flight PAC download stops occupying the
+    /// mailbox instead of outlasting the exit path.
+    pub cancel: CancellationToken,
+}
+
 pub(super) struct State {
     os: Arc<dyn OsProxyPort>,
     auto_launch: Arc<dyn AutoLaunchPort>,
     pac: Arc<dyn PacPort>,
+    cancel: CancellationToken,
     schedule_guard_ticks: bool,
     /// Highest revision acted on, per capability. The facade's gate orders
     /// revisions; this is what protects the reconcile entry points that do not
@@ -78,6 +89,10 @@ pub(super) struct State {
     /// does not tear it down and rebuild it.
     guard_running: Option<Duration>,
     guard_job: Option<JoinHandle<()>>,
+    /// Set by the restore. The original settings are back in place by then, so
+    /// anything that would write the OS again is refused rather than undoing
+    /// the exit path.
+    closed: bool,
 }
 
 /// One revision per capability, not one for the actor.
@@ -116,17 +131,19 @@ pub(super) struct SystemProxyActor;
 impl Actor for SystemProxyActor {
     type Msg = Message;
     type State = State;
-    type Arguments = Args;
+    type Arguments = ActorArgs;
 
     async fn pre_start(
         &self,
         _myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
+        let ActorArgs { args, cancel } = args;
         Ok(State {
             os: args.os,
             auto_launch: args.auto_launch,
             pac: args.pac,
+            cancel,
             schedule_guard_ticks: args.schedule_guard_ticks,
             applied: AppliedRevisions::default(),
             health: EffectHealth::Healthy,
@@ -137,6 +154,7 @@ impl Actor for SystemProxyActor {
             guard: None,
             guard_running: None,
             guard_job: None,
+            closed: false,
         })
     }
 
@@ -191,6 +209,18 @@ impl State {
         auto_launch: Option<bool>,
     ) -> Vec<EffectStatus> {
         let kinds = requested_kinds(proxy.is_some(), guard.is_some(), auto_launch.is_some());
+        if self.closed {
+            // The restore already put the user's settings back. Applying a
+            // plan now would re-install the proxy of an app that is leaving.
+            tracing::debug!(
+                revision = revision.get(),
+                "refusing a system proxy reconcile after the restore"
+            );
+            return kinds
+                .into_iter()
+                .map(|kind| self.shut_down(kind, revision))
+                .collect();
+        }
         let mut statuses = Vec::with_capacity(kinds.len());
 
         // Decided per capability: a revision no newer than what that capability
@@ -368,7 +398,7 @@ impl State {
             };
         }
 
-        match self.pac.apply(url).await {
+        match self.pac.apply(url, self.cancel.clone()).await {
             Ok(()) => {
                 self.pac_active = true;
                 self.healthy(EffectKind::SystemProxy, revision)
@@ -554,6 +584,10 @@ impl State {
     /// enable the OS refused was never accepted at all, and a refused port
     /// change would have the guard re-installing the stale port forever.
     async fn guard_tick(&mut self) {
+        // A tick queued before the restore must not re-install what it removed.
+        if self.closed {
+            return;
+        }
         // Under PAC the OS holds an auto-config URL, not a proxy endpoint;
         // writing one every tick is what made the two settings fight.
         if self.pac_active {
@@ -576,6 +610,7 @@ impl State {
     }
 
     async fn restore(&mut self) -> EffectStatus {
+        self.closed = true;
         self.stop_guard();
         self.guard = None;
         self.guard_running = None;
@@ -645,6 +680,21 @@ impl State {
             desired_revision: revision,
             applied_revision: self.applied.of(kind),
             health: EffectHealth::Healthy,
+        }
+    }
+
+    /// Not retryable: nothing about this app's exit is going to change, and a
+    /// retry would re-install the proxy the restore just removed.
+    fn shut_down(&self, kind: EffectKind, revision: EffectRevision) -> EffectStatus {
+        EffectStatus {
+            kind,
+            desired_revision: revision,
+            applied_revision: self.applied.of(kind),
+            health: EffectHealth::Degraded {
+                code: "system_proxy_shut_down",
+                message: "the system proxy owner restored the original settings and stopped accepting changes".to_owned(),
+                retryable: false,
+            },
         }
     }
 

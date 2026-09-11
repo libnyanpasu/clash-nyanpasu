@@ -4,6 +4,8 @@
 //! plain fakes: nothing here mentions `sysproxy`, `auto_launch`, `reqwest` or
 //! Tauri. The concrete implementations live in [`super::adapters`].
 
+use tokio_util::sync::CancellationToken;
+
 /// What the OS proxy settings look like, in the only shape this app writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OsProxyConfig {
@@ -36,6 +38,10 @@ pub trait AutoLaunchPort: Send + Sync + 'static {
 #[async_trait::async_trait]
 pub trait PacPort: Send + Sync + 'static {
     fn is_supported(&self) -> bool;
-    async fn apply(&self, url: &url::Url) -> anyhow::Result<()>;
+    /// Runs on the actor's mailbox turn and reaches the network, so it takes
+    /// the shutdown token: an implementation must abandon whatever it is
+    /// waiting on as soon as the token fires, or the exit path queues behind
+    /// a download it cannot outlast.
+    async fn apply(&self, url: &url::Url, cancel: CancellationToken) -> anyhow::Result<()>;
     fn disable(&self) -> anyhow::Result<()>;
 }

@@ -525,6 +525,39 @@ async fn stale_revision_is_superseded() {
 }
 
 #[tokio::test]
+async fn stale_proxy_revision_is_still_applied_when_newer_revision_touched_only_auto_launch() {
+    // A plan carries only what changed, and the facade releases its gate before
+    // dispatch, so a later auto-launch-only reconcile can overtake an earlier
+    // one that carries the proxy. One revision for the whole actor would drop
+    // that proxy value for good.
+    let os = RecordingOsProxy::new();
+    let client = spawn_with_os(os.clone()).await;
+
+    client.reconcile(rev(2), None, None, Some(true)).await;
+    let statuses = client
+        .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
+        .await;
+
+    assert_eq!(
+        health_of(&statuses, EffectKind::SystemProxy),
+        EffectHealth::Healthy
+    );
+    assert_eq!(os.last_write().port, 7890);
+
+    // The proxy capability now holds revision 1, so the same one again is the
+    // stale reconcile it always was.
+    let statuses = client
+        .reconcile(rev(1), Some(proxy(false, Some(7890))), None, None)
+        .await;
+
+    assert_eq!(
+        health_of(&statuses, EffectKind::SystemProxy),
+        EffectHealth::Superseded
+    );
+    assert_eq!(os.writes().len(), 1);
+}
+
+#[tokio::test]
 async fn auto_launch_failure_degrades_independently() {
     let os = RecordingOsProxy::new();
     let mut auto_launch = MockAutoLaunchPort::new();

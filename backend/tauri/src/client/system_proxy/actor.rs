@@ -60,10 +60,10 @@ pub(super) struct State {
     auto_launch: Arc<dyn AutoLaunchPort>,
     pac: Arc<dyn PacPort>,
     schedule_guard_ticks: bool,
-    /// Highest revision this actor has acted on. The facade's gate orders
+    /// Highest revision acted on, per capability. The facade's gate orders
     /// revisions; this is what protects the reconcile entry points that do not
     /// pass through the gate at all (startup reconcile, shutdown restore).
-    applied_revision: EffectRevision,
+    applied: AppliedRevisions,
     health: EffectHealth,
     /// Captured once, immediately before this process first turns its own
     /// proxy on. Written back on exit.
@@ -78,6 +78,37 @@ pub(super) struct State {
     /// does not tear it down and rebuild it.
     guard_running: Option<Duration>,
     guard_job: Option<JoinHandle<()>>,
+}
+
+/// One revision per capability, not one for the actor.
+///
+/// A plan carries only the effects that changed, so a reconcile that touches
+/// auto-launch alone can overtake an older one that carries the proxy. A single
+/// counter would call that older proxy value superseded and never install it,
+/// even though nothing newer ever described the proxy.
+#[derive(Default)]
+struct AppliedRevisions {
+    proxy: EffectRevision,
+    guard: EffectRevision,
+    auto_launch: EffectRevision,
+}
+
+impl AppliedRevisions {
+    fn of(&self, kind: EffectKind) -> EffectRevision {
+        match kind {
+            EffectKind::SystemProxy => self.proxy,
+            EffectKind::ProxyGuard => self.guard,
+            EffectKind::AutoLaunch => self.auto_launch,
+            // No other kind reaches this actor.
+            _ => self.max(),
+        }
+    }
+
+    /// What the actor as a whole has applied, for the status projection and
+    /// for the restore report, which belongs to no single capability.
+    fn max(&self) -> EffectRevision {
+        self.proxy.max(self.guard).max(self.auto_launch)
+    }
 }
 
 pub(super) struct SystemProxyActor;
@@ -97,7 +128,7 @@ impl Actor for SystemProxyActor {
             auto_launch: args.auto_launch,
             pac: args.pac,
             schedule_guard_ticks: args.schedule_guard_ticks,
-            applied_revision: EffectRevision::default(),
+            applied: AppliedRevisions::default(),
             health: EffectHealth::Healthy,
             original: None,
             current: None,
@@ -160,45 +191,64 @@ impl State {
         auto_launch: Option<bool>,
     ) -> Vec<EffectStatus> {
         let kinds = requested_kinds(proxy.is_some(), guard.is_some(), auto_launch.is_some());
-        // A reconcile no newer than what is already in place carries an older
-        // desired state by definition, so applying it would undo the newer one.
-        if revision <= self.applied_revision {
-            tracing::debug!(
-                requested = revision.get(),
-                applied = self.applied_revision.get(),
-                "dropping a superseded system proxy reconcile"
-            );
-            return kinds
-                .into_iter()
-                .map(|kind| EffectStatus {
-                    kind,
-                    desired_revision: revision,
-                    applied_revision: self.applied_revision,
-                    health: EffectHealth::Superseded,
-                })
-                .collect();
-        }
-        self.applied_revision = revision;
-
         let mut statuses = Vec::with_capacity(kinds.len());
+
+        // Decided per capability: a revision no newer than what that capability
+        // already holds carries an older desired value for *it*, but says
+        // nothing about the capabilities the plan left out.
         if let Some(enabled) = auto_launch {
-            statuses.push(self.apply_auto_launch(revision, enabled).await);
+            statuses.push(match self.claim(EffectKind::AutoLaunch, revision) {
+                false => self.superseded(EffectKind::AutoLaunch, revision),
+                true => self.apply_auto_launch(revision, enabled).await,
+            });
         }
         if let Some(desired) = proxy {
-            let status = self.apply_system_proxy(revision, desired).await;
-            self.health = status.health.clone();
+            let status = match self.claim(EffectKind::SystemProxy, revision) {
+                false => self.superseded(EffectKind::SystemProxy, revision),
+                true => {
+                    let status = self.apply_system_proxy(revision, desired).await;
+                    self.health = status.health.clone();
+                    status
+                }
+            };
             statuses.push(status);
         }
         if let Some(desired) = guard {
-            self.guard = Some(desired);
+            let status = match self.claim(EffectKind::ProxyGuard, revision) {
+                false => self.superseded(EffectKind::ProxyGuard, revision),
+                true => {
+                    self.guard = Some(desired);
+                    self.healthy(EffectKind::ProxyGuard, revision)
+                }
+            };
+            statuses.push(status);
         }
         // Recomputed even when the plan carried no guard item: turning the
         // proxy off leaves the guard with nothing to re-apply.
         self.refresh_guard(myself);
-        if guard.is_some() {
-            statuses.push(self.healthy(EffectKind::ProxyGuard, revision));
-        }
         statuses
+    }
+
+    /// Takes ownership of a capability for this revision, or reports that a
+    /// newer one already owns it.
+    fn claim(&mut self, kind: EffectKind, revision: EffectRevision) -> bool {
+        let applied = self.applied.of(kind);
+        if revision <= applied {
+            tracing::debug!(
+                requested = revision.get(),
+                applied = applied.get(),
+                ?kind,
+                "dropping a superseded system proxy reconcile"
+            );
+            return false;
+        }
+        match kind {
+            EffectKind::SystemProxy => self.applied.proxy = revision,
+            EffectKind::ProxyGuard => self.applied.guard = revision,
+            EffectKind::AutoLaunch => self.applied.auto_launch = revision,
+            _ => {}
+        }
+        true
     }
 
     async fn apply_auto_launch(&self, revision: EffectRevision, enabled: bool) -> EffectStatus {
@@ -497,7 +547,7 @@ impl State {
             }
         }
 
-        let revision = self.applied_revision;
+        let revision = self.applied.max();
         match failure {
             None => self.healthy(EffectKind::SystemProxy, revision),
             Some(message) => self.degraded(
@@ -511,7 +561,7 @@ impl State {
 
     fn status(&self) -> SystemProxyStatus {
         SystemProxyStatus {
-            applied_revision: self.applied_revision,
+            applied_revision: self.applied.max(),
             health: self.health.clone(),
             desired: self.desired.clone(),
             guard_active: self.guard_running.is_some(),
@@ -524,8 +574,17 @@ impl State {
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied_revision,
+            applied_revision: self.applied.of(kind),
             health: EffectHealth::Healthy,
+        }
+    }
+
+    fn superseded(&self, kind: EffectKind, revision: EffectRevision) -> EffectStatus {
+        EffectStatus {
+            kind,
+            desired_revision: revision,
+            applied_revision: self.applied.of(kind),
+            health: EffectHealth::Superseded,
         }
     }
 
@@ -540,7 +599,7 @@ impl State {
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied_revision,
+            applied_revision: self.applied.of(kind),
             health: EffectHealth::Degraded {
                 code,
                 message,

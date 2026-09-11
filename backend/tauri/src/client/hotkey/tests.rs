@@ -6,9 +6,10 @@ use std::sync::{Arc, Mutex};
 
 use super::{
     HotkeyArgs, HotkeyClient,
+    adapters::PlatformAcceleratorValidator,
     ports::{
-        HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp, HotkeyParseError,
-        MockHotkeyActionSink, ShortcutRegistrar,
+        AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp,
+        HotkeyParseError, MockHotkeyActionSink, ShortcutRegistrar,
     },
 };
 use crate::client::effects::status::{EffectHealth, EffectRevision};
@@ -17,12 +18,25 @@ fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()
 }
 
+/// Accepts anything the shape rules already let through, so the registration
+/// tests read as the spelling under test rather than as a platform verdict.
+struct AnyAccelerator;
+
+impl AcceleratorValidator for AnyAccelerator {
+    fn validate(&self, _accelerator: &str) -> Result<(), HotkeyParseError> {
+        Ok(())
+    }
+}
+
 #[test]
 fn parse_accepts_the_legacy_func_comma_key_format() {
-    let bindings = HotkeyBindings::parse(&entries(&[
-        "open_or_close_dashboard,Control+Q",
-        " toggle_tun_mode , Control+Shift+T ",
-    ]))
+    let bindings = HotkeyBindings::parse(
+        &entries(&[
+            "open_or_close_dashboard,Control+Q",
+            " toggle_tun_mode , Control+Shift+T ",
+        ]),
+        &AnyAccelerator,
+    )
     .expect("both entries are well formed");
 
     assert_eq!(
@@ -39,21 +53,21 @@ fn parse_accepts_the_legacy_func_comma_key_format() {
 #[test]
 fn parse_rejects_malformed_unknown_invalid_and_missing_super() {
     assert_eq!(
-        HotkeyBindings::parse(&entries(&["open_or_close_dashboard"])),
+        HotkeyBindings::parse(&entries(&["open_or_close_dashboard"]), &AnyAccelerator),
         Err(HotkeyParseError::MalformedEntry(
             "open_or_close_dashboard".to_owned()
         ))
     );
     assert_eq!(
-        HotkeyBindings::parse(&entries(&["make_coffee,Control+Q"])),
+        HotkeyBindings::parse(&entries(&["make_coffee,Control+Q"]), &AnyAccelerator),
         Err(HotkeyParseError::UnknownFunction("make_coffee".to_owned()))
     );
     assert_eq!(
-        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Control++"])),
+        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Control++"]), &AnyAccelerator),
         Err(HotkeyParseError::InvalidAccelerator("Control++".to_owned()))
     );
     assert_eq!(
-        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Q"])),
+        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Q"]), &AnyAccelerator),
         Err(HotkeyParseError::MissingSuperKey("Q".to_owned())),
         "a bare key would swallow ordinary typing"
     );
@@ -62,13 +76,34 @@ fn parse_rejects_malformed_unknown_invalid_and_missing_super() {
 #[test]
 fn parse_rejects_duplicate_accelerator() {
     assert_eq!(
-        HotkeyBindings::parse(&entries(&[
-            "enable_tun_mode,Control+Q",
-            "disable_tun_mode,Control+Q",
-        ])),
+        HotkeyBindings::parse(
+            &entries(&["enable_tun_mode,Control+Q", "disable_tun_mode,Control+Q"]),
+            &AnyAccelerator,
+        ),
         Err(HotkeyParseError::DuplicateAccelerator(
             "Control+Q".to_owned()
         ))
+    );
+}
+
+#[test]
+fn parse_rejects_what_the_platform_parser_refuses() {
+    assert_eq!(
+        HotkeyBindings::parse(
+            &entries(&["toggle_tun_mode,Control+DefinitelyNotAKey"]),
+            &PlatformAcceleratorValidator,
+        ),
+        Err(HotkeyParseError::InvalidAccelerator(
+            "Control+DefinitelyNotAKey".to_owned()
+        )),
+        "the shape rules alone cannot tell a key name from a typo"
+    );
+    assert!(
+        HotkeyBindings::parse(
+            &entries(&["toggle_tun_mode,Control+Shift+T"]),
+            &PlatformAcceleratorValidator,
+        )
+        .is_ok()
     );
 }
 
@@ -114,6 +149,8 @@ struct RecordingRegistrar {
     /// Accelerators whose `register` must fail.
     register_failures: Mutex<Vec<String>>,
     unregister_failures: Mutex<Vec<String>>,
+    /// Accelerators the platform parser refuses.
+    invalid: Mutex<Vec<String>>,
     /// The sink handed to the last successful `register`.
     last_sink: Mutex<Option<Arc<dyn HotkeyActionSink>>>,
     last_action: Mutex<Option<HotkeyAction>>,
@@ -131,6 +168,13 @@ impl RecordingRegistrar {
         })
     }
 
+    fn refusing(accelerators: &[&str]) -> Arc<Self> {
+        Arc::new(Self {
+            invalid: Mutex::new(entries(accelerators)),
+            ..Self::default()
+        })
+    }
+
     fn calls(&self) -> Vec<String> {
         self.calls.lock().expect("call log").clone()
     }
@@ -143,7 +187,16 @@ impl RecordingRegistrar {
 }
 
 impl ShortcutRegistrar for RecordingRegistrar {
-    fn validate(&self, _accelerator: &str) -> Result<(), HotkeyParseError> {
+    fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError> {
+        if self
+            .invalid
+            .lock()
+            .expect("invalid")
+            .iter()
+            .any(|refused| refused == accelerator)
+        {
+            return Err(HotkeyParseError::InvalidAccelerator(accelerator.to_owned()));
+        }
         Ok(())
     }
 
@@ -207,7 +260,7 @@ async fn client_with(registrar: Arc<RecordingRegistrar>) -> HotkeyClient {
 }
 
 fn bindings(raw: &[&str]) -> HotkeyBindings {
-    HotkeyBindings::parse(&entries(raw)).expect("the fixture must parse")
+    HotkeyBindings::parse(&entries(raw), &AnyAccelerator).expect("the fixture must parse")
 }
 
 #[tokio::test]
@@ -328,6 +381,51 @@ async fn a_refused_grab_is_retried_by_the_next_reconcile() {
     assert_eq!(registrar.calls(), vec!["register:Control+B".to_owned()]);
 }
 
+/// The old check sat inside `register`, which runs after every release, so a
+/// single unparsable accelerator tore down the shortcuts that did work.
+#[tokio::test]
+async fn reconcile_validates_every_binding_before_releasing_any() {
+    let registrar = RecordingRegistrar::refusing(&["Control+DefinitelyNotAKey"]);
+    let client = client_with(registrar.clone()).await;
+    client
+        .reconcile(
+            EffectRevision::new(1),
+            bindings(&["enable_tun_mode,Control+A"]),
+        )
+        .await;
+    registrar.calls.lock().expect("call log").clear();
+
+    let status = client
+        .reconcile(
+            EffectRevision::new(2),
+            bindings(&["enable_system_proxy,Control+DefinitelyNotAKey"]),
+        )
+        .await;
+
+    match status.health {
+        EffectHealth::Degraded {
+            code,
+            ref message,
+            retryable,
+        } => {
+            assert_eq!(code, "hotkey_invalid_bindings");
+            assert!(message.contains("Control+DefinitelyNotAKey"), "{message}");
+            assert!(!retryable, "the list has to change before a retry can help");
+        }
+        other => panic!("an unparsable accelerator must degrade, got {other:?}"),
+    }
+    assert!(
+        registrar.calls().is_empty(),
+        "nothing may be released or grabbed, got {:?}",
+        registrar.calls()
+    );
+    assert_eq!(
+        client.status().await.registered.get("Control+A"),
+        Some(&HotkeyAction::EnableTunMode),
+        "the working shortcut must survive a rejected list"
+    );
+}
+
 #[tokio::test]
 async fn stale_revision_is_superseded() {
     let registrar = RecordingRegistrar::new();
@@ -414,6 +512,7 @@ mod facade {
     use super::super::ports::{HotkeyAction, MockWindowControl};
     use crate::client::{
         NyanpasuClient,
+        effects::ports::MockApplicationEffectsPort,
         tests::{test_client_args_with_endpoint, test_idle_endpoint},
     };
 
@@ -535,6 +634,38 @@ mod facade {
                 .dispatch_hotkey_action(HotkeyAction::OpenOrCloseDashboard)
                 .await
                 .expect("the dashboard toggle should succeed");
+        });
+    }
+
+    /// The platform parser is the authority on an accelerator, and it has to be
+    /// consulted here: after the commit the effect has already released the
+    /// shortcuts that used to work, and the junk is on disk.
+    #[test]
+    fn platform_invalid_accelerator_is_rejected_before_commit() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut effects = MockApplicationEffectsPort::new();
+        effects.expect_apply().never();
+        effects.expect_shutdown().never();
+        let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
+        args.effects = Arc::new(effects);
+        let client = NyanpasuClient::try_new_with_args(args).expect("client should construct");
+
+        tauri::async_runtime::block_on(async {
+            let mut patch = <NyanpasuAppConfig as struct_patch::Patch<_>>::new_empty_patch();
+            patch.hotkeys = Some(vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()]);
+
+            let error = client
+                .patch_app_config(patch)
+                .await
+                .expect_err("an accelerator the platform cannot parse must not be persisted");
+            assert!(
+                error.to_string().contains("DefinitelyNotAKey"),
+                "unexpected error: {error}"
+            );
+            assert!(
+                client.get_app_config().await.unwrap().hotkeys.is_empty(),
+                "nothing may be written when validation fails"
+            );
         });
     }
 

@@ -83,6 +83,7 @@ pub struct ClientSetupArgs {
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
+    pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
 }
 
 #[derive(Clone)]
@@ -275,6 +276,9 @@ struct NyanpasuClientInner {
     system_dns: Arc<dyn SystemDnsCache>,
     effects: effects::ApplicationEffects,
     window: Arc<dyn hotkey::ports::WindowControl>,
+    /// The platform's accelerator rule, used to reject a hotkey list before it
+    /// is committed rather than after the effect has torn the old grabs down.
+    accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
 }
 
 #[allow(dead_code)]
@@ -292,6 +296,7 @@ impl NyanpasuClient {
             binary_installer,
             effects,
             window,
+            accelerators,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -354,6 +359,7 @@ impl NyanpasuClient {
             binary_installer,
             effects,
             window,
+            accelerators,
         ))
     }
 
@@ -376,6 +382,7 @@ impl NyanpasuClient {
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
+        accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
@@ -419,6 +426,7 @@ impl NyanpasuClient {
                 system_dns,
                 effects: effects::ApplicationEffects::new(effects),
                 window,
+                accelerators,
             }),
         })
     }
@@ -561,7 +569,7 @@ impl NyanpasuClient {
         patch: NyanpasuAppConfigPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
         if let Some(hotkeys) = patch.hotkeys.as_deref() {
-            hotkey::validate_bindings(hotkeys)?;
+            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_ref())?;
         }
         let client = self.inner.application.clone();
         self.commit_and_reconcile(move || async move {
@@ -575,7 +583,7 @@ impl NyanpasuClient {
         &self,
         state: NyanpasuAppConfig,
     ) -> Result<runtime::MutationOutcome<()>> {
-        hotkey::validate_bindings(&state.hotkeys)?;
+        hotkey::validate_bindings(&state.hotkeys, self.inner.accelerators.as_ref())?;
         let client = self.inner.application.clone();
         self.commit_and_reconcile(move || async move {
             client.replace(state).await?;
@@ -2421,6 +2429,7 @@ pub(crate) mod tests {
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
+            Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         )
         .await
         .unwrap()
@@ -2478,6 +2487,9 @@ pub(crate) mod tests {
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
             window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            // The real rule: a test that writes a hotkey the platform cannot
+            // parse should fail here, exactly as the app would.
+            accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         }
     }
 
@@ -2689,6 +2701,7 @@ pub(crate) mod tests {
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
+            Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         )
         .await
         .unwrap();
@@ -2849,6 +2862,9 @@ pub(crate) mod tests {
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
             window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            // The real rule: a test that writes a hotkey the platform cannot
+            // parse should fail here, exactly as the app would.
+            accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         })
         .expect("client should construct with typed config actors");
 
@@ -3684,6 +3700,7 @@ pub(crate) mod tests {
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
+                Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             )
             .await
             .unwrap();

@@ -658,6 +658,7 @@ mod executor {
     use crate::client::{
         hotkey::{
             HotkeyArgs, HotkeyClient,
+            adapters::PlatformAcceleratorValidator,
             ports::{MockHotkeyActionSink, MockShortcutRegistrar},
         },
         system_proxy::{
@@ -725,7 +726,11 @@ mod executor {
         })
         .await
         .expect("the hotkey actor should spawn");
-        ApplicationEffectExecutor::new(system_proxy, hotkeys)
+        ApplicationEffectExecutor::new(
+            system_proxy,
+            hotkeys,
+            Arc::new(PlatformAcceleratorValidator),
+        )
     }
 
     #[tokio::test]

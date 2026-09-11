@@ -152,8 +152,12 @@ fn timeout_health() -> EffectHealth {
 /// Validation belongs in front of the commit, not in the effect that follows
 /// it: a typo would otherwise be persisted and then reported as a degraded side
 /// effect, leaving the stored config holding bindings that can never register.
-pub(crate) fn validate_bindings(raw: &[String]) -> Result<()> {
-    HotkeyBindings::parse(raw).map_err(|error| super::ClientError::Anyhow(error.into()))?;
+pub(crate) fn validate_bindings(
+    raw: &[String],
+    accelerators: &dyn ports::AcceleratorValidator,
+) -> Result<()> {
+    HotkeyBindings::parse(raw, accelerators)
+        .map_err(|error| super::ClientError::Anyhow(error.into()))?;
     Ok(())
 }
 

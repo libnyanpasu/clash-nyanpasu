@@ -1088,6 +1088,7 @@ mod tests {
             binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(crate::client::effects::ports::NoopApplicationEffects),
             window: Arc::new(crate::client::hotkey::ports::MockWindowControl::new()),
+            accelerators: Arc::new(crate::client::hotkey::adapters::PlatformAcceleratorValidator),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path, legacy_store);
@@ -2409,6 +2410,7 @@ mod tests {
             binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             effects,
             window: Arc::new(crate::client::hotkey::ports::MockWindowControl::new()),
+            accelerators: Arc::new(crate::client::hotkey::adapters::PlatformAcceleratorValidator),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(

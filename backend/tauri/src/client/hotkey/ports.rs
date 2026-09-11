@@ -140,11 +140,14 @@ pub struct HotkeyBindings(BTreeMap<String, HotkeyAction>);
 impl HotkeyBindings {
     /// Parses the stored `"<function>,<accelerator>"` entries.
     ///
-    /// The accelerator check here is structural only. Whether the platform's
-    /// shortcut parser accepts the combination is something only
-    /// [`ShortcutRegistrar::validate`] can answer, and the registrar runs it
-    /// again before touching the OS.
-    pub fn parse(raw: &[String]) -> Result<Self, HotkeyParseError> {
+    /// `validator` is the platform's own parser. It runs here, in front of the
+    /// commit, because an accelerator the OS cannot read is not something the
+    /// effect that follows the commit can recover from: by then the old
+    /// shortcuts have been released and the junk is already on disk.
+    pub fn parse(
+        raw: &[String],
+        validator: &dyn AcceleratorValidator,
+    ) -> Result<Self, HotkeyParseError> {
         let mut bindings = BTreeMap::new();
         for entry in raw {
             let (function, accelerator) = entry
@@ -158,6 +161,7 @@ impl HotkeyBindings {
 
             let action = function.parse::<HotkeyAction>()?;
             validate_accelerator_shape(accelerator)?;
+            validator.validate(accelerator)?;
             if bindings.insert(accelerator.to_owned(), action).is_some() {
                 return Err(HotkeyParseError::DuplicateAccelerator(
                     accelerator.to_owned(),
@@ -180,6 +184,12 @@ impl HotkeyBindings {
     #[cfg(test)]
     pub fn as_map(&self) -> &BTreeMap<String, HotkeyAction> {
         &self.0
+    }
+
+    /// Every accelerator in the set, so the actor can check them all before it
+    /// releases anything.
+    pub fn accelerators(&self) -> impl Iterator<Item = &str> {
+        self.0.keys().map(String::as_str)
     }
 
     /// The operations that turn `self` into `next`. An accelerator bound to the
@@ -235,6 +245,16 @@ fn validate_accelerator_shape(accelerator: &str) -> Result<(), HotkeyParseError>
 pub fn has_super_key(accelerator: &str) -> bool {
     let lowered = accelerator.to_lowercase();
     SUPER_KEYS.iter().any(|key| lowered.contains(key))
+}
+
+/// Whether the platform's shortcut parser accepts an accelerator.
+///
+/// Its own port rather than a method on [`ShortcutRegistrar`]: the check needs
+/// no app handle and no registration, so the facade can run it in front of a
+/// commit without holding anything that touches the OS.
+#[cfg_attr(test, mockall::automock)]
+pub trait AcceleratorValidator: Send + Sync + 'static {
+    fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError>;
 }
 
 /// Platform global-shortcut registration.

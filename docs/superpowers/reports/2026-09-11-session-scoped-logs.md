@@ -20,7 +20,7 @@ Opening the viewer does not install or start the privileged service.
 | P5   | clash-nyanpasu   | File viewer, source selection and route session lifecycle   | P3           |
 | P6   | clash-nyanpasu   | Production benchmark and this acceptance report             | P5           |
 
-Runtime code reviewed by the main gitlink is `9cc5f37`. The main integration PRs
+Runtime code reviewed by the main gitlink is `4f7484f` (gxhash follow-up to `9cc5f37`). The main integration PRs
 remain draft until the runtime changes are merged and published as a release tag.
 Before production merge, update the gitlink to that released tag and regenerate
 the lockfile/bindings if necessary. Repository sidecar preparation obtains binaries
@@ -134,3 +134,23 @@ and the limits of comparing the old, semantically incorrect query algorithm.
 
 These release checks are explicit merge gates on the draft main stack, not claims
 that the native acceptance suite already passed.
+
+## Requested gxhash migration
+
+The follow-up runtime PR switches the target interner, postings, session/slot maps
+and lease-reaping map to randomized `GxBuildHasher`. The main follow-up updates the
+gitlink and benchmarks. Runtime build flags cover all eight release triples, and
+the coverage job preserves AES when overriding `RUSTFLAGS`. This establishes a
+hardware-AES requirement for the service as already configured in the main app.
+
+After this task's compilation jobs finished, a fresh 60-second measurement received
+all 60,000 appended rows. Cold first page: 135.10 ms; p50/p95/max file-to-actor
+latency: 710/1,181/1,461 ms. This remains second-level delivery; separate wall-clock
+runs do not isolate the hasher's contribution from machine scheduling and IO.
+Production index memory and the zero-unreleased-byte cycle result were unchanged.
+
+The gxhash follow-up passed the same 12 shared logging tests, strict logging clippy,
+57 IPC tests, 106 service runtime tests and main app facade test on Windows.
+Original FxHash measurements above remain historical evidence; current gxhash
+samples use separate `gxhash-` filenames under `tools/log-index-bench/results`.
+Native release acceptance and non-Windows execution remain gated as described above.

@@ -37,8 +37,9 @@ IDs, which the benchmark guarantees. It is not suitable as a production fix.
 Environment: Windows x86_64, Intel i9-14900KF, rustc
 `1.100.0-nightly (67eda617e 2026-09-10)`, release, codegen-units=1, System allocator.
 The earlier full-layout results and methodology are in `results/allocation-report.md`.
-The new comparison fixes the row metadata, Vec layout, query algorithm and FxHasher
-across interners. String and SmolStr store their values directly; their larger row
+The archived comparison fixes the row metadata, Vec layout, query algorithm and FxHasher
+across interners. The current `strings` binary uses GxBuildHasher; its results are
+archived separately with a `gxhash-` prefix. String and SmolStr store their values directly; their larger row
 layout is an inherent part of that representation. Inputs are borrowed and prepared
 outside timing, so this comparison excludes JSON parsing, filesystem, IPC and GUI.
 
@@ -96,3 +97,24 @@ in this mode. It uses normal scheduler placement and one measured 60-second run.
 The separate `alloc-stats` mode counts allocations for the production pure Index,
 including parsing, then checks 100 build/query/drop cycles. It measures requested
 heap bytes, not RSS or actor/GUI heap size. See the JSONL files under `results/`.
+
+## gxhash follow-up
+
+The production index, lasso target pool and session tables now use gxhash 3.5.0.
+Interners in `strings` use the same randomized
+[GxBuildHasher](https://docs.rs/gxhash/3.5.0/gxhash/struct.GxBuildHasher.html).
+The frozen `reference-indexer`, defect probes and `allocation_bench` keep their
+original hashers so the archived baseline remains reproducible. The root Cargo
+configuration already enables hardware AES; the standalone runtime now does too,
+including its musl targets and coverage environment override.
+
+The `gxhash-strings-timing.jsonl` run uses the same warm-up and nine measured rounds
+after this task's compilation jobs completed. Lasso's median build time is
+5.326 ms for 100k rows / 50k targets / 128 B, and 16.753 ms for 1m rows / 128 targets /
+64 B. These are separate wall-clock runs from the archived FxHash measurements,
+not a paired experiment establishing a causal performance difference.
+
+Production index memory remains 7,345,692 live requested bytes for 100k rows and
+zero unreleased bytes after 100 build/query/drop cycles. The `gxhash-viewer-*.jsonl`
+files contain the repeated production measurements; their scope remains file to
+actor, excluding native IPC/GUI rendering and process RSS.

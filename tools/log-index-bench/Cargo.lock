@@ -418,6 +418,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gxhash"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3ce1bab7aa741d4e7042b2aae415b78741f267a98a7271ea226cd5ba6c43d7d"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -543,6 +552,7 @@ dependencies = [
  "camino",
  "chrono",
  "derive_builder",
+ "gxhash",
  "itertools",
  "lasso",
  "nyanpasu-logging",
@@ -590,9 +600,9 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "file-id",
+ "gxhash",
  "lasso",
  "ractor",
- "rustc-hash",
  "serde",
  "serde_json",
  "thiserror",

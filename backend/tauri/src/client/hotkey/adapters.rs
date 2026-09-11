@@ -21,15 +21,23 @@ pub struct PlatformAcceleratorValidator;
 
 impl AcceleratorValidator for PlatformAcceleratorValidator {
     fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError> {
+        self.canonical(accelerator).map(|_| ())
+    }
+
+    fn canonical(&self, accelerator: &str) -> Result<String, HotkeyParseError> {
         // The plugin's own parse panics inside `register`, so an accelerator it
         // cannot read has to be rejected before it gets there (issue #287).
-        if Shortcut::from_str(accelerator).is_err() {
-            return Err(HotkeyParseError::InvalidAccelerator(accelerator.to_owned()));
-        }
+        let shortcut = Shortcut::from_str(accelerator)
+            .map_err(|_| HotkeyParseError::InvalidAccelerator(accelerator.to_owned()))?;
+        // Asked of what the user wrote, not of the canonical form: the
+        // canonical spelling of a modifier-less accelerator would still have to
+        // be rejected, and the message has to name what they typed.
         if !has_super_key(accelerator) {
             return Err(HotkeyParseError::MissingSuperKey(accelerator.to_owned()));
         }
-        Ok(())
+        // Round-trips: the plugin's parser reads its own output back to the
+        // same shortcut, so this is what gets handed to the OS.
+        Ok(shortcut.into_string())
     }
 }
 

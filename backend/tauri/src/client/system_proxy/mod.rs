@@ -16,7 +16,10 @@ use std::time::Duration;
 
 use ractor::{Actor, ActorRef, rpc::CallResult};
 
-use self::actor::{Message, SystemProxyActor, requested_kinds};
+use self::{
+    actor::{Message, SystemProxyActor, requested_kinds},
+    ports::OsProxyConfig,
+};
 use crate::client::effects::{
     plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
     status::{EffectHealth, EffectRevision, EffectStatus},
@@ -40,6 +43,8 @@ pub struct SystemProxyStatus {
     pub health: EffectHealth,
     /// The last value asked for, whether or not the OS accepted it.
     pub desired: Option<SystemProxyDesired>,
+    /// The last value the OS accepted, which is what a restore puts back.
+    pub applied_os_proxy: Option<OsProxyConfig>,
     pub guard_active: bool,
     pub guard_interval: Option<Duration>,
     pub pac_active: bool,
@@ -115,6 +120,7 @@ impl SystemProxyClient {
                     applied_revision: EffectRevision::default(),
                     health: timeout_health(),
                     desired: None,
+                    applied_os_proxy: None,
                     guard_active: false,
                     guard_interval: None,
                     pac_active: false,

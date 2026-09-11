@@ -511,6 +511,44 @@ async fn exit_unregisters_all() {
 }
 
 #[tokio::test]
+async fn reconcile_after_unregister_all_is_rejected() {
+    let registrar = RecordingRegistrar::new();
+    let client = client_with(registrar.clone()).await;
+    client
+        .reconcile(
+            EffectRevision::new(1),
+            bindings(&["enable_tun_mode,Control+A"]),
+        )
+        .await;
+    client.unregister_all().await;
+    registrar.calls.lock().expect("call log").clear();
+
+    // A plan admitted before the shutdown can still be in flight here.
+    let status = client
+        .reconcile(
+            EffectRevision::new(2),
+            bindings(&["enable_system_proxy,Control+B"]),
+        )
+        .await;
+
+    assert_eq!(
+        status.health,
+        EffectHealth::Degraded {
+            code: "hotkey_shut_down",
+            message: "the hotkey owner released its shortcuts and stopped accepting changes"
+                .to_owned(),
+            retryable: false,
+        }
+    );
+    assert!(
+        registrar.calls().is_empty(),
+        "an exiting process must not take a grab it will never give back: {:?}",
+        registrar.calls()
+    );
+    assert!(client.status().await.registered.is_empty());
+}
+
+#[tokio::test]
 async fn callback_dispatches_action_to_sink() {
     let registrar = RecordingRegistrar::new();
     let mut sink = MockHotkeyActionSink::new();

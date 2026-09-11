@@ -133,7 +133,8 @@ pub enum HotkeyOp {
 
 /// An accelerator-to-action map, parsed and validated. Constructing one is the
 /// only way to get bindings into the actor, so an invalid list cannot reach the
-/// OS.
+/// OS. Keyed by the canonical spelling, so two ways of writing one grab are one
+/// entry here as they are one entry at the OS.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HotkeyBindings(BTreeMap<String, HotkeyAction>);
 
@@ -162,7 +163,12 @@ impl HotkeyBindings {
             let action = function.parse::<HotkeyAction>()?;
             validate_accelerator_shape(accelerator)?;
             validator.validate(accelerator)?;
-            if bindings.insert(accelerator.to_owned(), action).is_some() {
+            // Keyed by the canonical form but reported by what the user wrote,
+            // so a clash between two spellings names the entry they can find.
+            if bindings
+                .insert(validator.canonical(accelerator)?, action)
+                .is_some()
+            {
                 return Err(HotkeyParseError::DuplicateAccelerator(
                     accelerator.to_owned(),
                 ));
@@ -255,6 +261,10 @@ pub fn has_super_key(accelerator: &str) -> bool {
 #[cfg_attr(test, mockall::automock)]
 pub trait AcceleratorValidator: Send + Sync + 'static {
     fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError>;
+
+    /// The one spelling the OS sees. `Ctrl+Q` and `Control+Q` are the same
+    /// grab, so bindings keyed by the raw text would hide a collision.
+    fn canonical(&self, accelerator: &str) -> Result<String, HotkeyParseError>;
 }
 
 /// Platform global-shortcut registration.

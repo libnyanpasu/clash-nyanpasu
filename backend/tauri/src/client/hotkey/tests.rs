@@ -26,6 +26,10 @@ impl AcceleratorValidator for AnyAccelerator {
     fn validate(&self, _accelerator: &str) -> Result<(), HotkeyParseError> {
         Ok(())
     }
+
+    fn canonical(&self, accelerator: &str) -> Result<String, HotkeyParseError> {
+        Ok(accelerator.to_owned())
+    }
 }
 
 #[test]
@@ -104,6 +108,39 @@ fn parse_rejects_what_the_platform_parser_refuses() {
             &PlatformAcceleratorValidator,
         )
         .is_ok()
+    );
+}
+
+/// The OS keys a grab by the parsed shortcut, not by the text, so two
+/// spellings of one accelerator would otherwise be two bindings here and one
+/// registration there — the second silently replacing the first.
+#[test]
+fn equivalent_spellings_are_the_same_binding() {
+    let abbreviated = HotkeyBindings::parse(
+        &entries(&["toggle_tun_mode,Ctrl+Q"]),
+        &PlatformAcceleratorValidator,
+    )
+    .expect("an abbreviated modifier is a valid accelerator");
+    let spelled_out = HotkeyBindings::parse(
+        &entries(&["toggle_tun_mode,Control+Q"]),
+        &PlatformAcceleratorValidator,
+    )
+    .expect("the long modifier is the same accelerator");
+
+    assert_eq!(abbreviated, spelled_out);
+    assert!(
+        abbreviated.diff(&spelled_out).is_empty(),
+        "rewriting a binding into the other spelling must not touch the OS"
+    );
+    assert_eq!(
+        HotkeyBindings::parse(
+            &entries(&["enable_tun_mode,Ctrl+Q", "disable_tun_mode,Control+Q"]),
+            &PlatformAcceleratorValidator,
+        ),
+        Err(HotkeyParseError::DuplicateAccelerator(
+            "Control+Q".to_owned()
+        )),
+        "one grab cannot run two functions"
     );
 }
 

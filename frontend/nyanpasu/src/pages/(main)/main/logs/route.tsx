@@ -21,15 +21,19 @@ import { LogLevel } from './_modules/consts'
 export const Route = createFileRoute('/(main)/main/logs')({
   component: RouteComponent,
   validateSearch: z.object({
+    source: z.enum(['core', 'app', 'service']).optional(),
     level: z.enum(LogLevel).nullable().optional(),
   }),
 })
 
 const LogLevelIcon = {
+  [LogLevel.Trace]: () => '🔎',
   [LogLevel.Debug]: () => '🐛',
   [LogLevel.Info]: () => 'ℹ️',
   [LogLevel.Warning]: () => '⚠️',
   [LogLevel.Error]: () => '❌',
+  [LogLevel.Fatal]: () => '⛔',
+  [LogLevel.Unknown]: () => '❔',
 } satisfies Record<LogLevel, React.FC>
 
 const SidebarContent = ({ className, ...props }: ComponentProps<'div'>) => {
@@ -40,7 +44,7 @@ const LogLevelButton = ({
   level: inputLevel,
   children,
 }: PropsWithChildren<{ level?: LogLevel }>) => {
-  const { level } = Route.useSearch()
+  const { level, source } = Route.useSearch()
 
   const Icon = inputLevel ? LogLevelIcon[inputLevel] : () => '📋'
 
@@ -75,6 +79,7 @@ const LogLevelButton = ({
           <Link
             to="."
             search={{
+              source,
               level: inputLevel,
             }}
           >

@@ -2,10 +2,14 @@
 //! no widget process, no sleep. Ordering is asserted from a shared call log
 //! rather than from timing.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 
-use nyanpasu_config::application::{
-    I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig,
+use nyanpasu_config::{
+    application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig},
+    runtime::executor::ResolvedPortBindings,
 };
 use nyanpasu_egui::widget::StatisticWidgetVariant;
 
@@ -33,7 +37,7 @@ use crate::client::{
     },
     system_proxy::{
         SystemProxyArgs, SystemProxyClient,
-        ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
+        ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig},
     },
 };
 
@@ -57,6 +61,21 @@ fn inputs(app: NyanpasuAppConfig) -> ApplicationEffectInputs {
     )
 }
 
+/// The same projection with a port the session has already resolved, which is
+/// what the system proxy actor needs before it writes anything to the OS.
+fn proxied_inputs(app: NyanpasuAppConfig) -> ApplicationEffectInputs {
+    ApplicationEffectInputs::project(
+        &app,
+        &nyanpasu_config::clash::config::ClashConfig::default(),
+        Some(ResolvedPortBindings {
+            mixed_port: 7890,
+            port: None,
+            socks_port: None,
+            external_controller: None,
+        }),
+    )
+}
+
 /// The executor under its real dispatch logic, with only the UI capabilities
 /// mocked. The system proxy and hotkey actors are spawned against fake ports
 /// and never reached by a UI-only plan.
@@ -66,10 +85,24 @@ async fn executor(
     widget: Arc<dyn WidgetController>,
     tray: Arc<dyn TrayRefresher>,
 ) -> ApplicationEffectExecutor {
+    executor_with_os(MockOsProxyPort::new(), locale, logger, widget, tray).await
+}
+
+/// The same executor with a system proxy that a test can make slow, so an
+/// earlier plan can be observed waiting while a later one runs to completion.
+async fn executor_with_os(
+    os: MockOsProxyPort,
+    locale: Arc<dyn LocaleSink>,
+    logger: Arc<dyn LoggerRefresher>,
+    widget: Arc<dyn WidgetController>,
+    tray: Arc<dyn TrayRefresher>,
+) -> ApplicationEffectExecutor {
+    let mut pac = MockPacPort::new();
+    pac.expect_is_supported().returning(|| false);
     let system_proxy = SystemProxyClient::spawn(SystemProxyArgs {
-        os: Arc::new(MockOsProxyPort::new()),
+        os: Arc::new(os),
         auto_launch: Arc::new(MockAutoLaunchPort::new()),
-        pac: Arc::new(MockPacPort::new()),
+        pac: Arc::new(pac),
         schedule_guard_ticks: false,
     })
     .await
@@ -414,4 +447,223 @@ async fn widget_stop_clears_the_started_variant() {
     controller.stop().await.expect("stop");
     // After a shutdown the same variant is no longer running, so it starts again.
     controller.apply(desired).await.expect("restart");
+}
+
+/// A plan whose only effect is the widget, so a revision assertion is about the
+/// widget alone.
+fn widget_plan(
+    before: NetworkStatisticWidgetConfig,
+    after: NetworkStatisticWidgetConfig,
+) -> ApplicationEffectPlan {
+    let plan = ApplicationEffectPlan::diff(
+        &inputs(NyanpasuAppConfig {
+            network_statistic_widget: before,
+            ..NyanpasuAppConfig::default()
+        }),
+        &inputs(NyanpasuAppConfig {
+            network_statistic_widget: after,
+            ..NyanpasuAppConfig::default()
+        }),
+    );
+    assert_eq!(
+        plan.effects().len(),
+        1,
+        "only the widget should differ: {:?}",
+        plan.effects()
+    );
+    plan
+}
+
+#[tokio::test]
+async fn stale_ui_revision_is_superseded_without_touching_adapters() {
+    let mut widget = MockWidgetController::new();
+    widget
+        .expect_apply()
+        .times(1)
+        .returning(|_| Box::pin(async { Ok(()) }));
+    let executor = executor(
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        Arc::new(widget),
+        Arc::new(MockTrayRefresher::new()),
+    )
+    .await;
+    let plan = widget_plan(
+        NetworkStatisticWidgetConfig::Disabled,
+        NetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Small),
+    );
+
+    let newer = executor.apply(EffectRevision::new(5), plan.clone()).await;
+    let older = executor.apply(EffectRevision::new(3), plan).await;
+
+    assert_eq!(newer[0].health, EffectHealth::Healthy, "{newer:?}");
+    assert_eq!(
+        older[0].health,
+        EffectHealth::Superseded,
+        "an older plan must not reach the adapter at all: {older:?}"
+    );
+    assert_eq!(
+        older[0].applied_revision,
+        EffectRevision::new(5),
+        "the reported applied revision is the one that is actually installed"
+    );
+}
+
+#[tokio::test]
+async fn newer_ui_revision_still_applies_after_a_failure() {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let mut widget = MockWidgetController::new();
+    let counter = attempts.clone();
+    widget.expect_apply().times(2).returning(move |_| {
+        let first = counter.fetch_add(1, Ordering::SeqCst) == 0;
+        Box::pin(async move {
+            if first {
+                Err(WidgetError::Failed(anyhow::anyhow!("widget refused")))
+            } else {
+                Ok(())
+            }
+        })
+    });
+    let executor = executor(
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        Arc::new(widget),
+        Arc::new(MockTrayRefresher::new()),
+    )
+    .await;
+    let plan = widget_plan(
+        NetworkStatisticWidgetConfig::Disabled,
+        NetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Small),
+    );
+
+    let failed = executor.apply(EffectRevision::new(1), plan.clone()).await;
+    assert!(
+        matches!(
+            failed[0].health,
+            EffectHealth::Degraded {
+                code: "widget_apply_failed",
+                ..
+            }
+        ),
+        "{failed:?}"
+    );
+
+    // A failure consumes the revision, so the same one again is stale: the
+    // facade re-dispatches a retryable failure with a fresh, higher revision.
+    let replayed = executor.apply(EffectRevision::new(1), plan.clone()).await;
+    assert_eq!(replayed[0].health, EffectHealth::Superseded, "{replayed:?}");
+
+    let retried = executor.apply(EffectRevision::new(2), plan).await;
+    assert_eq!(retried[0].health, EffectHealth::Healthy, "{retried:?}");
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        2,
+        "the adapter is reached once per revision that is not stale"
+    );
+}
+
+#[tokio::test]
+async fn a_plan_overtaken_mid_flight_does_not_re_apply_its_widget() {
+    // The system proxy is dispatched before the widget, so an OS call that
+    // never returns holds the earlier plan exactly where the facade's released
+    // gate lets a later one pass it.
+    let (entered_tx, mut entered_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+    let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+    let mut os = MockOsProxyPort::new();
+    os.expect_get()
+        .returning(|| Err(anyhow::anyhow!("no system proxy is set")));
+    os.expect_default_bypass().return_const("bypass");
+    os.expect_set().returning(move |_: &OsProxyConfig| {
+        entered_tx.send(()).expect("the test is still waiting");
+        let receiver = release_rx
+            .lock()
+            .expect("gate should not poison")
+            .take()
+            .expect("only the first plan is gated");
+        receiver
+            .blocking_recv()
+            .expect("the test releases the gate");
+        Ok(())
+    });
+
+    let applied: Arc<Mutex<Vec<NetworkStatisticWidgetConfig>>> = Arc::default();
+    let mut widget = MockWidgetController::new();
+    let widget_log = applied.clone();
+    widget.expect_apply().returning(move |config| {
+        widget_log
+            .lock()
+            .expect("widget log should not poison")
+            .push(config);
+        Box::pin(async { Ok(()) })
+    });
+    let mut tray = MockTrayRefresher::new();
+    tray.expect_refresh_part()
+        .returning(|| Box::pin(async { Ok(()) }));
+
+    let executor = Arc::new(
+        executor_with_os(
+            os,
+            Arc::new(MockLocaleSink::new()),
+            Arc::new(MockLoggerRefresher::new()),
+            Arc::new(widget),
+            Arc::new(tray),
+        )
+        .await,
+    );
+
+    // Revision 1 enables the widget behind a system-proxy change.
+    let overtaken = tokio::spawn({
+        let executor = executor.clone();
+        let plan = ApplicationEffectPlan::diff(
+            &proxied_inputs(NyanpasuAppConfig::default()),
+            &proxied_inputs(NyanpasuAppConfig {
+                enable_system_proxy: true,
+                network_statistic_widget: NetworkStatisticWidgetConfig::Enabled(
+                    StatisticWidgetVariant::Small,
+                ),
+                ..NyanpasuAppConfig::default()
+            }),
+        );
+        async move { executor.apply(EffectRevision::new(1), plan).await }
+    });
+    // A deadline rather than a sleep: if the earlier plan ever stops reaching
+    // the os call this fails instead of hanging the suite.
+    tokio::time::timeout(std::time::Duration::from_secs(10), entered_rx.recv())
+        .await
+        .expect("the first plan should reach the os proxy call")
+        .expect("the gate sender outlives the actor");
+
+    // Revision 2 disables it and finishes first, because nothing in it waits.
+    let newer = executor
+        .apply(
+            EffectRevision::new(2),
+            widget_plan(
+                NetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Small),
+                NetworkStatisticWidgetConfig::Disabled,
+            ),
+        )
+        .await;
+    assert_eq!(newer[0].health, EffectHealth::Healthy, "{newer:?}");
+
+    release_tx.send(()).expect("the gated os call is waiting");
+    let overtaken = overtaken.await.expect("the overtaken plan completes");
+
+    let widget_status = overtaken
+        .iter()
+        .find(|status| status.kind == EffectKind::Widget)
+        .expect("the overtaken plan carries the widget");
+    assert_eq!(
+        widget_status.health,
+        EffectHealth::Superseded,
+        "the user turned the widget off after this plan started: {overtaken:?}"
+    );
+    assert_eq!(
+        applied
+            .lock()
+            .expect("widget log should not poison")
+            .as_slice(),
+        [NetworkStatisticWidgetConfig::Disabled],
+        "the widget keeps the newest desired state"
+    );
 }

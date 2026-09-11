@@ -5,7 +5,7 @@
 //! so the facade keeps one dependency and this stays a dispatcher rather than a
 //! service locator.
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use super::{
     plan::{
@@ -35,6 +35,21 @@ pub struct ApplicationEffectExecutor {
     logger: Arc<dyn LoggerRefresher>,
     widget: Arc<dyn WidgetController>,
     tray: Arc<dyn TrayRefresher>,
+    /// What revision each stateless UI adapter last had applied to it.
+    ///
+    /// Narrowly scoped bookkeeping rather than shared actor state: the
+    /// actor-backed effects keep their applied revision inside the actor that
+    /// owns them, but an adapter that just forwards a value has nowhere to put
+    /// one. Without it an older plan — one that waited out a slow system proxy
+    /// reconcile before reaching the widget — can re-enable what a newer,
+    /// already finished plan disabled, because the facade releases its gate
+    /// before dispatch.
+    ///
+    /// The check and the apply have to be one atomic step per kind, so the lock
+    /// is held across the adapter call. Every one of those calls is short
+    /// except starting the widget, which is acceptable for the same reason the
+    /// plan is ordered: these four effects are a single visual state.
+    ui_applied: tokio::sync::Mutex<BTreeMap<EffectKind, EffectRevision>>,
 }
 
 impl ApplicationEffectExecutor {
@@ -55,7 +70,42 @@ impl ApplicationEffectExecutor {
             logger,
             widget,
             tray,
+            ui_applied: tokio::sync::Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// Hands a desired value to a stateless UI adapter unless a newer revision
+    /// already had its say on that kind.
+    ///
+    /// The revision is recorded even when the adapter fails: the desired value
+    /// was consumed, and a retryable failure comes back through the facade's
+    /// retry set with a fresh, higher revision. Recording only on success would
+    /// instead let the next stale plan through.
+    async fn apply_ui(
+        &self,
+        kind: EffectKind,
+        revision: EffectRevision,
+        apply: impl Future<Output = EffectStatus>,
+    ) -> EffectStatus {
+        let mut ui_applied = self.ui_applied.lock().await;
+        let applied = ui_applied.get(&kind).copied().unwrap_or_default();
+        if revision <= applied {
+            tracing::debug!(
+                ?kind,
+                requested = revision.get(),
+                applied = applied.get(),
+                "dropping a superseded UI effect"
+            );
+            return EffectStatus {
+                kind,
+                desired_revision: revision,
+                applied_revision: applied,
+                health: EffectHealth::Superseded,
+            };
+        }
+        let status = apply.await;
+        ui_applied.insert(kind, revision);
+        status
     }
 
     /// The facade rejects an unparsable list before it is committed, so getting
@@ -147,8 +197,18 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
         let mut statuses = Vec::with_capacity(plan.effects().len());
         for effect in plan.effects() {
             let status = match effect {
-                ApplicationEffect::Locale(language) => self.apply_locale(revision, *language),
-                ApplicationEffect::Logger(desired) => self.apply_logger(revision, desired),
+                ApplicationEffect::Locale(language) => {
+                    self.apply_ui(EffectKind::Locale, revision, async {
+                        self.apply_locale(revision, *language)
+                    })
+                    .await
+                }
+                ApplicationEffect::Logger(desired) => {
+                    self.apply_ui(EffectKind::Logger, revision, async {
+                        self.apply_logger(revision, desired)
+                    })
+                    .await
+                }
                 ApplicationEffect::AutoLaunch(_)
                 | ApplicationEffect::SystemProxy(_)
                 | ApplicationEffect::ProxyGuard(_) => {
@@ -176,8 +236,22 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                         })
                 }
                 ApplicationEffect::Hotkeys(desired) => self.apply_hotkeys(revision, desired).await,
-                ApplicationEffect::Widget(config) => self.apply_widget(revision, *config).await,
-                ApplicationEffect::Tray(refresh) => self.apply_tray(revision, *refresh).await,
+                ApplicationEffect::Widget(config) => {
+                    self.apply_ui(
+                        EffectKind::Widget,
+                        revision,
+                        self.apply_widget(revision, *config),
+                    )
+                    .await
+                }
+                ApplicationEffect::Tray(refresh) => {
+                    self.apply_ui(
+                        EffectKind::Tray,
+                        revision,
+                        self.apply_tray(revision, *refresh),
+                    )
+                    .await
+                }
             };
             statuses.push(status);
         }

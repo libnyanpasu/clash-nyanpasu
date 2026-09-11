@@ -1,7 +1,7 @@
 # Log index storage benchmark
 
 This standalone workspace preserves the pre-session index implementation and its
-defect probes. It does not compile Tauri or change production logging. The four
+defect probes, and benchmarks the replacement shared index. It does not compile Tauri. The four
 `reproduces_*` tests assert known old behavior, not the desired replacement behavior.
 The replacement must have separate regression tests asserting the correct result.
 
@@ -15,6 +15,8 @@ cargo run --release --manifest-path tools/log-index-bench/Cargo.toml --bin alloc
 cargo run --release --features alloc-stats --manifest-path tools/log-index-bench/Cargo.toml --bin allocation_bench
 cargo run --release --manifest-path tools/log-index-bench/Cargo.toml --bin strings
 cargo run --release --features alloc-stats --manifest-path tools/log-index-bench/Cargo.toml --bin strings
+cargo run --release --manifest-path tools/log-index-bench/Cargo.toml --bin viewer -- 60
+cargo run --release --features alloc-stats --manifest-path tools/log-index-bench/Cargo.toml --bin viewer
 ```
 
 Pass `smoke` after the binary name for a smaller fixture. Allocation counters run
@@ -35,8 +37,9 @@ IDs, which the benchmark guarantees. It is not suitable as a production fix.
 Environment: Windows x86_64, Intel i9-14900KF, rustc
 `1.100.0-nightly (67eda617e 2026-09-10)`, release, codegen-units=1, System allocator.
 The earlier full-layout results and methodology are in `results/allocation-report.md`.
-The new comparison fixes the row metadata, Vec layout, query algorithm and FxHasher
-across interners. String and SmolStr store their values directly; their larger row
+The archived comparison fixes the row metadata, Vec layout, query algorithm and FxHasher
+across interners. The current `strings` binary uses GxBuildHasher; its results are
+archived separately with a `gxhash-` prefix. String and SmolStr store their values directly; their larger row
 layout is an inherent part of that representation. Inputs are borrowed and prepared
 outside timing, so this comparison excludes JSON parsing, filesystem, IPC and GUI.
 
@@ -74,8 +77,44 @@ algorithm and timestamp correctness.
 - One in-flight refresh per file; query/scan continuations expose partial coverage.
 
 These limits bound inputs and retained structures rather than claiming an exact RSS
-cap. P6 must measure the combined actor/query/GUI footprint and steady-state latency.
+cap. The final actor measurements and remaining native acceptance checks are in
+`../../docs/superpowers/reports/2026-09-11-session-scoped-logs.md`.
 The workload used for algorithm correctness must include duplicate timestamps,
 clock rollback, escaped JSON, malformed records and incomplete trailing lines;
 the frozen full-layout comparison intentionally does not repair its old query
 semantics and cannot substitute for those tests.
+
+## Production actor measurements
+
+Initialize the runtime submodule before running this workspace. `viewer` writes a
+100,000-row JSON file, opens the real filesystem adapter and LogsClient, then
+appends 1,000 rows per second. It polls every second and drains continuation pages
+immediately. Each appended row must appear exactly once. Latency runs include JSON
+parsing, filesystem reads, actor messages and owned response projection; they
+exclude Tauri, service IPC and GUI rendering. No allocator instrumentation runs
+in this mode. It uses normal scheduler placement and one measured 60-second run.
+
+The separate `alloc-stats` mode counts allocations for the production pure Index,
+including parsing, then checks 100 build/query/drop cycles. It measures requested
+heap bytes, not RSS or actor/GUI heap size. See the JSONL files under `results/`.
+
+## gxhash follow-up
+
+The production index, lasso target pool and session tables now use gxhash 3.5.0.
+Interners in `strings` use the same randomized
+[GxBuildHasher](https://docs.rs/gxhash/3.5.0/gxhash/struct.GxBuildHasher.html).
+The frozen `reference-indexer`, defect probes and `allocation_bench` keep their
+original hashers so the archived baseline remains reproducible. The root Cargo
+configuration already enables hardware AES; the standalone runtime now does too,
+including its musl targets and coverage environment override.
+
+The `gxhash-strings-timing.jsonl` run uses the same warm-up and nine measured rounds
+after this task's compilation jobs completed. Lasso's median build time is
+5.326 ms for 100k rows / 50k targets / 128 B, and 16.753 ms for 1m rows / 128 targets /
+64 B. These are separate wall-clock runs from the archived FxHash measurements,
+not a paired experiment establishing a causal performance difference.
+
+Production index memory remains 7,345,692 live requested bytes for 100k rows and
+zero unreleased bytes after 100 build/query/drop cycles. The `gxhash-viewer-*.jsonl`
+files contain the repeated production measurements; their scope remains file to
+actor, excluding native IPC/GUI rendering and process RSS.

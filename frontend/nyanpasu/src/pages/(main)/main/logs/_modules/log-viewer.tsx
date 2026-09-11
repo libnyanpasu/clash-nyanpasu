@@ -5,10 +5,11 @@ import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeleteSweepRounded from '~icons/material-symbols/delete-sweep-rounded'
 import SearchRounded from '~icons/material-symbols/search-rounded'
 import VerticalAlignBottomRounded from '~icons/material-symbols/vertical-align-bottom-rounded'
-import { useId, useMemo, useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import HighlightText from '@/components/ui/highlight-text'
 import { m } from '@/paraglide/messages'
+import LogJson from './log-json'
 import LogLevelBadge from './log-level-badge'
 
 export const logPanelClass =
@@ -104,21 +105,6 @@ export function LogFollowButton({
         </span>
       )}
     </Button>
-  )
-}
-
-function LogJson({ raw }: { raw: string }) {
-  const formatted = useMemo(() => {
-    try {
-      return JSON.stringify(JSON.parse(raw), null, 2)
-    } catch {
-      return raw
-    }
-  }, [raw])
-  return (
-    <pre className="bg-surface-variant/30 text-on-surface mt-2 rounded-xl p-3 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
-      <code>{formatted}</code>
-    </pre>
   )
 }
 

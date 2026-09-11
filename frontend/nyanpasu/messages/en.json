@@ -462,5 +462,9 @@
   "logs_search_incomplete": "No matches in this page. Load earlier records to continue searching.",
   "logs_copy": "Copy",
   "logs_copy_failed": "Copy failed. Select and copy the raw record.",
-  "logs_raw_record": "Raw record and fields"
+  "logs_raw_record": "Raw record and fields",
+  "logs_filters": "Filters",
+  "logs_copied": "Copied",
+  "logs_all_levels": "All levels",
+  "logs_level_sidebar": "Log levels"
 }

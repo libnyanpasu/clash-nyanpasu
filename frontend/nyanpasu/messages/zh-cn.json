@@ -462,5 +462,9 @@
   "logs_search_incomplete": "本页未匹配，加载更早记录以继续搜索。",
   "logs_copy": "复制",
   "logs_copy_failed": "复制失败，请选择原始记录手动复制。",
-  "logs_raw_record": "原始记录与字段"
+  "logs_raw_record": "原始记录与字段",
+  "logs_filters": "筛选条件",
+  "logs_copied": "已复制",
+  "logs_all_levels": "全部级别",
+  "logs_level_sidebar": "日志级别"
 }

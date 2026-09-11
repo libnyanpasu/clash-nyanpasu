@@ -441,6 +441,7 @@
   "logs_source_core": "内核",
   "logs_source_app": "应用",
   "logs_source_service": "服务",
+  "date_time_open_calendar": "打开日历",
   "logs_file_label": "日志文件",
   "logs_current_file": "当前文件（跟随轮转）",
   "logs_target_label": "Target（精确匹配）",

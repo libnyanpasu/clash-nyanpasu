@@ -403,6 +403,7 @@
   "logs_source_core": "Ядро",
   "logs_source_app": "Приложение",
   "logs_source_service": "Служба",
+  "date_time_open_calendar": "Открыть календарь",
   "logs_file_label": "Файл журнала",
   "logs_current_file": "Текущий файл (следить за ротацией)",
   "logs_target_label": "Target (точное совпадение)",

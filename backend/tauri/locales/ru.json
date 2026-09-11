@@ -64,6 +64,9 @@
   "break_when_mode_change": "Прерывать соединения при смене режима",
   "hotkey_error": {
     "invalid_hotkey": "Неверная горячая клавиша: %{hotkey}",
-    "missing_super_key": "Горячая клавиша должна содержать модификатор (Cmd/Ctrl/Win/Meta)"
+    "missing_super_key": "Горячая клавиша должна содержать модификатор (Cmd/Ctrl/Win/Meta)",
+    "malformed_entry": "Некорректная запись горячей клавиши: %{entry}",
+    "unknown_function": "Неизвестная функция горячей клавиши: %{function}",
+    "duplicate_accelerator": "Горячая клавиша %{hotkey} уже назначена другой функции"
   }
 }

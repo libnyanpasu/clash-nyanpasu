@@ -417,7 +417,7 @@ mod tests {
         // Each module advanced to the head of its step list.
         assert_eq!(runner.store.module_state("profiles").applied_revision, 3);
         assert_eq!(runner.store.module_state("app_config").applied_revision, 4);
-        assert_eq!(runner.store.module_state("storage").applied_revision, 1);
+        assert_eq!(runner.store.module_state("storage").applied_revision, 2);
         assert_eq!(
             runner.store.module_state("typed_config").applied_revision,
             2
@@ -427,24 +427,23 @@ mod tests {
             Some(Version::parse("2.0.0").unwrap())
         );
 
-        // Hotkeys moved out of the config file and into KV storage.
+        // Hotkeys left the legacy config file and ended up in the typed
+        // application config, with nothing stranded in KV storage.
         let storage = Storage::try_new(&data_dir.join(crate::utils::dirs::STORAGE_DB)).unwrap();
         let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap();
-        assert_eq!(
-            hotkeys,
-            Some(vec![
-                "clash_mode_rule,Control+Q".to_string(),
-                "toggle_system_proxy,Control+Shift+P".to_string(),
-            ])
-        );
+        assert_eq!(hotkeys, None);
 
         let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
             &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
         )
         .unwrap();
-        assert!(
-            application.hotkeys.is_empty(),
-            "hotkeys are KV-owned after storage/hotkeys_to_kv and must not be re-seeded into typed application config"
+        assert_eq!(
+            application.hotkeys,
+            vec![
+                "clash_mode_rule,Control+Q".to_string(),
+                "toggle_system_proxy,Control+Shift+P".to_string(),
+            ],
+            "the typed application config is the single authority for hotkeys"
         );
         let _: nyanpasu_config::state::PersistentState = serde_yaml::from_str(
             &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),

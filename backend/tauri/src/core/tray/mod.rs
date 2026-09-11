@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
+    client::{NyanpasuClient, hotkey::ports::HotkeyAction},
     config::{
         Config,
         nyanpasu::{ClashCore, TrayMenuMode},
@@ -428,18 +429,20 @@ impl Tray {
         Ok(())
     }
 
+    /// Tray items and global shortcuts run the same actions, so they go
+    /// through one mapping in the facade rather than two parallel ones.
     #[instrument(skip(app_handle, event))]
     pub fn on_menu_item_event(app_handle: &AppHandle, event: MenuEvent) {
         let id = event.id().0.as_str();
         match id {
-            mode @ ("rule_mode" | "global_mode" | "direct_mode" | "script_mode") => {
-                let mode = &mode[0..mode.len() - 5];
-                feat::change_clash_mode(app_handle, mode.into());
-            }
+            "rule_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeRule),
+            "global_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeGlobal),
+            "direct_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeDirect),
+            "script_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeScript),
 
             "open_window" => resolve::create_window(app_handle),
-            "system_proxy" => feat::toggle_system_proxy(),
-            "tun_mode" => feat::toggle_tun_mode(),
+            "system_proxy" => dispatch_action(app_handle, HotkeyAction::ToggleSystemProxy),
+            "tun_mode" => dispatch_action(app_handle, HotkeyAction::ToggleTunMode),
             "copy_env_sh" => feat::copy_clash_env(app_handle, &CopyEnvOption::Shell),
             #[cfg(target_os = "windows")]
             "copy_env_cmd" => feat::copy_clash_env(app_handle, &CopyEnvOption::Cmd),
@@ -482,4 +485,22 @@ impl Tray {
             _ => {}
         }
     }
+}
+
+/// Runs a tray item through the facade, the same path a global shortcut takes.
+fn dispatch_action(app_handle: &AppHandle, action: HotkeyAction) {
+    // A tray click during startup can arrive before the client is managed;
+    // dropping it is better than taking the whole app down.
+    let Some(client) = app_handle
+        .try_state::<NyanpasuClient>()
+        .map(|state| state.inner().clone())
+    else {
+        tracing::warn!(%action, "the tray fired before the client was ready");
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = client.dispatch_hotkey_action(action).await {
+            tracing::error!(%error, %action, "tray action failed");
+        }
+    });
 }

@@ -37,3 +37,12 @@ export async function highlightYaml(code: string) {
     themes: { light: 'min-light', dark: 'nord' },
   })
 }
+
+export async function highlightJson(code: string) {
+  const instance = await getShikiSingleton()
+  await instance.loadLanguage(import('shiki/langs/json.mjs'))
+  return instance.codeToHtml(code, {
+    lang: 'json',
+    themes: { light: 'min-light', dark: 'nord' },
+  })
+}

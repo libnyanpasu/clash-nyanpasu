@@ -1,0 +1,17 @@
+.viewer pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  line-height: 1.625;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.viewer :global(.shiki),
+.viewer :global(.shiki span) {
+  background-color: transparent !important;
+}
+
+:global(.dark) .viewer :global(.shiki),
+:global(.dark) .viewer :global(.shiki span) {
+  color: var(--shiki-dark) !important;
+}

@@ -732,6 +732,13 @@ impl NyanpasuClient {
                 state.apply(patch);
                 state
             });
+            // The legacy wire carries hotkeys too, so it needs the same
+            // pre-commit check as `patch_app_config`. Without it a typo reaches
+            // the store and comes back as a degraded effect forever, because
+            // the persisted binding can never register.
+            if let Some(application) = application.as_ref() {
+                hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
+            }
             self.apply_legacy_verge_states_saga(snapshots, application, session, clash, finalize)
                 .await
         })
@@ -755,6 +762,8 @@ impl NyanpasuClient {
     {
         self.commit_and_reconcile(move || async move {
             let snapshots = self.typed_config_snapshots().await?;
+            // See the patch saga: a replacement carries the whole hotkey list.
+            hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
             self.apply_legacy_verge_states_saga(
                 snapshots,
                 Some(application),

@@ -1218,6 +1218,52 @@ mod tests {
     }
 
     #[test]
+    fn legacy_patch_with_invalid_hotkeys_is_rejected_before_commit() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge(&dir);
+
+        tauri::async_runtime::block_on(async {
+            let error = bridge
+                .patch_verge_config(IVerge {
+                    theme_color: Some("#334455".into()),
+                    hotkeys: Some(vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()]),
+                    ..IVerge::default()
+                })
+                .await
+                .expect_err("an accelerator the platform cannot parse must not be persisted");
+            assert!(
+                error.to_string().contains("DefinitelyNotAKey"),
+                "unexpected error: {error}"
+            );
+
+            let app = client
+                .get_app_config()
+                .await
+                .expect("typed config should read back");
+            assert!(
+                app.hotkeys.is_empty(),
+                "nothing may be written when validation fails: {:?}",
+                app.hotkeys
+            );
+            assert_eq!(
+                app.theme_color.to_string(),
+                NyanpasuAppConfig::default().theme_color.to_string(),
+                "the rest of the patch must not be committed either"
+            );
+            let projected = bridge
+                .get_verge_config()
+                .await
+                .expect("legacy projection should read back")
+                .hotkeys;
+            assert!(
+                projected.is_none_or(|hotkeys| hotkeys.is_empty()),
+                "the legacy projection must not hold the rejected bindings"
+            );
+        });
+    }
+
+    #[test]
     fn pure_verge_patch_persists_legacy_snapshot_to_injected_path() {
         let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().expect("tempdir should be created");

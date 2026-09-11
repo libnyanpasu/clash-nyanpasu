@@ -1,7 +1,7 @@
 # Log index storage benchmark
 
 This standalone workspace preserves the pre-session index implementation and its
-defect probes. It does not compile Tauri or change production logging. The four
+defect probes, and benchmarks the replacement shared index. It does not compile Tauri. The four
 `reproduces_*` tests assert known old behavior, not the desired replacement behavior.
 The replacement must have separate regression tests asserting the correct result.
 
@@ -15,6 +15,8 @@ cargo run --release --manifest-path tools/log-index-bench/Cargo.toml --bin alloc
 cargo run --release --features alloc-stats --manifest-path tools/log-index-bench/Cargo.toml --bin allocation_bench
 cargo run --release --manifest-path tools/log-index-bench/Cargo.toml --bin strings
 cargo run --release --features alloc-stats --manifest-path tools/log-index-bench/Cargo.toml --bin strings
+cargo run --release --manifest-path tools/log-index-bench/Cargo.toml --bin viewer -- 60
+cargo run --release --features alloc-stats --manifest-path tools/log-index-bench/Cargo.toml --bin viewer
 ```
 
 Pass `smoke` after the binary name for a smaller fixture. Allocation counters run
@@ -74,8 +76,23 @@ algorithm and timestamp correctness.
 - One in-flight refresh per file; query/scan continuations expose partial coverage.
 
 These limits bound inputs and retained structures rather than claiming an exact RSS
-cap. P6 must measure the combined actor/query/GUI footprint and steady-state latency.
+cap. The final actor measurements and remaining native acceptance checks are in
+`../../docs/superpowers/reports/2026-09-11-session-scoped-logs.md`.
 The workload used for algorithm correctness must include duplicate timestamps,
 clock rollback, escaped JSON, malformed records and incomplete trailing lines;
 the frozen full-layout comparison intentionally does not repair its old query
 semantics and cannot substitute for those tests.
+
+## Production actor measurements
+
+Initialize the runtime submodule before running this workspace. `viewer` writes a
+100,000-row JSON file, opens the real filesystem adapter and LogsClient, then
+appends 1,000 rows per second. It polls every second and drains continuation pages
+immediately. Each appended row must appear exactly once. Latency runs include JSON
+parsing, filesystem reads, actor messages and owned response projection; they
+exclude Tauri, service IPC and GUI rendering. No allocator instrumentation runs
+in this mode. It uses normal scheduler placement and one measured 60-second run.
+
+The separate `alloc-stats` mode counts allocations for the production pure Index,
+including parsing, then checks 100 build/query/drop cycles. It measures requested
+heap bytes, not RSS or actor/GUI heap size. See the JSONL files under `results/`.

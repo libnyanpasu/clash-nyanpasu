@@ -825,12 +825,117 @@ async fn restore_cancels_an_in_flight_pac_download() {
     let statuses = reconciling.await.expect("the reconcile task should finish");
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "pac_apply_failed",
-        "the cancelled download is reported as a failed apply"
+        "system_proxy_shut_down",
+        "the abandoned download is the shutdown, not PAC refusing the url"
     );
-    // The fallback landed before the restore, so the exit still had ours to
-    // turn off: the ordinary restore behaviour is unchanged.
-    assert!(!os.last_write().enable);
+    assert!(
+        os.writes().is_empty(),
+        "an exiting app must not install a proxy on its way out: {:?}",
+        os.writes()
+    );
+}
+
+#[tokio::test]
+async fn cancelled_pac_apply_does_not_write_a_fallback_proxy() {
+    // A cancelled download used to look exactly like PAC refusing the url, so
+    // the fallback branch installed the plain proxy during teardown — blocking
+    // OS work that can also push the restore past its own bound.
+    let os = RecordingOsProxy::new();
+    let pac = BlockingPac::new();
+    let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
+    client
+        .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
+        .await;
+    let enabled = os.writes().len();
+
+    let reconciling = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .reconcile(
+                    rev(2),
+                    Some(pac_proxy("http://example.test/proxy.pac")),
+                    None,
+                    None,
+                )
+                .await
+        })
+    };
+    pac.started().await;
+
+    let restored = client.restore().await;
+
+    let statuses = reconciling.await.expect("the reconcile task should finish");
+    assert_eq!(
+        code_of(&statuses, EffectKind::SystemProxy),
+        "system_proxy_shut_down"
+    );
+    assert_eq!(restored.health, EffectHealth::Healthy);
+    assert_eq!(
+        os.writes().len(),
+        enabled + 1,
+        "only the restore may write the OS once the shutdown began: {:?}",
+        os.writes()
+    );
+    assert!(
+        !os.last_write().enable,
+        "the restore still turns off what this process installed"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_queued_behind_restore_is_rejected() {
+    // `restore` fires the token before queueing its message, so a reconcile can
+    // reach the actor while the interrupted PAC apply is still unwinding and
+    // before the restore itself runs. It must write nothing either.
+    let os = RecordingOsProxy::new();
+    let pac = BlockingPac::new();
+    let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
+    let reconciling = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .reconcile(
+                    rev(1),
+                    Some(pac_proxy("http://example.test/proxy.pac")),
+                    None,
+                    None,
+                )
+                .await
+        })
+    };
+    pac.started().await;
+
+    // The first half of `restore`, on its own: the token is what a reconcile
+    // arriving before the restore message has to notice.
+    client.cancel.cancel();
+    let statuses = client
+        .reconcile(
+            rev(2),
+            Some(proxy(true, Some(7890))),
+            Some(guard(true, Duration::from_secs(10))),
+            Some(true),
+        )
+        .await;
+
+    for kind in [
+        EffectKind::AutoLaunch,
+        EffectKind::SystemProxy,
+        EffectKind::ProxyGuard,
+    ] {
+        assert_eq!(
+            code_of(&statuses, kind),
+            "system_proxy_shut_down",
+            "{kind:?}"
+        );
+    }
+    assert!(
+        os.writes().is_empty(),
+        "nothing may reach the OS after the shutdown began: {:?}",
+        os.writes()
+    );
+    let _ = reconciling.await.expect("the reconcile task should finish");
+    client.restore().await;
 }
 
 #[tokio::test]
@@ -861,7 +966,8 @@ async fn reconcile_after_restore_is_rejected() {
             health_of(&statuses, kind),
             EffectHealth::Degraded {
                 code: "system_proxy_shut_down",
-                message: "the system proxy owner restored the original settings and stopped accepting changes".to_owned(),
+                message: "the system proxy owner is shutting down and stopped accepting changes"
+                    .to_owned(),
                 retryable: false,
             },
             "{kind:?}"

@@ -209,12 +209,15 @@ impl State {
         auto_launch: Option<bool>,
     ) -> Vec<EffectStatus> {
         let kinds = requested_kinds(proxy.is_some(), guard.is_some(), auto_launch.is_some());
-        if self.closed {
-            // The restore already put the user's settings back. Applying a
-            // plan now would re-install the proxy of an app that is leaving.
+        // The token fires on the way into the restore, before its message is
+        // even queued, so a reconcile can arrive between the two. Either way
+        // the app is leaving and the restore owns the OS from here: applying a
+        // plan now would re-install the proxy that is about to be removed.
+        if self.closed || self.cancel.is_cancelled() {
+            self.close_for_shutdown();
             tracing::debug!(
                 revision = revision.get(),
-                "refusing a system proxy reconcile after the restore"
+                "refusing a system proxy reconcile during shutdown"
             );
             return kinds
                 .into_iter()
@@ -241,6 +244,14 @@ impl State {
                     status
                 }
             };
+            // The PAC apply inside is the one await that outlives the shutdown
+            // token; if it fired, the rest of this plan belongs to the restore.
+            if self.closed {
+                return kinds
+                    .into_iter()
+                    .map(|kind| self.shut_down(kind, revision))
+                    .collect();
+            }
             statuses.push(status);
         }
         if let Some(desired) = guard {
@@ -257,6 +268,15 @@ impl State {
         // proxy off leaves the guard with nothing to re-apply.
         self.refresh_guard(myself);
         statuses
+    }
+
+    /// The shutdown began while this reconcile was running. The restore is the
+    /// only thing allowed to touch the OS from here, so the guard timer stops
+    /// and every later reconcile is refused.
+    fn close_for_shutdown(&mut self) {
+        self.closed = true;
+        self.stop_guard();
+        self.guard_running = None;
     }
 
     /// Takes ownership of a capability for this revision, or reports that a
@@ -398,11 +418,24 @@ impl State {
             };
         }
 
-        match self.pac.apply(url, self.cancel.clone()).await {
-            Ok(()) => {
-                self.pac_active = true;
-                self.healthy(EffectKind::SystemProxy, revision)
-            }
+        let applied = self.pac.apply(url, self.cancel.clone()).await;
+        if applied.is_ok() {
+            // Recorded before the shutdown check below: the url is installed
+            // either way, and only this flag makes the restore clear it.
+            self.pac_active = true;
+        }
+        // An error here is the download being abandoned by the shutdown, not
+        // PAC refusing the url. Told apart by the token rather than by the
+        // error text, which the port is free to word however it likes. Writing
+        // the plain fallback now would install a proxy during teardown, and the
+        // blocking OS write can push the restore past its own bound.
+        if self.cancel.is_cancelled() {
+            self.close_for_shutdown();
+            return self.shut_down(EffectKind::SystemProxy, revision);
+        }
+
+        match applied {
+            Ok(()) => self.healthy(EffectKind::SystemProxy, revision),
             Err(error) => {
                 // Whatever url was installed before this attempt is still the
                 // one the OS resolves against, so it has to be cleared before
@@ -684,7 +717,7 @@ impl State {
     }
 
     /// Not retryable: nothing about this app's exit is going to change, and a
-    /// retry would re-install the proxy the restore just removed.
+    /// retry would re-install the proxy the restore is removing.
     fn shut_down(&self, kind: EffectKind, revision: EffectRevision) -> EffectStatus {
         EffectStatus {
             kind,
@@ -692,7 +725,8 @@ impl State {
             applied_revision: self.applied.of(kind),
             health: EffectHealth::Degraded {
                 code: "system_proxy_shut_down",
-                message: "the system proxy owner restored the original settings and stopped accepting changes".to_owned(),
+                message: "the system proxy owner is shutting down and stopped accepting changes"
+                    .to_owned(),
                 retryable: false,
             },
         }

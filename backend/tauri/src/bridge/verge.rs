@@ -456,7 +456,6 @@ fn legacy_patch_between(previous: &IVerge, desired: &IVerge) -> anyhow::Result<I
 fn route_verge_patch(patch: &IVerge) -> LegacyVergePatchRoute {
     let legacy = patch.enable_service_mode.is_some()
         || patch.enable_tun_mode.is_some()
-        || patch.hotkeys.is_some()
         || patch.language.is_some()
         || patch.app_log_level.is_some()
         || patch.max_log_files.is_some()
@@ -1088,6 +1087,7 @@ mod tests {
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
             binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(crate::client::effects::ports::NoopApplicationEffects),
+            window: Arc::new(crate::client::hotkey::ports::MockWindowControl::new()),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path, legacy_store);
@@ -1754,6 +1754,8 @@ mod tests {
         assert_pure!(enable_system_proxy: true);
         assert_pure!(system_proxy_bypass: "localhost".to_string());
         assert_pure!(enable_proxy_guard: true);
+        // Owned by the hotkey actor now.
+        assert_pure!(hotkeys: Vec::<String>::new());
     }
 
     #[test]
@@ -1772,7 +1774,6 @@ mod tests {
 
         assert_legacy!(enable_service_mode: true);
         assert_legacy!(enable_tun_mode: true);
-        assert_legacy!(hotkeys: Vec::<String>::new());
         assert_legacy!(language: "en".to_string());
         assert_legacy!(app_log_level: LoggingLevel::default());
         assert_legacy!(max_log_files: 7usize);
@@ -2407,6 +2408,7 @@ mod tests {
             system_dns: Arc::new(crate::client::NoopSystemDnsCache),
             binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             effects,
+            window: Arc::new(crate::client::hotkey::ports::MockWindowControl::new()),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(

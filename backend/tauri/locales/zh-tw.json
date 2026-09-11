@@ -64,6 +64,9 @@
   "break_when_mode_change": "當模式切換時打斷連線",
   "hotkey_error": {
     "invalid_hotkey": "無效的快捷鍵：%{hotkey}",
-    "missing_super_key": "快捷鍵必須包含修飾鍵 (Cmd/Ctrl/Win/Meta)"
+    "missing_super_key": "快捷鍵必須包含修飾鍵 (Cmd/Ctrl/Win/Meta)",
+    "malformed_entry": "快捷鍵條目格式錯誤：%{entry}",
+    "unknown_function": "未知的快捷鍵功能：%{function}",
+    "duplicate_accelerator": "快捷鍵 %{hotkey} 已指派給其他功能"
   }
 }

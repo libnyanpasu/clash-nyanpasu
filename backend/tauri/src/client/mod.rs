@@ -7,6 +7,7 @@ pub mod core_lifecycle;
 pub(crate) mod effects;
 mod error;
 mod event_sink;
+pub mod hotkey;
 pub mod logs;
 mod ports;
 pub mod profiles;
@@ -82,6 +83,7 @@ pub struct ClientSetupArgs {
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+    pub window: Arc<dyn hotkey::ports::WindowControl>,
 }
 
 #[derive(Clone)]
@@ -274,6 +276,7 @@ struct NyanpasuClientInner {
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
     effects: effects::ApplicationEffects,
+    window: Arc<dyn hotkey::ports::WindowControl>,
 }
 
 #[allow(dead_code)]
@@ -290,6 +293,7 @@ impl NyanpasuClient {
             system_dns,
             binary_installer,
             effects,
+            window,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -351,6 +355,7 @@ impl NyanpasuClient {
             dirty_rx,
             binary_installer,
             effects,
+            window,
         ))
     }
 
@@ -372,6 +377,7 @@ impl NyanpasuClient {
         dirty_rx: tokio::sync::watch::Receiver<()>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+        window: Arc<dyn hotkey::ports::WindowControl>,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
@@ -427,6 +433,7 @@ impl NyanpasuClient {
                 updater,
                 system_dns,
                 effects: effects::ApplicationEffects::new(effects),
+                window,
             }),
         })
     }
@@ -590,6 +597,9 @@ impl NyanpasuClient {
         &self,
         patch: NyanpasuAppConfigPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
+        if let Some(hotkeys) = patch.hotkeys.as_deref() {
+            hotkey::validate_bindings(hotkeys)?;
+        }
         let client = self.inner.application.clone();
         self.commit_and_reconcile(move || async move {
             client.patch(patch).await?;
@@ -602,6 +612,7 @@ impl NyanpasuClient {
         &self,
         state: NyanpasuAppConfig,
     ) -> Result<runtime::MutationOutcome<()>> {
+        hotkey::validate_bindings(&state.hotkeys)?;
         let client = self.inner.application.clone();
         self.commit_and_reconcile(move || async move {
             client.replace(state).await?;
@@ -2156,7 +2167,13 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_v2_clients() -> (CoreClientV2, ServiceClient) {
-        test_v2_clients_with_endpoint(Arc::new(IdleEndpoint))
+        test_v2_clients_with_endpoint(test_idle_endpoint())
+    }
+
+    /// A core that answers nothing, for tests whose subject is the facade
+    /// rather than the running core.
+    pub(crate) fn test_idle_endpoint() -> crate::core::actor_v2::endpoint::EndpointHandle {
+        Arc::new(IdleEndpoint)
     }
 
     pub(crate) fn test_v2_clients_with_endpoint(
@@ -2444,6 +2461,7 @@ pub(crate) mod tests {
             application_workflow::DirtyNotifier::channel().1,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
+            Arc::new(hotkey::ports::MockWindowControl::new()),
         )
         .await
         .unwrap()
@@ -2498,6 +2516,9 @@ pub(crate) mod tests {
             system_dns: Arc::new(NoopSystemDnsCache),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
+            // A mock rather than a no-op: a test that dispatches a window
+            // action without saying so should fail, not pass silently.
+            window: Arc::new(hotkey::ports::MockWindowControl::new()),
         }
     }
 
@@ -2708,6 +2729,7 @@ pub(crate) mod tests {
             dirty_rx,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
+            Arc::new(hotkey::ports::MockWindowControl::new()),
         )
         .await
         .unwrap();
@@ -2865,6 +2887,9 @@ pub(crate) mod tests {
             system_dns: Arc::new(NoopSystemDnsCache),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
+            // A mock rather than a no-op: a test that dispatches a window
+            // action without saying so should fail, not pass silently.
+            window: Arc::new(hotkey::ports::MockWindowControl::new()),
         })
         .expect("client should construct with typed config actors");
 
@@ -3706,6 +3731,7 @@ pub(crate) mod tests {
                 application_workflow::DirtyNotifier::channel().1,
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(effects::ports::NoopApplicationEffects),
+                Arc::new(hotkey::ports::MockWindowControl::new()),
             )
             .await
             .unwrap();

@@ -1,5 +1,3 @@
-use crate::config::Config;
-
 use super::core::clash::ws::ClashConnectionsConnectorEvent;
 
 use anyhow::Context;
@@ -8,7 +6,7 @@ use nyanpasu_egui::{
     widget::StatisticWidgetVariant,
 };
 use std::sync::{Arc, atomic::AtomicBool};
-use tauri::{Manager, Runtime, utils::platform::current_exe};
+use tauri::utils::platform::current_exe;
 use tokio::{
     process::Child,
     sync::{
@@ -216,22 +214,17 @@ impl Drop for WidgetManager {
     }
 }
 
-pub async fn setup<R: Runtime, M: Manager<R>>(
-    manager: &M,
+/// Builds the widget manager and starts listening for traffic samples.
+///
+/// It no longer reads the configuration or starts the widget: which variant
+/// should run is an application effect now, so the composition root installs
+/// this into the widget controller and the startup reconcile hands it the
+/// desired value. It is returned rather than managed so that exactly one owner
+/// exists — `WidgetManager` stops the widget when it is dropped.
+pub async fn setup(
     ws_connections_receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<WidgetManager> {
     let widget_manager = WidgetManager::new();
-    // TODO: use the app_handle to read initial config.
-    let option = Config::verge()
-        .data()
-        .network_statistic_widget
-        .unwrap_or_default();
     widget_manager.register_listener(ws_connections_receiver);
-    if let Some(widget) = option.to_variant() {
-        widget_manager.start(widget).await?;
-    }
-
-    // TODO: subscribe to the config change event
-    manager.manage(widget_manager);
-    Ok(())
+    Ok(widget_manager)
 }

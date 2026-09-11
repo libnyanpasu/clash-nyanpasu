@@ -452,18 +452,8 @@ fn legacy_patch_between(previous: &IVerge, desired: &IVerge) -> anyhow::Result<I
 
 /// Pure classifier (infallible). Validation is delegated to `validate_verge_patch`
 /// or to `feat::patch_verge`. The side-effect field set mirrors `feat::patch_verge`.
-#[allow(deprecated)]
 fn route_verge_patch(patch: &IVerge) -> LegacyVergePatchRoute {
-    let legacy = patch.enable_service_mode.is_some()
-        || patch.enable_tun_mode.is_some()
-        || patch.language.is_some()
-        || patch.app_log_level.is_some()
-        || patch.max_log_files.is_some()
-        || patch.auto_log_clean.is_some()
-        || patch.clash_tray_selector.is_some()
-        || patch.enable_tray_text.is_some()
-        || patch.tray_menu_mode.is_some()
-        || patch.network_statistic_widget.is_some();
+    let legacy = patch.enable_service_mode.is_some() || patch.enable_tun_mode.is_some();
 
     if legacy {
         LegacyVergePatchRoute::LegacySideEffects
@@ -1943,6 +1933,21 @@ mod tests {
         assert_pure!(enable_proxy_guard: true);
         // Owned by the hotkey actor now.
         assert_pure!(hotkeys: Vec::<String>::new());
+        // Owned by the UI-effect adapters now.
+        assert_pure!(language: "en".to_string());
+        assert_pure!(app_log_level: LoggingLevel::default());
+        assert_pure!(max_log_files: 7usize);
+        assert_pure!(clash_tray_selector: ProxiesSelectorMode::default());
+        assert_pure!(enable_tray_text: true);
+        assert_pure!(tray_menu_mode: TrayMenuMode::default());
+        assert_pure!(network_statistic_widget: NetworkStatisticWidgetConfig::default());
+        // Never had a side effect at patch time: the log-cleaning job reads it
+        // from the legacy store when it next runs, and the pure route writes
+        // that store just the same.
+        #[allow(deprecated)]
+        {
+            assert_pure!(auto_log_clean: 7i64);
+        }
     }
 
     #[test]
@@ -1961,17 +1966,6 @@ mod tests {
 
         assert_legacy!(enable_service_mode: true);
         assert_legacy!(enable_tun_mode: true);
-        assert_legacy!(language: "en".to_string());
-        assert_legacy!(app_log_level: LoggingLevel::default());
-        assert_legacy!(max_log_files: 7usize);
-        #[allow(deprecated)]
-        {
-            assert_legacy!(auto_log_clean: 7i64);
-        }
-        assert_legacy!(clash_tray_selector: ProxiesSelectorMode::default());
-        assert_legacy!(enable_tray_text: true);
-        assert_legacy!(tray_menu_mode: TrayMenuMode::default());
-        assert_legacy!(network_statistic_widget: NetworkStatisticWidgetConfig::default());
     }
 
     #[test]

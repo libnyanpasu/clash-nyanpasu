@@ -242,12 +242,11 @@ pub fn get_max_scale_factor() -> f64 {
 #[instrument(skip(app_handle))]
 pub fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
-    let widget_manager = app_handle.state::<crate::widget::WidgetManager>();
     // Managed Tauri state — no process-global client lookup. The lifecycle
     // actor closes admission and drains active work before stopping the core,
     // so exit cannot race a background dirty rebuild. Tauri ExitRequested is already
     // off the main event-loop spin; block_on here matches the existing cleanup
-    // pattern (widget stop / core stop).
+    // pattern (effect shutdown / core stop).
     let client = app_handle
         .try_state::<crate::client::NyanpasuClient>()
         .map(|state| state.inner().clone());
@@ -269,9 +268,6 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
                 log::error!("failed to stop core: {error}");
             }
         }
-        if let Err(e) = widget_manager.stop().await {
-            log::error!("failed to stop widget manager: {e:?}");
-        };
     });
     #[cfg(windows)]
     crate::shutdown_hook::set_ready_for_shutdown();

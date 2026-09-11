@@ -640,9 +640,149 @@ fn runtime_rebuild_failure_degrades_without_erasing_the_commit() {
     });
 }
 
+/// The real executor with every UI capability failing, so the facade can be
+/// observed reporting each failure separately instead of one merged error.
+async fn failing_ui_executor() -> Arc<crate::client::effects::executor::ApplicationEffectExecutor> {
+    use crate::client::{
+        hotkey::{
+            HotkeyArgs, HotkeyClient,
+            ports::{MockHotkeyActionSink, MockShortcutRegistrar},
+        },
+        system_proxy::{
+            SystemProxyArgs, SystemProxyClient,
+            ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
+        },
+        ui_effects::ports::{
+            MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
+            WidgetError,
+        },
+    };
+
+    let system_proxy = SystemProxyClient::spawn(SystemProxyArgs {
+        os: Arc::new(MockOsProxyPort::new()),
+        auto_launch: Arc::new(MockAutoLaunchPort::new()),
+        pac: Arc::new(MockPacPort::new()),
+        schedule_guard_ticks: false,
+    })
+    .await
+    .expect("the system proxy actor should spawn");
+    let hotkeys = HotkeyClient::spawn(HotkeyArgs {
+        registrar: Arc::new(MockShortcutRegistrar::new()),
+        sink: Arc::new(MockHotkeyActionSink::new()),
+    })
+    .await
+    .expect("the hotkey actor should spawn");
+
+    let mut locale = MockLocaleSink::new();
+    locale
+        .expect_set_locale()
+        .returning(|_| Err(anyhow::anyhow!("locale refused")));
+    let mut logger = MockLoggerRefresher::new();
+    logger
+        .expect_refresh()
+        .returning(|_, _| Err(anyhow::anyhow!("logger refused")));
+    let mut widget = MockWidgetController::new();
+    widget.expect_apply().returning(|_| {
+        Box::pin(async { Err(WidgetError::Failed(anyhow::anyhow!("widget refused"))) })
+    });
+    let mut tray = MockTrayRefresher::new();
+    tray.expect_refresh_full()
+        .returning(|| Box::pin(async { Err(anyhow::anyhow!("tray refused")) }));
+
+    Arc::new(
+        crate::client::effects::executor::ApplicationEffectExecutor::new(
+            system_proxy,
+            hotkeys,
+            Arc::new(crate::client::hotkey::adapters::PlatformAcceleratorValidator),
+            Arc::new(locale),
+            Arc::new(logger),
+            Arc::new(widget),
+            Arc::new(tray),
+        ),
+    )
+}
+
+/// A patch that lands on all four UI effects at once: the language also forces
+/// a full tray rebuild.
+fn ui_effect_patch() -> nyanpasu_config::application::NyanpasuAppConfigPatch {
+    use nyanpasu_config::application::{LoggingLevel, NetworkStatisticWidgetConfig};
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.language = Some(I18nLanguage::Russian);
+    patch.app_log_level = Some(LoggingLevel::Error);
+    patch.network_statistic_widget = Some(NetworkStatisticWidgetConfig::Enabled(
+        nyanpasu_egui::widget::StatisticWidgetVariant::Small,
+    ));
+    patch
+}
+
+#[test]
+fn ui_effect_failure_keeps_committed_config() {
+    let dir = tempdir().expect("tempdir should be created");
+    let executor = tauri::async_runtime::block_on(failing_ui_executor());
+    let client = client_with(&dir, executor, Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        let outcome = client
+            .patch_app_config(ui_effect_patch())
+            .await
+            .expect("a failed UI effect is not a failed commit");
+
+        assert!(
+            matches!(outcome, MutationOutcome::CommittedDegraded { .. }),
+            "four failing effects must be reported, not swallowed"
+        );
+        assert_eq!(
+            client
+                .get_app_config()
+                .await
+                .expect("config should read back")
+                .language,
+            I18nLanguage::Russian,
+            "the configuration is committed before any effect runs"
+        );
+    });
+}
+
+#[test]
+fn each_failure_reports_its_own_degradation() {
+    let dir = tempdir().expect("tempdir should be created");
+    let executor = tauri::async_runtime::block_on(failing_ui_executor());
+    let client = client_with(&dir, executor, Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        let outcome = client
+            .patch_app_config(ui_effect_patch())
+            .await
+            .expect("a failed UI effect is not a failed commit");
+
+        let reported = degradations(&outcome);
+        let mut codes: Vec<&str> = reported
+            .iter()
+            .map(|degradation| degradation.code.as_str())
+            .collect();
+        codes.sort_unstable();
+        assert_eq!(
+            codes,
+            vec![
+                "locale_apply_failed",
+                "logger_refresh_failed",
+                "tray_refresh_failed",
+                "widget_apply_failed",
+            ],
+            "one failing adapter must not mask another: {reported:?}"
+        );
+        assert!(
+            reported
+                .iter()
+                .all(|degradation| degradation.phase == DegradationPhase::UiEffect),
+            "every UI effect degrades in the UI phase: {reported:?}"
+        );
+    });
+}
+
 /// The executor is the only thing between the pipeline and the effect owners,
 /// so what it must get right is the fan-out: one message per plan per owner,
-/// and an untouched pass-through for the kinds nobody owns yet.
+/// every kind dispatched, and the plan's order preserved.
 mod executor {
     use std::sync::{
         Arc,
@@ -664,6 +804,9 @@ mod executor {
         system_proxy::{
             SystemProxyArgs, SystemProxyClient,
             ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
+        },
+        ui_effects::ports::{
+            MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
         },
     };
     use nyanpasu_config::{
@@ -726,10 +869,31 @@ mod executor {
         })
         .await
         .expect("the hotkey actor should spawn");
+        let mut locale = MockLocaleSink::new();
+        locale.expect_set_locale().returning(|_| Ok(()));
+        let mut logger = MockLoggerRefresher::new();
+        logger.expect_refresh().returning(|_, _| Ok(()));
+        let mut widget = MockWidgetController::new();
+        widget
+            .expect_apply()
+            .returning(|_| Box::pin(async { Ok(()) }));
+        widget
+            .expect_stop()
+            .returning(|| Box::pin(async { Ok(()) }));
+        let mut tray = MockTrayRefresher::new();
+        tray.expect_refresh_full()
+            .returning(|| Box::pin(async { Ok(()) }));
+        tray.expect_refresh_part()
+            .returning(|| Box::pin(async { Ok(()) }));
+
         ApplicationEffectExecutor::new(
             system_proxy,
             hotkeys,
             Arc::new(PlatformAcceleratorValidator),
+            Arc::new(locale),
+            Arc::new(logger),
+            Arc::new(widget),
+            Arc::new(tray),
         )
     }
 
@@ -766,7 +930,7 @@ mod executor {
     }
 
     #[tokio::test]
-    async fn effects_without_an_owner_pass_through_as_healthy() {
+    async fn every_effect_kind_reaches_an_owner_in_plan_order() {
         let inputs = ApplicationEffectInputs::project(
             &NyanpasuAppConfig::default(),
             &ClashConfig::default(),
@@ -822,11 +986,18 @@ mod executor {
     }
 
     #[tokio::test]
-    async fn shutdown_restores_the_system_proxy_and_releases_the_shortcuts() {
+    async fn shutdown_restores_the_system_proxy_releases_shortcuts_and_stops_the_widget() {
         let statuses = executor().await.shutdown().await;
 
         let kinds: Vec<_> = statuses.iter().map(|status| status.kind).collect();
-        assert_eq!(kinds, vec![EffectKind::SystemProxy, EffectKind::Hotkeys]);
+        assert_eq!(
+            kinds,
+            vec![
+                EffectKind::SystemProxy,
+                EffectKind::Hotkeys,
+                EffectKind::Widget
+            ]
+        );
         for status in &statuses {
             assert_eq!(status.health, EffectHealth::Healthy, "{:?}", status.kind);
         }

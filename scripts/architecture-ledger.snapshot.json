@@ -4,9 +4,9 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 84,
+      "total": 83,
       "byKey": {
-        "Config::verge()": 65,
+        "Config::verge()": 64,
         "Config::clash()": 19
       }
     },
@@ -21,10 +21,10 @@
       }
     },
     "migration_markers": {
-      "total": 12,
+      "total": 13,
       "byKey": {
         "TODO(actor-migration)": 9,
-        "FIXME(actor-migration)": 3
+        "FIXME(actor-migration)": 4
       }
     },
     "legacy_dto_refs": {

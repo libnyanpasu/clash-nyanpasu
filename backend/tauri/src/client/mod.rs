@@ -16,6 +16,7 @@ pub mod runtime_inspection;
 mod session_state;
 mod system_dns;
 pub mod system_proxy;
+pub mod ui_effects;
 
 use self::{
     application::ApplicationClient, clash_config::ClashConfigClient,

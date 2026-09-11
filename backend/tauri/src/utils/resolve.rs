@@ -192,15 +192,6 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("init clash connection connector");
     log_err!(crate::core::clash::setup(app));
 
-    log::trace!("init widget manager");
-    log_err!(tauri::async_runtime::block_on(async {
-        crate::widget::setup(app, {
-            app.state::<crate::client::NyanpasuClient>()
-                .subscribe_clash_connections()
-        })
-        .await
-    }));
-
     log_err!(tauri::async_runtime::block_on(
         app.state::<crate::client::NyanpasuClient>()
             .start_clash_streams()

@@ -455,6 +455,54 @@ mod tests {
         .unwrap();
     }
 
+    /// `typed_config` splits the legacy file while `hotkeys` is still in it, so
+    /// both it and `storage` end up with an opinion about the list. The
+    /// key-value store is the one the hotkey editor wrote to, so the typed
+    /// config must end the upgrade holding exactly what `hotkeys_to_kv` parked
+    /// there.
+    #[test]
+    fn full_chain_keeps_the_key_value_hotkeys() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let legacy_raw = include_str!("fixtures/v1_6_1/nyanpasu-config.yaml");
+        std::fs::write(config_dir.join("nyanpasu-config.yaml"), legacy_raw).unwrap();
+        std::fs::write(
+            config_dir.join("profiles.yaml"),
+            include_str!("fixtures/v1_6_1/profiles.yaml"),
+        )
+        .unwrap();
+
+        // Read back out of the fixture rather than spelled out here, so the
+        // assertion tracks whatever the legacy file actually carries.
+        let legacy: serde_yaml::Mapping = serde_yaml::from_str(legacy_raw).unwrap();
+        let expected: Vec<String> = legacy
+            .get(serde_yaml::Value::String("hotkeys".into()))
+            .and_then(|value| value.as_sequence())
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(ToString::to_string))
+                    .collect()
+            })
+            .expect("the 1.6.1 fixture carries hotkeys");
+        assert!(!expected.is_empty());
+
+        let ctx = Ctx::new(config_dir.clone(), data_dir);
+        let mut runner =
+            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
+        runner.run_pending().unwrap();
+
+        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
+            &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(application.hotkeys, expected);
+    }
+
     #[test]
     fn existing_store_without_typed_config_accepts_legacy_runtime_clash_baseline() {
         let temp = tempfile::tempdir().unwrap();

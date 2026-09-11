@@ -13,7 +13,10 @@ use crate::{
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
-            adapters::{ChannelActionSink, TauriShortcutRegistrar, TauriWindowControl},
+            adapters::{
+                ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
+                TauriWindowControl,
+            },
             ports::HotkeyAction,
         },
         system_proxy::{
@@ -98,6 +101,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), anyhow::Error
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone())),
+        accelerators: Arc::new(PlatformAcceleratorValidator),
     })
     .context("Failed to setup nyanpasu client")?;
     forward_actor_events(app_handle, client.clone());
@@ -175,6 +179,7 @@ fn build_application_effects(
     Ok(Arc::new(ApplicationEffectExecutor::new(
         system_proxy,
         hotkeys,
+        Arc::new(PlatformAcceleratorValidator),
     )))
 }
 

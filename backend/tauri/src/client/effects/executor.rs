@@ -11,20 +11,30 @@ use super::{
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
-    hotkey::{HotkeyClient, ports::HotkeyBindings},
+    hotkey::{
+        HotkeyClient,
+        ports::{AcceleratorValidator, HotkeyBindings},
+    },
     system_proxy::SystemProxyClient,
 };
+use std::sync::Arc;
 
 pub struct ApplicationEffectExecutor {
     system_proxy: SystemProxyClient,
     hotkeys: HotkeyClient,
+    accelerators: Arc<dyn AcceleratorValidator>,
 }
 
 impl ApplicationEffectExecutor {
-    pub fn new(system_proxy: SystemProxyClient, hotkeys: HotkeyClient) -> Self {
+    pub fn new(
+        system_proxy: SystemProxyClient,
+        hotkeys: HotkeyClient,
+        accelerators: Arc<dyn AcceleratorValidator>,
+    ) -> Self {
         Self {
             system_proxy,
             hotkeys,
+            accelerators,
         }
     }
 
@@ -32,7 +42,7 @@ impl ApplicationEffectExecutor {
     /// one here means it arrived from somewhere else — a migration, or a file
     /// edited by hand. The config stays as written and the effect degrades.
     async fn apply_hotkeys(&self, revision: EffectRevision, raw: &[String]) -> EffectStatus {
-        match HotkeyBindings::parse(raw) {
+        match HotkeyBindings::parse(raw, self.accelerators.as_ref()) {
             Ok(desired) => self.hotkeys.reconcile(revision, desired).await,
             Err(error) => EffectStatus {
                 kind: EffectKind::Hotkeys,

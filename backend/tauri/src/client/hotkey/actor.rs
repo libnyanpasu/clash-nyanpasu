@@ -130,6 +130,30 @@ impl State {
         }
         self.applied_revision = revision;
 
+        // Every accelerator is checked before a single grab is released. The
+        // old check sat inside `register`, which runs after the releases, so
+        // one unparsable binding tore down the shortcuts that did work and then
+        // failed. Nothing here is retryable: the list has to change first.
+        let rejected: Vec<String> = desired
+            .accelerators()
+            .filter(|accelerator| self.registrar.validate(accelerator).is_err())
+            .map(ToOwned::to_owned)
+            .collect();
+        if !rejected.is_empty() {
+            let status = self.degraded(
+                revision,
+                "hotkey_invalid_bindings",
+                format!(
+                    "the platform refused {}: {}",
+                    rejected.len(),
+                    rejected.join("; ")
+                ),
+                false,
+            );
+            self.health = status.health.clone();
+            return status;
+        }
+
         let current = HotkeyBindings::from(self.registered.clone());
         let ops = current.diff(&desired);
         if ops.is_empty() {
@@ -198,6 +222,7 @@ impl State {
                     total,
                     failures.join("; ")
                 ),
+                true,
             )
         };
         self.health = status.health.clone();
@@ -210,16 +235,18 @@ impl State {
         let revision = self.applied_revision;
         match blocking(move || registrar.unregister_all()).await {
             Ok(()) => self.healthy(revision),
-            Err(error) => {
-                self.degraded(revision, "hotkey_unregister_all_failed", error.to_string())
-            }
+            Err(error) => self.degraded(
+                revision,
+                "hotkey_unregister_all_failed",
+                error.to_string(),
+                true,
+            ),
         }
     }
 
     async fn register(&self, accelerator: &str, action: HotkeyAction) -> anyhow::Result<()> {
-        // Asked before the grab so an accelerator the platform parser rejects
-        // is reported as such instead of as a registration failure.
-        self.registrar.validate(accelerator)?;
+        // No validation here: `reconcile` cleared the whole desired set before
+        // it released anything.
         let registrar = self.registrar.clone();
         let sink = self.sink.clone();
         let accelerator = accelerator.to_owned();
@@ -254,6 +281,7 @@ impl State {
         revision: EffectRevision,
         code: &'static str,
         message: String,
+        retryable: bool,
     ) -> EffectStatus {
         tracing::warn!(code, %message, "a hotkey effect failed after the config was committed");
         EffectStatus {
@@ -263,7 +291,7 @@ impl State {
             health: EffectHealth::Degraded {
                 code,
                 message,
-                retryable: true,
+                retryable,
             },
         }
     }

@@ -7,9 +7,31 @@ use anyhow::Context;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use super::ports::{
-    HotkeyAction, HotkeyActionSink, HotkeyParseError, ShortcutRegistrar, WindowControl,
-    has_super_key,
+    AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError, ShortcutRegistrar,
+    WindowControl, has_super_key,
 };
+
+/// The accelerator rules the platform actually enforces: the shortcut plugin's
+/// own parser, plus the super-key requirement on top.
+///
+/// Holds nothing, so both the facade's pre-commit check and the registrar can
+/// use the same instance of the rule.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PlatformAcceleratorValidator;
+
+impl AcceleratorValidator for PlatformAcceleratorValidator {
+    fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError> {
+        // The plugin's own parse panics inside `register`, so an accelerator it
+        // cannot read has to be rejected before it gets there (issue #287).
+        if Shortcut::from_str(accelerator).is_err() {
+            return Err(HotkeyParseError::InvalidAccelerator(accelerator.to_owned()));
+        }
+        if !has_super_key(accelerator) {
+            return Err(HotkeyParseError::MissingSuperKey(accelerator.to_owned()));
+        }
+        Ok(())
+    }
+}
 
 /// Global shortcuts through `tauri_plugin_global_shortcut`.
 pub struct TauriShortcutRegistrar<R: tauri::Runtime> {
@@ -24,15 +46,9 @@ impl<R: tauri::Runtime> TauriShortcutRegistrar<R> {
 
 impl<R: tauri::Runtime> ShortcutRegistrar for TauriShortcutRegistrar<R> {
     fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError> {
-        // The plugin's own parse panics inside `register`, so an accelerator it
-        // cannot read has to be rejected before it gets there (issue #287).
-        if Shortcut::from_str(accelerator).is_err() {
-            return Err(HotkeyParseError::InvalidAccelerator(accelerator.to_owned()));
-        }
-        if !has_super_key(accelerator) {
-            return Err(HotkeyParseError::MissingSuperKey(accelerator.to_owned()));
-        }
-        Ok(())
+        // One rule, checked twice: what the facade rejects before a commit is
+        // exactly what the OS would refuse afterwards.
+        PlatformAcceleratorValidator.validate(accelerator)
     }
 
     fn register(

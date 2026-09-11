@@ -1159,6 +1159,51 @@ pub async fn clear_clash_ws_history(
 
 // Updater block
 
+#[tauri::command]
+#[specta::specta]
+pub async fn list_log_files(
+    client: tauri::State<'_, NyanpasuClient>,
+    source: crate::client::logs::LogSource,
+) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
+    client.list_log_files(source).await
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn open_log_session(
+    window: tauri::Window,
+    client: tauri::State<'_, NyanpasuClient>,
+    source: crate::client::logs::LogSource,
+    request: nyanpasu_logging::OpenLogs,
+) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogSession> {
+    client
+        .open_log_session(source, window.label().to_string(), request)
+        .await
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn query_logs(
+    window: tauri::Window,
+    client: tauri::State<'_, NyanpasuClient>,
+    source: crate::client::logs::LogSource,
+    request: nyanpasu_logging::QueryLogs,
+) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogPage> {
+    client
+        .query_logs(source, window.label().to_string(), request)
+        .await
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn close_log_session(
+    window: tauri::Window,
+    client: tauri::State<'_, NyanpasuClient>,
+    source: crate::client::logs::LogSource,
+    session: String,
+) -> nyanpasu_logging::LogResult<()> {
+    client
+        .close_log_session(source, window.label().to_string(), session)
+        .await
+}
+
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 // TODO: a copied from updater metadata, and should be moved a separate updater module
 pub struct UpdateWrapper {

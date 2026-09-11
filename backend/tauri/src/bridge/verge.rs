@@ -1113,6 +1113,7 @@ mod tests {
         let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths).unwrap();
         let (core_v2, service) = crate::client::tests::test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            logging: crate::client::logs::test_setup(paths.app_logs_dir()),
             paths,
             runtime_paths,
             bridges: LegacyBridgeSet {
@@ -2410,6 +2411,7 @@ mod tests {
         let (core_v2, service) =
             crate::client::tests::test_v2_clients_with_endpoint(endpoint.clone());
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            logging: crate::client::logs::test_setup(paths.app_logs_dir()),
             paths,
             runtime_paths,
             bridges: LegacyBridgeSet {

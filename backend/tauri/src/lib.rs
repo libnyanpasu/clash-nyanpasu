@@ -14,7 +14,6 @@ mod enhance;
 mod event_handler;
 mod feat;
 mod ipc;
-mod logging;
 mod server;
 mod service;
 mod setup;

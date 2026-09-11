@@ -57,6 +57,16 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
     let legacy_verge_store: Arc<dyn LegacyVergeStore> =
         Arc::new(ConfigLegacyVergeStore::new(legacy_lock.clone()));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+        logging: crate::client::logs::LoggingSetup {
+            files: Arc::new(nyanpasu_logging::FsLogFiles::new(
+                paths.app_logs_dir(),
+                "clash-nyanpasu".into(),
+            )),
+            clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
+            service: Arc::new(crate::client::logs::IpcServiceLogs::new(
+                nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)?,
+            )),
+        },
         paths,
         runtime_paths: runtime_paths.clone(),
         bridges: LegacyBridgeSet {
@@ -79,8 +89,6 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
     ));
     app.manage(client);
 
-    // FIXME: this is a background setup, so be careful use this state in ipc.
-    // crate::logging::setup(app).context("Failed to setup logging")?;
     Ok(())
 }
 

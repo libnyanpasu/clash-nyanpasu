@@ -320,11 +320,6 @@ where
             handle::Handle::refresh_clash();
         }
 
-        // 更新系统代理
-        if mixed_port.is_some() {
-            log_err!(sysopt::Sysopt::global().init_sysproxy());
-        }
-
         if patch.get("mode").is_some() {
             log_err!(handle::Handle::update_systray_part());
         }
@@ -357,9 +352,7 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
 
     Config::verge().draft().patch_config(patch.clone());
     let tun_mode = patch.enable_tun_mode;
-    let auto_launch = patch.enable_auto_launch;
     let system_proxy = patch.enable_system_proxy;
-    let proxy_bypass = patch.system_proxy_bypass;
     let language = patch.language;
     let log_level = patch.app_log_level;
     let log_max_files = patch.max_log_files;
@@ -401,18 +394,6 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
             // happens in `LegacyVergeBridge::run_legacy_verge_mutation`,
             // after the typed commit this function's caller performs
             // (AGENTS.md section 10: commit first, then side effects).
-        }
-
-        if auto_launch.is_some() {
-            sysopt::Sysopt::global().update_launch()?;
-        }
-        if system_proxy.is_some() || proxy_bypass.is_some() {
-            sysopt::Sysopt::global().update_sysproxy()?;
-            sysopt::Sysopt::global().guard_proxy();
-        }
-
-        if let Some(true) = patch.enable_proxy_guard {
-            sysopt::Sysopt::global().guard_proxy();
         }
 
         if let Some(hotkeys) = patch.hotkeys {

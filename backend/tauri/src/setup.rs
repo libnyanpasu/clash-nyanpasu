@@ -10,6 +10,11 @@ use crate::{
     client::{
         ClientSetupArgs, LegacyBridgeSet, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
         TauriUiEventSink,
+        effects::executor::ApplicationEffectExecutor,
+        system_proxy::{
+            SystemProxyArgs, SystemProxyClient,
+            adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
+        },
     },
     utils::path::PathResolver,
 };
@@ -53,6 +58,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
                 .context("Failed to spawn service actor")?;
         anyhow::Ok((core, service))
     })?;
+    let effects = build_application_effects(&app_handle, &paths)?;
     let legacy_lock = Arc::new(parking_lot::Mutex::new(()));
     let legacy_verge_store: Arc<dyn LegacyVergeStore> =
         Arc::new(ConfigLegacyVergeStore::new(legacy_lock.clone()));
@@ -79,10 +85,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         service,
         system_dns: Arc::new(OsSystemDnsCache),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-        // The executor that fans out to the effect owners is assembled by the
-        // system-proxy / hotkey / UI-effect tasks; until then a committed
-        // change reconciles into a port that owns nothing.
-        effects: Arc::new(crate::client::effects::ports::NoopApplicationEffects),
+        effects,
     })
     .context("Failed to setup nyanpasu client")?;
     forward_actor_events(app_handle, client.clone());
@@ -94,6 +97,48 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
     app.manage(client);
 
     Ok(())
+}
+
+/// Builds the effect executor and the actors behind it.
+///
+/// Assembled here rather than inside the client so that `ClientSetupArgs` keeps
+/// exposing one effect dependency: the composition root owns the concrete
+/// adapters, and a test still injects a single port.
+fn build_application_effects<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    paths: &PathResolver,
+) -> anyhow::Result<Arc<ApplicationEffectExecutor>> {
+    // The AppImage path is read here, at the only place that legitimately has
+    // the Tauri environment, and handed to the adapter as a plain value.
+    #[cfg(target_os = "linux")]
+    let appimage = {
+        use tauri::Manager as _;
+        app_handle
+            .env()
+            .appimage
+            .and_then(|path| path.into_string().ok())
+    };
+    #[cfg(not(target_os = "linux"))]
+    let appimage = {
+        let _ = app_handle;
+        None
+    };
+
+    let auto_launch = AutoLaunchConfig::resolve(appimage)
+        .and_then(AutoLaunchBackend::new)
+        .context("Failed to resolve the auto-launch registration")?;
+    let pac = HttpPacBackend::new(utf8_path(paths.cache_dir().join("pac.js"))?)
+        .context("Failed to build the PAC backend")?;
+
+    let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(SystemProxyArgs {
+        os: Arc::new(SysproxyOsProxy),
+        auto_launch: Arc::new(auto_launch),
+        pac: Arc::new(pac),
+        schedule_guard_ticks: true,
+    }))
+    .context("Failed to spawn the system proxy actor")?;
+
+    Ok(Arc::new(ApplicationEffectExecutor::new(system_proxy)))
 }
 
 fn forward_actor_events<R: tauri::Runtime>(

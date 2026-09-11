@@ -68,7 +68,7 @@
     "@commitlint/config-conventional": "21.2.2",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.11.4",
-    "@types/node": "24.13.3",
+    "@types/node": "24.13.4",
     "knip": "6.35.1",
     "lint-staged": "17.5.1",
     "npm-run-all2": "9.0.3",

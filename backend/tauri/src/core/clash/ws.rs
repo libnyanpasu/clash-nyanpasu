@@ -431,7 +431,11 @@ async fn run(actor: ActorRef<Message>, core: CoreClient, generation: u64) {
     loop {
         let api = match core.api_client().await {
             Ok(api) => api,
-            Err(_) => {
+            Err(error) => {
+                tracing::warn!(
+                    "failed to acquire the Clash stream API client: {:#}",
+                    anyhow::Error::new(error)
+                );
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 continue;
             }
@@ -454,7 +458,11 @@ async fn run(actor: ActorRef<Message>, core: CoreClient, generation: u64) {
         }
         tokio::select! {
             _ = api.cancelled() => {},
-            _ = streams.join_next() => {},
+            result = streams.join_next() => {
+                if let Some(Err(error)) = result {
+                    tracing::warn!("Clash stream task failed: {error}");
+                }
+            },
         }
         streams.abort_all();
         while streams.join_next().await.is_some() {}
@@ -511,11 +519,24 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, k
                                 Err(ApiError::Protocol(clash_api::Error::Decode { .. })) => {
                                     tracing::warn!(?kind, "discarded malformed Clash stream frame");
                                 }
-                                Err(_) => break,
+                                Err(ApiError::Stale) => break,
+                                Err(error) => {
+                                    tracing::warn!(
+                                        ?kind,
+                                        "Clash stream failed: {:#}",
+                                        anyhow::Error::new(error)
+                                    );
+                                    break;
+                                }
                             }
                         }
                     }
-                    Err(_) => tracing::debug!(?kind, "Clash stream handshake failed"),
+                    Err(ApiError::Stale) => tracing::debug!(?kind, "Clash stream instance retired"),
+                    Err(error) => tracing::warn!(
+                        ?kind,
+                        "Clash stream handshake failed: {:#}",
+                        anyhow::Error::new(error)
+                    ),
                 }
             }};
         }

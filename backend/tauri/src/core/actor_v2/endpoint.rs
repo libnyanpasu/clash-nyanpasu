@@ -363,6 +363,15 @@ impl ServiceEndpoint {
 /// which no daemon classified and which is retryable by definition.
 fn map_client_error(error: nyanpasu_ipc::client::ClientError) -> CoreError {
     use nyanpasu_ipc::client::ClientError;
+    // Log before the domain boundary flattens the error and loses its sources.
+    let mut reason = error.to_string();
+    let mut source = std::error::Error::source(&error);
+    while let Some(cause) = source {
+        reason.push_str(": ");
+        reason.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    tracing::warn!("service IPC request failed: {reason}");
     if !matches!(error, ClientError::Server { .. }) {
         return CoreError::new(
             CoreErrorKind::BackendUnavailable,
@@ -439,6 +448,7 @@ impl ControlEndpoint for ServiceEndpoint {
         self.client
             .core_operation(&request)
             .await
+            .map_err(map_client_error)
             .inspect_err(|error| {
                 tracing::debug!("operation {id} could not be waited on: {error}");
             })
@@ -685,6 +695,42 @@ mod tests {
         });
         assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
         assert!(error.retryable);
+    }
+
+    #[tokio::test]
+    async fn an_ipc_failure_logs_the_operation_and_os_error_in_the_message() {
+        use std::io::{Read, Seek};
+
+        let client = nyanpasu_ipc::client::Client::new(&format!(
+            "nyanpasu-log-test-{}",
+            uuid::Uuid::new_v4()
+        ))
+        .unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(2), client.core_api_connection())
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(error, ClientError::Request { .. }));
+
+        let mut log = tempfile::tempfile().unwrap();
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .with_ansi(false)
+            .with_writer(std::sync::Mutex::new(log.try_clone().unwrap()))
+            .finish();
+        let mapped = tracing::subscriber::with_default(subscriber, || map_client_error(error));
+        assert_eq!(mapped.kind, Some(CoreErrorKind::BackendUnavailable));
+        assert!(mapped.retryable);
+
+        log.rewind().unwrap();
+        let mut output = String::new();
+        log.read_to_string(&mut output).unwrap();
+        let event: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(event["level"], "WARN");
+        let message = event["fields"]["message"].as_str().unwrap();
+        assert!(message.contains("service IPC request failed"), "{message}");
+        assert!(message.contains("/v2/core/api-connection"), "{message}");
+        assert!(message.contains("os error"), "{message}");
     }
 }
 

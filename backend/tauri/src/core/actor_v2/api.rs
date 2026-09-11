@@ -285,7 +285,13 @@ impl ApiLease {
             let mut changes = match subscription {
                 Ok(Ok(Some(changes))) => changes,
                 Ok(Ok(None)) => Box::pin(futures::stream::pending()) as super::endpoint::ApiChanges,
-                _ => {
+                Ok(Err(error)) => {
+                    tracing::warn!(host = ?monitored.endpoint.host(), "API lifecycle subscription failed: {error}");
+                    monitored.revoke();
+                    return;
+                }
+                Err(error) => {
+                    tracing::warn!(host = ?monitored.endpoint.host(), "API lifecycle subscription timed out: {error}");
                     monitored.revoke();
                     return;
                 }
@@ -296,16 +302,35 @@ impl ApiLease {
                     biased;
                     _ = monitored.revoked.cancelled() => return,
                     event = changes.next() => {
-                        if !matches!(event, Some(Ok(()))) { monitored.revoke(); return; }
+                        match event {
+                            Some(Ok(())) => {},
+                            Some(Err(error)) => {
+                                tracing::warn!(host = ?monitored.endpoint.host(), "API lifecycle stream failed: {error}");
+                                monitored.revoke();
+                                return;
+                            }
+                            None => {
+                                tracing::warn!(host = ?monitored.endpoint.host(), "API lifecycle stream ended; revoking API access");
+                                monitored.revoke();
+                                return;
+                            }
+                        }
                     }
                     _ = timer.tick() => {}
                 }
-                if !matches!(
-                    tokio::time::timeout(Duration::from_secs(10), monitored.check()).await,
-                    Ok(Ok(()))
-                ) {
-                    monitored.revoke();
-                    return;
+                match tokio::time::timeout(Duration::from_secs(10), monitored.check()).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(ApiError::Stale)) => return,
+                    Ok(Err(error)) => {
+                        tracing::warn!(host = ?monitored.endpoint.host(), "API binding monitor failed: {:#}", anyhow::Error::new(error));
+                        monitored.revoke();
+                        return;
+                    }
+                    Err(error) => {
+                        tracing::warn!(host = ?monitored.endpoint.host(), "API binding monitor timed out: {error}");
+                        monitored.revoke();
+                        return;
+                    }
                 }
             }
         });

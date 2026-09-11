@@ -8,7 +8,11 @@
 //! This module also owns the facade-side mutation pipeline: sample, commit,
 //! apply the runtime change, diff, then dispatch the peripheral effects.
 
-use std::{collections::BTreeSet, future::Future, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+    sync::Arc,
+};
 
 use self::{
     plan::{
@@ -40,14 +44,26 @@ pub mod status;
 pub(crate) struct ApplicationEffects {
     gate: tokio::sync::Mutex<GateState>,
     port: Arc<dyn ApplicationEffectsPort>,
-    /// Kinds whose last dispatch degraded and asked to be retried.
+    /// Per-kind outcome of the newest dispatch that carried that kind.
     ///
     /// Bookkeeping owned by the facade pipeline, not shared actor state: a plan
     /// is a pure `(before, after)` diff, so re-submitting the value that failed
     /// would diff to nothing and report success while the effect owner still
     /// holds the old one. A blocking mutex is enough because every access is a
-    /// short set update with no await inside.
-    pending_retry: parking_lot::Mutex<BTreeSet<EffectKind>>,
+    /// short map update with no await inside.
+    ///
+    /// Keyed by revision rather than by completion order, because dispatches
+    /// run concurrently: an older dispatch may finish after a newer one failed,
+    /// and its success describes a value nobody wants any more.
+    retries: parking_lot::Mutex<BTreeMap<EffectKind, RetryRecord>>,
+}
+
+/// What the newest dispatch of one kind reported.
+struct RetryRecord {
+    /// Revision of the dispatch this record describes.
+    revision: EffectRevision,
+    /// Whether that dispatch asked to be retried.
+    pending: bool,
 }
 
 struct GateState {
@@ -68,7 +84,7 @@ impl ApplicationEffects {
         Self {
             gate: tokio::sync::Mutex::new(GateState { next_revision: 0 }),
             port,
-            pending_retry: parking_lot::Mutex::new(BTreeSet::new()),
+            retries: parking_lot::Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -81,25 +97,44 @@ impl ApplicationEffects {
     }
 
     fn pending_retry(&self) -> BTreeSet<EffectKind> {
-        self.pending_retry.lock().clone()
+        self.retries
+            .lock()
+            .iter()
+            .filter(|(_, record)| record.pending)
+            .map(|(kind, _)| *kind)
+            .collect()
     }
 
-    /// Folds a dispatch result into the retry set. `Superseded` is left as is:
-    /// a newer revision owns that kind now and its own statuses decide.
+    /// Folds a dispatch result into the per-kind records.
+    ///
+    /// A status older than the record it would overwrite is dropped: the
+    /// dispatches are concurrent, so a revision that succeeded may complete
+    /// after a newer one failed, and letting it win would forget the failure
+    /// and leave the effect owner holding the superseded value forever. This
+    /// also makes `Superseded` inert, since it can only be reported by a
+    /// revision the owner has already moved past.
     fn record_retry_state(&self, statuses: &[EffectStatus]) {
-        let mut pending = self.pending_retry.lock();
+        let mut records = self.retries.lock();
         for status in statuses {
-            match status.health {
-                EffectHealth::Degraded {
-                    retryable: true, ..
-                } => {
-                    pending.insert(status.kind);
-                }
-                EffectHealth::Superseded => {}
-                _ => {
-                    pending.remove(&status.kind);
-                }
+            if records
+                .get(&status.kind)
+                .is_some_and(|record| status.desired_revision < record.revision)
+            {
+                continue;
             }
+            records.insert(
+                status.kind,
+                RetryRecord {
+                    revision: status.desired_revision,
+                    pending: matches!(
+                        status.health,
+                        EffectHealth::Degraded {
+                            retryable: true,
+                            ..
+                        }
+                    ),
+                },
+            );
         }
     }
 }

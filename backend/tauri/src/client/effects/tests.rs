@@ -719,3 +719,156 @@ fn non_retryable_degradation_is_not_retried() {
         );
     });
 }
+
+/// Parks the first dispatch it receives until the test releases it, and
+/// degrades `kind` on the second. That is enough to invert completion order
+/// against revision order without a single sleep.
+struct GatedEffectsPort {
+    dispatches: StdMutex<Vec<Dispatch>>,
+    arrivals: AtomicUsize,
+    first_arrived: tokio::sync::Notify,
+    release_first: tokio::sync::Notify,
+    kind: EffectKind,
+}
+
+impl GatedEffectsPort {
+    fn new(kind: EffectKind) -> Arc<Self> {
+        Arc::new(Self {
+            dispatches: StdMutex::new(Vec::new()),
+            arrivals: AtomicUsize::new(0),
+            first_arrived: tokio::sync::Notify::new(),
+            release_first: tokio::sync::Notify::new(),
+            kind,
+        })
+    }
+
+    fn dispatches(&self) -> std::sync::MutexGuard<'_, Vec<Dispatch>> {
+        self.dispatches
+            .lock()
+            .expect("dispatch log should not poison")
+    }
+
+    fn dispatch_count(&self) -> usize {
+        self.dispatches().len()
+    }
+
+    async fn wait_for_first_dispatch(&self) {
+        self.first_arrived.notified().await;
+    }
+
+    fn release_first_dispatch(&self) {
+        self.release_first.notify_one();
+    }
+
+    fn kinds_of_last_dispatch(&self) -> Vec<EffectKind> {
+        self.dispatches()
+            .last()
+            .map(|dispatch| {
+                dispatch
+                    .plan
+                    .effects()
+                    .iter()
+                    .map(ApplicationEffect::kind)
+                    .collect()
+            })
+            .expect("at least one dispatch")
+    }
+}
+
+#[async_trait::async_trait]
+impl ApplicationEffectsPort for GatedEffectsPort {
+    async fn apply(
+        &self,
+        revision: EffectRevision,
+        plan: ApplicationEffectPlan,
+    ) -> Vec<EffectStatus> {
+        let arrival = self.arrivals.fetch_add(1, Ordering::SeqCst);
+        if arrival == 0 {
+            self.first_arrived.notify_one();
+            self.release_first.notified().await;
+        }
+        let statuses = plan
+            .effects()
+            .iter()
+            .map(|effect| EffectStatus {
+                kind: effect.kind(),
+                desired_revision: revision,
+                applied_revision: revision,
+                health: if arrival == 1 && effect.kind() == self.kind {
+                    EffectHealth::Degraded {
+                        code: "injected_effect_failure",
+                        message: "effect owner refused".to_owned(),
+                        retryable: true,
+                    }
+                } else {
+                    EffectHealth::Healthy
+                },
+            })
+            .collect();
+        self.dispatches().push(Dispatch { revision, plan });
+        statuses
+    }
+
+    async fn shutdown(&self) -> Vec<EffectStatus> {
+        Vec::new()
+    }
+}
+
+fn bypass_patch(bypass: &str) -> nyanpasu_config::application::NyanpasuAppConfigPatch {
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.system_proxy_bypass = Some(bypass.to_owned());
+    patch
+}
+
+#[test]
+fn older_completion_cannot_clear_a_newer_failure() {
+    let dir = tempdir().expect("tempdir should be created");
+    let port = GatedEffectsPort::new(EffectKind::SystemProxy);
+    let client = client_with(&dir, port.clone(), Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        // Revision 1 reaches the port and parks there. Its commit is done, so
+        // the gate is free and the next commit can overtake it.
+        let first = tokio::spawn({
+            let client = client.clone();
+            async move { client.patch_app_config(bypass_patch("first")).await }
+        });
+        port.wait_for_first_dispatch().await;
+
+        // Revision 2 changes the same kind and its dispatch fails retryably.
+        let outcome = client
+            .patch_app_config(bypass_patch("second"))
+            .await
+            .expect("a post-commit effect failure is not a commit failure");
+        assert!(
+            matches!(outcome, MutationOutcome::CommittedDegraded { .. }),
+            "the newer dispatch must report its failure: {outcome:?}"
+        );
+
+        // Only now does revision 1 come back healthy, describing a bypass value
+        // nobody wants any more.
+        port.release_first_dispatch();
+        first
+            .await
+            .expect("the parked patch should not panic")
+            .expect("the older commit still succeeds");
+        assert_eq!(port.dispatch_count(), 2);
+
+        // Re-submitting the newest value diffs to nothing, so the kind can only
+        // reach the owner again if the older success did not erase the failure.
+        client
+            .patch_app_config(bypass_patch("second"))
+            .await
+            .expect("resubmitting the committed value should succeed");
+        assert_eq!(
+            port.dispatch_count(),
+            3,
+            "the failed kind still has to be retried"
+        );
+        assert_eq!(
+            port.kinds_of_last_dispatch(),
+            vec![EffectKind::SystemProxy],
+            "the retry carries the failed kind only"
+        );
+    });
+}

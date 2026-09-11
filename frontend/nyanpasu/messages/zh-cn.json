@@ -457,7 +457,7 @@
   "logs_parse_diagnostics": "未解析：{malformed}；截断或跳过：{truncated}",
   "logs_clear_display": "清空当前显示",
   "logs_load_older": "加载更早记录",
-  "logs_follow_latest": "跟随最新日志",
+  "logs_follow_latest": "恢复实时跟随",
   "logs_filter_placeholder": "筛选消息或 target（字面文本）",
   "logs_search_incomplete": "本页未匹配，加载更早记录以继续搜索。",
   "logs_copy": "复制",

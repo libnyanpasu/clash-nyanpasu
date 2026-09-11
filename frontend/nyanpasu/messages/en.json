@@ -457,7 +457,7 @@
   "logs_parse_diagnostics": "Unparsed: {malformed}; truncated/skipped: {truncated}",
   "logs_clear_display": "Clear current display",
   "logs_load_older": "Load earlier records",
-  "logs_follow_latest": "Follow latest",
+  "logs_follow_latest": "Resume live following",
   "logs_filter_placeholder": "Filter message or target (literal text)",
   "logs_search_incomplete": "No matches in this page. Load earlier records to continue searching.",
   "logs_copy": "Copy",

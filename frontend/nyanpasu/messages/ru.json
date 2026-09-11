@@ -419,7 +419,7 @@
   "logs_parse_diagnostics": "Не разобрано: {malformed}; обрезано/пропущено: {truncated}",
   "logs_clear_display": "Очистить текущий просмотр",
   "logs_load_older": "Загрузить ранние записи",
-  "logs_follow_latest": "Следить за новыми",
+  "logs_follow_latest": "Возобновить слежение за журналом",
   "logs_filter_placeholder": "Фильтр сообщения или target (обычный текст)",
   "logs_search_incomplete": "На этой странице совпадений нет. Загрузите ранние записи для продолжения поиска.",
   "logs_copy": "Копировать",

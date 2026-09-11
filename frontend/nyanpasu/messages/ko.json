@@ -415,7 +415,7 @@
   "logs_parse_diagnostics": "구문 분석 실패: {malformed}; 잘림/건너뜀: {truncated}",
   "logs_clear_display": "현재 표시 지우기",
   "logs_load_older": "이전 기록 불러오기",
-  "logs_follow_latest": "최신 로그 따라가기",
+  "logs_follow_latest": "실시간 따라가기 재개",
   "logs_filter_placeholder": "메시지 또는 target 필터 (일반 텍스트)",
   "logs_search_incomplete": "이 페이지에 일치하는 기록이 없습니다. 이전 기록을 불러와 검색을 계속하세요.",
   "logs_copy": "복사",

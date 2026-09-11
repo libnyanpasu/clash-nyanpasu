@@ -1,9 +1,9 @@
 //! Controlled comparison: identical rows/query algorithm, only target storage varies.
-use rustc_hash::FxHasher;
+use gxhash::GxBuildHasher;
 use serde_json::json;
-use std::{collections::HashMap, hash::BuildHasherDefault, hint::black_box, time::Instant};
+use std::{collections::HashMap, hint::black_box, time::Instant};
 
-type Hasher = BuildHasherDefault<FxHasher>;
+type Hasher = GxBuildHasher;
 trait Pool {
     fn new() -> Self;
     type Key;

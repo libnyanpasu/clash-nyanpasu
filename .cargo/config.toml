@@ -16,10 +16,7 @@
 #     SBCs (e.g. Raspberry Pi 4/5). `+neon` is baseline and a no-op here.
 # 32-bit x86 (i686) cannot guarantee AES and was dropped in #4908.
 #
-# gxhash itself is still only a dev-dependency (a smoke test — see nyanpasu-core),
-# so it is not yet linked into release binaries; these flags nonetheless apply to
-# the whole build and pre-establish the AES baseline for the default-hasher
-# migration.
+# gxhash is used by the shared production log index and its session tables.
 #
 # The six triples below must stay in sync with the distributed build matrix
 # (target-release-build.yaml / target-dev-build.yaml).

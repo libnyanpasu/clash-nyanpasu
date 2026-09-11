@@ -1,0 +1,1 @@
+{"appended_bytes":15754568,"cold_first_page_ms":120.5253,"initial_bytes":14558836,"initial_rows":100000,"latency_max_ms":1112,"latency_p50_ms":558,"latency_p95_ms":1045,"mode":"file_to_actor","received":60000,"requests":301,"rows_per_second":1000,"seconds":60}

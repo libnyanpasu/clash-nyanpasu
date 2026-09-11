@@ -6,6 +6,7 @@ import {
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
+import { Button } from '@/components/ui/button'
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import HighlightText from '@/components/ui/highlight-text'
 import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
@@ -15,6 +16,7 @@ import { useClashLogs } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import FileLogs from './_modules/file-logs'
 import LogLevelBadge from './_modules/log-level-badge'
 import { Route as IndexRoute } from './route'
 
@@ -36,7 +38,11 @@ const Viewer = ({ search }: { search: string }) => {
       return logs
     }
 
-    return logs.filter((log) => log.type.toLowerCase() === level)
+    return logs.filter(
+      (log) =>
+        log.type.toLowerCase().replace('warning', 'warn') ===
+        level.replace('warning', 'warn'),
+    )
   }, [logs, level])
 
   const { isBottom, viewportRef } = useScrollArea()
@@ -131,7 +137,7 @@ const Viewer = ({ search }: { search: string }) => {
   )
 }
 
-function RouteComponent() {
+function KernelLogs() {
   const [search, setSearch] = useState('')
 
   const { data: logs, clean } = useClashLogs()
@@ -176,6 +182,45 @@ function RouteComponent() {
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
+    </div>
+  )
+}
+
+function RouteComponent() {
+  const { source = 'core' } = IndexRoute.useSearch()
+  const navigate = IndexRoute.useNavigate()
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        className="border-outline-variant flex flex-wrap gap-2 border-b p-3"
+        aria-label={m.logs_source_label()}
+      >
+        {(['core', 'app', 'service'] as const).map((item) => (
+          <Button
+            key={item}
+            variant={source === item ? 'flat' : 'basic'}
+            aria-pressed={source === item}
+            onClick={() =>
+              navigate({
+                search: (previous) => ({ ...previous, source: item }),
+              })
+            }
+          >
+            {
+              {
+                core: m.logs_source_core(),
+                app: m.logs_source_app(),
+                service: m.logs_source_service(),
+              }[item]
+            }
+          </Button>
+        ))}
+      </div>
+      {source === 'core' ? (
+        <KernelLogs />
+      ) : (
+        <FileLogs key={source} source={source} />
+      )}
     </div>
   )
 }

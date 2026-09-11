@@ -8,6 +8,8 @@ use std::{
     time::Duration,
 };
 
+use tokio_util::sync::CancellationToken;
+
 use super::{
     SystemProxyArgs, SystemProxyClient,
     ports::{
@@ -76,6 +78,43 @@ impl OsProxyPort for RecordingOsProxy {
 
     fn default_bypass(&self) -> &'static str {
         DEFAULT_BYPASS
+    }
+}
+
+/// Holds the mailbox inside `apply` until the shutdown token fires, the way a
+/// real PAC download does while it retries a url that will not answer.
+struct BlockingPac {
+    started: tokio::sync::Notify,
+}
+
+impl BlockingPac {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            started: tokio::sync::Notify::new(),
+        })
+    }
+
+    /// Resolves once `apply` is on the mailbox, so the test never sleeps to
+    /// know the actor is busy.
+    async fn started(&self) {
+        self.started.notified().await;
+    }
+}
+
+#[async_trait::async_trait]
+impl PacPort for BlockingPac {
+    fn is_supported(&self) -> bool {
+        true
+    }
+
+    async fn apply(&self, _url: &url::Url, cancel: CancellationToken) -> anyhow::Result<()> {
+        self.started.notify_one();
+        cancel.cancelled().await;
+        anyhow::bail!("the PAC download was cancelled by the shutdown")
+    }
+
+    fn disable(&self) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 
@@ -292,7 +331,7 @@ async fn pac_enabled_takes_over_and_skips_plain_proxy() {
     let os = RecordingOsProxy::new();
     let mut pac = MockPacPort::new();
     pac.expect_is_supported().returning(|| true);
-    pac.expect_apply().times(1).returning(|_| Ok(()));
+    pac.expect_apply().times(1).returning(|_, _| Ok(()));
     let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
 
     let statuses = client
@@ -321,7 +360,7 @@ async fn pac_failure_falls_back_to_direct_and_degrades() {
     let mut pac = MockPacPort::new();
     pac.expect_is_supported().returning(|| true);
     pac.expect_apply()
-        .returning(|_| Err(anyhow::anyhow!("the pac url is unreachable")));
+        .returning(|_, _| Err(anyhow::anyhow!("the pac url is unreachable")));
     let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
 
     let statuses = client
@@ -348,10 +387,10 @@ async fn failed_pac_switch_disables_the_previous_pac_before_falling_back() {
     let os = RecordingOsProxy::new();
     let mut pac = MockPacPort::new();
     pac.expect_is_supported().returning(|| true);
-    pac.expect_apply().times(1).returning(|_| Ok(()));
+    pac.expect_apply().times(1).returning(|_, _| Ok(()));
     pac.expect_apply()
         .times(1)
-        .returning(|_| Err(anyhow::anyhow!("the new pac url is unreachable")));
+        .returning(|_, _| Err(anyhow::anyhow!("the new pac url is unreachable")));
     pac.expect_disable().times(1).returning(|| Ok(()));
     let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
 
@@ -391,10 +430,10 @@ async fn pac_disable_failure_keeps_pac_active_and_degrades() {
     let os = RecordingOsProxy::new();
     let mut pac = MockPacPort::new();
     pac.expect_is_supported().returning(|| true);
-    pac.expect_apply().times(1).returning(|_| Ok(()));
+    pac.expect_apply().times(1).returning(|_, _| Ok(()));
     pac.expect_apply()
         .times(1)
-        .returning(|_| Err(anyhow::anyhow!("the new pac url is unreachable")));
+        .returning(|_, _| Err(anyhow::anyhow!("the new pac url is unreachable")));
     pac.expect_disable()
         .times(1)
         .returning(|| Err(anyhow::anyhow!("the os kept the auto-config url")));
@@ -578,7 +617,7 @@ async fn guard_tick_is_suppressed_while_pac_active() {
     let os = RecordingOsProxy::new();
     let mut pac = MockPacPort::new();
     pac.expect_is_supported().returning(|| true);
-    pac.expect_apply().returning(|_| Ok(()));
+    pac.expect_apply().returning(|_, _| Ok(()));
     let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
     client
         .reconcile(
@@ -755,4 +794,86 @@ async fn auto_launch_already_in_the_desired_state_is_not_rewritten() {
         health_of(&statuses, EffectKind::AutoLaunch),
         EffectHealth::Healthy
     );
+}
+
+#[tokio::test]
+async fn restore_cancels_an_in_flight_pac_download() {
+    // A PAC download owns the mailbox for as long as its retries last, which is
+    // far longer than the restore's bound: without cancellation the app exits
+    // with its proxy still installed.
+    let os = RecordingOsProxy::new();
+    let pac = BlockingPac::new();
+    let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
+    let reconciling = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .reconcile(
+                    rev(1),
+                    Some(pac_proxy("http://example.test/proxy.pac")),
+                    None,
+                    None,
+                )
+                .await
+        })
+    };
+    pac.started().await;
+
+    let status = client.restore().await;
+
+    assert_eq!(status.health, EffectHealth::Healthy);
+    let statuses = reconciling.await.expect("the reconcile task should finish");
+    assert_eq!(
+        code_of(&statuses, EffectKind::SystemProxy),
+        "pac_apply_failed",
+        "the cancelled download is reported as a failed apply"
+    );
+    // The fallback landed before the restore, so the exit still had ours to
+    // turn off: the ordinary restore behaviour is unchanged.
+    assert!(!os.last_write().enable);
+}
+
+#[tokio::test]
+async fn reconcile_after_restore_is_rejected() {
+    let os = RecordingOsProxy::new();
+    let client = spawn_with_os(os.clone()).await;
+    client
+        .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
+        .await;
+    client.restore().await;
+    let written = os.writes().len();
+
+    let statuses = client
+        .reconcile(
+            rev(2),
+            Some(proxy(true, Some(7890))),
+            Some(guard(true, Duration::from_secs(10))),
+            Some(true),
+        )
+        .await;
+
+    for kind in [
+        EffectKind::AutoLaunch,
+        EffectKind::SystemProxy,
+        EffectKind::ProxyGuard,
+    ] {
+        assert_eq!(
+            health_of(&statuses, kind),
+            EffectHealth::Degraded {
+                code: "system_proxy_shut_down",
+                message: "the system proxy owner restored the original settings and stopped accepting changes".to_owned(),
+                retryable: false,
+            },
+            "{kind:?}"
+        );
+    }
+    assert_eq!(
+        os.writes().len(),
+        written,
+        "nothing may re-install the proxy the restore removed"
+    );
+
+    // Including a guard tick that was already queued when the restore ran.
+    client.tick_guard().await;
+    assert_eq!(os.writes().len(), written);
 }

@@ -15,9 +15,10 @@ mod tests;
 use std::time::Duration;
 
 use ractor::{Actor, ActorRef, rpc::CallResult};
+use tokio_util::sync::CancellationToken;
 
 use self::{
-    actor::{Message, SystemProxyActor, requested_kinds},
+    actor::{ActorArgs, Message, SystemProxyActor, requested_kinds},
     ports::OsProxyConfig,
 };
 use crate::client::effects::{
@@ -53,12 +54,25 @@ pub struct SystemProxyStatus {
 #[derive(Clone)]
 pub struct SystemProxyClient {
     actor: ActorRef<Message>,
+    /// Fired on the way into the restore. Owned here rather than inside the
+    /// actor because the whole point is to reach work that is already running
+    /// on the mailbox the restore has to get through.
+    cancel: CancellationToken,
 }
 
 impl SystemProxyClient {
     pub async fn spawn(args: SystemProxyArgs) -> anyhow::Result<Self> {
-        let (actor, _handle) = Actor::spawn(None, SystemProxyActor, args).await?;
-        Ok(Self { actor })
+        let cancel = CancellationToken::new();
+        let (actor, _handle) = Actor::spawn(
+            None,
+            SystemProxyActor,
+            ActorArgs {
+                args,
+                cancel: cancel.clone(),
+            },
+        )
+        .await?;
+        Ok(Self { actor, cancel })
     }
 
     /// One plan's system-owned effects in a single round trip. `None` means the
@@ -130,6 +144,10 @@ impl SystemProxyClient {
     }
 
     pub async fn restore(&self) -> EffectStatus {
+        // Cancelled before the message is queued, not after: a PAC download
+        // owns the mailbox for as long as its retries last, which is far longer
+        // than the bound below, and the app would exit with its proxy still on.
+        self.cancel.cancel();
         match self
             .actor
             .call(Message::Restore, Some(SYSTEM_PROXY_RESTORE_TIMEOUT))

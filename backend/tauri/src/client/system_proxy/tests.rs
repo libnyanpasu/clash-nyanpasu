@@ -342,6 +342,103 @@ async fn pac_failure_falls_back_to_direct_and_degrades() {
 }
 
 #[tokio::test]
+async fn failed_pac_switch_disables_the_previous_pac_before_falling_back() {
+    // The OS resolves the auto-config url ahead of any proxy endpoint, so the
+    // fallback below is dead weight while the first url is still installed.
+    let os = RecordingOsProxy::new();
+    let mut pac = MockPacPort::new();
+    pac.expect_is_supported().returning(|| true);
+    pac.expect_apply().times(1).returning(|_| Ok(()));
+    pac.expect_apply()
+        .times(1)
+        .returning(|_| Err(anyhow::anyhow!("the new pac url is unreachable")));
+    pac.expect_disable().times(1).returning(|| Ok(()));
+    let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
+
+    client
+        .reconcile(
+            rev(1),
+            Some(pac_proxy("http://example.test/first.pac")),
+            None,
+            None,
+        )
+        .await;
+    let statuses = client
+        .reconcile(
+            rev(2),
+            Some(pac_proxy("http://example.test/second.pac")),
+            None,
+            None,
+        )
+        .await;
+
+    assert_eq!(
+        code_of(&statuses, EffectKind::SystemProxy),
+        "pac_apply_failed"
+    );
+    assert!(
+        !client.status().await.pac_active,
+        "the OS confirmed the disable, so PAC really is off"
+    );
+    assert!(
+        os.last_write().enable,
+        "a failed PAC switch must still leave the user proxied"
+    );
+}
+
+#[tokio::test]
+async fn pac_disable_failure_keeps_pac_active_and_degrades() {
+    let os = RecordingOsProxy::new();
+    let mut pac = MockPacPort::new();
+    pac.expect_is_supported().returning(|| true);
+    pac.expect_apply().times(1).returning(|_| Ok(()));
+    pac.expect_apply()
+        .times(1)
+        .returning(|_| Err(anyhow::anyhow!("the new pac url is unreachable")));
+    pac.expect_disable()
+        .times(1)
+        .returning(|| Err(anyhow::anyhow!("the os kept the auto-config url")));
+    pac.expect_disable().times(1).returning(|| Ok(()));
+    let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
+
+    client
+        .reconcile(
+            rev(1),
+            Some(pac_proxy("http://example.test/first.pac")),
+            None,
+            None,
+        )
+        .await;
+    let statuses = client
+        .reconcile(
+            rev(2),
+            Some(pac_proxy("http://example.test/second.pac")),
+            None,
+            None,
+        )
+        .await;
+
+    assert_eq!(
+        code_of(&statuses, EffectKind::SystemProxy),
+        "pac_disable_failed"
+    );
+    assert!(
+        client.status().await.pac_active,
+        "an unconfirmed disable must not clear the flag; the url is still installed"
+    );
+    assert!(
+        os.last_write().enable,
+        "the fallback is still written so the user has a proxy"
+    );
+
+    // Still active means the exit path still has PAC to clean up, which is the
+    // whole point of not clearing the flag.
+    let status = client.restore().await;
+    assert_eq!(status.health, EffectHealth::Healthy);
+    assert!(!client.status().await.pac_active);
+}
+
+#[tokio::test]
 async fn pac_unsupported_platform_reports_unsupported() {
     let os = RecordingOsProxy::new();
     let client = spawn_with_os(os.clone()).await;

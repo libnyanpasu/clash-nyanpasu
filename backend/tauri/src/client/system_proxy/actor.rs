@@ -286,14 +286,15 @@ impl State {
         self.desired = Some(desired.clone());
 
         if !desired.enabled {
-            self.disable_pac_if_active().await;
+            let stale_pac = self.disable_pac_if_active().await.err();
             // Nothing of ours to turn off. Startup reconciles a full plan on
             // every launch, so writing a disabled value here would clear the
             // proxy the user or another tool had set.
-            let Some(config) = self.disable_config() else {
-                return self.healthy(EffectKind::SystemProxy, revision);
+            let status = match self.disable_config() {
+                Some(config) => self.write_os_proxy(revision, config).await,
+                None => self.healthy(EffectKind::SystemProxy, revision),
             };
-            return self.write_os_proxy(revision, config).await;
+            return self.with_stale_pac(revision, stale_pac, status);
         }
 
         match desired.pac_url.as_ref() {
@@ -302,13 +303,40 @@ impl State {
                 self.apply_pac(revision, &desired, &url).await
             }
             None => {
-                self.disable_pac_if_active().await;
-                match self.enable_config(&desired) {
+                let stale_pac = self.disable_pac_if_active().await.err();
+                let status = match self.enable_config(&desired) {
                     Some(config) => self.write_os_proxy(revision, config).await,
                     None => self.port_unresolved(revision),
-                }
+                };
+                self.with_stale_pac(revision, stale_pac, status)
             }
         }
+    }
+
+    /// A PAC url the OS would not give up is still installed beside whatever
+    /// was just written, and the OS prefers it. That is a degradation even when
+    /// the write itself succeeded, so it must not be reported healthy.
+    fn with_stale_pac(
+        &self,
+        revision: EffectRevision,
+        stale_pac: Option<anyhow::Error>,
+        status: EffectStatus,
+    ) -> EffectStatus {
+        let Some(error) = stale_pac else {
+            return status;
+        };
+        let message = match status.health {
+            EffectHealth::Degraded { message, .. } => {
+                format!("{error}; the proxy write beside it failed too: {message}")
+            }
+            _ => format!("{error}; the auto-config url is still installed"),
+        };
+        self.degraded(
+            EffectKind::SystemProxy,
+            revision,
+            "pac_disable_failed",
+            message,
+        )
     }
 
     /// PAC and the plain proxy are two settings for the same thing, so a
@@ -346,25 +374,48 @@ impl State {
                 self.healthy(EffectKind::SystemProxy, revision)
             }
             Err(error) => {
-                self.pac_active = false;
-                let message = match fallback {
-                    None => format!(
-                        "{error}; the direct proxy fallback was skipped because no port is resolved"
+                // Whatever url was installed before this attempt is still the
+                // one the OS resolves against, so it has to be cleared before
+                // the plain fallback can mean anything. The flag follows the
+                // OS, never the intent: clearing it on a failed disable is what
+                // let a later restore skip the PAC cleanup entirely.
+                let stale_pac = self.disable_pac_if_active().await.err();
+                let note = self.write_pac_fallback(revision, fallback).await;
+                match stale_pac {
+                    Some(disable_error) => self.degraded(
+                        EffectKind::SystemProxy,
+                        revision,
+                        "pac_disable_failed",
+                        format!(
+                            "{error}; the previously installed auto-config url could not be cleared either: {disable_error}; {note}"
+                        ),
                     ),
-                    Some(fallback) => match self.write_os_proxy(revision, fallback).await.health {
-                        EffectHealth::Degraded {
-                            message: fallback, ..
-                        } => format!("{error}; the direct proxy fallback failed too: {fallback}"),
-                        _ => error.to_string(),
-                    },
-                };
-                self.degraded(
-                    EffectKind::SystemProxy,
-                    revision,
-                    "pac_apply_failed",
-                    message,
-                )
+                    None => self.degraded(
+                        EffectKind::SystemProxy,
+                        revision,
+                        "pac_apply_failed",
+                        format!("{error}; {note}"),
+                    ),
+                }
             }
+        }
+    }
+
+    /// Installs the plain proxy so a failed PAC transition still leaves the
+    /// user proxied, and describes the outcome for the degradation message.
+    async fn write_pac_fallback(
+        &mut self,
+        revision: EffectRevision,
+        fallback: Option<OsProxyConfig>,
+    ) -> String {
+        let Some(config) = fallback else {
+            return "the direct proxy fallback was skipped because no port is resolved".to_owned();
+        };
+        match self.write_os_proxy(revision, config).await.health {
+            EffectHealth::Degraded { message, .. } => {
+                format!("the direct proxy fallback failed too: {message}")
+            }
+            _ => "the direct proxy fallback is installed instead".to_owned(),
         }
     }
 
@@ -407,14 +458,20 @@ impl State {
         }
     }
 
-    async fn disable_pac_if_active(&mut self) {
+    /// Hands the system proxy back from PAC. The flag only clears once the OS
+    /// confirms the transition: reporting PAC inactive while its url is still
+    /// installed makes every later disable and the exit restore skip the
+    /// cleanup, leaving the url behind after the app is gone.
+    async fn disable_pac_if_active(&mut self) -> anyhow::Result<()> {
         if !self.pac_active {
-            return;
+            return Ok(());
         }
         if let Err(error) = self.disable_pac().await {
             tracing::warn!(%error, "failed to hand the system proxy back from PAC");
+            return Err(error);
         }
         self.pac_active = false;
+        Ok(())
     }
 
     async fn disable_pac(&self) -> anyhow::Result<()> {
@@ -523,13 +580,13 @@ impl State {
         self.guard = None;
         self.guard_running = None;
 
-        let mut failure = None;
-        if self.pac_active {
-            match self.disable_pac().await {
-                Ok(()) => self.pac_active = false,
-                Err(error) => failure = Some(error.to_string()),
-            }
-        }
+        // Left active when the OS refuses, so a retried restore tries again
+        // instead of walking away from an installed auto-config url.
+        let mut failure = self
+            .disable_pac_if_active()
+            .await
+            .err()
+            .map(|error| error.to_string());
 
         let current = self.current.take();
         let write = match self.original.take() {

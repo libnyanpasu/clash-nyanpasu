@@ -46,6 +46,10 @@ pub(super) struct State {
     /// Only accelerators the OS confirmed. A failed grab stays out, so the next
     /// reconcile retries it instead of believing it is in place.
     registered: BTreeMap<String, HotkeyAction>,
+    /// Set by the shutdown unregister. Every grab is back with the OS by then,
+    /// so anything that would take one again is refused rather than leaving
+    /// the accelerators held by a process that is gone.
+    closed: bool,
 }
 
 pub(super) struct HotkeyActor;
@@ -66,6 +70,7 @@ impl Actor for HotkeyActor {
             applied_revision: EffectRevision::default(),
             health: EffectHealth::Healthy,
             registered: BTreeMap::new(),
+            closed: false,
         })
     }
 
@@ -113,6 +118,15 @@ impl State {
         revision: EffectRevision,
         desired: HotkeyBindings,
     ) -> EffectStatus {
+        if self.closed {
+            // A plan admitted before the shutdown can still be in flight. Its
+            // hotkeys would be grabbed on the way out and never given back.
+            tracing::debug!(
+                revision = revision.get(),
+                "refusing a hotkey reconcile after the shutdown"
+            );
+            return self.shut_down(revision);
+        }
         // A reconcile no newer than what is in place carries an older desired
         // state by definition, so applying it would undo the newer one.
         if revision <= self.applied_revision {
@@ -230,6 +244,7 @@ impl State {
     }
 
     async fn unregister_all(&mut self) -> EffectStatus {
+        self.closed = true;
         self.registered.clear();
         let registrar = self.registrar.clone();
         let revision = self.applied_revision;
@@ -273,6 +288,22 @@ impl State {
             desired_revision: revision,
             applied_revision: self.applied_revision,
             health: EffectHealth::Healthy,
+        }
+    }
+
+    /// Not retryable: nothing about this app's exit is going to change, and a
+    /// retry would grab the accelerators the unregister just released.
+    fn shut_down(&self, revision: EffectRevision) -> EffectStatus {
+        EffectStatus {
+            kind: EffectKind::Hotkeys,
+            desired_revision: revision,
+            applied_revision: self.applied_revision,
+            health: EffectHealth::Degraded {
+                code: "hotkey_shut_down",
+                message: "the hotkey owner released its shortcuts and stopped accepting changes"
+                    .to_owned(),
+                retryable: false,
+            },
         }
     }
 

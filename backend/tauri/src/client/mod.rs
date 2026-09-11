@@ -80,6 +80,7 @@ pub struct ClientSetupArgs {
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+    pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
 }
 
 #[derive(Clone)]
@@ -271,6 +272,7 @@ struct NyanpasuClientInner {
     streams: crate::core::clash::ws::StreamsClient,
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
+    effects: effects::ApplicationEffects,
 }
 
 #[allow(dead_code)]
@@ -286,6 +288,7 @@ impl NyanpasuClient {
             service,
             system_dns,
             binary_installer,
+            effects,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -346,6 +349,7 @@ impl NyanpasuClient {
             system_dns,
             dirty_rx,
             binary_installer,
+            effects,
         ))
     }
 
@@ -366,6 +370,7 @@ impl NyanpasuClient {
         system_dns: Arc<dyn SystemDnsCache>,
         dirty_rx: tokio::sync::watch::Receiver<()>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+        effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
@@ -420,6 +425,7 @@ impl NyanpasuClient {
                 streams,
                 updater,
                 system_dns,
+                effects: effects::ApplicationEffects::new(effects),
             }),
         })
     }
@@ -579,15 +585,40 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    pub async fn patch_app_config(&self, patch: NyanpasuAppConfigPatch) -> Result<()> {
+    pub async fn patch_app_config(
+        &self,
+        patch: NyanpasuAppConfigPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.application.clone();
-        client.patch(patch).await?;
-        Ok(())
+        self.commit_and_reconcile(move || async move {
+            client.patch(patch).await?;
+            Ok(())
+        })
+        .await
     }
 
-    pub async fn replace_app_config(&self, state: NyanpasuAppConfig) -> Result<()> {
+    pub async fn replace_app_config(
+        &self,
+        state: NyanpasuAppConfig,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.application.clone();
-        client.replace(state).await?;
+        self.commit_and_reconcile(move || async move {
+            client.replace(state).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only writer that bypasses the mutation gate, standing in for a
+    /// committer that does not enter through the facade. Needed to reproduce
+    /// the saga's CAS-conflict paths, which the gate makes unreachable from
+    /// the facade itself.
+    #[cfg(test)]
+    pub(crate) async fn patch_app_config_ungated(
+        &self,
+        patch: NyanpasuAppConfigPatch,
+    ) -> Result<()> {
+        self.inner.application.patch(patch).await?;
         Ok(())
     }
 
@@ -596,15 +627,37 @@ impl NyanpasuClient {
         Ok(client.get().await?.state)
     }
 
-    pub async fn patch_session_state(&self, patch: PersistentStatePatch) -> Result<()> {
+    pub async fn patch_session_state(
+        &self,
+        patch: PersistentStatePatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.session_state.clone();
-        client.patch(patch).await?;
-        Ok(())
+        self.commit_and_reconcile(move || async move {
+            client.patch(patch).await?;
+            Ok(())
+        })
+        .await
     }
 
-    pub async fn replace_session_state(&self, state: PersistentState) -> Result<()> {
+    pub async fn replace_session_state(
+        &self,
+        state: PersistentState,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.session_state.clone();
-        client.replace(state).await?;
+        self.commit_and_reconcile(move || async move {
+            client.replace(state).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// See [`Self::patch_app_config_ungated`].
+    #[cfg(test)]
+    pub(crate) async fn patch_session_state_ungated(
+        &self,
+        patch: PersistentStatePatch,
+    ) -> Result<()> {
+        self.inner.session_state.patch(patch).await?;
         Ok(())
     }
 
@@ -627,15 +680,34 @@ impl NyanpasuClient {
         Ok(outcome)
     }
 
-    pub async fn patch_clash_config(&self, patch: ClashConfigPatch) -> Result<()> {
+    pub async fn patch_clash_config(
+        &self,
+        patch: ClashConfigPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.clash_config.clone();
-        client.patch(patch).await?;
-        Ok(())
+        self.commit_and_reconcile(move || async move {
+            client.patch(patch).await?;
+            Ok(())
+        })
+        .await
     }
 
-    pub async fn replace_clash_config(&self, state: ClashConfig) -> Result<()> {
+    pub async fn replace_clash_config(
+        &self,
+        state: ClashConfig,
+    ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.clash_config.clone();
-        client.replace(state).await?;
+        self.commit_and_reconcile(move || async move {
+            client.replace(state).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// See [`Self::patch_app_config_ungated`].
+    #[cfg(test)]
+    pub(crate) async fn patch_clash_config_ungated(&self, patch: ClashConfigPatch) -> Result<()> {
+        self.inner.clash_config.patch(patch).await?;
         Ok(())
     }
 
@@ -647,52 +719,68 @@ impl NyanpasuClient {
         })
     }
 
+    // TODO(actor-migration): the three-domain legacy saga is the commit point for
+    // patch_verge_config, so the effect reconcile is mounted here as well as on the
+    // typed client patches.
+    // Reason: legacy IVerge wire is still the frontend's only app-config patch entry.
+    // Remove when: PR-7a deletes run_legacy_verge_mutation / route_verge_patch.
     pub(crate) async fn apply_legacy_verge_patch_saga<F>(
         &self,
         plan: TypedConfigPatchPlan,
         finalize: F,
-    ) -> Result<()>
+    ) -> Result<runtime::MutationOutcome<()>>
     where
         F: FnOnce() -> anyhow::Result<()>,
     {
-        let snapshots = self.typed_config_snapshots().await?;
-        let application = plan.application.map(|patch| {
-            let mut state = snapshots.application.state.clone();
-            state.apply(patch);
-            state
-        });
-        let session = plan.session_state.map(|patch| {
-            let mut state = snapshots.session.state.clone();
-            state.apply(patch);
-            state
-        });
-        let clash = plan.clash_config.map(|patch| {
-            let mut state = snapshots.clash.state.clone();
-            state.apply(patch);
-            state
-        });
-        self.apply_legacy_verge_states_saga(snapshots, application, session, clash, finalize)
-            .await
+        self.commit_and_reconcile(move || async move {
+            let snapshots = self.typed_config_snapshots().await?;
+            let application = plan.application.map(|patch| {
+                let mut state = snapshots.application.state.clone();
+                state.apply(patch);
+                state
+            });
+            let session = plan.session_state.map(|patch| {
+                let mut state = snapshots.session.state.clone();
+                state.apply(patch);
+                state
+            });
+            let clash = plan.clash_config.map(|patch| {
+                let mut state = snapshots.clash.state.clone();
+                state.apply(patch);
+                state
+            });
+            self.apply_legacy_verge_states_saga(snapshots, application, session, clash, finalize)
+                .await
+        })
+        .await
     }
 
+    // TODO(actor-migration): the three-domain legacy saga is the commit point for
+    // patch_verge_config, so the effect reconcile is mounted here as well as on the
+    // typed client patches.
+    // Reason: legacy IVerge wire is still the frontend's only app-config patch entry.
+    // Remove when: PR-7a deletes run_legacy_verge_mutation / route_verge_patch.
     pub(crate) async fn apply_legacy_verge_replacement_saga<F>(
         &self,
         application: NyanpasuAppConfig,
         session: PersistentState,
         clash: ClashConfig,
         finalize: F,
-    ) -> Result<()>
+    ) -> Result<runtime::MutationOutcome<()>>
     where
         F: FnOnce() -> anyhow::Result<()>,
     {
-        let snapshots = self.typed_config_snapshots().await?;
-        self.apply_legacy_verge_states_saga(
-            snapshots,
-            Some(application),
-            Some(session),
-            Some(clash),
-            finalize,
-        )
+        self.commit_and_reconcile(move || async move {
+            let snapshots = self.typed_config_snapshots().await?;
+            self.apply_legacy_verge_states_saga(
+                snapshots,
+                Some(application),
+                Some(session),
+                Some(clash),
+                finalize,
+            )
+            .await
+        })
         .await
     }
 
@@ -2001,7 +2089,7 @@ pub(crate) mod tests {
         }
     }
 
-    fn successful_reconcile(
+    pub(crate) fn successful_reconcile(
         id: nyanpasu_core_manager::OperationId,
     ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
         nyanpasu_ipc::api::core::v2::OperationInfo {
@@ -2354,6 +2442,7 @@ pub(crate) mod tests {
             system_dns,
             application_workflow::DirtyNotifier::channel().1,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            Arc::new(effects::ports::NoopApplicationEffects),
         )
         .await
         .unwrap()
@@ -2407,6 +2496,7 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            effects: Arc::new(effects::ports::NoopApplicationEffects),
         }
     }
 
@@ -2616,6 +2706,7 @@ pub(crate) mod tests {
             Arc::new(NoopSystemDnsCache),
             dirty_rx,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            Arc::new(effects::ports::NoopApplicationEffects),
         )
         .await
         .unwrap();
@@ -2772,6 +2863,7 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            effects: Arc::new(effects::ports::NoopApplicationEffects),
         })
         .expect("client should construct with typed config actors");
 
@@ -3612,6 +3704,7 @@ pub(crate) mod tests {
                 Arc::new(NoopSystemDnsCache),
                 application_workflow::DirtyNotifier::channel().1,
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+                Arc::new(effects::ports::NoopApplicationEffects),
             )
             .await
             .unwrap();

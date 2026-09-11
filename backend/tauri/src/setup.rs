@@ -79,6 +79,10 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         service,
         system_dns: Arc::new(OsSystemDnsCache),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+        // The executor that fans out to the effect owners is assembled by the
+        // system-proxy / hotkey / UI-effect tasks; until then a committed
+        // change reconciles into a port that owns nothing.
+        effects: Arc::new(crate::client::effects::ports::NoopApplicationEffects),
     })
     .context("Failed to setup nyanpasu client")?;
     forward_actor_events(app_handle, client.clone());

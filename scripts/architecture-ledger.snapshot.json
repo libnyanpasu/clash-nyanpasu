@@ -23,20 +23,20 @@
       }
     },
     "migration_markers": {
-      "total": 12,
+      "total": 14,
       "byKey": {
-        "TODO(actor-migration)": 9,
+        "TODO(actor-migration)": 11,
         "FIXME(actor-migration)": 3
       }
     },
     "legacy_dto_refs": {
-      "total": 321,
+      "total": 325,
       "byKey": {
-        "IVerge": 186,
+        "IVerge": 188,
+        "LegacyVergeBridge": 32,
         "IClashTemp": 31,
-        "LegacyVergeBridge": 31,
+        "VergeLegacyBridge": 20,
         "ClashLegacyBridge": 19,
-        "VergeLegacyBridge": 19,
         "LegacyClashBridge": 10,
         "LegacyVergePatchRoute": 9,
         "LegacyWindowBridge": 7,

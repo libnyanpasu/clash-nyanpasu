@@ -69,7 +69,11 @@ export const useSettings = () => {
    */
   const upsert = useMutation({
     mutationKey: patchSettings.mutationKey,
-    // Partial to allow for partial updates
+    // Partial to allow for partial updates.
+    // Returns the whole MutationOutcome so the MutationCache can see
+    // `committed_degraded`: a settings change whose side effects degraded is
+    // still committed, so it stays on the success path. Do not collapse it to
+    // a bare value.
     mutationFn: async (options: Partial<IVerge_Serialize>) => {
       return unwrapResult(
         await invokeMutation(patchSettings, [

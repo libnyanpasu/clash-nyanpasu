@@ -491,9 +491,11 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_verge_config(legacy: State<'_, LegacyVergeBridge>, payload: IVerge) -> Result {
-    legacy.patch_verge_config(payload).await?;
-    Ok(())
+pub async fn patch_verge_config(
+    legacy: State<'_, LegacyVergeBridge>,
+    payload: IVerge,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(legacy.patch_verge_config(payload).await?)
 }
 
 #[tauri::command]

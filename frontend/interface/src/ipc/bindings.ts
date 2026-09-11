@@ -235,7 +235,9 @@ export const commands = {
     typedError<number, string>(__TAURI_INVOKE('update_core', { coreType })),
   collectLogs: () => typedError<null, string>(__TAURI_INVOKE('collect_logs')),
   patchVergeConfig: (payload: IVerge_Deserialize) =>
-    typedError<null, string>(__TAURI_INVOKE('patch_verge_config', { payload })),
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('patch_verge_config', { payload }),
+    ),
   /**
    *  Rebuild-only command: there is no prior state commit, so a failure is a
    *  plain error — the committed/degraded model (spec §6.2) does not apply.

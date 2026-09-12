@@ -128,6 +128,7 @@ impl LogSink {
 /// design: every failure passes the config through and logs (spec D7). The
 /// `TransformKind::Overlay` placeholder on defensive paths is display-only —
 /// `node_key()` drops the kind.
+#[tracing::instrument(skip_all, fields(transform_id = ?transform_id))]
 pub(crate) fn apply_transform(
     profiles: &Profiles,
     content: &dyn ProfileContentSource,

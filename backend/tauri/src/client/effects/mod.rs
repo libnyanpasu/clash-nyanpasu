@@ -11,7 +11,10 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use self::{
@@ -24,6 +27,7 @@ use self::{
 };
 use super::{ClientError, NyanpasuClient, Result, runtime};
 
+pub mod executor;
 pub mod plan;
 pub mod ports;
 pub mod status;
@@ -56,6 +60,12 @@ pub(crate) struct ApplicationEffects {
     /// run concurrently: an older dispatch may finish after a newer one failed,
     /// and its success describes a value nobody wants any more.
     retries: parking_lot::Mutex<BTreeMap<EffectKind, RetryRecord>>,
+    /// Set as the exit path begins. The effect owners put the system state back
+    /// at that point, so a dispatch after it would re-install what the shutdown
+    /// just removed — a window-position save landing during teardown is enough
+    /// to do it. Commits still go through: the configuration is the app's own
+    /// state and losing it on exit would be the worse failure.
+    closed: AtomicBool,
 }
 
 /// What the newest dispatch of one kind reported.
@@ -85,7 +95,16 @@ impl ApplicationEffects {
             gate: tokio::sync::Mutex::new(GateState { next_revision: 0 }),
             port,
             retries: parking_lot::Mutex::new(BTreeMap::new()),
+            closed: AtomicBool::new(false),
         }
+    }
+
+    fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    fn close(&self) {
+        self.closed.store(true, Ordering::SeqCst);
     }
 
     async fn gate(&self) -> GateGuard<'_> {
@@ -226,7 +245,7 @@ impl NyanpasuClient {
         // An empty plan is not dispatched at all. Session-state mutations
         // produce one on every window move, and a no-op round trip through the
         // port would be the most frequent call in the process.
-        if !plan.is_empty() {
+        if !plan.is_empty() && !self.inner.effects.is_closed() {
             let statuses = self.inner.effects.port().apply(revision, plan).await;
             self.inner.effects.record_retry_state(&statuses);
             degradations.extend(statuses.iter().filter_map(degradation_of));
@@ -279,13 +298,16 @@ impl NyanpasuClient {
     /// Full reconcile with no `before` snapshot: every effect is handed its
     /// desired value. Used at startup, where the OS state is whatever the last
     /// run left behind.
-    // Wired into startup by the system-proxy and startup/shutdown tasks.
-    #[allow(dead_code)]
     pub async fn reconcile_application_effects(&self) -> Result<runtime::MutationOutcome<()>> {
         let mut gate = self.inner.effects.gate().await;
         let inputs = self.effect_inputs().await?;
         let revision = gate.allocate();
         drop(gate);
+
+        if self.inner.effects.is_closed() {
+            tracing::debug!("skipping a full effect reconcile after shutdown");
+            return Ok(runtime::MutationOutcome::from_parts((), Vec::new()));
+        }
 
         let statuses = self
             .inner
@@ -302,9 +324,10 @@ impl NyanpasuClient {
 
     /// Exit path: restore the system state the app found and drop its OS
     /// registrations. Never fails, because there is nothing left to abort.
-    // Wired into the exit path by the system-proxy and startup/shutdown tasks.
-    #[allow(dead_code)]
     pub async fn shutdown_application_effects(&self) -> Vec<runtime::Degradation> {
+        // Closed before the restore runs, not after: a mutation that is already
+        // past its commit must not dispatch into an owner that is restoring.
+        self.inner.effects.close();
         self.inner
             .effects
             .port()

@@ -4,18 +4,17 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 100,
+      "total": 87,
       "byKey": {
-        "Config::verge()": 78,
-        "Config::clash()": 22
+        "Config::verge()": 68,
+        "Config::clash()": 19
       }
     },
     "service_globals": {
-      "total": 41,
+      "total": 32,
       "byKey": {
-        "Handle::global()": 10,
+        "Handle::global()": 9,
         "Self::global()": 8,
-        "Sysopt::global()": 8,
         "WindowManager::global()": 8,
         "Hotkey::global()": 3,
         "UpdaterManager::global()": 3,

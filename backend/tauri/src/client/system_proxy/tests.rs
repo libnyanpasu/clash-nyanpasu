@@ -1117,6 +1117,45 @@ async fn failed_first_install_does_not_record_original() {
 }
 
 #[tokio::test]
+async fn guard_recovery_after_a_failed_first_install_keeps_the_original() {
+    // The first install is refused, so nothing is committed; the guard then
+    // performs the first successful install and must capture what it replaced,
+    // otherwise the exit path disables our proxy instead of restoring the
+    // user's.
+    let original = OsProxyConfig {
+        enable: true,
+        host: "127.0.0.1".to_owned(),
+        port: 1080,
+        bypass: BYPASS.to_owned(),
+    };
+    let os = RecordingOsProxy::with_original(original.clone());
+    os.fail_set(true);
+    let client = spawn_with_os(os.clone()).await;
+    client
+        .reconcile(
+            rev(1),
+            Some(proxy(true, Some(7890))),
+            Some(guard(true, Duration::from_secs(10))),
+            None,
+        )
+        .await;
+    assert!(os.writes().is_empty());
+
+    os.fail_set(false);
+    client.tick_guard().await;
+    assert_eq!(os.last_write().port, 7890);
+
+    client.restore().await;
+
+    assert_eq!(
+        os.last_write(),
+        original,
+        "restore must put back the proxy the guard's install replaced: {:?}",
+        os.writes()
+    );
+}
+
+#[tokio::test]
 async fn guard_tick_after_cancellation_does_not_write() {
     // `restore` fires the token before queueing its message, so a tick already
     // in the mailbox runs ahead of the restore with `closed` still unset.

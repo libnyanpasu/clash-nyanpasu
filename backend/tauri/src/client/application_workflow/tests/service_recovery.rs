@@ -102,7 +102,7 @@ impl ServiceHostAdapter for RecoveringDaemon {
 
 struct RecoveryGraph {
     _dir: tempfile::TempDir,
-    client: CoreLifecycleClient,
+    client: ApplicationWorkflowClient,
     daemon: Arc<RecoveringDaemon>,
     builder: Arc<BlockingBuilder>,
 }

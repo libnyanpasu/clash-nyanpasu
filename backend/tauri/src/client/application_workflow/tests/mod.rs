@@ -8,7 +8,7 @@ use super::{
     },
     *,
 };
-use ports::{BinaryInstallProgress, PreparedCoreBinary};
+use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use struct_patch::Patch;
 use tokio::sync::Notify;
@@ -50,7 +50,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
 async fn dirty_graph(
     dir: &tempfile::TempDir,
 ) -> (
-    CoreLifecycleClient,
+    ApplicationWorkflowClient,
     DirtyNotifier,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
@@ -86,7 +86,7 @@ async fn dirty_graph_with_store(
     dir: &tempfile::TempDir,
     snapshots: runtime::RuntimeSnapshotStore,
 ) -> (
-    CoreLifecycleClient,
+    ApplicationWorkflowClient,
     DirtyNotifier,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
@@ -108,7 +108,7 @@ async fn dirty_graph_with_clients(
     service: ServiceClient,
     schedule_ticks: bool,
 ) -> (
-    CoreLifecycleClient,
+    ApplicationWorkflowClient,
     DirtyNotifier,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
@@ -144,8 +144,8 @@ async fn dirty_graph_with_clients(
         release: Notify::new(),
         fail: AtomicBool::new(false),
     });
-    let client = CoreLifecycleClient::spawn_with_ticks(
-        CoreLifecycleArgs {
+    let client = ApplicationWorkflowClient::spawn_with_ticks(
+        ApplicationWorkflowArgs {
             snapshots,
             application: application.clone(),
             clash: clash.clone(),
@@ -153,7 +153,7 @@ async fn dirty_graph_with_clients(
             core,
             service,
             builder: builder.clone(),
-            installer: Arc::new(adapters::FsBinaryInstaller),
+            installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ui: Arc::new(super::super::NoopUiEventSink),
             dirty,
         },
@@ -164,7 +164,7 @@ async fn dirty_graph_with_clients(
     (client, notifier, builder, application, clash)
 }
 
-async fn tick(client: &CoreLifecycleClient) {
+async fn tick(client: &ApplicationWorkflowClient) {
     client.0.actor.cast(Message::DirtyTick).unwrap();
     barrier(client).await;
 }
@@ -304,7 +304,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         endpoint.entered.notified().await;
         let mut uninstall = Box::pin(client.uninstall_service());
         assert!(uninstall.as_mut().now_or_never().is_none());
-        barrier(&client.inner.core_lifecycle).await;
+        barrier(&client.inner.application_workflow).await;
         assert_eq!(client.core_lifecycle_status().queued.len(), 1);
         assert!(!calls.lock().unwrap().contains(&"uninstall"));
         endpoint.release.notify_one();
@@ -414,7 +414,7 @@ impl Fixture {
     }
 }
 
-async fn barrier(client: &CoreLifecycleClient) {
+async fn barrier(client: &ApplicationWorkflowClient) {
     assert!(matches!(
         client
             .0
@@ -457,7 +457,7 @@ fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation(
         assert!(staging.exists());
         let mut reconcile = Box::pin(f.client.reconcile_core());
         assert!(reconcile.as_mut().now_or_never().is_none());
-        barrier(&f.client.inner.core_lifecycle).await;
+        barrier(&f.client.inner.application_workflow).await;
         assert_eq!(f.client.core_lifecycle_status().active, Some(active));
         assert_eq!(f.client.core_lifecycle_status().queued.len(), 1);
         assert_eq!(f.endpoint.submissions(), 2);
@@ -565,7 +565,7 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         assert!(reconcile.as_mut().now_or_never().is_none());
         let mut shutdown = Box::pin(f.client.shutdown_core());
         assert!(shutdown.as_mut().now_or_never().is_none());
-        barrier(&f.client.inner.core_lifecycle).await;
+        barrier(&f.client.inner.application_workflow).await;
         assert!(f.client.core_lifecycle_status().shutting_down);
         assert_eq!(
             reconcile.await.unwrap_err().kind,
@@ -587,9 +587,9 @@ fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
     let f = Fixture::new(true, false, false);
     tauri::async_runtime::block_on(async {
         let (artifact, progress) = f.artifact(ClashCore::Mihomo);
-        let core_lifecycle = &f.client.inner.core_lifecycle;
+        let core_lifecycle = &f.client.inner.application_workflow;
         let mut timed = Box::pin(core_lifecycle.call_with_timeout(
-            Command::ReplaceCoreBinary(artifact),
+            Command::Core(CoreCommand::ReplaceCoreBinary(artifact)),
             Duration::from_millis(20),
         ));
         assert!(timed.as_mut().now_or_never().is_none());
@@ -1007,10 +1007,10 @@ fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_i
             let (mut queued, _) = f.artifact(ClashCore::ClashRs);
             let terminal = Arc::new(TerminalProgress::default());
             queued.progress = terminal.clone();
-            let client = &f.client.inner.core_lifecycle;
+            let client = &f.client.inner.application_workflow;
             let result = client
                 .call_with_timeout(
-                    Command::ReplaceCoreBinary(queued),
+                    Command::Core(CoreCommand::ReplaceCoreBinary(queued)),
                     Duration::from_millis(20),
                 )
                 .await;

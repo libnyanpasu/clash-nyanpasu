@@ -772,7 +772,7 @@ pub async fn select_proxy(
     client: State<'_, NyanpasuClient>,
     group: String,
     name: String,
-) -> Result<()> {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.select_proxy(group, name).await?)
 }
 

@@ -5,7 +5,7 @@
 //! the subscription pump, projection channels, and revocable API leases.
 //! Lifecycle truth, transactions, compensation and quarantine live only inside
 //! each host's `CoreControl`. Application workflows are serialized above this
-//! router by `CoreLifecycleActor`; direct router submissions still obey I-R1.
+//! router by `ApplicationWorkflowActor`; direct router submissions still obey I-R1.
 //!
 //! Invariants:
 //! - **I-R1**: at most one `Connected` endpoint. A handoff moves the slot to

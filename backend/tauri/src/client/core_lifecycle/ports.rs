@@ -25,18 +25,19 @@ pub trait BinaryInstaller: Send + Sync + 'static {
     async fn install(&self, artifact: &PreparedCoreBinary) -> anyhow::Result<()>;
 }
 
+/// Application-owned runtime preparation; implementations never call the workflow actor.
 #[async_trait]
-pub(in crate::client) trait RuntimeBuildPort: Send + Sync + 'static {
+pub(in crate::client) trait RuntimePreparationPort: Send + Sync {
+    async fn prepare_latest(&mut self)
+    -> Result<PreparedRuntime, nyanpasu_core_manager::CoreError>;
+    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()>;
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
     ) -> anyhow::Result<nyanpasu_core_manager::CoreSpec>;
-    async fn build(
-        &self,
-        revision: runtime::RuntimeRevision,
-        profiles: Arc<nyanpasu_config::profile::Profiles>,
-        clash: nyanpasu_config::clash::config::ClashConfig,
-        app: nyanpasu_config::application::NyanpasuAppConfig,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>>;
-    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()>;
+}
+
+pub(in crate::client) struct PreparedRuntime {
+    pub snapshot: Arc<runtime::RuntimeSnapshot>,
+    pub local_ipc: nyanpasu_core_manager::LocalIpcSettings,
 }

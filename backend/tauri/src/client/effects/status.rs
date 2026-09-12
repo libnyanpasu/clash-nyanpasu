@@ -18,11 +18,16 @@ impl EffectRevision {
         Self(value)
     }
 
+    // Read by the effect owners that compare it against their applied revision.
+    #[allow(dead_code)]
     pub const fn get(self) -> u64 {
         self.0
     }
 }
 
+// Every variant but `Healthy` is constructed by the effect owners, which are
+// added one task at a time.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectHealth {
     Healthy,

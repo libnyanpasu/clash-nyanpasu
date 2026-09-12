@@ -283,8 +283,15 @@ pub fn run() -> std::io::Result<()> {
                     .inner()
                     .clone();
                 let verge = Config::verge().data().clone();
-                tauri::async_runtime::block_on(legacy.replace_verge_config(verge))
+                let outcome = tauri::async_runtime::block_on(legacy.replace_verge_config(verge))
                     .context("Failed to sync verge state after resolve setup")?;
+                for degradation in outcome.degradations() {
+                    tracing::warn!(
+                        code = %degradation.code,
+                        message = %degradation.message,
+                        "startup verge sync completed with a degraded side effect"
+                    );
+                }
             }
 
             // setup custom scheme

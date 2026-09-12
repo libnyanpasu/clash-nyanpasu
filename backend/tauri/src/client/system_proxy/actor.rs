@@ -213,16 +213,13 @@ impl State {
         // even queued, so a reconcile can arrive between the two. Either way
         // the app is leaving and the restore owns the OS from here: applying a
         // plan now would re-install the proxy that is about to be removed.
-        if self.closed || self.cancel.is_cancelled() {
+        if self.shutting_down() {
             self.close_for_shutdown();
             tracing::debug!(
                 revision = revision.get(),
                 "refusing a system proxy reconcile during shutdown"
             );
-            return kinds
-                .into_iter()
-                .map(|kind| self.shut_down(kind, revision))
-                .collect();
+            return self.shut_down_all(&kinds, revision);
         }
         let mut statuses = Vec::with_capacity(kinds.len());
 
@@ -234,6 +231,11 @@ impl State {
                 false => self.superseded(EffectKind::AutoLaunch, revision),
                 true => self.apply_auto_launch(revision, enabled).await,
             });
+            // The login-item read inside blocks, so the shutdown can begin
+            // underneath it just as it can under the proxy write below.
+            if self.closed {
+                return self.shut_down_all(&kinds, revision);
+            }
         }
         if let Some(desired) = proxy {
             let status = match self.claim(EffectKind::SystemProxy, revision) {
@@ -244,13 +246,11 @@ impl State {
                     status
                 }
             };
-            // The PAC apply inside is the one await that outlives the shutdown
-            // token; if it fired, the rest of this plan belongs to the restore.
+            // Every await inside can outlive the shutdown token — the PAC
+            // download, the original capture, the OS write itself. If one of
+            // them noticed, the rest of this plan belongs to the restore.
             if self.closed {
-                return kinds
-                    .into_iter()
-                    .map(|kind| self.shut_down(kind, revision))
-                    .collect();
+                return self.shut_down_all(&kinds, revision);
             }
             statuses.push(status);
         }
@@ -268,6 +268,22 @@ impl State {
         // proxy off leaves the guard with nothing to re-apply.
         self.refresh_guard(myself);
         statuses
+    }
+
+    /// Whether the exit path owns the OS settings from here. Every blocking
+    /// call this actor makes can return after the restore has already run or
+    /// given up waiting for the mailbox, so this is rechecked immediately
+    /// before each OS write rather than once per message.
+    fn shutting_down(&self) -> bool {
+        self.closed || self.cancel.is_cancelled()
+    }
+
+    /// Every effect the plan asked for, refused because the app is exiting.
+    fn shut_down_all(&self, kinds: &[EffectKind], revision: EffectRevision) -> Vec<EffectStatus> {
+        kinds
+            .iter()
+            .map(|kind| self.shut_down(*kind, revision))
+            .collect()
     }
 
     /// The shutdown began while this reconcile was running. The restore is the
@@ -301,7 +317,7 @@ impl State {
         true
     }
 
-    async fn apply_auto_launch(&self, revision: EffectRevision, enabled: bool) -> EffectStatus {
+    async fn apply_auto_launch(&mut self, revision: EffectRevision, enabled: bool) -> EffectStatus {
         let port = self.auto_launch.clone();
         match blocking(move || port.is_enabled()).await {
             // Startup reconciles every launch; rewriting an unchanged login
@@ -314,6 +330,14 @@ impl State {
                 %error,
                 "could not read the current auto-launch registration; writing it anyway"
             ),
+        }
+
+        // The read above blocks on the platform registration and can hand the
+        // turn back long after the restore ran; registering a login item then
+        // writes OS state on behalf of a plan the exit path already refused.
+        if self.shutting_down() {
+            self.close_for_shutdown();
+            return self.shut_down(EffectKind::AutoLaunch, revision);
         }
 
         let port = self.auto_launch.clone();
@@ -429,7 +453,7 @@ impl State {
         // error text, which the port is free to word however it likes. Writing
         // the plain fallback now would install a proxy during teardown, and the
         // blocking OS write can push the restore past its own bound.
-        if self.cancel.is_cancelled() {
+        if self.shutting_down() {
             self.close_for_shutdown();
             return self.shut_down(EffectKind::SystemProxy, revision);
         }
@@ -488,6 +512,14 @@ impl State {
         config: OsProxyConfig,
     ) -> EffectStatus {
         self.capture_original(config.enable).await;
+        // The capture reads the OS, and that read can outlast the restore's own
+        // bound: the exit path gives up waiting, the process finishes tearing
+        // down, and only then does this turn resume. Writing here would install
+        // a proxy after the settings the user had were already put back.
+        if self.shutting_down() {
+            self.close_for_shutdown();
+            return self.shut_down(EffectKind::SystemProxy, revision);
+        }
 
         let os = self.os.clone();
         let payload = config.clone();
@@ -617,8 +649,11 @@ impl State {
     /// enable the OS refused was never accepted at all, and a refused port
     /// change would have the guard re-installing the stale port forever.
     async fn guard_tick(&mut self) {
-        // A tick queued before the restore must not re-install what it removed.
-        if self.closed {
+        // A tick queued before the restore must not re-install what it removed,
+        // and the token fires before that message is even queued, so a tick can
+        // sit ahead of the restore with `closed` still unset.
+        if self.shutting_down() {
+            self.close_for_shutdown();
             return;
         }
         // Under PAC the OS holds an auto-config URL, not a proxy endpoint;

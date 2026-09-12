@@ -118,6 +118,54 @@ impl PacPort for BlockingPac {
     }
 }
 
+/// Parks inside `get` until the test releases it, the way a platform read can
+/// outlast the restore's bound while the reconcile behind it is still holding
+/// a value it is about to write.
+struct GatedOsProxy {
+    os: Arc<RecordingOsProxy>,
+    reading: tokio::sync::Notify,
+    release: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+
+impl GatedOsProxy {
+    fn new(os: Arc<RecordingOsProxy>) -> (Arc<Self>, std::sync::mpsc::Sender<()>) {
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let gate = Arc::new(Self {
+            os,
+            reading: tokio::sync::Notify::new(),
+            release: Mutex::new(Some(release_rx)),
+        });
+        (gate, release_tx)
+    }
+
+    /// Resolves once `get` is parked, so the test never sleeps to know the
+    /// reconcile reached the capture.
+    async fn reading(&self) {
+        self.reading.notified().await;
+    }
+}
+
+impl OsProxyPort for GatedOsProxy {
+    fn get(&self) -> anyhow::Result<OsProxyConfig> {
+        self.reading.notify_one();
+        // Taken out of the lock first: the wait below is the whole point, and
+        // holding the mutex across it would serialise nothing useful.
+        let release = self.release.lock().expect("release gate").take();
+        if let Some(release) = release {
+            let _ = release.recv();
+        }
+        self.os.get()
+    }
+
+    fn set(&self, config: &OsProxyConfig) -> anyhow::Result<()> {
+        self.os.set(config)
+    }
+
+    fn default_bypass(&self) -> &'static str {
+        DEFAULT_BYPASS
+    }
+}
+
 fn silent_auto_launch() -> Arc<dyn AutoLaunchPort> {
     let mut port = MockAutoLaunchPort::new();
     port.expect_is_enabled().returning(|| Ok(false));
@@ -982,4 +1030,73 @@ async fn reconcile_after_restore_is_rejected() {
     // Including a guard tick that was already queued when the restore ran.
     client.tick_guard().await;
     assert_eq!(os.writes().len(), written);
+}
+
+#[tokio::test]
+async fn write_after_cancellation_during_original_capture_is_skipped() {
+    // The capture reads the OS before the first enable, and that read can
+    // return after the restore already gave up waiting for the mailbox. The
+    // write behind it would then install a proxy nothing is left to remove.
+    let os = RecordingOsProxy::with_original(OsProxyConfig {
+        enable: false,
+        host: "127.0.0.1".to_owned(),
+        port: 1080,
+        bypass: BYPASS.to_owned(),
+    });
+    let (gate, release) = GatedOsProxy::new(os.clone());
+    let client = spawn_with_os(gate.clone()).await;
+    let reconciling = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
+                .await
+        })
+    };
+    gate.reading().await;
+
+    // The first half of `restore`: the token fires, the exit path stops waiting.
+    client.cancel.cancel();
+    release
+        .send(())
+        .expect("the capture should still be parked");
+
+    let statuses = reconciling.await.expect("the reconcile task should finish");
+    assert_eq!(
+        code_of(&statuses, EffectKind::SystemProxy),
+        "system_proxy_shut_down",
+        "a write that resumes after the shutdown belongs to the restore"
+    );
+    assert!(
+        os.writes().is_empty(),
+        "nothing may reach the OS once the shutdown began: {:?}",
+        os.writes()
+    );
+}
+
+#[tokio::test]
+async fn guard_tick_after_cancellation_does_not_write() {
+    // `restore` fires the token before queueing its message, so a tick already
+    // in the mailbox runs ahead of the restore with `closed` still unset.
+    let os = RecordingOsProxy::new();
+    let client = spawn_with_os(os.clone()).await;
+    client
+        .reconcile(
+            rev(1),
+            Some(proxy(true, Some(7890))),
+            Some(guard(true, Duration::from_secs(10))),
+            None,
+        )
+        .await;
+    let written = os.writes().len();
+
+    client.cancel.cancel();
+    client.tick_guard().await;
+
+    assert_eq!(
+        os.writes().len(),
+        written,
+        "a tick that beat the restore must not re-apply the proxy: {:?}",
+        os.writes()
+    );
 }

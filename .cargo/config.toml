@@ -21,6 +21,11 @@
 # The six triples below must stay in sync with the distributed build matrix
 # (target-release-build.yaml / target-dev-build.yaml).
 #
+# This file is invisible to the aarch64 Linux release build: it runs under `cross`,
+# which mounts only the cargo workspace root (`backend/`) into its container, one
+# level below this file. That triple therefore needs a second copy of its flags in
+# `backend/.cargo/config.toml`; see the rationale there before editing either side.
+#
 # Gotcha: a bare RUSTFLAGS env var OVERRIDES (does not merge with) these settings;
 # any build/CI step that sets RUSTFLAGS must also include `target-feature=+aes,...`.
 

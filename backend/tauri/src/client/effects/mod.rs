@@ -131,13 +131,23 @@ impl ApplicationEffects {
     /// after a newer one failed, and letting it win would forget the failure
     /// and leave the effect owner holding the superseded value forever. This
     /// also makes `Superseded` inert, since it can only be reported by a
-    /// revision the owner has already moved past.
+    /// revision the owner has already moved past. The tray is the exception,
+    /// for the reason given at the check itself.
     fn record_retry_state(&self, statuses: &[EffectStatus]) {
         let mut records = self.retries.lock();
         for status in statuses {
-            if records
-                .get(&status.kind)
-                .is_some_and(|record| status.desired_revision < record.revision)
+            // The tray is exempt: it is the one effect that carries no value,
+            // so an older dispatch of it describes nothing stale. A refresh
+            // re-reads whatever the state is now, which makes the newest
+            // *completion* the truth about the menu. Dropping a late rebuild
+            // failure here left the menu built from the values that rebuild
+            // was replacing, with no retry to fix it. The executor widens the
+            // next refresh to a full one while a rebuild is outstanding, so a
+            // healthy tray recorded after a failed one did rebuild the menu.
+            if status.kind != EffectKind::Tray
+                && records
+                    .get(&status.kind)
+                    .is_some_and(|record| status.desired_revision < record.revision)
             {
                 continue;
             }

@@ -56,7 +56,7 @@ pub struct ApplicationEffectExecutor {
     /// is held across the adapter call. Every one of those calls is short
     /// except starting the widget, which is acceptable for the same reason the
     /// plan is ordered: these four effects are a single visual state.
-    ui_applied: tokio::sync::Mutex<BTreeMap<EffectKind, EffectRevision>>,
+    ui_applied: tokio::sync::Mutex<UiApplied>,
     /// Set by [`Self::shutdown`] before it restores anything.
     ///
     /// A plan admitted before the exit path began can still be mid-flight,
@@ -66,6 +66,20 @@ pub struct ApplicationEffectExecutor {
     /// `ui_applied`, so a UI adapter call that has not started by then never
     /// starts at all.
     closed: AtomicBool,
+}
+
+/// What the stateless UI adapters have been told, guarded as one unit.
+#[derive(Default)]
+struct UiApplied {
+    /// The newest revision each kind has had applied to it.
+    revisions: BTreeMap<EffectKind, EffectRevision>,
+    /// A full tray rebuild failed and nothing has rebuilt the menu since.
+    ///
+    /// The tray is the one effect with no desired value to re-send, so a
+    /// failed rebuild has nowhere else to be remembered. Without this, a
+    /// partial refresh arriving afterwards would report the menu healthy while
+    /// it is still built from the values the failed rebuild was replacing.
+    tray_full_pending: bool,
 }
 
 impl ApplicationEffectExecutor {
@@ -86,7 +100,7 @@ impl ApplicationEffectExecutor {
             logger,
             widget,
             tray,
-            ui_applied: tokio::sync::Mutex::new(BTreeMap::new()),
+            ui_applied: tokio::sync::Mutex::new(UiApplied::default()),
             closed: AtomicBool::new(false),
         }
     }
@@ -108,7 +122,7 @@ impl ApplicationEffectExecutor {
         if self.is_closed() {
             return shut_down(kind, revision);
         }
-        let applied = ui_applied.get(&kind).copied().unwrap_or_default();
+        let applied = ui_applied.revisions.get(&kind).copied().unwrap_or_default();
         if revision <= applied {
             tracing::debug!(
                 ?kind,
@@ -124,7 +138,7 @@ impl ApplicationEffectExecutor {
             };
         }
         let status = apply.await;
-        ui_applied.insert(kind, revision);
+        ui_applied.revisions.insert(kind, revision);
         status
     }
 
@@ -202,14 +216,25 @@ impl ApplicationEffectExecutor {
     async fn apply_tray(&self, revision: EffectRevision, refresh: TrayRefresh) -> EffectStatus {
         // Not for staleness, only for the shutdown gate and to keep the
         // refresh from interleaving with another plan's UI effects.
-        let _ui_applied = self.ui_applied.lock().await;
+        let mut ui_applied = self.ui_applied.lock().await;
         if self.is_closed() {
             return shut_down(EffectKind::Tray, revision);
         }
+        // Full dominates part. A partial refresh re-reads the values of a menu
+        // that is already built; it cannot finish a rebuild an earlier full
+        // refresh started and failed, so while one is outstanding every
+        // request is widened to a full one.
+        let refresh = match ui_applied.tray_full_pending {
+            true => TrayRefresh::Full,
+            false => refresh,
+        };
         let result = match refresh {
             TrayRefresh::Full => self.tray.refresh_full().await,
             TrayRefresh::Part => self.tray.refresh_part().await,
         };
+        if refresh == TrayRefresh::Full {
+            ui_applied.tray_full_pending = result.is_err();
+        }
         report(EffectKind::Tray, revision, "tray_refresh_failed", result)
     }
 

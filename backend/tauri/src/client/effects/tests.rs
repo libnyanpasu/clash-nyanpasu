@@ -965,7 +965,13 @@ mod executor {
                 .find(|status| status.kind == kind)
                 .unwrap_or_else(|| panic!("{kind:?} should be reported"));
             assert_eq!(status.health, EffectHealth::Healthy, "{kind:?}");
-            assert_eq!(status.applied_revision, revision);
+            let applied = match kind {
+                // The tray reports the attempt sequence there, and this is the
+                // executor's first refresh.
+                EffectKind::Tray => EffectRevision::new(1),
+                _ => revision,
+            };
+            assert_eq!(status.applied_revision, applied, "{kind:?}");
         }
     }
 
@@ -1227,6 +1233,15 @@ struct GatedEffectsPort {
     /// finishes last are independent here, because the first arrival is the
     /// one that is parked.
     failing_arrival: usize,
+    /// The tray attempt sequence each arrival reports, in arrival order.
+    ///
+    /// The executor numbers tray attempts under the lock it holds across the
+    /// adapter call, so the number is the order the refreshes ran in — which
+    /// this fake, standing in for the executor, has to state rather than
+    /// derive: the whole point of the parking is that the order statuses reach
+    /// the facade is not the order the refreshes happened. Empty means the
+    /// arrival order itself.
+    tray_attempts: Vec<u64>,
 }
 
 impl GatedEffectsPort {
@@ -1235,6 +1250,14 @@ impl GatedEffectsPort {
     }
 
     fn failing_on(kind: EffectKind, failing_arrival: usize) -> Arc<Self> {
+        Self::with_tray_attempts(kind, failing_arrival, Vec::new())
+    }
+
+    fn with_tray_attempts(
+        kind: EffectKind,
+        failing_arrival: usize,
+        tray_attempts: Vec<u64>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             dispatches: StdMutex::new(Vec::new()),
             arrivals: AtomicUsize::new(0),
@@ -1242,7 +1265,18 @@ impl GatedEffectsPort {
             release_first: tokio::sync::Notify::new(),
             kind,
             failing_arrival,
+            tray_attempts,
         })
+    }
+
+    /// What the executor would report as the tray status's `applied_revision`.
+    fn tray_attempt(&self, arrival: usize) -> EffectRevision {
+        let attempt = self
+            .tray_attempts
+            .get(arrival)
+            .copied()
+            .unwrap_or(arrival as u64 + 1);
+        EffectRevision::new(attempt)
     }
 
     fn dispatches(&self) -> std::sync::MutexGuard<'_, Vec<Dispatch>> {
@@ -1296,7 +1330,10 @@ impl ApplicationEffectsPort for GatedEffectsPort {
             .map(|effect| EffectStatus {
                 kind: effect.kind(),
                 desired_revision: revision,
-                applied_revision: revision,
+                applied_revision: match effect.kind() {
+                    EffectKind::Tray => self.tray_attempt(arrival),
+                    _ => revision,
+                },
                 health: if arrival == self.failing_arrival && effect.kind() == self.kind {
                     EffectHealth::Degraded {
                         code: "injected_effect_failure",
@@ -1387,7 +1424,10 @@ fn late_failed_full_tray_refresh_is_retried_on_identical_resubmission() {
     let dir = tempdir().expect("tempdir should be created");
     // The parked dispatch is the one that fails, so a newer partial refresh
     // records the tray as healthy before the rebuild failure is even known.
-    let port = GatedEffectsPort::failing_on(EffectKind::Tray, 0);
+    // The rebuild is nonetheless the newest tray attempt — nothing has
+    // refreshed the menu since it gave up — which is what the attempt
+    // sequences say and what has to keep its failure from being dropped.
+    let port = GatedEffectsPort::with_tray_attempts(EffectKind::Tray, 0, vec![2, 1]);
     let client = client_with(&dir, port.clone(), Arc::new(StubEndpoint::default()));
 
     tauri::async_runtime::block_on(async {
@@ -1427,6 +1467,61 @@ fn late_failed_full_tray_refresh_is_retried_on_identical_resubmission() {
             port.dispatch_count(),
             3,
             "a menu that was never rebuilt still has to be retried"
+        );
+        assert_eq!(
+            port.kinds_of_last_dispatch(),
+            vec![EffectKind::Tray],
+            "the retry carries the tray only"
+        );
+    });
+}
+
+#[test]
+fn late_recorded_older_tray_success_cannot_clear_a_newer_failure() {
+    let dir = tempdir().expect("tempdir should be created");
+    // The mirror of the test above: here the parked dispatch is the older tray
+    // attempt and it succeeded. Its report still arrives last, so taking the
+    // newest completion as the truth about the menu would let it clear a
+    // rebuild failure that happened after it.
+    let port = GatedEffectsPort::new(EffectKind::Tray);
+    let client = client_with(&dir, port.clone(), Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        // Revision 1: a partial refresh, which reaches the menu first and
+        // succeeds, but whose statuses are held back at the port.
+        let first = tokio::spawn({
+            let client = client.clone();
+            async move { client.patch_app_config(tray_text_patch(true)).await }
+        });
+        port.wait_for_first_dispatch().await;
+
+        // Revision 2: a language change, whose rebuild fails after that.
+        let outcome = client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("a post-commit effect failure is not a commit failure");
+        assert!(
+            matches!(outcome, MutationOutcome::CommittedDegraded { .. }),
+            "the failed rebuild must be reported: {outcome:?}"
+        );
+
+        // Only now does the partial refresh report, healthy, describing a menu
+        // that a later rebuild has since failed to replace.
+        port.release_first_dispatch();
+        first
+            .await
+            .expect("the parked patch should not panic")
+            .expect("the older commit still succeeds");
+        assert_eq!(port.dispatch_count(), 2);
+
+        client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("resubmitting the committed value should succeed");
+        assert_eq!(
+            port.dispatch_count(),
+            3,
+            "the failed rebuild still has to be retried"
         );
         assert_eq!(
             port.kinds_of_last_dispatch(),

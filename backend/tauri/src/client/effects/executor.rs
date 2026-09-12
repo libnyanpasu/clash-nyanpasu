@@ -80,6 +80,15 @@ struct UiApplied {
     /// partial refresh arriving afterwards would report the menu healthy while
     /// it is still built from the values the failed rebuild was replacing.
     tray_full_pending: bool,
+    /// How many tray refreshes have been attempted.
+    ///
+    /// Numbered under this lock, which is held across the adapter call, so the
+    /// number is the order the refreshes actually ran in. It is reported as
+    /// the tray status's `applied_revision`, because the facade has no other
+    /// way to tell which of two tray reports describes the menu as it is now:
+    /// a refresh carries no value, so its plan revision says nothing about
+    /// which of them reached the menu last.
+    tray_attempts: u64,
 }
 
 impl ApplicationEffectExecutor {
@@ -228,6 +237,8 @@ impl ApplicationEffectExecutor {
             true => TrayRefresh::Full,
             false => refresh,
         };
+        ui_applied.tray_attempts += 1;
+        let attempt = EffectRevision::new(ui_applied.tray_attempts);
         let result = match refresh {
             TrayRefresh::Full => self.tray.refresh_full().await,
             TrayRefresh::Part => self.tray.refresh_part().await,
@@ -235,7 +246,13 @@ impl ApplicationEffectExecutor {
         if refresh == TrayRefresh::Full {
             ui_applied.tray_full_pending = result.is_err();
         }
-        report(EffectKind::Tray, revision, "tray_refresh_failed", result)
+        let mut status = report(EffectKind::Tray, revision, "tray_refresh_failed", result);
+        // The plan revision cannot order two tray reports, so the attempt
+        // number is reported in its place. Without it the facade has to take
+        // the newest *completion* as the truth, and a success whose bookkeeping
+        // is delayed past a later failure then clears a retry the menu needs.
+        status.applied_revision = attempt;
+        status
     }
 
     fn is_closed(&self) -> bool {

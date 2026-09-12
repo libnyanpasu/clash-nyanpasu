@@ -70,10 +70,25 @@ pub(crate) struct ApplicationEffects {
 
 /// What the newest dispatch of one kind reported.
 struct RetryRecord {
-    /// Revision of the dispatch this record describes.
-    revision: EffectRevision,
+    /// What ordered the report this record describes; see [`ordering_key`].
+    order: EffectRevision,
     /// Whether that dispatch asked to be retried.
     pending: bool,
+}
+
+/// What decides which of two reports of the same kind is the newer one.
+///
+/// Every effect but the tray carries a desired value, so the plan revision
+/// that carried it says which report is newer. A tray refresh carries none: it
+/// re-reads whatever the state is now, so two plans can both be current for it
+/// and the plan revision orders nothing. The executor numbers the attempts
+/// instead, in the order they run, and reports the number as
+/// `applied_revision`.
+fn ordering_key(status: &EffectStatus) -> EffectRevision {
+    match status.kind {
+        EffectKind::Tray => status.applied_revision,
+        _ => status.desired_revision,
+    }
 }
 
 struct GateState {
@@ -127,24 +142,26 @@ impl ApplicationEffects {
     /// Folds a dispatch result into the per-kind records.
     ///
     /// A status older than the record it would overwrite is dropped: the
-    /// dispatches are concurrent, so a revision that succeeded may complete
-    /// after a newer one failed, and letting it win would forget the failure
-    /// and leave the effect owner holding the superseded value forever. This
-    /// also makes `Superseded` inert, since it can only be reported by a
-    /// revision the owner has already moved past.
+    /// dispatches are concurrent, so one that succeeded may be recorded after a
+    /// newer one failed, and letting it win would forget the failure and leave
+    /// the effect owner holding the superseded value forever. This also makes
+    /// `Superseded` inert, since it can only be reported by a revision the
+    /// owner has already moved past. [`ordering_key`] is what "older" means
+    /// per kind; the tray is ordered by attempt rather than by plan revision.
     fn record_retry_state(&self, statuses: &[EffectStatus]) {
         let mut records = self.retries.lock();
         for status in statuses {
+            let order = ordering_key(status);
             if records
                 .get(&status.kind)
-                .is_some_and(|record| status.desired_revision < record.revision)
+                .is_some_and(|record| order < record.order)
             {
                 continue;
             }
             records.insert(
                 status.kind,
                 RetryRecord {
-                    revision: status.desired_revision,
+                    order,
                     pending: matches!(
                         status.health,
                         EffectHealth::Degraded {

@@ -4,12 +4,7 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
-use crate::{
-    config::*,
-    core::*,
-    log_err,
-    utils::{self, help::get_clash_external_port},
-};
+use crate::{config::*, core::*, log_err, utils::help::get_clash_external_port};
 use anyhow::{Result, bail};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreStateDetail;
@@ -158,7 +153,16 @@ where
 }
 
 /// 修改verge的配置
-/// 一般都是一个个的修改
+//
+// FIXME(actor-migration): legacy verge side-effect shim.
+// The peripheral effects — system proxy, PAC, auto-launch, hotkeys, locale,
+// tray, logger and widget — are all owned by `ApplicationEffectPlan` and
+// dispatched through `ApplicationEffectsPort`. What is left here is the
+// `enable_service_mode` execution-host switch and the TUN core permission
+// precheck, plus the legacy `Config::verge()` write the three-domain saga
+// still diffs against.
+// New code must use `NyanpasuClient::{patch_app_config, patch_clash_config}`.
+// Remove after: PR-7b deletes feat.rs as an orchestration centre.
 pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -> Result<()> {
     // Validate theme_color if it's being updated
     if let Some(ref theme_color) = patch.theme_color
@@ -170,14 +174,6 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
 
     Config::verge().draft().patch_config(patch.clone());
     let tun_mode = patch.enable_tun_mode;
-    let system_proxy = patch.enable_system_proxy;
-    let language = patch.language;
-    let log_level = patch.app_log_level;
-    let log_max_files = patch.max_log_files;
-    let enable_tray_selector = patch.clash_tray_selector;
-    let enable_tray_text = patch.enable_tray_text;
-    let tray_menu_mode = patch.tray_menu_mode;
-    let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
         if let Some(service_mode) = service_mode {
@@ -212,38 +208,6 @@ pub async fn patch_verge(client: crate::client::NyanpasuClient, patch: IVerge) -
             // happens in `LegacyVergeBridge::run_legacy_verge_mutation`,
             // after the typed commit this function's caller performs
             // (AGENTS.md section 10: commit first, then side effects).
-        }
-
-        let language_changed = language.is_some();
-        if let Some(language) = language {
-            rust_i18n::set_locale(language.as_str());
-        }
-
-        if language_changed || tray_menu_mode.is_some() || enable_tray_selector.is_some() {
-            handle::Handle::update_systray()?;
-        } else if system_proxy.or(tun_mode).or(enable_tray_text).is_some() {
-            handle::Handle::update_systray_part()?;
-        }
-
-        if log_level.is_some() || log_max_files.is_some() {
-            utils::init::refresh_logger((log_level, log_max_files))?;
-        }
-
-        // TODO: refactor config with changed notify
-        if let Some(network_statistic_widget) = network_statistic_widget {
-            let widget_manager =
-                crate::consts::app_handle().state::<crate::widget::WidgetManager>();
-            let is_running = widget_manager.is_running().await;
-            match network_statistic_widget.to_variant() {
-                None => {
-                    if is_running {
-                        widget_manager.stop().await?;
-                    }
-                }
-                Some(variant) => {
-                    widget_manager.start(variant).await?;
-                }
-            }
         }
 
         <Result<()>>::Ok(())

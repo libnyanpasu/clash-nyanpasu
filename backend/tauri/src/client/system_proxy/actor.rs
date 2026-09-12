@@ -76,8 +76,8 @@ pub(super) struct State {
     /// pass through the gate at all (startup reconcile, shutdown restore).
     applied: AppliedRevisions,
     health: EffectHealth,
-    /// Captured once, immediately before this process first turns its own
-    /// proxy on. Written back on exit.
+    /// Captured immediately before this process first turns its own proxy on
+    /// and recorded once that install succeeds. Written back on exit.
     original: Option<OsProxyConfig>,
     /// The last value actually written to the OS; the guard re-applies it.
     current: Option<OsProxyConfig>,
@@ -511,7 +511,7 @@ impl State {
         revision: EffectRevision,
         config: OsProxyConfig,
     ) -> EffectStatus {
-        self.capture_original(config.enable).await;
+        let captured = self.capture_original(config.enable).await;
         // The capture reads the OS, and that read can outlast the restore's own
         // bound: the exit path gives up waiting, the process finishes tearing
         // down, and only then does this turn resume. Writing here would install
@@ -525,6 +525,13 @@ impl State {
         let payload = config.clone();
         match blocking(move || os.set(&payload)).await {
             Ok(()) => {
+                // Committed only here, because the restore reads `original` as
+                // "the settings this process replaced". Recording a capture the
+                // install never got past would make the exit path disable a
+                // proxy someone else installed and this process never touched.
+                if let Some(captured) = captured {
+                    self.original.get_or_insert(captured);
+                }
                 self.current = Some(config);
                 self.healthy(EffectKind::SystemProxy, revision)
             }
@@ -538,18 +545,23 @@ impl State {
     }
 
     /// Read once, immediately before the first enable, so what is restored on
-    /// exit is what the user had rather than something this process wrote.
-    async fn capture_original(&mut self, enabling: bool) {
+    /// exit is what the user had rather than something this process wrote. The
+    /// value is handed back rather than stored: only a successful install may
+    /// commit it.
+    async fn capture_original(&self, enabling: bool) -> Option<OsProxyConfig> {
         if !enabling || self.original.is_some() {
-            return;
+            return None;
         }
         let os = self.os.clone();
         match blocking(move || os.get()).await {
-            Ok(original) => self.original = Some(original),
-            Err(error) => tracing::warn!(
-                %error,
-                "could not read the system proxy before enabling ours; exit will only turn ours off"
-            ),
+            Ok(original) => Some(original),
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "could not read the system proxy before enabling ours; exit will only turn ours off"
+                );
+                None
+            }
         }
     }
 

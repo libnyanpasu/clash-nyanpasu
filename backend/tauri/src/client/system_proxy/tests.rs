@@ -1038,7 +1038,7 @@ async fn write_after_cancellation_during_original_capture_is_skipped() {
     // return after the restore already gave up waiting for the mailbox. The
     // write behind it would then install a proxy nothing is left to remove.
     let os = RecordingOsProxy::with_original(OsProxyConfig {
-        enable: false,
+        enable: true,
         host: "127.0.0.1".to_owned(),
         port: 1080,
         bypass: BYPASS.to_owned(),
@@ -1070,6 +1070,48 @@ async fn write_after_cancellation_during_original_capture_is_skipped() {
     assert!(
         os.writes().is_empty(),
         "nothing may reach the OS once the shutdown began: {:?}",
+        os.writes()
+    );
+
+    // The enabled proxy the capture read belongs to whoever set it, and this
+    // process never replaced it. The restore has nothing of its own to undo.
+    client.restore().await;
+    assert!(
+        os.writes().is_empty(),
+        "a proxy this process never installed must survive the exit: {:?}",
+        os.writes()
+    );
+}
+
+#[tokio::test]
+async fn failed_first_install_does_not_record_original() {
+    // The capture succeeds and the install right behind it does not. Treating
+    // the read value as "what we replaced" would have the exit path disable a
+    // proxy this process only ever failed to overwrite.
+    let os = RecordingOsProxy::with_original(OsProxyConfig {
+        enable: true,
+        host: "127.0.0.1".to_owned(),
+        port: 1080,
+        bypass: BYPASS.to_owned(),
+    });
+    os.fail_set(true);
+    let client = spawn_with_os(os.clone()).await;
+
+    let statuses = client
+        .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
+        .await;
+    assert_eq!(
+        code_of(&statuses, EffectKind::SystemProxy),
+        "system_proxy_apply_failed"
+    );
+
+    // Lifted so the restore would record a write if it attempted one.
+    os.fail_set(false);
+    client.restore().await;
+
+    assert!(
+        os.writes().is_empty(),
+        "a failed first install leaves nothing to restore: {:?}",
         os.writes()
     );
 }

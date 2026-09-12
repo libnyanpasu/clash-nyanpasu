@@ -583,9 +583,16 @@ impl NyanpasuClient {
         &self,
         state: NyanpasuAppConfig,
     ) -> Result<runtime::MutationOutcome<()>> {
-        hotkey::validate_bindings(&state.hotkeys, self.inner.accelerators.as_ref())?;
         let client = self.inner.application.clone();
         self.commit_and_reconcile(move || async move {
+            // A replacement that repeats the stored list is carrying state
+            // forward, not submitting it. Rejecting that would let one binding
+            // already on disk — migrated, hand-edited, or accepted by an older
+            // build — block every unrelated write from then on.
+            let committed = client.get().await?.state;
+            if state.hotkeys != committed.hotkeys {
+                hotkey::validate_bindings(&state.hotkeys, self.inner.accelerators.as_ref())?;
+            }
             client.replace(state).await?;
             Ok(())
         })
@@ -717,6 +724,10 @@ impl NyanpasuClient {
     {
         self.commit_and_reconcile(move || async move {
             let snapshots = self.typed_config_snapshots().await?;
+            let submits_hotkeys = plan
+                .application
+                .as_ref()
+                .is_some_and(|patch| patch.hotkeys.is_some());
             let application = plan.application.map(|patch| {
                 let mut state = snapshots.application.state.clone();
                 state.apply(patch);
@@ -735,8 +746,11 @@ impl NyanpasuClient {
             // The legacy wire carries hotkeys too, so it needs the same
             // pre-commit check as `patch_app_config`. Without it a typo reaches
             // the store and comes back as a degraded effect forever, because
-            // the persisted binding can never register.
-            if let Some(application) = application.as_ref() {
+            // the persisted binding can never register. Only when the patch
+            // actually carries the list, though: every other field is patched
+            // on top of the stored hotkeys, and validating those would let one
+            // bad binding block the whole settings screen.
+            if submits_hotkeys && let Some(application) = application.as_ref() {
                 hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
             }
             self.apply_legacy_verge_states_saga(snapshots, application, session, clash, finalize)
@@ -762,8 +776,13 @@ impl NyanpasuClient {
     {
         self.commit_and_reconcile(move || async move {
             let snapshots = self.typed_config_snapshots().await?;
-            // See the patch saga: a replacement carries the whole hotkey list.
-            hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
+            // See the patch saga. A replacement always carries the whole list,
+            // so only a *changed* one is something the user submitted; the
+            // startup resync replays what is already on disk, and rejecting
+            // that would abort setup over a binding the app itself stored.
+            if application.hotkeys != snapshots.application.state.hotkeys {
+                hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
+            }
             self.apply_legacy_verge_states_saga(
                 snapshots,
                 Some(application),

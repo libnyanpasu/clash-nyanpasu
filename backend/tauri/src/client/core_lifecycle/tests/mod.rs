@@ -1,3 +1,6 @@
+mod connection_policy;
+mod service_recovery;
+
 use super::{
     super::{
         NyanpasuClient,
@@ -976,6 +979,3 @@ fn control_channel_application_does_not_start_a_stopped_core() {
         assert_eq!(f.endpoint.submissions(), 1);
     });
 }
-
-#[path = "service_recovery_tests.rs"]
-mod service_recovery;

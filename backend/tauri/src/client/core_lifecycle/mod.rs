@@ -4,6 +4,9 @@ pub(crate) mod adapters;
 pub mod ports;
 mod workflow;
 
+#[cfg(test)]
+mod tests;
+
 use std::{collections::VecDeque, panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
 use futures_util::FutureExt;
@@ -674,9 +677,3 @@ impl CoreLifecycleClient {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod connection_policy_tests;

@@ -13,12 +13,14 @@ use nyanpasu_ipc::api::{
 };
 use tokio::sync::Notify;
 
-use super::super::{
-    NyanpasuClient,
-    tests::{TestControlEndpoint, test_client_args_with_endpoint},
-};
-use crate::core::actor_v2::endpoint::{
-    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
+use crate::{
+    client::{
+        NyanpasuClient,
+        tests::{TestControlEndpoint, test_client_args_with_endpoint},
+    },
+    core::actor_v2::endpoint::{
+        ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
+    },
 };
 
 #[derive(Default)]

@@ -1,16 +1,27 @@
-use super::shared::{self, CoreTypeMeta};
-use crate::{
-    client::NyanpasuClient,
-    config::nyanpasu::ClashCore,
-    core::download::{DownloadSession, DownloadStatus},
+use std::{
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
 };
-use anyhow::anyhow;
+
+use async_trait::async_trait;
 use serde::Serialize;
 use specta::Type;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
-use std::sync::Arc;
 use tempfile::TempDir;
+
+use super::{
+    ManifestVersion,
+    ports::{UpdaterBackend, UpdaterProgress},
+    shared::{self, CoreTypeMeta},
+};
+use crate::{
+    client::core_lifecycle::ports::PreparedCoreBinary,
+    config::nyanpasu::ClashCore,
+    core::download::{DownloadSession, DownloadStatus},
+    utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
+};
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -22,274 +33,318 @@ pub enum UpdaterState {
     Replacing,
     Restarting,
     Done,
+    Pending(String),
     Failed(String),
 }
 
-pub(super) struct Updater {
-    id: usize,
-    temp_dir: Arc<TempDir>,
-    core_type: ClashCore,
-    artifact: String,
-    inner: Arc<parking_lot::RwLock<UpdaterInner>>,
-    downloader: Arc<DownloadSession>,
-    nyanpasu: NyanpasuClient,
-}
-
-struct UpdaterInstallProgress(Arc<parking_lot::RwLock<UpdaterInner>>);
-
-impl crate::client::core_lifecycle::ports::BinaryInstallProgress for UpdaterInstallProgress {
-    fn restarting(&self) {
-        self.0.write().state = UpdaterState::Restarting;
-    }
-    fn finished(&self, error: Option<&str>) {
-        self.0.write().state = match error {
-            Some(error) => UpdaterState::Failed(error.to_owned()),
-            None => UpdaterState::Done,
-        };
-    }
-}
-
-struct UpdaterInner {
-    state: UpdaterState,
-}
-
-#[derive(Debug, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct UpdaterSummary {
     pub id: usize,
     pub state: UpdaterState,
     pub downloader: DownloadStatus,
 }
 
-pub(super) struct UpdaterBuilder {
-    client: Option<reqwest::Client>,
-    core_type: Option<ClashCore>,
-    mirror: Option<String>,
-    artifact: Option<String>,
-    tag: Option<CoreTypeMeta>,
-    nyanpasu: Option<NyanpasuClient>,
+pub(crate) struct HttpUpdaterBackend {
+    proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
+    destination_dir: PathBuf,
 }
 
-impl UpdaterBuilder {
-    pub fn new() -> Self {
+impl HttpUpdaterBackend {
+    pub fn new(
+        destination_dir: PathBuf,
+        proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
+    ) -> Self {
         Self {
-            client: None,
-            core_type: None,
-            mirror: None,
-            artifact: None,
-            tag: None,
-            nyanpasu: None,
+            proxy_port,
+            destination_dir,
         }
     }
 
-    pub fn set_client(mut self, client: reqwest::Client) -> Self {
-        self.client = Some(client);
-        self
-    }
-
-    pub fn set_nyanpasu_client(mut self, client: NyanpasuClient) -> Self {
-        self.nyanpasu = Some(client);
-        self
-    }
-
-    pub fn set_core_type(mut self, core_type: ClashCore) -> Self {
-        self.core_type = Some(core_type);
-        self
-    }
-
-    pub fn set_artifact(mut self, artifact: String) -> Self {
-        self.artifact = Some(artifact);
-        self
-    }
-
-    pub fn set_tag(mut self, tag: CoreTypeMeta) -> Self {
-        self.tag = Some(tag);
-        self
-    }
-
-    pub fn set_mirror(mut self, mirror: String) -> Self {
-        self.mirror = Some(mirror);
-        self
-    }
-
-    pub async fn build(self) -> anyhow::Result<Updater> {
-        let client = self.client.ok_or(anyhow::anyhow!("client is required"))?;
-        let core_type = self
-            .core_type
-            .ok_or(anyhow::anyhow!("core_type is required"))?;
-        let artifact = self
-            .artifact
-            .ok_or(anyhow::anyhow!("artifact is required"))?;
-        let tag = self.tag.ok_or(anyhow::anyhow!("tag is required"))?;
-        let mirror = self.mirror.ok_or(anyhow::anyhow!("mirror is required"))?;
-        let nyanpasu = self
-            .nyanpasu
-            .ok_or(anyhow::anyhow!("nyanpasu client is required"))?;
-
-        let temp_dir = TempDir::new()?;
-        let inner = UpdaterInner {
-            state: UpdaterState::Idle,
-        };
-
-        // setup downloader
-        let download_path = shared::get_download_path(tag, &artifact);
-        let mut download_url = url::Url::parse("https://github.com")?;
-        download_url.set_path(&download_path);
-        let download_url = crate::utils::candy::parse_gh_url(&mirror, download_url.as_str())?;
-        let save_path = temp_dir.path().join(&artifact);
-        tracing::debug!("downloader url: {}", download_url);
-        tracing::debug!("downloader save path: {:?}", save_path);
-        let downloader = Arc::new(DownloadSession::new(client, download_url, save_path).await?);
-        Ok(Updater {
-            id: rand::random::<u32>() as usize,
-            temp_dir: Arc::new(temp_dir),
-            core_type,
-            inner: Arc::new(parking_lot::RwLock::new(inner)),
-            artifact,
-            downloader,
-            nyanpasu,
-        })
+    fn http_client(&self) -> anyhow::Result<reqwest::Client> {
+        let mut builder = reqwest::Client::builder()
+            .user_agent(concat!("clash-nyanpasu/", env!("CARGO_PKG_VERSION")))
+            .timeout(Duration::from_secs(120));
+        if let Some(port) = self.proxy_port.mixed_port() {
+            builder = builder.proxy(reqwest::Proxy::all(format!("http://127.0.0.1:{port}"))?);
+        }
+        Ok(builder.build()?)
     }
 }
 
-impl Updater {
-    fn dispatch_state(&self, state: UpdaterState) {
-        tracing::debug!("dispatching updater state: {:?}", state);
-        let mut inner = self.inner.write();
-        inner.state = state;
+// DownloadSession drives background IO internally; cancelling its owner must also
+// cancel those tasks before the worker releases its staging directory.
+struct OwnedDownload(DownloadSession);
+
+impl Drop for OwnedDownload {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
+
+#[async_trait]
+impl UpdaterBackend for HttpUpdaterBackend {
+    async fn fetch_manifest(
+        &self,
+        mirror: Option<(String, Instant)>,
+    ) -> anyhow::Result<(ManifestVersion, (String, Instant))> {
+        let client = self.http_client()?;
+        let mirror = match mirror {
+            Some(cached) if cached.1.elapsed() < Duration::from_secs(3600) => cached,
+            _ => {
+                let results = client.mirror_speed_test(
+                    crate::utils::candy::INTERNAL_MIRRORS,
+                    "https://github.com/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
+                ).await?;
+                let (mirror, speed) = results
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("no mirrors found"))?;
+                if speed - 1.0 < 0.0001 {
+                    anyhow::bail!("all mirrors are too slow");
+                }
+                (mirror.to_string(), Instant::now())
+            }
+        };
+        let url = parse_gh_url(
+            &mirror.0,
+            "/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
+        )?;
+        let manifest = client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        Ok((manifest, mirror))
     }
 
-    async fn decompress_and_set_permission(&self) -> anyhow::Result<()> {
-        self.dispatch_state(UpdaterState::Decompressing);
-        let path = self.temp_dir.path().join(&self.artifact);
-        tracing::debug!("decompressing file: {:?}", path);
-        let mut tmp_file = std::fs::File::open(path)?;
-        tracing::debug!("file size: {}", tmp_file.metadata()?.len());
-        let artifact = self.artifact.clone();
-        let buff = tokio::task::spawn_blocking(move || {
-            let mut buff = Vec::<u8>::new();
-            match artifact {
-                fname if fname.ends_with(".gz") => {
-                    tracing::debug!("decompressing gz file");
-                    let mut decoder = flate2::read::GzDecoder::new(&mut tmp_file);
-                    std::io::copy(&mut decoder, &mut buff)?;
+    async fn prepare(
+        &self,
+        core_type: ClashCore,
+        mirror: String,
+        artifact: String,
+        tag: CoreTypeMeta,
+        progress: UpdaterProgress,
+    ) -> anyhow::Result<PreparedCoreBinary> {
+        let staging = Arc::new(TempDir::new()?);
+        let mut url = url::Url::parse("https://github.com")?;
+        url.set_path(&shared::get_download_path(tag, &artifact));
+        let url = parse_gh_url(&mirror, url.as_str())?;
+        let downloader = OwnedDownload(
+            DownloadSession::new(self.http_client()?, url, staging.path().join(&artifact)).await?,
+        );
+        let download = downloader.0.start();
+        tokio::pin!(download);
+        let mut interval = tokio::time::interval(Duration::from_millis(250));
+        loop {
+            tokio::select! {
+                result = &mut download => {
+                    progress.report(UpdaterState::Downloading, Some(downloader.0.status()));
+                    result?;
+                    break;
                 }
-                fname if fname.ends_with(".zip") => {
-                    tracing::debug!("decompressing zip file");
-                    let mut archive = zip::ZipArchive::new(tmp_file)?;
-                    let len = archive.len();
-                    for i in 0..len {
-                        let mut file = archive.by_index(i)?;
-                        let file_name = file.name();
-                        tracing::debug!("Filename: {}", file.name());
-                        // TODO: 在 enum 做点魔法
-                        if file_name.contains("mihomo")
-                            || file_name.contains("clash")
-                            || file_name.contains("meow")
-                        {
-                            tracing::debug!("extract file: {}", file_name);
-                            tracing::debug!("extract file size: {}", file.size());
-                            std::io::copy(&mut file, &mut buff)?;
-                            break;
-                        }
-                        if i == len - 1 {
-                            anyhow::bail!("failed to find core file in a zip archive");
-                        }
-                    }
+                _ = interval.tick() => {
+                    progress.report(UpdaterState::Downloading, Some(downloader.0.status()));
                 }
-                _ => {
-                    tracing::debug!("directly copying file");
-                    std::io::copy(&mut tmp_file, &mut buff)?;
-                }
-            };
-            Ok::<_, anyhow::Error>(buff)
+            }
+        }
+        progress.report(UpdaterState::Decompressing, None);
+        let filename = format!("{}{}", core_type, std::env::consts::EXE_SUFFIX);
+        let prepared_dir = staging.path().join("prepared");
+        tokio::fs::create_dir(&prepared_dir).await?;
+        let source = prepared_dir.join(&filename);
+        let extraction_staging = staging.clone();
+        let extraction_source = source.clone();
+        // A blocking extraction cannot be aborted midway. It owns staging until
+        // completion, including when its async worker is cancelled during shutdown.
+        tokio::task::spawn_blocking(move || {
+            extract_core(
+                extraction_staging.path().join(&artifact),
+                &artifact,
+                extraction_source,
+            )
         })
         .await??;
-        let tmp_core = self.temp_dir.path().join(format!(
-            "{}{}",
-            self.core_type,
-            std::env::consts::EXE_SUFFIX
-        ));
-        tracing::debug!("writing core to {:?} ({} bytes)", tmp_core, buff.len());
-        let mut core_file = tokio::fs::File::create(&tmp_core).await?;
-        tokio::io::copy(&mut buff.as_slice(), &mut core_file).await?;
-        #[cfg(target_family = "unix")]
-        {
-            std::fs::set_permissions(&tmp_core, std::fs::Permissions::from_mode(0o755))?;
+        progress.report(UpdaterState::Replacing, None);
+        Ok(PreparedCoreBinary {
+            target: core_type,
+            source,
+            destination: self.destination_dir.join(filename),
+            staging,
+            progress: Arc::new(progress),
+        })
+    }
+}
+
+fn extract_core(archive_path: PathBuf, artifact: &str, destination: PathBuf) -> anyhow::Result<()> {
+    let mut source = std::fs::File::open(archive_path)?;
+    let mut output = std::fs::File::create(&destination)?;
+    if artifact.ends_with(".gz") {
+        std::io::copy(&mut flate2::read::GzDecoder::new(source), &mut output)?;
+    } else if artifact.ends_with(".zip") {
+        let mut archive = zip::ZipArchive::new(source)?;
+        let mut found = false;
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index)?;
+            if !file.is_dir()
+                && ["mihomo", "clash", "meow"]
+                    .iter()
+                    .any(|name| file.name().contains(name))
+            {
+                std::io::copy(&mut file, &mut output)?;
+                found = true;
+                break;
+            }
         }
-        Ok(())
+        anyhow::ensure!(found, "failed to find core file in a zip archive");
+    } else {
+        std::io::copy(&mut source, &mut output)?;
+    }
+    #[cfg(target_family = "unix")]
+    std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o755))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    struct ProxyPort(std::sync::atomic::AtomicU16);
+
+    impl crate::service::profile_file::SelfProxyPortSource for ProxyPort {
+        fn mixed_port(&self) -> Option<u16> {
+            Some(self.0.load(std::sync::atomic::Ordering::SeqCst))
+        }
     }
 
-    async fn replace_core(&self) -> anyhow::Result<()> {
-        self.dispatch_state(UpdaterState::Replacing);
+    async fn proxy_reply(listener: &tokio::net::TcpListener, body: &str) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        loop {
+            let mut buffer = [0; 1024];
+            let read = socket.read(&mut buffer).await.unwrap();
+            assert_ne!(read, 0);
+            request.extend_from_slice(&buffer[..read]);
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
+        assert!(
+            String::from_utf8(request)
+                .unwrap()
+                .starts_with("GET http://updater.invalid/artifact HTTP/1.1")
+        );
+        socket
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+    }
 
-        #[cfg(target_os = "windows")]
-        let target_core = format!("{}.exe", self.core_type);
-        #[cfg(not(target_os = "windows"))]
-        let target_core = self.core_type.clone().to_string();
-        let core_dir = tauri::utils::platform::current_exe()?;
-        let core_dir = core_dir.parent().ok_or(anyhow!("failed to get core dir"))?;
-        let target_core = core_dir.join(target_core);
-        let tmp_core_path = self.temp_dir.path().join(format!(
-            "{}{}",
-            self.core_type,
-            std::env::consts::EXE_SUFFIX
-        ));
-
-        self.nyanpasu
-            .replace_core_binary(crate::client::core_lifecycle::ports::PreparedCoreBinary {
-                target: self.core_type,
-                source: tmp_core_path,
-                destination: target_core,
-                staging: self.temp_dir.clone(),
-                progress: Arc::new(UpdaterInstallProgress(self.inner.clone())),
+    #[tokio::test]
+    async fn new_http_operation_uses_latest_actual_proxy_port() {
+        let first = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let second = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = Arc::new(ProxyPort(std::sync::atomic::AtomicU16::new(
+            first.local_addr().unwrap().port(),
+        )));
+        let dir = TempDir::new().unwrap();
+        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), port.clone());
+        for (listener, expected) in [(&first, "first core"), (&second, "restarted core")] {
+            port.0.store(
+                listener.local_addr().unwrap().port(),
+                std::sync::atomic::Ordering::SeqCst,
+            );
+            let client = backend.http_client().unwrap();
+            let (response, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::join!(
+                    async {
+                        client
+                            .get("http://updater.invalid/artifact")
+                            .send()
+                            .await
+                            .unwrap()
+                            .text()
+                            .await
+                            .unwrap()
+                    },
+                    proxy_reply(listener, expected),
+                )
             })
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn start(&self) {
-        {
-            let mut inner = self.inner.write();
-            if !matches!(inner.state, UpdaterState::Idle) {
-                return;
-            }
-            inner.state = UpdaterState::Downloading;
-        }
-        // The download engine reports live progress through `downloader.status()`,
-        // which `get_report` surfaces to the frontend while this runs.
-        if let Err(e) = self.downloader.start().await {
-            tracing::error!("download failed: {}", e);
-            self.dispatch_state(UpdaterState::Failed(e.to_string()));
-            return;
-        }
-        tracing::debug!("download finished and start to incoming update logic");
-        if let Err(e) = self.decompress_and_set_permission().await {
-            tracing::error!("failed to decompress and set permission: {}", e);
-            self.dispatch_state(UpdaterState::Failed(e.to_string()));
-            return;
-        }
-        if let Err(e) = self.replace_core().await {
-            tracing::error!("failed to replace core: {}", e);
-            // The terminal notification can race the requester's timeout.
-            let mut inner = self.inner.write();
-            if !matches!(inner.state, UpdaterState::Done) {
-                inner.state = UpdaterState::Failed(e.to_string());
-            }
-            return;
-        }
-        self.dispatch_state(UpdaterState::Done);
-    }
-
-    pub fn get_report(&self) -> UpdaterSummary {
-        UpdaterSummary {
-            id: self.id,
-            state: self.inner.read().state.clone(),
-            downloader: self.downloader.status(),
+            .await
+            .unwrap();
+            assert_eq!(response, expected);
         }
     }
 
-    pub fn get_updater_id(&self) -> usize {
-        self.id
+    #[test]
+    fn raw_artifact_with_core_filename_is_preserved_during_extraction() {
+        let dir = TempDir::new().unwrap();
+        let filename = format!("mihomo{}", std::env::consts::EXE_SUFFIX);
+        let archive = dir.path().join(&filename);
+        std::fs::write(&archive, b"raw core binary").unwrap();
+        let prepared_dir = dir.path().join("prepared");
+        std::fs::create_dir(&prepared_dir).unwrap();
+        let destination = prepared_dir.join(&filename);
+        extract_core(archive.clone(), &filename, destination.clone()).unwrap();
+        assert_eq!(std::fs::read(archive).unwrap(), b"raw core binary");
+        assert_eq!(std::fs::read(destination).unwrap(), b"raw core binary");
+    }
+
+    #[test]
+    fn extracts_gzip_and_sets_executable_permission() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("core.gz");
+        let mut encoder = flate2::write::GzEncoder::new(
+            std::fs::File::create(&archive).unwrap(),
+            flate2::Compression::default(),
+        );
+        encoder.write_all(b"core binary").unwrap();
+        encoder.finish().unwrap();
+        let destination = dir.path().join("core");
+        extract_core(archive, "core.gz", destination.clone()).unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"core binary");
+        #[cfg(target_family = "unix")]
+        assert_eq!(
+            std::fs::metadata(destination).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+    }
+
+    #[test]
+    fn zip_ignores_directories_and_rejects_missing_core() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("core.zip");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        writer
+            .add_directory("mihomo/", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.finish().unwrap();
+        let error = extract_core(archive, "core.zip", dir.path().join("core")).unwrap_err();
+        assert!(error.to_string().contains("failed to find core file"));
+    }
+
+    #[test]
+    fn zip_extracts_core_without_using_archive_paths() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("core.zip");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        writer
+            .start_file("nested/mihomo", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"core binary").unwrap();
+        writer.finish().unwrap();
+        let destination = dir.path().join("core");
+        extract_core(archive, "core.zip", destination.clone()).unwrap();
+        assert_eq!(std::fs::read(destination).unwrap(), b"core binary");
+        assert!(!dir.path().join("nested").exists());
     }
 }

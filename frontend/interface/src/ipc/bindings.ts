@@ -2597,7 +2597,8 @@ export type UpdaterState =
   | 'replacing'
   | 'restarting'
   | 'done'
-  | { failed: string }
+  | ({ pending: string } & { failed?: never })
+  | ({ failed: string } & { pending?: never })
 
 export type UpdaterSummary = {
   id: number

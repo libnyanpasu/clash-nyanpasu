@@ -51,33 +51,32 @@ function useCoreUpdateTask(
       }
 
       await new Promise<void>((resolve, reject) => {
-        const interval = setInterval(async () => {
-          const result = await inspectUpdater(updaterId)
-
-          if (!result) {
-            reject(new Error('Failed to inspect updater'))
-            clearInterval(interval)
-            return
+        let stopped = false
+        const poll = async () => {
+          try {
+            const result = await inspectUpdater(updaterId)
+            setUpdater(result)
+            if (isObject(result.state) && 'failed' in result.state) {
+              throw new Error(result.state.failed)
+            }
+            if (
+              isObject(result.downloader.state) &&
+              'failed' in result.downloader.state
+            ) {
+              throw new Error(result.downloader.state.failed)
+            }
+            if (result.state === 'done') {
+              stopped = true
+              resolve()
+              return
+            }
+          } catch (error) {
+            stopped = true
+            reject(error)
           }
-
-          setUpdater(result)
-
-          if (
-            isObject(result.downloader.state) &&
-            Object.prototype.hasOwnProperty.call(
-              result.downloader.state,
-              'failed',
-            )
-          ) {
-            reject(result.downloader.state.failed)
-            clearInterval(interval)
-          }
-
-          if (result.state === 'done') {
-            resolve()
-            clearInterval(interval)
-          }
-        }, 100)
+          if (!stopped) setTimeout(poll, 100)
+        }
+        poll()
       })
 
       await query.refetch()
@@ -127,7 +126,7 @@ function useCoreUpdateTask(
       return m.settings_clash_core_manager_card_decompressing()
     }
 
-    if (state === 'replacing') {
+    if (state === 'replacing' || (isObject(state) && 'pending' in state)) {
       return m.settings_clash_core_manager_card_replacing()
     }
 

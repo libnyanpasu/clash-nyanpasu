@@ -3,6 +3,7 @@ mod clash_api;
 mod clash_config;
 mod clash_streams;
 pub mod core_lifecycle;
+pub(crate) mod effects;
 mod error;
 mod event_sink;
 pub mod logs;

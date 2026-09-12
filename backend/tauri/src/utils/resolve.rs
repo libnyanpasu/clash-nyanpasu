@@ -249,7 +249,6 @@ pub fn resolve_setup(app: &mut App) {
     }));
 
     log_err!(handle::Handle::update_systray_part());
-    log_err!(hotkey::Hotkey::global().init(app.app_handle().clone()));
 
     // setup jobs
     log::trace!("setup jobs");

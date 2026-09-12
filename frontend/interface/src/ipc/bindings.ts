@@ -148,8 +148,7 @@ export const commands = {
    */
   getAllStorageItems: () =>
     typedError<StorageEntry[], string>(__TAURI_INVOKE('get_all_storage_items')),
-  getHotkeys: () =>
-    typedError<string[] | null, string>(__TAURI_INVOKE('get_hotkeys')),
+  getHotkeys: () => typedError<string[], string>(__TAURI_INVOKE('get_hotkeys')),
   getCoreDir: () => typedError<string, string>(__TAURI_INVOKE('get_core_dir')),
   getClashWsConnectionsState: () =>
     typedError<ClashConnectionsConnectorState, string>(
@@ -368,7 +367,9 @@ export const commands = {
    */
   clearStorage: () => typedError<null, string>(__TAURI_INVOKE('clear_storage')),
   setHotkeys: (hotkeys: string[]) =>
-    typedError<null, string>(__TAURI_INVOKE('set_hotkeys', { hotkeys })),
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('set_hotkeys', { hotkeys }),
+    ),
   mutateProxies: () =>
     typedError<Proxies_Serialize, string>(__TAURI_INVOKE('mutate_proxies')),
   setClashWsRecording: (kind: ClashWsKind, enabled: boolean) =>

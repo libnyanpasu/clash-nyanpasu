@@ -5,8 +5,11 @@ pub static MODULES: Lazy<Vec<&'static dyn ModuleMigrator>> = Lazy::new(|| {
     vec![
         &modules::profiles::MIGRATOR,
         &modules::app_config::MIGRATOR,
-        &modules::storage::MIGRATOR,
+        // Typed config before storage: `storage/hotkeys_to_typed_config` writes
+        // into `application.yaml`, which `typed_config/split_legacy_config`
+        // creates.
         &modules::typed_config::MIGRATOR,
+        &modules::storage::MIGRATOR,
     ]
 });
 

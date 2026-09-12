@@ -4,36 +4,35 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 87,
+      "total": 84,
       "byKey": {
-        "Config::verge()": 68,
+        "Config::verge()": 65,
         "Config::clash()": 19
       }
     },
     "service_globals": {
-      "total": 32,
+      "total": 25,
       "byKey": {
-        "Handle::global()": 9,
         "Self::global()": 8,
         "WindowManager::global()": 8,
-        "Hotkey::global()": 3,
+        "Handle::global()": 5,
         "UpdaterManager::global()": 3,
         "Logger::global()": 1
       }
     },
     "migration_markers": {
-      "total": 14,
+      "total": 12,
       "byKey": {
-        "TODO(actor-migration)": 11,
+        "TODO(actor-migration)": 9,
         "FIXME(actor-migration)": 3
       }
     },
     "legacy_dto_refs": {
-      "total": 325,
+      "total": 319,
       "byKey": {
-        "IVerge": 188,
-        "LegacyVergeBridge": 32,
+        "IVerge": 183,
         "IClashTemp": 31,
+        "LegacyVergeBridge": 31,
         "VergeLegacyBridge": 20,
         "ClashLegacyBridge": 19,
         "LegacyClashBridge": 10,

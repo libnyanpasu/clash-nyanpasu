@@ -417,7 +417,7 @@ mod tests {
         // Each module advanced to the head of its step list.
         assert_eq!(runner.store.module_state("profiles").applied_revision, 3);
         assert_eq!(runner.store.module_state("app_config").applied_revision, 4);
-        assert_eq!(runner.store.module_state("storage").applied_revision, 1);
+        assert_eq!(runner.store.module_state("storage").applied_revision, 2);
         assert_eq!(
             runner.store.module_state("typed_config").applied_revision,
             2
@@ -427,24 +427,23 @@ mod tests {
             Some(Version::parse("2.0.0").unwrap())
         );
 
-        // Hotkeys moved out of the config file and into KV storage.
+        // Hotkeys left the legacy config file and ended up in the typed
+        // application config, with nothing stranded in KV storage.
         let storage = Storage::try_new(&data_dir.join(crate::utils::dirs::STORAGE_DB)).unwrap();
         let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap();
-        assert_eq!(
-            hotkeys,
-            Some(vec![
-                "clash_mode_rule,Control+Q".to_string(),
-                "toggle_system_proxy,Control+Shift+P".to_string(),
-            ])
-        );
+        assert_eq!(hotkeys, None);
 
         let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
             &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
         )
         .unwrap();
-        assert!(
-            application.hotkeys.is_empty(),
-            "hotkeys are KV-owned after storage/hotkeys_to_kv and must not be re-seeded into typed application config"
+        assert_eq!(
+            application.hotkeys,
+            vec![
+                "clash_mode_rule,Control+Q".to_string(),
+                "toggle_system_proxy,Control+Shift+P".to_string(),
+            ],
+            "the typed application config is the single authority for hotkeys"
         );
         let _: nyanpasu_config::state::PersistentState = serde_yaml::from_str(
             &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
@@ -454,6 +453,54 @@ mod tests {
             &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
         )
         .unwrap();
+    }
+
+    /// `typed_config` splits the legacy file while `hotkeys` is still in it, so
+    /// both it and `storage` end up with an opinion about the list. The
+    /// key-value store is the one the hotkey editor wrote to, so the typed
+    /// config must end the upgrade holding exactly what `hotkeys_to_kv` parked
+    /// there.
+    #[test]
+    fn full_chain_keeps_the_key_value_hotkeys() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let legacy_raw = include_str!("fixtures/v1_6_1/nyanpasu-config.yaml");
+        std::fs::write(config_dir.join("nyanpasu-config.yaml"), legacy_raw).unwrap();
+        std::fs::write(
+            config_dir.join("profiles.yaml"),
+            include_str!("fixtures/v1_6_1/profiles.yaml"),
+        )
+        .unwrap();
+
+        // Read back out of the fixture rather than spelled out here, so the
+        // assertion tracks whatever the legacy file actually carries.
+        let legacy: serde_yaml::Mapping = serde_yaml::from_str(legacy_raw).unwrap();
+        let expected: Vec<String> = legacy
+            .get(serde_yaml::Value::String("hotkeys".into()))
+            .and_then(|value| value.as_sequence())
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(ToString::to_string))
+                    .collect()
+            })
+            .expect("the 1.6.1 fixture carries hotkeys");
+        assert!(!expected.is_empty());
+
+        let ctx = Ctx::new(config_dir.clone(), data_dir);
+        let mut runner =
+            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
+        runner.run_pending().unwrap();
+
+        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
+            &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(application.hotkeys, expected);
     }
 
     #[test]

@@ -1,0 +1,20 @@
+# `cross` bind-mounts ONLY the cargo workspace root (this directory) into its
+# container as `/project`, so the repo-root `.cargo/config.toml` — one level above
+# that mount — does not exist inside the container. Cargo finds no config there and
+# gxhash hits its `compile_error!` for the missing `+aes`/`+neon` target features.
+# This file is the copy `cross` can see.
+#
+# Only `aarch64-unknown-linux-gnu` is listed, because it is the only triple this
+# project builds through `cross` (deps-build-linux.yaml; every other target builds
+# natively on a runner, where the repo-root config is on cargo's lookup path).
+# Deliberately NOT mirroring the other five triples: cargo CONCATENATES rustflags
+# from every config file on the lookup path, so a triple listed in both files gets
+# `-C target-feature=...` twice. rustc merges repeated target-features, so it
+# builds the same, but the doubled array is a different rustflags fingerprint and
+# would force a full rebuild of every host target. Add a triple here only when it
+# starts being built through `cross` too.
+#
+# Rationale for the hardware-AES baseline itself lives in the repo-root copy.
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+neon"]

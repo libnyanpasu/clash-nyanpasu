@@ -15,12 +15,13 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use struct_patch::Patch;
 
 /// The only configuration an effect may depend on.
 ///
-/// `NyanpasuAppConfig` and `ClashConfig` are not `PartialEq` and carry
-/// platform-gated fields, so effects diff this projection rather than the
-/// config structs. A field absent here provably cannot trigger an effect.
+/// Effects diff this projection rather than the config structs: the resolved
+/// mixed port lives in neither config, the configs carry platform-gated fields
+/// no effect reads, and a field absent here provably cannot trigger an effect.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplicationEffectInputs {
     pub app: ApplicationEffectFields,
@@ -102,30 +103,40 @@ impl ApplicationEffectInputs {
         }
     }
 
-    fn mixed_port(&self) -> Option<u16> {
-        self.ports.as_ref().map(|ports| ports.mixed_port)
-    }
-
-    fn logger_desired(&self) -> LoggerDesired {
-        LoggerDesired {
-            level: self.app.app_log_level.clone(),
-            max_files: self.app.max_log_files,
-        }
-    }
-
-    fn system_proxy_desired(&self) -> SystemProxyDesired {
-        SystemProxyDesired {
-            enabled: self.app.enable_system_proxy,
-            bypass: self.app.system_proxy_bypass.clone(),
-            port: self.mixed_port(),
-            pac_url: self.app.pac_url.clone(),
-        }
-    }
-
-    fn proxy_guard_desired(&self) -> ProxyGuardDesired {
-        ProxyGuardDesired {
-            enabled: self.app.enable_proxy_guard,
-            interval: Duration::from_secs(self.app.proxy_guard_interval),
+    /// The desired value of every effect, regrouped so that each group holds
+    /// exactly the inputs of one effect. Both [`ApplicationEffectPlan::diff`]
+    /// and [`ApplicationEffectPlan::full`] go through this single mapping.
+    fn desired(&self) -> ApplicationDesired {
+        let app = &self.app;
+        ApplicationDesired {
+            locale: app.language,
+            logger: LoggerDesired {
+                level: app.app_log_level.clone(),
+                max_files: app.max_log_files,
+            },
+            auto_launch: app.enable_auto_launch,
+            system_proxy: SystemProxyDesired {
+                enabled: app.enable_system_proxy,
+                bypass: app.system_proxy_bypass.clone(),
+                port: self.ports.as_ref().map(|ports| ports.mixed_port),
+                pac_url: app.pac_url.clone(),
+            },
+            proxy_guard: ProxyGuardDesired {
+                enabled: app.enable_proxy_guard,
+                interval: Duration::from_secs(app.proxy_guard_interval),
+            },
+            hotkeys: app.hotkeys.clone(),
+            widget: app.network_statistic_widget,
+            tray_menu: TrayMenuDesired {
+                menu_mode: app.tray_menu_mode,
+                selector_mode: app.tray_selector_mode,
+            },
+            tray_part: TrayPartDesired {
+                system_proxy: app.enable_system_proxy,
+                tun: self.clash.enable_tun_mode,
+                text: app.enable_tray_text,
+                traffic: app.enable_tray_traffic,
+            },
         }
     }
 }
@@ -172,6 +183,51 @@ pub struct LoggerDesired {
     pub max_files: usize,
 }
 
+/// What a [`TrayRefresh::Full`] rebuild renders.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TrayMenuDesired {
+    menu_mode: TrayMenuMode,
+    selector_mode: ProxiesSelectorMode,
+}
+
+/// What a [`TrayRefresh::Part`] redraw reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TrayPartDesired {
+    system_proxy: bool,
+    tun: bool,
+    text: bool,
+    traffic: bool,
+}
+
+/// One field per trigger group: a group whose inputs changed produces the one
+/// effect it belongs to, and the two tray groups collapse into a single `Tray`
+/// effect.
+///
+/// `into_patch_by_diff` yields `Some(whole desired value)` for every group whose
+/// inputs changed and `into_patch` yields all of them, so the incremental and
+/// the full plan share one group-to-effect mapping. Execution order comes from
+/// the order that mapping emits effects in, not from the order of the fields
+/// below, which are merely kept in [`EffectKind`] order to read alongside it.
+#[derive(Debug, Clone, PartialEq, Patch)]
+#[patch(name = "ApplicationDesiredChanges")]
+#[patch(attribute(derive(Debug, Clone, Default, PartialEq)))]
+struct ApplicationDesired {
+    locale: I18nLanguage,
+    logger: LoggerDesired,
+    auto_launch: bool,
+    system_proxy: SystemProxyDesired,
+    /// Split from `system_proxy` on purpose: changing only the interval must
+    /// not re-apply the OS proxy, and changing only the bypass must not
+    /// restart the guard timer.
+    proxy_guard: ProxyGuardDesired,
+    hotkeys: Vec<String>,
+    widget: NetworkStatisticWidgetConfig,
+    /// `locale` is deliberately not repeated here; "a locale change implies a
+    /// full tray refresh" is written out in the mapping instead.
+    tray_menu: TrayMenuDesired,
+    tray_part: TrayPartDesired,
+}
+
 /// Every variant carries the full desired value, never a delta. Stale-effect
 /// protection depends on it: a newer revision may overwrite an older one
 /// wholesale, and a dropped effect loses nothing permanently.
@@ -211,67 +267,13 @@ pub struct ApplicationEffectPlan {
 impl ApplicationEffectPlan {
     /// Incremental: fields that are equal in both snapshots produce nothing.
     pub fn diff(before: &ApplicationEffectInputs, after: &ApplicationEffectInputs) -> Self {
-        let app_before = &before.app;
-        let app_after = &after.app;
-        let mut effects = Vec::new();
-
-        // Pushed in `EffectKind` order, which is the plan's ordering invariant.
-        if app_before.language != app_after.language {
-            effects.push(ApplicationEffect::Locale(app_after.language));
-        }
-        if app_before.app_log_level != app_after.app_log_level
-            || app_before.max_log_files != app_after.max_log_files
-        {
-            effects.push(ApplicationEffect::Logger(after.logger_desired()));
-        }
-        if app_before.enable_auto_launch != app_after.enable_auto_launch {
-            effects.push(ApplicationEffect::AutoLaunch(app_after.enable_auto_launch));
-        }
-        if app_before.enable_system_proxy != app_after.enable_system_proxy
-            || app_before.system_proxy_bypass != app_after.system_proxy_bypass
-            || app_before.pac_url != app_after.pac_url
-            || before.mixed_port() != after.mixed_port()
-        {
-            effects.push(ApplicationEffect::SystemProxy(after.system_proxy_desired()));
-        }
-        // Split from `SystemProxy` on purpose: changing only the interval must
-        // not re-apply the OS proxy, and changing only the bypass must not
-        // restart the guard timer.
-        if app_before.enable_proxy_guard != app_after.enable_proxy_guard
-            || app_before.proxy_guard_interval != app_after.proxy_guard_interval
-        {
-            effects.push(ApplicationEffect::ProxyGuard(after.proxy_guard_desired()));
-        }
-        if app_before.hotkeys != app_after.hotkeys {
-            effects.push(ApplicationEffect::Hotkeys(app_after.hotkeys.clone()));
-        }
-        if app_before.network_statistic_widget != app_after.network_statistic_widget {
-            effects.push(ApplicationEffect::Widget(
-                app_after.network_statistic_widget,
-            ));
-        }
-        if let Some(tray) = tray_refresh(before, after) {
-            effects.push(ApplicationEffect::Tray(tray));
-        }
-
-        Self { effects }
+        after.desired().into_patch_by_diff(before.desired()).into()
     }
 
     /// Full reconcile: the desired value of every effect, used at startup where
     /// no trustworthy "before" snapshot exists.
     pub fn full(after: &ApplicationEffectInputs) -> Self {
-        Self {
-            effects: vec![
-                ApplicationEffect::Locale(after.app.language),
-                ApplicationEffect::Logger(after.logger_desired()),
-                ApplicationEffect::AutoLaunch(after.app.enable_auto_launch),
-                ApplicationEffect::SystemProxy(after.system_proxy_desired()),
-                ApplicationEffect::ProxyGuard(after.proxy_guard_desired()),
-                ApplicationEffect::Hotkeys(after.app.hotkeys.clone()),
-                ApplicationEffect::Widget(after.app.network_statistic_widget),
-                ApplicationEffect::Tray(TrayRefresh::Full),
-            ],
-        }
+        after.desired().into_patch().into()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -283,24 +285,43 @@ impl ApplicationEffectPlan {
     }
 }
 
-/// A full refresh rebuilds the menu and refreshes the parts on its way out, so
-/// it subsumes a part refresh when both sets of fields changed at once.
-fn tray_refresh(
-    before: &ApplicationEffectInputs,
-    after: &ApplicationEffectInputs,
-) -> Option<TrayRefresh> {
-    if before.app.language != after.app.language
-        || before.app.tray_menu_mode != after.app.tray_menu_mode
-        || before.app.tray_selector_mode != after.app.tray_selector_mode
-    {
-        return Some(TrayRefresh::Full);
-    }
+impl From<ApplicationDesiredChanges> for ApplicationEffectPlan {
+    fn from(changes: ApplicationDesiredChanges) -> Self {
+        // Destructured without `..` on purpose: a new effect cannot be added to
+        // `ApplicationDesired` without being mapped here.
+        let ApplicationDesiredChanges {
+            locale,
+            logger,
+            auto_launch,
+            system_proxy,
+            proxy_guard,
+            hotkeys,
+            widget,
+            tray_menu,
+            tray_part,
+        } = changes;
 
-    let part = before.app.enable_system_proxy != after.app.enable_system_proxy
-        || before.clash.enable_tun_mode != after.clash.enable_tun_mode
-        || before.app.enable_tray_text != after.app.enable_tray_text
-        || before.app.enable_tray_traffic != after.app.enable_tray_traffic;
-    part.then_some(TrayRefresh::Part)
+        // Pushed in `EffectKind` order, which is the plan's ordering invariant.
+        let mut effects = Vec::new();
+        effects.extend(locale.map(ApplicationEffect::Locale));
+        effects.extend(logger.map(ApplicationEffect::Logger));
+        effects.extend(auto_launch.map(ApplicationEffect::AutoLaunch));
+        effects.extend(system_proxy.map(ApplicationEffect::SystemProxy));
+        effects.extend(proxy_guard.map(ApplicationEffect::ProxyGuard));
+        effects.extend(hotkeys.map(ApplicationEffect::Hotkeys));
+        effects.extend(widget.map(ApplicationEffect::Widget));
+        // The menu is rendered with the locale, so a locale change is a menu
+        // change. A full refresh rebuilds the menu and refreshes the parts on
+        // its way out, so it subsumes a part refresh.
+        let tray = match (locale.is_some() || tray_menu.is_some(), tray_part.is_some()) {
+            (true, _) => Some(TrayRefresh::Full),
+            (false, true) => Some(TrayRefresh::Part),
+            (false, false) => None,
+        };
+        effects.extend(tray.map(ApplicationEffect::Tray));
+
+        Self { effects }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -308,6 +329,54 @@ pub enum RuntimeApplyKind {
     None,
     Rebuild,
     ControlChannel,
+}
+
+/// How the core is reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ControlChannelDesired {
+    channel: ClashControlChannel,
+    disable_http_controller: bool,
+}
+
+/// What the generated runtime config is built from.
+#[derive(Debug, Clone, PartialEq)]
+struct RuntimeRebuildDesired {
+    enable_tun_mode: bool,
+    tun_stack: TunStack,
+    mixed_port: PortStrategy,
+    socks_port: Option<PortStrategy>,
+    http_port: Option<PortStrategy>,
+    external_controller: ExternalControllerStrategy,
+    enable_clash_fields: bool,
+}
+
+/// The clash fields a running core reacts to, grouped by how it must react.
+#[derive(Debug, Clone, PartialEq, Patch)]
+#[patch(name = "ClashRuntimeChanges")]
+#[patch(attribute(derive(Debug, Clone, Default, PartialEq)))]
+struct ClashRuntimeDesired {
+    control_channel: ControlChannelDesired,
+    rebuild: RuntimeRebuildDesired,
+}
+
+impl ClashEffectFields {
+    fn runtime_desired(&self) -> ClashRuntimeDesired {
+        ClashRuntimeDesired {
+            control_channel: ControlChannelDesired {
+                channel: self.clash_control_channel,
+                disable_http_controller: self.clash_ipc_disable_http_controller,
+            },
+            rebuild: RuntimeRebuildDesired {
+                enable_tun_mode: self.enable_tun_mode,
+                tun_stack: self.tun_stack,
+                mixed_port: self.mixed_port.clone(),
+                socks_port: self.socks_port.clone(),
+                http_port: self.http_port.clone(),
+                external_controller: self.external_controller.clone(),
+                enable_clash_fields: self.enable_clash_fields,
+            },
+        }
+    }
 }
 
 /// How the running core must react to a committed clash-config change.
@@ -318,23 +387,20 @@ pub fn runtime_apply_kind(
     before: &ApplicationEffectInputs,
     after: &ApplicationEffectInputs,
 ) -> RuntimeApplyKind {
-    let before = &before.clash;
-    let after = &after.clash;
+    let ClashRuntimeChanges {
+        control_channel,
+        rebuild,
+    } = after
+        .clash
+        .runtime_desired()
+        .into_patch_by_diff(before.clash.runtime_desired());
 
-    if before.clash_control_channel != after.clash_control_channel
-        || before.clash_ipc_disable_http_controller != after.clash_ipc_disable_http_controller
-    {
-        return RuntimeApplyKind::ControlChannel;
-    }
-
-    let rebuild = before.enable_tun_mode != after.enable_tun_mode
-        || before.tun_stack != after.tun_stack
-        || before.mixed_port != after.mixed_port
-        || before.socks_port != after.socks_port
-        || before.http_port != after.http_port
-        || before.external_controller != after.external_controller
-        || before.enable_clash_fields != after.enable_clash_fields;
-    if rebuild {
+    // A control-channel change outranks a rebuild, matching `bridge/verge.rs`,
+    // which picks `apply_control_channel` over `rebuild_running_config`
+    // whenever both would apply.
+    if control_channel.is_some() {
+        RuntimeApplyKind::ControlChannel
+    } else if rebuild.is_some() {
         RuntimeApplyKind::Rebuild
     } else {
         RuntimeApplyKind::None
@@ -475,6 +541,43 @@ mod tests {
                 port: Some(7890),
                 pac_url: Some(pac),
             })
+        );
+    }
+
+    #[test]
+    fn pac_url_removal_produces_system_proxy_effect() {
+        let pac = url::Url::parse("http://127.0.0.1:11233/commands/pac").unwrap();
+        let mut before = inputs();
+        before.app.pac_url = Some(pac);
+        let after = inputs();
+
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+
+        assert_eq!(kinds(&plan), vec![EffectKind::SystemProxy]);
+        assert_eq!(
+            plan.effects()[0],
+            ApplicationEffect::SystemProxy(SystemProxyDesired {
+                enabled: false,
+                bypass: "localhost".to_owned(),
+                port: Some(7890),
+                pac_url: None,
+            })
+        );
+    }
+
+    #[test]
+    fn socks_port_removal_reports_rebuild() {
+        let mut before = inputs();
+        before.clash.socks_port = Some(PortStrategy::new_allow_fallback(1080));
+        let after = inputs();
+
+        assert_eq!(
+            runtime_apply_kind(&before, &after),
+            RuntimeApplyKind::Rebuild
+        );
+        assert!(
+            ApplicationEffectPlan::diff(&before, &after).is_empty(),
+            "a clash port strategy is not an application effect input"
         );
     }
 
@@ -655,6 +758,151 @@ mod tests {
         assert_eq!(
             plan.effects().last(),
             Some(&ApplicationEffect::Tray(TrayRefresh::Full))
+        );
+    }
+
+    /// A group holds several fields, and dropping one from its desired struct
+    /// still compiles while silently disarming the effect. One case per field
+    /// that no other test moves on its own.
+    #[test]
+    fn every_group_field_triggers_its_effect_on_its_own() {
+        fn assert_case(
+            label: &str,
+            mutate: impl FnOnce(&mut ApplicationEffectInputs),
+            expected: &[ApplicationEffect],
+        ) {
+            let before = inputs();
+            let mut after = inputs();
+            mutate(&mut after);
+
+            let plan = ApplicationEffectPlan::diff(&before, &after);
+
+            assert_eq!(
+                plan.effects(),
+                expected,
+                "{label} alone must plan exactly its own effect"
+            );
+        }
+
+        assert_case(
+            "max_log_files",
+            |after| after.app.max_log_files = 14,
+            &[ApplicationEffect::Logger(LoggerDesired {
+                level: LoggingLevel::Info,
+                max_files: 14,
+            })],
+        );
+        assert_case(
+            "tray_selector_mode",
+            |after| after.app.tray_selector_mode = ProxiesSelectorMode::Submenu,
+            &[ApplicationEffect::Tray(TrayRefresh::Full)],
+        );
+        assert_case(
+            "enable_tray_text",
+            |after| after.app.enable_tray_text = true,
+            &[ApplicationEffect::Tray(TrayRefresh::Part)],
+        );
+        assert_case(
+            "enable_tray_traffic",
+            |after| after.app.enable_tray_traffic = true,
+            &[ApplicationEffect::Tray(TrayRefresh::Part)],
+        );
+        assert_case(
+            "enable_proxy_guard",
+            |after| after.app.enable_proxy_guard = true,
+            &[ApplicationEffect::ProxyGuard(ProxyGuardDesired {
+                enabled: true,
+                interval: Duration::from_secs(30),
+            })],
+        );
+        assert_case(
+            "enable_auto_launch",
+            |after| after.app.enable_auto_launch = true,
+            &[ApplicationEffect::AutoLaunch(true)],
+        );
+    }
+
+    /// Same exposure on the rebuild group: none of these fields is an
+    /// application effect input, so each must rebuild and plan nothing.
+    #[test]
+    fn every_rebuild_field_reports_rebuild_on_its_own() {
+        fn assert_rebuild(label: &str, mutate: impl FnOnce(&mut ApplicationEffectInputs)) {
+            let before = inputs();
+            let mut after = inputs();
+            mutate(&mut after);
+
+            assert_eq!(
+                runtime_apply_kind(&before, &after),
+                RuntimeApplyKind::Rebuild,
+                "{label} alone must rebuild the runtime config"
+            );
+            assert!(
+                ApplicationEffectPlan::diff(&before, &after).is_empty(),
+                "{label} is not an application effect input"
+            );
+        }
+
+        assert_rebuild("tun_stack", |after| {
+            after.clash.tun_stack = TunStack::System
+        });
+        assert_rebuild("http_port", |after| {
+            after.clash.http_port = Some(PortStrategy::new_allow_fallback(7891));
+        });
+        assert_rebuild("external_controller", |after| {
+            after.clash.external_controller = ExternalControllerStrategy {
+                port: PortStrategy::new_allow_fallback(9999),
+                ..ExternalControllerStrategy::default()
+            };
+        });
+        assert_rebuild("enable_clash_fields", |after| {
+            after.clash.enable_clash_fields = false;
+        });
+    }
+
+    #[test]
+    fn unchanged_inputs_have_empty_changes() {
+        use struct_patch::Status;
+
+        assert!(
+            inputs()
+                .desired()
+                .into_patch_by_diff(inputs().desired())
+                .is_empty(),
+            "no group may report a change for identical snapshots"
+        );
+    }
+
+    #[test]
+    fn tray_menu_mode_change_produces_full_tray_only() {
+        let before = inputs();
+        let mut after = inputs();
+        after.app.tray_menu_mode = TrayMenuMode::Webview;
+
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+
+        assert_eq!(kinds(&plan), vec![EffectKind::Tray]);
+        assert_eq!(
+            plan.effects()[0],
+            ApplicationEffect::Tray(TrayRefresh::Full)
+        );
+    }
+
+    #[test]
+    fn tun_toggle_alone_produces_part_tray_and_rebuild() {
+        let before = inputs();
+        let mut after = inputs();
+        after.clash.enable_tun_mode = true;
+
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+
+        assert_eq!(kinds(&plan), vec![EffectKind::Tray]);
+        assert_eq!(
+            plan.effects()[0],
+            ApplicationEffect::Tray(TrayRefresh::Part)
+        );
+        assert_eq!(
+            runtime_apply_kind(&before, &after),
+            RuntimeApplyKind::Rebuild
         );
     }
 

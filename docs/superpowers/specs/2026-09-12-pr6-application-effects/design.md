@@ -86,7 +86,13 @@ backend/tauri/src/client/ui_effects/{mod,ports,adapters,tests}.rs               
 
 ### 3.1 输入投影 `ApplicationEffectInputs`
 
-`NyanpasuAppConfig` 与 `ClashConfig` 都**没有** `PartialEq`（`nyanpasu-config/src/application/mod.rs:64`、`clash/config/mod.rs:30`），且带 `cfg(target_os)` / `cfg(feature)` 字段。因此 diff 不直接比较配置结构体，而是先投影成一个小的、全 `PartialEq` 的输入类型。这同时把"无关字段变动不触发副作用"变成类型层面的保证。
+diff 不直接比较 `NyanpasuAppConfig` / `ClashConfig`，而是先投影成一个小的输入类型，理由有三：
+
+1. **会话解析出的实际端口不在任何一个配置里**（由 `SessionPortResolver` 给出），而"端口变化要重新应用系统代理"是硬需求，所以输入必须能容纳第三个来源。
+2. **投影里没有的字段，在类型层面就不可能触发副作用**。两个配置都带 `cfg(target_os)` / `cfg(feature)` 字段，副作用一个都不读。
+3. **投影之后再按效果重新分组**（§3.2 的 `ApplicationDesired`），才能让一次字段变化精确对应一个效果项。
+
+这与 `PartialEq` 无关：`struct_patch` 的 `into_patch_by_diff` 逐字段用 `!=` 比较，只要求**字段类型**是 `PartialEq`，不要求外层结构体是。`NyanpasuAppConfig` / `ClashConfig` 确实没有 `PartialEq`（`nyanpasu-config/src/application/mod.rs:64`、`clash/config/mod.rs:30`），但那不是需要投影的理由。
 
 ```rust
 // client/effects/plan.rs
@@ -201,6 +207,38 @@ impl ApplicationEffectPlan {
     pub fn effects(&self) -> &[ApplicationEffect];
 }
 ```
+
+`diff` 与 `full` 共用**同一份**"字段→效果"映射：输入先投影成按效果分组的期望值，再由 `struct_patch` 派生出"哪些组变了"。`into_patch_by_diff` 对每个变化的组给出 `Some(整组期望值)`，`into_patch` 给出全部组，于是增量与全量只差在用哪个构造器。
+
+```rust
+/// 一个字段 = 一个触发组；两个 tray 组合并成同一个 Tray 效果项。
+/// 字段按 EffectKind 顺序排列只为便于对照，执行顺序由映射的产出顺序决定。
+/// 模块私有：这是实现表示，不对外暴露。
+#[derive(Debug, Clone, PartialEq, Patch)]
+#[patch(name = "ApplicationDesiredChanges")]
+#[patch(attribute(derive(Debug, Clone, Default, PartialEq)))]
+struct ApplicationDesired {
+    locale: I18nLanguage,
+    logger: LoggerDesired,
+    auto_launch: bool,
+    system_proxy: SystemProxyDesired,
+    proxy_guard: ProxyGuardDesired,
+    hotkeys: Vec<String>,
+    widget: NetworkStatisticWidgetConfig,
+    tray_menu: TrayMenuDesired,   // { menu_mode, selector_mode }
+    tray_part: TrayPartDesired,   // { system_proxy, tun, text, traffic }
+}
+
+// 派生出的 ApplicationDesiredChanges 每个字段是 Option<整组期望值>，
+// 由 ApplicationEffectPlan 的映射无 `..` 解构展开成效果项：
+// 新加一个效果就必须在那里显式映射，效果的执行顺序也在那里确定。
+```
+
+派生能表达的只有"这一组的字段变了"，剩下三条规则必须写在映射里：
+
+- **locale 变化等价于 tray 菜单变化**：菜单文案由全局 locale 渲染，所以 `locale` 不重复放进 `tray_menu`，而是在映射里把它并入 Full 的判定。
+- **Full 吸收 Part**：两组同时变化时只产出 Full（`update_systray` 末尾本就会调用 `update_part`）。
+- **ControlChannel 优先于 Rebuild**：见 §3.6，同一份技术用在 `ClashRuntimeDesired` 上（`control_channel` / `rebuild` 两组），两组同时变化时取 `ControlChannel`。
 
 **SystemProxy 的触发条件**是 `enable_system_proxy` / `system_proxy_bypass` / `pac_url` / `ports.mixed_port` 任一变化。端口来自 `ports`，这是"端口变化重新应用系统代理"这一验收项的实现点。
 

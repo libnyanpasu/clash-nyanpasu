@@ -737,6 +737,11 @@ mod tests {
         client::{
             ClientError, ClientSetupArgs, CompensationFailure, LegacyBridgeSet, LegacyVergeDomain,
             NoopUiEventSink, NyanpasuClient,
+            effects::{
+                plan::EffectKind,
+                ports::MockApplicationEffectsPort,
+                status::{EffectHealth, EffectStatus},
+            },
         },
         config::{
             IClashTemp,
@@ -1259,6 +1264,141 @@ mod tests {
             assert!(
                 projected.is_none_or(|hotkeys| hotkeys.is_empty()),
                 "the legacy projection must not hold the rejected bindings"
+            );
+        });
+    }
+
+    /// Seeds the application actor behind the facade, the way a config file
+    /// written by another build reaches it: the validating entry points would
+    /// refuse this list, which is exactly the state under test.
+    async fn seed_stored_hotkeys(client: &NyanpasuClient, hotkeys: &[String]) {
+        let mut seed = <NyanpasuAppConfig as Patch<_>>::new_empty_patch();
+        seed.hotkeys = Some(hotkeys.to_vec());
+        client
+            .patch_app_config_ungated(seed)
+            .await
+            .expect("the test store should accept the seed");
+    }
+
+    #[test]
+    fn startup_replacement_carrying_existing_invalid_hotkeys_still_commits() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        // Whatever the effect owner would say about the stored binding: the
+        // point is that the saga reports it instead of refusing to commit.
+        let mut effects = MockApplicationEffectsPort::new();
+        effects.expect_apply().returning(|revision, _plan| {
+            vec![EffectStatus {
+                kind: EffectKind::Hotkeys,
+                desired_revision: revision,
+                applied_revision: revision,
+                health: EffectHealth::Degraded {
+                    code: "hotkey_invalid_bindings",
+                    message: "the platform refused 1: Control+DefinitelyNotAKey".to_owned(),
+                    retryable: false,
+                },
+            }]
+        });
+        effects.expect_shutdown().returning(Vec::new);
+        let (client, bridge, _endpoint) =
+            test_bridge_with_recording_endpoint_and_effects(&dir, Arc::new(effects));
+        let stored = vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()];
+
+        tauri::async_runtime::block_on(async {
+            seed_stored_hotkeys(&client, &stored).await;
+
+            // What startup does: replay the state on disk through the same
+            // replacement saga, carrying the stored hotkeys unchanged.
+            let outcome = bridge
+                .replace_verge_config(IVerge {
+                    hotkeys: Some(stored.clone()),
+                    enable_system_proxy: Some(true),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("carrying the stored hotkeys forward must not abort startup");
+
+            assert_eq!(
+                client
+                    .get_app_config()
+                    .await
+                    .expect("typed config should read back")
+                    .hotkeys,
+                stored,
+                "the replacement commits with the list it carried"
+            );
+            let degradation = outcome
+                .degradations()
+                .iter()
+                .find(|degradation| degradation.code == "hotkey_invalid_bindings")
+                .expect("the binding is reported by the effect owner, not by the commit");
+            assert!(
+                !degradation.retryable,
+                "a list the platform refuses cannot heal without a new list"
+            );
+        });
+    }
+
+    #[test]
+    fn replacement_changing_to_invalid_hotkeys_is_rejected() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge(&dir);
+
+        tauri::async_runtime::block_on(async {
+            let error = bridge
+                .replace_verge_config(IVerge {
+                    hotkeys: Some(vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()]),
+                    ..IVerge::default()
+                })
+                .await
+                .expect_err("a list this replacement introduces is still submitted state");
+            assert!(
+                error.to_string().contains("DefinitelyNotAKey"),
+                "unexpected error: {error}"
+            );
+            assert!(
+                client
+                    .get_app_config()
+                    .await
+                    .expect("typed config should read back")
+                    .hotkeys
+                    .is_empty(),
+                "nothing may be written when validation fails"
+            );
+        });
+    }
+
+    #[test]
+    fn unrelated_patch_is_not_blocked_by_existing_invalid_hotkeys() {
+        let _serial = INTERLEAVING_TEST_LOCK.lock();
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge(&dir);
+        let stored = vec!["toggle_tun_mode,Control+DefinitelyNotAKey".to_owned()];
+
+        tauri::async_runtime::block_on(async {
+            seed_stored_hotkeys(&client, &stored).await;
+
+            bridge
+                .patch_verge_config(IVerge {
+                    theme_color: Some("#334455".into()),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("a patch that carries no hotkeys must not be judged on the stored ones");
+
+            let app = client
+                .get_app_config()
+                .await
+                .expect("typed config should read back");
+            assert_eq!(
+                app.theme_color.to_string(),
+                "#334455",
+                "the unrelated field is committed"
+            );
+            assert_eq!(
+                app.hotkeys, stored,
+                "the stored list is carried forward untouched"
             );
         });
     }

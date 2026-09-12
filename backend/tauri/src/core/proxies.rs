@@ -173,21 +173,11 @@ impl State {
         api.select_proxy(&group.clone().into(), &name.into())
             .await?;
         // Keep every follow-up on the selection's revocable source capability.
-        let interruption = async {
-            match strategy {
-                ProxyChangeBreakMode::Off => {}
-                ProxyChangeBreakMode::All => api.close_all_connections().await?,
-                ProxyChangeBreakMode::ProxyGroup => {
-                    for connection in api.connections().await?.connections.unwrap_or_default() {
-                        if connection.chains.contains(&group) {
-                            api.close_connection(connection.id).await?;
-                        }
-                    }
-                }
-            }
-            Ok::<_, anyhow::Error>(())
-        }
-        .await;
+        let interruption =
+            match super::connections::ConnectionScope::for_proxy_change(strategy, group) {
+                Some(scope) => super::connections::interrupt_connections(&api, &scope).await,
+                None => Ok(()),
+            };
         let mut degradations = Vec::new();
         if let Err(error) = interruption {
             degradations.push(Degradation {

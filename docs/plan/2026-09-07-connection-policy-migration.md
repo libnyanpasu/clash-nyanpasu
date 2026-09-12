@@ -2,12 +2,12 @@
 
 ## Scope
 
-Move active mode-change interruption into CoreLifecycleActor. Frontend, tray and
-hotkeys obey the same typed on_mode_change setting; remove their independent
-close calls and retire the legacy ConnectionInterruptionService.
-Profile-change and chain-specific legacy methods have no callers. Removing them
-does not enable new profile-change triggers or implement chain filtering.
-Proxy selection retains its already migrated actor policy.
+ApplicationWorkflowActor coordinates mode/profile commits, runtime application,
+and connection interruption. Frontend, tray and hotkeys obey the same typed
+settings. The actor-owned core lifecycle component consumes RuntimeApplyOptions
+and an instance-bound RuntimeApplyContext; it has no profile selection APIs or
+profile policy reads. Proxy selection retains its own actor admission and shares
+the ConnectionScope execution function.
 
 ## Ordering and identity
 
@@ -20,7 +20,7 @@ only through the source capability. Confirmed Started/Restarted/Switched outcome
 need no closure. Otherwise a retired capability or failed request reports a
 committed-degraded result with no automatic retry or config rollback.
 
-The lifecycle actor holds admission through closure, so subsequent config/host
+The application workflow actor holds admission through closure, so subsequent config/host
 work cannot overtake it. Requests without mode and disabled policies do not query
 the API. Re-selecting a mode retains the prior mode-bearing request behavior.
 
@@ -56,7 +56,7 @@ changes, not replacements for active legacy callers.
 The PR-6 implementation completes the behavior changes deferred above:
 
 - Explicit activation/deselection and conditional create/import activation now
-  enter CoreLifecycleActor. Deleting the current profile remains rejected by
+  enter ApplicationWorkflowActor. Deleting the current profile remains rejected by
   domain validation; deleting other profiles does not introduce interruption. Only a change in the current profile triggers the
   typed `on_profile_change` policy; editing profile contents retains the existing
   rebuild path. Capture the source capability before committing, reconcile, then
@@ -74,3 +74,23 @@ The PR-6 implementation completes the behavior changes deferred above:
   reconcile/close failures, source replacement with the same URL, and lifecycle
   admission while closure is pending. Proxy tests cover group membership and
   post-selection failures without publishing responses from retired instances.
+
+## Runtime apply boundary
+
+The existing admission queue, dirty/recovery scheduling, updater installer port,
+and shutdown admission now belong to ApplicationWorkflowActor. The core lifecycle
+component is exclusively owned by its tracked operation task; there is no second
+upper-level queue or caller-owned permit.
+
+Application workflows resolve interruption scope and capture the source capability
+before committing. Profile application builds from CommitReport.snapshot; mode
+application uses the committed clash snapshot. Runtime preparation derives local
+IPC settings from the same clash input used to build the configuration. Internal
+host/installation recovery requests prepare the latest inputs at their original
+execution phase through an injected RuntimePreparationPort.
+
+RuntimeApplyContext is consumed by one application and is never replayed by dirty
+rebuilds. A failed build, publication or reconciliation preserves the commit and
+skips interruption. Existing promoted/applied snapshot and source revocation
+semantics remain intact. The implementation and regression matrix are recorded
+in [the runtime apply plan](2026-09-13-runtime-apply-options.md).

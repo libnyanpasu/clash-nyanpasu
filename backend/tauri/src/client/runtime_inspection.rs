@@ -204,14 +204,14 @@ impl NyanpasuClient {
 
     pub async fn inspect_applied_runtime(&self) -> Option<RuntimeInspection> {
         self.recover_effective_snapshot().await;
-        let snapshot = self.inner.core_lifecycle.runtime().applied?;
+        let snapshot = self.inner.application_workflow.runtime().applied?;
         Some(self.inspect_snapshot(&snapshot).await)
     }
 
     /// Inspection recovery is read-only with respect to the core. A newer
     /// successful bind wins even if this query completes after another build.
     async fn recover_effective_snapshot(&self) {
-        let store = self.inner.core_lifecycle.snapshot_store();
+        let store = self.inner.application_workflow.snapshot_store();
         let Some(pending) = store.read().pending else {
             return;
         };
@@ -255,7 +255,7 @@ impl NyanpasuClient {
         snapshot_id: &str,
         node_id: u32,
     ) -> anyhow::Result<RuntimeInspectionContent> {
-        let state = self.inner.core_lifecycle.runtime();
+        let state = self.inner.application_workflow.runtime();
         let snapshot = [state.promoted, state.applied]
             .into_iter()
             .flatten()

@@ -19,3 +19,5 @@ pub mod migration;
 pub mod state;
 
 pub(crate) mod proxies;
+
+pub(crate) mod connections;

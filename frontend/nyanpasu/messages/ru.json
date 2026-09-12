@@ -234,6 +234,7 @@
   "profile_chain_editor_active_column": "Активный профиль",
   "profile_chain_editor_inactive_column": "Неактивный профиль",
   "profile_chain_editor_apply_message": "Применение цепочки прокси…",
+  "profile_chain_editor_duplicate_hint": "Этот профиль содержит повторяющиеся элементы цепочки прокси. Редактирование цепочки недоступно, пока повторы не будут устранены.",
   "profile_quick_import_placeholder": "Введите URL или вставьте ссылку для быстрого импорта профиля",
   "profile_quick_import_success_message": "Профиль успешно импортирован, пожалуйста, проверьте список",
   "profile_view_details_title": "Подробности профиля",

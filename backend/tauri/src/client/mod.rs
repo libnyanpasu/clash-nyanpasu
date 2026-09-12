@@ -1,4 +1,5 @@
 mod application;
+pub mod application_workflow;
 mod clash_api;
 mod clash_config;
 mod clash_streams;
@@ -263,7 +264,7 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
-    core_lifecycle: core_lifecycle::CoreLifecycleClient,
+    application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
     streams: crate::core::clash::ws::StreamsClient,
@@ -309,7 +310,7 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                 ));
-                let (notifier, dirty_rx) = core_lifecycle::DirtyNotifier::channel();
+                let (notifier, dirty_rx) = application_workflow::DirtyNotifier::channel();
                 let profiles = profiles::ProfilesClient::new(
                     profiles_path,
                     file_service.clone() as Arc<dyn ProfileFsPort>,
@@ -367,15 +368,15 @@ impl NyanpasuClient {
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
-        let core_lifecycle =
-            core_lifecycle::CoreLifecycleClient::spawn(core_lifecycle::CoreLifecycleArgs {
+        let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
+            application_workflow::ApplicationWorkflowArgs {
                 snapshots: runtime::RuntimeSnapshotStore::default(),
                 application: application.clone(),
                 clash: clash_config.clone(),
                 profiles: profiles.clone(),
                 core: core_v2.clone(),
                 service,
-                builder: Arc::new(core_lifecycle::adapters::FsRuntimeBuildAdapter {
+                builder: Arc::new(application_workflow::adapters::FsRuntimeBuildAdapter {
                     profiles_dir: profiles_dir.clone(),
                     paths: runtime_paths.clone(),
                     ports: ports.clone(),
@@ -383,8 +384,9 @@ impl NyanpasuClient {
                 installer: binary_installer,
                 ui: ui_sink.clone(),
                 dirty: dirty_rx,
-            })
-            .await?;
+            },
+        )
+        .await?;
         let updater = crate::core::updater::UpdaterClient::spawn(
             Arc::new(crate::core::updater::HttpUpdaterBackend::new(
                 std::env::current_exe()?
@@ -393,7 +395,7 @@ impl NyanpasuClient {
                     .to_path_buf(),
                 ports.clone(),
             )),
-            Arc::new(core_lifecycle.clone()),
+            Arc::new(application_workflow.clone()),
         )
         .await?;
         let proxies = crate::core::proxies::ProxiesClient::spawn(core_v2.clone()).await?;
@@ -411,7 +413,7 @@ impl NyanpasuClient {
                 profiles_dir,
                 runtime_paths,
                 ui_sink,
-                core_lifecycle,
+                application_workflow,
                 core_api: core_v2,
                 proxies,
                 streams,
@@ -425,8 +427,8 @@ impl NyanpasuClient {
         &self.inner.runtime_paths
     }
 
-    pub fn core_lifecycle_status(&self) -> core_lifecycle::CoreLifecycleStatus {
-        self.inner.core_lifecycle.status()
+    pub fn core_lifecycle_status(&self) -> application_workflow::CoreLifecycleStatus {
+        self.inner.application_workflow.status()
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
@@ -437,25 +439,25 @@ impl NyanpasuClient {
     pub async fn reconcile_core(
         &self,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.reconcile().await
+        self.inner.application_workflow.reconcile().await
     }
 
     pub async fn stop_core(
         &self,
     ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.stop_core().await
+        self.inner.application_workflow.stop_core().await
     }
 
     pub async fn recover_core(
         &self,
     ) -> std::result::Result<RecoverReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.recover_core().await
+        self.inner.application_workflow.recover_core().await
     }
 
     pub async fn probe_service(
         &self,
     ) -> std::result::Result<ServiceHostStatus, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.probe_service().await
+        self.inner.application_workflow.probe_service().await
     }
 
     pub async fn replace_core_binary(
@@ -463,7 +465,7 @@ impl NyanpasuClient {
         artifact: core_lifecycle::ports::PreparedCoreBinary,
     ) -> Result<()> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .replace_binary(artifact)
             .await
             .map_err(client_error_from_core)
@@ -472,39 +474,39 @@ impl NyanpasuClient {
         &self,
         core: nyanpasu_config::application::ClashCore,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.select_core(core).await
+        self.inner.application_workflow.select_core(core).await
     }
     pub async fn change_execution_host(
         &self,
         host: ExecutionHost,
     ) -> std::result::Result<HandoffReport, nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.change_host(host).await
+        self.inner.application_workflow.change_host(host).await
     }
     pub async fn set_execution_host(
         &self,
         service_mode: bool,
     ) -> Result<runtime::MutationOutcome<()>> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .set_execution_host(service_mode)
             .await
             .map_err(client_error_from_core)
     }
     pub fn core_status(&self) -> CoreStatusProjection {
-        self.inner.core_lifecycle.core_status()
+        self.inner.application_workflow.core_status()
     }
     pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
-        self.inner.core_lifecycle.core_events()
+        self.inner.application_workflow.core_events()
     }
     pub fn service_status(&self) -> ServiceHostStatus {
-        self.inner.core_lifecycle.service_status()
+        self.inner.application_workflow.service_status()
     }
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
-        self.inner.core_lifecycle.service_events()
+        self.inner.application_workflow.service_events()
     }
     pub async fn restore_execution_host(&self) -> Result<()> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .restore_host()
             .await
             .map_err(client_error_from_core)
@@ -512,27 +514,27 @@ impl NyanpasuClient {
     pub async fn install_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.install_service().await
+        self.inner.application_workflow.install_service().await
     }
 
     pub async fn start_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.start_service().await
+        self.inner.application_workflow.start_service().await
     }
 
     pub async fn stop_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.stop_service().await
+        self.inner.application_workflow.stop_service().await
     }
 
     pub async fn restart_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.restart_service().await
+        self.inner.application_workflow.restart_service().await
     }
 
     pub async fn uninstall_service(
         &self,
     ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
-        self.inner.core_lifecycle.uninstall_service().await
+        self.inner.application_workflow.uninstall_service().await
     }
 
     pub async fn fetch_latest_core_versions(
@@ -557,7 +559,7 @@ impl NyanpasuClient {
         // already admitted installations while updater cancels preparation work.
         let (updater, shutdown) = tokio::join!(
             self.inner.updater.shutdown(),
-            self.inner.core_lifecycle.shutdown(),
+            self.inner.application_workflow.shutdown(),
         );
         if let Err(error) = updater {
             tracing::warn!(%error, "failed to shut down updater workers");
@@ -616,7 +618,7 @@ impl NyanpasuClient {
     ) -> Result<runtime::MutationOutcome<()>> {
         let outcome = self
             .inner
-            .core_lifecycle
+            .application_workflow
             .patch_runtime_overrides(patch)
             .await
             .map_err(client_error_from_core)?;
@@ -960,38 +962,6 @@ impl NyanpasuClient {
         Ok(self.inner.profiles.get().await?)
     }
 
-    /// Map crate-internal profile materialization degradations onto the public
-    /// wire. Actor-internal Cleanup/Reconcile phases collapse to
-    /// `ProfileMaterialization`; retryability stays code-derived.
-    fn map_profile_degradation(
-        degradation: &crate::state::profiles::ports::ProfileDegradation,
-    ) -> runtime::Degradation {
-        use crate::state::profiles::ports::ProfileDegradationCode;
-
-        let code = match degradation.code {
-            ProfileDegradationCode::JournalInvalid => "journal_invalid",
-            ProfileDegradationCode::MaterializationDeferred => "materialization_deferred",
-            ProfileDegradationCode::CleanupDeferred => "cleanup_deferred",
-        };
-        runtime::Degradation {
-            phase: runtime::DegradationPhase::ProfileMaterialization,
-            code: code.into(),
-            message: degradation.message.clone(),
-            retryable: degradation.code.retryable(),
-        }
-    }
-
-    /// Post-commit rebuild has a single opaque `Result` today; do not invent
-    /// RuntimeCheck/Promote/Apply precision the error surface cannot support.
-    fn map_runtime_rebuild_degradation(error: &ClientError) -> runtime::Degradation {
-        runtime::Degradation {
-            phase: runtime::DegradationPhase::RuntimeBuild,
-            code: "runtime_rebuild_failed".into(),
-            message: error.to_string(),
-            retryable: true,
-        }
-    }
-
     async fn collect_post_commit_degradations(
         &self,
         report: &CommitReport,
@@ -1009,7 +979,7 @@ impl NyanpasuClient {
                     message = %degradation.message,
                     "profile commit completed with a degraded side effect",
                 );
-                Self::map_profile_degradation(degradation)
+                application_workflow::profiles::map_profile_degradation(degradation)
             })
             .collect();
 
@@ -1017,7 +987,8 @@ impl NyanpasuClient {
             && let Err(error) = self.rebuild_running_config().await
         {
             tracing::warn!(%error, "post-commit rebuild failed; state stays committed (degraded)");
-            degradations.push(Self::map_runtime_rebuild_degradation(&error));
+            degradations
+                .push(application_workflow::profiles::map_runtime_rebuild_degradation(&error));
         }
         degradations
     }
@@ -1052,7 +1023,12 @@ impl NyanpasuClient {
     /// - `Ok(None)` → existing current won; no degradation
     /// - `Err(_)` → committed degradation, profile id retained by the caller
     async fn try_auto_activate_if_none(&self, uid: ProfileId) -> Vec<runtime::Degradation> {
-        match self.inner.core_lifecycle.auto_activate_profile(uid).await {
+        match self
+            .inner
+            .application_workflow
+            .auto_activate_profile(uid)
+            .await
+        {
             Ok(outcome) => outcome.into_parts().1,
             Err(error) => vec![Self::auto_activation_failure_degradation(&error)],
         }
@@ -1236,7 +1212,7 @@ impl NyanpasuClient {
         uid: Option<ProfileId>,
     ) -> Result<runtime::MutationOutcome<()>> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .activate_profile(uid)
             .await
             .map_err(client_error_from_core)
@@ -1339,11 +1315,11 @@ impl NyanpasuClient {
     }
 
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
-        self.inner.core_lifecycle.runtime().promoted
+        self.inner.application_workflow.runtime().promoted
     }
 
     pub(crate) async fn runtime_lifecycle_state(&self) -> runtime::RuntimeLifecycleState {
-        self.inner.core_lifecycle.runtime()
+        self.inner.application_workflow.runtime()
     }
 
     pub(crate) fn runtime_product_path(&self) -> &camino::Utf8Path {
@@ -1370,7 +1346,7 @@ impl NyanpasuClient {
 
     pub async fn apply_control_channel(&self) -> Result<()> {
         self.inner
-            .core_lifecycle
+            .application_workflow
             .apply_control_channel()
             .await
             .map_err(client_error_from_core)?;
@@ -1400,7 +1376,9 @@ fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
 }
 
 #[async_trait::async_trait]
-impl crate::core::updater::ports::CoreUpdateInstaller for core_lifecycle::CoreLifecycleClient {
+impl crate::core::updater::ports::CoreUpdateInstaller
+    for application_workflow::ApplicationWorkflowClient
+{
     async fn install(
         &self,
         artifact: core_lifecycle::ports::PreparedCoreBinary,
@@ -2373,7 +2351,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns,
-            core_lifecycle::DirtyNotifier::channel().1,
+            application_workflow::DirtyNotifier::channel().1,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
         )
         .await
@@ -2607,7 +2585,7 @@ pub(crate) mod tests {
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
         ));
-        let (notifier, dirty_rx) = core_lifecycle::DirtyNotifier::channel();
+        let (notifier, dirty_rx) = application_workflow::DirtyNotifier::channel();
         let profiles = profiles::ProfilesClient::new(
             temp_config_path(dir, "profiles.yaml"),
             file_service.clone() as Arc<dyn ProfileFsPort>,
@@ -3124,7 +3102,7 @@ pub(crate) mod tests {
             client.activate_profile(Some(uid)).await.unwrap();
             endpoint.effective_enabled.store(true, Ordering::SeqCst);
             client.rebuild_running_config().await.unwrap();
-            let state = client.inner.core_lifecycle.runtime();
+            let state = client.inner.application_workflow.runtime();
             assert!(state.pending.is_some());
             assert!(state.promoted.as_ref().unwrap().effective.is_none());
             let submitted = endpoint.submissions();
@@ -3139,7 +3117,14 @@ pub(crate) mod tests {
                 }
             )));
             assert_eq!(endpoint.submissions(), submitted);
-            assert!(client.inner.core_lifecycle.runtime().pending.is_none());
+            assert!(
+                client
+                    .inner
+                    .application_workflow
+                    .runtime()
+                    .pending
+                    .is_none()
+            );
             assert!(client.inspect_applied_runtime().await.unwrap().applied);
         });
     }
@@ -3624,7 +3609,7 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
-                core_lifecycle::DirtyNotifier::channel().1,
+                application_workflow::DirtyNotifier::channel().1,
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             )
             .await

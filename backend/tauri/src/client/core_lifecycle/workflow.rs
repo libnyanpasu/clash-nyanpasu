@@ -5,12 +5,9 @@ use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use struct_patch::Patch;
 
 use super::{
-    super::{
-        UiEventSink, application::ApplicationClient, clash_config::ClashConfigClient,
-        profiles::ProfilesClient, runtime,
-    },
+    super::{UiEventSink, application::ApplicationClient, runtime},
     Command, Output,
-    ports::{BinaryInstaller, PreparedCoreBinary, RuntimeBuildPort},
+    ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
 };
 use crate::core::actor_v2::{
     EndpointConnectivity, HandoffReport,
@@ -19,16 +16,12 @@ use crate::core::actor_v2::{
     service_actor::ServicePhase,
 };
 
-pub(super) struct CoreLifecycleWorkflow {
+pub(in crate::client) struct CoreLifecycleWorkflow {
     pub application: ApplicationClient,
-    pub clash: ClashConfigClient,
-    pub profiles: ProfilesClient,
     pub core: CoreFacade,
-    pub builder: Arc<dyn RuntimeBuildPort>,
     pub installer: Arc<dyn BinaryInstaller>,
     pub ui: Arc<dyn UiEventSink>,
     pub runtime: runtime::RuntimeSnapshotStore,
-    pub revisions: runtime::RuntimeRevisionAllocator,
     // A lost lower-level reply is not evidence its side effects have finished.
     pub uncertain: bool,
     pub recovery: ServiceRecovery,
@@ -41,7 +34,7 @@ pub(super) struct CoreLifecycleWorkflow {
 /// the other. Success does not re-arm it: repeated disconnects cannot create
 /// a restart loop. Explicit Service selection/start re-arms recovery.
 #[derive(Default)]
-pub(super) struct ServiceRecovery {
+pub(in crate::client) struct ServiceRecovery {
     attempts: u8,
     suppressed: bool,
     intent: CoreIntent,
@@ -101,26 +94,19 @@ impl ServiceRecovery {
     }
 }
 
-pub(super) fn domain_error(error: impl std::fmt::Display) -> CoreError {
+pub(in crate::client) fn domain_error(error: impl std::fmt::Display) -> CoreError {
     CoreError::new(CoreErrorKind::Internal, error.to_string(), false)
 }
 
 impl CoreLifecycleWorkflow {
-    pub async fn execute(&mut self, command: Command) -> Result<Output, CoreError> {
-        // Before the command, not after: the degraded projection is the only
-        // record that a core was running, and every command that re-adopts an
-        // endpoint drops it. This is an observation of what is still visible,
-        // not a policy decision about the command.
-        self.capture_core_intent();
-        let result = self.execute_inner(command).await;
-        self.uncertain |= self.core.outcome_uncertain();
-        result
-    }
-
-    async fn execute_inner(&mut self, command: Command) -> Result<Output, CoreError> {
+    pub async fn execute(
+        &mut self,
+        command: Command,
+        preparation: &mut dyn RuntimePreparationPort,
+    ) -> Result<Output, CoreError> {
         match command {
             Command::RecoverServiceEndpoint => {
-                self.recover_service_endpoint().await?;
+                self.recover_service_endpoint(preparation).await?;
                 Ok(Output::Unit)
             }
             Command::ApplyControlChannel => {
@@ -129,169 +115,13 @@ impl CoreLifecycleWorkflow {
                     status.snapshot.and_then(|s| s.state),
                     Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
                 ) {
-                    self.reconcile().await?;
+                    self.reconcile(preparation).await?;
                 }
                 Ok(Output::Unit)
             }
-            Command::Reconcile => Ok(Output::Reconcile(self.reconcile().await?)),
-            Command::PatchRuntimeOverrides(patch) => {
-                let policy = self
-                    .clash
-                    .get()
-                    .await
-                    .map_err(domain_error)?
-                    .state
-                    .break_connection;
-                let interruption = if patch.mode.is_some() && policy.on_mode_change {
-                    Some(self.core.api_client_if_running().await)
-                } else {
-                    None
-                };
-                self.clash
-                    .patch_overrides(patch)
-                    .await
-                    .map_err(domain_error)?;
-                let mut degradations = Vec::new();
-                let reconciled = self.reconcile().await;
-                // A confirmed process replacement already removed the source connections.
-                let replaced = reconciled.as_ref().is_ok_and(|report| {
-                    use nyanpasu_ipc::api::core::v2::{OperationOutputInfo, ReconcileOutcomeKind};
-                    matches!(&report.output, OperationOutputInfo::Reconciled(outcome)
-                        if matches!(outcome.outcome, ReconcileOutcomeKind::Started | ReconcileOutcomeKind::Restarted | ReconcileOutcomeKind::Switched))
-                });
-                if let Err(error) = reconciled {
-                    degradations.push(runtime::Degradation {
-                        phase: runtime::DegradationPhase::RuntimeApply,
-                        code: "config_reconcile_failed".into(),
-                        message: format!(
-                            "configuration saved, but core reconciliation failed: {error}"
-                        ),
-                        retryable: error.retryable,
-                    });
-                }
-                if degradations.is_empty()
-                    && !replaced
-                    && let Some(source) = interruption
-                {
-                    let result = match source {
-                        Ok(Some(api)) => api.close_all_connections().await,
-                        Ok(None) => Ok(()),
-                        Err(error) => Err(error),
-                    };
-                    match result {
-                        Ok(()) => {}
-                        Err(error) => degradations.push(runtime::Degradation {
-                            phase: runtime::DegradationPhase::SystemEffect,
-                            code: "mode_interruption_failed".into(),
-                            message: format!("configuration applied, but source-instance connection interruption failed: {error}"),
-                            retryable: false,
-                        }),
-                    }
-                }
-                self.ui.refresh_clash();
-                if let Err(error) = self.ui.update_systray_part() {
-                    degradations.push(runtime::Degradation {
-                        phase: runtime::DegradationPhase::UiEffect,
-                        code: "config_tray_refresh_failed".into(),
-                        message: error.to_string(),
-                        retryable: true,
-                    });
-                }
-                Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
-                    (),
-                    degradations,
-                )))
-            }
-            command @ (Command::ActivateProfile(_) | Command::AutoActivateProfile(_)) => {
-                let previous = self
-                    .profiles
-                    .get()
-                    .await
-                    .map_err(domain_error)?
-                    .current
-                    .clone();
-                let will_change = match &command {
-                    Command::ActivateProfile(uid) => *uid != previous,
-                    Command::AutoActivateProfile(_) => previous.is_none(),
-                    _ => unreachable!(),
-                };
-                let enabled = self
-                    .clash
-                    .get()
-                    .await
-                    .map_err(domain_error)?
-                    .state
-                    .break_connection
-                    .on_profile_change;
-                let source = if will_change && enabled {
-                    Some(self.core.api_client_if_running().await)
-                } else {
-                    None
-                };
-                let report = match command {
-                    Command::ActivateProfile(uid) => {
-                        Some(self.profiles.set_current(uid).await.map_err(domain_error)?)
-                    }
-                    Command::AutoActivateProfile(uid) => self
-                        .profiles
-                        .set_current_if_none(uid)
-                        .await
-                        .map_err(domain_error)?,
-                    _ => unreachable!(),
-                };
-                let Some(report) = report else {
-                    return Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
-                        (),
-                        Vec::new(),
-                    )));
-                };
-                let mut degradations: Vec<_> = report
-                    .degradations
-                    .iter()
-                    .map(super::super::NyanpasuClient::map_profile_degradation)
-                    .collect();
-                if report.affects_current {
-                    match self.reconcile().await {
-                        Err(error) => degradations.push(
-                            super::super::NyanpasuClient::map_runtime_rebuild_degradation(
-                                &super::super::client_error_from_core(error),
-                            ),
-                        ),
-                        Ok(reconciled) => {
-                            use nyanpasu_ipc::api::core::v2::{
-                                OperationOutputInfo, ReconcileOutcomeKind,
-                            };
-                            let replaced = matches!(&reconciled.output, OperationOutputInfo::Reconciled(outcome)
-                                if matches!(outcome.outcome, ReconcileOutcomeKind::Started | ReconcileOutcomeKind::Restarted | ReconcileOutcomeKind::Switched));
-                            if previous != report.snapshot.current
-                                && !replaced
-                                && let Some(source) = source
-                            {
-                                let result = match source {
-                                    Ok(Some(api)) => api.close_all_connections().await,
-                                    Ok(None) => Ok(()),
-                                    Err(error) => Err(error),
-                                };
-                                if let Err(error) = result {
-                                    degradations.push(runtime::Degradation {
-                                        phase: runtime::DegradationPhase::SystemEffect,
-                                        code: "profile_interruption_failed".into(),
-                                        message: format!("profile applied, but source-instance connection interruption failed: {error}"),
-                                        retryable: false,
-                                    });
-                                }
-                            }
-                            self.ui.refresh_clash();
-                        }
-                    }
-                }
-                Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
-                    (),
-                    degradations,
-                )))
-            }
+            Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
             Command::RuntimeDirty => {
-                self.reconcile().await?;
+                self.reconcile(preparation).await?;
                 self.ui.refresh_clash();
                 Ok(Output::Unit)
             }
@@ -299,7 +129,7 @@ impl CoreLifecycleWorkflow {
                 let mut patch = NyanpasuAppConfig::new_empty_patch();
                 patch.core = Some(core);
                 self.application.patch(patch).await.map_err(domain_error)?;
-                Ok(Output::Reconcile(self.reconcile().await?))
+                Ok(Output::Reconcile(self.reconcile(preparation).await?))
             }
             Command::ChangeHost(host) => {
                 let report = self.core.change_execution_host(host).await?;
@@ -311,7 +141,7 @@ impl CoreLifecycleWorkflow {
                 let mut patch = NyanpasuAppConfig::new_empty_patch();
                 patch.enable_service_mode = Some(service_mode);
                 self.application.patch(patch).await.map_err(domain_error)?;
-                let effect = self.set_host(service_mode).await;
+                let effect = self.set_host(service_mode, preparation).await;
                 let degradations = effect.err().map_or_else(Vec::new, |error| {
                     vec![runtime::Degradation {
                         phase: runtime::DegradationPhase::SystemEffect,
@@ -341,7 +171,7 @@ impl CoreLifecycleWorkflow {
                 Ok(Output::Unit)
             }
             Command::ReplaceCoreBinary(artifact) => {
-                self.replace_binary(artifact).await?;
+                self.replace_binary(artifact, preparation).await?;
                 Ok(Output::Unit)
             }
             Command::StopCore => {
@@ -422,7 +252,7 @@ impl CoreLifecycleWorkflow {
     /// yet. The pump publishes asynchronously, so this can miss a degradation
     /// that lands mid-command -- the handoff's own report is what closes that
     /// window.
-    fn capture_core_intent(&mut self) {
+    pub fn capture_core_intent(&mut self) {
         let status = self.core.core_status();
         self.note_interrupted_core(
             matches!(
@@ -462,12 +292,15 @@ impl CoreLifecycleWorkflow {
             && self.recovery_incomplete()
     }
 
-    async fn recover_service_endpoint(&mut self) -> Result<(), CoreError> {
+    async fn recover_service_endpoint(
+        &mut self,
+        preparation: &mut dyn RuntimePreparationPort,
+    ) -> Result<(), CoreError> {
         if !self.recovery_due() {
             return Ok(());
         }
         self.recovery.attempts += 1;
-        let result = self.recovery_attempt().await;
+        let result = self.recovery_attempt(preparation).await;
         self.recovery.next_attempt = Some(tokio::time::Instant::now() + super::RECOVERY_INTERVAL);
         if result.as_ref().is_err_and(|e: &CoreError| !e.retryable) {
             // Paused, not abandoned: a terminal failure ends the automatic
@@ -483,7 +316,10 @@ impl CoreLifecycleWorkflow {
         result
     }
 
-    async fn recovery_attempt(&mut self) -> Result<(), CoreError> {
+    async fn recovery_attempt(
+        &mut self,
+        preparation: &mut dyn RuntimePreparationPort,
+    ) -> Result<(), CoreError> {
         if matches!(
             self.core.core_status().connectivity,
             EndpointConnectivity::Degraded { .. }
@@ -516,7 +352,7 @@ impl CoreLifecycleWorkflow {
                 // turn a known outcome into an uncertain one. It stays bounded
                 // because shutdown is serialized behind this operation and
                 // stops whatever it started.
-                self.reconcile().await?;
+                self.reconcile(preparation).await?;
                 self.ui.refresh_clash();
             }
             // Any other state proves nothing about whether the core should be
@@ -526,7 +362,11 @@ impl CoreLifecycleWorkflow {
         Ok(())
     }
 
-    async fn set_host(&mut self, service_mode: bool) -> Result<(), CoreError> {
+    async fn set_host(
+        &mut self,
+        service_mode: bool,
+        preparation: &mut dyn RuntimePreparationPort,
+    ) -> Result<(), CoreError> {
         let host = if service_mode {
             ExecutionHost::Service
         } else {
@@ -538,7 +378,7 @@ impl CoreLifecycleWorkflow {
         self.follow_host();
         self.note_interrupted_core(report.interrupted_running());
         if matches!(report, HandoffReport::Completed { .. }) {
-            self.reconcile().await?;
+            self.reconcile(preparation).await?;
         }
         if !service_mode
             && !matches!(
@@ -551,37 +391,27 @@ impl CoreLifecycleWorkflow {
         Ok(())
     }
 
-    async fn reconcile(&mut self) -> Result<ReconcileReport, CoreError> {
-        let revision = self.revisions.allocate().map_err(domain_error)?;
-        // These are independently committed snapshots. A dirty notification
-        // arriving during this build schedules a later pass through the actor.
-        let profiles = self.profiles.get().await.map_err(domain_error)?;
-        let clash = self.clash.get().await.map_err(domain_error)?.state;
-        let app = self.application.get().await.map_err(domain_error)?.state;
-        let local_ipc = nyanpasu_core_manager::LocalIpcSettings {
-            policy: match clash.clash_control_channel {
-                nyanpasu_config::clash::config::ClashControlChannel::PreferIpc => {
-                    nyanpasu_core_manager::LocalIpcPolicy::Prefer
-                }
-                nyanpasu_config::clash::config::ClashControlChannel::HttpOnly => {
-                    nyanpasu_core_manager::LocalIpcPolicy::Disable
-                }
-            },
-            keep_http_controller: !clash.clash_ipc_disable_http_controller,
-        };
-        let snapshot = self
-            .builder
-            .build(revision, profiles, clash, app)
-            .await
-            .map_err(domain_error)?;
-        self.builder
-            .publish(&snapshot)
-            .await
-            .map_err(domain_error)?;
+    async fn reconcile(
+        &mut self,
+        preparation: &mut dyn RuntimePreparationPort,
+    ) -> Result<ReconcileReport, CoreError> {
+        let prepared = preparation.prepare_latest().await?;
+        self.apply_runtime(prepared, preparation).await
+    }
+
+    pub async fn apply_runtime(
+        &mut self,
+        prepared: PreparedRuntime,
+        preparation: &dyn RuntimePreparationPort,
+    ) -> Result<ReconcileReport, CoreError> {
+        let PreparedRuntime {
+            snapshot,
+            local_ipc,
+        } = prepared;
+        preparation.publish(&snapshot).await.map_err(domain_error)?;
         // Promoted means the product was published, not that the host applied it.
         self.runtime.generated(snapshot.clone());
-        let spec = self
-            .builder
+        let spec = preparation
             .core_spec(&snapshot.target_core)
             .map_err(|error| {
                 CoreError::new(CoreErrorKind::BinaryNotFound, error.to_string(), false)
@@ -613,7 +443,11 @@ impl CoreLifecycleWorkflow {
         Ok(report)
     }
 
-    async fn replace_binary(&mut self, artifact: PreparedCoreBinary) -> Result<(), CoreError> {
+    async fn replace_binary(
+        &mut self,
+        artifact: PreparedCoreBinary,
+        preparation: &mut dyn RuntimePreparationPort,
+    ) -> Result<(), CoreError> {
         let desired: crate::config::nyanpasu::ClashCore = self
             .application
             .get()
@@ -649,7 +483,7 @@ impl CoreLifecycleWorkflow {
             .map_err(domain_error)?;
         if restart {
             artifact.progress.restarting();
-            self.reconcile().await?;
+            self.reconcile(preparation).await?;
         }
         Ok(())
     }

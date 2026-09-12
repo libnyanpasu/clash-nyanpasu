@@ -11,6 +11,7 @@ use nyanpasu_config::{
         value::ConfigValue,
     },
 };
+use tracing::Instrument;
 
 use super::{RunnerManager, create_lua_context};
 use crate::enhance::{ScriptType, chain::ScriptWrapper, utils::LogSpan};
@@ -72,10 +73,14 @@ impl ScriptRunner for EnhanceScriptRunner {
             }
         };
         let wrapper = ScriptWrapper(script_type, source.to_string());
-        let (result, logs) = self.runtime.block_on(async {
-            let mut manager = RunnerManager::new();
-            manager.process_script(&wrapper, mapping).await
-        });
+        // TODO: make `ScriptRunner` async and remove the runtime block_on here, so that the whole pipeline can be async.
+        let (result, logs) = self.runtime.block_on(
+            async {
+                let mut manager = RunnerManager::new();
+                manager.process_script(&wrapper, mapping).await
+            }
+            .in_current_span(),
+        );
         ScriptRunOutcome {
             result: result
                 .map_err(|e| PortError::from(e.to_string()))

@@ -234,6 +234,7 @@
   "profile_chain_editor_active_column": "Active Proxy Chain",
   "profile_chain_editor_inactive_column": "Inactive Proxy Chain",
   "profile_chain_editor_apply_message": "Applying proxy chain…",
+  "profile_chain_editor_duplicate_hint": "This profile contains duplicate proxy chain entries. Chain editing is disabled until the duplicates are resolved.",
   "profile_quick_import_placeholder": "Enter URL or paste link to quickly import profile",
   "profile_quick_import_success_message": "Profile imported successfully, please check the list",
   "profile_view_details_title": "Profile Details",

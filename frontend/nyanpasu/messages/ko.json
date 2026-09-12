@@ -234,6 +234,7 @@
   "profile_chain_editor_active_column": "활성 프록시 체인",
   "profile_chain_editor_inactive_column": "비활성 프록시 체인",
   "profile_chain_editor_apply_message": "프록시 체인 적용 중…",
+  "profile_chain_editor_duplicate_hint": "이 프로필에 중복된 프록시 체인 항목이 있습니다. 중복을 해결해야 체인을 편집할 수 있습니다.",
   "profile_quick_import_placeholder": "URL을 입력하거나 링크를 붙여넣어 프로필을 빠르게 가져오세요",
   "profile_quick_import_success_message": "프로필을 가져왔습니다. 목록을 확인하세요",
   "profile_view_details_title": "프로필 상세 정보",

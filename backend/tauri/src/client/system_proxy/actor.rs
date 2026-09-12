@@ -679,13 +679,15 @@ impl State {
         let Some(config) = self.enable_config(&desired) else {
             return;
         };
-        let os = self.os.clone();
-        let payload = config.clone();
-        match blocking(move || os.set(&payload)).await {
-            Ok(()) => self.current = Some(config),
-            Err(error) => {
-                tracing::warn!(%error, "the proxy guard could not re-apply the system proxy")
-            }
+        // The same path as a reconcile, so a guard that performs the first
+        // successful install after a refused one still captures and commits the
+        // settings it replaced; a direct write here would leave `original`
+        // empty and the exit path would disable our proxy instead of restoring
+        // the user's.
+        let revision = self.applied.max();
+        let status = self.write_os_proxy(revision, config).await;
+        if let EffectHealth::Degraded { message, .. } = &status.health {
+            tracing::warn!(%message, "the proxy guard could not re-apply the system proxy");
         }
     }
 

@@ -1882,6 +1882,7 @@ dependencies = [
  "futures-util",
  "indexmap 2.14.2",
  "ipnet",
+ "nyanpasu-utils",
  "reqwest 0.13.4",
  "reqwest-websocket",
  "serde",
@@ -6694,6 +6695,7 @@ dependencies = [
 name = "nyanpasu-utils"
 version = "0.1.0"
 dependencies = [
+ "backon",
  "camino",
  "constcat",
  "derive_builder",
@@ -6707,6 +6709,8 @@ dependencies = [
  "os_pipe",
  "parking_lot",
  "processkit",
+ "reqwest 0.13.4",
+ "reqwest-websocket",
  "serde",
  "shared_child",
  "specta",

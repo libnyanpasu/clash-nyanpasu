@@ -366,7 +366,7 @@ pub(crate) mod tests {
     };
 
     pub(crate) struct Endpoint {
-        host: ExecutionHost,
+        pub(super) host: ExecutionHost,
         pub(crate) binding: watch::Sender<Option<CoreApiConnection>>,
     }
 
@@ -703,6 +703,71 @@ mod stream_tests {
             while socket.recv().await.is_some() {}
             let _ = closed.send(());
         })
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn service_named_pipe_supports_rest_and_websocket() {
+        use axum::Json;
+        use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
+
+        struct PipeListener {
+            path: String,
+            next: NamedPipeServer,
+        }
+
+        impl axum::serve::Listener for PipeListener {
+            type Io = NamedPipeServer;
+            type Addr = ();
+
+            async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+                self.next.connect().await.unwrap();
+                let next = ServerOptions::new().create(&self.path).unwrap();
+                (std::mem::replace(&mut self.next, next), ())
+            }
+
+            fn local_addr(&self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let path = format!(r"\\.\pipe\nyanpasu-app-test-{}", uuid::Uuid::new_v4());
+        let listener = PipeListener {
+            next: ServerOptions::new()
+                .first_pipe_instance(true)
+                .create(&path)
+                .unwrap(),
+            path: path.clone(),
+        };
+        let (closed, mut closed_rx) = mpsc::unbounded_channel();
+        let router = Router::new()
+            .route("/traffic", get(idle))
+            .route(
+                "/configs",
+                get(|| async { Json(serde_json::json!({"mode":"rule"})) }),
+            )
+            .with_state(closed);
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let mut endpoint = endpoint("http://127.0.0.1:1/".into());
+        std::sync::Arc::get_mut(&mut endpoint).unwrap().host =
+            crate::core::actor_v2::endpoint::ExecutionHost::Service;
+        endpoint.binding.send_modify(|binding| {
+            binding.as_mut().unwrap().controller = CoreControllerInfo::NamedPipe(path.into());
+        });
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let api = core.api_client().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            api.configs().await.unwrap();
+            let mut stream = api.traffic_ws().await.unwrap();
+            assert_eq!(stream.next().await.unwrap().unwrap().up.get(), 1);
+            endpoint.binding.send_replace(None);
+            assert!(matches!(stream.next().await, Some(Err(ApiError::Stale))));
+            closed_rx.recv().await.unwrap();
+        })
+        .await
+        .unwrap();
+        core.shutdown().await.unwrap();
+        server.abort();
     }
 
     #[tokio::test]

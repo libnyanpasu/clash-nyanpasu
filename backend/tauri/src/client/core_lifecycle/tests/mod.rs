@@ -944,6 +944,12 @@ fn control_channel_reconcile_reads_committed_clash_config() {
         for (channel, disable_http, policy) in [
             (ClashControlChannel::HttpOnly, true, LocalIpcPolicy::Disable),
             (
+                ClashControlChannel::HttpOnly,
+                false,
+                LocalIpcPolicy::Disable,
+            ),
+            (ClashControlChannel::PreferIpc, true, LocalIpcPolicy::Prefer),
+            (
                 ClashControlChannel::PreferIpc,
                 false,
                 LocalIpcPolicy::Prefer,

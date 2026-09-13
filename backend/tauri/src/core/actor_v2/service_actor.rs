@@ -1006,10 +1006,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rc7_is_upgraded_before_serving_core_requests() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0-rc.7");
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            client.ensure_ready().await.unwrap().host(),
+            ExecutionHost::Service
+        );
+        assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
+        assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn the_version_gate_fails_closed() {
-        let daemon = FakeDaemon::new(true, true, "1.4.5");
-        // The startup auto-update is stubbed into a no-op that leaves the old
-        // version in place.
+        let daemon = FakeDaemon::new(true, true, "2.0.0-rc.7");
+        // A failed startup update leaves the incompatible daemon in place.
         struct StubbornDaemon(Arc<FakeDaemon>);
         #[async_trait::async_trait]
         impl ServiceHostAdapter for StubbornDaemon {
@@ -1029,7 +1041,7 @@ mod tests {
                 self.0.stop_daemon().await
             }
             async fn update(&self) -> Result<(), String> {
-                Ok(()) // succeeds without changing anything
+                Err("service upgrade failed".into())
             }
             fn endpoint(&self) -> EndpointHandle {
                 self.0.endpoint()

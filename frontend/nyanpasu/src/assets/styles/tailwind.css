@@ -17,7 +17,40 @@
     'calt' 0;
 }
 
+/*
+ * Inter only covers Latin, Greek and Cyrillic; other scripts fall through to
+ * the platform fonts. Han glyphs differ by region, so CJK locales put their
+ * regional fonts first, keyed on the `lang` attribute that follows the app
+ * language. `:where()` keeps a plain `:root` specificity so custom CSS can
+ * still override `--font-sans`.
+ */
+:root {
+  --font-sans-fallback:
+    system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto,
+    'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Color Emoji Flags',
+    'Color Emoji';
+}
+
+:root:where(:lang(zh-cn)) {
+  --font-sans:
+    'Inter Variable', 'PingFang SC', 'Noto Sans SC', 'Noto Sans CJK SC',
+    'Microsoft YaHei UI', 'Microsoft YaHei', var(--font-sans-fallback);
+}
+
+:root:where(:lang(zh-tw)) {
+  --font-sans:
+    'Inter Variable', 'PingFang TC', 'Noto Sans TC', 'Noto Sans CJK TC',
+    'Microsoft JhengHei UI', 'Microsoft JhengHei', var(--font-sans-fallback);
+}
+
+:root:where(:lang(ko)) {
+  --font-sans:
+    'Inter Variable', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Noto Sans CJK KR',
+    'Malgun Gothic', var(--font-sans-fallback);
+}
+
 @theme {
+  --font-sans: 'Inter Variable', var(--font-sans-fallback);
   --font-mono:
     'Cascadia Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco,
     Consolas, 'Liberation Mono', 'Courier New', '等距更纱黑体 SC', monospace,

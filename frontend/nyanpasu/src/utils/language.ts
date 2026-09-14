@@ -57,5 +57,8 @@ defineCustomClientStrategy('custom-extension', {
   },
   setLocale: (locale) => {
     setCachedLanguage(locale as Language)
+    // Paraglide calls this on the first locale resolution and on every change,
+    // so `lang` follows the app language and picks the regional CJK fonts.
+    document.documentElement.lang = locale
   },
 })

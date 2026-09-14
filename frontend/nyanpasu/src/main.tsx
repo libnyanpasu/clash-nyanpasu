@@ -6,6 +6,7 @@ import { ResizeObserver } from '@juggle/resize-observer'
 // Styles
 import '@csstools/normalize.css/normalize.css'
 import '@csstools/normalize.css/opinionated.css'
+import '@fontsource-variable/inter'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import './assets/styles/index.scss'
 import './assets/styles/tailwind.css'

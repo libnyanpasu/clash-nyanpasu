@@ -4,18 +4,7 @@
 body {
   margin: 0;
   overflow: hidden;
-  font-family:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    Segoe UI,
-    Roboto,
-    'Helvetica Neue',
-    Arial,
-    'Noto Sans',
-    sans-serif,
-    'Color Emoji Flags',
-    'Color Emoji';
+  font-family: var(--font-sans);
   color: var(--color-on-surface);
   user-select: none;
   background-color: #f7f7f7;

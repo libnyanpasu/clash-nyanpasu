@@ -289,8 +289,8 @@ mod tests {
         .unwrap();
         let clone = client.clone();
         assert!(std::ptr::eq(
-            &client.inner.core_lifecycle,
-            &clone.inner.core_lifecycle
+            &client.inner.application_workflow,
+            &clone.inner.application_workflow
         ));
     }
 

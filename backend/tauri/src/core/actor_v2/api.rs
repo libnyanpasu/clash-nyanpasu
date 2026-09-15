@@ -222,6 +222,10 @@ impl ApiClient {
         self.execute(self.client.group_delay(group, query)).await
     }
 
+    pub async fn connections(&self) -> Result<clash_api::ConnectionsSnapshot, ApiError> {
+        self.execute(self.client.connections()).await
+    }
+
     pub async fn close_connection(&self, id: uuid::Uuid) -> Result<(), ApiError> {
         self.execute(self.client.close_connection(id)).await
     }

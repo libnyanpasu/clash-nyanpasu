@@ -3,6 +3,7 @@ import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-roun
 import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
 import { useCallback, useMemo } from 'react'
+import GroupSummary from '@/components/proxies/group-summary'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -84,8 +85,15 @@ function RouteComponent() {
   return (
     <>
       <GroupHeader>
-        <div className="flex items-center gap-2">
-          <div>{currentGroup?.name}</div>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="flex max-w-full min-w-0 flex-col gap-1">
+            <div className="truncate" title={currentGroup?.name}>
+              {currentGroup?.name}
+            </div>
+            {currentGroup && proxies && (
+              <GroupSummary group={currentGroup} proxies={proxies} />
+            )}
+          </div>
 
           <div className="flex items-center">
             <ArrowDownwardAltRounded className="size-6" />
@@ -112,7 +120,11 @@ function RouteComponent() {
 
         <div className="flex-1" />
 
-        <Button icon className="size-8" onClick={handleScrollToCurrentNode}>
+        <Button
+          icon
+          className="size-8 shrink-0"
+          onClick={handleScrollToCurrentNode}
+        >
           <Radar className="size-4" />
         </Button>
       </GroupHeader>

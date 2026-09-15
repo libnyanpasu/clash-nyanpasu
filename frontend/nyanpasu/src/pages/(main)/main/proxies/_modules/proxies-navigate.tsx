@@ -1,3 +1,4 @@
+import GroupSummary from '@/components/proxies/group-summary'
 import { Button } from '@/components/ui/button'
 import { CacheImage } from '@/components/ui/image'
 import { useClashProxies } from '@nyanpasu/interface'
@@ -37,9 +38,9 @@ export default function ProxiesNavigate() {
               name: group.name,
             }}
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex w-full min-w-0 items-center gap-2.5">
               {group.icon && (
-                <div className="size-8">
+                <div className="size-8 shrink-0">
                   <CacheImage
                     icon={group.icon}
                     className="size-8"
@@ -48,11 +49,14 @@ export default function ProxiesNavigate() {
                 </div>
               )}
 
-              <div className="flex flex-col gap-1">
-                <div className="text-sm font-medium">{group.name}</div>
-                <div className="text-xs text-zinc-500">
-                  {group.now || group.type}
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <div
+                  className="truncate text-sm font-medium"
+                  title={group.name}
+                >
+                  {group.name}
                 </div>
+                <GroupSummary group={group} proxies={proxies} />
               </div>
             </div>
           </Link>

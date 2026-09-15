@@ -7,6 +7,7 @@ pub mod core_lifecycle;
 pub(crate) mod effects;
 mod error;
 mod event_sink;
+pub mod hotkey;
 pub mod logs;
 mod ports;
 pub mod profiles;
@@ -82,6 +83,8 @@ pub struct ClientSetupArgs {
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+    pub window: Arc<dyn hotkey::ports::WindowControl>,
+    pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
 }
 
 #[derive(Clone)]
@@ -274,6 +277,10 @@ struct NyanpasuClientInner {
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
     effects: effects::ApplicationEffects,
+    window: Arc<dyn hotkey::ports::WindowControl>,
+    /// The platform's accelerator rule, used to reject a hotkey list before it
+    /// is committed rather than after the effect has torn the old grabs down.
+    accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
 }
 
 #[allow(dead_code)]
@@ -290,6 +297,8 @@ impl NyanpasuClient {
             system_dns,
             binary_installer,
             effects,
+            window,
+            accelerators,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -351,6 +360,8 @@ impl NyanpasuClient {
             dirty_rx,
             binary_installer,
             effects,
+            window,
+            accelerators,
         ))
     }
 
@@ -372,6 +383,8 @@ impl NyanpasuClient {
         dirty_rx: tokio::sync::watch::Receiver<()>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+        window: Arc<dyn hotkey::ports::WindowControl>,
+        accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
@@ -427,6 +440,8 @@ impl NyanpasuClient {
                 updater,
                 system_dns,
                 effects: effects::ApplicationEffects::new(effects),
+                window,
+                accelerators,
             }),
         })
     }
@@ -590,6 +605,9 @@ impl NyanpasuClient {
         &self,
         patch: NyanpasuAppConfigPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
+        if let Some(hotkeys) = patch.hotkeys.as_deref() {
+            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_ref())?;
+        }
         let client = self.inner.application.clone();
         self.commit_and_reconcile(move || async move {
             client.patch(patch).await?;
@@ -604,6 +622,14 @@ impl NyanpasuClient {
     ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.application.clone();
         self.commit_and_reconcile(move || async move {
+            // A replacement that repeats the stored list is carrying state
+            // forward, not submitting it. Rejecting that would let one binding
+            // already on disk — migrated, hand-edited, or accepted by an older
+            // build — block every unrelated write from then on.
+            let committed = client.get().await?.state;
+            if state.hotkeys != committed.hotkeys {
+                hotkey::validate_bindings(&state.hotkeys, self.inner.accelerators.as_ref())?;
+            }
             client.replace(state).await?;
             Ok(())
         })
@@ -735,6 +761,10 @@ impl NyanpasuClient {
     {
         self.commit_and_reconcile(move || async move {
             let snapshots = self.typed_config_snapshots().await?;
+            let submits_hotkeys = plan
+                .application
+                .as_ref()
+                .is_some_and(|patch| patch.hotkeys.is_some());
             let application = plan.application.map(|patch| {
                 let mut state = snapshots.application.state.clone();
                 state.apply(patch);
@@ -750,6 +780,16 @@ impl NyanpasuClient {
                 state.apply(patch);
                 state
             });
+            // The legacy wire carries hotkeys too, so it needs the same
+            // pre-commit check as `patch_app_config`. Without it a typo reaches
+            // the store and comes back as a degraded effect forever, because
+            // the persisted binding can never register. Only when the patch
+            // actually carries the list, though: every other field is patched
+            // on top of the stored hotkeys, and validating those would let one
+            // bad binding block the whole settings screen.
+            if submits_hotkeys && let Some(application) = application.as_ref() {
+                hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
+            }
             self.apply_legacy_verge_states_saga(snapshots, application, session, clash, finalize)
                 .await
         })
@@ -773,6 +813,13 @@ impl NyanpasuClient {
     {
         self.commit_and_reconcile(move || async move {
             let snapshots = self.typed_config_snapshots().await?;
+            // See the patch saga. A replacement always carries the whole list,
+            // so only a *changed* one is something the user submitted; the
+            // startup resync replays what is already on disk, and rejecting
+            // that would abort setup over a binding the app itself stored.
+            if application.hotkeys != snapshots.application.state.hotkeys {
+                hotkey::validate_bindings(&application.hotkeys, self.inner.accelerators.as_ref())?;
+            }
             self.apply_legacy_verge_states_saga(
                 snapshots,
                 Some(application),
@@ -2156,7 +2203,13 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn test_v2_clients() -> (CoreClientV2, ServiceClient) {
-        test_v2_clients_with_endpoint(Arc::new(IdleEndpoint))
+        test_v2_clients_with_endpoint(test_idle_endpoint())
+    }
+
+    /// A core that answers nothing, for tests whose subject is the facade
+    /// rather than the running core.
+    pub(crate) fn test_idle_endpoint() -> crate::core::actor_v2::endpoint::EndpointHandle {
+        Arc::new(IdleEndpoint)
     }
 
     pub(crate) fn test_v2_clients_with_endpoint(
@@ -2444,6 +2497,8 @@ pub(crate) mod tests {
             application_workflow::DirtyNotifier::channel().1,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
+            Arc::new(hotkey::ports::MockWindowControl::new()),
+            Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         )
         .await
         .unwrap()
@@ -2498,6 +2553,12 @@ pub(crate) mod tests {
             system_dns: Arc::new(NoopSystemDnsCache),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
+            // A mock rather than a no-op: a test that dispatches a window
+            // action without saying so should fail, not pass silently.
+            window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            // The real rule: a test that writes a hotkey the platform cannot
+            // parse should fail here, exactly as the app would.
+            accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         }
     }
 
@@ -2708,6 +2769,8 @@ pub(crate) mod tests {
             dirty_rx,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
+            Arc::new(hotkey::ports::MockWindowControl::new()),
+            Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         )
         .await
         .unwrap();
@@ -2865,6 +2928,12 @@ pub(crate) mod tests {
             system_dns: Arc::new(NoopSystemDnsCache),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
+            // A mock rather than a no-op: a test that dispatches a window
+            // action without saying so should fail, not pass silently.
+            window: Arc::new(hotkey::ports::MockWindowControl::new()),
+            // The real rule: a test that writes a hotkey the platform cannot
+            // parse should fail here, exactly as the app would.
+            accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         })
         .expect("client should construct with typed config actors");
 
@@ -3706,6 +3775,8 @@ pub(crate) mod tests {
                 application_workflow::DirtyNotifier::channel().1,
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(effects::ports::NoopApplicationEffects),
+                Arc::new(hotkey::ports::MockWindowControl::new()),
+                Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             )
             .await
             .unwrap();

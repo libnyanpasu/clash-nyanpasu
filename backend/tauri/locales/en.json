@@ -64,6 +64,9 @@
   "break_when_mode_change": "Interrupt connections when mode changes",
   "hotkey_error": {
     "invalid_hotkey": "Invalid hotkey: %{hotkey}",
-    "missing_super_key": "Hotkey must contain a super key (Cmd/Ctrl/Win/Meta)"
+    "missing_super_key": "Hotkey must contain a super key (Cmd/Ctrl/Win/Meta)",
+    "malformed_entry": "Malformed hotkey entry: %{entry}",
+    "unknown_function": "Unknown hotkey function: %{function}",
+    "duplicate_accelerator": "Hotkey %{hotkey} is already assigned to another function"
   }
 }

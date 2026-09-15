@@ -2,7 +2,6 @@ pub mod actor_v2;
 pub mod clash;
 pub mod download;
 pub mod handle;
-pub mod hotkey;
 pub mod logger;
 pub mod manager;
 pub mod service;

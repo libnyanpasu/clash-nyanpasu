@@ -644,7 +644,10 @@ fn runtime_rebuild_failure_degrades_without_erasing_the_commit() {
 /// so what it must get right is the fan-out: one message per plan per owner,
 /// and an untouched pass-through for the kinds nobody owns yet.
 mod executor {
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     use super::super::{
         executor::ApplicationEffectExecutor,
@@ -652,9 +655,16 @@ mod executor {
         ports::ApplicationEffectsPort,
         status::{EffectHealth, EffectRevision},
     };
-    use crate::client::system_proxy::{
-        SystemProxyArgs, SystemProxyClient,
-        ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
+    use crate::client::{
+        hotkey::{
+            HotkeyArgs, HotkeyClient,
+            adapters::PlatformAcceleratorValidator,
+            ports::{MockHotkeyActionSink, MockShortcutRegistrar},
+        },
+        system_proxy::{
+            SystemProxyArgs, SystemProxyClient,
+            ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
+        },
     };
     use nyanpasu_config::{
         application::NyanpasuAppConfig, clash::config::ClashConfig,
@@ -670,7 +680,27 @@ mod executor {
         }
     }
 
+    /// Counts how many accelerators the executor asked the registrar for, so a
+    /// test can prove the hotkey effect reached the actor.
+    fn recording_registrar() -> (Arc<AtomicUsize>, MockShortcutRegistrar) {
+        let registered = Arc::new(AtomicUsize::new(0));
+        let mut registrar = MockShortcutRegistrar::new();
+        registrar.expect_validate().returning(|_| Ok(()));
+        let counter = registered.clone();
+        registrar.expect_register().returning(move |_, _, _| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        });
+        registrar.expect_unregister().returning(|_| Ok(()));
+        registrar.expect_unregister_all().returning(|| Ok(()));
+        (registered, registrar)
+    }
+
     async fn executor() -> ApplicationEffectExecutor {
+        executor_with(recording_registrar().1).await
+    }
+
+    async fn executor_with(registrar: MockShortcutRegistrar) -> ApplicationEffectExecutor {
         let mut os = MockOsProxyPort::new();
         os.expect_set().returning(|_| Ok(()));
         os.expect_get()
@@ -690,7 +720,17 @@ mod executor {
         })
         .await
         .expect("the system proxy actor should spawn");
-        ApplicationEffectExecutor::new(system_proxy)
+        let hotkeys = HotkeyClient::spawn(HotkeyArgs {
+            registrar: Arc::new(registrar),
+            sink: Arc::new(MockHotkeyActionSink::new()),
+        })
+        .await
+        .expect("the hotkey actor should spawn");
+        ApplicationEffectExecutor::new(
+            system_proxy,
+            hotkeys,
+            Arc::new(PlatformAcceleratorValidator),
+        )
     }
 
     #[tokio::test]
@@ -744,7 +784,6 @@ mod executor {
         for kind in [
             EffectKind::Locale,
             EffectKind::Logger,
-            EffectKind::Hotkeys,
             EffectKind::Widget,
             EffectKind::Tray,
         ] {
@@ -758,12 +797,39 @@ mod executor {
     }
 
     #[tokio::test]
-    async fn shutdown_restores_the_system_proxy() {
+    async fn hotkey_effect_reaches_the_hotkey_actor() {
+        let (registered, registrar) = recording_registrar();
+        let inputs = ApplicationEffectInputs::project(
+            &NyanpasuAppConfig {
+                hotkeys: vec!["toggle_tun_mode,Control+Shift+T".to_owned()],
+                ..NyanpasuAppConfig::default()
+            },
+            &ClashConfig::default(),
+            None,
+        );
+
+        let statuses = executor_with(registrar)
+            .await
+            .apply(EffectRevision::new(1), ApplicationEffectPlan::full(&inputs))
+            .await;
+
+        assert_eq!(registered.load(Ordering::SeqCst), 1);
+        let status = statuses
+            .iter()
+            .find(|status| status.kind == EffectKind::Hotkeys)
+            .expect("the hotkey effect should be reported");
+        assert_eq!(status.health, EffectHealth::Healthy);
+    }
+
+    #[tokio::test]
+    async fn shutdown_restores_the_system_proxy_and_releases_the_shortcuts() {
         let statuses = executor().await.shutdown().await;
 
-        assert_eq!(statuses.len(), 1);
-        assert_eq!(statuses[0].kind, EffectKind::SystemProxy);
-        assert_eq!(statuses[0].health, EffectHealth::Healthy);
+        let kinds: Vec<_> = statuses.iter().map(|status| status.kind).collect();
+        assert_eq!(kinds, vec![EffectKind::SystemProxy, EffectKind::Hotkeys]);
+        for status in &statuses {
+            assert_eq!(status.health, EffectHealth::Healthy, "{:?}", status.kind);
+        }
     }
 }
 

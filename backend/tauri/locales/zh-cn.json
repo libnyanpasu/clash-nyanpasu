@@ -64,6 +64,9 @@
   "break_when_mode_change": "当模式切换时打断连接",
   "hotkey_error": {
     "invalid_hotkey": "无效的快捷键：%{hotkey}",
-    "missing_super_key": "快捷键必须包含修饰键 (Cmd/Ctrl/Win/Meta)"
+    "missing_super_key": "快捷键必须包含修饰键 (Cmd/Ctrl/Win/Meta)",
+    "malformed_entry": "快捷键条目格式错误：%{entry}",
+    "unknown_function": "未知的快捷键功能：%{function}",
+    "duplicate_accelerator": "快捷键 %{hotkey} 已分配给其他功能"
   }
 }

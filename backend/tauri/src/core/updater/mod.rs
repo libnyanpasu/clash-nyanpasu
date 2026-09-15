@@ -1,41 +1,23 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, OnceLock},
-};
-
-use crate::{
-    config::nyanpasu::ClashCore,
-    utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
-};
+use crate::config::nyanpasu::ClashCore;
 use anyhow::{Result, anyhow};
-use dashmap::DashMap;
+use futures_util::FutureExt;
+use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use serde::{Deserialize, Serialize};
 use shared::{CoreTypeMeta, get_arch};
 use specta::Type;
-use tokio::sync::RwLock;
+use std::{
+    collections::HashMap,
+    panic::AssertUnwindSafe,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 mod instance;
+pub(crate) mod ports;
 mod shared;
-
-pub use instance::UpdaterSummary;
-
-pub struct UpdaterManager {
-    manifest_version: ManifestVersion,
-    client: reqwest::Client,
-    mirror: Arc<parking_lot::RwLock<Option<(String, u64)>>>,
-    instances: Arc<DashMap<usize, Arc<instance::Updater>>>,
-}
-
-impl Default for UpdaterManager {
-    fn default() -> Self {
-        Self {
-            manifest_version: ManifestVersion::default(),
-            client: crate::utils::candy::get_reqwest_client().unwrap(),
-            mirror: Arc::new(parking_lot::RwLock::new(None)),
-            instances: Arc::new(DashMap::new()),
-        }
-    }
-}
+pub(crate) use instance::HttpUpdaterBackend;
+pub use instance::{UpdaterState, UpdaterSummary};
+use ports::{CoreUpdateInstaller, UpdaterBackend, UpdaterProgress};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ManifestVersion {
@@ -146,123 +128,327 @@ impl ManifestVersion {
     }
 }
 
-impl UpdaterManager {
-    pub fn new() -> Self {
-        Self::default()
-    }
+const RETENTION: Duration = Duration::from_secs(300);
+const MAX_TASKS: usize = 64;
 
-    pub fn global() -> &'static RwLock<Self> {
-        static INSTANCE: OnceLock<RwLock<UpdaterManager>> = OnceLock::new();
-        INSTANCE.get_or_init(|| RwLock::new(UpdaterManager::new()))
-    }
+enum Message {
+    Fetch(RpcReplyPort<Result<ManifestVersionLatest>>),
+    Fetched(Box<Result<(ManifestVersion, (String, Instant))>>),
+    Start(ClashCore, RpcReplyPort<Result<usize>>),
+    Inspect(usize, RpcReplyPort<Result<UpdaterSummary>>),
+    Progress(
+        usize,
+        UpdaterState,
+        Option<crate::core::download::DownloadStatus>,
+    ),
+    Finished(usize, Result<()>),
+    Prune(Instant),
+    Shutdown(RpcReplyPort<Result<()>>),
+}
 
-    pub fn get_latest_versions(&self) -> ManifestVersionLatest {
-        self.manifest_version.latest.clone()
-    }
-
-    pub fn get_mirror(&self) -> Option<String> {
-        self.mirror.read().clone().map(|(mirror, _)| mirror)
-    }
-
-    async fn get_latest_version_manifest(&self, mirror: &str) -> Result<ManifestVersion> {
-        let url = parse_gh_url(
-            mirror,
-            "/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
-        )?;
-        log::debug!("{url}");
-        let res = self.client.get(url).send().await?;
-        let status_code = res.status();
-        if !status_code.is_success() {
-            anyhow::bail!(
-                "failed to get latest version manifest: response status is {}, expected 200",
-                status_code
-            );
+struct Task {
+    core: ClashCore,
+    summary: UpdaterSummary,
+    worker: Option<tokio::task::JoinHandle<()>>,
+    finished: Option<Instant>,
+}
+struct Args {
+    backend: Arc<dyn UpdaterBackend>,
+    installer: Arc<dyn CoreUpdateInstaller>,
+}
+struct State {
+    args: Args,
+    manifest: ManifestVersion,
+    mirror: Option<(String, Instant)>,
+    tasks: HashMap<usize, Task>,
+    next_id: usize,
+    fetch: Option<tokio::task::JoinHandle<()>>,
+    fetch_waiters: Vec<RpcReplyPort<Result<ManifestVersionLatest>>>,
+    timer: tokio::task::JoinHandle<()>,
+    closing: bool,
+}
+impl Drop for State {
+    fn drop(&mut self) {
+        self.timer.abort();
+        if let Some(task) = self.fetch.take() {
+            task.abort();
         }
-        Ok(res.json::<ManifestVersion>().await?)
-    }
-
-    pub async fn fetch_latest(&mut self) -> Result<()> {
-        self.mirror_speed_test().await?;
-        let mirror = self.get_mirror().unwrap();
-        let latest = self.get_latest_version_manifest(&mirror).await?;
-        log::debug!("latest version: {latest:?}");
-        self.manifest_version = latest;
-        Ok(())
-    }
-
-    // TODO: add user-spec mirror support
-    pub async fn mirror_speed_test(&self) -> Result<()> {
-        {
-            let mirror = self.mirror.read();
-            if let Some((_, timestamp)) = mirror.as_ref()
-                && chrono::Utc::now().timestamp() - (*timestamp as i64) < 3600
-            {
-                return Ok(());
+        for task in self.tasks.values_mut() {
+            if let Some(worker) = task.worker.take() {
+                worker.abort();
             }
         }
-        let mirrors = crate::utils::candy::INTERNAL_MIRRORS;
-        let path = "https://github.com/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json";
-        let client = crate::utils::candy::get_reqwest_client()?;
-        let results = client.mirror_speed_test(mirrors, path).await?;
-        let (fastest_mirror, speed) = results.first().ok_or(anyhow!("no mirrors found"))?;
-        if speed - 1.0 < 0.0001 {
-            anyhow::bail!("all mirrors are too slow");
-        }
-        tracing::debug!("fastest mirror: {}, speed: {}", fastest_mirror, speed);
-        {
-            let mut mirror = self.mirror.write();
-            *mirror = Some((
-                fastest_mirror.to_string(),
-                chrono::Utc::now().timestamp() as u64,
-            ));
+    }
+}
+struct UpdaterActor;
+impl Actor for UpdaterActor {
+    type Msg = Message;
+    type State = State;
+    type Arguments = Args;
+    async fn pre_start(
+        &self,
+        actor: ActorRef<Message>,
+        args: Args,
+    ) -> Result<State, ActorProcessingErr> {
+        let timer = tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                if actor.cast(Message::Prune(Instant::now())).is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(State {
+            args,
+            manifest: ManifestVersion::default(),
+            mirror: None,
+            tasks: HashMap::new(),
+            next_id: 0,
+            fetch: None,
+            fetch_waiters: Vec::new(),
+            timer,
+            closing: false,
+        })
+    }
+    async fn handle(
+        &self,
+        actor: ActorRef<Message>,
+        message: Message,
+        state: &mut State,
+    ) -> Result<(), ActorProcessingErr> {
+        match message {
+            Message::Fetch(reply) => {
+                if reply.is_closed() {
+                    return Ok(());
+                }
+                if state.closing || state.fetch_waiters.len() >= MAX_TASKS {
+                    let _ = reply.send(Err(anyhow!("updater is shutting down or busy")));
+                    return Ok(());
+                }
+                state.fetch_waiters.push(reply);
+                if state.fetch.is_none() {
+                    let backend = state.args.backend.clone();
+                    let mirror = state.mirror.clone();
+                    state.fetch = Some(tokio::spawn(async move {
+                        let result = AssertUnwindSafe(backend.fetch_manifest(mirror))
+                            .catch_unwind()
+                            .await
+                            .unwrap_or_else(|_| Err(anyhow!("updater manifest worker panicked")));
+                        let _ = actor.cast(Message::Fetched(Box::new(result)));
+                    }));
+                }
+            }
+            Message::Fetched(result) => {
+                state.fetch.take();
+                let result = (*result).map(|(manifest, mirror)| {
+                    state.manifest = manifest;
+                    state.mirror = Some(mirror);
+                    state.manifest.latest.clone()
+                });
+                for reply in state.fetch_waiters.drain(..) {
+                    let _ = reply.send(
+                        result
+                            .as_ref()
+                            .cloned()
+                            .map_err(|error| anyhow!("{error:#}")),
+                    );
+                }
+            }
+            Message::Start(core, reply) => {
+                if reply.is_closed() {
+                    return Ok(());
+                }
+                if state.closing {
+                    let _ = reply.send(Err(anyhow!("updater is shutting down")));
+                    return Ok(());
+                }
+                // A repeated request observes the admitted operation instead of downloading/installing twice.
+                if let Some(task) = state
+                    .tasks
+                    .values()
+                    .find(|task| task.core == core && task.finished.is_none())
+                {
+                    let _ = reply.send(Ok(task.summary.id));
+                    return Ok(());
+                }
+                if state.tasks.len() >= MAX_TASKS {
+                    let _ = reply.send(Err(anyhow!("too many retained updater tasks")));
+                    return Ok(());
+                }
+                let Some((artifact, tag)) = state.manifest.get_matches(&core) else {
+                    let _ = reply.send(Err(anyhow!(
+                        "fetch latest versions before updating {core:?}"
+                    )));
+                    return Ok(());
+                };
+                let Some((mirror, _)) = state.mirror.clone() else {
+                    let _ = reply.send(Err(anyhow!("updater mirror is unavailable")));
+                    return Ok(());
+                };
+                state.next_id += 1;
+                let id = state.next_id;
+                let backend = state.args.backend.clone();
+                let installer = state.args.installer.clone();
+                let progress_actor = actor.clone();
+                let progress = UpdaterProgress::new(move |status, download| {
+                    let _ = progress_actor.cast(Message::Progress(id, status, download));
+                });
+                let worker = tokio::spawn(async move {
+                    let result = AssertUnwindSafe(async {
+                        let prepared = backend
+                            .prepare(core, mirror, artifact, tag, progress)
+                            .await?;
+                        installer.install(prepared).await
+                    })
+                    .catch_unwind()
+                    .await
+                    .unwrap_or_else(|_| Err(anyhow!("updater worker panicked")));
+                    let _ = actor.cast(Message::Finished(id, result));
+                });
+                state.tasks.insert(
+                    id,
+                    Task {
+                        core,
+                        summary: UpdaterSummary {
+                            id,
+                            state: UpdaterState::Idle,
+                            downloader: crate::core::download::DownloadStatus {
+                                state: Default::default(),
+                                downloaded: 0,
+                                total: 0,
+                                speed: 0.0,
+                            },
+                        },
+                        worker: Some(worker),
+                        finished: None,
+                    },
+                );
+                let _ = reply.send(Ok(id));
+            }
+            Message::Inspect(id, reply) => {
+                let _ = reply.send(
+                    state
+                        .tasks
+                        .get(&id)
+                        .map(|task| task.summary.clone())
+                        .ok_or_else(|| anyhow!("updater does not exist")),
+                );
+            }
+            Message::Progress(id, progress, download) => {
+                if let Some(task) = state.tasks.get_mut(&id) {
+                    // Terminal install notifications remain authoritative after an RPC timeout.
+                    if matches!(task.summary.state, UpdaterState::Done) {
+                        return Ok(());
+                    }
+                    if matches!(progress, UpdaterState::Done | UpdaterState::Failed(_)) {
+                        task.finished = Some(Instant::now());
+                    }
+                    task.summary.state = progress;
+                    if let Some(download) = download {
+                        task.summary.downloader = download;
+                    }
+                }
+            }
+            Message::Finished(id, result) => {
+                if let Some(task) = state.tasks.get_mut(&id) {
+                    task.worker.take();
+                    let pending = result
+                        .as_ref()
+                        .err()
+                        .is_some_and(|error| error.is::<ports::InstallPending>())
+                        && task.finished.is_none();
+                    if !matches!(task.summary.state, UpdaterState::Done) {
+                        task.summary.state = match result {
+                            Ok(()) => UpdaterState::Done,
+                            Err(error) if pending => UpdaterState::Pending(format!("{error:#}")),
+                            Err(error) => UpdaterState::Failed(format!("{error:#}")),
+                        };
+                    }
+                    if !pending {
+                        task.finished = Some(Instant::now());
+                    }
+                }
+            }
+            Message::Prune(now) => {
+                state.tasks.retain(|_, task| {
+                    task.worker.is_some()
+                        || task.finished.is_none_or(|finished| {
+                            now.saturating_duration_since(finished) < RETENTION
+                        })
+                });
+            }
+            Message::Shutdown(reply) => {
+                state.closing = true;
+                state.timer.abort();
+                if let Some(fetch) = state.fetch.take() {
+                    fetch.abort();
+                    let _ = fetch.await;
+                }
+                for waiter in state.fetch_waiters.drain(..) {
+                    let _ = waiter.send(Err(anyhow!("updater is shutting down")));
+                }
+                for task in state.tasks.values_mut() {
+                    if let Some(worker) = task.worker.take() {
+                        worker.abort();
+                        let _ = worker.await;
+                    }
+                    if task.finished.is_none() {
+                        task.summary.state = UpdaterState::Failed("updater shut down".into());
+                        task.finished = Some(Instant::now());
+                    }
+                }
+                let _ = reply.send(Ok(()));
+            }
         }
         Ok(())
     }
-
-    pub async fn update_core(
-        &mut self,
-        core_type: &ClashCore,
-        nyanpasu: crate::client::NyanpasuClient,
-    ) -> Result<usize> {
-        self.mirror_speed_test().await?;
-        let (artifact, tag) = self
-            .manifest_version
-            .get_matches(core_type)
-            .ok_or(anyhow!("no matches found for core type: {:?}", core_type))?;
-        let mirror = self.get_mirror().unwrap();
-        let updater = Arc::new(
-            instance::UpdaterBuilder::new()
-                .set_client(self.client.clone())
-                .set_nyanpasu_client(nyanpasu)
-                .set_core_type(*core_type)
-                .set_mirror(mirror)
-                .set_artifact(artifact)
-                .set_tag(tag)
-                .build()
-                .await?,
-        );
-        let updater_ref = updater.clone();
-        let updater_id = updater.get_updater_id();
-        self.instances.insert(updater_id, updater);
-        tokio::spawn(async move {
-            updater_ref.start().await;
-        });
-        Ok(updater_id)
-    }
-
-    pub fn inspect_updater(&self, updater_id: usize) -> Option<UpdaterSummary> {
-        let updater = self.instances.get(&updater_id)?;
-        let report = updater.get_report();
-        if matches!(
-            report.state,
-            instance::UpdaterState::Done | instance::UpdaterState::Failed(_)
-        ) {
-            let map = self.instances.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                map.remove(&updater_id);
-            });
-        }
-        Some(report)
+}
+struct ClientInner(ActorRef<Message>);
+impl Drop for ClientInner {
+    fn drop(&mut self) {
+        self.0.stop(None);
     }
 }
+#[derive(Clone)]
+pub(crate) struct UpdaterClient(Arc<ClientInner>);
+impl UpdaterClient {
+    pub async fn spawn(
+        backend: Arc<dyn UpdaterBackend>,
+        installer: Arc<dyn CoreUpdateInstaller>,
+    ) -> Result<Self> {
+        let (actor, _) = Actor::spawn(None, UpdaterActor, Args { backend, installer }).await?;
+        Ok(Self(Arc::new(ClientInner(actor))))
+    }
+    async fn call<T: Send + 'static>(
+        &self,
+        message: impl FnOnce(RpcReplyPort<Result<T>>) -> Message,
+    ) -> Result<T> {
+        match self
+            .0
+            .0
+            .call(message, Some(Duration::from_secs(120)))
+            .await?
+        {
+            ractor::rpc::CallResult::Success(result) => result,
+            ractor::rpc::CallResult::Timeout => Err(anyhow!(
+                "updater request timed out; inspect admitted tasks before retrying"
+            )),
+            ractor::rpc::CallResult::SenderError => Err(anyhow!("updater is unavailable")),
+        }
+    }
+    pub async fn fetch_latest(&self) -> Result<ManifestVersionLatest> {
+        self.call(Message::Fetch).await
+    }
+    pub async fn update(&self, core: ClashCore) -> Result<usize> {
+        self.call(|reply| Message::Start(core, reply)).await
+    }
+    pub async fn inspect(&self, id: usize) -> Result<UpdaterSummary> {
+        self.call(|reply| Message::Inspect(id, reply)).await
+    }
+    pub async fn shutdown(&self) -> Result<()> {
+        self.call(Message::Shutdown).await
+    }
+}
+
+#[cfg(test)]
+mod tests;

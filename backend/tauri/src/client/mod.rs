@@ -267,6 +267,7 @@ struct NyanpasuClientInner {
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
     streams: crate::core::clash::ws::StreamsClient,
+    updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
 }
 
@@ -384,6 +385,17 @@ impl NyanpasuClient {
                 dirty: dirty_rx,
             })
             .await?;
+        let updater = crate::core::updater::UpdaterClient::spawn(
+            Arc::new(crate::core::updater::HttpUpdaterBackend::new(
+                std::env::current_exe()?
+                    .parent()
+                    .context("executable has no parent directory")?
+                    .to_path_buf(),
+                ports.clone(),
+            )),
+            Arc::new(core_lifecycle.clone()),
+        )
+        .await?;
         let proxies = crate::core::proxies::ProxiesClient::spawn(core_v2.clone()).await?;
         let streams = crate::core::clash::ws::StreamsClient::spawn(core_v2.clone()).await?;
         Ok(Self {
@@ -403,6 +415,7 @@ impl NyanpasuClient {
                 core_api: core_v2,
                 proxies,
                 streams,
+                updater,
                 system_dns,
             }),
         })
@@ -522,15 +535,37 @@ impl NyanpasuClient {
         self.inner.core_lifecycle.uninstall_service().await
     }
 
+    pub async fn fetch_latest_core_versions(
+        &self,
+    ) -> Result<crate::core::updater::ManifestVersionLatest> {
+        Ok(self.inner.updater.fetch_latest().await?)
+    }
+
+    pub async fn download_core_update(
+        &self,
+        core: crate::config::nyanpasu::ClashCore,
+    ) -> Result<usize> {
+        Ok(self.inner.updater.update(core).await?)
+    }
+
+    pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {
+        Ok(self.inner.updater.inspect(id).await?)
+    }
+
     pub async fn shutdown_core(&self) -> ShutdownReport {
-        self.inner
-            .core_lifecycle
-            .shutdown()
-            .await
-            .unwrap_or_else(|error| ShutdownReport {
-                stop: Err(error),
-                final_status: self.core_status().snapshot,
-            })
+        // Close both admission paths immediately; lifecycle shutdown waits for
+        // already admitted installations while updater cancels preparation work.
+        let (updater, shutdown) = tokio::join!(
+            self.inner.updater.shutdown(),
+            self.inner.core_lifecycle.shutdown(),
+        );
+        if let Err(error) = updater {
+            tracing::warn!(%error, "failed to shut down updater workers");
+        }
+        shutdown.unwrap_or_else(|error| ShutdownReport {
+            stop: Err(error),
+            final_status: self.core_status().snapshot,
+        })
     }
 
     pub async fn flush_system_dns_cache(&self) -> Result<()> {
@@ -1360,6 +1395,32 @@ impl NyanpasuClient {
 fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
     Utf8PathBuf::from_path_buf(path)
         .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
+}
+
+#[async_trait::async_trait]
+impl crate::core::updater::ports::CoreUpdateInstaller for core_lifecycle::CoreLifecycleClient {
+    async fn install(
+        &self,
+        artifact: core_lifecycle::ports::PreparedCoreBinary,
+    ) -> anyhow::Result<()> {
+        self.replace_binary(artifact).await.map_err(|error| {
+            if error.operation_id.is_some()
+                && matches!(
+                    error.kind,
+                    Some(
+                        nyanpasu_core_manager::CoreErrorKind::BackendUnavailable
+                            | nyanpasu_core_manager::CoreErrorKind::Internal
+                    )
+                )
+            {
+                anyhow::Error::new(crate::core::updater::ports::InstallPending(
+                    error.to_string(),
+                ))
+            } else {
+                anyhow::Error::from(error)
+            }
+        })
+    }
 }
 
 #[cfg(test)]

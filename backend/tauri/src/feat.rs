@@ -120,7 +120,10 @@ async fn patch_verge_entrypoint(patch: IVerge) -> Result<()> {
     if let Some(app_handle) = app_handle {
         if let Some(legacy) = app_handle.try_state::<crate::bridge::verge::LegacyVergeBridge>() {
             let legacy = legacy.inner().clone();
-            legacy.patch_verge_config(patch).await?;
+            let outcome = legacy.patch_verge_config(patch).await?;
+            for degradation in outcome.degradations() {
+                log::warn!("{}: {}", degradation.code, degradation.message);
+            }
             return Ok(());
         }
         if let Some(client) = app_handle.try_state::<crate::client::NyanpasuClient>() {

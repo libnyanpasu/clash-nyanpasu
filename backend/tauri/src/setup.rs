@@ -23,6 +23,9 @@ use crate::{
             SystemProxyArgs, SystemProxyClient,
             adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
         },
+        ui_effects::adapters::{
+            RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
+        },
     },
     utils::path::PathResolver,
 };
@@ -72,7 +75,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), anyhow::Error
     // The sink end of the hotkey channel goes into the actor; the receiving end
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
     let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
-    let effects = build_application_effects(&app_handle, &paths, hotkey_tx)?;
+    let (effects, widget_controller) = build_application_effects(&app_handle, &paths, hotkey_tx)?;
     let legacy_lock = Arc::new(parking_lot::Mutex::new(()));
     let legacy_verge_store: Arc<dyn LegacyVergeStore> =
         Arc::new(ConfigLegacyVergeStore::new(legacy_lock.clone()));
@@ -111,6 +114,16 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), anyhow::Error
         legacy_verge_store,
     ));
     tauri::async_runtime::spawn(hotkey_action_pump(hotkey_rx, client.clone()));
+    // The widget needs the client's connection stream and the client needs the
+    // widget controller, so the controller is built empty and filled here, in
+    // the one place that has both. Its desired configuration arrives with the
+    // startup effect reconcile like every other effect.
+    let widget_manager =
+        tauri::async_runtime::block_on(crate::widget::setup(client.subscribe_clash_connections()))
+            .context("Failed to setup the network statistic widget")?;
+    widget_controller
+        .install(Arc::new(widget_manager))
+        .context("Failed to install the network statistic widget")?;
     app.manage(client);
 
     Ok(())
@@ -140,7 +153,7 @@ fn build_application_effects(
     app_handle: &tauri::AppHandle,
     paths: &PathResolver,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
-) -> anyhow::Result<Arc<ApplicationEffectExecutor>> {
+) -> anyhow::Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>)> {
     // The AppImage path is read here, at the only place that legitimately has
     // the Tauri environment, and handed to the adapter as a plain value.
     #[cfg(target_os = "linux")]
@@ -176,11 +189,17 @@ fn build_application_effects(
     }))
     .context("Failed to spawn the hotkey actor")?;
 
-    Ok(Arc::new(ApplicationEffectExecutor::new(
+    let widget = Arc::new(TauriWidgetController::default());
+    let executor = Arc::new(ApplicationEffectExecutor::new(
         system_proxy,
         hotkeys,
         Arc::new(PlatformAcceleratorValidator),
-    )))
+        Arc::new(RustI18nLocaleSink),
+        Arc::new(TracingLoggerRefresher),
+        widget.clone(),
+        Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
+    ));
+    Ok((executor, widget))
 }
 
 fn forward_actor_events(app_handle: tauri::AppHandle, client: NyanpasuClient) {

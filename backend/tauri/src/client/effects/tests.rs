@@ -640,9 +640,149 @@ fn runtime_rebuild_failure_degrades_without_erasing_the_commit() {
     });
 }
 
+/// The real executor with every UI capability failing, so the facade can be
+/// observed reporting each failure separately instead of one merged error.
+async fn failing_ui_executor() -> Arc<crate::client::effects::executor::ApplicationEffectExecutor> {
+    use crate::client::{
+        hotkey::{
+            HotkeyArgs, HotkeyClient,
+            ports::{MockHotkeyActionSink, MockShortcutRegistrar},
+        },
+        system_proxy::{
+            SystemProxyArgs, SystemProxyClient,
+            ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
+        },
+        ui_effects::ports::{
+            MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
+            WidgetError,
+        },
+    };
+
+    let system_proxy = SystemProxyClient::spawn(SystemProxyArgs {
+        os: Arc::new(MockOsProxyPort::new()),
+        auto_launch: Arc::new(MockAutoLaunchPort::new()),
+        pac: Arc::new(MockPacPort::new()),
+        schedule_guard_ticks: false,
+    })
+    .await
+    .expect("the system proxy actor should spawn");
+    let hotkeys = HotkeyClient::spawn(HotkeyArgs {
+        registrar: Arc::new(MockShortcutRegistrar::new()),
+        sink: Arc::new(MockHotkeyActionSink::new()),
+    })
+    .await
+    .expect("the hotkey actor should spawn");
+
+    let mut locale = MockLocaleSink::new();
+    locale
+        .expect_set_locale()
+        .returning(|_| Err(anyhow::anyhow!("locale refused")));
+    let mut logger = MockLoggerRefresher::new();
+    logger
+        .expect_refresh()
+        .returning(|_, _| Err(anyhow::anyhow!("logger refused")));
+    let mut widget = MockWidgetController::new();
+    widget.expect_apply().returning(|_| {
+        Box::pin(async { Err(WidgetError::Failed(anyhow::anyhow!("widget refused"))) })
+    });
+    let mut tray = MockTrayRefresher::new();
+    tray.expect_refresh_full()
+        .returning(|| Box::pin(async { Err(anyhow::anyhow!("tray refused")) }));
+
+    Arc::new(
+        crate::client::effects::executor::ApplicationEffectExecutor::new(
+            system_proxy,
+            hotkeys,
+            Arc::new(crate::client::hotkey::adapters::PlatformAcceleratorValidator),
+            Arc::new(locale),
+            Arc::new(logger),
+            Arc::new(widget),
+            Arc::new(tray),
+        ),
+    )
+}
+
+/// A patch that lands on all four UI effects at once: the language also forces
+/// a full tray rebuild.
+fn ui_effect_patch() -> nyanpasu_config::application::NyanpasuAppConfigPatch {
+    use nyanpasu_config::application::{LoggingLevel, NetworkStatisticWidgetConfig};
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.language = Some(I18nLanguage::Russian);
+    patch.app_log_level = Some(LoggingLevel::Error);
+    patch.network_statistic_widget = Some(NetworkStatisticWidgetConfig::Enabled(
+        nyanpasu_egui::widget::StatisticWidgetVariant::Small,
+    ));
+    patch
+}
+
+#[test]
+fn ui_effect_failure_keeps_committed_config() {
+    let dir = tempdir().expect("tempdir should be created");
+    let executor = tauri::async_runtime::block_on(failing_ui_executor());
+    let client = client_with(&dir, executor, Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        let outcome = client
+            .patch_app_config(ui_effect_patch())
+            .await
+            .expect("a failed UI effect is not a failed commit");
+
+        assert!(
+            matches!(outcome, MutationOutcome::CommittedDegraded { .. }),
+            "four failing effects must be reported, not swallowed"
+        );
+        assert_eq!(
+            client
+                .get_app_config()
+                .await
+                .expect("config should read back")
+                .language,
+            I18nLanguage::Russian,
+            "the configuration is committed before any effect runs"
+        );
+    });
+}
+
+#[test]
+fn each_failure_reports_its_own_degradation() {
+    let dir = tempdir().expect("tempdir should be created");
+    let executor = tauri::async_runtime::block_on(failing_ui_executor());
+    let client = client_with(&dir, executor, Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        let outcome = client
+            .patch_app_config(ui_effect_patch())
+            .await
+            .expect("a failed UI effect is not a failed commit");
+
+        let reported = degradations(&outcome);
+        let mut codes: Vec<&str> = reported
+            .iter()
+            .map(|degradation| degradation.code.as_str())
+            .collect();
+        codes.sort_unstable();
+        assert_eq!(
+            codes,
+            vec![
+                "locale_apply_failed",
+                "logger_refresh_failed",
+                "tray_refresh_failed",
+                "widget_apply_failed",
+            ],
+            "one failing adapter must not mask another: {reported:?}"
+        );
+        assert!(
+            reported
+                .iter()
+                .all(|degradation| degradation.phase == DegradationPhase::UiEffect),
+            "every UI effect degrades in the UI phase: {reported:?}"
+        );
+    });
+}
+
 /// The executor is the only thing between the pipeline and the effect owners,
 /// so what it must get right is the fan-out: one message per plan per owner,
-/// and an untouched pass-through for the kinds nobody owns yet.
+/// every kind dispatched, and the plan's order preserved.
 mod executor {
     use std::sync::{
         Arc,
@@ -651,9 +791,9 @@ mod executor {
 
     use super::super::{
         executor::ApplicationEffectExecutor,
-        plan::{ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
+        plan::{ApplicationEffectInputs, ApplicationEffectPlan, EffectKind, TrayRefresh},
         ports::ApplicationEffectsPort,
-        status::{EffectHealth, EffectRevision},
+        status::{EffectHealth, EffectRevision, EffectStatus},
     };
     use crate::client::{
         hotkey::{
@@ -665,9 +805,13 @@ mod executor {
             SystemProxyArgs, SystemProxyClient,
             ports::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
         },
+        ui_effects::ports::{
+            MockLocaleSink, MockLoggerRefresher, MockTrayRefresher, MockWidgetController,
+        },
     };
     use nyanpasu_config::{
-        application::NyanpasuAppConfig, clash::config::ClashConfig,
+        application::{I18nLanguage, NyanpasuAppConfig},
+        clash::config::ClashConfig,
         runtime::executor::ResolvedPortBindings,
     };
 
@@ -696,11 +840,24 @@ mod executor {
         (registered, registrar)
     }
 
-    async fn executor() -> ApplicationEffectExecutor {
-        executor_with(recording_registrar().1).await
+    /// Accepts every refresh, for the tests that are not about the tray.
+    fn silent_tray() -> MockTrayRefresher {
+        let mut tray = MockTrayRefresher::new();
+        tray.expect_refresh_full()
+            .returning(|| Box::pin(async { Ok(()) }));
+        tray.expect_refresh_part()
+            .returning(|| Box::pin(async { Ok(()) }));
+        tray
     }
 
-    async fn executor_with(registrar: MockShortcutRegistrar) -> ApplicationEffectExecutor {
+    async fn executor() -> ApplicationEffectExecutor {
+        executor_with(recording_registrar().1, silent_tray()).await
+    }
+
+    async fn executor_with(
+        registrar: MockShortcutRegistrar,
+        tray: MockTrayRefresher,
+    ) -> ApplicationEffectExecutor {
         let mut os = MockOsProxyPort::new();
         os.expect_set().returning(|_| Ok(()));
         os.expect_get()
@@ -726,10 +883,26 @@ mod executor {
         })
         .await
         .expect("the hotkey actor should spawn");
+        let mut locale = MockLocaleSink::new();
+        locale.expect_set_locale().returning(|_| Ok(()));
+        let mut logger = MockLoggerRefresher::new();
+        logger.expect_refresh().returning(|_, _| Ok(()));
+        let mut widget = MockWidgetController::new();
+        widget
+            .expect_apply()
+            .returning(|_| Box::pin(async { Ok(()) }));
+        widget
+            .expect_stop()
+            .returning(|| Box::pin(async { Ok(()) }));
+
         ApplicationEffectExecutor::new(
             system_proxy,
             hotkeys,
             Arc::new(PlatformAcceleratorValidator),
+            Arc::new(locale),
+            Arc::new(logger),
+            Arc::new(widget),
+            Arc::new(tray),
         )
     }
 
@@ -766,7 +939,7 @@ mod executor {
     }
 
     #[tokio::test]
-    async fn effects_without_an_owner_pass_through_as_healthy() {
+    async fn every_effect_kind_reaches_an_owner_in_plan_order() {
         let inputs = ApplicationEffectInputs::project(
             &NyanpasuAppConfig::default(),
             &ClashConfig::default(),
@@ -792,7 +965,13 @@ mod executor {
                 .find(|status| status.kind == kind)
                 .unwrap_or_else(|| panic!("{kind:?} should be reported"));
             assert_eq!(status.health, EffectHealth::Healthy, "{kind:?}");
-            assert_eq!(status.applied_revision, revision);
+            let applied = match kind {
+                // The tray reports the attempt sequence there, and this is the
+                // executor's first refresh.
+                EffectKind::Tray => EffectRevision::new(1),
+                _ => revision,
+            };
+            assert_eq!(status.applied_revision, applied, "{kind:?}");
         }
     }
 
@@ -808,7 +987,7 @@ mod executor {
             None,
         );
 
-        let statuses = executor_with(registrar)
+        let statuses = executor_with(registrar, silent_tray())
             .await
             .apply(EffectRevision::new(1), ApplicationEffectPlan::full(&inputs))
             .await;
@@ -821,12 +1000,100 @@ mod executor {
         assert_eq!(status.health, EffectHealth::Healthy);
     }
 
+    /// A tray plan on its own: a menu-mode-independent language change
+    /// rebuilds the menu, a tray-text change only refreshes what is built.
+    fn tray_plan(refresh: TrayRefresh) -> ApplicationEffectPlan {
+        let before = NyanpasuAppConfig::default();
+        let mut after = before.clone();
+        match refresh {
+            TrayRefresh::Full => after.language = I18nLanguage::Korean,
+            TrayRefresh::Part => after.enable_tray_text = !after.enable_tray_text,
+        }
+        ApplicationEffectPlan::diff(
+            &ApplicationEffectInputs::project(&before, &ClashConfig::default(), None),
+            &ApplicationEffectInputs::project(&after, &ClashConfig::default(), None),
+        )
+    }
+
     #[tokio::test]
-    async fn shutdown_restores_the_system_proxy_and_releases_the_shortcuts() {
+    async fn failed_full_tray_rebuild_escalates_the_next_part_refresh() {
+        let full_calls = Arc::new(AtomicUsize::new(0));
+        let part_calls = Arc::new(AtomicUsize::new(0));
+        let mut tray = MockTrayRefresher::new();
+        let counter = full_calls.clone();
+        tray.expect_refresh_full().returning(move || {
+            let attempt = counter.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async move {
+                match attempt {
+                    0 => Err(anyhow::anyhow!("the menu could not be rebuilt")),
+                    _ => Ok(()),
+                }
+            })
+        });
+        let counter = part_calls.clone();
+        tray.expect_refresh_part().returning(move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async { Ok(()) })
+        });
+        let executor = executor_with(recording_registrar().1, tray).await;
+
+        let failed = executor
+            .apply(EffectRevision::new(1), tray_plan(TrayRefresh::Full))
+            .await;
+        // The menu is still the one the failed rebuild was replacing, so this
+        // partial refresh has to become the rebuild it is standing in for.
+        let escalated = executor
+            .apply(EffectRevision::new(2), tray_plan(TrayRefresh::Part))
+            .await;
+        let settled = executor
+            .apply(EffectRevision::new(3), tray_plan(TrayRefresh::Part))
+            .await;
+
+        assert!(
+            matches!(
+                tray_status(&failed).health,
+                EffectHealth::Degraded {
+                    retryable: true,
+                    ..
+                }
+            ),
+            "the rebuild failure is reported: {:?}",
+            tray_status(&failed).health
+        );
+        assert_eq!(tray_status(&escalated).health, EffectHealth::Healthy);
+        assert_eq!(tray_status(&settled).health, EffectHealth::Healthy);
+        assert_eq!(
+            full_calls.load(Ordering::SeqCst),
+            2,
+            "the partial refresh is widened while a rebuild is outstanding"
+        );
+        assert_eq!(
+            part_calls.load(Ordering::SeqCst),
+            1,
+            "and stops being widened once a rebuild succeeds"
+        );
+    }
+
+    fn tray_status(statuses: &[EffectStatus]) -> &EffectStatus {
+        statuses
+            .iter()
+            .find(|status| status.kind == EffectKind::Tray)
+            .expect("the tray effect should be reported")
+    }
+
+    #[tokio::test]
+    async fn shutdown_restores_the_system_proxy_releases_shortcuts_and_stops_the_widget() {
         let statuses = executor().await.shutdown().await;
 
         let kinds: Vec<_> = statuses.iter().map(|status| status.kind).collect();
-        assert_eq!(kinds, vec![EffectKind::SystemProxy, EffectKind::Hotkeys]);
+        assert_eq!(
+            kinds,
+            vec![
+                EffectKind::SystemProxy,
+                EffectKind::Hotkeys,
+                EffectKind::Widget
+            ]
+        );
         for status in &statuses {
             assert_eq!(status.health, EffectHealth::Healthy, "{:?}", status.kind);
         }
@@ -962,17 +1229,54 @@ struct GatedEffectsPort {
     first_arrived: tokio::sync::Notify,
     release_first: tokio::sync::Notify,
     kind: EffectKind,
+    /// Which arrival degrades `kind`. Which dispatch fails and which one
+    /// finishes last are independent here, because the first arrival is the
+    /// one that is parked.
+    failing_arrival: usize,
+    /// The tray attempt sequence each arrival reports, in arrival order.
+    ///
+    /// The executor numbers tray attempts under the lock it holds across the
+    /// adapter call, so the number is the order the refreshes ran in — which
+    /// this fake, standing in for the executor, has to state rather than
+    /// derive: the whole point of the parking is that the order statuses reach
+    /// the facade is not the order the refreshes happened. Empty means the
+    /// arrival order itself.
+    tray_attempts: Vec<u64>,
 }
 
 impl GatedEffectsPort {
     fn new(kind: EffectKind) -> Arc<Self> {
+        Self::failing_on(kind, 1)
+    }
+
+    fn failing_on(kind: EffectKind, failing_arrival: usize) -> Arc<Self> {
+        Self::with_tray_attempts(kind, failing_arrival, Vec::new())
+    }
+
+    fn with_tray_attempts(
+        kind: EffectKind,
+        failing_arrival: usize,
+        tray_attempts: Vec<u64>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             dispatches: StdMutex::new(Vec::new()),
             arrivals: AtomicUsize::new(0),
             first_arrived: tokio::sync::Notify::new(),
             release_first: tokio::sync::Notify::new(),
             kind,
+            failing_arrival,
+            tray_attempts,
         })
+    }
+
+    /// What the executor would report as the tray status's `applied_revision`.
+    fn tray_attempt(&self, arrival: usize) -> EffectRevision {
+        let attempt = self
+            .tray_attempts
+            .get(arrival)
+            .copied()
+            .unwrap_or(arrival as u64 + 1);
+        EffectRevision::new(attempt)
     }
 
     fn dispatches(&self) -> std::sync::MutexGuard<'_, Vec<Dispatch>> {
@@ -1026,8 +1330,11 @@ impl ApplicationEffectsPort for GatedEffectsPort {
             .map(|effect| EffectStatus {
                 kind: effect.kind(),
                 desired_revision: revision,
-                applied_revision: revision,
-                health: if arrival == 1 && effect.kind() == self.kind {
+                applied_revision: match effect.kind() {
+                    EffectKind::Tray => self.tray_attempt(arrival),
+                    _ => revision,
+                },
+                health: if arrival == self.failing_arrival && effect.kind() == self.kind {
                     EffectHealth::Degraded {
                         code: "injected_effect_failure",
                         message: "effect owner refused".to_owned(),
@@ -1102,6 +1409,124 @@ fn older_completion_cannot_clear_a_newer_failure() {
             port.kinds_of_last_dispatch(),
             vec![EffectKind::SystemProxy],
             "the retry carries the failed kind only"
+        );
+    });
+}
+
+fn tray_text_patch(enabled: bool) -> nyanpasu_config::application::NyanpasuAppConfigPatch {
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.enable_tray_text = Some(enabled);
+    patch
+}
+
+#[test]
+fn late_failed_full_tray_refresh_is_retried_on_identical_resubmission() {
+    let dir = tempdir().expect("tempdir should be created");
+    // The parked dispatch is the one that fails, so a newer partial refresh
+    // records the tray as healthy before the rebuild failure is even known.
+    // The rebuild is nonetheless the newest tray attempt — nothing has
+    // refreshed the menu since it gave up — which is what the attempt
+    // sequences say and what has to keep its failure from being dropped.
+    let port = GatedEffectsPort::with_tray_attempts(EffectKind::Tray, 0, vec![2, 1]);
+    let client = client_with(&dir, port.clone(), Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        // Revision 1: a language change, which rebuilds the whole menu.
+        let first = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .patch_app_config(language_patch(I18nLanguage::Korean))
+                    .await
+            }
+        });
+        port.wait_for_first_dispatch().await;
+
+        // Revision 2: a partial refresh, which succeeds.
+        client
+            .patch_app_config(tray_text_patch(true))
+            .await
+            .expect("the partial refresh should succeed");
+
+        // Only now does the rebuild come back, failed. The menu is still in
+        // the old language and nothing else describes that.
+        port.release_first_dispatch();
+        first
+            .await
+            .expect("the parked patch should not panic")
+            .expect("the older commit still succeeds");
+        assert_eq!(port.dispatch_count(), 2);
+
+        // Re-submitting the newest value diffs to nothing, so the tray can only
+        // reach the owner again if the late failure was kept.
+        client
+            .patch_app_config(tray_text_patch(true))
+            .await
+            .expect("resubmitting the committed value should succeed");
+        assert_eq!(
+            port.dispatch_count(),
+            3,
+            "a menu that was never rebuilt still has to be retried"
+        );
+        assert_eq!(
+            port.kinds_of_last_dispatch(),
+            vec![EffectKind::Tray],
+            "the retry carries the tray only"
+        );
+    });
+}
+
+#[test]
+fn late_recorded_older_tray_success_cannot_clear_a_newer_failure() {
+    let dir = tempdir().expect("tempdir should be created");
+    // The mirror of the test above: here the parked dispatch is the older tray
+    // attempt and it succeeded. Its report still arrives last, so taking the
+    // newest completion as the truth about the menu would let it clear a
+    // rebuild failure that happened after it.
+    let port = GatedEffectsPort::new(EffectKind::Tray);
+    let client = client_with(&dir, port.clone(), Arc::new(StubEndpoint::default()));
+
+    tauri::async_runtime::block_on(async {
+        // Revision 1: a partial refresh, which reaches the menu first and
+        // succeeds, but whose statuses are held back at the port.
+        let first = tokio::spawn({
+            let client = client.clone();
+            async move { client.patch_app_config(tray_text_patch(true)).await }
+        });
+        port.wait_for_first_dispatch().await;
+
+        // Revision 2: a language change, whose rebuild fails after that.
+        let outcome = client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("a post-commit effect failure is not a commit failure");
+        assert!(
+            matches!(outcome, MutationOutcome::CommittedDegraded { .. }),
+            "the failed rebuild must be reported: {outcome:?}"
+        );
+
+        // Only now does the partial refresh report, healthy, describing a menu
+        // that a later rebuild has since failed to replace.
+        port.release_first_dispatch();
+        first
+            .await
+            .expect("the parked patch should not panic")
+            .expect("the older commit still succeeds");
+        assert_eq!(port.dispatch_count(), 2);
+
+        client
+            .patch_app_config(language_patch(I18nLanguage::Korean))
+            .await
+            .expect("resubmitting the committed value should succeed");
+        assert_eq!(
+            port.dispatch_count(),
+            3,
+            "the failed rebuild still has to be retried"
+        );
+        assert_eq!(
+            port.kinds_of_last_dispatch(),
+            vec![EffectKind::Tray],
+            "the retry carries the tray only"
         );
     });
 }

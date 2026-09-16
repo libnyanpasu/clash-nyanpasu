@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import HighlightText from '@/components/ui/highlight-text'
 import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
+import { m } from '@/paraglide/messages'
 import { useClashRules } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
@@ -177,7 +178,7 @@ function RouteComponent() {
             'h-10 w-full rounded-full px-4 pr-10 text-sm outline-none',
           )}
           data-slot="rules-search-input-field"
-          placeholder="Search rules (type, payload, or proxy)..."
+          placeholder={m.rules_search_placeholder()}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

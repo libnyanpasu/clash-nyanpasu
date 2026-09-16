@@ -303,6 +303,7 @@
   "logs_empty_message": "기록된 로그가 없습니다",
   "logs_action_clear_log": "로그 지우기",
   "rules_list_all_proxies": "모든 그룹",
+  "rules_search_placeholder": "규칙 검색 (유형, 페이로드 또는 프록시)...",
   "connections_all_connections": "모든 연결",
   "connections_search_placeholder": "연결 검색 (호스트, 프로세스, 규칙, 체인 등)...",
   "connections_close_all_connections": "모든 연결 닫기",

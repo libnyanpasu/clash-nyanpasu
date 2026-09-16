@@ -33,6 +33,8 @@ export type ClashConnectionMetadata = {
   destinationPort: string
   destinationIP?: string
   destinationIPASN?: string
+  sourceGeoIP?: string[] | null
+  destinationGeoIP?: string[] | null
   process?: string
   processPath?: string
   dnsMode?: string

@@ -1,4 +1,6 @@
 {
+  "topology_title": "Топология",
+  "topology_view": "Вид топологии",
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "proxies_delay_history_title": "История задержки",
   "proxies_delay_history_empty": "История задержки пока пуста",

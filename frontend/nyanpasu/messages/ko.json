@@ -1,4 +1,6 @@
 {
+  "topology_title": "토폴로지",
+  "topology_view": "토폴로지 보기",
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "proxies_delay_history_title": "지연 시간 기록",
   "proxies_delay_history_empty": "지연 시간 기록이 없습니다",

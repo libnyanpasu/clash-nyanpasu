@@ -138,7 +138,7 @@ export default function ProfilesNavigate({
 
       <Separator />
 
-      <LinkButton href="/main/profiles/inspect">Profile Inspect</LinkButton>
+      <LinkButton href="/main/profiles/inspect">{m.inspect_title()}</LinkButton>
     </div>
   )
 }

@@ -806,7 +806,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         disable_mode_interruption(&client).await;
-        let before = client.inner.clash_config.get().await.unwrap();
+        let before = client.inner.clash_config.snapshot();
         bridge.0.store(true, Ordering::SeqCst);
         assert!(
             client
@@ -814,7 +814,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
                 .await
                 .is_err()
         );
-        let after = client.inner.clash_config.get().await.unwrap();
+        let after = client.inner.clash_config.snapshot();
         assert_eq!(after.version, before.version);
         assert_eq!(
             serde_json::to_value(after.state).unwrap(),
@@ -829,7 +829,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
 async fn config_write_waits_for_active_lifecycle_work_before_committing() {
     let dir = tempfile::tempdir().unwrap();
     let (client, _, builder, _, clash) = dirty_graph(&dir).await;
-    let mut config = clash.get().await.unwrap().state;
+    let mut config = clash.snapshot().state;
     config.break_connection.on_mode_change = false;
     clash.replace(config).await.unwrap();
     let active = {
@@ -844,7 +844,7 @@ async fn config_write_waits_for_active_lifecycle_work_before_committing() {
     barrier(&client).await;
     assert_eq!(client.status().queued.len(), 1);
     assert_eq!(
-        serde_json::to_value(clash.get().await.unwrap().state.overrides).unwrap()["mode"],
+        serde_json::to_value(clash.snapshot().state.overrides).unwrap()["mode"],
         "rule",
         "queued writes must not commit ahead of lifecycle admission"
     );
@@ -867,7 +867,7 @@ fn config_persistence_failure_leaves_state_unchanged_and_never_reconciles() {
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         disable_mode_interruption(&client).await;
-        let before = client.inner.clash_config.get().await.unwrap();
+        let before = client.inner.clash_config.snapshot();
         if path.exists() {
             std::fs::remove_file(&path).unwrap();
         }
@@ -878,7 +878,7 @@ fn config_persistence_failure_leaves_state_unchanged_and_never_reconciles() {
                 .await
                 .is_err()
         );
-        let after = client.inner.clash_config.get().await.unwrap();
+        let after = client.inner.clash_config.snapshot();
         assert_eq!(after.version, before.version);
         assert_eq!(
             serde_json::to_value(after.state).unwrap(),

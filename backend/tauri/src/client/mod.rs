@@ -177,33 +177,21 @@ async fn sync_legacy_mirrors(
     clash_config: &ClashConfigClient,
     bridges: &LegacyBridgeSet,
 ) -> anyhow::Result<()> {
-    let application = application
-        .get()
-        .await
-        .context("failed to read loaded application config")?
-        .state;
+    let application = application.snapshot().state;
     bridges
         .verge
         .prepare(&application)
         .context("failed to prepare loaded application config legacy mirror")?
         .apply();
 
-    let session_state = session_state
-        .get()
-        .await
-        .context("failed to read loaded session state")?
-        .state;
+    let session_state = session_state.snapshot().state;
     bridges
         .window
         .prepare(&session_state)
         .context("failed to prepare loaded session state legacy mirror")?
         .apply();
 
-    let clash_config = clash_config
-        .get()
-        .await
-        .context("failed to read loaded clash config")?
-        .state;
+    let clash_config = clash_config.snapshot().state;
     bridges
         .clash
         .prepare(&clash_config)
@@ -325,7 +313,7 @@ impl NyanpasuClient {
                 // Eager session port resolution: the core is not running yet,
                 // so probing strategies is race-free (design §19.2 caller duty).
                 let ports = Arc::new(SessionPortResolver::default());
-                let clash_snapshot = clash_config.get().await?.state;
+                let clash_snapshot = clash_config.snapshot().state;
                 ports
                     .resolve(&clash_snapshot)
                     .context("failed to resolve session ports")?;
@@ -464,7 +452,7 @@ impl NyanpasuClient {
             .inner
             .bundle_metadata
             .release_channel
-            .resolve(self.inner.application.get().await?.state.release_channel))
+            .resolve(self.inner.application.snapshot().state.release_channel))
     }
 
     pub async fn set_release_channel(
@@ -489,8 +477,7 @@ impl NyanpasuClient {
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
-        let client = self.inner.application.clone();
-        Ok(client.get().await?.state)
+        Ok(self.inner.application.snapshot().state)
     }
 
     pub async fn reconcile_core(
@@ -660,7 +647,7 @@ impl NyanpasuClient {
             // forward, not submitting it. Rejecting that would let one binding
             // already on disk — migrated, hand-edited, or accepted by an older
             // build — block every unrelated write from then on.
-            let committed = client.get().await?.state;
+            let committed = client.snapshot().state;
             if state.hotkeys != committed.hotkeys {
                 hotkey::validate_bindings(&state.hotkeys, self.inner.accelerators.as_ref())?;
             }
@@ -684,8 +671,7 @@ impl NyanpasuClient {
     }
 
     pub async fn get_session_state(&self) -> Result<PersistentState> {
-        let client = self.inner.session_state.clone();
-        Ok(client.get().await?.state)
+        Ok(self.inner.session_state.snapshot().state)
     }
 
     pub async fn patch_session_state(
@@ -723,8 +709,7 @@ impl NyanpasuClient {
     }
 
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {
-        let client = self.inner.clash_config.clone();
-        Ok(client.get().await?.state)
+        Ok(self.inner.clash_config.snapshot().state)
     }
 
     pub async fn patch_runtime_overrides(
@@ -772,12 +757,12 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    pub(crate) async fn typed_config_snapshots(&self) -> Result<TypedConfigSnapshots> {
-        Ok(TypedConfigSnapshots {
-            application: self.inner.application.get().await?,
-            session: self.inner.session_state.get().await?,
-            clash: self.inner.clash_config.get().await?,
-        })
+    pub(crate) fn typed_config_snapshots(&self) -> TypedConfigSnapshots {
+        TypedConfigSnapshots {
+            application: self.inner.application.snapshot(),
+            session: self.inner.session_state.snapshot(),
+            clash: self.inner.clash_config.snapshot(),
+        }
     }
 
     // TODO(actor-migration): the three-domain legacy saga is the commit point for
@@ -794,7 +779,7 @@ impl NyanpasuClient {
         F: FnOnce() -> anyhow::Result<()>,
     {
         self.commit_and_reconcile(move || async move {
-            let snapshots = self.typed_config_snapshots().await?;
+            let snapshots = self.typed_config_snapshots();
             let submits_hotkeys = plan
                 .application
                 .as_ref()
@@ -846,7 +831,7 @@ impl NyanpasuClient {
         F: FnOnce() -> anyhow::Result<()>,
     {
         self.commit_and_reconcile(move || async move {
-            let snapshots = self.typed_config_snapshots().await?;
+            let snapshots = self.typed_config_snapshots();
             // See the patch saga. A replacement always carries the whole list,
             // so only a *changed* one is something the user submitted; the
             // startup resync replays what is already on disk, and rejecting
@@ -1130,7 +1115,7 @@ impl NyanpasuClient {
     // ---- profiles domain (PR-3 T07) ----
 
     pub async fn get_profiles(&self) -> Result<Arc<Profiles>> {
-        Ok(self.inner.profiles.get().await?)
+        Ok(self.inner.profiles.snapshot())
     }
 
     async fn collect_post_commit_degradations(
@@ -1406,7 +1391,7 @@ impl NyanpasuClient {
     }
 
     pub async fn get_profile_materialized_path(&self, uid: ProfileId) -> Result<PathBuf> {
-        let snapshot = self.inner.profiles.get().await?;
+        let snapshot = self.inner.profiles.snapshot();
         let item = snapshot
             .items
             .get(&uid)
@@ -1422,7 +1407,7 @@ impl NyanpasuClient {
     }
 
     pub async fn read_profile_file(&self, uid: ProfileId) -> Result<String> {
-        let snapshot = self.inner.profiles.get().await?;
+        let snapshot = self.inner.profiles.snapshot();
         let item = snapshot
             .items
             .get(&uid)
@@ -1446,7 +1431,7 @@ impl NyanpasuClient {
     }
 
     pub async fn save_profile_file(&self, uid: ProfileId, data: String) -> Result<()> {
-        let snapshot = self.inner.profiles.get().await?;
+        let snapshot = self.inner.profiles.snapshot();
         let item = snapshot
             .items
             .get(&uid)
@@ -2494,6 +2479,17 @@ pub(crate) mod tests {
         system_dns: Arc<dyn SystemDnsCache>,
     ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+        test_client_from_typed_clients(dir, application, session_state, clash_config, system_dns)
+            .await
+    }
+
+    async fn test_client_from_typed_clients(
+        dir: &TempDir,
+        application: ApplicationClient,
+        session_state: SessionStateClient,
+        clash_config: ClashConfigClient,
+        system_dns: Arc<dyn SystemDnsCache>,
+    ) -> NyanpasuClient {
         let profiles = profiles::ProfilesClient::new(
             temp_config_path(dir, "profiles.yaml"),
             Arc::new(MockProfileFsPort::new()),
@@ -2542,6 +2538,103 @@ pub(crate) mod tests {
         )
         .await
         .unwrap()
+    }
+
+    /// Required subscriber that holds the transaction open inside `on_prepare`
+    /// until the test releases it, so the owning actor's mailbox is provably
+    /// blocked while the assertion runs.
+    struct ParkedPrepare {
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl nyanpasu_core::state::StateAckSubscriber<NyanpasuAppConfig> for ParkedPrepare {
+        fn name(&self) -> nyanpasu_core::state::SubscriberName<'_> {
+            "test-parked-prepare".into()
+        }
+
+        async fn on_prepare(
+            &self,
+            _change: nyanpasu_core::state::StateChange<NyanpasuAppConfig>,
+        ) -> nyanpasu_core::state::Ack {
+            self.entered.notify_one();
+            self.release.notified().await;
+            nyanpasu_core::state::Ack::Ok
+        }
+    }
+
+    #[tokio::test]
+    async fn committed_config_reads_do_not_wait_for_a_parked_required_prepare() {
+        use futures_util::FutureExt;
+
+        let dir = tempdir().expect("tempdir should be created");
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let mut manager =
+            nyanpasu_core::state::PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
+                .config_path(temp_config_path(&dir, "application.yaml"))
+                .assemble()
+                .from_state(NyanpasuAppConfig::default())
+                .await
+                .expect("application manager should initialize");
+        manager.add_subscriber(Box::new(ParkedPrepare {
+            entered: entered.clone(),
+            release: release.clone(),
+        }));
+        let application = ApplicationClient::from_manager(manager, Arc::new(NoopVergeBridge))
+            .await
+            .expect("application client should be created");
+        let session_state = SessionStateClient::new(
+            temp_config_path(&dir, "session-state.yaml"),
+            PersistentState::default(),
+            Arc::new(NoopWindowBridge),
+        )
+        .await
+        .expect("session state client should be created");
+        let clash_config = ClashConfigClient::new(
+            temp_config_path(&dir, "clash-config.yaml"),
+            ClashConfig::default(),
+            Arc::new(NoopClashBridge),
+        )
+        .await
+        .expect("clash config client should be created");
+        let client = test_client_from_typed_clients(
+            &dir,
+            application,
+            session_state,
+            clash_config,
+            Arc::new(NoopSystemDnsCache),
+        )
+        .await;
+
+        assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
+
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.enable_system_proxy = Some(true);
+        let patching = {
+            let client = client.clone();
+            tokio::spawn(async move { client.patch_app_config(patch).await })
+        };
+
+        // The transaction now owns the actor and is parked mid-prepare.
+        entered.notified().await;
+        let parked = client
+            .get_app_config()
+            .now_or_never()
+            .expect("a committed read must not await the parked actor")
+            .expect("committed read should succeed");
+        assert!(
+            !parked.enable_system_proxy,
+            "an unfinished transaction must not be visible as committed state"
+        );
+
+        release.notify_one();
+        patching
+            .await
+            .expect("patch task should join")
+            .expect("patch should commit");
+        assert!(client.get_app_config().await.unwrap().enable_system_proxy);
     }
 
     #[tokio::test]

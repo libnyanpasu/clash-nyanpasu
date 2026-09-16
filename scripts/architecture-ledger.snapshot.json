@@ -27,12 +27,12 @@
       }
     },
     "legacy_dto_refs": {
-      "total": 319,
+      "total": 320,
       "byKey": {
         "IVerge": 183,
         "IClashTemp": 31,
         "LegacyVergeBridge": 31,
-        "VergeLegacyBridge": 20,
+        "VergeLegacyBridge": 21,
         "ClashLegacyBridge": 19,
         "LegacyClashBridge": 10,
         "LegacyVergePatchRoute": 9,

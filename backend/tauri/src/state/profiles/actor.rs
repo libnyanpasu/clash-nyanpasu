@@ -190,7 +190,6 @@ fn synced_name(custom_name: bool, filename: &Option<String>) -> Option<String> {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum ProfilesActorMessage {
-    Get(RpcReplyPort<Result<Arc<Profiles>, ProfilesError>>),
     SetCurrent {
         current: Option<ProfileId>,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
@@ -1116,9 +1115,6 @@ impl Actor for ProfilesActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            ProfilesActorMessage::Get(reply) => {
-                let _ = reply.send(Ok(Arc::new(Self::current_state(state))));
-            }
             ProfilesActorMessage::SetCurrent { current, reply } => {
                 let result = Self::run_state_write(&myself, state, |profiles| {
                     profiles.set_current(current);

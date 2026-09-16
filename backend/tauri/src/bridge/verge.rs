@@ -356,7 +356,7 @@ impl LegacyVergeBridge {
     async fn refresh_legacy_projection(&self) -> ClientResult<IVerge> {
         let managed = self.managed()?;
         loop {
-            let before = managed.client.typed_config_snapshots().await?;
+            let before = managed.client.typed_config_snapshots();
             let projected = super::legacy_iverge_from_typed(
                 self.legacy_store.snapshot()?,
                 &before.application.state,
@@ -366,7 +366,7 @@ impl LegacyVergeBridge {
             self.legacy_store
                 .prepare_projection(projected.clone())?
                 .apply();
-            let after = managed.client.typed_config_snapshots().await?;
+            let after = managed.client.typed_config_snapshots();
             if before.application.version == after.application.version
                 && before.session.version == after.session.version
                 && before.clash.version == after.clash.version
@@ -1438,10 +1438,7 @@ mod tests {
         );
 
         tauri::async_runtime::block_on(async {
-            let before = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should load");
+            let before = client.typed_config_snapshots();
             let error = bridge
                 .patch_verge_config(IVerge {
                     theme_color: Some("#abcdef".into()),
@@ -1466,10 +1463,7 @@ mod tests {
                 partial.compensated_domains,
                 vec![LegacyVergeDomain::Application]
             );
-            let after = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should reload");
+            let after = client.typed_config_snapshots();
             assert_eq!(after.application.version, before.application.version + 2);
             assert_eq!(
                 after.application.state.theme_color,
@@ -1980,10 +1974,7 @@ mod tests {
         let (client, bridge) = test_bridge_with_window(&dir, Arc::new(FailingWindowMirror));
 
         tauri::async_runtime::block_on(async {
-            let versions_before = client
-                .typed_config_snapshots()
-                .await
-                .expect("typed snapshots should load");
+            let versions_before = client.typed_config_snapshots();
             let app_before = client
                 .get_app_config()
                 .await
@@ -2033,10 +2024,7 @@ mod tests {
                 .get_clash_config()
                 .await
                 .expect("clash get after failure should succeed");
-            let versions_after = client
-                .typed_config_snapshots()
-                .await
-                .expect("typed snapshots should reload");
+            let versions_after = client.typed_config_snapshots();
 
             assert_eq!(
                 versions_after.application.version,
@@ -2085,10 +2073,7 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             events.lock().unwrap().clear();
-            let before = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should load");
+            let before = client.typed_config_snapshots();
             let saga = bridge.clone();
             let task = tauri::async_runtime::spawn(async move {
                 saga.patch_verge_config(IVerge {
@@ -2137,10 +2122,7 @@ mod tests {
                     .contains("session config version conflict")
             );
 
-            let after = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should reload");
+            let after = client.typed_config_snapshots();
             assert_eq!(after.application.version, before.application.version + 2);
             assert_eq!(after.session.version, before.session.version + 1);
             assert_eq!(after.clash.version, before.clash.version);
@@ -2175,10 +2157,7 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             events.lock().unwrap().clear();
-            let before = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should load");
+            let before = client.typed_config_snapshots();
             let saga = bridge.clone();
             let task = tauri::async_runtime::spawn(async move {
                 saga.replace_verge_config(IVerge {
@@ -2225,10 +2204,7 @@ mod tests {
                 format!("{error:#}").contains("session config version conflict"),
                 "unexpected replacement error: {error:#}"
             );
-            let after = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should reload");
+            let after = client.typed_config_snapshots();
             assert_eq!(after.application.version, before.application.version + 2);
             assert_eq!(
                 after.application.state.theme_color,
@@ -2266,10 +2242,7 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             events.lock().unwrap().clear();
-            let before = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should load");
+            let before = client.typed_config_snapshots();
             let saga = bridge.clone();
             let task = tauri::async_runtime::spawn(async move {
                 saga.patch_verge_config(IVerge {
@@ -2302,10 +2275,7 @@ mod tests {
                 .expect("saga task should join")
                 .expect_err("clash CAS conflict should fail the saga");
             assert!(error.to_string().contains("clash config version conflict"));
-            let after = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should reload");
+            let after = client.typed_config_snapshots();
             assert_eq!(after.application.version, before.application.version + 2);
             assert_eq!(after.session.version, before.session.version + 2);
             assert_eq!(after.clash.version, before.clash.version + 1);
@@ -2349,10 +2319,7 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             events.lock().unwrap().clear();
-            let before = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should load");
+            let before = client.typed_config_snapshots();
             let saga = bridge.clone();
             let task = tauri::async_runtime::spawn(async move {
                 saga.patch_verge_config(IVerge {
@@ -2412,10 +2379,7 @@ mod tests {
                 }]
             ));
 
-            let after = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should reload");
+            let after = client.typed_config_snapshots();
             assert_eq!(after.application.version, before.application.version + 2);
             assert_eq!(after.application.state.language, I18nLanguage::Korean);
             assert_eq!(after.session.version, before.session.version + 2);
@@ -2732,10 +2696,7 @@ mod tests {
             test_bridge_with_recording_endpoint_and_effects(&dir, effects.clone());
 
         tauri::async_runtime::block_on(async {
-            let before = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should load");
+            let before = client.typed_config_snapshots();
             let interval = before.application.state.proxy_guard_interval + 7;
 
             bridge
@@ -2746,10 +2707,7 @@ mod tests {
                 .await
                 .expect("pure verge patch should commit");
 
-            let after = client
-                .typed_config_snapshots()
-                .await
-                .expect("snapshots should reload");
+            let after = client.typed_config_snapshots();
             assert_eq!(
                 after.application.version,
                 before.application.version + 1,

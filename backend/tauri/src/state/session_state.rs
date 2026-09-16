@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
-use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
+use nyanpasu_core::state::{
+    PersistentStateManager, ReplaceIfVersionResult, Version, VersionedState,
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 
@@ -15,6 +17,15 @@ use super::{
 pub struct SessionStateSnapshot {
     pub state: PersistentState,
     pub version: u64,
+}
+
+impl SessionStateSnapshot {
+    pub(crate) fn from_versioned(versioned: &VersionedState<PersistentState>) -> Self {
+        Self {
+            state: versioned.state.clone(),
+            version: *versioned.version.as_ref(),
+        }
+    }
 }
 
 pub struct SessionStateActorArgs {
@@ -30,7 +41,6 @@ pub struct SessionStateActorState {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum SessionStateActorMessage {
-    Get(RpcReplyPort<anyhow::Result<SessionStateSnapshot>>),
     Patch {
         patch: PersistentStatePatch,
         reply: RpcReplyPort<anyhow::Result<SessionStateSnapshot>>,
@@ -54,11 +64,7 @@ pub struct SessionStateActor;
 
 impl SessionStateActor {
     fn snapshot(state: &SessionStateActorState) -> SessionStateSnapshot {
-        let snapshot = state.manager.snapshot_handle().load();
-        SessionStateSnapshot {
-            state: snapshot.state.clone(),
-            version: *snapshot.version.as_ref(),
-        }
+        SessionStateSnapshot::from_versioned(&state.manager.snapshot_handle().load())
     }
 
     async fn commit(
@@ -134,9 +140,6 @@ impl Actor for SessionStateActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            SessionStateActorMessage::Get(reply) => {
-                let _ = reply.send(Ok(Self::snapshot(state)));
-            }
             SessionStateActorMessage::Patch { patch, reply } => {
                 let result = async {
                     let mut next = state.manager.snapshot_handle().load().state.clone();
@@ -171,7 +174,7 @@ mod tests {
     use super::*;
     use crate::state::mirror::PreparedLegacyMirror;
     use nyanpasu_config::state::window::{WindowLabel, WindowState};
-    use nyanpasu_core::state::PersistentStateManagerSetup;
+    use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
     use ractor::rpc::CallResult;
     use std::collections::BTreeMap;
     use struct_patch::Patch;
@@ -195,7 +198,11 @@ mod tests {
 
     async fn spawn_actor(
         bridge: Arc<dyn WindowLegacyBridge>,
-    ) -> (ActorRef<SessionStateActorMessage>, tempfile::TempDir) {
+    ) -> (
+        ActorRef<SessionStateActorMessage>,
+        StateSnapshot<PersistentState>,
+        tempfile::TempDir,
+    ) {
         let dir = tempdir().expect("tempdir should be created");
         let path = camino::Utf8PathBuf::from_path_buf(dir.path().join("session-state.yaml"))
             .expect("temp path should be UTF-8");
@@ -205,6 +212,7 @@ mod tests {
             .from_state(PersistentState::default())
             .await
             .expect("session manager should initialize");
+        let snapshot = manager.snapshot_handle();
         let (actor_ref, _handle) = Actor::spawn(
             None,
             SessionStateActor,
@@ -212,26 +220,14 @@ mod tests {
         )
         .await
         .expect("session state actor should spawn");
-        (actor_ref, dir)
-    }
-
-    async fn get_snapshot(
-        actor: &ActorRef<SessionStateActorMessage>,
-    ) -> anyhow::Result<SessionStateSnapshot> {
-        match actor.call(SessionStateActorMessage::Get, None).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
-        }
+        (actor_ref, snapshot, dir)
     }
 
     #[tokio::test]
     async fn mirror_prepare_failure_returns_error_without_commit() {
-        let (actor, _dir) = spawn_actor(Arc::new(FailingWindowMirror)).await;
+        let (actor, snapshot, _dir) = spawn_actor(Arc::new(FailingWindowMirror)).await;
 
-        let before = get_snapshot(&actor)
-            .await
-            .expect("initial get should succeed");
+        let before = SessionStateSnapshot::from_versioned(&snapshot.load());
         assert!(before.state.window_state.is_empty());
         let before_version = before.version;
 
@@ -266,20 +262,16 @@ mod tests {
             "unexpected error: {err:#}"
         );
 
-        let after = get_snapshot(&actor)
-            .await
-            .expect("post-failure get should succeed");
+        let after = SessionStateSnapshot::from_versioned(&snapshot.load());
         assert_eq!(after.state.window_state, before.state.window_state);
         assert_eq!(after.version, before_version);
     }
 
     #[tokio::test]
     async fn mirror_prepare_failure_leaves_state_and_version_unchanged() {
-        let (actor, _dir) = spawn_actor(Arc::new(FailingWindowMirror)).await;
+        let (actor, snapshot, _dir) = spawn_actor(Arc::new(FailingWindowMirror)).await;
 
-        let before = get_snapshot(&actor)
-            .await
-            .expect("initial get should succeed");
+        let before = SessionStateSnapshot::from_versioned(&snapshot.load());
 
         let mut patch = PersistentState::new_empty_patch();
         patch.window_state = Some(BTreeMap::from([(
@@ -300,9 +292,7 @@ mod tests {
             )
             .await;
 
-        let after = get_snapshot(&actor)
-            .await
-            .expect("post-failure get should succeed");
+        let after = SessionStateSnapshot::from_versioned(&snapshot.load());
         assert_eq!(after.version, before.version);
         assert_eq!(after.state.window_state, before.state.window_state);
     }

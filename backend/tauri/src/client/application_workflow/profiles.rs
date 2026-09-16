@@ -21,18 +21,12 @@ impl ApplicationWorkflow {
         id: OperationId,
         activation: ProfileActivation,
     ) -> Result<Output, CoreError> {
-        let previous = self
-            .profiles
-            .get()
-            .await
-            .map_err(domain_error)?
-            .current
-            .clone();
+        let previous = self.profiles.snapshot().current.clone();
         let will_change = match &activation {
             ProfileActivation::Select(uid) => *uid != previous,
             ProfileActivation::IfNone(_) => previous.is_none(),
         };
-        let clash = self.clash.get().await.map_err(domain_error)?.state;
+        let clash = self.clash.snapshot().state;
         let context = self
             .lifecycle
             .prepare_apply(

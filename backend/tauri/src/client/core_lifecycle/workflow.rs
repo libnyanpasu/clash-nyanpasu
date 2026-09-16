@@ -156,14 +156,7 @@ impl CoreLifecycleWorkflow {
                 )))
             }
             Command::RestoreExecutionHost => {
-                if self
-                    .application
-                    .get()
-                    .await
-                    .map_err(domain_error)?
-                    .state
-                    .enable_service_mode
-                {
+                if self.application.snapshot().state.enable_service_mode {
                     let report = self.core.adopt_service_host().await?;
                     self.recovery.rearm();
                     self.note_interrupted_core(report.interrupted_running());
@@ -448,14 +441,8 @@ impl CoreLifecycleWorkflow {
         artifact: PreparedCoreBinary,
         preparation: &mut dyn RuntimePreparationPort,
     ) -> Result<(), CoreError> {
-        let desired: crate::config::nyanpasu::ClashCore = self
-            .application
-            .get()
-            .await
-            .map_err(domain_error)?
-            .state
-            .core
-            .into();
+        let desired: crate::config::nyanpasu::ClashCore =
+            self.application.snapshot().state.core.into();
         let status = self.core.refresh_status().await?;
         let (state, applied_kind) = status
             .snapshot

@@ -52,13 +52,7 @@ impl ApplicationWorkflow {
         id: OperationId,
         patch: ClashGuardOverridesPatch,
     ) -> Result<Output, CoreError> {
-        let policy = self
-            .clash
-            .get()
-            .await
-            .map_err(domain_error)?
-            .state
-            .break_connection;
+        let policy = self.clash.snapshot().state.break_connection;
         let context = self
             .lifecycle
             .prepare_apply(
@@ -75,7 +69,7 @@ impl ApplicationWorkflow {
             .await
             .map_err(domain_error)?;
         let applied = async {
-            let profiles = self.profiles.get().await.map_err(domain_error)?;
+            let profiles = self.profiles.snapshot();
             let prepared = self
                 .preparation
                 .prepare_committed(profiles, committed.state)

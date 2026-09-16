@@ -75,7 +75,7 @@ impl RuntimePreparation {
         profiles: Arc<Profiles>,
         clash: ClashConfig,
     ) -> Result<PreparedRuntime, CoreError> {
-        let app = self.application.get().await.map_err(domain_error)?.state;
+        let app = self.application.snapshot().state;
         self.prepare(profiles, clash, app).await
     }
 }
@@ -84,8 +84,8 @@ impl RuntimePreparation {
 impl RuntimePreparationPort for RuntimePreparation {
     async fn prepare_latest(&mut self) -> Result<PreparedRuntime, CoreError> {
         // Independent committed snapshots; changes during a build retain a dirty pass.
-        let profiles = self.profiles.get().await.map_err(domain_error)?;
-        let clash = self.clash.get().await.map_err(domain_error)?.state;
+        let profiles = self.profiles.snapshot();
+        let clash = self.clash.snapshot().state;
         self.prepare_committed(profiles, clash).await
     }
 

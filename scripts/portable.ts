@@ -3,19 +3,14 @@ import { ensureDir, exists } from "jsr:@std/fs";
 import AdmZip from "npm:adm-zip";
 import { consola } from "./utils/logger.ts";
 
-const RUST_ARCH = Deno.env.get("RUST_ARCH") ?? "x86_64";
-const fixedWebview = Deno.args.includes("--fixed-webview");
+const FIXED_WEBVIEW_DIR = "WebView2";
+type WindowsBundleVariant = "standard" | "fixed-webview";
 
-async function resolvePortable() {
-  if (Deno.build.os !== "windows") return;
-
-  const cwd = Deno.cwd();
-  const TAURI_APP_DIR = path.join(cwd, "backend/tauri");
-
-  const buildDir = RUST_ARCH === "x86_64"
-    ? "backend/target/release"
-    : `backend/target/${RUST_ARCH}-pc-windows-msvc/release`;
-
+export async function createPortableArchive(
+  buildDir: string,
+  tauriDir: string,
+  variant: WindowsBundleVariant,
+): Promise<AdmZip> {
   const configDir = path.join(buildDir, ".config");
 
   if (!(await exists(buildDir))) {
@@ -39,39 +34,54 @@ async function resolvePortable() {
   zip.addLocalFile(path.join(buildDir, "clash-rs-alpha.exe"));
   zip.addLocalFolder(path.join(buildDir, "resources"), "resources");
 
-  if (fixedWebview) {
-    let webviewPath: string | undefined;
-    for await (const entry of Deno.readDir(TAURI_APP_DIR)) {
-      if (entry.name.includes("WebView2")) {
-        webviewPath = entry.name;
-        break;
-      }
-    }
-    if (!webviewPath) {
+  if (variant === "fixed-webview") {
+    const webviewPath = path.join(tauriDir, FIXED_WEBVIEW_DIR);
+    if (!(await exists(path.join(webviewPath, "msedgewebview2.exe")))) {
       throw new Error("WebView2 runtime not found");
     }
     zip.addLocalFolder(
-      path.join(TAURI_APP_DIR, webviewPath),
-      path.basename(webviewPath),
+      webviewPath,
+      FIXED_WEBVIEW_DIR,
     );
   }
 
   zip.addLocalFolder(configDir, ".config");
+  return zip;
+}
+
+async function resolvePortable() {
+  if (Deno.build.os !== "windows") return;
+
+  const cwd = Deno.cwd();
+  const rustArch = Deno.env.get("RUST_ARCH") ?? "x86_64";
+  const variant = Deno.args.includes("--fixed-webview")
+    ? "fixed-webview"
+    : "standard";
+  const buildDir = rustArch === "x86_64"
+    ? "backend/target/release"
+    : `backend/target/${rustArch}-pc-windows-msvc/release`;
+  const zip = await createPortableArchive(
+    path.join(cwd, buildDir),
+    path.join(cwd, "backend/tauri"),
+    variant,
+  );
 
   const packageJson = JSON.parse(
     await Deno.readTextFile(path.join(cwd, "package.json")),
   );
   const version = packageJson.version;
 
-  const zipFile = `Clash.Nyanpasu_${version}_${RUST_ARCH}${
-    fixedWebview ? "_fixed-webview" : ""
+  const zipFile = `Clash.Nyanpasu_${version}_${rustArch}${
+    variant === "fixed-webview" ? "_fixed-webview" : ""
   }_portable.zip`;
   zip.writeZip(zipFile);
 
   consola.success("create portable zip successfully");
 }
 
-resolvePortable().catch((err) => {
-  consola.error(err);
-  Deno.exit(1);
-});
+if (import.meta.main) {
+  resolvePortable().catch((err) => {
+    consola.error(err);
+    Deno.exit(1);
+  });
+}

@@ -2,20 +2,20 @@ import * as path from "jsr:@std/path";
 import { parseArgs } from "jsr:@std/cli@1/parse-args";
 import { Octokit } from "npm:octokit";
 import { colorize, consola } from "./utils/logger.ts";
+import {
+  collectUpdaterPlatforms,
+  UPDATER_TARGETS,
+} from "./updater-platforms.ts";
 import { resolveUpdateLog } from "./updatelog.ts";
 
 const GITHUB_PROXY = "https://nyanpasu-script.majokeiko.com/";
 const UPDATE_TAG_NAME = "updater";
 const UPDATE_JSON_FILE = "update.json";
 const UPDATE_JSON_PROXY = "update-proxy.json";
-const UPDATE_FIXED_WEBVIEW_FILE = "update-fixed-webview.json";
-const UPDATE_FIXED_WEBVIEW_PROXY = "update-fixed-webview-proxy.json";
 const UPDATE_RELEASE_BODY = Deno.env.get("RELEASE_BODY") ?? "";
 
 const argv = parseArgs(Deno.args, {
-  boolean: ["fixed-webview"],
   string: ["cache-path"],
-  default: { "fixed-webview": false },
 });
 
 function getGithubUrl(url: string): string {
@@ -41,6 +41,9 @@ async function getSignature(url: string) {
     method: "GET",
     headers: { "Content-Type": "application/octet-stream" },
   });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch signature: HTTP ${response.status}`);
+  }
   return response.text();
 }
 
@@ -90,91 +93,18 @@ async function resolveUpdater() {
     name: tag.name,
     notes: UPDATE_RELEASE_BODY || updateLog || latestRelease.body,
     pub_date: new Date().toISOString(),
-    platforms: {
-      win64: { signature: "", url: "" },
-      linux: { signature: "", url: "" },
-      darwin: { signature: "", url: "" },
-      "darwin-aarch64": { signature: "", url: "" },
-      "darwin-intel": { signature: "", url: "" },
-      "darwin-x86_64": { signature: "", url: "" },
-      "linux-x86_64": { signature: "", url: "" },
-      "windows-x86_64": { signature: "", url: "" },
-      "windows-aarch64": { signature: "", url: "" },
-    },
+    platforms: await collectUpdaterPlatforms(
+      latestRelease.assets,
+      getSignature,
+    ),
   };
 
-  const promises = (
-    latestRelease.assets as Array<{
-      name: string;
-      browser_download_url: string;
-    }>
-  ).map(async (asset) => {
-    const { name, browser_download_url: browserDownloadUrl } = asset;
-
-    function isMatch(name: string, extension: string, arch: string) {
-      return (
-        name.endsWith(extension) &&
-        name.includes(arch) &&
-        (argv["fixed-webview"]
-          ? name.includes("fixed-webview")
-          : !name.includes("fixed-webview"))
-      );
-    }
-
-    if (isMatch(name, ".nsis.zip", "x64")) {
-      updateData.platforms.win64.url = browserDownloadUrl;
-      updateData.platforms["windows-x86_64"].url = browserDownloadUrl;
-    }
-    if (isMatch(name, ".nsis.zip.sig", "x64")) {
-      const sig = await getSignature(browserDownloadUrl);
-      updateData.platforms.win64.signature = sig;
-      updateData.platforms["windows-x86_64"].signature = sig;
-    }
-    if (isMatch(name, ".nsis.zip", "arm64")) {
-      updateData.platforms["windows-aarch64"].url = browserDownloadUrl;
-    }
-    if (isMatch(name, ".nsis.zip.sig", "arm64")) {
-      const sig = await getSignature(browserDownloadUrl);
-      updateData.platforms["windows-aarch64"].signature = sig;
-    }
-    if (name.endsWith(".app.tar.gz") && !name.includes("aarch")) {
-      updateData.platforms.darwin.url = browserDownloadUrl;
-      updateData.platforms["darwin-intel"].url = browserDownloadUrl;
-      updateData.platforms["darwin-x86_64"].url = browserDownloadUrl;
-    }
-    if (name.endsWith(".app.tar.gz.sig") && !name.includes("aarch")) {
-      const sig = await getSignature(browserDownloadUrl);
-      updateData.platforms.darwin.signature = sig;
-      updateData.platforms["darwin-intel"].signature = sig;
-      updateData.platforms["darwin-x86_64"].signature = sig;
-    }
-    if (name.endsWith("aarch64.app.tar.gz")) {
-      updateData.platforms["darwin-aarch64"].url = browserDownloadUrl;
-    }
-    if (name.endsWith("aarch64.app.tar.gz.sig")) {
-      const sig = await getSignature(browserDownloadUrl);
-      updateData.platforms["darwin-aarch64"].signature = sig;
-    }
-    if (name.endsWith(".AppImage.tar.gz")) {
-      updateData.platforms.linux.url = browserDownloadUrl;
-      updateData.platforms["linux-x86_64"].url = browserDownloadUrl;
-    }
-    if (name.endsWith(".AppImage.tar.gz.sig")) {
-      const sig = await getSignature(browserDownloadUrl);
-      updateData.platforms.linux.signature = sig;
-      updateData.platforms["linux-x86_64"].signature = sig;
-    }
-  });
-
-  await Promise.allSettled(promises);
   consola.info(updateData);
-
-  Object.entries(updateData.platforms).forEach(([key, value]) => {
-    if (!value.url) {
-      consola.error(`failed to parse release for "${key}"`);
-      delete updateData.platforms[key as keyof typeof updateData.platforms];
+  for (const target of UPDATER_TARGETS) {
+    if (!updateData.platforms[target]) {
+      consola.error(`failed to parse release for "${target}"`);
     }
-  });
+  }
 
   const updateDataNew = JSON.parse(
     JSON.stringify(updateData),
@@ -199,21 +129,13 @@ async function resolveUpdater() {
       id: number;
     }>
   ) {
-    if (
-      argv["fixed-webview"]
-        ? asset.name === UPDATE_FIXED_WEBVIEW_FILE
-        : asset.name === UPDATE_JSON_FILE
-    ) {
+    if (asset.name === UPDATE_JSON_FILE) {
       await github.rest.repos.deleteReleaseAsset({
         ...options,
         asset_id: asset.id,
       });
     }
-    if (
-      argv["fixed-webview"]
-        ? asset.name === UPDATE_FIXED_WEBVIEW_PROXY
-        : asset.name === UPDATE_JSON_PROXY
-    ) {
+    if (asset.name === UPDATE_JSON_PROXY) {
       await github.rest.repos
         .deleteReleaseAsset({ ...options, asset_id: asset.id })
         .catch((err: unknown) => {
@@ -222,32 +144,27 @@ async function resolveUpdater() {
     }
   }
 
-  const mainFileName = argv["fixed-webview"]
-    ? UPDATE_FIXED_WEBVIEW_FILE
-    : UPDATE_JSON_FILE;
-  const proxyFileName = argv["fixed-webview"]
-    ? UPDATE_FIXED_WEBVIEW_PROXY
-    : UPDATE_JSON_PROXY;
   const mainContent = JSON.stringify(updateData, null, 2);
   const proxyContent = JSON.stringify(updateDataNew, null, 2);
 
   await github.rest.repos.uploadReleaseAsset({
     ...options,
     release_id: updateRelease.id,
-    name: mainFileName,
+    name: UPDATE_JSON_FILE,
     data: mainContent,
   });
-  await saveToCache(mainFileName, mainContent);
+  await saveToCache(UPDATE_JSON_FILE, mainContent);
 
   await github.rest.repos.uploadReleaseAsset({
     ...options,
     release_id: updateRelease.id,
-    name: proxyFileName,
+    name: UPDATE_JSON_PROXY,
     data: proxyContent,
   });
-  await saveToCache(proxyFileName, proxyContent);
+  await saveToCache(UPDATE_JSON_PROXY, proxyContent);
 }
 
 resolveUpdater().catch((err) => {
   consola.error(err);
+  Deno.exit(1);
 });

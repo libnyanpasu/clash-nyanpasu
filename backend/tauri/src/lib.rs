@@ -18,6 +18,7 @@ mod server;
 mod service;
 mod setup;
 mod specta_export;
+mod startup;
 mod state;
 
 #[cfg(windows)]
@@ -231,6 +232,9 @@ pub fn run() -> std::io::Result<()> {
         _ => None,
     };
 
+    let startup = startup::adapters::prepare(tauri::generate_context!())
+        .expect("failed to prepare application startup");
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .invoke_handler(specta_builder.invoke_handler())
@@ -241,7 +245,7 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(startup.updater.build())
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
         .setup(move |app| {
             specta_builder.mount_events(app);
@@ -348,7 +352,7 @@ pub fn run() -> std::io::Result<()> {
         });
 
     let app = builder
-        .build(tauri::generate_context!())
+        .build(startup.context)
         .expect("error while running tauri application");
     app.run(|app_handle, e| match e {
         tauri::RunEvent::ExitRequested { api, code, .. } if code.is_none() => {

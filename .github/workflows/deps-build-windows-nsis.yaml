@@ -76,6 +76,8 @@ jobs:
     env:
       # TODO: Remove after upgrading to a tauri-build release containing tauri-apps/tauri#15831.
       __CARGO_TEMPORARY_BUILD_DIR_NEW_LAYOUT_OPT_OUT: '1'
+      NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
+      BUILD_DIR: ${{ inputs.arch == 'aarch64' && 'backend/target/aarch64-pc-windows-msvc/release' || 'backend/target/release' }}
 
     steps:
       - name: Checkout repository
@@ -142,9 +144,12 @@ jobs:
             }
           }
 
-      - name: Build UI
+      - name: Build frontend packages
         run: |
-          pnpm -F ui build
+          pnpm build:packages
+
+      - name: Test Windows bundle layout
+        run: deno test --config scripts/deno.jsonc -A scripts/windows-bundle_test.ts
 
       - name: Set file server folder path
         if: ${{ inputs.nightly == true }}
@@ -153,29 +158,23 @@ jobs:
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "FOLDER_PATH=nightly/${GIT_HASH}" >> $GITHUB_ENV
 
-      - name: Prepare (Windows NSIS and Portable)
-        if: ${{ inputs.bundle-type != 'fixed-webview' }}
+      - name: Prepare release channel
         run: ${{ inputs.nightly == true && 'pnpm prepare:nightly --nsis' || 'pnpm prepare:release --nsis' }}
 
-      - name: Tauri build x86_64
-        if: ${{ inputs.arch == 'x86_64' && inputs.bundle-type != 'fixed-webview' }}
+      - name: Compile application once
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
         run: |
-          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
+          pnpm tauri build --no-bundle ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }} ${{ inputs.arch == 'aarch64' && '--target aarch64-pc-windows-msvc' || '' }}
 
-      - name: Tauri build arm64
-        if: ${{ inputs.arch == 'aarch64' && inputs.bundle-type != 'fixed-webview' }}
+      - name: Bundle standard NSIS installer
+        if: ${{ inputs.bundle-type != 'fixed-webview' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
         run: |
-          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json --target aarch64-pc-windows-msvc' || '-f default-meta --target aarch64-pc-windows-msvc' }}
+          pnpm tauri bundle --bundles nsis ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }} ${{ inputs.arch == 'aarch64' && '--target aarch64-pc-windows-msvc' || '' }}
 
       - name: Portable Bundle
         if: ${{ inputs.portable == true && inputs.bundle-type != 'fixed-webview' }}
@@ -183,7 +182,6 @@ jobs:
           pnpm portable
         env:
           RUST_ARCH: ${{ inputs.arch }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
           VITE_WIN_PORTABLE: 1
 
       - name: Upload NSIS Installer
@@ -224,12 +222,10 @@ jobs:
           path: ./upload-results.json
           if-no-files-found: ignore
 
-      - name: Clean standard build outputs
+      - name: Clean standard bundle outputs
         if: ${{ inputs.bundle-type == 'both' }}
         run: |
-          Get-ChildItem -Path "./backend/target" -Recurse -Include "*.exe", "*.zip", "*.zip.sig" |
-            Where-Object { $_.FullName -like "*\bundle\*" } |
-            Remove-Item -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath "$env:BUILD_DIR/bundle" -Recurse -Force
           Get-ChildItem -Path "." -Filter "*_portable.zip" -ErrorAction SilentlyContinue |
             Remove-Item -Force
           Remove-Item -Path "./upload-results.json" -Force -ErrorAction SilentlyContinue
@@ -253,32 +249,21 @@ jobs:
           echo "Downloading $uri to $outfile"
           invoke-webrequest -uri $uri -outfile $outfile
           echo "Download finished, attempting to extract"
-          expand.exe $outfile -F:* ./backend/tauri
+          $extractDir = './backend/tauri/tmp/windows-bundle/download'
+          New-Item -ItemType Directory -Force $extractDir | Out-Null
+          expand.exe $outfile -F:* $extractDir
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to extract fixed WebView2' }
+          Move-Item -LiteralPath "$extractDir/Microsoft.WebView2.FixedVersionRuntime.$version.$arch" -Destination './backend/tauri/WebView2'
           echo "Extraction finished"
 
-      - name: Prepare (Windows NSIS and Portable) with fixed WebView
+      - name: Bundle fixed WebView NSIS installer
         if: ${{ inputs.bundle-type != 'standard' }}
-        run: ${{ inputs.nightly == true && 'pnpm prepare:nightly --nsis --fixed-webview' || 'pnpm prepare:release --nsis --fixed-webview' }}
-
-      - name: Tauri build x86_64 with fixed WebView
-        if: ${{ inputs.arch == 'x86_64' && inputs.bundle-type != 'standard' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
         run: |
-          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
-
-      - name: Tauri build arm64 with fixed WebView
-        if: ${{ inputs.arch == 'aarch64' && inputs.bundle-type != 'standard' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
-        run: |
-          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json --target aarch64-pc-windows-msvc' || '-f default-meta --target aarch64-pc-windows-msvc' }}
+          pnpm tauri bundle --bundles nsis ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }} ${{ inputs.arch == 'aarch64' && '--target aarch64-pc-windows-msvc' || '' }} -c ./backend/tauri/overrides/fixed-webview2.conf.json
 
       - name: Rename fixed webview bundle name
         if: ${{ inputs.bundle-type != 'standard' }}
@@ -306,7 +291,6 @@ jobs:
           pnpm portable --fixed-webview
         env:
           RUST_ARCH: ${{ inputs.arch }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
           VITE_WIN_PORTABLE: 1
 
       - name: Upload NSIS Installer with fixed WebView

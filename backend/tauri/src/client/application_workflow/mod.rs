@@ -447,6 +447,11 @@ impl Actor for ApplicationWorkflowActor {
                 if let Ok(Output::Shutdown(report)) = &result {
                     state.shutdown = Some(report.clone());
                     let waiters = std::mem::take(&mut state.shutdown_waiters);
+                    // Published before the waiters are answered: a caller that
+                    // observes its own reply must not then read itself as still
+                    // queued, and `publish` is what recomputes the queue after
+                    // those waiters were taken out of it.
+                    state.publish();
                     for waiter in waiters {
                         state.settle(waiter, Ok(Output::Shutdown(report.clone())));
                     }

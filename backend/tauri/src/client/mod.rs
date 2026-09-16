@@ -391,9 +391,9 @@ impl NyanpasuClient {
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
                 snapshots: runtime::RuntimeSnapshotStore::default(),
-                application: application.clone(),
-                clash: clash_config.clone(),
-                profiles: profiles.clone(),
+                application: application.snapshot_handle(),
+                clash: clash_config.snapshot_handle(),
+                profiles: profiles.snapshot_handle(),
                 core: core_v2.clone(),
                 service,
                 builder: Arc::new(application_workflow::adapters::FsRuntimeBuildAdapter {
@@ -514,11 +514,20 @@ impl NyanpasuClient {
             .await
             .map_err(client_error_from_core)
     }
+    /// Commits the core selection in the application domain, then reconciles
+    /// the running core onto it.
     pub async fn update_core(
         &self,
         core: nyanpasu_config::application::ClashCore,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
-        self.inner.application_workflow.select_core(core).await
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.core = Some(core);
+        self.inner
+            .application
+            .patch(patch)
+            .await
+            .map_err(core_lifecycle::domain_error)?;
+        self.inner.application_workflow.reconcile().await
     }
     pub async fn change_execution_host(
         &self,
@@ -526,10 +535,15 @@ impl NyanpasuClient {
     ) -> std::result::Result<HandoffReport, nyanpasu_core_manager::CoreError> {
         self.inner.application_workflow.change_host(host).await
     }
+    /// Commits the host selection in the application domain, then asks the
+    /// workflow to move the running core onto it.
     pub async fn set_execution_host(
         &self,
         service_mode: bool,
     ) -> Result<runtime::MutationOutcome<()>> {
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.enable_service_mode = Some(service_mode);
+        self.inner.application.patch(patch).await?;
         self.inner
             .application_workflow
             .set_execution_host(service_mode)
@@ -716,10 +730,12 @@ impl NyanpasuClient {
         &self,
         patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
+        let mode_changed = patch.mode.is_some();
+        let committed = self.inner.clash_config.patch_overrides(patch).await?;
         let outcome = self
             .inner
             .application_workflow
-            .patch_runtime_overrides(patch)
+            .apply_clash_overrides(committed.state, mode_changed)
             .await
             .map_err(client_error_from_core)?;
         self.request_proxy_refresh();
@@ -1179,10 +1195,17 @@ impl NyanpasuClient {
     /// - `Ok(None)` → existing current won; no degradation
     /// - `Err(_)` → committed degradation, profile id retained by the caller
     async fn try_auto_activate_if_none(&self, uid: ProfileId) -> Vec<runtime::Degradation> {
+        // The conditional stays atomic inside the profiles actor: a facade-level
+        // read-then-write could lose a concurrent selection.
+        let report = match self.inner.profiles.set_current_if_none(uid).await {
+            Ok(None) => return Vec::new(),
+            Ok(Some(report)) => report,
+            Err(error) => return vec![Self::auto_activation_failure_degradation(&error)],
+        };
         match self
             .inner
             .application_workflow
-            .auto_activate_profile(uid)
+            .apply_profile_activation(report)
             .await
         {
             Ok(outcome) => outcome.into_parts().1,
@@ -1367,9 +1390,10 @@ impl NyanpasuClient {
         &self,
         uid: Option<ProfileId>,
     ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.set_current(uid).await?;
         self.inner
             .application_workflow
-            .activate_profile(uid)
+            .apply_profile_activation(report)
             .await
             .map_err(client_error_from_core)
     }
@@ -2538,6 +2562,73 @@ pub(crate) mod tests {
         )
         .await
         .unwrap()
+    }
+
+    /// The application workflow applies committed state; it is not a second
+    /// commit point for a configuration domain (design D1/§3.1). Holding a
+    /// domain client, the facade that owns all three, or an actor's raw message
+    /// enum is what would make it one, so the production sources under the
+    /// workflow must not name any of them. Its `tests/` directories are skipped:
+    /// a fixture legitimately builds the real clients to seed a graph.
+    #[test]
+    fn application_workflow_sources_hold_no_source_config_client() {
+        // A domain client is the direct way to write a source domain. The facade
+        // reaches all three, and an actor's own message enum reaches one without
+        // its typed client, so naming any of them is a way to commit.
+        const FORBIDDEN: [&str; 10] = [
+            "ApplicationClient",
+            "ClashConfigClient",
+            "ProfilesClient",
+            "NyanpasuClient",
+            "ApplicationActorMessage",
+            "ClashConfigActorMessage",
+            "ProfilesActorMessage",
+            "SessionStateActorMessage",
+            "CoreActorMessage",
+            "ServiceActorMessage",
+        ];
+
+        fn collect(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("workflow sources should be readable") {
+                let path = entry.expect("directory entry should be readable").path();
+                if path.is_dir() {
+                    if path.file_name() != Some(std::ffi::OsStr::new("tests")) {
+                        collect(&path, files);
+                    }
+                } else if path.extension() == Some(std::ffi::OsStr::new("rs")) {
+                    files.push(path);
+                }
+            }
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/client");
+        let mut files = Vec::new();
+        collect(&root.join("application_workflow"), &mut files);
+        collect(&root.join("core_lifecycle"), &mut files);
+        assert!(!files.is_empty(), "the scan found no workflow sources");
+
+        let mut offenders = Vec::new();
+        for file in files {
+            let source = std::fs::read_to_string(&file).expect("workflow source should be UTF-8");
+            for (number, line) in source.lines().enumerate() {
+                for name in FORBIDDEN {
+                    if line.contains(name) {
+                        offenders.push(format!(
+                            "{}:{}: {}",
+                            file.display(),
+                            number + 1,
+                            line.trim()
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "the application workflow must read source config through StateSnapshot handles, \
+             reach the actors through their typed clients, and let the facade commit:\n{}",
+            offenders.join("\n")
+        );
     }
 
     /// Required subscriber that holds the transaction open inside `on_prepare`

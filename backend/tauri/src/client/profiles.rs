@@ -90,6 +90,12 @@ impl ProfilesClient {
         Arc::new(self.inner.snapshot.load().state.clone())
     }
 
+    /// Read-only handle for collaborators that must observe committed state
+    /// without holding a client that could write it.
+    pub(crate) fn snapshot_handle(&self) -> StateSnapshot<Profiles> {
+        self.inner.snapshot.clone()
+    }
+
     pub async fn set_current(
         &self,
         current: Option<ProfileId>,

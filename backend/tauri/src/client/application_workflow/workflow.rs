@@ -1,23 +1,25 @@
 use std::sync::Arc;
 
-use nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch;
+use nyanpasu_config::{clash::config::ClashConfig, profile::Profiles};
+use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, OperationId};
 
-use super::{Command, Output, preparation::RuntimePreparation, profiles::ProfileActivation};
+use super::{Command, Output, preparation::RuntimePreparation};
 use crate::{
     client::{
         UiEventSink,
-        clash_config::ClashConfigClient,
-        core_lifecycle::{CoreLifecycleWorkflow, apply::RuntimeApplyOptions, domain_error},
-        profiles::ProfilesClient,
+        core_lifecycle::{CoreLifecycleWorkflow, apply::RuntimeApplyOptions},
         runtime,
     },
     core::connections::ConnectionScope,
 };
 
+/// Applies already committed source config to the running core. The two state
+/// handles are read-only and are sampled only once the actor has admitted the
+/// command, so a candidate never fixes a domain it did not wait for.
 pub(super) struct ApplicationWorkflow {
-    pub profiles: ProfilesClient,
-    pub clash: ClashConfigClient,
+    pub profiles: StateSnapshot<Profiles>,
+    pub clash: StateSnapshot<ClashConfig>,
     pub preparation: RuntimePreparation,
     pub lifecycle: CoreLifecycleWorkflow,
     pub ui: Arc<dyn UiEventSink>,
@@ -33,46 +35,44 @@ impl ApplicationWorkflow {
         self.lifecycle.capture_core_intent();
         let result = match command {
             Command::Core(command) => self.lifecycle.execute(command, &mut self.preparation).await,
-            Command::PatchRuntimeOverrides(patch) => self.patch_runtime_overrides(id, patch).await,
-            Command::ActivateProfile(uid) => {
-                self.activate_profile(id, ProfileActivation::Select(uid))
+            Command::ApplyClashOverrides {
+                committed,
+                mode_changed,
+            } => {
+                self.apply_clash_overrides(id, committed, mode_changed)
                     .await
             }
-            Command::AutoActivateProfile(uid) => {
-                self.activate_profile(id, ProfileActivation::IfNone(uid))
-                    .await
+            Command::ApplyProfileActivation(report) => {
+                self.apply_profile_activation(id, report).await
             }
         };
         self.lifecycle.uncertain |= self.lifecycle.core.outcome_uncertain();
         result
     }
 
-    async fn patch_runtime_overrides(
+    async fn apply_clash_overrides(
         &mut self,
         id: OperationId,
-        patch: ClashGuardOverridesPatch,
+        committed: ClashConfig,
+        mode_changed: bool,
     ) -> Result<Output, CoreError> {
-        let policy = self.clash.snapshot().state.break_connection;
+        // `break_connection` lives outside `overrides`, so the committed state
+        // carries the same interruption policy the patch was decided against.
+        let interrupt = mode_changed && committed.break_connection.on_mode_change;
         let context = self
             .lifecycle
             .prepare_apply(
                 id,
                 RuntimeApplyOptions {
-                    interrupt_connections: (patch.mode.is_some() && policy.on_mode_change)
-                        .then_some(ConnectionScope::All),
+                    interrupt_connections: interrupt.then_some(ConnectionScope::All),
                 },
             )
             .await;
-        let committed = self
-            .clash
-            .patch_overrides(patch)
-            .await
-            .map_err(domain_error)?;
         let applied = async {
-            let profiles = self.profiles.snapshot();
+            let profiles = Arc::new(self.profiles.load().state.clone());
             let prepared = self
                 .preparation
-                .prepare_committed(profiles, committed.state)
+                .prepare_committed(profiles, committed)
                 .await?;
             self.lifecycle
                 .apply(prepared, context, &self.preparation)

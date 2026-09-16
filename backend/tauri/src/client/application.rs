@@ -94,6 +94,12 @@ impl ApplicationClient {
         ApplicationSnapshot::from_versioned(&self.inner.snapshot.load())
     }
 
+    /// Read-only handle for collaborators that must observe committed state
+    /// without holding a client that could write it.
+    pub(crate) fn snapshot_handle(&self) -> StateSnapshot<NyanpasuAppConfig> {
+        self.inner.snapshot.clone()
+    }
+
     pub async fn patch(
         &self,
         patch: NyanpasuAppConfigPatch,

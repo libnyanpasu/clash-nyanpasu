@@ -9,6 +9,7 @@ use super::{
     *,
 };
 use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary};
+use nyanpasu_config::application::ClashCore;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use struct_patch::Patch;
 use tokio::sync::Notify;
@@ -147,9 +148,9 @@ async fn dirty_graph_with_clients(
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
             snapshots,
-            application: application.clone(),
-            clash: clash.clone(),
-            profiles,
+            application: application.snapshot_handle(),
+            clash: clash.snapshot_handle(),
+            profiles: profiles.snapshot_handle(),
             core,
             service,
             builder: builder.clone(),
@@ -299,8 +300,10 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     args.service = service;
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
-        let mut switch = Box::pin(client.set_execution_host(true));
-        assert!(switch.as_mut().now_or_never().is_none());
+        let switch = {
+            let client = client.clone();
+            tokio::spawn(async move { client.set_execution_host(true).await })
+        };
         endpoint.entered.notified().await;
         let mut uninstall = Box::pin(client.uninstall_service());
         assert!(uninstall.as_mut().now_or_never().is_none());
@@ -309,7 +312,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         assert!(!calls.lock().unwrap().contains(&"uninstall"));
         endpoint.release.notify_one();
         assert!(matches!(
-            switch.await.unwrap(),
+            switch.await.unwrap().unwrap(),
             runtime::MutationOutcome::Applied { .. }
         ));
         assert_eq!(
@@ -826,7 +829,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
 }
 
 #[tokio::test]
-async fn config_write_waits_for_active_lifecycle_work_before_committing() {
+async fn queued_config_apply_waits_for_active_lifecycle_work() {
     let dir = tempfile::tempdir().unwrap();
     let (client, _, builder, _, clash) = dirty_graph(&dir).await;
     let mut config = clash.snapshot().state;
@@ -837,21 +840,24 @@ async fn config_write_waits_for_active_lifecycle_work_before_committing() {
         tokio::spawn(async move { client.reconcile().await })
     };
     builder.entered.notified().await;
-    let mut patch = Box::pin(
-        client.patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"}))),
-    );
-    assert!(patch.as_mut().now_or_never().is_none());
+    // The facade's own commit does not wait for the workflow, so the candidate
+    // that queues here is already the committed one.
+    let committed = clash
+        .patch_overrides(override_patch(serde_json::json!({"mode":"global"})))
+        .await
+        .unwrap();
+    let mut apply = Box::pin(client.apply_clash_overrides(committed.state, true));
+    assert!(apply.as_mut().now_or_never().is_none());
     barrier(&client).await;
     assert_eq!(client.status().queued.len(), 1);
     assert_eq!(
-        serde_json::to_value(clash.snapshot().state.overrides).unwrap()["mode"],
-        "rule",
-        "queued writes must not commit ahead of lifecycle admission"
+        builder.calls.load(Ordering::SeqCst),
+        1,
+        "a queued apply must not build ahead of lifecycle admission"
     );
-    assert_eq!(builder.calls.load(Ordering::SeqCst), 1);
     builder.release.notify_one();
     active.await.unwrap().unwrap();
-    assert!(patch.await.unwrap().degradations().is_empty());
+    assert!(apply.await.unwrap().degradations().is_empty());
     let config = &client.runtime().promoted.unwrap().config;
     assert_eq!(config["mode"].as_str(), Some("global"));
     assert_eq!(builder.calls.load(Ordering::SeqCst), 2);

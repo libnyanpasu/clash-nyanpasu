@@ -61,7 +61,7 @@
     "prepare:check": "deno run -A scripts/check.ts"
   },
   "dependencies": {
-    "@prettier/plugin-oxc": "0.2.2",
+    "@prettier/plugin-oxc": "0.2.3",
     "husky": "9.1.7"
   },
   "devDependencies": {
@@ -80,7 +80,7 @@
     "postcss": "8.5.28",
     "postcss-html": "2.0.0",
     "postcss-scss": "4.0.9",
-    "prettier": "3.9.6",
+    "prettier": "3.9.7",
     "prettier-plugin-tailwindcss": "0.8.1",
     "prettier-plugin-toml": "2.0.6",
     "react": "19.3.0",
@@ -91,7 +91,7 @@
     "stylelint-config-standard": "40.0.0",
     "stylelint-declaration-block-no-ignored-properties": "3.0.0",
     "stylelint-order": "8.1.1",
-    "stylelint-scss": "7.2.0",
+    "stylelint-scss": "7.3.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.0",

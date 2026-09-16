@@ -170,8 +170,8 @@ importers:
   .:
     dependencies:
       '@prettier/plugin-oxc':
-        specifier: 0.2.2
-        version: 0.2.2
+        specifier: 0.2.3
+        version: 0.2.3
       husky:
         specifier: 9.1.7
         version: 9.1.7
@@ -184,7 +184,7 @@ importers:
         version: 21.2.2
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.7.1
-        version: 4.7.1(@prettier/plugin-oxc@0.2.2)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.6)(supports-color@10.2.2))(prettier@3.9.6)(supports-color@10.2.2)
+        version: 4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.7)(supports-color@10.2.2))(prettier@3.9.7)(supports-color@10.2.2)
       '@tauri-apps/cli':
         specifier: 2.11.4
         version: 2.11.4
@@ -222,14 +222,14 @@ importers:
         specifier: 4.0.9
         version: 4.0.9(postcss@8.5.28)
       prettier:
-        specifier: 3.9.6
-        version: 3.9.6
+        specifier: 3.9.7
+        version: 3.9.7
       prettier-plugin-tailwindcss:
         specifier: 0.8.1
-        version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.2)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.6)(supports-color@10.2.2))(prettier@3.9.6)(supports-color@10.2.2))(@prettier/plugin-oxc@0.2.2)(prettier@3.9.6)
+        version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.7)(supports-color@10.2.2))(prettier@3.9.7)(supports-color@10.2.2))(@prettier/plugin-oxc@0.2.3)(prettier@3.9.7)
       prettier-plugin-toml:
         specifier: 2.0.6
-        version: 2.0.6(prettier@3.9.6)
+        version: 2.0.6(prettier@3.9.7)
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -255,8 +255,8 @@ importers:
         specifier: 8.1.1
         version: 8.1.1(stylelint@17.15.0(supports-color@10.2.2)(typescript@7.0.2))
       stylelint-scss:
-        specifier: 7.2.0
-        version: 7.2.0(stylelint@17.15.0(supports-color@10.2.2)(typescript@7.0.2))
+        specifier: 7.3.0
+        version: 7.3.0(stylelint@17.15.0(supports-color@10.2.2)(typescript@7.0.2))
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
@@ -537,7 +537,7 @@ importers:
         version: 3.2.2(vite@8.3.0(@types/node@24.13.5)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0))
       vite-plugin-sass-dts:
         specifier: 1.3.39
-        version: 1.3.39(postcss@8.5.28)(prettier@3.9.6)(sass-embedded@1.104.1)(vite@8.3.0(@types/node@24.13.5)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0))
+        version: 1.3.39(postcss@8.5.28)(prettier@3.9.7)(sass-embedded@1.104.1)(vite@8.3.0(@types/node@24.13.5)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0))
       vite-plugin-svgr:
         specifier: 5.2.0
         version: 5.2.0(supports-color@10.2.2)(typescript@7.0.2)(vite@8.3.0(@types/node@24.13.5)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0))
@@ -1224,13 +1224,6 @@ packages:
     resolution: {integrity: sha512-aalGyl7dbB5PArRebDIX43ZvBlXrYm9uWzGJ26t+4SzJVPsOuvfILGGbw5X4yX7i50YEmJ8zvbiWnqH/AAnZqg==}
     engines: {node: '>=22'}
 
-  '@csstools/css-calc@3.2.1':
-    resolution: {integrity: sha512-DtdHlgXh5ZkA43cwBcAm+huzgJiwx3ZTWVjBs94kwz2xKqSimDA3lBgCjphYgwgVUMWatSM0pDd8TILB1yrVVg==}
-    engines: {node: '>=20.19.0'}
-    peerDependencies:
-      '@csstools/css-parser-algorithms': ^4.0.0
-      '@csstools/css-tokenizer': ^4.0.0
-
   '@csstools/css-calc@3.3.0':
     resolution: {integrity: sha512-c5ihYsPkdG6JCkU2zTMm4+k6r7RXuGxtWYhu5DHMIiF1FHzrfmHL5so11AoFpUv/tu61xfcmT4AmKoFfMPoqdQ==}
     engines: {node: '>=20.19.0'}
@@ -1246,14 +1239,6 @@ packages:
 
   '@csstools/css-syntax-patches-for-csstree@1.1.12':
     resolution: {integrity: sha512-3vLQK+dXxhBMR2Wx99PTCifE+vHtW2ndZWyla8yK813ev6oGhyn8Lja8jCyGAWTJ+LEYZK7EVtJxrDj8ztevJw==}
-    peerDependencies:
-      css-tree: ^3.2.1
-    peerDependenciesMeta:
-      css-tree:
-        optional: true
-
-  '@csstools/css-syntax-patches-for-csstree@1.1.5':
-    resolution: {integrity: sha512-oNjBvzLq2GPZtJphCjLqXow/cHySHSgtxvKZb7OqSZ/xHgw6NWNhfad+6AB9cLeVm6eA9d/qMll3JdEHjy6M+A==}
     peerDependencies:
       css-tree: ^3.2.1
     peerDependenciesMeta:
@@ -2307,8 +2292,8 @@ packages:
   '@preact/signals-core@1.14.0':
     resolution: {integrity: sha512-AowtCcCU/33lFlh1zRFf/u+12rfrhtNakj7UpaGEsmMwUKpKWMVvcktOGcwBBNiB4lWrZWc01LhiyyzVklJyaQ==}
 
-  '@prettier/plugin-oxc@0.2.2':
-    resolution: {integrity: sha512-yscDcAuDtvOfE0c8i8UVP+hjK43VIPpwfMv+73mdkpy12rZWnk5Kl6N6pUneQmaZ3PKTg611zemBHFpMjp9ZnQ==}
+  '@prettier/plugin-oxc@0.2.3':
+    resolution: {integrity: sha512-6TYRFBxthmW0IULsZjik2Gu62jc17xPILlcSIXTXfrhDH4etIcissalZ+RO5oweMWidM3jJ38QJbkD2C6J0/LA==}
     engines: {node: '>=14'}
 
   '@radix-ui/number@1.1.3':
@@ -5328,8 +5313,8 @@ packages:
     resolution: {integrity: sha512-+Pgi+vMuUNkJyExiMBt5IlFoMyKnr5zhJ4Uspz58WOhBF5QoIZkFyNHIbBAtHwzVAgk5RtndVNsDRN61/mmDqg==}
     engines: {node: '>=12'}
 
-  is-plain-object@5.0.0:
-    resolution: {integrity: sha512-VRSzKkbMm5jMDoKLbltAkFQ5Qr7VDiTFGXxYFXXowVj387GeGNOCsOH6Msy00SGZ3Fp84b1Naa1psqgcCIEP5Q==}
+  is-plain-object@5.1.0:
+    resolution: {integrity: sha512-bUi/yjmtKYcRVUtWRGr0UA6xEFh2I6zWUwMrUXB3s7bmYCaZ8a+0ZsTRkrawh/mzlSD1Y0Ph8bp/U+TvBpWDNw==}
     engines: {node: '>=0.10.0'}
 
   is-what@4.1.16:
@@ -6026,10 +6011,6 @@ packages:
     peerDependencies:
       postcss: ^8.4.29
 
-  postcss-selector-parser@7.1.1:
-    resolution: {integrity: sha512-orRsuYpJVw8LdAwqqLykBj9ecS5/cRHlI5+nvTo8LcCKmzDmqVORXtOIYEEQuL9D4BxtA1lm5isAqzQZCoQ6Eg==}
-    engines: {node: '>=4'}
-
   postcss-selector-parser@7.1.6:
     resolution: {integrity: sha512-7qASPzhKF2l2KLboRZux8CCTRMdGiV08vWmyKzPz22qZ7ZjQBOeY7rNzNoCLSUiftJ7HUq0GERHmxw/t0dCdMw==}
     engines: {node: '>=4'}
@@ -6118,8 +6099,8 @@ packages:
     engines: {node: '>=14'}
     hasBin: true
 
-  prettier@3.9.6:
-    resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
+  prettier@3.9.7:
+    resolution: {integrity: sha512-T3mF5P7HFzZVLDQuCUNtJj6WK1pcpLMweMNUVwGb01bLNkH9AkKxtZvmInw8K6bnn2O3d6/5RHl6zSHiBAD0Og==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -6698,8 +6679,8 @@ packages:
     peerDependencies:
       stylelint: ^16.18.0 || ^17.0.0
 
-  stylelint-scss@7.2.0:
-    resolution: {integrity: sha512-6E79Bachv0Iz0gqRUZgdqdXCsiq26DWBWIBNHYtjTmAp3wJu6cp/I37VfW7BPntmh2puF3bY09XWl4HZGrLhzw==}
+  stylelint-scss@7.3.0:
+    resolution: {integrity: sha512-FBz075AUFoEJ1WQKsgsRr6EJKcjy7jxQjV8xsAqbPcnhNiXnJ7C489vqUyDZccBy1GorewlshERkaMuCyOKXaw==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       stylelint: ^16.8.2 || ^17.0.0
@@ -8183,11 +8164,6 @@ snapshots:
 
   '@conventional-changelog/template@1.4.0': {}
 
-  '@csstools/css-calc@3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
-    dependencies:
-      '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-tokenizer': 4.0.0
-
   '@csstools/css-calc@3.3.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
     dependencies:
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
@@ -8198,10 +8174,6 @@ snapshots:
       '@csstools/css-tokenizer': 4.0.0
 
   '@csstools/css-syntax-patches-for-csstree@1.1.12(css-tree@3.2.1)':
-    optionalDependencies:
-      css-tree: 3.2.1
-
-  '@csstools/css-syntax-patches-for-csstree@1.1.5(css-tree@3.2.1)':
     optionalDependencies:
       css-tree: 3.2.1
 
@@ -8348,18 +8320,18 @@ snapshots:
       valibot: 1.4.2(typescript@7.0.2)
       zod: 4.6.5
 
-  '@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.2)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.6)(supports-color@10.2.2))(prettier@3.9.6)(supports-color@10.2.2)':
+  '@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.7)(supports-color@10.2.2))(prettier@3.9.7)(supports-color@10.2.2)':
     dependencies:
       '@babel/generator': 7.29.0
       '@babel/parser': 7.29.0
       '@babel/traverse': 7.29.0(supports-color@10.2.2)
       '@babel/types': 7.29.0
-      prettier: 3.9.6
+      prettier: 3.9.7
       semver: 7.7.3
     optionalDependencies:
-      '@prettier/plugin-oxc': 0.2.2
+      '@prettier/plugin-oxc': 0.2.3
       content-tag: 4.2.0
-      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.9.6)(supports-color@10.2.2)
+      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.9.7)(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -8897,7 +8869,7 @@ snapshots:
 
   '@preact/signals-core@1.14.0': {}
 
-  '@prettier/plugin-oxc@0.2.2':
+  '@prettier/plugin-oxc@0.2.3':
     dependencies:
       oxc-parser: 0.139.0
 
@@ -11858,7 +11830,7 @@ snapshots:
 
   is-plain-obj@4.1.0: {}
 
-  is-plain-object@5.0.0: {}
+  is-plain-object@5.1.0: {}
 
   is-what@4.1.16: {}
 
@@ -12737,11 +12709,6 @@ snapshots:
     dependencies:
       postcss: 8.5.28
 
-  postcss-selector-parser@7.1.1:
-    dependencies:
-      cssesc: 3.0.0
-      util-deprecate: 1.0.2
-
   postcss-selector-parser@7.1.6:
     dependencies:
       cssesc: 3.0.0
@@ -12759,30 +12726,30 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.6)(supports-color@10.2.2):
+  prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.7)(supports-color@10.2.2):
     dependencies:
       '@babel/traverse': 7.29.8(supports-color@10.2.2)
       content-tag: 4.2.0
-      prettier: 3.9.6
+      prettier: 3.9.7
     transitivePeerDependencies:
       - supports-color
     optional: true
 
-  prettier-plugin-tailwindcss@0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.2)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.6)(supports-color@10.2.2))(prettier@3.9.6)(supports-color@10.2.2))(@prettier/plugin-oxc@0.2.2)(prettier@3.9.6):
+  prettier-plugin-tailwindcss@0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.7)(supports-color@10.2.2))(prettier@3.9.7)(supports-color@10.2.2))(@prettier/plugin-oxc@0.2.3)(prettier@3.9.7):
     dependencies:
-      prettier: 3.9.6
+      prettier: 3.9.7
     optionalDependencies:
-      '@ianvs/prettier-plugin-sort-imports': 4.7.1(@prettier/plugin-oxc@0.2.2)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.6)(supports-color@10.2.2))(prettier@3.9.6)(supports-color@10.2.2)
-      '@prettier/plugin-oxc': 0.2.2
+      '@ianvs/prettier-plugin-sort-imports': 4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.7)(supports-color@10.2.2))(prettier@3.9.7)(supports-color@10.2.2)
+      '@prettier/plugin-oxc': 0.2.3
 
-  prettier-plugin-toml@2.0.6(prettier@3.9.6):
+  prettier-plugin-toml@2.0.6(prettier@3.9.7):
     dependencies:
       '@taplo/lib': 0.5.0
-      prettier: 3.9.6
+      prettier: 3.9.7
 
   prettier@3.8.5: {}
 
-  prettier@3.9.6: {}
+  prettier@3.9.7: {}
 
   probe-image-size@7.3.0(supports-color@10.2.2):
     dependencies:
@@ -13431,18 +13398,18 @@ snapshots:
       postcss-sorting: 10.0.0(postcss@8.5.28)
       stylelint: 17.15.0(supports-color@10.2.2)(typescript@7.0.2)
 
-  stylelint-scss@7.2.0(stylelint@17.15.0(supports-color@10.2.2)(typescript@7.0.2)):
+  stylelint-scss@7.3.0(stylelint@17.15.0(supports-color@10.2.2)(typescript@7.0.2)):
     dependencies:
-      '@csstools/css-calc': 3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-calc': 3.3.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-syntax-patches-for-csstree': 1.1.5(css-tree@3.2.1)
+      '@csstools/css-syntax-patches-for-csstree': 1.1.12(css-tree@3.2.1)
       '@csstools/css-tokenizer': 4.0.0
       css-tree: 3.2.1
-      is-plain-object: 5.0.0
+      is-plain-object: 5.1.0
       known-css-properties: 0.37.0
       postcss-media-query-parser: 0.2.3
       postcss-resolve-nested-selector: 0.1.6
-      postcss-selector-parser: 7.1.1
+      postcss-selector-parser: 7.1.6
       postcss-value-parser: 4.2.0
       stylelint: 17.15.0(supports-color@10.2.2)(typescript@7.0.2)
 
@@ -13841,11 +13808,11 @@ snapshots:
       pathe: 0.2.0
       vite: 8.3.0(@types/node@24.13.5)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0)
 
-  vite-plugin-sass-dts@1.3.39(postcss@8.5.28)(prettier@3.9.6)(sass-embedded@1.104.1)(vite@8.3.0(@types/node@24.13.5)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0)):
+  vite-plugin-sass-dts@1.3.39(postcss@8.5.28)(prettier@3.9.7)(sass-embedded@1.104.1)(vite@8.3.0(@types/node@24.13.5)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0)):
     dependencies:
       postcss: 8.5.28
       postcss-js: 4.0.1(postcss@8.5.28)
-      prettier: 3.9.6
+      prettier: 3.9.7
       sass-embedded: 1.104.1
       vite: 8.3.0(@types/node@24.13.5)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0)
 

@@ -8,6 +8,7 @@ scripts/_env.sh
 
 .eslintcache
 .stylelintcache
+.vitest/
 
 tauri.nightly.conf.json
 tauri.preview.conf.json

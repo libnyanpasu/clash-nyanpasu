@@ -319,6 +319,9 @@ jobs:
           sudo docker image prune --all --force
           df -h
 
+      - name: Install test browser
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Test
         run: pnpm test
 

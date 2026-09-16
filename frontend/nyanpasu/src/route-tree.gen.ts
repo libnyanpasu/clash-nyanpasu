@@ -21,6 +21,7 @@ import { Route as mainMainProvidersRouteRouteImport } from './pages/(main)/main/
 import { Route as mainMainProxiesRouteRouteImport } from './pages/(main)/main/proxies/route'
 import { Route as mainMainRulesRouteRouteImport } from './pages/(main)/main/rules/route'
 import { Route as mainMainSettingsRouteRouteImport } from './pages/(main)/main/settings/route'
+import { Route as mainMainTopologyRouteRouteImport } from './pages/(main)/main/topology/route'
 import { Route as trayMenuTrayMenuIndexRouteImport } from './pages/(tray-menu)/tray-menu/index'
 import { Route as trayMenuTrayMenuProxiesRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/route'
 import { Route as editorEditorCssIndexRouteImport } from './pages/(editor)/editor/css/index'
@@ -109,6 +110,11 @@ const mainMainRulesRouteRoute = mainMainRulesRouteRouteImport.update({
 const mainMainSettingsRouteRoute = mainMainSettingsRouteRouteImport.update({
   id: '/main/settings',
   path: '/main/settings',
+  getParentRoute: () => mainRouteRoute,
+} as any)
+const mainMainTopologyRouteRoute = mainMainTopologyRouteRouteImport.update({
+  id: '/main/topology',
+  path: '/main/topology',
   getParentRoute: () => mainRouteRoute,
 } as any)
 const trayMenuTrayMenuIndexRoute = trayMenuTrayMenuIndexRouteImport.update({
@@ -288,6 +294,7 @@ export interface FileRoutesByFullPath {
   '/main/proxies': typeof mainMainProxiesRouteRouteWithChildren
   '/main/rules': typeof mainMainRulesRouteRouteWithChildren
   '/main/settings': typeof mainMainSettingsRouteRouteWithChildren
+  '/main/topology': typeof mainMainTopologyRouteRoute
   '/tray-menu/proxies': typeof trayMenuTrayMenuProxiesRouteRouteWithChildren
   '/main/': typeof mainMainIndexRoute
   '/tray-menu/': typeof trayMenuTrayMenuIndexRoute
@@ -321,6 +328,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/editor': typeof editorEditorRouteRouteWithChildren
+  '/main/topology': typeof mainMainTopologyRouteRoute
   '/main': typeof mainMainIndexRoute
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
@@ -363,6 +371,7 @@ export interface FileRoutesById {
   '/(main)/main/proxies': typeof mainMainProxiesRouteRouteWithChildren
   '/(main)/main/rules': typeof mainMainRulesRouteRouteWithChildren
   '/(main)/main/settings': typeof mainMainSettingsRouteRouteWithChildren
+  '/(main)/main/topology': typeof mainMainTopologyRouteRoute
   '/(tray-menu)/tray-menu/proxies': typeof trayMenuTrayMenuProxiesRouteRouteWithChildren
   '/(main)/main/': typeof mainMainIndexRoute
   '/(tray-menu)/tray-menu/': typeof trayMenuTrayMenuIndexRoute
@@ -407,6 +416,7 @@ export interface FileRouteTypes {
     | '/main/proxies'
     | '/main/rules'
     | '/main/settings'
+    | '/main/topology'
     | '/tray-menu/proxies'
     | '/main/'
     | '/tray-menu/'
@@ -440,6 +450,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/editor'
+    | '/main/topology'
     | '/main'
     | '/tray-menu'
     | '/main/profiles/inspect'
@@ -481,6 +492,7 @@ export interface FileRouteTypes {
     | '/(main)/main/proxies'
     | '/(main)/main/rules'
     | '/(main)/main/settings'
+    | '/(main)/main/topology'
     | '/(tray-menu)/tray-menu/proxies'
     | '/(main)/main/'
     | '/(tray-menu)/tray-menu/'
@@ -603,6 +615,13 @@ declare module '@tanstack/react-router' {
       path: '/main/settings'
       fullPath: '/main/settings'
       preLoaderRoute: typeof mainMainSettingsRouteRouteImport
+      parentRoute: typeof mainRouteRoute
+    }
+    '/(main)/main/topology': {
+      id: '/(main)/main/topology'
+      path: '/main/topology'
+      fullPath: '/main/topology'
+      preLoaderRoute: typeof mainMainTopologyRouteRouteImport
       parentRoute: typeof mainRouteRoute
     }
     '/(tray-menu)/tray-menu/': {
@@ -962,6 +981,7 @@ interface mainRouteRouteChildren {
   mainMainProxiesRouteRoute: typeof mainMainProxiesRouteRouteWithChildren
   mainMainRulesRouteRoute: typeof mainMainRulesRouteRouteWithChildren
   mainMainSettingsRouteRoute: typeof mainMainSettingsRouteRouteWithChildren
+  mainMainTopologyRouteRoute: typeof mainMainTopologyRouteRoute
   mainMainIndexRoute: typeof mainMainIndexRoute
 }
 
@@ -974,6 +994,7 @@ const mainRouteRouteChildren: mainRouteRouteChildren = {
   mainMainProxiesRouteRoute: mainMainProxiesRouteRouteWithChildren,
   mainMainRulesRouteRoute: mainMainRulesRouteRouteWithChildren,
   mainMainSettingsRouteRoute: mainMainSettingsRouteRouteWithChildren,
+  mainMainTopologyRouteRoute: mainMainTopologyRouteRoute,
   mainMainIndexRoute: mainMainIndexRoute,
 }
 

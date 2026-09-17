@@ -1071,6 +1071,7 @@ mod tests {
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
+                release_channel: crate::bundle::Channel::Stable,
             },
             logging: crate::client::logs::test_setup(paths.app_logs_dir()),
             paths,
@@ -2578,6 +2579,7 @@ mod tests {
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
+                release_channel: crate::bundle::Channel::Stable,
             },
             logging: crate::client::logs::test_setup(paths.app_logs_dir()),
             paths,

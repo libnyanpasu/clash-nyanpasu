@@ -434,5 +434,11 @@
   "logs_filters": "Фильтры",
   "logs_copied": "Скопировано",
   "logs_all_levels": "Все уровни",
-  "logs_level_sidebar": "Уровни журнала"
+  "logs_level_sidebar": "Уровни журнала",
+  "release_channel_label": "Канал обновлений",
+  "release_channel_stable": "Стабильный",
+  "release_channel_beta": "Бета",
+  "release_channel_nightly": "Ночной",
+  "release_channel_nightly_notice": "После перехода на ночной канал вернуться на стабильный или бета-канал нельзя.",
+  "release_channel_stable_notice": "При переходе на стабильный канал текущая версия сохранится до выхода более новой стабильной версии."
 }

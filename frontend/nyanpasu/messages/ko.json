@@ -430,5 +430,11 @@
   "logs_filters": "필터",
   "logs_copied": "복사됨",
   "logs_all_levels": "모든 수준",
-  "logs_level_sidebar": "로그 수준"
+  "logs_level_sidebar": "로그 수준",
+  "release_channel_label": "업데이트 채널",
+  "release_channel_stable": "안정판",
+  "release_channel_beta": "베타",
+  "release_channel_nightly": "나이틀리",
+  "release_channel_nightly_notice": "나이틀리로 전환하면 안정판이나 베타로 돌아갈 수 없습니다.",
+  "release_channel_stable_notice": "안정판으로 전환하면 더 높은 버전의 안정판이 나올 때까지 현재 버전이 유지됩니다."
 }

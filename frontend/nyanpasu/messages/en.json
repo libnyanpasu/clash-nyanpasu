@@ -507,5 +507,11 @@
   "logs_filters": "Filters",
   "logs_copied": "Copied",
   "logs_all_levels": "All levels",
-  "logs_level_sidebar": "Log levels"
+  "logs_level_sidebar": "Log levels",
+  "release_channel_label": "Update channel",
+  "release_channel_stable": "Stable",
+  "release_channel_beta": "Beta",
+  "release_channel_nightly": "Nightly",
+  "release_channel_nightly_notice": "Once you switch to Nightly, you cannot switch back to Stable or Beta.",
+  "release_channel_stable_notice": "Switching to Stable keeps the installed version until a newer stable release is available."
 }

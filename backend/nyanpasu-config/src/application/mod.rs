@@ -60,6 +60,24 @@ pub enum ThemeMode {
     System,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ReleaseChannel {
+    Stable,
+    Beta,
+    Nightly,
+}
+
+impl ReleaseChannel {
+    pub fn resolve(self, preference: Option<Self>) -> Self {
+        if self == Self::Nightly {
+            Self::Nightly
+        } else {
+            preference.unwrap_or(self)
+        }
+    }
+}
+
 /// ### `verge.yaml` schema
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
@@ -137,6 +155,11 @@ pub struct NyanpasuAppConfig {
     /// Check update when app launch
     pub enable_auto_check_update: bool,
 
+    /// None in older configurations means the channel of the installed build.
+    #[serde(default)]
+    #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    pub release_channel: Option<ReleaseChannel>,
+
     /// 是否启用代理托盘选择
     #[patch(attribute(serde(alias = "clash_tray_selector")))]
     pub tray_selector_mode: ProxiesSelectorMode,
@@ -205,6 +228,7 @@ impl Default for NyanpasuAppConfig {
             proxy_layout_column: 0,
             max_log_files: 7,
             enable_auto_check_update: true,
+            release_channel: None,
             tray_selector_mode: ProxiesSelectorMode::default(),
             always_on_top: false,
             tray_menu_mode: TrayMenuMode::default(),
@@ -224,6 +248,17 @@ impl Default for NyanpasuAppConfig {
 mod patch_tests {
     use super::*;
     use struct_patch::Status;
+
+    #[test]
+    fn release_channel_defaults_for_existing_configurations() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("release_channel");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.release_channel, None);
+        let patch: NyanpasuAppConfigPatch =
+            serde_json::from_str(r#"{"release_channel":"beta"}"#).unwrap();
+        assert_eq!(patch.release_channel, Some(Some(ReleaseChannel::Beta)));
+    }
 
     /// The legacy field aliases carried over from the former derive-builder
     /// partial must still decode onto the generated `NyanpasuAppConfigPatch`.

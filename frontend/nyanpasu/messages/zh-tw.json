@@ -507,5 +507,11 @@
   "logs_filters": "篩選條件",
   "logs_copied": "已複製",
   "logs_all_levels": "全部等級",
-  "logs_level_sidebar": "日誌等級"
+  "logs_level_sidebar": "日誌等級",
+  "release_channel_label": "更新管道",
+  "release_channel_stable": "穩定版",
+  "release_channel_beta": "測試版",
+  "release_channel_nightly": "每夜版",
+  "release_channel_nightly_notice": "切換到每夜版後，將無法切回穩定版或測試版。",
+  "release_channel_stable_notice": "切換到穩定版後，將保留目前版本，直到有版本號更高的穩定版可用。"
 }

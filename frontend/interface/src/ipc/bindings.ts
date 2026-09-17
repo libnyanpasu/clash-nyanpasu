@@ -171,9 +171,15 @@ export const commands = {
       } | null,
       string
     >(__TAURI_INVOKE('check_update')),
+  getReleaseChannel: () =>
+    typedError<ReleaseChannel, string>(__TAURI_INVOKE('get_release_channel')),
   getSystemAccentColor: () =>
     typedError<string | null, string>(
       __TAURI_INVOKE('get_system_accent_color'),
+    ),
+  setReleaseChannel: (channel: ReleaseChannel) =>
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('set_release_channel', { channel }),
     ),
   openLogSession: (source: LogSource, request: OpenLogs) =>
     typedError<LogSession, LogError>(
@@ -2209,6 +2215,8 @@ export type QueryLogs = {
   limit: number
 }
 
+export type ReleaseChannel = 'stable' | 'beta' | 'nightly'
+
 export type RemoteProfileOptionsPatch =
   RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize
 
@@ -2950,6 +2958,11 @@ export const queries = {
       queryKey: ['checkUpdate', ...args],
       queryFn: () => commands.checkUpdate(...args),
     }),
+  getReleaseChannel: (...args: Parameters<typeof commands.getReleaseChannel>) =>
+    queryOptions({
+      queryKey: ['getReleaseChannel', ...args],
+      queryFn: () => commands.getReleaseChannel(...args),
+    }),
   getSystemAccentColor: (
     ...args: Parameters<typeof commands.getSystemAccentColor>
   ) =>
@@ -2959,6 +2972,11 @@ export const queries = {
     }),
 }
 export const mutations = {
+  setReleaseChannel: mutationOptions({
+    mutationKey: ['setReleaseChannel'],
+    mutationFn: (input: Parameters<typeof commands.setReleaseChannel>) =>
+      commands.setReleaseChannel(...input),
+  }),
   openLogSession: mutationOptions({
     mutationKey: ['openLogSession'],
     mutationFn: (input: Parameters<typeof commands.openLogSession>) =>

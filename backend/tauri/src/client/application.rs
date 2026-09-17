@@ -28,15 +28,17 @@ struct ApplicationClientInner {
 #[allow(dead_code)]
 impl ApplicationClient {
     pub(crate) async fn new(
+        build_channel: crate::bundle::Channel,
         config_path: Utf8PathBuf,
-        seed: NyanpasuAppConfig,
+        mut seed: NyanpasuAppConfig,
         bridge: Arc<dyn VergeLegacyBridge>,
     ) -> anyhow::Result<Self> {
+        seed.release_channel = Some(build_channel.resolve(seed.release_channel));
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
             .config_path(config_path)
             .assemble();
-        let manager = if should_load {
+        let mut manager = if should_load {
             setup
                 .load()
                 .await
@@ -47,6 +49,16 @@ impl ApplicationClient {
                 .await
                 .context("failed to initialize application persistent state manager")?
         };
+
+        let mut initial = manager.snapshot_handle().load().state.clone();
+        let channel = build_channel.resolve(initial.release_channel);
+        if initial.release_channel != Some(channel) {
+            initial.release_channel = Some(channel);
+            manager
+                .upsert(initial)
+                .await
+                .context("failed to persist release channel")?;
+        }
 
         let actor_ref = Actor::spawn(
             None,
@@ -191,6 +203,7 @@ mod tests {
     async fn test_client() -> (ApplicationClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
         let client = ApplicationClient::new(
+            crate::bundle::Channel::Stable,
             temp_config_path(&dir),
             NyanpasuAppConfig::default(),
             Arc::new(NoopVergeBridge),
@@ -236,5 +249,127 @@ mod tests {
             result,
             ConditionalReplaceResult::Conflict { actual_version: 0 }
         ));
+    }
+
+    #[tokio::test]
+    async fn release_channel_persists_and_cannot_leave_nightly() {
+        use crate::bundle::Channel;
+        let (client, dir) = test_client().await;
+        for channel in [Channel::Beta, Channel::Stable, Channel::Nightly] {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.release_channel = Some(Some(channel));
+            assert_eq!(
+                client.patch(patch).await.unwrap().state.release_channel,
+                Some(channel)
+            );
+        }
+        drop(client);
+        // Reload without relying on the original actor's memory.
+        let reloaded = ApplicationClient::new(
+            Channel::Stable,
+            temp_config_path(&dir),
+            NyanpasuAppConfig::default(),
+            Arc::new(NoopVergeBridge),
+        )
+        .await
+        .unwrap();
+        for channel in [Channel::Stable, Channel::Beta] {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.release_channel = Some(Some(channel));
+            assert!(reloaded.patch(patch).await.is_err());
+            let mut replacement = NyanpasuAppConfig::default();
+            replacement.release_channel = Some(channel);
+            assert!(reloaded.replace(replacement).await.is_err());
+        }
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.release_channel = Some(None);
+        assert_eq!(
+            reloaded.patch(patch).await.unwrap().state.release_channel,
+            Some(Channel::Nightly)
+        );
+    }
+
+    #[tokio::test]
+    async fn release_channel_revalidates_prepared_changes_at_commit() {
+        use crate::bundle::Channel;
+        let (client, _dir) = test_client().await;
+        let mut next = client.get().await.unwrap().state;
+        next.release_channel = Some(Channel::Beta);
+        let prepared = client.prepare_replace(next).await.unwrap();
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.release_channel = Some(Some(Channel::Nightly));
+        let current = client.patch(patch).await.unwrap();
+        assert!(
+            client
+                .replace_prepared_if_version(current.version, prepared)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            client.get().await.unwrap().state.release_channel,
+            Some(Channel::Nightly)
+        );
+    }
+
+    #[tokio::test]
+    async fn release_channel_compiled_nightly_overrides_saved_stable() {
+        use crate::bundle::Channel;
+        let (client, dir) = test_client().await;
+        assert_eq!(
+            client.get().await.unwrap().state.release_channel,
+            Some(Channel::Stable)
+        );
+        let nightly = ApplicationClient::new(
+            Channel::Nightly,
+            temp_config_path(&dir),
+            NyanpasuAppConfig::default(),
+            Arc::new(NoopVergeBridge),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            nightly.get().await.unwrap().state.release_channel,
+            Some(Channel::Nightly)
+        );
+    }
+    #[tokio::test]
+    async fn release_channel_migrates_old_beta_config_and_keeps_explicit_stable() {
+        use crate::bundle::Channel;
+        let dir = tempdir().unwrap();
+        let manager = PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
+            .config_path(temp_config_path(&dir))
+            .assemble()
+            .from_state(NyanpasuAppConfig::default())
+            .await
+            .unwrap();
+        drop(manager);
+        let beta = ApplicationClient::new(
+            Channel::Beta,
+            temp_config_path(&dir),
+            NyanpasuAppConfig::default(),
+            Arc::new(NoopVergeBridge),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            beta.get().await.unwrap().state.release_channel,
+            Some(Channel::Beta)
+        );
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.release_channel = Some(Some(Channel::Stable));
+        beta.patch(patch).await.unwrap();
+        drop(beta);
+        let reloaded = ApplicationClient::new(
+            Channel::Beta,
+            temp_config_path(&dir),
+            NyanpasuAppConfig::default(),
+            Arc::new(NoopVergeBridge),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            reloaded.get().await.unwrap().state.release_channel,
+            Some(Channel::Stable)
+        );
     }
 }

@@ -6,12 +6,14 @@ import {
   collectUpdaterPlatforms,
   UPDATER_TARGETS,
 } from "./updater-platforms.ts";
+import {
+  type ReleaseChannel,
+  selectChannelRelease,
+} from "./release-channel.ts";
 import { resolveUpdateLog } from "./updatelog.ts";
 
 const GITHUB_PROXY = "https://nyanpasu-script.majokeiko.com/";
 const UPDATE_TAG_NAME = "updater";
-const UPDATE_JSON_FILE = "update.json";
-const UPDATE_JSON_PROXY = "update-proxy.json";
 const UPDATE_RELEASE_BODY = Deno.env.get("RELEASE_BODY") ?? "";
 
 const argv = parseArgs(Deno.args, {
@@ -60,38 +62,34 @@ async function saveToCache(fileName: string, content: string) {
   }
 }
 
-async function resolveUpdater() {
+async function resolveUpdater(channel: ReleaseChannel) {
+  const suffix = channel === "beta" ? "-beta" : "";
+  const UPDATE_JSON_FILE = `update${suffix}.json`;
+  const UPDATE_JSON_PROXY = `update${suffix}-proxy.json`;
   const { token, owner, repo } = getRepoContext();
   const github = new Octokit({ auth: token });
   const options = { owner, repo };
 
-  const { data: tags } = await github.rest.repos.listTags({
+  const releases = await github.paginate(github.rest.repos.listReleases, {
     ...options,
-    per_page: 10,
-    page: 1,
+    per_page: 100,
   });
-
-  const tag = (tags as Array<{ name: string }>).find((t) =>
-    t.name.startsWith("v")
-  );
-  if (!tag) throw new Error("could not found the latest tag");
-  consola.debug(colorize`latest tag: {gray.bold ${tag.name}}`);
-
-  const { data: latestRelease } = await github.rest.repos.getReleaseByTag({
-    ...options,
-    tag: tag.name,
-  });
+  const latestRelease = selectChannelRelease(releases, channel);
+  if (!latestRelease) throw new Error(`No release found for ${channel}`);
+  const tag = latestRelease.tag_name;
+  consola.debug(`${channel} release: ${tag}`);
 
   let updateLog: string | null = null;
   try {
-    updateLog = await resolveUpdateLog(tag.name);
+    updateLog = await resolveUpdateLog(tag);
   } catch (err) {
     consola.error(err);
   }
 
   const updateData = {
-    name: tag.name,
-    notes: UPDATE_RELEASE_BODY || updateLog || latestRelease.body,
+    name: tag,
+    notes: (Deno.env.get("RELEASE_TAG") === tag && UPDATE_RELEASE_BODY) ||
+      updateLog || latestRelease.body,
     pub_date: new Date().toISOString(),
     platforms: await collectUpdaterPlatforms(
       latestRelease.assets,
@@ -164,7 +162,12 @@ async function resolveUpdater() {
   await saveToCache(UPDATE_JSON_PROXY, proxyContent);
 }
 
-resolveUpdater().catch((err) => {
+async function main() {
+  await resolveUpdater("stable");
+  await resolveUpdater("beta");
+}
+
+main().catch((err) => {
   consola.error(err);
   Deno.exit(1);
 });

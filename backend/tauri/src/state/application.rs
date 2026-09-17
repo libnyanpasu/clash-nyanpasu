@@ -61,10 +61,26 @@ impl ApplicationActor {
         }
     }
 
+    fn validate_channel(
+        state: &ApplicationActorState,
+        next: &mut NyanpasuAppConfig,
+    ) -> anyhow::Result<()> {
+        use nyanpasu_config::application::ReleaseChannel as Channel;
+        let current = state.manager.snapshot_handle().load();
+        next.release_channel = next.release_channel.or(current.state.release_channel);
+        anyhow::ensure!(
+            current.state.release_channel != Some(Channel::Nightly)
+                || next.release_channel == Some(Channel::Nightly),
+            "cannot leave the nightly release channel"
+        );
+        Ok(())
+    }
+
     fn prepare_replace(
         state: &ApplicationActorState,
-        next: NyanpasuAppConfig,
+        mut next: NyanpasuAppConfig,
     ) -> anyhow::Result<PreparedTypedReplace<NyanpasuAppConfig>> {
+        Self::validate_channel(state, &mut next)?;
         let mirror = state
             .bridge
             .prepare(&next)
@@ -91,7 +107,8 @@ impl ApplicationActor {
         expected_version: u64,
         prepared: PreparedTypedReplace<NyanpasuAppConfig>,
     ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
-        let (next, mirror) = prepared.into_parts();
+        let (mut next, mirror) = prepared.into_parts();
+        Self::validate_channel(state, &mut next)?;
         match state
             .manager
             .replace_if_version(Version::new(expected_version), next)

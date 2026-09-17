@@ -235,8 +235,9 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                 ) : content.data.diff ? (
                   <>
                     <p className="text-on-surface-variant text-sm">
-                      {m.inspect_diff_description()} #
-                      {content.data.diff.parent_id + 1}
+                      {m.inspect_diff_description({
+                        step: content.data.diff.parent_id + 1,
+                      })}
                     </p>
                     <DiffViewer hunks={content.data.diff.hunks} />
                   </>

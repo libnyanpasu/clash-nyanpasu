@@ -459,7 +459,7 @@
   "inspect_base": "組合基底",
   "inspect_contributor": "代理貢獻來源",
   "inspect_diff": "差異",
-  "inspect_diff_description": "變更相對於步驟",
+  "inspect_diff_description": "相對於步驟 {step} 的變更",
   "inspect_diff_independent": "這是獨立快照，沒有比較基準。",
   "inspect_show_all": "顯示完整處理鏈",
   "inspect_filtered_empty": "沒有步驟修改設定或產生日誌。開啟完整處理鏈可查看所有步驟。",

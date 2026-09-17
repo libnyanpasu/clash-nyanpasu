@@ -303,6 +303,7 @@
   "logs_empty_message": "Нет записей в журналах",
   "logs_action_clear_log": "Очистить журналы",
   "rules_list_all_proxies": "Все группы",
+  "rules_search_placeholder": "Поиск правил (тип, полезная нагрузка или прокси)...",
   "connections_all_connections": "Все соединения",
   "connections_search_placeholder": "Поиск соединений (хост, процесс, правило, цепочки)...",
   "connections_close_all_connections": "Закрыть все соединения",

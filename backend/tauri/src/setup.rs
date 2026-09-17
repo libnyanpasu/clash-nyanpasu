@@ -38,7 +38,10 @@ const RESTART_BUDGET: u8 = 3;
 /// Bound to `tauri::Wry` rather than generic over the runtime: the window
 /// helpers the hotkey adapter drives are themselves written against the
 /// concrete handle, and this is the only runtime the app is ever built with.
-pub fn setup<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), anyhow::Error> {
+pub fn setup<M: tauri::Manager<tauri::Wry>>(
+    app: &M,
+    bundle_metadata: crate::bundle::BundleMetadata,
+) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     #[cfg(target_os = "windows")]
     {
@@ -80,6 +83,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(app: &M) -> Result<(), anyhow::Error
     let legacy_verge_store: Arc<dyn LegacyVergeStore> =
         Arc::new(ConfigLegacyVergeStore::new(legacy_lock.clone()));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+        bundle_metadata,
         logging: crate::client::logs::LoggingSetup {
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
                 paths.app_logs_dir(),

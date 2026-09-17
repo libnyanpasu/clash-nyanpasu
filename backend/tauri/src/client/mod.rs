@@ -74,6 +74,7 @@ pub use runtime::RuntimePaths;
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
 pub struct ClientSetupArgs {
+    pub bundle_metadata: crate::bundle::BundleMetadata,
     pub logging: logs::LoggingSetup,
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
@@ -260,6 +261,7 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
+    bundle_metadata: crate::bundle::BundleMetadata,
     app_logs: nyanpasu_logging::LogsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
     application: ApplicationClient,
@@ -288,6 +290,7 @@ struct NyanpasuClientInner {
 impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
         let ClientSetupArgs {
+            bundle_metadata,
             logging,
             paths,
             runtime_paths,
@@ -345,6 +348,7 @@ impl NyanpasuClient {
                 ))
             })?;
         tauri::async_runtime::block_on(Self::with_parts(
+            bundle_metadata,
             logging,
             application,
             session_state,
@@ -368,6 +372,7 @@ impl NyanpasuClient {
 
     #[allow(dead_code, clippy::too_many_arguments)]
     async fn with_parts(
+        bundle_metadata: crate::bundle::BundleMetadata,
         logging: logs::LoggingSetup,
         application: ApplicationClient,
         session_state: SessionStateClient,
@@ -423,6 +428,7 @@ impl NyanpasuClient {
         let streams = crate::core::clash::ws::StreamsClient::spawn(core_v2.clone()).await?;
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
+                bundle_metadata,
                 app_logs,
                 service_logs,
                 application,
@@ -445,6 +451,10 @@ impl NyanpasuClient {
                 accelerators,
             }),
         })
+    }
+
+    pub fn is_portable(&self) -> bool {
+        self.inner.bundle_metadata.is_portable
     }
 
     pub(crate) fn runtime_paths(&self) -> &RuntimePaths {
@@ -2475,6 +2485,10 @@ pub(crate) mod tests {
             .expect("default ports should resolve");
         let (core_v2, service) = test_v2_clients();
         NyanpasuClient::with_parts(
+            crate::bundle::BundleMetadata {
+                is_portable: false,
+                is_fixed_webview: false,
+            },
             logs::test_setup(
                 PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                     .app_logs_dir(),
@@ -2540,6 +2554,10 @@ pub(crate) mod tests {
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         let (core_v2, service) = test_v2_clients_with_endpoint(endpoint);
         ClientSetupArgs {
+            bundle_metadata: crate::bundle::BundleMetadata {
+                is_portable: false,
+                is_fixed_webview: false,
+            },
             logging: logs::test_setup(paths.app_logs_dir()),
             paths,
             runtime_paths,
@@ -2751,6 +2769,10 @@ pub(crate) mod tests {
         .expect("profiles client should be created");
         let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::with_parts(
+            crate::bundle::BundleMetadata {
+                is_portable: false,
+                is_fixed_webview: false,
+            },
             logs::test_setup(
                 PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                     .app_logs_dir(),
@@ -2915,6 +2937,10 @@ pub(crate) mod tests {
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            bundle_metadata: crate::bundle::BundleMetadata {
+                is_portable: true,
+                is_fixed_webview: false,
+            },
             logging: logs::test_setup(paths.app_logs_dir()),
             paths,
             runtime_paths,
@@ -2937,6 +2963,8 @@ pub(crate) mod tests {
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
         })
         .expect("client should construct with typed config actors");
+
+        assert!(client.is_portable());
 
         tauri::async_runtime::block_on(async {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
@@ -3753,6 +3781,10 @@ pub(crate) mod tests {
                 .expect("default ports");
             let (core_v2, service) = test_v2_clients();
             let client = NyanpasuClient::with_parts(
+                crate::bundle::BundleMetadata {
+                    is_portable: false,
+                    is_fixed_webview: false,
+                },
                 logs::test_setup(
                     PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                         .app_logs_dir(),

@@ -109,18 +109,10 @@ pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<DomainPro
     Ok((*client.get_profiles().await?).clone())
 }
 
-#[cfg(target_os = "windows")]
 #[tauri::command]
 #[specta::specta]
-pub fn is_portable() -> Result<bool> {
-    Ok(crate::utils::dirs::get_portable_flag())
-}
-
-#[cfg(not(target_os = "windows"))]
-#[tauri::command]
-#[specta::specta]
-pub fn is_portable() -> Result<bool> {
-    Ok(false)
+pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
+    Ok(client.is_portable())
 }
 
 // #[tauri::command]

@@ -2,22 +2,22 @@
   "_version": 1,
   "tray": {
     "copy_env": {
-      "cmd": "複製環境變數 (CMD)",
-      "ps": "複製環境變數 (PS)",
-      "sh": "複製環境變數 (SH)"
+      "cmd": "複製環境變數 (Cmd)",
+      "ps": "複製環境變數 (Pwsh)",
+      "sh": "複製環境變數 (Shell)"
     },
     "no_proxies": "無代理",
     "select_proxies": "選取代理",
-    "dashboard": "開啟儀表盤",
+    "dashboard": "顯示 Clash Nyanpasu",
     "direct_mode": "直連模式",
     "global_mode": "全域模式",
     "more": {
       "menu": "更多",
-      "restart_app": "重啟 App",
-      "restart_clash": "重啟 Clash"
+      "restart_app": "重新啟動 Clash Nyanpasu",
+      "restart_core": "重新啟動 Clash 核心"
     },
     "open_dir": {
-      "menu": "打開目錄",
+      "menu": "開啟目錄",
       "app_config_dir": "設定檔目錄",
       "app_data_dir": "資料目錄",
       "core_dir": "核心目錄",
@@ -63,10 +63,10 @@
   "break_when_profile_change": "當設定檔切換時打斷連線",
   "break_when_mode_change": "當模式切換時打斷連線",
   "hotkey_error": {
-    "invalid_hotkey": "無效的快捷鍵：%{hotkey}",
-    "missing_super_key": "快捷鍵必須包含修飾鍵 (Cmd/Ctrl/Win/Meta)",
-    "malformed_entry": "快捷鍵條目格式錯誤：%{entry}",
-    "unknown_function": "未知的快捷鍵功能：%{function}",
-    "duplicate_accelerator": "快捷鍵 %{hotkey} 已指派給其他功能"
+    "invalid_hotkey": "無效的快速鍵：%{hotkey}",
+    "missing_super_key": "快速鍵必須包含修飾鍵 (Cmd/Ctrl/Win/Meta)",
+    "malformed_entry": "快速鍵條目格式錯誤：%{entry}",
+    "unknown_function": "未知的快速鍵功能：%{function}",
+    "duplicate_accelerator": "快速鍵 %{hotkey} 已指派給其他功能"
   }
 }

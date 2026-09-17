@@ -2,19 +2,19 @@
   "_version": 1,
   "tray": {
     "copy_env": {
-      "cmd": "复制环境变量 (CMD)",
-      "ps": "复制环境变量 (PS)",
-      "sh": "复制环境变量 (SH)"
+      "cmd": "复制环境变量 (Cmd)",
+      "ps": "复制环境变量 (Pwsh)",
+      "sh": "复制环境变量 (Shell)"
     },
     "no_proxies": "无代理",
     "select_proxies": "选择代理",
-    "dashboard": "打开面板",
+    "dashboard": "显示 Clash Nyanpasu",
     "direct_mode": "直连模式",
     "global_mode": "全局模式",
     "more": {
       "menu": "更多",
-      "restart_app": "重启应用程序",
-      "restart_clash": "重启 Clash"
+      "restart_app": "重启 Clash Nyanpasu",
+      "restart_core": "重启 Clash 内核"
     },
     "open_dir": {
       "menu": "打开目录",

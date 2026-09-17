@@ -2,9 +2,9 @@
   "_version": 1,
   "tray": {
     "copy_env": {
-      "cmd": "Copy Env (CMD)",
-      "ps": "Copy Env (PS)",
-      "sh": "Copy Env (sh)"
+      "cmd": "Copy Env (Cmd)",
+      "ps": "Copy Env (Pwsh)",
+      "sh": "Copy Env (Shell)"
     },
     "no_proxies": "No Proxies",
     "select_proxies": "Select Proxies",
@@ -13,8 +13,8 @@
     "global_mode": "Global Mode",
     "more": {
       "menu": "More",
-      "restart_app": "Restart App",
-      "restart_clash": "Restart Clash"
+      "restart_app": "Restart Nyanpasu",
+      "restart_core": "Restart Core"
     },
     "open_dir": {
       "menu": "Open Dir",

@@ -14,7 +14,7 @@
     "more": {
       "menu": "더보기",
       "restart_app": "앱 재시작",
-      "restart_clash": "Clash 재시작"
+      "restart_core": "Clash 재시작"
     },
     "open_dir": {
       "menu": "디렉터리 열기",

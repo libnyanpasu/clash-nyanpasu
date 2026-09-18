@@ -14,7 +14,7 @@
     "more": {
       "menu": "Еще",
       "restart_app": "Перезапустить приложение",
-      "restart_clash": "Перезапустить Clash"
+      "restart_core": "Перезапустить Clash"
     },
     "open_dir": {
       "menu": "Открыть папку",

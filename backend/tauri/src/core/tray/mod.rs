@@ -197,7 +197,7 @@ impl Tray {
             )
             .item(
                 &SubmenuBuilder::new(app_handle, t!("tray.more.menu"))
-                    .text("restart_clash", t!("tray.more.restart_clash"))
+                    .text("restart_core", t!("tray.more.restart_core"))
                     .text("restart_app", t!("tray.more.restart_app"))
                     .item(
                         &MenuItemBuilder::new(format!("Version {version}"))
@@ -452,7 +452,7 @@ impl Tray {
             "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
             "open_logs_dir" => crate::log_err!(ipc::open_logs_dir()),
-            "restart_clash" => feat::restart_clash_core(app_handle),
+            "restart_core" => feat::restart_clash_core(app_handle),
             "restart_app" => help::restart_application(app_handle),
             "quit" => {
                 help::quit_application(app_handle);

@@ -12,7 +12,7 @@ mod tests;
 use std::{collections::VecDeque, panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
 use futures_util::FutureExt;
-use nyanpasu_config::application::ClashCore;
+use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
@@ -33,7 +33,7 @@ use crate::{
         facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus},
     },
-    state::profiles::ports::RebuildNotifier,
+    state::profiles::{CommitReport, ports::RebuildNotifier},
 };
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
@@ -78,11 +78,16 @@ pub struct CoreLifecycleOperationResult {
     pub backend_operation_id: Option<OperationId>,
 }
 
+/// Apply-side work only. Source config is committed by the facade through the
+/// owning domain actor before any of these is submitted, so the workflow never
+/// becomes a second commit point for a configuration domain.
 pub(super) enum Command {
     Core(CoreCommand),
-    PatchRuntimeOverrides(nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch),
-    ActivateProfile(Option<nyanpasu_config::profile::ProfileId>),
-    AutoActivateProfile(nyanpasu_config::profile::ProfileId),
+    ApplyClashOverrides {
+        committed: nyanpasu_config::clash::config::ClashConfig,
+        mode_changed: bool,
+    },
+    ApplyProfileActivation(CommitReport),
 }
 
 struct Response {
@@ -136,9 +141,11 @@ struct ApplicationWorkflowState {
 
 pub(super) struct ApplicationWorkflowArgs {
     pub snapshots: runtime::RuntimeSnapshotStore,
-    pub application: super::application::ApplicationClient,
-    pub clash: super::clash_config::ClashConfigClient,
-    pub profiles: super::profiles::ProfilesClient,
+    /// Read-only committed state. The workflow reads the three source domains
+    /// and writes none of them.
+    pub application: StateSnapshot<nyanpasu_config::application::NyanpasuAppConfig>,
+    pub clash: StateSnapshot<nyanpasu_config::clash::config::ClashConfig>,
+    pub profiles: StateSnapshot<nyanpasu_config::profile::Profiles>,
     pub core: CoreClient,
     pub service: ServiceClient,
     pub builder: Arc<dyn RuntimeBuildPort>,
@@ -648,40 +655,32 @@ impl ApplicationWorkflowClient {
         ShutdownReport
     );
 
-    pub async fn patch_runtime_overrides(
+    /// Applies a clash-config commit the facade already made. `mode_changed`
+    /// comes from the submitted patch, not from a re-read of the domain.
+    pub async fn apply_clash_overrides(
         &self,
-        patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
+        committed: nyanpasu_config::clash::config::ClashConfig,
+        mode_changed: bool,
     ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self.call(Command::PatchRuntimeOverrides(patch)).await? {
+        match self
+            .call(Command::ApplyClashOverrides {
+                committed,
+                mode_changed,
+            })
+            .await?
+        {
             Output::Mutation(result) => Ok(result),
             _ => unreachable!(),
         }
     }
 
-    pub async fn activate_profile(
+    /// Applies a profile selection the facade already committed.
+    pub async fn apply_profile_activation(
         &self,
-        uid: Option<nyanpasu_config::profile::ProfileId>,
+        report: CommitReport,
     ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self.call(Command::ActivateProfile(uid)).await? {
+        match self.call(Command::ApplyProfileActivation(report)).await? {
             Output::Mutation(result) => Ok(result),
-            _ => unreachable!(),
-        }
-    }
-    pub async fn auto_activate_profile(
-        &self,
-        uid: nyanpasu_config::profile::ProfileId,
-    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self.call(Command::AutoActivateProfile(uid)).await? {
-            Output::Mutation(result) => Ok(result),
-            _ => unreachable!(),
-        }
-    }
-    pub async fn select_core(&self, core: ClashCore) -> Result<ReconcileReport, CoreError> {
-        match self
-            .call(Command::Core(CoreCommand::SelectCore(core)))
-            .await?
-        {
-            Output::Reconcile(result) => Ok(result),
             _ => unreachable!(),
         }
     }

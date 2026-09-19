@@ -1,4 +1,5 @@
-//! Typed client for the ProfilesActor. Read Some(5s) / write None.
+//! Typed client for the ProfilesActor. Committed reads come from the state
+//! snapshot handle; writes go through the actor with no RPC timeout.
 
 use std::{sync::Arc, time::Duration};
 
@@ -8,7 +9,7 @@ use nyanpasu_config::profile::{
     ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
     RemoteProfileOptions, RemoteProfileOptionsPatch,
 };
-use nyanpasu_core::state::PersistentStateManagerSetup;
+use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::profiles::{
@@ -17,8 +18,6 @@ use crate::state::profiles::{
     ports::{ProfileFsPort, ProfileMaterializationPort, RebuildNotifier, SubscriptionFetcher},
 };
 
-pub const PROFILES_READ_TIMEOUT: Duration = Duration::from_secs(5);
-
 #[derive(Clone)]
 pub struct ProfilesClient {
     inner: Arc<ProfilesClientInner>,
@@ -26,6 +25,9 @@ pub struct ProfilesClient {
 
 struct ProfilesClientInner {
     actor_ref: ActorRef<ProfilesActorMessage>,
+    /// Committed state, read straight from the coordinator's store so a reader
+    /// never queues behind a mutation the actor is still holding open.
+    snapshot: StateSnapshot<Profiles>,
 }
 
 impl ProfilesClient {
@@ -52,8 +54,8 @@ impl ProfilesClient {
                 .context("failed to initialize profiles persistent state manager")?
         };
 
-        manager
-            .snapshot_handle()
+        let snapshot = manager.snapshot_handle();
+        snapshot
             .load()
             .state
             .validate()
@@ -75,13 +77,23 @@ impl ProfilesClient {
         .0;
 
         Ok(Self {
-            inner: Arc::new(ProfilesClientInner { actor_ref }),
+            inner: Arc::new(ProfilesClientInner {
+                actor_ref,
+                snapshot,
+            }),
         })
     }
 
-    pub async fn get(&self) -> Result<Arc<Profiles>, ProfilesError> {
-        self.call(ProfilesActorMessage::Get, Some(PROFILES_READ_TIMEOUT))
-            .await
+    /// The last committed profiles document. Reads bypass the mailbox, so an
+    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    pub fn snapshot(&self) -> Arc<Profiles> {
+        Arc::new(self.inner.snapshot.load().state.clone())
+    }
+
+    /// Read-only handle for collaborators that must observe committed state
+    /// without holding a client that could write it.
+    pub(crate) fn snapshot_handle(&self) -> StateSnapshot<Profiles> {
+        self.inner.snapshot.clone()
     }
 
     pub async fn set_current(
@@ -434,7 +446,7 @@ mod tests {
     #[tokio::test]
     async fn fresh_store_starts_with_default_profiles() {
         let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
-        let snapshot = client.get().await.expect("get should succeed");
+        let snapshot = client.snapshot();
         assert!(snapshot.current.is_none());
         assert!(snapshot.items.is_empty());
         assert_eq!(snapshot.valid.len(), 3);
@@ -583,7 +595,7 @@ mod tests {
     async fn wait_for_updated_at(client: &ProfilesClient, uid: &str) -> Arc<Profiles> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
-            let snapshot = client.get().await.unwrap();
+            let snapshot = client.snapshot();
             let updated = snapshot
                 .items
                 .get(&ProfileId(uid.into()))
@@ -889,7 +901,7 @@ mod tests {
 
         tokio::time::advance(std::time::Duration::from_secs(60 * 60 + 1)).await;
         for _ in 0..200 {
-            let snapshot = client.get().await.unwrap();
+            let snapshot = client.snapshot();
             let source = snapshot.items[&uid].definition.source().unwrap();
             if matches!(
                 source,
@@ -901,7 +913,7 @@ mod tests {
             tokio::task::yield_now().await;
         }
         assert!(fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 2);
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let source = snapshot.items[&uid].definition.source().unwrap();
         let ProfileSource::Remote {
             option,
@@ -935,7 +947,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ProfilesError::RefreshFailed { .. }));
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let source = snapshot.items[&ProfileId("r1".into())]
             .definition
             .source()
@@ -976,7 +988,7 @@ mod tests {
                 .is_err()
         );
         assert!(
-            client.get().await.unwrap().items.is_empty(),
+            client.snapshot().items.is_empty(),
             "state-first promote failure with full rollback must leave zero items"
         );
     }
@@ -1056,9 +1068,7 @@ mod tests {
         );
         assert!(
             client
-                .get()
-                .await
-                .unwrap()
+                .snapshot()
                 .items
                 .get(&ProfileId("r1".into()))
                 .is_none()
@@ -1103,7 +1113,7 @@ mod tests {
         assert!(
             matches!(err, ProfilesError::RefreshFailed { message } if message.contains("changed"))
         );
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let item = snapshot.items.get(&ProfileId("r1".into())).unwrap();
         let Some(nyanpasu_config::profile::ProfileSource::Remote { materialized, .. }) =
             item.definition.source()
@@ -1148,7 +1158,7 @@ mod tests {
             matches!(err, ProfilesError::RefreshFailed { message } if message.contains("changed"))
         );
         assert!(
-            client.get().await.unwrap().items[&ProfileId("r1".into())]
+            client.snapshot().items[&ProfileId("r1".into())]
                 .definition
                 .source()
                 .unwrap()
@@ -1415,6 +1425,16 @@ mod tests {
 
         std::fs::write(&target_path, "proxies: []\n# touched\n").unwrap();
         wait_for_updated_at(&client, "ext1").await;
+        // The committed snapshot is published before the actor asks for the
+        // rebuild, so wait for the request instead of sampling it once.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while rebuilds.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "external commit never requested a rebuild"
+            );
+            tokio::task::yield_now().await;
+        }
         assert_eq!(rebuilds.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
@@ -1503,10 +1523,7 @@ mod tests {
             .unwrap();
             (client, dir)
         };
-        assert_eq!(
-            client.get().await.unwrap().current,
-            Some(ProfileId("cfg1".into()))
-        );
+        assert_eq!(client.snapshot().current, Some(ProfileId("cfg1".into())));
     }
 
     #[tokio::test]
@@ -1529,10 +1546,7 @@ mod tests {
             .await
             .expect("call ok");
         assert!(skipped.is_none(), "must not overwrite an existing current");
-        assert_eq!(
-            client.get().await.unwrap().current,
-            Some(ProfileId("cfg1".into()))
-        );
+        assert_eq!(client.snapshot().current, Some(ProfileId("cfg1".into())));
     }
 
     #[tokio::test]
@@ -1548,7 +1562,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ProfilesError::ValidationFailed(_)));
-        assert!(client.get().await.unwrap().current.is_none());
+        assert!(client.snapshot().current.is_none());
     }
 
     #[tokio::test]
@@ -1667,7 +1681,7 @@ mod tests {
             .await
             .expect_err("promote failure must fail Add");
         assert!(matches!(err, ProfilesError::Materialization(_)));
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 
     /// H1: promote fails after durable forward CAS, then compensating state commit
@@ -1728,7 +1742,7 @@ mod tests {
         assert_eq!(report.snapshot.items.len(), 1);
         let created = report.created.clone().unwrap();
         assert!(
-            client.get().await.unwrap().items.contains_key(&created),
+            client.snapshot().items.contains_key(&created),
             "forward state must remain visible/recoverable after failed compensating CAS"
         );
         assert!(
@@ -1807,7 +1821,7 @@ mod tests {
                 && message.contains("prepare materialization"),
             "prepare-phase failure expected, got: {message}"
         );
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
         assert_eq!(promote_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
@@ -1860,7 +1874,7 @@ mod tests {
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
         );
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 
     #[tokio::test]
@@ -1896,7 +1910,7 @@ mod tests {
         assert_eq!(report.snapshot.items.len(), 1);
         let created = report.created.clone().unwrap();
         assert!(
-            client.get().await.unwrap().items.contains_key(&created),
+            client.snapshot().items.contains_key(&created),
             "complete degradation must leave the committed item durable"
         );
         assert_eq!(report.degradations.len(), 1);
@@ -1955,7 +1969,7 @@ mod tests {
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
         );
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let item = &snapshot.items[&ProfileId("cfg2".into())];
         match &item.definition {
             ProfileDefinition::Config { config } => {
@@ -2024,7 +2038,7 @@ mod tests {
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
         );
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let item = &snapshot.items[&ProfileId("cfg2".into())];
         match &item.definition {
             ProfileDefinition::Config { config } => {
@@ -2081,7 +2095,7 @@ mod tests {
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
         );
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let source = snapshot.items[&ProfileId("r1".into())]
             .definition
             .source()
@@ -2171,9 +2185,7 @@ mod tests {
         assert!(matches!(err, ProfilesError::Materialization(_)));
         assert!(
             client
-                .get()
-                .await
-                .unwrap()
+                .snapshot()
                 .items
                 .contains_key(&ProfileId("cfg2".into()))
         );
@@ -2660,7 +2672,7 @@ mod tests {
         )
         .await
         .expect("reopen after failed mutation");
-        let snapshot = reopened.get().await.unwrap();
+        let snapshot = reopened.snapshot();
         assert!(snapshot.current.is_none());
         assert_eq!(snapshot.items.len(), 3);
     }
@@ -2870,7 +2882,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let snapshot = reopened.get().await.unwrap();
+        let snapshot = reopened.snapshot();
         let item = &snapshot.items[&ProfileId("cfg1".into())];
         match &item.definition {
             ProfileDefinition::Config { config } => assert!(config.transforms().is_empty()),
@@ -2945,7 +2957,7 @@ mod tests {
     async fn wait_until_empty(client: &ProfilesClient) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         loop {
-            if client.get().await.unwrap().items.is_empty() {
+            if client.snapshot().items.is_empty() {
                 return;
             }
             assert!(
@@ -3046,7 +3058,7 @@ mod tests {
             .await
             .expect_err("fetch failure");
         assert!(matches!(err, ProfilesError::ImportFailed { .. }));
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 
     #[tokio::test]
@@ -3105,7 +3117,7 @@ mod tests {
             err,
             ProfilesError::ImportFailed { message } if message == "subscription fetch task panicked"
         ));
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
 
         // Pending import must be cleared: a subsequent valid import proceeds.
         client
@@ -3117,7 +3129,7 @@ mod tests {
             )
             .await
             .expect("second import after fetch panic");
-        assert_eq!(client.get().await.unwrap().items.len(), 1);
+        assert_eq!(client.snapshot().items.len(), 1);
         assert!(calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
     }
 
@@ -3195,7 +3207,7 @@ mod tests {
             )
             .await
             .expect("second import after abort");
-        assert_eq!(client.get().await.unwrap().items.len(), 1);
+        assert_eq!(client.snapshot().items.len(), 1);
         assert!(calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
     }
 
@@ -3302,7 +3314,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 
     #[tokio::test]
@@ -3416,6 +3428,6 @@ mod tests {
             .await
             .expect_err("zero interval");
         assert!(matches!(err, ProfilesError::ValidationFailed(_)));
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 }

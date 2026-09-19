@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use nyanpasu_config::application::NyanpasuAppConfig;
+use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
-use struct_patch::Patch;
 
 use super::{
-    super::{UiEventSink, application::ApplicationClient, runtime},
+    super::{UiEventSink, runtime},
     Command, Output,
     ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
 };
@@ -17,7 +17,9 @@ use crate::core::actor_v2::{
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
-    pub application: ApplicationClient,
+    /// Committed application config, read-only: the core lifecycle applies the
+    /// facade's commits and never writes the domain itself.
+    pub application: StateSnapshot<NyanpasuAppConfig>,
     pub core: CoreFacade,
     pub installer: Arc<dyn BinaryInstaller>,
     pub ui: Arc<dyn UiEventSink>,
@@ -125,12 +127,6 @@ impl CoreLifecycleWorkflow {
                 self.ui.refresh_clash();
                 Ok(Output::Unit)
             }
-            Command::SelectCore(core) => {
-                let mut patch = NyanpasuAppConfig::new_empty_patch();
-                patch.core = Some(core);
-                self.application.patch(patch).await.map_err(domain_error)?;
-                Ok(Output::Reconcile(self.reconcile(preparation).await?))
-            }
             Command::ChangeHost(host) => {
                 let report = self.core.change_execution_host(host).await?;
                 self.follow_host();
@@ -138,9 +134,6 @@ impl CoreLifecycleWorkflow {
                 Ok(Output::Handoff(report))
             }
             Command::SetExecutionHost(service_mode) => {
-                let mut patch = NyanpasuAppConfig::new_empty_patch();
-                patch.enable_service_mode = Some(service_mode);
-                self.application.patch(patch).await.map_err(domain_error)?;
                 let effect = self.set_host(service_mode, preparation).await;
                 let degradations = effect.err().map_or_else(Vec::new, |error| {
                     vec![runtime::Degradation {
@@ -156,14 +149,7 @@ impl CoreLifecycleWorkflow {
                 )))
             }
             Command::RestoreExecutionHost => {
-                if self
-                    .application
-                    .get()
-                    .await
-                    .map_err(domain_error)?
-                    .state
-                    .enable_service_mode
-                {
+                if self.application.load().state.enable_service_mode {
                     let report = self.core.adopt_service_host().await?;
                     self.recovery.rearm();
                     self.note_interrupted_core(report.interrupted_running());
@@ -448,14 +434,7 @@ impl CoreLifecycleWorkflow {
         artifact: PreparedCoreBinary,
         preparation: &mut dyn RuntimePreparationPort,
     ) -> Result<(), CoreError> {
-        let desired: crate::config::nyanpasu::ClashCore = self
-            .application
-            .get()
-            .await
-            .map_err(domain_error)?
-            .state
-            .core
-            .into();
+        let desired: crate::config::nyanpasu::ClashCore = self.application.load().state.core.into();
         let status = self.core.refresh_status().await?;
         let (state, applied_kind) = status
             .snapshot

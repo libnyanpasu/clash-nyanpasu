@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
-use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
+use nyanpasu_core::state::{
+    PersistentStateManager, ReplaceIfVersionResult, Version, VersionedState,
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 
@@ -15,6 +17,15 @@ use super::{
 pub struct ApplicationSnapshot {
     pub state: NyanpasuAppConfig,
     pub version: u64,
+}
+
+impl ApplicationSnapshot {
+    pub(crate) fn from_versioned(versioned: &VersionedState<NyanpasuAppConfig>) -> Self {
+        Self {
+            state: versioned.state.clone(),
+            version: *versioned.version.as_ref(),
+        }
+    }
 }
 
 pub struct ApplicationActorArgs {
@@ -30,7 +41,6 @@ pub struct ApplicationActorState {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum ApplicationActorMessage {
-    Get(RpcReplyPort<anyhow::Result<ApplicationSnapshot>>),
     Patch {
         patch: NyanpasuAppConfigPatch,
         reply: RpcReplyPort<anyhow::Result<ApplicationSnapshot>>,
@@ -54,11 +64,7 @@ pub struct ApplicationActor;
 
 impl ApplicationActor {
     fn snapshot(state: &ApplicationActorState) -> ApplicationSnapshot {
-        let snapshot = state.manager.snapshot_handle().load();
-        ApplicationSnapshot {
-            state: snapshot.state.clone(),
-            version: *snapshot.version.as_ref(),
-        }
+        ApplicationSnapshot::from_versioned(&state.manager.snapshot_handle().load())
     }
 
     fn validate_channel(
@@ -151,9 +157,6 @@ impl Actor for ApplicationActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            ApplicationActorMessage::Get(reply) => {
-                let _ = reply.send(Ok(Self::snapshot(state)));
-            }
             ApplicationActorMessage::Patch { patch, reply } => {
                 let result = async {
                     let mut next = state.manager.snapshot_handle().load().state.clone();
@@ -187,7 +190,7 @@ impl Actor for ApplicationActor {
 mod tests {
     use super::*;
     use crate::state::mirror::PreparedLegacyMirror;
-    use nyanpasu_core::state::PersistentStateManagerSetup;
+    use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
     use ractor::rpc::CallResult;
     use struct_patch::Patch;
     use tempfile::tempdir;
@@ -210,7 +213,11 @@ mod tests {
 
     async fn spawn_actor(
         bridge: Arc<dyn VergeLegacyBridge>,
-    ) -> (ActorRef<ApplicationActorMessage>, tempfile::TempDir) {
+    ) -> (
+        ActorRef<ApplicationActorMessage>,
+        StateSnapshot<NyanpasuAppConfig>,
+        tempfile::TempDir,
+    ) {
         let dir = tempdir().expect("tempdir should be created");
         let path = camino::Utf8PathBuf::from_path_buf(dir.path().join("application.yaml"))
             .expect("temp path should be UTF-8");
@@ -220,6 +227,7 @@ mod tests {
             .from_state(NyanpasuAppConfig::default())
             .await
             .expect("application manager should initialize");
+        let snapshot = manager.snapshot_handle();
         let (actor_ref, _handle) = Actor::spawn(
             None,
             ApplicationActor,
@@ -227,26 +235,14 @@ mod tests {
         )
         .await
         .expect("application actor should spawn");
-        (actor_ref, dir)
-    }
-
-    async fn get_snapshot(
-        actor: &ActorRef<ApplicationActorMessage>,
-    ) -> anyhow::Result<ApplicationSnapshot> {
-        match actor.call(ApplicationActorMessage::Get, None).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
-        }
+        (actor_ref, snapshot, dir)
     }
 
     #[tokio::test]
     async fn mirror_prepare_failure_leaves_state_and_version_unchanged() {
-        let (actor, _dir) = spawn_actor(Arc::new(FailingVergeMirror)).await;
+        let (actor, snapshot, _dir) = spawn_actor(Arc::new(FailingVergeMirror)).await;
 
-        let before = get_snapshot(&actor)
-            .await
-            .expect("initial get should succeed");
+        let before = ApplicationSnapshot::from_versioned(&snapshot.load());
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.enable_system_proxy = Some(true);
@@ -266,9 +262,7 @@ mod tests {
             CallResult::Timeout => panic!("application actor call timed out"),
         }
 
-        let after = get_snapshot(&actor)
-            .await
-            .expect("post-failure get should succeed");
+        let after = ApplicationSnapshot::from_versioned(&snapshot.load());
         assert_eq!(after.version, before.version);
         assert_eq!(
             after.state.enable_system_proxy,

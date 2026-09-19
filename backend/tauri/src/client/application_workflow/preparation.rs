@@ -3,33 +3,31 @@ use std::sync::Arc;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
 };
+use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreSpec, LocalIpcPolicy, LocalIpcSettings};
 
-use super::{
-    super::{
-        application::ApplicationClient, clash_config::ClashConfigClient, profiles::ProfilesClient,
-        runtime,
-    },
-    ports::RuntimeBuildPort,
-};
+use super::{super::runtime, ports::RuntimeBuildPort};
 use crate::client::core_lifecycle::{
     domain_error,
     ports::{PreparedRuntime, RuntimePreparationPort},
 };
 
+/// Builds runtime candidates from committed source config. It holds read-only
+/// state handles, never a domain client: the workflow is a state participant
+/// and must not be able to write a source domain it is applying for.
 pub(super) struct RuntimePreparation {
-    application: ApplicationClient,
-    clash: ClashConfigClient,
-    profiles: ProfilesClient,
+    application: StateSnapshot<NyanpasuAppConfig>,
+    clash: StateSnapshot<ClashConfig>,
+    profiles: StateSnapshot<Profiles>,
     builder: Arc<dyn RuntimeBuildPort>,
     revisions: runtime::RuntimeRevisionAllocator,
 }
 
 impl RuntimePreparation {
     pub fn new(
-        application: ApplicationClient,
-        clash: ClashConfigClient,
-        profiles: ProfilesClient,
+        application: StateSnapshot<NyanpasuAppConfig>,
+        clash: StateSnapshot<ClashConfig>,
+        profiles: StateSnapshot<Profiles>,
         builder: Arc<dyn RuntimeBuildPort>,
     ) -> Self {
         Self {
@@ -75,7 +73,7 @@ impl RuntimePreparation {
         profiles: Arc<Profiles>,
         clash: ClashConfig,
     ) -> Result<PreparedRuntime, CoreError> {
-        let app = self.application.get().await.map_err(domain_error)?.state;
+        let app = self.application.load().state.clone();
         self.prepare(profiles, clash, app).await
     }
 }
@@ -84,8 +82,8 @@ impl RuntimePreparation {
 impl RuntimePreparationPort for RuntimePreparation {
     async fn prepare_latest(&mut self) -> Result<PreparedRuntime, CoreError> {
         // Independent committed snapshots; changes during a build retain a dirty pass.
-        let profiles = self.profiles.get().await.map_err(domain_error)?;
-        let clash = self.clash.get().await.map_err(domain_error)?.state;
+        let profiles = Arc::new(self.profiles.load().state.clone());
+        let clash = self.clash.load().state.clone();
         self.prepare_committed(profiles, clash).await
     }
 

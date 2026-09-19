@@ -1,9 +1,9 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
-use nyanpasu_core::state::PersistentStateManagerSetup;
+use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::{
@@ -14,8 +14,6 @@ use crate::state::{
     },
 };
 
-const SESSION_STATE_READ_TIMEOUT: Duration = Duration::from_secs(5);
-
 #[derive(Clone)]
 pub struct SessionStateClient {
     inner: Arc<SessionStateClientInner>,
@@ -23,6 +21,9 @@ pub struct SessionStateClient {
 
 struct SessionStateClientInner {
     actor_ref: ActorRef<SessionStateActorMessage>,
+    /// Committed state, read straight from the coordinator's store so a reader
+    /// never queues behind a mutation the actor is still holding open.
+    snapshot: StateSnapshot<PersistentState>,
 }
 
 #[allow(dead_code)]
@@ -48,6 +49,7 @@ impl SessionStateClient {
                 .context("failed to initialize session persistent state manager")?
         };
 
+        let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
             SessionStateActor,
@@ -58,16 +60,17 @@ impl SessionStateClient {
         .0;
 
         Ok(Self {
-            inner: Arc::new(SessionStateClientInner { actor_ref }),
+            inner: Arc::new(SessionStateClientInner {
+                actor_ref,
+                snapshot,
+            }),
         })
     }
 
-    pub async fn get(&self) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(
-            SessionStateActorMessage::Get,
-            Some(SESSION_STATE_READ_TIMEOUT),
-        )
-        .await
+    /// The last committed session state. Reads bypass the mailbox, so an
+    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    pub fn snapshot(&self) -> SessionStateSnapshot {
+        SessionStateSnapshot::from_versioned(&self.inner.snapshot.load())
     }
 
     pub async fn patch(&self, patch: PersistentStatePatch) -> anyhow::Result<SessionStateSnapshot> {
@@ -142,7 +145,7 @@ impl SessionStateClient {
     async fn call<F>(
         &self,
         make: F,
-        timeout: Option<Duration>,
+        timeout: Option<std::time::Duration>,
     ) -> anyhow::Result<SessionStateSnapshot>
     where
         F: FnOnce(RpcReplyPort<anyhow::Result<SessionStateSnapshot>>) -> SessionStateActorMessage,
@@ -206,7 +209,7 @@ mod tests {
     async fn get_patch_and_replace_session_state() {
         let (client, _dir) = test_client().await;
 
-        let initial = client.get().await.expect("get should succeed");
+        let initial = client.snapshot();
         assert!(initial.state.window_state.is_empty());
 
         let label = WindowLabel("main".into());
@@ -234,7 +237,7 @@ mod tests {
     #[tokio::test]
     async fn replace_if_version_commits_matching_snapshot() {
         let (client, _dir) = test_client().await;
-        let current = client.get().await.expect("get should succeed");
+        let current = client.snapshot();
         let label = WindowLabel("main".into());
         let next = PersistentState {
             window_state: BTreeMap::from([(

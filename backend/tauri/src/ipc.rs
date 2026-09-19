@@ -1210,9 +1210,28 @@ pub struct UpdateWrapper {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrapper>> {
+pub async fn get_release_channel(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::bundle::Channel> {
+    Ok(client.release_channel().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_release_channel(
+    client: State<'_, NyanpasuClient>,
+    channel: crate::bundle::Channel,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.set_release_channel(channel).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn check_update(
+    webview: tauri::Webview,
+    client: State<'_, NyanpasuClient>,
+) -> Result<Option<UpdateWrapper>> {
     use crate::utils::config::{get_self_proxy, get_system_proxy};
-    use std::cmp::Ordering;
     use tauri_plugin_updater::UpdaterExt;
 
     let build_time = time::OffsetDateTime::parse(
@@ -1220,33 +1239,21 @@ pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrappe
         &time::format_description::well_known::Rfc3339,
     )
     .context("failed to parse build time")?;
+    let channel = client.release_channel().await?;
+    let local = semver::Version::parse(crate::consts::BUILD_INFO.pkg_version)
+        .context("invalid application version")?;
     let mut builder = webview
         .updater_builder()
+        .endpoints(
+            crate::bundle::update_endpoints(channel)
+                .into_iter()
+                .map(|endpoint| endpoint.parse())
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .context("invalid update endpoint")?,
+        )
+        .context("failed to configure update endpoints")?
         .version_comparator(move |_, remote| {
-            use semver::Version;
-            let local = Version::parse(crate::consts::BUILD_INFO.pkg_version).ok();
-            log::trace!("[check] local: {:?}, remote: {:?}", local, remote.version);
-            match local {
-                Some(local) => {
-                    if !local.build.is_empty() && !remote.version.build.is_empty() {
-                        // ignore build info to compare the version directly
-                        match local.cmp_precedence(&remote.version) {
-                            Ordering::Less => true,
-                            Ordering::Equal => match remote.pub_date {
-                                // prefer newer build if pub_date is available
-                                Some(pub_date) => {
-                                    local.build != remote.version.build && pub_date > build_time
-                                }
-                                None => local.build != remote.version.build,
-                            },
-                            Ordering::Greater => false,
-                        }
-                    } else {
-                        local < remote.version
-                    }
-                }
-                None => false,
-            }
+            crate::bundle::is_newer_release(channel, &local, &remote, build_time)
         });
     // apply proxy
     if let Ok(proxy) = get_self_proxy() {

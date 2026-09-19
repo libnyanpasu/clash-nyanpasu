@@ -55,9 +55,11 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_clash_ws_connections_state,
             ipc::get_clash_ws_snapshot,
             ipc::check_update,
+            ipc::get_release_channel,
             ipc::get_system_accent_color,
         ],
         collect_commands![
+            ipc::set_release_channel,
             // Side-effecting commands
             ipc::open_log_session,
             ipc::query_logs,

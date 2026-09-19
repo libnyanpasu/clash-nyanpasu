@@ -141,10 +141,12 @@ enum CommittedConfigDomain {
 }
 
 async fn new_typed_config_clients(
+    build_channel: crate::bundle::Channel,
     paths: PathResolver,
     bridges: LegacyBridgeSet,
 ) -> anyhow::Result<(ApplicationClient, SessionStateClient, ClashConfigClient)> {
     let application = ApplicationClient::new(
+        build_channel,
         utf8_path(paths.application_config_path())?,
         bridges.verge.snapshot_legacy()?,
         bridges.verge.clone(),
@@ -313,8 +315,12 @@ impl NyanpasuClient {
                     .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
                     .await
                     .context("failed to clean stale runtime candidates")?;
-                let (application, session_state, clash_config) =
-                    new_typed_config_clients(paths.clone(), bridges).await?;
+                let (application, session_state, clash_config) = new_typed_config_clients(
+                    bundle_metadata.release_channel,
+                    paths.clone(),
+                    bridges,
+                )
+                .await?;
 
                 // Eager session port resolution: the core is not running yet,
                 // so probing strategies is race-free (design §19.2 caller duty).
@@ -451,6 +457,23 @@ impl NyanpasuClient {
                 accelerators,
             }),
         })
+    }
+
+    pub async fn release_channel(&self) -> Result<crate::bundle::Channel> {
+        Ok(self
+            .inner
+            .bundle_metadata
+            .release_channel
+            .resolve(self.inner.application.get().await?.state.release_channel))
+    }
+
+    pub async fn set_release_channel(
+        &self,
+        channel: crate::bundle::Channel,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.release_channel = Some(Some(channel));
+        self.patch_app_config(patch).await
     }
 
     pub fn is_portable(&self) -> bool {
@@ -2340,6 +2363,7 @@ pub(crate) mod tests {
         dir: &TempDir,
     ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
         let application = ApplicationClient::new(
+            crate::bundle::Channel::Stable,
             temp_config_path(dir, "application.yaml"),
             NyanpasuAppConfig::default(),
             Arc::new(NoopVergeBridge),
@@ -2488,6 +2512,7 @@ pub(crate) mod tests {
             crate::bundle::BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
+                release_channel: crate::bundle::Channel::Stable,
             },
             logs::test_setup(
                 PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
@@ -2557,6 +2582,7 @@ pub(crate) mod tests {
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
+                release_channel: crate::bundle::Channel::Stable,
             },
             logging: logs::test_setup(paths.app_logs_dir()),
             paths,
@@ -2772,6 +2798,7 @@ pub(crate) mod tests {
             crate::bundle::BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
+                release_channel: crate::bundle::Channel::Stable,
             },
             logs::test_setup(
                 PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
@@ -2916,7 +2943,7 @@ pub(crate) mod tests {
                 clash: Arc::new(NoopClashBridge),
             };
 
-            let _loaded = new_typed_config_clients(paths, bridges)
+            let _loaded = new_typed_config_clients(crate::bundle::Channel::Stable, paths, bridges)
                 .await
                 .expect("typed clients should load and mirror persisted state");
 
@@ -2940,6 +2967,7 @@ pub(crate) mod tests {
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: true,
                 is_fixed_webview: false,
+                release_channel: crate::bundle::Channel::Stable,
             },
             logging: logs::test_setup(paths.app_logs_dir()),
             paths,
@@ -3784,6 +3812,7 @@ pub(crate) mod tests {
                 crate::bundle::BundleMetadata {
                     is_portable: false,
                     is_fixed_webview: false,
+                    release_channel: crate::bundle::Channel::Stable,
                 },
                 logs::test_setup(
                     PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))

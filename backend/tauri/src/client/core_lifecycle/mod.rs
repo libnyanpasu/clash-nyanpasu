@@ -13,7 +13,9 @@ use crate::core::actor_v2::{
 };
 use ports::PreparedCoreBinary;
 use std::time::Duration;
-pub(in crate::client) use workflow::{CoreLifecycleWorkflow, ServiceRecovery, domain_error};
+pub(in crate::client) use workflow::{
+    CoreLifecycleWorkflow, RuntimeSubmission, ServiceRecovery, domain_error,
+};
 
 pub(in crate::client) const RECOVERY_INTERVAL: Duration = Duration::from_secs(5);
 

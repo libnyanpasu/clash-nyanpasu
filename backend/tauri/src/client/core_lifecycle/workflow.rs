@@ -5,14 +5,14 @@ use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 
 use super::{
-    super::{UiEventSink, runtime},
+    super::{SessionPortResolver, UiEventSink, runtime},
     Command, Output,
     ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
 };
 use crate::core::actor_v2::{
     EndpointConnectivity, HandoffReport,
     endpoint::{ExecutionHost, wire_core_type_to_kind},
-    facade::{CoreFacade, ReconcileReport},
+    facade::{CoreFacade, ReconcileReport, ReconcileResult, RolledBackReport, UncertainReconcile},
     service_actor::ServicePhase,
 };
 
@@ -24,6 +24,10 @@ pub(in crate::client) struct CoreLifecycleWorkflow {
     pub installer: Arc<dyn BinaryInstaller>,
     pub ui: Arc<dyn UiEventSink>,
     pub runtime: runtime::RuntimeSnapshotStore,
+    /// The session's port bindings. The workflow is the only writer: it
+    /// confirms a candidate when the core accepts it and ends the confirmed
+    /// binding when the core stops.
+    pub ports: Arc<SessionPortResolver>,
     // A lost lower-level reply is not evidence its side effects have finished.
     pub uncertain: bool,
     pub recovery: ServiceRecovery,
@@ -100,6 +104,28 @@ pub(in crate::client) fn domain_error(error: impl std::fmt::Display) -> CoreErro
     CoreError::new(CoreErrorKind::Internal, error.to_string(), false)
 }
 
+/// What one submitted candidate did to the running core.
+///
+/// The three answers are kept apart because they need opposite handling: an
+/// apply that took effect is a fact to accept, a rolled-back request left the
+/// previous document running, and an unobserved one proves nothing at all and
+/// has to isolate the execution domain (v2 §2.2). Collapsing the last two into
+/// one error is what a caller does only when it cannot act on the difference.
+pub(in crate::client) enum RuntimeSubmission {
+    NotSubmitted(CoreError),
+    Unchanged(CoreError),
+    Applied {
+        /// The built snapshot, bound to what the core accepted. Its product
+        /// file is published separately, after the source commit (v2 §5.6).
+        product: Arc<runtime::RuntimeSnapshot>,
+        report: ReconcileReport,
+        /// The recovery baseline this apply established.
+        receipt: Arc<runtime::RuntimeApplyReceipt>,
+    },
+    RolledBack(RolledBackReport),
+    Unknown(UncertainReconcile),
+}
+
 impl CoreLifecycleWorkflow {
     pub async fn execute(
         &mut self,
@@ -166,7 +192,11 @@ impl CoreLifecycleWorkflow {
                 // Running when the endpoint degrades a moment later, and
                 // recovery must not read that as a reason to start the core.
                 self.recovery.intent = CoreIntent::Stopped;
-                Ok(Output::Stop(self.core.stop().await?))
+                let report = self.core.stop().await?;
+                // Nothing holds those ports any more. A later reader must get
+                // "unavailable", never the endpoint the stopped core used.
+                self.ports.invalidate();
+                Ok(Output::Stop(report))
             }
             Command::RecoverCore => Ok(Output::Recover(self.core.recover().await?)),
             Command::ProbeService => {
@@ -217,6 +247,10 @@ impl CoreLifecycleWorkflow {
     /// Service endpoint and an explicit suppression is not undone by a
     /// rejection.
     fn follow_host(&mut self) {
+        // Ownership moved, so the binding confirmed on the previous host is
+        // no longer a fact about anything: the ports the old owner held are
+        // not the new owner's until it applies a runtime and confirms them.
+        self.ports.invalidate();
         if self.core.core_status().host == ExecutionHost::Service {
             self.recovery.rearm();
         } else {
@@ -265,6 +299,16 @@ impl CoreLifecycleWorkflow {
                 ..
             }
         ) || (self.recovery.intent == CoreIntent::Restore && status.host == ExecutionHost::Service)
+    }
+
+    /// Whether the user asked for the core to be stopped and no apply has
+    /// discharged that yet.
+    ///
+    /// A stop the user asked for outlives its own failure: the host can still
+    /// publish `Running` a moment later, and nothing may read that as licence
+    /// to start a core again (v2 §2.3 `SavedInactive`, V11).
+    pub fn stop_requested(&self) -> bool {
+        self.recovery.intent == CoreIntent::Stopped
     }
 
     pub fn recovery_due(&self) -> bool {
@@ -358,11 +402,7 @@ impl CoreLifecycleWorkflow {
         } else {
             ExecutionHost::Local
         };
-        let report = self.core.change_execution_host(host).await?;
-        // The host moved; the reconcile and daemon stop below are follow-up
-        // effects whose failure must not put the policy back on the old host.
-        self.follow_host();
-        self.note_interrupted_core(report.interrupted_running());
+        let report = self.move_execution_host(host).await?;
         if matches!(report, HandoffReport::Completed { .. }) {
             self.reconcile(preparation).await?;
         }
@@ -375,6 +415,26 @@ impl CoreLifecycleWorkflow {
             self.core.stop_service().await?;
         }
         Ok(())
+    }
+
+    /// Moves ownership of the runtime to `host` and nothing else.
+    ///
+    /// A completed handoff leaves the runtime stopped awaiting a reconcile, so
+    /// every caller owes one — with the candidate it is trying, or with the
+    /// baseline it is putting back. That is why this is separate from
+    /// [`CoreLifecycleWorkflow::set_host`], which follows it with the committed
+    /// configuration: a Try has a candidate that is not committed yet, and a
+    /// Cancel has a receipt rather than a configuration to rebuild (v2 §5.3).
+    pub(in crate::client) async fn move_execution_host(
+        &mut self,
+        host: ExecutionHost,
+    ) -> Result<HandoffReport, CoreError> {
+        let report = self.core.change_execution_host(host).await?;
+        // The host moved; whatever the caller does next is a follow-up effect
+        // whose failure must not put the policy back on the old host.
+        self.follow_host();
+        self.note_interrupted_core(report.interrupted_running());
+        Ok(report)
     }
 
     async fn reconcile(
@@ -390,26 +450,104 @@ impl CoreLifecycleWorkflow {
         prepared: PreparedRuntime,
         preparation: &dyn RuntimePreparationPort,
     ) -> Result<ReconcileReport, CoreError> {
+        preparation
+            .publish(&prepared.snapshot)
+            .await
+            .map_err(domain_error)?;
+        // Promoted means the product was published, not that the host applied it.
+        self.runtime.generated(prepared.snapshot.clone());
+        let expected = self.core.refresh_status().await?;
+        match self
+            .submit_runtime(prepared, preparation, &expected)
+            .await?
+        {
+            RuntimeSubmission::Applied { report, .. } => Ok(report),
+            RuntimeSubmission::NotSubmitted(error) | RuntimeSubmission::Unchanged(error) => {
+                Err(error)
+            }
+            RuntimeSubmission::RolledBack(report) => {
+                ReconcileResult::RolledBack(report).into_applied()
+            }
+            RuntimeSubmission::Unknown(uncertain) => {
+                ReconcileResult::Unknown(uncertain).into_applied()
+            }
+        }
+    }
+
+    /// Submits a candidate to the core and records what it confirmed, without
+    /// publishing the derived product.
+    ///
+    /// The public runtime YAML is a derived view of an *accepted* source
+    /// configuration, and a Try runs before its source is committed. Publishing
+    /// it here would announce a document the transaction may still abort, so the
+    /// Try path publishes after Confirm instead (v2 §5.6). The three answers
+    /// stay apart on the way out: only the caller knows whether a rolled-back
+    /// request or an unobserved one may be collapsed into an error.
+    pub(in crate::client) async fn submit_runtime(
+        &mut self,
+        prepared: PreparedRuntime,
+        preparation: &dyn RuntimePreparationPort,
+        expected: &crate::core::actor_v2::CoreStatusProjection,
+    ) -> Result<RuntimeSubmission, CoreError> {
         let PreparedRuntime {
             snapshot,
-            local_ipc,
+            intent,
+            ports,
         } = prepared;
-        preparation.publish(&snapshot).await.map_err(domain_error)?;
-        // Promoted means the product was published, not that the host applied it.
-        self.runtime.generated(snapshot.clone());
         let spec = preparation
             .core_spec(&snapshot.target_core)
             .map_err(|error| {
                 CoreError::new(CoreErrorKind::BinaryNotFound, error.to_string(), false)
             })?;
-        let report = self
-            .core
-            .reconcile(snapshot.target_core, &snapshot.config, spec, local_ipc)
-            .await?;
+        let result = self.core.reconcile(&intent, spec.clone(), expected).await?;
+        // An unobserved outcome may still have applied: the core can already
+        // be listening on the candidate's ports. The previously confirmed
+        // binding then describes an instance that may no longer exist, and
+        // §6.2 forbids it decaying into "the port we used last time".
+        //
+        // Matching port numbers do not exempt it. A candidate that asks for
+        // exactly the confirmed ports still replaces the instance holding them,
+        // and an unobserved apply can have stopped the old one and failed to
+        // start the new: the numbers are identical and nothing is listening.
+        // Only a confirmed apply says a listener exists, and that is the path
+        // below (D1).
+        if matches!(result, ReconcileResult::Unknown(_)) {
+            self.ports.invalidate();
+        }
+        let report = match result {
+            ReconcileResult::Reconciled(report) => report,
+            ReconcileResult::NotSubmitted(error) => {
+                return Ok(RuntimeSubmission::NotSubmitted(error));
+            }
+            ReconcileResult::Unchanged(error) => return Ok(RuntimeSubmission::Unchanged(error)),
+            ReconcileResult::RolledBack(report) => {
+                return Ok(RuntimeSubmission::RolledBack(report));
+            }
+            ReconcileResult::Unknown(uncertain) => {
+                return Ok(RuntimeSubmission::Unknown(uncertain));
+            }
+        };
         let mut bound = snapshot.as_ref().clone();
         bound.applied_binding = Some(report.applied.clone());
         let snapshot = Arc::new(bound);
-        self.runtime.bind_applied(snapshot.clone());
+        // The receipt is the fact the core confirmed. It is what a recovery
+        // restores and the only thing that may promote a candidate port
+        // binding, and it advances here rather than below: the effective-config
+        // inspection is diagnostic and may never arrive (C3).
+        let receipt = Arc::new(runtime::RuntimeApplyReceipt {
+            revision: snapshot.revision,
+            config_text: Arc::from(intent.config_text.as_str()),
+            config_digest: intent.digest.clone(),
+            target_core: snapshot.target_core,
+            core_spec: spec,
+            host: report.applied.host,
+            run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
+            local_ipc: intent.local_ipc,
+            binding: report.applied.clone(),
+            ports,
+        });
+        self.runtime
+            .record_confirmed_apply(Some(snapshot.clone()), receipt.clone());
         if let Some(effective) = report.effective_config.clone() {
             match snapshot.with_effective_config(
                 effective,
@@ -426,7 +564,27 @@ impl CoreLifecycleWorkflow {
         // it both restores an interrupted core and ends a user's stop. Clearing
         // on entry would lose the intent to a failure halfway through.
         self.recovery.intent = CoreIntent::Idle;
-        Ok(report)
+        Ok(RuntimeSubmission::Applied {
+            product: snapshot,
+            report,
+            receipt,
+        })
+    }
+
+    /// Publishes the derived product of a candidate the core already accepted.
+    ///
+    /// Only reached after the source configuration is committed. A failure here
+    /// leaves the applied runtime and the committed source alone: the product
+    /// file is a view, and losing it is a degradation to report and retry, not
+    /// a reason to undo anything (v2 §5.6).
+    pub(in crate::client) async fn publish_applied_product(
+        &self,
+        product: Arc<runtime::RuntimeSnapshot>,
+        preparation: &dyn RuntimePreparationPort,
+    ) -> anyhow::Result<()> {
+        preparation.publish(&product).await?;
+        self.runtime.generated(product);
+        Ok(())
     }
 
     async fn replace_binary(
@@ -453,6 +611,7 @@ impl CoreLifecycleWorkflow {
                 Err(error) if error.kind == Some(CoreErrorKind::NotStarted) => {}
                 Err(error) => return Err(error),
             }
+            self.ports.invalidate();
         }
         // Stopped/NotStarted alone cannot prove quarantined processes are dead.
         self.core.recover().await?;

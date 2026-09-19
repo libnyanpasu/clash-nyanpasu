@@ -6,10 +6,16 @@ use nyanpasu_config::{
 use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreSpec, LocalIpcPolicy, LocalIpcSettings};
 
-use super::{super::runtime, ports::RuntimeBuildPort};
-use crate::client::core_lifecycle::{
-    domain_error,
-    ports::{PreparedRuntime, RuntimePreparationPort},
+use super::{
+    super::{SessionPortResolver, runtime},
+    ports::RuntimeBuildPort,
+};
+use crate::{
+    client::core_lifecycle::{
+        domain_error,
+        ports::{PreparedRuntime, RuntimePreparationPort},
+    },
+    core::actor_v2::intent::RuntimeIntentBuilder,
 };
 
 /// Builds runtime candidates from committed source config. It holds read-only
@@ -20,6 +26,7 @@ pub(super) struct RuntimePreparation {
     clash: StateSnapshot<ClashConfig>,
     profiles: StateSnapshot<Profiles>,
     builder: Arc<dyn RuntimeBuildPort>,
+    ports: Arc<SessionPortResolver>,
     revisions: runtime::RuntimeRevisionAllocator,
 }
 
@@ -29,12 +36,14 @@ impl RuntimePreparation {
         clash: StateSnapshot<ClashConfig>,
         profiles: StateSnapshot<Profiles>,
         builder: Arc<dyn RuntimeBuildPort>,
+        ports: Arc<SessionPortResolver>,
     ) -> Self {
         Self {
             application,
             clash,
             profiles,
             builder,
+            ports,
             revisions: runtime::RuntimeRevisionAllocator::new(),
         }
     }
@@ -45,6 +54,45 @@ impl RuntimePreparation {
         clash: ClashConfig,
         app: NyanpasuAppConfig,
     ) -> Result<PreparedRuntime, CoreError> {
+        let content = self
+            .builder
+            .capture_content(&profiles)
+            .await
+            .map_err(domain_error)?;
+        self.prepare_inputs(super::inputs::RuntimeInputs {
+            app,
+            clash,
+            profiles,
+            content,
+        })
+        .await
+    }
+
+    pub async fn capture_inputs(
+        &self,
+        app: NyanpasuAppConfig,
+        clash: ClashConfig,
+        profiles: Arc<Profiles>,
+    ) -> anyhow::Result<super::inputs::RuntimeInputs> {
+        let content = self.builder.capture_content(&profiles).await?;
+        Ok(super::inputs::RuntimeInputs {
+            app,
+            clash,
+            profiles,
+            content,
+        })
+    }
+
+    pub async fn prepare_inputs(
+        &mut self,
+        inputs: super::inputs::RuntimeInputs,
+    ) -> Result<PreparedRuntime, CoreError> {
+        let super::inputs::RuntimeInputs {
+            app,
+            clash,
+            profiles,
+            content,
+        } = inputs;
         let revision = self.revisions.allocate().map_err(domain_error)?;
         let local_ipc = LocalIpcSettings {
             policy: match clash.clash_control_channel {
@@ -57,14 +105,39 @@ impl RuntimePreparation {
             },
             keep_http_controller: !clash.clash_ipc_disable_http_controller,
         };
+        // A candidate resolution, not an active one: nothing here touches the
+        // confirmed binding, so a build that is never applied leaves the
+        // running instance's ports alone (v2 §6.2).
+        let ports = self.ports.resolve_candidate(&clash).map_err(domain_error)?;
+        let core_type: nyanpasu_utils::core::CoreType = (&app.core).into();
         let snapshot = self
             .builder
-            .build(revision, profiles, clash, app)
+            .build(
+                revision,
+                profiles,
+                clash,
+                app,
+                ports.bindings().clone(),
+                content,
+            )
             .await
             .map_err(domain_error)?;
+        // Serialized once, here: the check and the reconcile both consume this
+        // value, so "same bytes" holds by construction rather than by
+        // convention.
+        let intent = RuntimeIntentBuilder::build(core_type, &snapshot.config, local_ipc).map_err(
+            |error| {
+                CoreError::new(
+                    nyanpasu_core_manager::CoreErrorKind::InvalidConfig,
+                    format!("failed to serialize runtime config: {error}"),
+                    false,
+                )
+            },
+        )?;
         Ok(PreparedRuntime {
             snapshot,
-            local_ipc,
+            intent: Arc::new(intent),
+            ports,
         })
     }
 

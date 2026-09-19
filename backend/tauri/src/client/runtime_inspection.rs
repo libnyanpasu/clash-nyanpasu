@@ -105,6 +105,48 @@ impl RuntimeSnapshot {
         Ok(snapshot)
     }
 
+    /// The same build with the controller step taken back off.
+    ///
+    /// [`RuntimeSnapshot::with_effective_config`] *appends* the effective
+    /// document as a child of the finalizing node, so stamping a snapshot that
+    /// already carries one would inspect the same build twice. A verified
+    /// restore is exactly that case: the document is the one this build
+    /// produced, and only the instance running it has moved, so the controller
+    /// step has to come off before it can be taken again.
+    ///
+    /// Nothing is appended after that step, so it is always the last node and
+    /// dropping it leaves every other node's index — and therefore every link —
+    /// where it was. A build that was never stamped is returned unchanged.
+    pub(crate) fn without_effective_config(&self) -> Self {
+        use nyanpasu_config::runtime::snapshot::BuiltinStepKind;
+        let mut snapshot = self.clone();
+        if self.effective.is_none() {
+            return snapshot;
+        }
+        snapshot.effective = None;
+        snapshot.effective_host = None;
+        snapshot.inspection_id = nanoid::nanoid!();
+        let mut inspection = self.inspection.as_ref().clone();
+        let last = inspection.graph.nodes.len().saturating_sub(1);
+        if !matches!(
+            inspection.graph.nodes.get(last).map(|node| &node.tag),
+            Some(OperatorTag::BuiltinStep {
+                step: BuiltinStepKind::CoreController,
+                ..
+            })
+        ) {
+            return snapshot;
+        }
+        inspection.graph.nodes.truncate(last);
+        for node in &mut inspection.graph.nodes {
+            if let Some(next) = node.next.as_mut() {
+                next.retain(|child| *child as usize != last);
+            }
+        }
+        snapshot.inspection = std::sync::Arc::new(inspection);
+        snapshot
+    }
+
     fn inspection_summary(&self) -> RuntimeInspection {
         RuntimeInspection {
             snapshot_id: self.inspection_id.clone(),

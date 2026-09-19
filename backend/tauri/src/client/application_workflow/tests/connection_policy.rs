@@ -892,6 +892,13 @@ struct RecordingBuilder {
 
 #[async_trait::async_trait]
 impl super::ports::RuntimeBuildPort for RecordingBuilder {
+    async fn capture_content(
+        &self,
+        profiles: &nyanpasu_config::profile::Profiles,
+    ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
+        self.delegate.capture_content(profiles).await
+    }
+
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
@@ -904,13 +911,17 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
         profiles: Arc<nyanpasu_config::profile::Profiles>,
         clash: nyanpasu_config::clash::config::ClashConfig,
         app: nyanpasu_config::application::NyanpasuAppConfig,
+        ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
+        content: crate::client::application_workflow::inputs::FrozenProfileContent,
     ) -> anyhow::Result<Arc<crate::client::runtime::RuntimeSnapshot>> {
         self.inputs
             .lock()
             .unwrap()
             .push((profiles.clone(), clash.clone()));
         anyhow::ensure!(!self.fail_build, "scripted build failure");
-        self.delegate.build(revision, profiles, clash, app).await
+        self.delegate
+            .build(revision, profiles, clash, app, ports, content)
+            .await
     }
     async fn publish(
         &self,
@@ -927,7 +938,6 @@ impl RecordingBuilder {
             delegate: super::adapters::FsRuntimeBuildAdapter {
                 profiles_dir: f.client.inner.profiles_dir.clone(),
                 paths: f.client.inner.runtime_paths.clone(),
-                ports: f.client.inner.ports.clone(),
             },
             inputs: Mutex::new(Vec::new()),
             fail_build,
@@ -970,23 +980,24 @@ fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
             f.client.inner.clash_config.snapshot_handle(),
             f.client.inner.profiles.snapshot_handle(),
             builder.clone(),
+            f.client.inner.ports.clone(),
         );
         let prepared = preparation
             .prepare_committed(committed.snapshot.clone(), original)
             .await
             .unwrap();
         assert_eq!(
-            prepared.local_ipc.policy,
+            prepared.intent.local_ipc.policy,
             nyanpasu_core_manager::LocalIpcPolicy::Disable
         );
-        assert!(prepared.local_ipc.keep_http_controller);
+        assert!(prepared.intent.local_ipc.keep_http_controller);
         assert_eq!(prepared.snapshot.revision.get(), 1);
         let latest = preparation.prepare_latest().await.unwrap();
         assert_eq!(
-            latest.local_ipc.policy,
+            latest.intent.local_ipc.policy,
             nyanpasu_core_manager::LocalIpcPolicy::Prefer
         );
-        assert!(!latest.local_ipc.keep_http_controller);
+        assert!(!latest.intent.local_ipc.keep_http_controller);
         assert_eq!(latest.snapshot.revision.get(), 2);
         let inputs = builder.inputs.lock().unwrap();
         assert!(Arc::ptr_eq(&inputs[0].0, &committed.snapshot));
@@ -1012,10 +1023,14 @@ fn failed_profile_build_or_publish_preserves_commit_without_reconcile_or_close()
             let builder = RecordingBuilder::new(&f, !publish, publish);
             let workflow = super::ApplicationWorkflowClient::spawn_with_ticks(
                 super::ApplicationWorkflowArgs {
-                    snapshots: crate::client::runtime::RuntimeSnapshotStore::default(),
                     application: f.client.inner.application.snapshot_handle(),
                     clash: f.client.inner.clash_config.snapshot_handle(),
                     profiles: f.client.inner.profiles.snapshot_handle(),
+                    validator: Arc::new(super::adapters::CoreCheckValidator::new(
+                        super::CoreClient::spawn(f.endpoint.clone()).await.unwrap(),
+                        f.client.inner.runtime_paths.clone(),
+                    )),
+                    ports: f.client.inner.ports.clone(),
                     core: super::CoreClient::spawn(f.endpoint.clone()).await.unwrap(),
                     service: super::ServiceClient::spawn(
                         Arc::new(crate::client::tests::IdleServiceAdapter),

@@ -143,7 +143,6 @@ struct ApplicationWorkflowState {
 }
 
 pub(super) struct ApplicationWorkflowArgs {
-    pub snapshots: runtime::RuntimeSnapshotStore,
     /// Read-only committed state. The workflow reads the three source domains
     /// and writes none of them.
     pub application: StateSnapshot<nyanpasu_config::application::NyanpasuAppConfig>,
@@ -152,6 +151,10 @@ pub(super) struct ApplicationWorkflowArgs {
     pub core: CoreClient,
     pub service: ServiceClient,
     pub builder: Arc<dyn RuntimeBuildPort>,
+    pub validator: Arc<dyn ports::RuntimeValidatorPort>,
+    /// The session port resolver: the preparation resolves candidates from it
+    /// and the core lifecycle confirms or invalidates the binding.
+    pub ports: Arc<super::SessionPortResolver>,
     pub installer: Arc<dyn BinaryInstaller>,
     pub ui: Arc<dyn UiEventSink>,
     pub dirty: watch::Receiver<()>,
@@ -534,7 +537,7 @@ impl ApplicationWorkflowClient {
         args: ApplicationWorkflowArgs,
         schedule_dirty_ticks: bool,
     ) -> anyhow::Result<Self> {
-        let runtime = args.snapshots;
+        let runtime = args.ports.runtime();
         let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
@@ -543,11 +546,13 @@ impl ApplicationWorkflowClient {
             args.clash.clone(),
             args.profiles.clone(),
             args.builder,
+            args.ports.clone(),
         );
         let workflow = ApplicationWorkflow {
             profiles: args.profiles,
             clash: args.clash,
             preparation,
+            validator: args.validator,
             ui: args.ui.clone(),
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
@@ -555,6 +560,7 @@ impl ApplicationWorkflowClient {
                 installer: args.installer,
                 ui: args.ui,
                 runtime: runtime.clone(),
+                ports: args.ports,
                 uncertain: false,
                 recovery: ServiceRecovery::default(),
                 closing: tokio_util::sync::CancellationToken::new(),

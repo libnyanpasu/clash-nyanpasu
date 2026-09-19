@@ -2471,6 +2471,7 @@ mod tests {
                 state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
                 state_changed_at: 0,
                 revision: None,
+                source_hash: None,
                 healthy: Some(true),
                 applied_kind: None,
             })

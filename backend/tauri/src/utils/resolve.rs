@@ -160,13 +160,20 @@ pub fn resolve_setup(app: &mut App) {
         ));
     }
 
-    // FIXME(actor-migration): write the session-resolved ports back into the
-    // legacy mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
-    // observing the real ports during the BC window. The typed side is the
-    // single resolver (SessionPortResolver); prepare_external_controller_port
-    // double-resolution is removed. Remove after PR-4/PR-6 migrate those readers.
     {
         let client = app.state::<crate::client::NyanpasuClient>();
+        log::trace!("init config");
+        log_err!(tauri::async_runtime::block_on(client.reconcile_core()));
+
+        // FIXME(actor-migration): write the session ports back into the legacy
+        // mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
+        // observing the real ports during the BC window. The typed side is the
+        // single resolver (SessionPortResolver); prepare_external_controller_port
+        // double-resolution is removed. Remove after PR-4/PR-6 migrate those readers.
+        //
+        // After the reconcile, not before: the resolver only publishes a
+        // binding the core actually accepted, so mirroring earlier would
+        // either write nothing or advertise a port nothing is listening on.
         if let Some(ports) = client.session_ports() {
             Config::verge().data().patch_config(IVerge {
                 verge_mixed_port: Some(ports.mixed_port),
@@ -181,9 +188,6 @@ pub fn resolve_setup(app: &mut App) {
             Config::clash().data().patch_config(mapping);
             let _ = Config::clash().data().save_config();
         }
-
-        log::trace!("init config");
-        log_err!(tauri::async_runtime::block_on(client.reconcile_core()));
     }
 
     log::trace!("init storage");

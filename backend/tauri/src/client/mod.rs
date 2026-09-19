@@ -14,6 +14,7 @@ pub mod profiles;
 pub mod rebuild;
 pub mod runtime;
 pub mod runtime_inspection;
+pub(crate) mod runtime_recovery;
 mod session_state;
 mod system_dns;
 pub mod system_proxy;
@@ -310,13 +311,10 @@ impl NyanpasuClient {
                 )
                 .await?;
 
-                // Eager session port resolution: the core is not running yet,
-                // so probing strategies is race-free (design §19.2 caller duty).
+                // No eager resolution: a pick nothing has applied is a
+                // candidate, and a candidate must never be readable as the
+                // active binding. The first reconcile resolves and confirms.
                 let ports = Arc::new(SessionPortResolver::default());
-                let clash_snapshot = clash_config.snapshot().state;
-                ports
-                    .resolve(&clash_snapshot)
-                    .context("failed to resolve session ports")?;
 
                 let file_service = Arc::new(ProfileFileService::new(
                     paths,
@@ -390,7 +388,6 @@ impl NyanpasuClient {
         let service_logs = logging.service;
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
-                snapshots: runtime::RuntimeSnapshotStore::default(),
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
                 profiles: profiles.snapshot_handle(),
@@ -399,8 +396,12 @@ impl NyanpasuClient {
                 builder: Arc::new(application_workflow::adapters::FsRuntimeBuildAdapter {
                     profiles_dir: profiles_dir.clone(),
                     paths: runtime_paths.clone(),
-                    ports: ports.clone(),
                 }),
+                validator: Arc::new(application_workflow::adapters::CoreCheckValidator::new(
+                    core_v2.clone(),
+                    runtime_paths.clone(),
+                )),
+                ports: ports.clone(),
                 installer: binary_installer,
                 ui: ui_sink.clone(),
                 dirty: dirty_rx,
@@ -1490,8 +1491,10 @@ impl NyanpasuClient {
         }
     }
 
+    /// The confirmed port binding, or `None` when no instance is known to be
+    /// listening. A candidate resolution never shows up here.
     pub fn session_ports(&self) -> Option<ResolvedPortBindings> {
-        self.inner.ports.cached_ports()
+        self.inner.ports.confirmed()
     }
 
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
@@ -1646,6 +1649,7 @@ pub(crate) mod tests {
                 state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
                 state_changed_at: 0,
                 revision: None,
+                source_hash: None,
                 healthy: Some(true),
                 applied_kind: None,
             })
@@ -1653,6 +1657,11 @@ pub(crate) mod tests {
     }
 
     pub(crate) struct TestControlEndpoint {
+        /// Which host this endpoint claims to be. A graph that moves the
+        /// runtime between hosts needs two of these, and the verification of a
+        /// restore compares the host the receipt names with the one that
+        /// answered.
+        host: ExecutionHost,
         fail: bool,
         effective_enabled: std::sync::atomic::AtomicBool,
         effective_queries: std::sync::atomic::AtomicUsize,
@@ -1665,6 +1674,11 @@ pub(crate) mod tests {
         /// told apart from a fresh one the way the real runtime's
         /// `apply_config` does.
         revision: StdMutex<nyanpasu_ipc::api::status::RevisionIdInfo>,
+        /// The source identity of that same revision. Tracked separately
+        /// because the two move independently: a restart re-stamps the
+        /// epoch-specific controller endpoint into the effective document
+        /// while the configuration it came from is unchanged.
+        source_hash: StdMutex<String>,
         /// Terminal results, keyed by operation id, computed once at
         /// `submit` time so `wait_operation` replays that decision instead
         /// of re-running (and re-advancing) the CAS check.
@@ -1689,36 +1703,85 @@ pub(crate) mod tests {
         /// succeed.
         recover_should_fail: std::sync::atomic::AtomicBool,
         result_missing: std::sync::atomic::AtomicBool,
+        /// Every advisory check this endpoint was asked to run, so a test can
+        /// compare what the check saw with what the reconcile submitted.
+        checks: StdMutex<Vec<crate::core::actor_v2::endpoint::CheckSubmission>>,
+        /// What the next check answers. The default mirrors the in-process
+        /// control plane accepting a document.
+        check_answer: StdMutex<TestCheckAnswer>,
+        /// The config bytes of every reconcile, so a test can prove the check
+        /// and the apply consumed the same document.
+        reconciled: StdMutex<Vec<Vec<u8>>>,
+        /// Scripts the runtime answering `RolledBack`: the request failed and
+        /// the manager put itself back on whatever it was already running, so
+        /// the tracked revision does not advance.
+        rolls_back: std::sync::atomic::AtomicBool,
+        /// Scripts `status()` failing, which is what an endpoint that stopped
+        /// answering looks like to a caller that needs a fresh observation.
+        status_fails: std::sync::atomic::AtomicBool,
+        status_reads: std::sync::atomic::AtomicUsize,
+    }
+
+    /// The three things a host can say about a candidate document.
+    #[derive(Clone)]
+    pub(crate) enum TestCheckAnswer {
+        Pass,
+        Reject(nyanpasu_core_manager::CoreError),
+        Unsupported,
+        /// The host accepts the request and never answers, the shape of a
+        /// wedged binary or a daemon that stopped responding.
+        Hang,
     }
 
     impl TestControlEndpoint {
         pub(crate) fn succeeding() -> Arc<Self> {
+            Self::succeeding_on(ExecutionHost::Local)
+        }
+
+        /// The same endpoint, owned by `host`.
+        pub(crate) fn succeeding_on(host: ExecutionHost) -> Arc<Self> {
             Arc::new(Self {
+                host,
                 fail: false,
                 effective_enabled: std::sync::atomic::AtomicBool::new(false),
                 effective_queries: std::sync::atomic::AtomicUsize::new(0),
                 submissions: std::sync::atomic::AtomicUsize::new(0),
                 local_ipc: StdMutex::new(None),
                 revision: StdMutex::new(Self::initial_revision()),
+                source_hash: StdMutex::new("source".to_owned()),
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
                 recover_should_fail: std::sync::atomic::AtomicBool::new(false),
                 result_missing: std::sync::atomic::AtomicBool::new(false),
+                checks: StdMutex::new(Vec::new()),
+                check_answer: StdMutex::new(TestCheckAnswer::Pass),
+                reconciled: StdMutex::new(Vec::new()),
+                rolls_back: std::sync::atomic::AtomicBool::new(false),
+                status_fails: std::sync::atomic::AtomicBool::new(false),
+                status_reads: std::sync::atomic::AtomicUsize::new(0),
             })
         }
 
         pub(crate) fn failing() -> Arc<Self> {
             Arc::new(Self {
+                host: ExecutionHost::Local,
                 fail: true,
                 effective_enabled: std::sync::atomic::AtomicBool::new(false),
                 effective_queries: std::sync::atomic::AtomicUsize::new(0),
                 submissions: std::sync::atomic::AtomicUsize::new(0),
                 local_ipc: StdMutex::new(None),
                 revision: StdMutex::new(Self::initial_revision()),
+                source_hash: StdMutex::new("source".to_owned()),
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
                 recover_should_fail: std::sync::atomic::AtomicBool::new(false),
                 result_missing: std::sync::atomic::AtomicBool::new(false),
+                checks: StdMutex::new(Vec::new()),
+                check_answer: StdMutex::new(TestCheckAnswer::Pass),
+                reconciled: StdMutex::new(Vec::new()),
+                rolls_back: std::sync::atomic::AtomicBool::new(false),
+                status_fails: std::sync::atomic::AtomicBool::new(false),
+                status_reads: std::sync::atomic::AtomicUsize::new(0),
             })
         }
 
@@ -1732,6 +1795,59 @@ pub(crate) mod tests {
 
         pub(crate) fn submissions(&self) -> usize {
             self.submissions.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        /// Scripts `status()` as unreadable from now on.
+        pub(crate) fn status_reads(&self) -> usize {
+            self.status_reads.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        pub(crate) fn set_status_fails(&self, fails: bool) {
+            self.status_fails
+                .store(fails, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        /// Scripts the next reconciles as rolled back.
+        pub(crate) fn set_rolls_back(&self, rolls_back: bool) {
+            self.rolls_back
+                .store(rolls_back, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        /// Scripts whether the host serves effective-config snapshots at all.
+        /// Without one the apply is recorded but never inspected, so a test
+        /// that needs `state.applied` to advance has to turn this on.
+        pub(crate) fn set_effective_enabled(&self, enabled: bool) {
+            self.effective_enabled
+                .store(enabled, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        /// Moves the effective revision the endpoint reports as applied. On its
+        /// own this is what a restart of the *same* configuration looks like:
+        /// the managed controller endpoint carries the epoch, so a new epoch
+        /// always brings a new effective hash.
+        pub(crate) fn set_effective_hash(&self, hash: &str) {
+            self.revision.lock().unwrap().effective_hash = hash.into();
+        }
+
+        /// Moves the source identity the endpoint reports as applied, standing
+        /// in for a core that is running a different document than the app
+        /// expects.
+        pub(crate) fn set_source_hash(&self, hash: &str) {
+            *self.source_hash.lock().unwrap() = hash.to_owned();
+        }
+
+        pub(crate) fn set_check_answer(&self, answer: TestCheckAnswer) {
+            *self.check_answer.lock().unwrap() = answer;
+        }
+
+        /// The documents this endpoint was asked to check, in order.
+        pub(crate) fn checked(&self) -> Vec<crate::core::actor_v2::endpoint::CheckSubmission> {
+            self.checks.lock().unwrap().clone()
+        }
+
+        /// The config bytes of every reconcile this endpoint was asked to run.
+        pub(crate) fn reconciled_bytes(&self) -> Vec<Vec<u8>> {
+            self.reconciled.lock().unwrap().clone()
         }
 
         /// Scripts what `status()` reports next (R5 stop-decision tests).
@@ -1827,6 +1943,8 @@ pub(crate) mod tests {
                 return successful_reconcile(submission.envelope.operation_id);
             };
             *self.local_ipc.lock().unwrap() = request.options.local_ipc;
+            let nyanpasu_core_manager::ConfigInput::Inline { bytes, .. } = &request.config;
+            self.reconciled.lock().unwrap().push(bytes.clone());
             let mut current = self.revision.lock().unwrap();
             if let Some(expected) = &request.expected_applied {
                 let stale = expected.epoch.get() != current.epoch
@@ -1855,7 +1973,18 @@ pub(crate) mod tests {
                     };
                 }
             }
-            current.generation += 1;
+            let rolled_back = self.rolls_back.load(std::sync::atomic::Ordering::SeqCst);
+            if !rolled_back {
+                current.generation += 1;
+                *self.source_hash.lock().unwrap() = nyanpasu_core_manager::payload_digest(bytes);
+                *self.status_override.lock().unwrap() = (
+                    Some(nyanpasu_ipc::api::status::CoreStateDetail::Running {
+                        epoch: current.epoch,
+                        pid: 7,
+                    }),
+                    Some(request.core.kind),
+                );
+            }
             let applied = current.clone();
             nyanpasu_ipc::api::core::v2::OperationInfo {
                 id,
@@ -1863,15 +1992,20 @@ pub(crate) mod tests {
                 output: Some(
                     nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(
                         nyanpasu_ipc::api::core::v2::ReconcileOutcomeInfo {
-                            outcome: nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+                            outcome: if rolled_back {
+                                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::RolledBack
+                            } else {
+                                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started
+                            },
                             revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                                 epoch: applied.epoch,
                                 generation: applied.generation,
-                                source_hash: "source".into(),
+                                source_hash: self.source_hash.lock().unwrap().clone(),
                                 effective_hash: applied.effective_hash,
                             },
                             warning: None,
-                            failed_apply: None,
+                            failed_apply: rolled_back
+                                .then(|| "scripted: the target would not start".to_owned()),
                         },
                     ),
                 ),
@@ -1883,7 +2017,24 @@ pub(crate) mod tests {
     #[async_trait::async_trait]
     impl crate::core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         fn host(&self) -> ExecutionHost {
-            ExecutionHost::Local
+            self.host
+        }
+
+        async fn check_config(
+            &self,
+            submission: crate::core::actor_v2::endpoint::CheckSubmission,
+        ) -> crate::core::actor_v2::endpoint::CheckSupport {
+            use crate::core::actor_v2::endpoint::CheckSupport;
+            let answer = self.check_answer.lock().unwrap().clone();
+            self.checks.lock().unwrap().push(submission);
+            match answer {
+                TestCheckAnswer::Pass => CheckSupport::Ran(Ok(())),
+                TestCheckAnswer::Reject(error) => CheckSupport::Ran(Err(error)),
+                TestCheckAnswer::Unsupported => CheckSupport::Unsupported {
+                    reason: "scripted: this host exposes no config check".into(),
+                },
+                TestCheckAnswer::Hang => std::future::pending().await,
+            }
         }
 
         async fn submit(
@@ -1944,7 +2095,7 @@ pub(crate) mod tests {
                 revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                     epoch: current.epoch,
                     generation: current.generation,
-                    source_hash: "source".into(),
+                    source_hash: self.source_hash.lock().unwrap().clone(),
                     effective_hash: current.effective_hash,
                 },
                 config: "mode: rule\nexternal-controller-unix: /tmp/recovered.sock\n".into(),
@@ -1957,12 +2108,22 @@ pub(crate) mod tests {
             crate::core::actor_v2::endpoint::CoreStatusSnapshot,
             nyanpasu_core_manager::CoreError,
         > {
+            self.status_reads
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if self.status_fails.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(nyanpasu_core_manager::CoreError::new(
+                    nyanpasu_core_manager::CoreErrorKind::BackendUnavailable,
+                    "scripted: the host stopped answering status reads",
+                    true,
+                ));
+            }
             let (state, applied_kind) = self.status_override.lock().unwrap().clone();
             Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
                 controller: None,
                 state,
                 state_changed_at: 0,
                 revision: Some(self.revision.lock().unwrap().clone()),
+                source_hash: Some(self.source_hash.lock().unwrap().clone()),
                 healthy: Some(true),
                 applied_kind,
             })
@@ -2061,6 +2222,7 @@ pub(crate) mod tests {
                 }),
                 state_changed_at: 0,
                 revision: None,
+                source_hash: None,
                 healthy: Some(true),
                 applied_kind: None,
             })
@@ -2524,9 +2686,6 @@ pub(crate) mod tests {
         .await
         .expect("profiles client should be created");
         let ports = Arc::new(SessionPortResolver::default());
-        ports
-            .resolve(&ClashConfig::default())
-            .expect("default ports should resolve");
         let (core_v2, service) = test_v2_clients();
         NyanpasuClient::with_parts(
             crate::bundle::BundleMetadata {
@@ -2960,9 +3119,6 @@ pub(crate) mod tests {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         let ports = Arc::new(SessionPortResolver::default());
-        ports
-            .resolve(&ClashConfig::default())
-            .expect("default ports should resolve");
         let file_service = Arc::new(ProfileFileService::new(
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
@@ -3988,9 +4144,6 @@ pub(crate) mod tests {
             .await
             .expect("profiles client");
             let ports = Arc::new(SessionPortResolver::default());
-            ports
-                .resolve(&ClashConfig::default())
-                .expect("default ports");
             let (core_v2, service) = test_v2_clients();
             let client = NyanpasuClient::with_parts(
                 crate::bundle::BundleMetadata {

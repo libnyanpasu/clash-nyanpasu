@@ -3,10 +3,13 @@
 pub(crate) mod adapters;
 pub(in crate::client) mod impact;
 pub(in crate::client) mod inputs;
+pub(in crate::client) mod mutation;
+pub(in crate::client) mod participant;
 pub(in crate::client) mod policy;
 pub(in crate::client) mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;
+mod tcc;
 mod workflow;
 
 #[cfg(test)]
@@ -15,7 +18,7 @@ mod tests;
 use std::{collections::VecDeque, panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
 use futures_util::FutureExt;
-use nyanpasu_core::state::StateSnapshot;
+use nyanpasu_core::state::{DecisionHandle, StateDecision, StateSnapshot};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
@@ -38,6 +41,7 @@ use crate::{
     },
     state::profiles::{CommitReport, ports::RebuildNotifier},
 };
+use mutation::{MutationBudgets, MutationCommand, MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
@@ -91,6 +95,9 @@ pub(super) enum Command {
         mode_changed: bool,
     },
     ApplyProfileActivation(CommitReport),
+    /// One source-config mutation, running as a Required participant of the
+    /// transaction that produced its candidate.
+    Mutation(Box<MutationCommand>),
 }
 
 struct Response {
@@ -110,11 +117,25 @@ enum Message {
         workflow: Box<ApplicationWorkflow>,
         result: Box<Result<Output, CoreError>>,
     },
+    /// A mutation asking to be admitted. Answered during the source
+    /// transaction's prepare, so it is never queued behind the ordinary work
+    /// FIFO without an answer: a refusal here refuses the whole mutation.
+    BeginMutation(Box<MutationRequest>),
+    /// Wake a queued attempt to read its authoritative source outcome.
+    WakeMutation(OperationId),
+    /// A queued mutation spent its admission budget without reaching the
+    /// execution domain.
+    AdmissionExpired(OperationId),
     DirtyTick,
     RecoveryTick,
     Close,
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
+    /// How many attempts still own a control context. Retiring one on every
+    /// terminal path is an invariant with no other observable trace: a context
+    /// that outlives its attempt is unreachable, not visibly wrong.
+    #[cfg(test)]
+    LiveMutationContexts(RpcReplyPort<usize>),
 }
 
 struct ApplicationWorkflowActor;
@@ -123,6 +144,17 @@ struct ActiveOperation {
     response: Response,
     task: tokio::task::JoinHandle<()>,
     shutdown: bool,
+}
+
+/// One attempt's control context, owned by the actor for as long as the
+/// attempt exists. It is what makes a settlement addressable by `OperationId`
+/// without a registry: the context is created with the attempt and retired with
+/// it, so a decision can never reach a different attempt.
+struct MutationContext {
+    operation_id: OperationId,
+    decision: DecisionHandle,
+    decision_waiter: tokio::task::JoinHandle<()>,
+    admitted: bool,
 }
 
 struct ApplicationWorkflowState {
@@ -140,6 +172,10 @@ struct ApplicationWorkflowState {
     closing: bool,
     shutdown_waiters: Vec<Response>,
     abandoned: bool,
+    /// Queued and in-flight mutation contexts.
+    mutations: Vec<MutationContext>,
+    journal: watch::Sender<MutationJournal>,
+    budgets: MutationBudgets,
 }
 
 pub(super) struct ApplicationWorkflowArgs {
@@ -158,12 +194,16 @@ pub(super) struct ApplicationWorkflowArgs {
     pub installer: Arc<dyn BinaryInstaller>,
     pub ui: Arc<dyn UiEventSink>,
     pub dirty: watch::Receiver<()>,
+    /// The separate budgets of one mutation (v2 §5.5).
+    pub budgets: MutationBudgets,
 }
 
 struct ActorArgs {
     workflow: ApplicationWorkflow,
     dirty: watch::Receiver<()>,
     status: watch::Sender<CoreLifecycleStatus>,
+    journal: watch::Sender<MutationJournal>,
+    budgets: MutationBudgets,
     schedule_dirty_ticks: bool,
 }
 
@@ -205,6 +245,7 @@ impl ApplicationWorkflowState {
                             .collect::<Vec<_>>()
                             .join("; "),
                     ),
+                    Ok(Output::Settled(receipt)) => receipt.detail.clone(),
                     _ => None,
                 },
                 backend_operation_id: result.as_ref().err().and_then(|error| error.operation_id),
@@ -218,19 +259,28 @@ impl ApplicationWorkflowState {
     }
 
     fn reject(&mut self, request: Request, error: CoreError) {
-        if let Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) = &request.command {
-            // A timed-out installer may still reserve its updater task. Rejection
-            // before execution must settle that observer as well as the RPC.
-            let message = error.to_string();
-            if std::panic::catch_unwind(AssertUnwindSafe(|| {
-                artifact.progress.finished(Some(&message));
-            }))
-            .is_err()
-            {
-                tracing::error!("binary installation progress observer panicked");
+        let Request { command, response } = request;
+        match command {
+            Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) => {
+                // A timed-out installer may still reserve its updater task. Rejection
+                // before execution must settle that observer as well as the RPC.
+                let message = error.to_string();
+                if std::panic::catch_unwind(AssertUnwindSafe(|| {
+                    artifact.progress.finished(Some(&message));
+                }))
+                .is_err()
+                {
+                    tracing::error!("binary installation progress observer panicked");
+                }
             }
+            // The Try never ran, so this refusal leaves the runtime untouched
+            // and the source store on the version it already holds (R4).
+            Command::Mutation(mut command) => {
+                command.request.answer(TryAck::Rejected(error.to_string()));
+            }
+            _ => {}
         }
-        self.settle(request.response, Err(error));
+        self.settle(response, Err(error));
     }
 
     fn close(&mut self) {
@@ -245,7 +295,13 @@ impl ApplicationWorkflowState {
         }
         self.dirty = false;
         while let Some(request) = self.pending.pop_front() {
+            // A rejected mutation is a finished attempt. Its context has to move
+            // into the bounded history with it: the transaction is still going
+            // to settle, and a settlement routed to a context nobody will ever
+            // act on again is worse than one recognised as late.
+            let operation_id = request.response.id;
             self.reject(request, conflict("core lifecycle is shutting down"));
+            self.retire_mutation(operation_id);
         }
     }
 
@@ -262,7 +318,15 @@ impl ApplicationWorkflowState {
             self.status.send_modify(|status| status.uncertain = true);
             self.dirty = false;
             while let Some(request) = self.pending.pop_front() {
+                // Same rule as the shutdown drain: a rejected mutation is a
+                // finished attempt, and its context moves into the bounded
+                // history with it. Leaving it in `mutations` would strand it —
+                // `withdraw_mutation` only retires what is still queued, so the
+                // settlement this transaction is still going to make would find
+                // a context nobody will act on again.
+                let operation_id = request.response.id;
                 self.reject(request, CoreError::new(CoreErrorKind::OperationConflict, "previous core lifecycle operation has an uncertain outcome; restart the application before further mutations", false));
+                self.retire_mutation(operation_id);
             }
         }
         let request = if self.closing {
@@ -309,10 +373,29 @@ impl ApplicationWorkflowState {
             None
         };
         if let Some(Request { command, response }) = request {
+            if let Command::Mutation(mutation) = &command
+                && mutation.request.decision.decision() != StateDecision::Undecided
+            {
+                let id = response.id;
+                self.reject(
+                    Request { command, response },
+                    conflict("source settled before admission"),
+                );
+                self.retire_mutation(id);
+                self.drive(myself);
+                return;
+            }
             let Some(mut workflow) = self.workflow.take() else {
                 return;
             };
             let id = response.id;
+            if matches!(command, Command::Mutation(_))
+                && let Some(context) = self.context_mut(id)
+            {
+                // The tracked task now waits on the decision itself. Wakes
+                // only withdraw attempts that have not entered this domain.
+                context.admitted = true;
+            }
             let actor = myself.clone();
             let shutdown = matches!(command, Command::Core(CoreCommand::Shutdown));
             // Ownership moves into exactly one tracked task, never a shared lock.
@@ -361,6 +444,138 @@ impl ApplicationWorkflowState {
         }
         self.publish();
     }
+
+    fn context_mut(&mut self, operation_id: OperationId) -> Option<&mut MutationContext> {
+        self.mutations
+            .iter_mut()
+            .find(|context| context.operation_id == operation_id)
+    }
+
+    /// Whether the execution domain is isolated pending an explicit recovery.
+    ///
+    /// A mutation has to be answered while the workflow may be out on a tracked
+    /// task, so the published flag is consulted too: it is the last value the
+    /// latch had before the tracked task started.
+    fn recovery_required(&self) -> bool {
+        self.workflow
+            .as_ref()
+            .is_some_and(|workflow| workflow.lifecycle.uncertain)
+            || self.status.borrow().uncertain
+    }
+
+    /// Admission (v2 §5.2 step 2, §4.4, R4).
+    ///
+    /// Every refusal here happens before the candidate is persisted, so the
+    /// source store keeps the version it has and the runtime is untouched. This
+    /// is the whole point of putting admission inside `on_prepare`: a workflow
+    /// that is closing, isolated or saturated refuses the mutation rather than
+    /// refusing to apply one that is already committed.
+    fn begin_mutation(&mut self, mut request: MutationRequest, myself: &ActorRef<Message>) {
+        let operation_id = request.operation_id;
+        // The execution domain is free and nothing is ahead of this request, so
+        // `drive` admits it as soon as this handler returns.
+        let admittable = self.active.is_none() && self.pending.is_empty();
+        let refusal = if self.closing {
+            Some("the application workflow is shutting down")
+        } else if self.recovery_required() {
+            Some("a previous operation left the execution domain isolated; recover first")
+        } else if self.pending.len() >= MAX_PENDING {
+            Some("the application workflow queue is full")
+        } else if !admittable && self.budgets.admission.is_zero() {
+            Some("the execution domain is occupied and the admission budget is spent")
+        } else {
+            None
+        };
+        if let Some(refusal) = refusal {
+            request.answer(TryAck::Rejected(refusal.to_owned()));
+            return;
+        }
+        let decision = request.decision.clone();
+        let actor = myself.clone();
+        let decision_waiter = tokio::spawn(async move {
+            decision.wait().await;
+            let _ = actor.cast(Message::WakeMutation(operation_id));
+        });
+        self.mutations.push(MutationContext {
+            operation_id,
+            decision: request.decision.clone(),
+            decision_waiter,
+            admitted: false,
+        });
+        self.pending.push_back(Request {
+            command: Command::Mutation(Box::new(MutationCommand { request })),
+            // A mutation has no RPC waiter: its caller is the state transaction,
+            // and that one is answered with the Try verdict during prepare.
+            response: Response {
+                id: operation_id,
+                reply: None,
+            },
+        });
+        if !admittable {
+            // Waiting for the execution domain is bounded separately from every
+            // other budget (v2 §5.5): a mutation that waits holds its source
+            // transaction's writer permit open for exactly as long.
+            // Detached on purpose: an expiry that arrives for an attempt which
+            // was admitted, withdrawn or forgotten in the meantime is a no-op.
+            let _timer = myself.send_after(self.budgets.admission, move || {
+                Message::AdmissionExpired(operation_id)
+            });
+        }
+    }
+
+    fn wake_mutation(&mut self, operation_id: OperationId) {
+        if self.mutations.iter().any(|context| {
+            context.operation_id == operation_id
+                && !context.admitted
+                && context.decision.decision() != StateDecision::Undecided
+        }) {
+            self.withdraw_mutation(operation_id, "source transaction settled before admission");
+        }
+    }
+
+    /// Takes a queued mutation back out of the work FIFO. Only ever reached
+    /// before the Try was admitted, so nothing was built and nothing applied.
+    fn withdraw_mutation(&mut self, operation_id: OperationId, reason: &str) {
+        let Some(index) = self
+            .pending
+            .iter()
+            .position(|request| request.response.id == operation_id)
+        else {
+            return;
+        };
+        let request = self.pending.remove(index).expect("index came from pending");
+        self.reject(request, conflict(reason));
+        self.retire_mutation(operation_id);
+    }
+
+    /// Releases the decision waiter and control context of a finished attempt.
+    fn retire_mutation(&mut self, operation_id: OperationId) {
+        let Some(index) = self
+            .mutations
+            .iter()
+            .position(|context| context.operation_id == operation_id)
+        else {
+            return;
+        };
+        let context = self.mutations.remove(index);
+        context.decision_waiter.abort();
+    }
+
+    fn publish_journal(&self, receipt: Option<mutation::MutationReceipt>) {
+        let workflow = self.workflow.as_ref();
+        self.journal.send_modify(|journal| {
+            if let Some(receipt) = receipt {
+                if journal.completed.len() == MAX_PENDING {
+                    journal.completed.pop_front();
+                }
+                journal.completed.push_back(receipt);
+            }
+            if let Some(workflow) = workflow {
+                journal.recovery = workflow.recovery.clone();
+                journal.deferred = workflow.deferred.clone();
+            }
+        });
+    }
 }
 
 impl Actor for ApplicationWorkflowActor {
@@ -393,6 +608,9 @@ impl Actor for ApplicationWorkflowActor {
             closing: false,
             shutdown_waiters: Vec::new(),
             abandoned: false,
+            mutations: Vec::new(),
+            journal: args.journal,
+            budgets: args.budgets,
         })
     }
 
@@ -447,12 +665,46 @@ impl Actor for ApplicationWorkflowActor {
                 if let Ok(Output::Shutdown(report)) = &result {
                     state.shutdown = Some(report.clone());
                     let waiters = std::mem::take(&mut state.shutdown_waiters);
+                    // Published before the waiters are answered: a caller that
+                    // observes its own reply must not then read itself as still
+                    // queued, and `publish` is what recomputes the queue after
+                    // those waiters were taken out of it.
+                    state.publish();
                     for waiter in waiters {
                         state.settle(waiter, Ok(Output::Shutdown(report.clone())));
                     }
                 }
+                let receipt = match &result {
+                    Ok(Output::Settled(receipt)) => Some((**receipt).clone()),
+                    _ => None,
+                };
                 state.workflow = Some(workflow);
+                // Every completed operation retires its context, receipt or
+                // not: a panicked mutation produces none, and the attempt is
+                // just as over. `retire_mutation` is a no-op for the ids that
+                // never had one, which is every non-mutation command.
+                state.retire_mutation(id);
+                if receipt.is_some() {
+                    state.publish_journal(receipt);
+                }
                 state.settle(active.response, result);
+            }
+            Message::BeginMutation(request) => state.begin_mutation(*request, &myself),
+            // Control messages of a transaction that already holds the
+            // execution domain. They are handled whatever the admission flags
+            // say: Closing rejects new mutations, it does not destroy one that
+            // is still waiting for its decision (v2 §11.3).
+            Message::WakeMutation(operation_id) => state.wake_mutation(operation_id),
+            Message::AdmissionExpired(operation_id) => {
+                if state
+                    .context_mut(operation_id)
+                    .is_some_and(|context| !context.admitted)
+                {
+                    state.withdraw_mutation(
+                        operation_id,
+                        "the admission budget elapsed before the execution domain took this mutation",
+                    );
+                }
             }
             Message::DirtyTick => {
                 if !state.closing && state.dirty_rx.has_changed().unwrap_or(false) {
@@ -472,6 +724,10 @@ impl Actor for ApplicationWorkflowActor {
             #[cfg(test)]
             Message::Barrier(reply) => {
                 let _ = reply.send(());
+            }
+            #[cfg(test)]
+            Message::LiveMutationContexts(reply) => {
+                let _ = reply.send(state.mutations.len());
             }
         }
         state.drive(&myself);
@@ -503,6 +759,10 @@ struct ClientInner {
     actor: ActorRef<Message>,
     runtime: runtime::RuntimeSnapshotStore,
     status: watch::Receiver<CoreLifecycleStatus>,
+    /// Read through `mutation_journal`; the status surface that publishes it to
+    /// the UI lands with the commands that route through the participant (T6).
+    #[allow(dead_code)]
+    mutations: watch::Receiver<MutationJournal>,
     core: crate::core::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
 }
@@ -539,6 +799,7 @@ impl ApplicationWorkflowClient {
     ) -> anyhow::Result<Self> {
         let runtime = args.ports.runtime();
         let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
+        let (journal_tx, mutations) = watch::channel(MutationJournal::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
         let preparation = RuntimePreparation::new(
@@ -554,6 +815,9 @@ impl ApplicationWorkflowClient {
             preparation,
             validator: args.validator,
             ui: args.ui.clone(),
+            budgets: args.budgets,
+            deferred: None,
+            recovery: None,
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),
@@ -573,6 +837,8 @@ impl ApplicationWorkflowClient {
                 workflow,
                 dirty: args.dirty,
                 status: status_tx,
+                journal: journal_tx,
+                budgets: args.budgets,
                 schedule_dirty_ticks,
             },
         )
@@ -581,6 +847,7 @@ impl ApplicationWorkflowClient {
             actor,
             runtime,
             status,
+            mutations,
             core,
             service_status,
         })))
@@ -606,6 +873,31 @@ impl ApplicationWorkflowClient {
 
     pub fn status(&self) -> CoreLifecycleStatus {
         self.0.status.borrow().clone()
+    }
+
+    /// Hands the workflow one mutation's Try. The verdict comes back on the
+    /// request's own channel, so the caller — the source transaction's prepare
+    /// — is the only thing waiting for it.
+    pub(in crate::client) fn begin_mutation(&self, request: MutationRequest) -> anyhow::Result<()> {
+        self.0
+            .actor
+            .cast(Message::BeginMutation(Box::new(request)))
+            .map_err(|_| {
+                anyhow::anyhow!("the application workflow is unavailable; the mutation was not run")
+            })
+    }
+
+    #[cfg(test)]
+    pub(in crate::client) fn wake_mutation(&self, operation_id: OperationId) {
+        let _ = self.0.actor.cast(Message::WakeMutation(operation_id));
+    }
+
+    /// The structured record of recent mutations, what is deferred and why the
+    /// execution domain is isolated. Diagnostics: control logic reads these
+    /// values, never the text of an ACK.
+    #[allow(dead_code)]
+    pub(in crate::client) fn mutation_journal(&self) -> MutationJournal {
+        self.0.mutations.borrow().clone()
     }
     pub async fn apply_control_channel(&self) -> Result<(), CoreError> {
         self.call(Command::Core(CoreCommand::ApplyControlChannel))

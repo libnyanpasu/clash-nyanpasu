@@ -1042,6 +1042,7 @@ fn failed_profile_build_or_publish_preserves_commit_without_reconcile_or_close()
                     installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
                     ui: Arc::new(crate::client::NoopUiEventSink),
                     dirty: super::DirtyNotifier::channel().1,
+                    budgets: super::mutation::MutationBudgets::default(),
                 },
                 false,
             )

@@ -6564,7 +6564,6 @@ dependencies = [
  "fs-err",
  "gxhash",
  "indexmap 2.14.2",
- "nyanpasu-utils",
  "serde",
  "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "tempfile",

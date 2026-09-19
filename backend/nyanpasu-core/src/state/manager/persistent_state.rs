@@ -4,31 +4,24 @@ use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::io::Write;
+use std::{
+    future::Future,
+    io::Write,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use super::{super::error::*, *};
 
-fn persist_state_sync<State, Formatter>(
-    formatter: &Formatter,
-    config_path: &Utf8PathBuf,
-    config_prefix: Option<&str>,
-    state: &State,
-) -> anyhow::Result<()>
-where
-    State: Serialize,
-    Formatter: Format,
-{
-    let mut buf = Vec::with_capacity(4096);
-    formatter.serialize(&mut buf, state, config_prefix)?;
-    AtomicFile::new(config_path, AllowOverwrite)
-        .write(|file| file.write_all(&buf))
-        .with_context(|| format!("failed to write config: {config_path}"))?;
-    Ok(())
-}
-
 use crate::{
     format::{Format, YamlFormat},
-    state::{PrepareReport, Version},
+    state::{
+        DecisionHandle, PrepareReport, StateParticipant, Version,
+        coordinator::{ParticipantEntry, PendingOutcome},
+    },
 };
 
 #[derive(Builder)]
@@ -161,14 +154,73 @@ pub enum ReplaceIfVersionError {
     State(#[from] StateChangedError),
     #[error("write config error: {0}")]
     WriteConfig(#[source] anyhow::Error),
+    #[error("local write step failed before commit: {0}")]
+    LocalWrite(#[source] anyhow::Error),
+    #[error("persistence failed ({cause}) and resource recovery failed: {recovery_error}")]
+    ResourceRecovery {
+        cause: anyhow::Error,
+        recovery_error: anyhow::Error,
+    },
     #[error(
-        "state commit failed ({commit_error}) and restoring the committed state failed: {recovery_error}"
+        "state commit failed ({commit_error}) and restoring the committed state failed \
+         ({recovery_error}): {inconsistent}"
     )]
     Recovery {
         commit_error: StateChangedError,
         #[source]
         recovery_error: anyhow::Error,
+        /// What the failed recovery left behind. This is what makes a recovery
+        /// failure distinguishable from a clean rejection.
+        inconsistent: InconsistentPersistence,
     },
+}
+
+/// Which write inside one conditional replacement failed.
+///
+/// The caller's local write step and the config write share one transaction, so
+/// they share one error channel; this keeps them apart on the way out.
+#[derive(Debug)]
+enum ConditionalWriteError {
+    LocalWrite(anyhow::Error),
+    Config(anyhow::Error),
+}
+
+impl std::fmt::Display for ConditionalWriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LocalWrite(error) => write!(f, "local write failed: {error}"),
+            Self::Config(error) => write!(f, "config write failed: {error}"),
+        }
+    }
+}
+
+impl ConditionalWriteError {
+    fn into_inner(self) -> anyhow::Error {
+        match self {
+            Self::LocalWrite(error) | Self::Config(error) => error,
+        }
+    }
+}
+
+/// The deferred half of a config write: the bytes are already serialized, only
+/// the file write is left.
+type ConfigWrite = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
+
+/// Where the config file write runs.
+///
+/// These are the two behaviours this manager has always had, and they are kept
+/// as they were: `upsert` offloads the write, conditional replacement runs it on
+/// the calling task. Offloading conditional replacement too would change when a
+/// commit becomes observable on a path this change was not asked to touch.
+///
+/// Within one entry point the effect and its recovery always use the same mode.
+#[derive(Debug, Clone, Copy)]
+enum ConfigWriteMode {
+    /// Write on the current task.
+    Inline,
+    /// Write on a blocking thread, so a multi-syscall file write never stalls
+    /// the runtime. The work runs to completion even if the caller is dropped.
+    Offloaded,
 }
 
 pub struct PersistentStateManager<State, Formatter = YamlFormat>
@@ -188,32 +240,116 @@ where
 {
     super::impl_state_manager_delegates!(State);
 
+    /// Replace the state unconditionally and persist it.
+    ///
+    /// This is the same conditional-replacement transaction as
+    /// [`PersistentStateManager::replace_if_version`] with no version
+    /// precondition, so a commit that loses a race still rewrites the config
+    /// file back to the state the store actually holds.
     pub async fn upsert(&mut self, state: State) -> Result<PrepareReport, UpsertError>
     where
         Formatter: Clone,
     {
         let config_path = self.config_path.clone();
-        let config_prefix = self.config_prefix.clone();
-        let formatter = self.formatter.clone();
+        let (effect, recovery) = self.config_write_steps(ConfigWriteMode::Offloaded);
         self.state_coordinator
-            .with_pending_state(&state, |s| async move {
-                let mut buf = Vec::with_capacity(4096);
-                formatter.serialize(&mut buf, s, config_prefix.as_deref())?;
-                let file = AtomicFile::new(&config_path, AllowOverwrite);
-                tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-                    .await?
-                    .with_context(|| format!("failed to write config: {config_path}"))?;
-                Ok::<_, anyhow::Error>(())
+            .with_pending_state(&state, effect, |committed| async move {
+                recovery(&committed).await
             })
             .await
             .map(|((), report)| report)
-            .map_err(|e| match e {
-                WithEffectError::State(e) => UpsertError::State(e),
-                WithEffectError::Effect(e) => UpsertError::WriteConfig(e),
+            .map_err(|error| match error {
+                WithEffectError::State(error) => UpsertError::State(error),
+                WithEffectError::Effect(error) => UpsertError::WriteConfig(error),
                 WithEffectError::EffectTimedOut(timeout) => UpsertError::WriteConfig(
                     anyhow::anyhow!("write config timed out after {timeout:?}"),
                 ),
+                WithEffectError::EffectRecovery {
+                    effect_error,
+                    recovery_error,
+                } => UpsertError::ResourceRecovery {
+                    cause: anyhow::anyhow!("{effect_error}"),
+                    recovery_error,
+                },
+                WithEffectError::Recovery {
+                    commit_error,
+                    recovery_error,
+                } => UpsertError::Recovery {
+                    commit_error,
+                    recovery_error,
+                    inconsistent: InconsistentPersistence {
+                        config_path,
+                        local_write_completed: false,
+                    },
+                },
             })
+    }
+
+    /// A self-contained "write the config file" step, detached from `&self` so
+    /// it can be moved into the transaction's effect and recovery closures.
+    ///
+    /// Serialization always happens on the calling task because it is in-memory
+    /// and cheap; `mode` only decides where the file write itself runs.
+    fn write_config_step(
+        &self,
+        mode: ConfigWriteMode,
+    ) -> impl FnOnce(&State) -> ConfigWrite + use<State, Formatter>
+    where
+        Formatter: Clone,
+    {
+        let formatter = self.formatter.clone();
+        let config_path = self.config_path.clone();
+        let config_prefix = self.config_prefix.clone();
+        move |state| {
+            let mut buf = Vec::with_capacity(4096);
+            let serialized = formatter.serialize(&mut buf, state, config_prefix.as_deref());
+            Box::pin(async move {
+                serialized?;
+                let file = AtomicFile::new(&config_path, AllowOverwrite);
+                let written = match mode {
+                    ConfigWriteMode::Inline => file.write(|f| f.write_all(&buf)),
+                    ConfigWriteMode::Offloaded => {
+                        tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
+                            .await?
+                    }
+                };
+                written.with_context(|| format!("failed to write config: {config_path}"))?;
+                Ok(())
+            })
+        }
+    }
+
+    fn config_write_steps(
+        &self,
+        mode: ConfigWriteMode,
+    ) -> (
+        impl FnOnce(&State) -> ConfigWrite + use<State, Formatter>,
+        impl FnOnce(&State) -> ConfigWrite + use<State, Formatter>,
+    )
+    where
+        Formatter: Clone,
+    {
+        let effect = self.write_config_step(mode);
+        let recovery = self.write_config_step(mode);
+        let written = Arc::new(AtomicBool::new(false));
+        let completed = written.clone();
+        (
+            move |state| {
+                let write = effect(state);
+                Box::pin(async move {
+                    write.await?;
+                    completed.store(true, Ordering::Release);
+                    Ok(())
+                }) as ConfigWrite
+            },
+            move |state| {
+                if written.load(Ordering::Acquire) {
+                    recovery(state)
+                } else {
+                    Box::pin(async { Ok(()) }) as ConfigWrite
+                }
+            },
+        )
     }
 
     pub async fn replace_if_version(
@@ -225,53 +361,188 @@ where
         Formatter: Clone,
     {
         let config_path = self.config_path.clone();
-        let config_prefix = self.config_prefix.clone();
-        let effect_config_path = config_path.clone();
-        let effect_config_prefix = config_prefix.clone();
-        let effect_formatter = self.formatter.clone();
-        let recovery_formatter = self.formatter.clone();
-        match self
+        let (effect, recovery) = self.config_write_steps(ConfigWriteMode::Inline);
+        let outcome = self
             .state_coordinator
             .with_pending_state_if_version(
                 expected_version,
                 &next_state,
-                |state| async move {
-                    persist_state_sync(
-                        &effect_formatter,
-                        &effect_config_path,
-                        effect_config_prefix.as_deref(),
-                        state,
-                    )
-                },
+                |state| async move { effect(state).await.map_err(ConditionalWriteError::Config) },
                 |committed| async move {
-                    persist_state_sync(
-                        &recovery_formatter,
-                        &config_path,
-                        config_prefix.as_deref(),
-                        &committed,
-                    )
+                    recovery(&committed)
+                        .await
+                        .map_err(ConditionalWriteError::Config)
                 },
             )
-            .await
-        {
-            Ok(()) => Ok(ReplaceIfVersionResult::Replaced),
-            Err(ConditionalEffectError::Conflict { actual }) => {
-                Ok(ReplaceIfVersionResult::Conflict {
-                    actual_version: actual,
-                })
+            .await;
+        Self::map_conditional_outcome(outcome, config_path, false)
+    }
+
+    /// Replace the state only if the store still holds `expected_version`, with
+    /// one extra participant taking part in this transaction.
+    ///
+    /// `participant` is built from the transaction's own read-only
+    /// [`DecisionHandle`], so it can still tell what the transaction decided
+    /// after its `on_committed` notification was dropped or timed out. It joins
+    /// the permanently registered subscribers of the same transaction: same
+    /// prepare fan-out, same required-failure rollback, same notifications. It
+    /// is never registered on the coordinator, so a cancelled replacement
+    /// cannot leave a subscription behind.
+    ///
+    /// Necessary local writes and their recovery are owned by this transaction.
+    /// Recovery must settle partial writes as well as completed publications;
+    /// the authoritative abort is published only after it returns.
+    pub async fn replace_if_version_with_participant<P, W, WFut, R, RFut>(
+        &mut self,
+        expected_version: Version,
+        next_state: State,
+        participant: P,
+        local_write: W,
+        local_recovery: R,
+    ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
+    where
+        Formatter: Clone + Send + 'static,
+        P: FnOnce(DecisionHandle) -> StateParticipant<State>,
+        W: FnOnce() -> WFut + Send + 'static,
+        WFut: Future<Output = anyhow::Result<()>> + Send + 'static,
+        R: FnOnce() -> RFut + Send + 'static,
+        RFut: Future<Output = anyhow::Result<()>> + Send + 'static,
+    {
+        let config_path = self.config_path.clone();
+        let effect = self.write_config_step(ConfigWriteMode::Inline);
+        let recovery = self.write_config_step(ConfigWriteMode::Inline);
+        let local_write_completed = Arc::new(AtomicBool::new(false));
+        let local_write_flag = Arc::clone(&local_write_completed);
+        let config_written = Arc::new(AtomicBool::new(false));
+        let config_written_effect = config_written.clone();
+        let mut owner = self.state_coordinator.persistence_owner();
+        let participant = ParticipantEntry::new(participant);
+        let (completion, result) = tokio::sync::oneshot::channel();
+        let (_caller_lifetime, caller) = tokio::sync::watch::channel(());
+        let mut cancelled = caller.clone();
+        let started = Arc::new(AtomicBool::new(false));
+        let started_effect = started.clone();
+        let decision = participant.decision_writer();
+        // The source owner outlives its caller: dropping a waiter cannot drop an
+        // in-flight write, release its permit, or race its compensation.
+        tokio::spawn(async move {
+            let operation = owner.with_pending_state_if_version_with_participant(
+                expected_version,
+                &next_state,
+                participant,
+                |state| async move {
+                    if caller.has_changed().is_err() {
+                        return Err(ConditionalWriteError::LocalWrite(anyhow::anyhow!(
+                            "caller cancelled before persistence"
+                        )));
+                    }
+                    started_effect.store(true, Ordering::Release);
+                    local_write()
+                        .await
+                        .map_err(ConditionalWriteError::LocalWrite)?;
+                    local_write_flag.store(true, Ordering::SeqCst);
+                    if caller.has_changed().is_err() {
+                        return Err(ConditionalWriteError::LocalWrite(anyhow::anyhow!(
+                            "caller cancelled during persistence"
+                        )));
+                    }
+                    effect(state).await.map_err(ConditionalWriteError::Config)?;
+                    config_written_effect.store(true, Ordering::Release);
+                    Ok(())
+                },
+                |committed| async move {
+                    // Try every necessary recovery even when another fails.
+                    let local = local_recovery().await;
+                    let config = if config_written.load(Ordering::Acquire) {
+                        recovery(&committed).await
+                    } else {
+                        Ok(())
+                    };
+                    match (local, config) {
+                        (Ok(()), Ok(())) => Ok(()),
+                        (local, config) => Err(ConditionalWriteError::LocalWrite(anyhow::anyhow!(
+                            "local recovery: {local:?}; config recovery: {config:?}"
+                        ))),
+                    }
+                },
+            );
+            let mut operation = Box::pin(operation);
+            let outcome = tokio::select! {
+                biased;
+                outcome = &mut operation => outcome,
+                _ = cancelled.changed() => {
+                    if !started.load(Ordering::Acquire) {
+                        drop(operation);
+                        decision.abort(crate::state::AbortResourceState::Restored);
+                        return;
+                    }
+                    // Finish the write, then the effect's cancellation check sends
+                    // it through resource recovery before any abort is published.
+                    operation.await
+                }
+            };
+            let outcome = Self::map_conditional_outcome(
+                outcome,
+                config_path,
+                local_write_completed.load(Ordering::SeqCst),
+            );
+            let _ = completion.send(outcome);
+        });
+        result.await.map_err(|error| {
+            ReplaceIfVersionError::LocalWrite(anyhow::anyhow!(
+                "source persistence owner failed: {error}"
+            ))
+        })?
+    }
+
+    fn map_conditional_outcome(
+        outcome: Result<PendingOutcome<()>, WithEffectError<ConditionalWriteError>>,
+        config_path: Utf8PathBuf,
+        local_write_completed: bool,
+    ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError> {
+        match outcome {
+            Ok(PendingOutcome::Committed { .. }) => Ok(ReplaceIfVersionResult::Replaced),
+            Ok(PendingOutcome::Conflict { actual }) => Ok(ReplaceIfVersionResult::Conflict {
+                actual_version: actual,
+            }),
+            Err(WithEffectError::State(error)) => Err(ReplaceIfVersionError::State(error)),
+            Err(WithEffectError::Effect(ConditionalWriteError::LocalWrite(error))) => {
+                Err(ReplaceIfVersionError::LocalWrite(error))
             }
-            Err(ConditionalEffectError::State(error)) => Err(ReplaceIfVersionError::State(error)),
-            Err(ConditionalEffectError::Recovery {
+            Err(WithEffectError::Effect(ConditionalWriteError::Config(error))) => {
+                Err(ReplaceIfVersionError::WriteConfig(error))
+            }
+            Err(WithEffectError::EffectTimedOut(timeout)) => {
+                Err(ReplaceIfVersionError::WriteConfig(anyhow::anyhow!(
+                    "write timed out after {timeout:?}"
+                )))
+            }
+            Err(WithEffectError::EffectRecovery {
+                effect_error,
+                recovery_error,
+            }) => Err(ReplaceIfVersionError::ResourceRecovery {
+                cause: anyhow::anyhow!("{effect_error}"),
+                recovery_error: recovery_error.into_inner(),
+            }),
+            Err(WithEffectError::Recovery {
                 commit_error,
                 recovery_error,
             }) => Err(ReplaceIfVersionError::Recovery {
                 commit_error,
-                recovery_error,
+                recovery_error: recovery_error.into_inner(),
+                inconsistent: InconsistentPersistence {
+                    config_path,
+                    local_write_completed,
+                },
             }),
-            Err(ConditionalEffectError::Effect(error)) => {
-                Err(ReplaceIfVersionError::WriteConfig(error))
-            }
         }
+    }
+
+    /// The raw store behind this manager, so tests can simulate a writer that
+    /// bypassed the coordinator and force a CAS mismatch.
+    #[cfg(test)]
+    pub(crate) fn state_store(&self) -> crate::state::coordinator::StateStore<State> {
+        self.state_coordinator.state_store()
     }
 }
 

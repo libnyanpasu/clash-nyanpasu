@@ -1,7 +1,8 @@
 use super::{
-    StateChangeId, StateSnapshot, Version, VersionedState,
+    AbortResourceState, PersistenceIncident, StateChangeId, StateSnapshot, Version, VersionedState,
     ack::*,
     builder::*,
+    decision::{DecisionHandle, DecisionWriter},
     error::*,
     transaction::{NotifyStrategy, new_transaction},
 };
@@ -11,20 +12,52 @@ use indexmap::IndexMap;
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 
-pub(super) type ArcStateSubscriber<T> = Arc<dyn StateAckSubscriber<T> + Send + Sync>;
+pub(super) type ArcStateSubscriber<T> = StateParticipant<T>;
 pub(super) type Subscribers<T> = Vec<ArcStateSubscriber<T>>;
 pub(super) type StateStore<T> = Arc<ArcSwap<VersionedState<T>>>;
 
-#[derive(Debug)]
-pub(crate) enum ConditionalEffectError<E> {
+/// One extra participant that takes part in a single state transaction and is
+/// then forgotten.
+///
+/// It joins the permanently registered subscribers for that one transaction, so
+/// it sees the same prepare fan-out, the same required-failure rollback and the
+/// same commit/rollback notifications. Nothing is registered on the coordinator,
+/// so a cancelled transaction cannot leak a subscription.
+pub(crate) struct ParticipantEntry<T: Clone + Send + Sync + 'static> {
+    subscriber: ArcStateSubscriber<T>,
+    decision: DecisionWriter,
+}
+
+impl<T: Clone + Send + Sync + 'static> ParticipantEntry<T> {
+    pub(crate) fn decision_writer(&self) -> DecisionWriter {
+        self.decision.clone()
+    }
+
+    /// Allocate this transaction's decision cell and let the caller build the
+    /// participant around the read-only half of it.
+    ///
+    /// The write half never leaves the transaction, so the participant cannot
+    /// decide its own fate; it can only read what the transaction decided.
+    pub(crate) fn new(build: impl FnOnce(DecisionHandle) -> ArcStateSubscriber<T>) -> Self {
+        let decision = DecisionWriter::new();
+        let subscriber = build(decision.handle());
+        Self {
+            subscriber,
+            decision,
+        }
+    }
+}
+
+/// Outcome of a transaction that reached its commit point without an error.
+pub(crate) enum PendingOutcome<R> {
+    Committed {
+        result: R,
+        report: PrepareReport,
+    },
+    /// The store moved past `expected_version` before the transaction started.
+    /// Only produced when an expected version was supplied.
     Conflict {
         actual: Version,
-    },
-    State(StateChangedError),
-    Effect(E),
-    Recovery {
-        commit_error: StateChangedError,
-        recovery_error: E,
     },
 }
 
@@ -38,6 +71,18 @@ pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
+    /// A task-owned writer sharing the same store and writer permit. Its local
+    /// version cursor is refreshed from the store after acquiring the permit.
+    pub(crate) fn persistence_owner(&self) -> Self {
+        Self {
+            current_state: self.current_state.clone(),
+            notify_strategy: self.notify_strategy,
+            subscribers: self.subscribers.clone(),
+            semaphore: self.semaphore.clone(),
+            next_change_id: self.next_change_id,
+        }
+    }
+
     pub fn builder() -> StateCoordinatorBuilder<T> {
         StateCoordinatorBuilder::default()
     }
@@ -95,6 +140,13 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         actual
     }
 
+    /// The raw store behind this coordinator, so tests can simulate a writer
+    /// that bypassed the coordinator and force a CAS mismatch.
+    #[cfg(test)]
+    pub(crate) fn state_store(&self) -> StateStore<T> {
+        Arc::clone(&self.current_state)
+    }
+
     fn clone_subscribers(&self) -> Subscribers<T> {
         self.subscribers.values().cloned().collect()
     }
@@ -128,6 +180,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             subscribers,
             notify_strategy,
             permit,
+            DecisionWriter::new(),
         );
         match tx.prepare().await {
             Ok((report, tx)) => match tx.commit().await {
@@ -172,6 +225,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             subscribers,
             notify_strategy,
             permit,
+            DecisionWriter::new(),
         );
         match tx.prepare().await {
             Ok((report, tx)) => match tx.commit().await {
@@ -194,30 +248,143 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         }
     }
 
-    pub async fn with_pending_state<'s, F, Fut, R, E>(
+    /// Run a transaction with no version precondition and no extra participant.
+    pub async fn with_pending_state<'s, F, Fut, R, RF, RFut, E>(
         &mut self,
         new_state: &'s T,
         effect_fn: F,
+        recovery_fn: RF,
     ) -> Result<(R, PrepareReport), WithEffectError<E>>
     where
         F: FnOnce(&'s T) -> Fut,
         Fut: Future<Output = Result<R, E>> + 's,
+        RF: FnOnce(T) -> RFut,
+        RFut: Future<Output = Result<(), E>>,
         E: std::fmt::Debug,
     {
-        self.with_pending_state_inner(new_state, None, effect_fn)
-            .await
+        Self::expect_no_conflict(
+            self.run_pending_state(new_state, None, None, None, effect_fn, recovery_fn)
+                .await?,
+        )
     }
 
+    /// Run an external effect between prepare and commit, rolling back if the
+    /// effect does not complete before `effect_timeout`.
+    ///
+    /// The effect is still executed while the coordinator holds the writer
+    /// permit, so callers should keep it short and cancellation-safe.
+    pub async fn with_pending_state_timeout<'s, F, Fut, R, RF, RFut, E>(
+        &mut self,
+        new_state: &'s T,
+        effect_timeout: Duration,
+        effect_fn: F,
+        recovery_fn: RF,
+    ) -> Result<(R, PrepareReport), WithEffectError<E>>
+    where
+        F: FnOnce(&'s T) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 's,
+        RF: FnOnce(T) -> RFut,
+        RFut: Future<Output = Result<(), E>>,
+        E: std::fmt::Debug,
+    {
+        Self::expect_no_conflict(
+            self.run_pending_state(
+                new_state,
+                None,
+                Some(effect_timeout),
+                None,
+                effect_fn,
+                recovery_fn,
+            )
+            .await?,
+        )
+    }
+
+    /// Replace the state only if the store still holds `expected_version`.
     pub(crate) async fn with_pending_state_if_version<'s, F, Fut, RF, RFut, E>(
         &mut self,
         expected_version: Version,
         new_state: &'s T,
         effect_fn: F,
         recovery_fn: RF,
-    ) -> Result<(), ConditionalEffectError<E>>
+    ) -> Result<PendingOutcome<()>, WithEffectError<E>>
     where
         F: FnOnce(&'s T) -> Fut,
         Fut: Future<Output = Result<(), E>> + 's,
+        RF: FnOnce(T) -> RFut,
+        RFut: Future<Output = Result<(), E>>,
+        E: std::fmt::Debug,
+    {
+        self.run_pending_state(
+            new_state,
+            Some(expected_version),
+            None,
+            None,
+            effect_fn,
+            recovery_fn,
+        )
+        .await
+    }
+
+    /// Same as [`StateCoordinator::with_pending_state_if_version`], with one
+    /// extra participant that takes part in this transaction only.
+    pub(crate) async fn with_pending_state_if_version_with_participant<'s, F, Fut, RF, RFut, E>(
+        &mut self,
+        expected_version: Version,
+        new_state: &'s T,
+        participant: ParticipantEntry<T>,
+        effect_fn: F,
+        recovery_fn: RF,
+    ) -> Result<PendingOutcome<()>, WithEffectError<E>>
+    where
+        F: FnOnce(&'s T) -> Fut,
+        Fut: Future<Output = Result<(), E>> + 's,
+        RF: FnOnce(T) -> RFut,
+        RFut: Future<Output = Result<(), E>>,
+        E: std::fmt::Debug,
+    {
+        self.run_pending_state(
+            new_state,
+            Some(expected_version),
+            None,
+            Some(participant),
+            effect_fn,
+            recovery_fn,
+        )
+        .await
+    }
+
+    fn expect_no_conflict<R, E>(
+        outcome: PendingOutcome<R>,
+    ) -> Result<(R, PrepareReport), WithEffectError<E>> {
+        match outcome {
+            PendingOutcome::Committed { result, report } => Ok((result, report)),
+            // Only a caller that supplies an expected version can conflict, and
+            // these entry points never do.
+            PendingOutcome::Conflict { .. } => {
+                unreachable!("a transaction without an expected version cannot report a conflict")
+            }
+        }
+    }
+
+    /// The one prepare / persist / commit / rollback path.
+    ///
+    /// Every entry point above funnels into this function; the optional
+    /// expected version, effect timeout and single-shot participant are the only
+    /// things that vary. There is deliberately no second implementation of the
+    /// transaction algorithm for participants to use.
+    async fn run_pending_state<'s, F, Fut, R, RF, RFut, E>(
+        &mut self,
+        new_state: &'s T,
+        expected_version: Option<Version>,
+        effect_timeout: Option<Duration>,
+        participant: Option<ParticipantEntry<T>>,
+        effect_fn: F,
+        recovery_fn: RF,
+    ) -> Result<PendingOutcome<R>, WithEffectError<E>>
+    where
+        F: FnOnce(&'s T) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 's,
         RF: FnOnce(T) -> RFut,
         RFut: Future<Output = Result<(), E>>,
         E: std::fmt::Debug,
@@ -228,15 +395,37 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .acquire_owned()
             .await
             .expect("semaphore should never closed");
-        let subscribers = self.clone_subscribers();
+        let mut subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let next_changed_id = self.pending_change_id();
         let current_state = self.snapshot_versioned();
-        if current_state.version != expected_version {
-            return Err(ConditionalEffectError::Conflict {
+
+        // The participant object already exists — the caller built it before
+        // calling in — so its decision has to be settled on every exit from
+        // here, including the one that never starts a transaction.
+        let (participant, decision) = match participant {
+            Some(ParticipantEntry {
+                subscriber,
+                decision,
+            }) => (Some(subscriber), decision),
+            None => (None, DecisionWriter::new()),
+        };
+
+        if let Some(expected_version) = expected_version
+            && current_state.version != expected_version
+        {
+            decision.abort(AbortResourceState::Restored);
+            return Ok(PendingOutcome::Conflict {
                 actual: current_state.version,
             });
         }
+
+        // The single-shot participant joins the registered subscribers for this
+        // transaction only; the coordinator's registry is untouched.
+        if let Some(participant) = participant {
+            subscribers.push(participant);
+        }
+
         let change = StateChange {
             id: next_changed_id,
             previous: Some(current_state.clone()),
@@ -248,105 +437,9 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             subscribers,
             notify_strategy,
             permit,
+            decision,
         );
-        let tx = match tx.prepare().await {
-            Ok((_report, prepared_tx)) => prepared_tx,
-            Err(err) => {
-                let (report, _) = *err;
-                return Err(ConditionalEffectError::State(
-                    StateChangedError::PrepareAck(PrepareAckError { report }),
-                ));
-            }
-        };
-        if let Err(error) = effect_fn(new_state).await {
-            tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
-                "effect function failed: {error:#?}"
-            ))))
-            .await;
-            return Err(ConditionalEffectError::Effect(error));
-        }
-        match tx.try_commit() {
-            Ok(committed_tx) => {
-                committed_tx.notify_committed().await;
-                self.mark_change_id_committed(next_changed_id);
-                Ok(())
-            }
-            Err(commit_mismatch) => {
-                let actual = self.sync_change_id_after_cas_mismatch();
-                let commit_error = StateChangedError::StateCasMismatch {
-                    expected: current_state.version,
-                    actual,
-                };
-                let committed = self.snapshot_versioned();
-                let recovery_result = recovery_fn(committed.state.clone()).await;
-                // Recovery is complete before rollback notifications begin. The
-                // latter are best-effort and may be cancelled by the caller.
-                commit_mismatch.notify_rollback().await;
-                match recovery_result {
-                    Ok(()) => Err(ConditionalEffectError::State(commit_error)),
-                    Err(recovery_error) => Err(ConditionalEffectError::Recovery {
-                        commit_error,
-                        recovery_error,
-                    }),
-                }
-            }
-        }
-    }
-
-    /// Run an external effect between prepare and commit, rolling back if the
-    /// effect does not complete before `effect_timeout`.
-    ///
-    /// The effect is still executed while the coordinator holds the writer
-    /// permit, so callers should keep it short and cancellation-safe.
-    pub async fn with_pending_state_timeout<'s, F, Fut, R, E>(
-        &mut self,
-        new_state: &'s T,
-        effect_timeout: Duration,
-        effect_fn: F,
-    ) -> Result<(R, PrepareReport), WithEffectError<E>>
-    where
-        F: FnOnce(&'s T) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 's,
-        E: std::fmt::Debug,
-    {
-        self.with_pending_state_inner(new_state, Some(effect_timeout), effect_fn)
-            .await
-    }
-
-    async fn with_pending_state_inner<'s, F, Fut, R, E>(
-        &mut self,
-        new_state: &'s T,
-        effect_timeout: Option<Duration>,
-        effect_fn: F,
-    ) -> Result<(R, PrepareReport), WithEffectError<E>>
-    where
-        F: FnOnce(&'s T) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 's,
-        E: std::fmt::Debug,
-    {
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
-        let subscribers = self.clone_subscribers();
-        let notify_strategy = self.notify_strategy;
-        let next_changed_id = self.pending_change_id();
-        let current_state = self.snapshot_versioned();
-        let change = StateChange {
-            id: next_changed_id,
-            previous: Some(current_state.clone()),
-            current: Arc::new(new_state.clone()),
-        };
-        let tx = new_transaction(
-            change,
-            self.current_state.clone(),
-            subscribers,
-            notify_strategy,
-            permit,
-        );
-        let (report, tx) = match tx.prepare().await {
+        let (report, mut tx) = match tx.prepare().await {
             Ok((report, prepared_tx)) => (report, prepared_tx),
             Err(err) => {
                 let (report, _) = *err;
@@ -355,6 +448,10 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                 )));
             }
         };
+
+        // Everything the caller has to persist for this candidate happens here,
+        // between prepare and the compare-and-swap.
+        tx.mark_local_persistence_started();
         let effect_result = match effect_timeout {
             Some(timeout) => match tokio::time::timeout(timeout, effect_fn(new_state)).await {
                 Ok(result) => result.map_err(WithEffectError::Effect),
@@ -362,26 +459,76 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             },
             None => effect_fn(new_state).await.map_err(WithEffectError::Effect),
         };
-        match effect_result {
-            Ok(result) => {
-                if tx.commit().await.is_err() {
-                    let actual = self.sync_change_id_after_cas_mismatch();
-                    return Err(WithEffectError::State(
-                        StateChangedError::StateCasMismatch {
-                            expected: current_state.version,
-                            actual,
+        let result = match effect_result {
+            Ok(result) => result,
+            Err(error) => {
+                if matches!(error, WithEffectError::EffectTimedOut(_)) {
+                    // Dropping an effect future cannot stop an offloaded write.
+                    tx.set_abort_resources(AbortResourceState::NeedsRecovery(
+                        PersistenceIncident {
+                            message: format!("persistence timed out: {error:?}"),
                         },
                     ));
+                } else {
+                    match recovery_fn(self.snapshot_versioned().state.clone()).await {
+                        Ok(()) => tx.set_abort_resources(AbortResourceState::Restored),
+                        Err(recovery_error) => {
+                            tx.set_abort_resources(AbortResourceState::NeedsRecovery(PersistenceIncident {
+                                message: format!("effect failed: {error:?}; recovery failed: {recovery_error:?}"),
+                            }));
+                            tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
+                                "local resources could not be restored"
+                            ))))
+                            .await;
+                            let WithEffectError::Effect(effect_error) = error else {
+                                unreachable!()
+                            };
+                            return Err(WithEffectError::EffectRecovery {
+                                effect_error,
+                                recovery_error,
+                            });
+                        }
+                    }
                 }
-                self.mark_change_id_committed(next_changed_id);
-                Ok((result, report))
-            }
-            Err(e) => {
                 tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
-                    "effect function failed: {e:#?}"
+                    "effect function failed: {error:#?}"
                 ))))
                 .await;
-                Err(e)
+                return Err(error);
+            }
+        };
+
+        match tx.try_commit() {
+            Ok(committed_tx) => {
+                self.mark_change_id_committed(next_changed_id);
+                committed_tx.notify_committed().await;
+                Ok(PendingOutcome::Committed { result, report })
+            }
+            Err(mut commit_mismatch) => {
+                let actual = self.sync_change_id_after_cas_mismatch();
+                let commit_error = StateChangedError::StateCasMismatch {
+                    expected: current_state.version,
+                    actual,
+                };
+                let committed = self.snapshot_versioned();
+                let recovery_result = recovery_fn(committed.state.clone()).await;
+                let resources = match &recovery_result {
+                    Ok(()) => AbortResourceState::Restored,
+                    Err(error) => AbortResourceState::NeedsRecovery(PersistenceIncident {
+                        message: format!("CAS recovery failed: {error:?}"),
+                    }),
+                };
+                commit_mismatch.set_abort_resources(resources);
+                // Recovery is complete before rollback notifications begin. The
+                // latter are best-effort and may be cancelled by the caller.
+                commit_mismatch.notify_rollback().await;
+                match recovery_result {
+                    Ok(()) => Err(WithEffectError::State(commit_error)),
+                    Err(recovery_error) => Err(WithEffectError::Recovery {
+                        commit_error,
+                        recovery_error,
+                    }),
+                }
             }
         }
     }
@@ -468,7 +615,14 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             .acquire_owned()
             .await
             .expect("semaphore should never closed");
-        let tx = new_transaction(change, current_state, subscribers, notify_strategy, permit);
+        let tx = new_transaction(
+            change,
+            current_state,
+            subscribers,
+            notify_strategy,
+            permit,
+            DecisionWriter::new(),
+        );
 
         match tx.commit().await {
             Ok((report, _)) => {
@@ -509,6 +663,12 @@ mod test {
     struct TestState {
         value: i32,
         name: String,
+    }
+
+    /// Recovery hook for transactions whose effect leaves nothing outside the
+    /// store to put back.
+    async fn no_recovery(_committed: TestState) -> Result<(), anyhow::Error> {
+        Ok(())
     }
 
     type CommittedEntry = (Option<TestState>, TestState);
@@ -1201,10 +1361,14 @@ mod test {
             name: "effect_ok".to_string(),
         };
         let result = coordinator
-            .with_pending_state(&state, |s| async move {
-                assert_eq!(s.value, 42);
-                Ok::<_, anyhow::Error>("done")
-            })
+            .with_pending_state(
+                &state,
+                |s| async move {
+                    assert_eq!(s.value, 42);
+                    Ok::<_, anyhow::Error>("done")
+                },
+                no_recovery,
+            )
             .await;
 
         assert!(result.is_ok());
@@ -1228,9 +1392,11 @@ mod test {
             name: "effect_fail".to_string(),
         };
         let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state(&state, |_s| async move {
-                Err::<(), _>(anyhow::anyhow!("effect failed"))
-            })
+            .with_pending_state(
+                &state,
+                |_s| async move { Err::<(), _>(anyhow::anyhow!("effect failed")) },
+                no_recovery,
+            )
             .await;
 
         assert!(result.is_err());
@@ -1251,6 +1417,7 @@ mod test {
     async fn test_with_pending_state_cancel_rolls_back_prepared_subscribers() {
         struct RollbackSubscriber {
             events: Arc<Mutex<Vec<&'static str>>>,
+            rolled_back: Arc<Notify>,
         }
 
         #[async_trait::async_trait]
@@ -1270,14 +1437,17 @@ mod test {
                 _reason: RollbackReason,
             ) {
                 self.events.lock().await.push("rollback");
+                self.rolled_back.notify_one();
             }
         }
 
         let events = Arc::new(Mutex::new(Vec::new()));
         let effect_started = Arc::new(Notify::new());
+        let rolled_back = Arc::new(Notify::new());
         let mut coordinator = StateCoordinator::builder()
             .with_subscriber(Box::new(RollbackSubscriber {
                 events: Arc::clone(&events),
+                rolled_back: Arc::clone(&rolled_back),
             }))
             .build(default_test_state());
         let state = TestState {
@@ -1285,16 +1455,20 @@ mod test {
             name: "cancelled".to_string(),
         };
 
-        let mut future = Box::pin(coordinator.with_pending_state(&state, {
-            let effect_started = Arc::clone(&effect_started);
-            move |_s| {
+        let mut future = Box::pin(coordinator.with_pending_state(
+            &state,
+            {
                 let effect_started = Arc::clone(&effect_started);
-                async move {
-                    effect_started.notify_one();
-                    std::future::pending::<Result<(), anyhow::Error>>().await
+                move |_s| {
+                    let effect_started = Arc::clone(&effect_started);
+                    async move {
+                        effect_started.notify_one();
+                        std::future::pending::<Result<(), anyhow::Error>>().await
+                    }
                 }
-            }
-        }));
+            },
+            no_recovery,
+        ));
 
         tokio::select! {
             result = &mut future => panic!("effect should stay pending, got {result:?}"),
@@ -1303,6 +1477,11 @@ mod test {
 
         drop(future);
 
+        // Drop hands the notifications to a detached task instead of blocking,
+        // so the rollback is observed by waiting for it.
+        tokio::time::timeout(Duration::from_secs(5), rolled_back.notified())
+            .await
+            .expect("cancelling the effect must still get the rollback out");
         assert_eq!(*events.lock().await, vec!["prepare", "rollback"]);
         assert_eq!(coordinator.snapshot_versioned().value, 0);
     }
@@ -1316,9 +1495,11 @@ mod test {
             name: "effect_fail".to_string(),
         };
         let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state(&failed, |_s| async move {
-                Err::<(), _>(anyhow::anyhow!("effect failed"))
-            })
+            .with_pending_state(
+                &failed,
+                |_s| async move { Err::<(), _>(anyhow::anyhow!("effect failed")) },
+                no_recovery,
+            )
             .await;
         assert!(matches!(result, Err(WithEffectError::Effect(_))));
         assert_eq!(
@@ -1348,10 +1529,15 @@ mod test {
         };
 
         let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state_timeout(&timed_out, std::time::Duration::from_secs(1), |_s| async {
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                Ok::<_, anyhow::Error>(())
-            })
+            .with_pending_state_timeout(
+                &timed_out,
+                std::time::Duration::from_secs(1),
+                |_s| async {
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    Ok::<_, anyhow::Error>(())
+                },
+                no_recovery,
+            )
             .await;
 
         assert!(matches!(result, Err(WithEffectError::EffectTimedOut(_))));
@@ -1391,14 +1577,18 @@ mod test {
         };
         let effect_ran_for_closure = Arc::clone(&effect_ran);
         let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state(&state, move |_s| async move {
-                effect_ran_for_closure.store(true, Ordering::SeqCst);
-                store.store(Arc::new(VersionedState {
-                    version: Version::new(99),
-                    state: external_state,
-                }));
-                Ok(())
-            })
+            .with_pending_state(
+                &state,
+                move |_s| async move {
+                    effect_ran_for_closure.store(true, Ordering::SeqCst);
+                    store.store(Arc::new(VersionedState {
+                        version: Version::new(99),
+                        state: external_state,
+                    }));
+                    Ok(())
+                },
+                no_recovery,
+            )
             .await;
 
         assert!(effect_ran.load(Ordering::SeqCst));
@@ -1439,7 +1629,7 @@ mod test {
         };
         let winner_for_effect = winner.clone();
 
-        let result: Result<_, ConditionalEffectError<anyhow::Error>> = coordinator
+        let result: Result<_, WithEffectError<anyhow::Error>> = coordinator
             .with_pending_state_if_version(
                 Version::new(0),
                 &next,
@@ -1462,12 +1652,10 @@ mod test {
 
         assert!(matches!(
             result,
-            Err(ConditionalEffectError::State(
-                StateChangedError::StateCasMismatch {
-                    expected,
-                    actual
-                }
-            )) if expected == Version::new(0) && actual == Version::new(7)
+            Err(WithEffectError::State(StateChangedError::StateCasMismatch {
+                expected,
+                actual
+            })) if expected == Version::new(0) && actual == Version::new(7)
         ));
         assert_eq!(recovered.lock().await.as_ref(), Some(&winner));
         assert_eq!(&coordinator.snapshot_versioned().state, &winner);
@@ -1529,12 +1717,10 @@ mod test {
         let result = operation.await.expect("conditional operation should join");
         assert!(matches!(
             result,
-            Err(ConditionalEffectError::State(
-                StateChangedError::StateCasMismatch {
-                    expected,
-                    actual
-                }
-            )) if expected == Version::new(0) && actual == Version::new(7)
+            Err(WithEffectError::State(StateChangedError::StateCasMismatch {
+                expected,
+                actual
+            })) if expected == Version::new(0) && actual == Version::new(7)
         ));
     }
 

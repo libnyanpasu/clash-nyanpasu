@@ -291,7 +291,7 @@ impl ProfilesActor {
         state.manager.snapshot_handle().load().state.clone()
     }
 
-    fn current_closure(profiles: &Profiles) -> indexmap::IndexSet<ProfileId> {
+    pub(crate) fn current_closure(profiles: &Profiles) -> indexmap::IndexSet<ProfileId> {
         let mut closure: indexmap::IndexSet<ProfileId> =
             profiles.global_transforms.iter().cloned().collect();
         let Some(current) = &profiles.current else {

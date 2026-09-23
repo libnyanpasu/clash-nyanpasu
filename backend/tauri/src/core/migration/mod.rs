@@ -116,6 +116,15 @@ pub trait ModuleMigrator: Send + Sync {
     fn module(&self) -> ModuleId;
     fn detect_baseline(&self, ctx: &Ctx) -> anyhow::Result<u64>;
     fn steps(&self) -> &'static [&'static dyn MigrationStep];
+    /// What the files on disk lack when they are behind `applied`, i.e. the
+    /// state file claims migrations whose results are missing or were moved
+    /// away; `None` when they match. Errors are reserved for files that cannot
+    /// be read or parsed. Only modules whose on-disk shape reliably reveals
+    /// their revision override this; the rest cannot tell and accept any
+    /// `applied`.
+    fn files_behind(&self, _ctx: &Ctx, _applied: u64) -> anyhow::Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 pub fn current_version() -> anyhow::Result<Version> {

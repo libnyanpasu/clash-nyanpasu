@@ -43,6 +43,18 @@ impl ModuleMigrator for ProfilesMigrator {
     fn steps(&self) -> &'static [&'static dyn MigrationStep] {
         &STEPS
     }
+
+    fn files_behind(&self, ctx: &Ctx, applied: u64) -> anyhow::Result<Option<String>> {
+        // Only the clean schema is observable on disk; the earlier revisions
+        // leave no marker to check against.
+        let behind = applied >= CLEAN_SCHEMA.revision() && self.detect_baseline(ctx)? < applied;
+        Ok(behind.then(|| {
+            format!(
+                "{} still uses the legacy profile schema",
+                ctx.profiles_path().display()
+            )
+        }))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -38,6 +38,23 @@ impl ModuleMigrator for TypedConfigMigrator {
     fn steps(&self) -> &'static [&'static dyn MigrationStep] {
         &STEPS
     }
+
+    fn files_behind(&self, ctx: &Ctx, applied: u64) -> anyhow::Result<Option<String>> {
+        Ok(match typed_file_state(ctx)? {
+            TypedFileState::All => None,
+            TypedFileState::None if applied >= SPLIT_LEGACY_CONFIG.revision() => Some(format!(
+                "application.yaml and session-state.yaml are missing from {}",
+                ctx.paths().app_config_dir().display()
+            )),
+            TypedFileState::NeedsClashRepair if applied >= REPAIR_CLASH_CONFIG_PATH.revision() => {
+                Some(format!(
+                    "{} is not a typed clash config",
+                    ctx.clash_config_path().display()
+                ))
+            }
+            TypedFileState::None | TypedFileState::NeedsClashRepair => None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

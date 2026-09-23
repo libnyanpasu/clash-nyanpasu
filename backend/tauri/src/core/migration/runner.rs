@@ -3,7 +3,7 @@ use super::{
     store::MigrationStore,
 };
 use crate::utils::path::PathResolver;
-use anyhow::Context;
+use anyhow::{Context, bail};
 use semver::Version;
 
 #[derive(Debug)]
@@ -60,6 +60,7 @@ impl Runner {
 
     pub fn run_migration(&mut self, step: &dyn MigrationStep) -> anyhow::Result<()> {
         println!("Running migration: {} ({})", step.id(), step.name());
+        self.ensure_known_revisions()?;
         let advice = self.advice_step(step);
         println!("Advice: {advice:?}");
         if matches!(advice, MigrationAdvice::Ignored | MigrationAdvice::Done) {
@@ -70,6 +71,7 @@ impl Runner {
 
     pub fn run_pending(&mut self) -> anyhow::Result<()> {
         println!("Running migrations up to version: {}", self.target);
+        self.ensure_known_revisions()?;
         let mut first_error = None;
 
         for module in registry::modules() {
@@ -102,6 +104,7 @@ impl Runner {
         if let Some(error) = first_error {
             return Err(error);
         }
+        self.verify_applied_revisions()?;
 
         self.store.set_last_succeeded(self.target.clone());
         self.store
@@ -133,6 +136,48 @@ impl Runner {
             self.store
                 .flush_atomic(&self.ctx.state_path())
                 .context("failed to persist migration baselines")?;
+        }
+        Ok(())
+    }
+
+    /// Refuses data migrated by a newer build: this build cannot know which
+    /// files those unknown revisions moved or rewrote, so it would start on
+    /// stale locations.
+    fn ensure_known_revisions(&self) -> anyhow::Result<()> {
+        for module in registry::modules() {
+            let applied = self.store.module_state(module.module()).applied_revision;
+            let head = module.steps().last().map_or(0, |step| step.revision());
+            if applied > head {
+                bail!(
+                    "migration state records {} at revision {applied}, but this build only \
+                     knows revisions up to {head}; the data was migrated by a newer version",
+                    module.module()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Refuses a state file that is ahead of the files on disk, which would
+    /// otherwise skip the migrations those files still need.
+    fn verify_applied_revisions(&self) -> anyhow::Result<()> {
+        let state_path = self.ctx.state_path();
+        for module in registry::modules() {
+            let applied = self.store.module_state(module.module()).applied_revision;
+            let behind = module
+                .files_behind(&self.ctx, applied)
+                .with_context(|| format!("failed to inspect the {} files", module.module()))?;
+            if let Some(reason) = behind {
+                bail!(
+                    "{reason}, although {} records {} as migrated to revision {applied}. The \
+                     files may have been moved, restored from a backup or rewritten by an older \
+                     version. Restore them, or delete {} so the files on disk are detected and \
+                     migrated again.",
+                    state_path.display(),
+                    module.module(),
+                    state_path.display()
+                );
+            }
         }
         Ok(())
     }
@@ -573,6 +618,129 @@ mod tests {
             &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
         )
         .unwrap();
+    }
+
+    /// Every module recorded at the head this build knows, as a finished
+    /// migration leaves it.
+    fn store_at_head() -> MigrationStore {
+        let mut store = MigrationStore::default();
+        for module in registry::modules() {
+            let head = module.steps().last().unwrap().revision();
+            store.modules.insert(
+                module.module().to_string(),
+                ModuleState {
+                    applied_revision: head,
+                    baseline_revision: head,
+                },
+            );
+        }
+        store
+    }
+
+    fn run_pending_with_store(
+        store: MigrationStore,
+        prepare: impl FnOnce(&std::path::Path),
+    ) -> (anyhow::Result<()>, MigrationStore) {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let state_path = config_dir.join(STORE_FILE_NAME);
+        store.flush_atomic(&state_path).unwrap();
+        prepare(&config_dir);
+
+        let ctx = Ctx::new(config_dir, data_dir);
+        let mut runner = Runner::with_context(TEST_VERSION.clone(), false, ctx).unwrap();
+        let result = runner.run_pending();
+        (result, MigrationStore::load(&state_path).unwrap())
+    }
+
+    #[test]
+    fn refuses_revisions_newer_than_this_build() {
+        let mut store = store_at_head();
+        store
+            .modules
+            .get_mut("typed_config")
+            .unwrap()
+            .applied_revision += 1;
+
+        let (result, persisted) = run_pending_with_store(store, |_| {});
+
+        let error = format!("{:#}", result.unwrap_err());
+        assert!(error.contains("typed_config"), "{error}");
+        assert!(error.contains("newer version"), "{error}");
+        assert_eq!(persisted.app.last_succeeded, None);
+    }
+
+    #[test]
+    fn refuses_typed_config_files_missing_behind_applied_revision() {
+        // The split files were moved away while the state still says the split
+        // happened; starting would silently fall back to defaults.
+        let (result, persisted) = run_pending_with_store(store_at_head(), |_| {});
+
+        let error = format!("{:#}", result.unwrap_err());
+        assert!(error.contains("typed_config"), "{error}");
+        assert!(
+            error.contains("application.yaml and session-state.yaml are missing"),
+            "{error}"
+        );
+        // The dialog must point at the state file and say how to recover.
+        assert!(error.contains(STORE_FILE_NAME), "{error}");
+        assert!(error.contains("delete"), "{error}");
+        assert_eq!(persisted.app.last_succeeded, None);
+    }
+
+    #[test]
+    fn refuses_legacy_profiles_behind_applied_revision() {
+        let (result, persisted) = run_pending_with_store(store_at_head(), |config_dir| {
+            std::fs::write(
+                config_dir.join("profiles.yaml"),
+                include_str!("fixtures/v1_6_1/profiles.yaml"),
+            )
+            .unwrap();
+        });
+
+        let error = format!("{:#}", result.unwrap_err());
+        assert!(error.contains("legacy profile schema"), "{error}");
+        assert_eq!(persisted.app.last_succeeded, None);
+    }
+
+    #[test]
+    fn unreadable_files_are_not_reported_as_behind() {
+        let (result, persisted) = run_pending_with_store(store_at_head(), |config_dir| {
+            std::fs::write(config_dir.join("profiles.yaml"), "items: [unclosed\n").unwrap();
+        });
+
+        let error = format!("{:#}", result.unwrap_err());
+        assert!(
+            error.contains("failed to inspect the profiles files"),
+            "{error}"
+        );
+        assert!(!error.contains("delete"), "{error}");
+        assert_eq!(persisted.app.last_succeeded, None);
+    }
+
+    #[test]
+    fn single_migration_refuses_revisions_newer_than_this_build() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let mut store = store_at_head();
+        store.modules.get_mut("profiles").unwrap().applied_revision += 1;
+        store
+            .flush_atomic(&config_dir.join(STORE_FILE_NAME))
+            .unwrap();
+
+        let ctx = Ctx::new(config_dir, data_dir);
+        let mut runner = Runner::with_context(TEST_VERSION.clone(), true, ctx).unwrap();
+        let step = registry::find_migration("profiles/null_value").unwrap();
+
+        let error = format!("{:#}", runner.run_migration(step).unwrap_err());
+        assert!(error.contains("newer version"), "{error}");
+        assert_eq!(runner.store.task_state(step.id()), None);
     }
 
     #[test]

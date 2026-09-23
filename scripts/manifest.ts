@@ -124,7 +124,7 @@ export const resolveMihomoAlpha = async (): LatestVersionResolver => {
 };
 
 export const resolveClashRs = async (): LatestVersionResolver => {
-  const version = await getLatestRelease("Watfaq", "clash-rs");
+  const version = await getLatestRelease("ibigbug", "clash-rs");
   consola.debug(`clash-rs latest release: ${version}`);
 
   const archMapping: ArchMapping = {
@@ -143,9 +143,9 @@ export const resolveClashRsAlpha = async (): LatestVersionResolver => {
   // Fetch commit SHA for the "latest" pre-release tag and the stable base version in parallel
   const [ref, stableTag] = await Promise.all([
     githubFetch<{ object: { type: string; sha: string; url: string } }>(
-      "https://api.github.com/repos/Watfaq/clash-rs/git/ref/tags/latest",
+      "https://api.github.com/repos/ibigbug/clash-rs/git/ref/tags/latest",
     ),
-    getLatestRelease("Watfaq", "clash-rs"),
+    getLatestRelease("ibigbug", "clash-rs"),
   ]);
 
   // Dereference annotated tags to get the underlying commit SHA

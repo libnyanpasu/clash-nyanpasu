@@ -79,7 +79,7 @@
     "clsx": "2.1.1",
     "core-js": "3.50.0",
     "filesize": "11.0.24",
-    "meta-json-schema": "1.19.30",
+    "meta-json-schema": "1.19.31",
     "monaco-yaml": "5.5.1",
     "nanoid": "6.0.1",
     "sass-embedded": "1.105.0",

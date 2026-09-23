@@ -1,9 +1,14 @@
-import { Tooltip } from 'radix-ui'
 import { ReactElement } from 'react'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { ProxyItemHistory } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../ui/tooltip'
 import DelayChip from './delay-chip'
 
 const HISTORY_LIMIT = 10
@@ -45,49 +50,46 @@ export default function DelayHistory({
   }
 
   return (
-    <Tooltip.Provider delayDuration={300}>
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content
-            sideOffset={8}
-            className="bg-surface text-on-surface z-50 max-w-[calc(100vw-2rem)] rounded-xl px-3 py-2 text-xs shadow-lg"
-            data-slot="proxy-delay-history"
-          >
-            <div className="space-y-2 py-1">
-              <div className="font-medium">
-                {m.proxies_delay_history_title()}
-              </div>
-              {recent.length === 0 ? (
-                <div>{m.proxies_delay_history_empty()}</div>
-              ) : (
-                <>
-                  <div className="text-on-surface-variant">
-                    {m.proxies_delay_history_recent({ count: recent.length })}
-                  </div>
-                  <ol className="space-y-1">
-                    {recent.map(({ time, delay }, index) => (
-                      <li
-                        key={`${time}-${index}`}
-                        className="flex items-center justify-between gap-4 tabular-nums"
-                      >
-                        <time dateTime={time}>{formatTime(time)}</time>
-                        {delay > 0 ? (
-                          <DelayChip delay={delay} />
-                        ) : (
-                          <span className="text-red-500">
-                            {m.proxies_delay_history_failed()}
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                </>
-              )}
-            </div>
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
+    <TooltipProvider openDelay={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+
+        <TooltipContent
+          sideOffset={8}
+          className="bg-surface text-on-surface z-50 max-w-[calc(100vw-2rem)] rounded-xl px-3 py-2 text-xs shadow-lg"
+          data-slot="proxy-delay-history"
+        >
+          <div className="space-y-2 py-1">
+            <div className="font-medium">{m.proxies_delay_history_title()}</div>
+            {recent.length === 0 ? (
+              <div>{m.proxies_delay_history_empty()}</div>
+            ) : (
+              <>
+                <div className="text-on-surface-variant">
+                  {m.proxies_delay_history_recent({ count: recent.length })}
+                </div>
+                <ol className="space-y-1">
+                  {recent.map(({ time, delay }, index) => (
+                    <li
+                      key={`${time}-${index}`}
+                      className="flex items-center justify-between gap-4 tabular-nums"
+                    >
+                      <time dateTime={time}>{formatTime(time)}</time>
+                      {delay > 0 ? (
+                        <DelayChip delay={delay} />
+                      ) : (
+                        <span className="text-red-500">
+                          {m.proxies_delay_history_failed()}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }

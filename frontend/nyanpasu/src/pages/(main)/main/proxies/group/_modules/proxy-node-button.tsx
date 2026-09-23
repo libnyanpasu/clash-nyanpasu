@@ -2,9 +2,7 @@ import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
 import { ComponentProps, MouseEvent, useMemo } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
-import DelayHistory, {
-  DelayHistoryBar,
-} from '@/components/proxies/delay-history'
+import DelayHistory from '@/components/proxies/delay-history'
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
@@ -84,7 +82,8 @@ export default function ProxyNodeButton({
       >
         <div className="flex w-full items-center justify-between gap-2 px-2">
           <div className="truncate text-sm font-medium">{proxy.name}</div>
-          <DelayHistoryBar history={proxy.history ?? []} />
+          {/* TODO: takes up too much space and needs to be redesigned */}
+          {/* <DelayHistoryBar history={proxy.history ?? []} /> */}
         </div>
 
         <div className="flex w-full items-center justify-between gap-2 overflow-hidden px-2">

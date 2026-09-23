@@ -3,7 +3,6 @@ import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-roun
 import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
 import { useCallback, useMemo } from 'react'
-import GroupSummary from '@/components/proxies/group-summary'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -90,9 +89,6 @@ function RouteComponent() {
             <div className="truncate" title={currentGroup?.name}>
               {currentGroup?.name}
             </div>
-            {currentGroup && proxies && (
-              <GroupSummary group={currentGroup} proxies={proxies} />
-            )}
           </div>
 
           <div className="flex items-center">

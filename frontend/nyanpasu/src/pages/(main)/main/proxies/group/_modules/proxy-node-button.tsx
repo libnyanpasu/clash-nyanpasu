@@ -20,7 +20,7 @@ function FeatureChip({
   return (
     <span
       className={cn(
-        'shrink-0 rounded px-1.5 py-0.5 text-[9px] leading-none font-medium uppercase',
+        'shrink-0 rounded-full px-1.5 py-0.5 text-[9px] leading-none font-medium uppercase',
         variant === 'type'
           ? 'bg-primary/10 text-primary'
           : 'bg-secondary-container text-on-secondary-container',

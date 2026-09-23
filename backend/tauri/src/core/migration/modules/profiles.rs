@@ -14,7 +14,9 @@ static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwra
 static NULL_VALUE: MigrateProfilesNullValue = MigrateProfilesNullValue;
 static SCRIPT_NEWTYPE: MigrateProfileScriptNewtype = MigrateProfileScriptNewtype;
 static CLEAN_SCHEMA: MigrateProfilesCleanSchema = MigrateProfilesCleanSchema;
-static STEPS: [&dyn MigrationStep; 3] = [&NULL_VALUE, &SCRIPT_NEWTYPE, &CLEAN_SCHEMA];
+static REPAIR_SCHEMA: MigrateProfilesRepairSchema = MigrateProfilesRepairSchema;
+static STEPS: [&dyn MigrationStep; 4] =
+    [&NULL_VALUE, &SCRIPT_NEWTYPE, &CLEAN_SCHEMA, &REPAIR_SCHEMA];
 
 pub struct ProfilesMigrator;
 
@@ -209,6 +211,57 @@ impl MigrationStep for MigrateProfilesCleanSchema {
 
     fn rollback(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         rollback_clean_schema(ctx)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateProfilesRepairSchema;
+
+impl MigrationStep for MigrateProfilesRepairSchema {
+    fn id(&self) -> &'static str {
+        "profiles/repair_schema"
+    }
+
+    fn module(&self) -> &'static str {
+        "profiles"
+    }
+
+    fn revision(&self) -> u64 {
+        4
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateProfilesRepairSchema"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+        let path = ctx.profiles_path();
+        if !path.exists() {
+            return Ok(());
+        }
+        let raw = std::fs::read_to_string(&path)?;
+        let doc: Mapping = serde_yaml::from_str(&raw)?;
+        if is_clean_schema(&doc) {
+            return Ok(());
+        }
+        let repaired = migrate_clean_schema(doc)?;
+        let profiles: nyanpasu_config::profile::Profiles =
+            serde_yaml::from_value(Value::Mapping(repaired))?;
+        profiles
+            .validate()
+            .map_err(|errors| anyhow::anyhow!("profiles.yaml failed validation: {errors:?}"))?;
+        let backup = path.with_extension("yaml.recovery.bak");
+        if !backup.exists() {
+            crate::core::migration::fs::atomic_write(&backup, raw.as_bytes())?;
+        }
+        let body = serde_yaml::to_string(&profiles)?;
+        let content = format!("# Profiles Config for Clash Nyanpasu\n\n{body}");
+        crate::core::migration::fs::atomic_write(&path, content.as_bytes())?;
+        Ok(())
     }
 }
 
@@ -1058,6 +1111,62 @@ items:
         let legacy: Mapping = serde_yaml::from_str(MIGRATED_SAMPLE).unwrap();
         assert!(!is_clean_schema(&legacy));
         assert!(is_clean_schema(&Mapping::new()));
+    }
+
+    #[test]
+    fn completed_clean_schema_state_can_repair_legacy_profiles() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let path = config_dir.join("profiles.yaml");
+        let original = "current: [a]\nitems:\n- {uid: a, type: local, name: A, file: a.yaml}\n";
+        std::fs::write(&path, original).unwrap();
+        let mut state = crate::core::migration::store::MigrationStore::default();
+        state.modules.insert(
+            "profiles".to_owned(),
+            crate::core::migration::store::ModuleState {
+                applied_revision: 3,
+                baseline_revision: 2,
+            },
+        );
+        state.tasks.insert(
+            "profiles/clean_schema".to_owned(),
+            crate::core::migration::store::TaskRecord {
+                module: "profiles".to_owned(),
+                revision: 3,
+                introduced_in: (*VERSION_2_0_0).clone(),
+                state: crate::core::migration::MigrationState::Completed,
+                started_at: None,
+                finished_at: None,
+                error: None,
+            },
+        );
+        state
+            .flush_atomic(&config_dir.join("migration-state.yaml"))
+            .unwrap();
+        let paths = crate::utils::path::PathResolver::with_base_dirs(config_dir, data_dir);
+        let mut runner = crate::core::migration::Runner::with_paths(paths, false).unwrap();
+
+        assert_eq!(
+            runner.advice_step(&REPAIR_SCHEMA),
+            crate::core::migration::MigrationAdvice::Pending
+        );
+        runner.run_migration(&REPAIR_SCHEMA).unwrap();
+        let state = crate::core::migration::store::MigrationStore::load(
+            &path.parent().unwrap().join("migration-state.yaml"),
+        )
+        .unwrap();
+        assert_eq!(state.module_state("profiles").applied_revision, 4);
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let profiles: nyanpasu_config::profile::Profiles = serde_yaml::from_str(&raw).unwrap();
+        assert_eq!(profiles.current.unwrap().0, "a");
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("yaml.recovery.bak")).unwrap(),
+            original
+        );
     }
 
     fn item(yaml: &str) -> Mapping {

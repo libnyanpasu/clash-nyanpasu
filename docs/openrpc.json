@@ -1,0 +1,216 @@
+{
+  "openrpc": "1.2.6",
+  "info": {
+    "title": "Nyanpasu experimental application RPC",
+    "version": "0.1.0",
+    "description": "Application methods exposed alongside the existing Tauri commands and events. The Clash subscription uses the jsonrpsee subscription extension."
+  },
+  "methods": [
+    {
+      "name": "nyanpasu.v1.profiles.list",
+      "summary": "List profile summaries",
+      "params": [],
+      "result": {
+        "name": "profiles",
+        "schema": { "$ref": "#/components/schemas/ProfilesList" }
+      },
+      "errors": [{ "code": -32000, "message": "Application error" }]
+    },
+    {
+      "name": "nyanpasu.v1.profiles.activate",
+      "summary": "Select a profile, or clear the selection with null",
+      "paramStructure": "by-position",
+      "params": [
+        {
+          "name": "profileId",
+          "required": true,
+          "schema": { "type": ["string", "null"] }
+        }
+      ],
+      "result": {
+        "name": "outcome",
+        "schema": { "$ref": "#/components/schemas/MutationOutcome" }
+      },
+      "errors": [{ "code": -32000, "message": "Application error" }]
+    },
+    {
+      "name": "nyanpasu.v1.clash.snapshot",
+      "summary": "Read the current Clash stream snapshot for gap recovery",
+      "params": [],
+      "result": {
+        "name": "snapshot",
+        "schema": { "$ref": "#/components/schemas/ClashSnapshot" }
+      },
+      "errors": [{ "code": -32000, "message": "Application error" }]
+    },
+    {
+      "name": "rpc.discover",
+      "summary": "Read this OpenRPC document",
+      "params": [],
+      "result": { "name": "document", "schema": { "type": "object" } }
+    },
+    {
+      "name": "nyanpasu.v1.clash.subscribe",
+      "summary": "Subscribe to sequenced Clash stream events",
+      "params": [],
+      "result": {
+        "name": "subscriptionId",
+        "schema": { "type": ["integer", "string"] }
+      }
+    },
+    {
+      "name": "nyanpasu.v1.clash.unsubscribe",
+      "summary": "Close a Clash stream subscription",
+      "paramStructure": "by-position",
+      "params": [
+        {
+          "name": "subscriptionId",
+          "required": true,
+          "schema": { "type": ["integer", "string"] }
+        }
+      ],
+      "result": { "name": "unsubscribed", "schema": { "type": "boolean" } }
+    }
+  ],
+  "x-subscriptions": [
+    {
+      "name": "clashEvents",
+      "subscribeMethod": "nyanpasu.v1.clash.subscribe",
+      "notificationMethod": "nyanpasu.v1.clash.event",
+      "unsubscribeMethod": "nyanpasu.v1.clash.unsubscribe",
+      "notificationSchema": { "$ref": "#/components/schemas/ClashEvent" }
+    }
+  ],
+  "components": {
+    "schemas": {
+      "ProfileSummary": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "active": { "type": "boolean" }
+        },
+        "required": ["id", "name", "active"],
+        "additionalProperties": false
+      },
+      "ProfilesList": {
+        "type": "object",
+        "properties": {
+          "current": { "type": ["string", "null"] },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ProfileSummary" }
+          }
+        },
+        "required": ["current", "items"],
+        "additionalProperties": false
+      },
+      "Degradation": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "legacy_mirror",
+              "profile_materialization",
+              "runtime_build",
+              "runtime_check",
+              "runtime_promote",
+              "runtime_publish",
+              "runtime_apply",
+              "core_rollback",
+              "system_effect",
+              "ui_effect"
+            ]
+          },
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "retryable": { "type": "boolean" }
+        },
+        "required": ["phase", "code", "message", "retryable"],
+        "additionalProperties": false
+      },
+      "MutationOutcome": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": { "const": "applied" },
+              "value": { "type": "null" }
+            },
+            "required": ["status", "value"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": { "const": "committed_degraded" },
+              "value": { "type": "null" },
+              "degradations": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/Degradation" }
+              }
+            },
+            "required": ["status", "value", "degradations"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ClashEvent": {
+        "type": "object",
+        "properties": {
+          "sequence": { "type": "integer", "minimum": 0 },
+          "update": { "$ref": "#/components/schemas/ClashUpdate" }
+        },
+        "required": ["sequence", "update"],
+        "additionalProperties": false
+      },
+      "ClashUpdate": {
+        "type": "object",
+        "description": "Tagged ClashWsUpdate. The data shape depends on kind; this experimental document does not yet constrain every variant.",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "reset",
+              "state_changed",
+              "connections_updated",
+              "log_appended",
+              "traffic_updated",
+              "memory_updated",
+              "recording_changed",
+              "history_cleared"
+            ]
+          },
+          "data": {}
+        },
+        "required": ["kind", "data"]
+      },
+      "ClashSnapshot": {
+        "type": "object",
+        "description": "ClashWsSnapshot. Nested payloads remain unconstrained in this experimental contract.",
+        "properties": {
+          "sequence": { "type": "integer", "minimum": 0 },
+          "state": {
+            "type": "string",
+            "enum": ["disconnected", "connecting", "connected"]
+          },
+          "recording": { "type": "object" },
+          "connections": { "type": "array", "items": { "type": "object" } },
+          "logs": { "type": "array", "items": { "type": "object" } },
+          "traffic": { "type": "array", "items": { "type": "object" } },
+          "memory": { "type": "array", "items": { "type": "object" } }
+        },
+        "required": [
+          "sequence",
+          "state",
+          "recording",
+          "connections",
+          "logs",
+          "traffic",
+          "memory"
+        ]
+      }
+    }
+  }
+}

@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use jsonrpsee::RpcModule;
-use jsonrpsee_types::ErrorObjectOwned;
+use jsonrpsee::{
+    RpcModule,
+    core::server::{Extensions, PendingSubscriptionSink},
+};
+use jsonrpsee_types::{ErrorObjectOwned, Params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
 use tokio::sync::{Mutex, broadcast, mpsc};
@@ -9,6 +12,42 @@ use tokio::sync::{Mutex, broadcast, mpsc};
 const OPENRPC_DOCUMENT: &str = include_str!("../openrpc.json");
 const MAX_WIRE_MESSAGE_SIZE: usize = 1024 * 1024;
 const SUBSCRIPTION_BUFFER_SIZE: usize = 16;
+
+// The public name follows the Rust domain/method path; registration does not
+// repeat a free-form JSON-RPC key. OpenRPC method-list checking catches drift.
+macro_rules! rpc_name {
+    ($domain:ident :: $method:ident) => {
+        concat!(
+            "nyanpasu.v1.",
+            stringify!($domain),
+            ".",
+            stringify!($method)
+        )
+    };
+}
+
+macro_rules! system_rpc_name {
+    ($domain:ident :: $method:ident) => {
+        concat!(stringify!($domain), ".", stringify!($method))
+    };
+}
+
+macro_rules! register_async {
+    ($module:ident, $domain:ident :: $method:ident) => {
+        $module.register_async_method(rpc_name!($domain::$method), $domain::$method)
+    };
+}
+
+macro_rules! register_subscription {
+    ($module:ident, $domain:ident :: $method:ident) => {
+        $module.register_subscription(
+            rpc_name!($domain::$method),
+            rpc_name!($domain::event),
+            rpc_name!($domain::unsubscribe),
+            $domain::$method,
+        )
+    };
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,6 +134,79 @@ impl FakeApplication {
     }
 }
 
+mod profiles {
+    use super::*;
+
+    pub async fn list(
+        _: Params<'static>,
+        app: Arc<FakeApplication>,
+        _: Extensions,
+    ) -> Vec<Profile> {
+        app.list_profiles().await
+    }
+
+    pub async fn activate(
+        params: Params<'static>,
+        app: Arc<FakeApplication>,
+        _: Extensions,
+    ) -> Result<ProfileActivation, ErrorObjectOwned> {
+        let profile_id = params.one::<String>().map_err(|error| {
+            ErrorObjectOwned::owned(-32602, "Invalid params", Some(error.to_string()))
+        })?;
+        app.activate_profile(&profile_id).await.map_err(|()| {
+            ErrorObjectOwned::owned(
+                -32004,
+                "Profile not found",
+                Some(json!({ "profileId": profile_id })),
+            )
+        })
+    }
+}
+
+mod clash {
+    use super::*;
+
+    pub async fn subscribe(
+        _: Params<'static>,
+        pending: PendingSubscriptionSink,
+        app: Arc<FakeApplication>,
+        _: Extensions,
+    ) -> Result<(), jsonrpsee::core::SubscriptionError> {
+        let mut events = app.clash_events.subscribe();
+        let _closed_signal = SubscriptionClosedSignal(app.closed_subscriptions.clone());
+        let sink = pending.accept().await?;
+
+        loop {
+            tokio::select! {
+                _ = sink.closed() => break,
+                event = events.recv() => match event {
+                    Ok(event) => {
+                        let message = jsonrpsee::core::to_json_raw_value(&event)
+                            .expect("probe event serializes to JSON");
+                        tokio::select! {
+                            _ = sink.closed() => break,
+                            result = sink.send(message) => if result.is_err() { break },
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+mod rpc {
+    use super::*;
+
+    pub fn discover(_: Params<'_>, _: &FakeApplication, _: &Extensions) -> Value {
+        serde_json::from_str(OPENRPC_DOCUMENT)
+            .expect("the checked-in OpenRPC document is valid JSON")
+    }
+}
+
 struct SubscriptionClosedSignal(broadcast::Sender<()>);
 
 impl Drop for SubscriptionClosedSignal {
@@ -106,73 +218,14 @@ impl Drop for SubscriptionClosedSignal {
 pub fn application_rpc(app: FakeApplication) -> RpcModule<FakeApplication> {
     let mut module = RpcModule::new(app);
 
-    module
-        .register_async_method("nyanpasu.v1.profiles.list", |_, app, _| async move {
-            app.list_profiles().await
-        })
-        .expect("profile list method name is unique");
+    register_async!(module, profiles::list).expect("profile list method name is unique");
+    register_async!(module, profiles::activate).expect("profile activation method name is unique");
 
     module
-        .register_async_method(
-            "nyanpasu.v1.profiles.activate",
-            |params, app, _| async move {
-                let profile_id = params.one::<String>().map_err(|error| {
-                    ErrorObjectOwned::owned(-32602, "Invalid params", Some(error.to_string()))
-                })?;
-
-                app.activate_profile(&profile_id).await.map_err(|()| {
-                    ErrorObjectOwned::owned(
-                        -32004,
-                        "Profile not found",
-                        Some(json!({ "profileId": profile_id })),
-                    )
-                })
-            },
-        )
-        .expect("profile activation method name is unique");
-
-    module
-        .register_method("rpc.discover", |_, _, _| {
-            serde_json::from_str::<Value>(OPENRPC_DOCUMENT)
-                .expect("the checked-in OpenRPC document is valid JSON")
-        })
+        .register_method(system_rpc_name!(rpc::discover), rpc::discover)
         .expect("OpenRPC discovery method name is unique");
 
-    module
-        .register_subscription(
-            "nyanpasu.v1.clash.subscribe",
-            "nyanpasu.v1.clash.event",
-            "nyanpasu.v1.clash.unsubscribe",
-            |_, pending, app, _| async move {
-                let mut events = app.clash_events.subscribe();
-                let _closed_signal = SubscriptionClosedSignal(app.closed_subscriptions.clone());
-                let sink = pending.accept().await?;
-
-                loop {
-                    tokio::select! {
-                        _ = sink.closed() => break,
-                        event = events.recv() => match event {
-                            Ok(event) => {
-                                let message = jsonrpsee::core::to_json_raw_value(&event)
-                                    .expect("probe event serializes to JSON");
-                                tokio::select! {
-                                    _ = sink.closed() => break,
-                                    result = sink.send(message) => {
-                                        if result.is_err() {
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                            Err(broadcast::error::RecvError::Closed) => break,
-                        }
-                    }
-                }
-
-                Ok::<(), jsonrpsee::core::SubscriptionError>(())
-            },
-        )
+    register_subscription!(module, clash::subscribe)
         .expect("Clash subscription methods are unique");
 
     module

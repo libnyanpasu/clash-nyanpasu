@@ -2,7 +2,9 @@
 
 This isolated probe validates a contract-first OpenRPC document, Rust JSON-RPC method/subscription dispatch with `jsonrpsee`, TypeScript client generation, and Tauri IPC transport shapes. The current goal is to decouple application methods and domain events from Tauri commands/events inside the software. It does not test Electron, HTTP, Unix sockets, LuCI, or OpenWrt adapters, and it does not modify production commands, hooks, plugins, or generated bindings.
 
-`openrpc.json` is the probe's API contract. Rust registers methods and subscriptions manually on an in-process `RpcModule`. Unary calls pass a serialized JSON-RPC request through the `rpc_dispatch` bridge. A long-lived subscription uses `rpc_subscribe`; the backend forwards JSON-RPC notifications through a Tauri `Channel`, and the frontend cancels it with the JSON-RPC unsubscribe method. The Rust test uses Tokio `mpsc` as a stand-in for the native `Channel` sink; the TypeScript smoke test constructs the actual `@tauri-apps/api/core` `Channel` and mocks only Tauri's callback/invoke runtime.
+`openrpc.json` is the probe's API contract. Rust registers methods and subscriptions on an in-process `RpcModule`. Unary calls pass a serialized JSON-RPC request through the `rpc_dispatch` bridge. A long-lived subscription uses `rpc_subscribe`; the backend forwards JSON-RPC notifications through a Tauri `Channel`, and the frontend cancels it with the JSON-RPC unsubscribe method. The Rust test uses Tokio `mpsc` as a stand-in for the native `Channel` sink; the TypeScript smoke test constructs the actual `@tauri-apps/api/core` `Channel` and mocks only Tauri's callback/invoke runtime.
+
+The follow-up probe derives JSON-RPC names from Rust operation paths such as `profiles::list`. Registration checks that the path resolves to a function, while the existing method-list check catches drift against the OpenRPC document. The OpenRPC schema and method metadata still require explicit maintenance.
 
 ## Verify
 

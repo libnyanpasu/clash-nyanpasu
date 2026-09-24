@@ -1,23 +1,23 @@
 # 软件内部 RPC 与 Tauri IPC 解耦设计
 
 **日期：** 2026-09-24
-**状态：** 研究方案；OpenAPI 对照 probe 与 JSON-RPC/OpenRPC internal RPC probe 已完成，OpenRPC 进入首选验证路线，尚未接入生产 API
+**状态：** 研究方案；OpenAPI 与 OpenRPC probe 已完成，真实 `NyanpasuClient` 的 OpenRPC 实验入口按[实验设计](../openrpc-experiment.md)另行实现
 **范围：** 首要目标是在不破坏既有 Tauri command/event 契约的前提下，建立不依赖 Tauri 的软件内部 RPC/application API，并把 Tauri IPC 作为一个 transport 接入。HTTP/WebSocket、Unix socket、Electron 和 OpenWrt/LuCI 是后续可能评估的 transport/host，不属于当前 probe 的实现目标或验收条件。
 
 ## 1. 结论摘要
 
-当前最合适的方向不是先把现有 command/event 原样搬进某个框架，而是先把应用操作和领域事件从 Tauri 边界抽出来，再选择内部 RPC contract 和 dispatcher。当前 probe 只验证 Rust RPC core、OpenRPC contract 和 Tauri IPC adapter 的接缝。
+当前最合适的方向是先把应用操作和领域事件从 Tauri 边界抽出来，再选择内部 RPC contract 和 dispatcher。独立 P0 probe 验证了 Rust RPC core、OpenRPC contract 和 Tauri IPC adapter 的接缝；真实应用操作的实验入口另行实现。
 
 建议目标：
 
 1. 将可复用能力收敛到 Tauri-free 的 NyanpasuClient 应用 facade、typed actor clients、pure services 和 ports。
 2. 旧 Tauri bindings 继续由 Specta 维护；新 API 以 OpenRPC/JSON Schema 为契约来源，Rust DTO 的生成或 Serde 兼容验证必须与该 spec 对齐。
-3. 将 **JSON-RPC 2.0 + OpenRPC** 作为当前首选验证路线：`openrpc.json` 做唯一契约，jsonrpsee 手动注册方法并做 method-list drift 检查；不采用 Rust API 注解生成契约的路线。
+3. 将 **JSON-RPC 2.0 + OpenRPC** 作为当前首选验证路线：`openrpc.json` 承载发布契约和 schema，jsonrpsee 从 Rust handler 路径生成注册名并做 method-list drift 检查；不采用 Rust API 注解生成契约的路线。
 4. 第一版新增统一 JSON-RPC dispatcher 和 Tauri IPC adapter，保留旧 commands、旧 events、旧 hooks 和旧 bindings；新旧调用共享 Tauri-free application operations/streams。
 5. 当前阶段先证明 commands 与领域 events 都能脱离 Tauri handler/sink，并经内部 JSON-RPC 核心调用。HTTP/WS、UDS、Electron、OpenWrt/LuCI 暂作未来可替换 transport 的评估方向，不做本轮验收。
 6. 窗口、托盘、剪贴板、对话框、通知、快捷键、桌面更新器等仍属于 Host API；本轮事件 probe 只覆盖共享领域订阅，不把桌面生命周期信号强行塞入内部 RPC。
 
-**当前判断：** JSON-RPC/OpenRPC 路线适合作为内部 RPC 候选，贴近现有 command 语义，也绕开 Utoipa 的 handler/type 标注。当前 probe 已验证 unary in-process dispatch、jsonrpsee subscription、Tauri Channel-shaped forwarding、前端 Channel wrapper 和 unsubscribe 生命周期。它尚不是生产 Tauri command，也未接入真实 `NyanpasuClient`。OpenRPC 官方 TS generator 需要小型后处理且不生成 subscription lifecycle；生产前应优先评估项目自有的轻量 client/template。
+**当前判断：** JSON-RPC/OpenRPC 路线适合作为内部 RPC 候选，贴近现有 command 语义，也绕开 Utoipa 的 handler/type 标注。probe 已验证 unary in-process dispatch、jsonrpsee subscription、Tauri Channel-shaped forwarding、前端 Channel wrapper 和 unsubscribe 生命周期。真实入口计划由 `NyanpasuClient` 提供操作，从 Rust handler 路径生成注册名，启动时比对 OpenRPC 方法列表；前端方法和 DTO 从契约生成，Tauri transport 与订阅生命周期由薄适配层处理。
 
 OpenAPI + Axum + Utoipa + Orval 保留为已验证对照路线；其 spec/client/hooks 生成更顺手，但需要在 Rust handler 上维护 API 标注，和用户希望避免重复契约声明的偏好不符。下一步先按 contract-first OpenRPC 深化真实 application operation 和领域订阅，验证 DTO schema、Tauri IPC adapter 和取消生命周期后再评估是否定案。不要依赖 openrpsee 成为硬架构前提，也暂不引入 ConnectRPC/Protobuf 的迁移成本。
 
@@ -63,15 +63,15 @@ OpenRPC 与 OpenAPI 的关系是“JSON-RPC 接口描述标准”与“HTTP API 
 
 ## 4. 候选比较
 
-| 方案                                | 机器可读 spec / client generation                                                                                  | Rust + TS                                                                | Tauri IPC                                                                                                            | UDS                                                             | LuCI/ubus                                   | 本项目评价                                                                                                                                |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **jsonrpsee + OpenRPC**             | OpenRPC 描述 methods/params/results/errors；官方 generator 可生成 TS method client，但需对点分隔 method 名做后处理 | Rust handlers 手动注册；DTO/schema 一致性需 contract-first 校验          | 单一 invoke bridge 传完整 JSON-RPC envelope；自定义 transport 已在 P0 跑通                                           | 仍需 UDS adapter 或复用 nyanpasu-ipc                            | ubus adapter 调用共享 application operation | **当前首选验证路线**；避免 Rust handler 注解，但 generator 与事件适配不是开箱即用                                                         |
-| **OpenAPI + Axum + Utoipa + Orval** | Axum route metadata 生成 OpenAPI JSON；Orval 从 OpenAPI 生成 TS models/client、React Query hooks                   | Rust handler/DTO 与 TS 生成链完整；Rust DTO 需 `ToSchema` 等 schema 注解 | 没有官方 Tauri transport；可用自定义 mutator + invoke bridge，或在 Rust 内直接 dispatch Axum/Tower request，均需验证 | HTTP server 可绑定 UDS，但不是自动配置；也可复用现有 IPC 作代理 | 仍需 ubus adapter                           | 当前最强的 spec/client-generation 替代路线；HTTP API 生态最好，但接口需建模成 HTTP resource/action，而不是 JSON-RPC method                |
-| **Aide + Axum + Orval**             | Aide 提供 Axum API-aware router 并生成 OpenAPI；同样可接 Orval                                                     | 类似 Utoipa，但使用 Schemars/OperationInput/Output 契约                  | 同上                                                                                                                 | 同上                                                            | 同上                                        | 是 Utoipa 的真实替代品；两者选一个即可。Utoipa 更贴近仓库自带 axum 的路由组合方式；Aide 可作为 spike 对照，避免同时采用两套 schema derive |
-| **ConnectRPC + Protobuf**           | `.proto` 是契约；Connect/gRPC/gRPC-Web Rust runtime、反射和 TS client 代码生成；TS 可接 Connect-Query              | Rust/TS 代码生成一体化，不依赖手写 Specta method catalog                 | 无标准 Tauri transport；需将 Connect HTTP request 映射到 invoke/内部 Tower service                                   | 需 HTTP/2/UDS listener 或自定义 adapter                         | 仍需 ubus adapter                           | 若能接受 Protobuf 成为唯一契约，类型/客户端生成最一致；connect-rust 仍处于 pre-1.0，且迁移成本高                                          |
-| **oRPC + Rust**                     | oRPC 的强项是 TS contract-first 与 TS client                                                                       | Rust 实现需要和 TS contract 同步                                         | custom link 可走 invoke                                                                                              | 自定义                                                          | ubus adapter                                | 不适合目前 Rust 为真实实现、Specta 已是类型来源的现状，除非契约所有权转到 TS                                                              |
-| **tarpc / quic-rpc + Specta**       | Rust service/client 可类型化；OpenRPC/TS method client 需另补                                                      | Rust 强，TS 需额外生成方案                                               | 自定义 adapter                                                                                                       | 可插拔/自定义                                                   | 需映射                                      | 更适合 Rust-to-Rust IPC；并未减少 TS/LuCI 边界工作                                                                                        |
-| **rspc**                            | 曾有 Specta typed API 集成                                                                                         | Rust + TS 曾很契合                                                       | 可适配                                                                                                               | 自行适配                                                        | 自行适配                                    | 上游已标明不再维护，不选作新基础                                                                                                          |
+| 方案                                | 机器可读 spec / client generation                                                                                       | Rust + TS                                                                | Tauri IPC                                                                                                            | UDS                                                             | LuCI/ubus                                   | 本项目评价                                                                                                                                |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **jsonrpsee + OpenRPC**             | OpenRPC 描述 methods/params/results/errors；实验入口用项目生成器生成 TS DTO 与 unary client，官方 generator 的限制见 P0 | Rust handlers 通过宏注册；DTO/schema 一致性仍需校验                      | 单一 invoke bridge 传完整 JSON-RPC envelope；P0 已验证模拟接缝，真实操作与 native Channel 生命周期待验证             | 仍需 UDS adapter 或复用 nyanpasu-ipc                            | ubus adapter 调用共享 application operation | **当前首选验证路线**；避免 Rust handler 注解，订阅生命周期仍需适配                                                                        |
+| **OpenAPI + Axum + Utoipa + Orval** | Axum route metadata 生成 OpenAPI JSON；Orval 从 OpenAPI 生成 TS models/client、React Query hooks                        | Rust handler/DTO 与 TS 生成链完整；Rust DTO 需 `ToSchema` 等 schema 注解 | 没有官方 Tauri transport；可用自定义 mutator + invoke bridge，或在 Rust 内直接 dispatch Axum/Tower request，均需验证 | HTTP server 可绑定 UDS，但不是自动配置；也可复用现有 IPC 作代理 | 仍需 ubus adapter                           | 当前最强的 spec/client-generation 替代路线；HTTP API 生态最好，但接口需建模成 HTTP resource/action，而不是 JSON-RPC method                |
+| **Aide + Axum + Orval**             | Aide 提供 Axum API-aware router 并生成 OpenAPI；同样可接 Orval                                                          | 类似 Utoipa，但使用 Schemars/OperationInput/Output 契约                  | 同上                                                                                                                 | 同上                                                            | 同上                                        | 是 Utoipa 的真实替代品；两者选一个即可。Utoipa 更贴近仓库自带 axum 的路由组合方式；Aide 可作为 spike 对照，避免同时采用两套 schema derive |
+| **ConnectRPC + Protobuf**           | `.proto` 是契约；Connect/gRPC/gRPC-Web Rust runtime、反射和 TS client 代码生成；TS 可接 Connect-Query                   | Rust/TS 代码生成一体化，不依赖手写 Specta method catalog                 | 无标准 Tauri transport；需将 Connect HTTP request 映射到 invoke/内部 Tower service                                   | 需 HTTP/2/UDS listener 或自定义 adapter                         | 仍需 ubus adapter                           | 若能接受 Protobuf 成为唯一契约，类型/客户端生成最一致；connect-rust 仍处于 pre-1.0，且迁移成本高                                          |
+| **oRPC + Rust**                     | oRPC 的强项是 TS contract-first 与 TS client                                                                            | Rust 实现需要和 TS contract 同步                                         | custom link 可走 invoke                                                                                              | 自定义                                                          | ubus adapter                                | 不适合目前 Rust 为真实实现、Specta 已是类型来源的现状，除非契约所有权转到 TS                                                              |
+| **tarpc / quic-rpc + Specta**       | Rust service/client 可类型化；OpenRPC/TS method client 需另补                                                           | Rust 强，TS 需额外生成方案                                               | 自定义 adapter                                                                                                       | 可插拔/自定义                                                   | 需映射                                      | 更适合 Rust-to-Rust IPC；并未减少 TS/LuCI 边界工作                                                                                        |
+| **rspc**                            | 曾有 Specta typed API 集成                                                                                              | Rust + TS 曾很契合                                                       | 可适配                                                                                                               | 自行适配                                                        | 自行适配                                    | 上游已标明不再维护，不选作新基础                                                                                                          |
 
 **建议排序：**
 
@@ -111,7 +111,7 @@ Aide 是另一个 Axum/OpenAPI code-first 方案：提供 API-aware routing 和 
 
 ### 5.1 当前采用 contract-first OpenRPC 做下一轮验证
 
-用户明确不希望为 OpenAPI 在 Rust handlers/types 上增加大量 API 标注。基于这个偏好，下一轮以仓库中的 `openrpc.json` 为唯一 API 契约源；Rust 手动注册实现方法，OpenRPC generator 生成 TS method client。Rust registration 不再兼任第二份 schema 定义：测试校验注册方法与 spec 方法集相同，DTO wire shapes 需要单独做 schema validation/兼容测试。
+用户明确不希望为 OpenAPI 在 Rust handlers/types 上增加大量 API 标注。基于这个偏好，仓库中的 `openrpc.json` 承载 API 描述和 schema；Rust 注册时从具名 handler 路径生成 method 名，OpenRPC generator 可生成 TS method client。Rust registration 不兼任第二份 schema 定义：方法列表与 spec 必须校验一致，DTO wire shapes 需要单独做 schema validation/兼容测试。
 
 ```text
 openrpc.json (authoritative)
@@ -123,9 +123,11 @@ openrpc.json (authoritative)
 
 **P0 结果（`docs/probes/openrpc-p0/`）：** jsonrpsee 0.26.0 的 `RpcModule::raw_json_request` 可直接对 JSON-RPC envelope 进行进程内 dispatch 和订阅。探针以 `server-core` feature 注册并调用，无需启用 HTTP server；测试确认 method registry 等于 OpenRPC methods、wire response/error、`rpc.discover`、订阅通知与 unsubscribe 均可工作。Rust 侧用 Tokio channel 模拟 Tauri Channel sink；前端 smoke 则实例化真实 `@tauri-apps/api/core` `Channel`，mock Tauri invoke runtime，验证 `rpc_subscribe` 和 unsubscribe 消息形状及 Channel callback 清理。OpenRPC generator 能生成 unary client；subscription lifecycle 由项目 wrapper 补充。探针仍未运行真实 Tauri command，也未接入真实 `NyanpasuClient`。
 
-生成工具目前有明确工程限制：默认 TS 模板把点分隔 method name 写成非法 TypeScript 成员；by-name 参数的 validator 接收形状与其 wrapper 生成的调用形状不匹配。探针通过小型 postprocessor 将成员改为字符串索引并使用 by-position params 后跑通 typecheck/smoke。自定义 transport 还需继承 `@open-rpc/client-js` 未从公共入口导出的内部 Transport 类型，因此这一条不能不加审查地直接提升为生产实现。下一步应比较自有的小型 client/template（生成规范 method wrappers/types，transport 是显式参数）和对官方 generator 的固定后处理；不要将生成器当前原样输出视为可用产物。
+官方生成工具有明确工程限制：默认 TS 模板把点分隔 method name 写成非法 TypeScript 成员；by-name 参数的 validator 接收形状与其 wrapper 生成的调用形状不匹配。探针通过小型 postprocessor 将成员改为字符串索引并使用 by-position params 后跑通 typecheck/smoke。自定义 transport 还需继承 `@open-rpc/client-js` 未从公共入口导出的内部 Transport 类型，因此未将该生成器直接接入真实入口。
 
-OpenRPC contract-first 避免了 Utoipa 风格的 Rust handler/schema 注解，但不会自动同步 Rust DTO。P0 只检查 method names 及代表性 wire response，没有覆盖所有 Serde edge cases。当前仓库仍用 Specta 生成旧 bindings；不把 Specta 再作为新 RPC 的第二份 schema 源。接入真实 DTO 前，需选择从 OpenRPC JSON Schema 生成 Rust DTO，或为典型 payload 加 schema validation 和 Serde serialization tests。
+真实入口选择项目自有的薄生成器：从 [OpenRPC 契约](../openrpc.json)生成 TypeScript DTO、method catalog 和 unary client，JSON Schema 类型转换交给 `json-schema-to-typescript`。这一选择不依赖官方 generator 的运行时 transport 内部路径。Clash 流的嵌套 schema 仍待补全，生成类型只能反映当前文档的精度。
+
+OpenRPC contract-first 避免了 Utoipa 风格的 Rust handler/schema 注解，但不会自动同步 Rust DTO。P0 只检查 method names 及代表性 wire response，没有覆盖所有 Serde edge cases。当前仓库仍用 Specta 生成旧 bindings；不把 Specta 再作为新 RPC 的第二份 schema 源。真实 DTO 已用于实验入口，仍需选择从 OpenRPC JSON Schema 生成 Rust DTO，或为典型 payload 加 schema validation 和 Serde serialization tests。
 
 ### 5.2 维护与依赖风险判断（截至 2026-09-24）
 
@@ -207,7 +209,7 @@ nyanpasu.v1.logs.closeSession
 
 Tauri-only capability 可在单独的 `desktop.v1.*` 命名空间经同一 IPC bridge 暴露，例如通知、重启桌面进程或桌面文件/更新能力。它们只由 Tauri host adapter 注册；LuCI client 不生成也不调用这些方法。剪贴板、文件选择和确认对话框按当前决定在 LuCI 首版不支持。
 
-- wire method name 显式固定，不依赖 Rust 函数名或宏隐式拼接。
+- wire method name 从具名 Rust handler 的模块/函数路径生成；这些名字作为公开 API 维护，重命名须同步评估版本兼容，并由 method-list 检查发现 spec 漂移。
 - 这些是逻辑操作示例；若选择 OpenAPI，需将它们重新表达为稳定的 HTTP path/method 和 `operationId`，不能直接把 JSON-RPC method name 填进单一 `/rpc` endpoint。
 - 新方法统一使用命名 request DTO 和稳定 response DTO。
 - 不暴露 actor message、Tauri State、AppHandle、内部错误或任意 JSON 执行入口。
@@ -362,8 +364,10 @@ interface ClashWsEventClient {
 
 截至 2026-09-24，OpenAPI P0 已验证 Utoipa spec 导出、Orval client/hooks 生成、Tauri-shaped mutator 和无监听端口 Axum dispatch。JSON-RPC/OpenRPC internal RPC probe 已验证 jsonrpsee unary/subscription in-process dispatch、`rpc.discover`、method registry 对齐、OpenRPC TS unary client、自定义 Tauri invoke transport、前端 Channel subscription wrapper 和 unsubscribe 流程。Rust 侧以 Tokio channel 模拟 Tauri Channel sink，前端使用真实 `@tauri-apps/api/core` Channel 并 mock Tauri invoke runtime；尚未注册真实 Tauri command，也未连接真实 application operation。OpenRPC generator 需要方法名/类型 import 后处理，by-name params 在其 TS validator 中有缺陷；probe 使用 by-position。外部 transport 未实现且不属于当前验收。
 
+首批真实入口计划把 profile 查询/激活、Clash snapshot/订阅接到 Tauri bridge；具体范围和待验证事项见[实验设计](../openrpc-experiment.md)。
+
 - 新旧调用都进入同一 Tauri-free operation；
-- JSON-RPC/OpenRPC：已完成 mock unary + subscription slice；下一步接入真实 Tauri-free application operation，验证真实 DTO/schema、参数编码、错误映射、native Tauri Channel 生命周期和新旧 command/event 共用操作；
+- JSON-RPC/OpenRPC：已完成 mock slice；下一步接入部分真实 application operation，并验证 DTO/schema、参数编码、错误映射、native Tauri Channel 生命周期和新旧 command/event 共用操作；
 - OpenAPI 候选：已完成小型 mock slice。后续需用真实 Tauri-free application operation 替换 mock，并验证 command 接线、错误映射、取消和连续数据边界；
 - ConnectRPC 候选（若后续重新比较）：`.proto` 可生成 Rust 服务接口和 TS client；评估其 Tauri IPC adapter 成本；
 - 通过 schema validation 与实际 request/response 样本校验 generated schemas；
@@ -387,7 +391,7 @@ interface ClashWsEventClient {
 
 ## 13. 风险和决策
 
-- **OpenRPC 有标准，不代表 client generation 细节都成熟：** P0 已发现官方 generator 对点分隔 method 名、by-name 参数和可插拔 Tauri transport 的限制；升级 generator 时需回归后处理脚本，也可改成项目自有薄 client 模板。
+- **OpenRPC 有标准，不代表 client generation 细节都成熟：** P0 已发现官方 generator 对点分隔 method 名、by-name 参数和可插拔 Tauri transport 的限制；实验入口选择项目自有薄生成器，升级依赖时需检查生成产物和类型覆盖。
 - **jsonrpsee 的发布/稳定性：** 截至本文日期，0.26.0 发布已有约 13 个月，仓库仍有后续活动且 v1.0 仍在 roadmap。隔离 crate API、pin 版本，并将升级验证列入依赖维护。
 - **Rust/OpenRPC schema drift：** method set 有 P0 registry test；request/result/error schema 和复杂 Serde DTO 仍需更多对照。openrpsee 0.1.1 仍不作为生成前提；契约真源是 OpenRPC 文件。
 - **OpenAPI 和 HTTP API 的错配：** Utoipa/Orval 的生成链更成熟，但 OpenAPI 描述 HTTP API。不要为了生成 client 而把 method semantics 塞进单一 `POST /rpc` endpoint；先验证真实 REST/action endpoints 是否自然表达应用操作，以及 Tauri invoke bridge 是否可维护。
@@ -408,7 +412,7 @@ interface ClashWsEventClient {
 3. 本阶段唯一需要验证的外部边界是 Tauri IPC：unary 调用通过 `rpc_dispatch`，subscription notification 通过 `rpc_subscribe` + Tauri Channel。HTTP/WS、UDS、Electron 和 LuCI/ubus 不作为当前目标或验收条件。
 4. command/hooks/events/bindings 保持兼容并新增 RPC；前端 Tauri plugin JS API 迁移到后端 host adapter 是另一条并行工作，不属于当前 RPC probe 验收。未来 LuCI 的本地剪贴板、文件选择和确认框按用户此前决定不支持。
 
-下一步待确认：首批真实 operation 和 subscription 的 DTO/schema 对齐；native Tauri `#[tauri::command]` 与 `Channel` 的关闭/取消行为；新旧入口是否能共用真实 Tauri-free application operation。当前 probe 不声明 Electron、LuCI 或 OpenWrt 已可适配。
+下一步待确认：首批真实 operation 和 subscription 的 DTO/schema 对齐；native Tauri `#[tauri::command]` 与 `Channel` 的关闭/取消行为；旧入口与新入口在实际运行中是否共用预期的 application operation。当前实验不声明 Electron、LuCI 或 OpenWrt 已可适配。
 
 ## 15. 参考资料
 

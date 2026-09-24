@@ -11,10 +11,13 @@ use nyanpasu_config::profile::{
 use nyanpasu_core::state::PersistentStateManagerSetup;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
-use crate::state::profiles::{
-    CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-    ProfilesError, RefreshOrigin, ReorderOp,
-    ports::{ProfileFsPort, ProfileMaterializationPort, RebuildNotifier, SubscriptionFetcher},
+use crate::{
+    core::migration::modules::profiles::ProfilesFormat,
+    state::profiles::{
+        CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
+        ProfilesError, RefreshOrigin, ReorderOp,
+        ports::{ProfileFsPort, ProfileMaterializationPort, RebuildNotifier, SubscriptionFetcher},
+    },
 };
 
 pub const PROFILES_READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -37,7 +40,7 @@ impl ProfilesClient {
         notifier: Arc<dyn RebuildNotifier>,
     ) -> anyhow::Result<Self> {
         let should_load = profiles_path.exists();
-        let setup = PersistentStateManagerSetup::<Profiles>::builder()
+        let setup = PersistentStateManagerSetup::<Profiles, ProfilesFormat>::builder()
             .config_path(profiles_path)
             .assemble();
         let manager = if should_load {
@@ -438,6 +441,36 @@ mod tests {
         assert!(snapshot.current.is_none());
         assert!(snapshot.items.is_empty());
         assert_eq!(snapshot.valid.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn writes_keep_the_schema_stamp_and_reload() {
+        let (client, dir) = test_client_with(MockProfileFsPort::new()).await;
+        client
+            .set_valid_fields(vec!["dns".to_string()])
+            .await
+            .expect("set_valid_fields should commit");
+
+        let raw = std::fs::read_to_string(temp_profiles_path(&dir)).unwrap();
+        let inspected = nyanpasu_core::format::inspect(&raw).unwrap();
+        assert_eq!(
+            inspected.stamp().map(|stamp| stamp.schema_revision),
+            Some(4),
+            "{raw}"
+        );
+        let revision = inspected.into_payload().get("revision").cloned();
+        assert_eq!(revision, Some(serde_yaml::Value::from(1)), "{raw}");
+
+        let reloaded = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .expect("a stamped profiles.yaml should load");
+        assert_eq!(reloaded.get().await.unwrap().valid, vec!["dns".to_string()]);
     }
 
     #[tokio::test]
@@ -2798,7 +2831,7 @@ mod tests {
         let path = temp_profiles_path(&dir);
         std::fs::write(
             &path,
-            "current: ghost\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
+            "_nyanpasu:\n  document: profiles\n  schema_revision: 4\ncurrent: ghost\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
         )
         .unwrap();
         let result = ProfilesClient::new(

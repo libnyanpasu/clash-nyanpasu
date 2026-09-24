@@ -1,9 +1,11 @@
 use crate::{
     config::*,
+    core::migration::modules::profiles::ProfilesFormat,
     utils::{dirs, help},
 };
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
+use nyanpasu_core::format::Format;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use std::{
@@ -152,11 +154,16 @@ pub fn init_config() -> Result<()> {
 
     crate::log_err!(dirs::profiles_path().map(|path| {
         if !path.exists() {
-            help::save_yaml(
-                &path,
+            // Stamped like every later write, since the app refuses to load
+            // an unstamped profiles.yaml.
+            let mut content = Vec::new();
+            ProfilesFormat::default().serialize(
+                &mut content,
                 &nyanpasu_config::profile::Profiles::default(),
                 Some("# Clash Nyanpasu"),
             )?;
+            fs::write(&path, content)
+                .with_context(|| format!("failed to save file \"{}\"", path.display()))?;
         }
         <Result<()>>::Ok(())
     }));

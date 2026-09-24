@@ -142,6 +142,12 @@ pub enum MigrationCheckError {
         #[source]
         source: crate::core::storage::StorageOperationError,
     },
+    #[error("failed to read the stamp of {}", path.display())]
+    Stamp {
+        path: PathBuf,
+        #[source]
+        source: nyanpasu_core::format::StampError,
+    },
     /// Readable and well-formed, but in no shape the step knows.
     #[error("{0}")]
     Unrecognized(String),
@@ -166,8 +172,37 @@ pub trait MigrationStep: Send + Sync {
     }
 }
 
+/// How the runner learns which revision a module's files are at.
+///
+/// New config migrations must go into a `Document` module; `Heuristic`
+/// modules are frozen and must not gain steps, since every step would need
+/// yet another shape probe in `detect_baseline` and `files_behind`.
+#[derive(Debug, Clone, Copy)]
+pub enum ModuleKind {
+    /// The revision is guessed from the shape of the files.
+    Heuristic,
+    /// Every step rewrites one file only, and the module revision is the
+    /// schema revision stamped into that file.
+    Document(DocumentSpec),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DocumentSpec {
+    pub document: &'static str,
+    pub path: fn(&Ctx) -> PathBuf,
+    /// The last revision written before the module adopted stamps. An
+    /// unstamped file is at most this revision, and `detect_baseline` only
+    /// has to tell revisions up to it apart.
+    pub unstamped_ceiling: u64,
+}
+
 pub trait ModuleMigrator: Send + Sync {
     fn module(&self) -> ModuleId;
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Heuristic
+    }
+    /// The revision of files that no state records. For a `Document` module
+    /// it is only asked about an existing, unstamped file.
     fn detect_baseline(&self, ctx: &Ctx) -> anyhow::Result<u64>;
     fn steps(&self) -> &'static [&'static dyn MigrationStep];
     /// What the files on disk lack when they are behind `applied`, i.e. the

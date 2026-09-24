@@ -12,6 +12,8 @@ use nyanpasu_config::profile::{
 };
 use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+
+use crate::core::migration::modules::profiles::ProfilesFormat;
 use tokio::task::JoinHandle;
 
 use super::{
@@ -110,7 +112,7 @@ pub enum ReorderOp {
 }
 
 pub struct ProfilesActorArgs {
-    pub manager: PersistentStateManager<Profiles>,
+    pub manager: PersistentStateManager<Profiles, ProfilesFormat>,
     pub fs: Arc<dyn ProfileFsPort>,
     pub fetcher: Arc<dyn SubscriptionFetcher>,
     pub(crate) materialization: Arc<dyn ProfileMaterializationPort>,
@@ -118,7 +120,7 @@ pub struct ProfilesActorArgs {
 }
 
 pub struct ProfilesActorState {
-    manager: PersistentStateManager<Profiles>,
+    manager: PersistentStateManager<Profiles, ProfilesFormat>,
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,
     fetcher: Arc<dyn SubscriptionFetcher>,

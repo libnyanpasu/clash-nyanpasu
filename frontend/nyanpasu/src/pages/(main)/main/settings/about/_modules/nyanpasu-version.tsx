@@ -83,6 +83,7 @@ const ReleaseChannelSelector = () => {
             loading={isChangingChannel}
           >
             <span>{m.release_channel_label()}</span>
+            {': '}
             <span>{releaseChannel ? labels[releaseChannel] : '…'}</span>
           </Button>
         </DropdownMenuTrigger>

@@ -3572,6 +3572,36 @@ async fn selecting_the_saved_host_again_moves_the_actual_host() {
     assert_eq!(f.core.status().host, ExecutionHost::Service);
     assert_eq!(service.reconciled_bytes().len(), 1);
 }
+#[tokio::test]
+async fn successful_confirm_keeps_the_promoted_inspection() {
+    let mut f = fixture(test_budgets()).await;
+    f.endpoint.set_effective_enabled(true);
+    let _ = crate::core::actor_v2::endpoint::ControlEndpoint::effective_config(f.endpoint.as_ref())
+        .await;
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_eq!(
+        settled(&f.client, id).await.conclusion,
+        MutationConclusion::Confirmed
+    );
+    let runtime = f.store.read();
+    assert!(runtime.applied.as_ref().unwrap().effective.is_some());
+    assert!(runtime.pending.is_none());
+    assert!(
+        runtime.promoted.as_ref().unwrap().effective.is_some(),
+        "Confirm published the pre-inspection snapshot even though the core inspection already arrived"
+    );
+}
+
 struct RefusedInstall;
 
 #[async_trait::async_trait]

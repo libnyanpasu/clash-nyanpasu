@@ -197,6 +197,24 @@ impl RuntimeSnapshotStore {
         self.0.send_modify(|state| state.promoted = Some(snapshot));
     }
 
+    pub(in crate::client) fn generated_confirmed(&self, product: Arc<RuntimeSnapshot>) {
+        self.0.send_modify(|state| {
+            let inspected = state.confirmed.as_ref().and_then(|record| {
+                matches!(record.inspection, InspectionState::Ready)
+                    .then(|| record.artifact.clone())
+                    .flatten()
+            });
+            state.promoted = Some(
+                inspected
+                    .filter(|artifact| {
+                        artifact.identity_eq(&product)
+                            && artifact.applied_binding == product.applied_binding
+                    })
+                    .unwrap_or(product),
+            );
+        });
+    }
+
     pub(in crate::client) fn record_confirmed_apply(
         &self,
         artifact: Option<Arc<RuntimeSnapshot>>,

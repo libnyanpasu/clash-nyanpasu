@@ -590,7 +590,7 @@ impl CoreLifecycleWorkflow {
         preparation: &dyn RuntimePreparationPort,
     ) -> anyhow::Result<()> {
         preparation.publish(&product).await?;
-        self.runtime.generated(product);
+        self.runtime.generated_confirmed(product);
         Ok(())
     }
 

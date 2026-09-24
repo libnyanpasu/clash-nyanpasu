@@ -1,5 +1,8 @@
-use super::super::{Ctx, MigrationStep, ModuleMigrator};
+use super::super::{
+    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
+};
 use crate::core::storage::{Storage, WebStorage};
+use anyhow::Context as _;
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml::Mapping;
@@ -71,24 +74,27 @@ impl MigrationStep for MigrateHotkeysToKv {
         "MigrateHotkeysToKv"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        let config: Option<Mapping> =
+            crate::core::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
+        Ok(Some(StepCheck::from_needed(config.is_some_and(|config| {
+            config
+                .get(HOTKEYS_KEY)
+                .is_some_and(|value| value.as_sequence().is_some())
+        }))))
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let config_path = ctx.nyanpasu_config_path();
-
-        if !config_path.exists() {
-            return Ok(());
-        }
-
         let raw = std::fs::read_to_string(&config_path)?;
         let mut config: Mapping = serde_yaml::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("failed to parse config: {e}"))?;
 
         let hotkeys_key = serde_yaml::Value::String(HOTKEYS_KEY.to_string());
-        let Some(hotkeys_value) = config.get(&hotkeys_key).cloned() else {
-            return Ok(());
-        };
-        let Some(hotkeys) = hotkeys_value.as_sequence() else {
-            return Ok(());
-        };
+        let hotkeys = config
+            .get(&hotkeys_key)
+            .and_then(serde_yaml::Value::as_sequence)
+            .context("hotkeys is not a list in the legacy config")?;
 
         let hotkey_strings: Vec<String> = hotkeys
             .iter()
@@ -158,19 +164,26 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
         "MigrateHotkeysToTypedConfig"
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let Some(hotkeys) = read_kv_hotkeys(ctx)? else {
-            return Ok(());
-        };
-
-        let application_path = ctx.application_config_path();
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        if read_kv_hotkeys(ctx)?.is_none() {
+            return Ok(Some(StepCheck::Satisfied));
+        }
         // `typed_config/split_legacy_config` builds this file and runs before
         // this module. Failing loudly keeps the value in storage so the next
         // launch retries, instead of dropping the user's hotkeys.
-        if !application_path.exists() {
-            anyhow::bail!("cannot move hotkeys into the typed application config before it exists");
+        if !try_exists(&ctx.application_config_path())? {
+            return Err(MigrationCheckError::Unrecognized(
+                "cannot move hotkeys into the typed application config before it exists"
+                    .to_string(),
+            ));
         }
+        Ok(Some(StepCheck::Needed))
+    }
 
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+        let hotkeys = read_kv_hotkeys(ctx)?.context("no hotkeys in the key-value storage")?;
+
+        let application_path = ctx.application_config_path();
         let raw = std::fs::read_to_string(&application_path)?;
         let mut application: Mapping = serde_yaml::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("failed to parse the application config: {e}"))?;
@@ -205,23 +218,29 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
 
 /// `None` when there is no store yet or the key is absent, which is what makes
 /// the step idempotent.
-fn read_kv_hotkeys(ctx: &Ctx) -> anyhow::Result<Option<Vec<String>>> {
+fn read_kv_hotkeys(ctx: &Ctx) -> Result<Option<Vec<String>>, MigrationCheckError> {
     let Some(storage) = open_storage(ctx)? else {
         return Ok(None);
     };
     storage
         .get_item::<Vec<String>>(HOTKEYS_KEY)
-        .map_err(|e| anyhow::anyhow!("failed to read hotkeys from storage: {e}"))
+        .map_err(|source| MigrationCheckError::Storage {
+            path: ctx.storage_path(),
+            source,
+        })
 }
 
-fn open_storage(ctx: &Ctx) -> anyhow::Result<Option<Storage>> {
+fn open_storage(ctx: &Ctx) -> Result<Option<Storage>, MigrationCheckError> {
     let storage_path = ctx.storage_path();
-    if !storage_path.exists() {
+    if !try_exists(&storage_path)? {
         return Ok(None);
     }
     Storage::try_new(&storage_path)
         .map(Some)
-        .map_err(|e| anyhow::anyhow!("failed to open storage: {e}"))
+        .map_err(|source| MigrationCheckError::Storage {
+            path: storage_path,
+            source,
+        })
 }
 
 #[cfg(test)]
@@ -256,8 +275,19 @@ mod tests {
             Self { _temp: temp, ctx }
         }
 
+        /// Mirrors the runner: a satisfied check skips the run, and a run must
+        /// leave its check satisfied.
         fn run(&mut self) -> anyhow::Result<()> {
-            MigrateHotkeysToTypedConfig.run(&mut self.ctx)
+            if MigrateHotkeysToTypedConfig.check(&self.ctx)? == Some(StepCheck::Satisfied) {
+                return Ok(());
+            }
+            MigrateHotkeysToTypedConfig.run(&mut self.ctx)?;
+            assert_eq!(
+                MigrateHotkeysToTypedConfig.check(&self.ctx).unwrap(),
+                Some(StepCheck::Satisfied),
+                "the run left its own check unsatisfied"
+            );
+            Ok(())
         }
 
         fn typed_hotkeys(&self) -> Vec<String> {
@@ -370,5 +400,30 @@ mod tests {
             Some(vec!["clash_mode_rule,Control+Q".to_string()]),
             "a failed step must leave the value in place so the next launch retries"
         );
+    }
+
+    #[test]
+    fn empty_legacy_hotkeys_list_satisfies_its_check_after_the_run() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let mut ctx = Ctx::new(config_dir, data_dir);
+        std::fs::write(ctx.nyanpasu_config_path(), "hotkeys: []\n").unwrap();
+
+        assert_eq!(
+            MigrateHotkeysToKv.check(&ctx).unwrap(),
+            Some(StepCheck::Needed)
+        );
+        MigrateHotkeysToKv.run(&mut ctx).unwrap();
+
+        // Nothing is written to storage, but the key must still leave the
+        // legacy file, or the runner would report the step as defective.
+        assert_eq!(
+            MigrateHotkeysToKv.check(&ctx).unwrap(),
+            Some(StepCheck::Satisfied)
+        );
+        assert_eq!(read_kv_hotkeys(&ctx).unwrap(), None);
     }
 }

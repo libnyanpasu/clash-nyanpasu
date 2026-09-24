@@ -5,9 +5,42 @@
 //! one durable write path. Keeping the third-party type in one place means a
 //! future swap only touches this file.
 
+use super::MigrationCheckError;
 use anyhow::{Context, ensure};
 use atomicwrites::{AllowOverwrite, AtomicFile};
+use serde::de::DeserializeOwned;
 use std::{io::Write, path::Path};
+
+/// Whether `path` exists, reporting an inaccessible parent as an error
+/// instead of the `false` that [`Path::exists`] would return.
+pub(crate) fn try_exists(path: &Path) -> Result<bool, MigrationCheckError> {
+    path.try_exists().map_err(|source| MigrationCheckError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+/// The YAML document at `path`, or `None` when the file does not exist.
+pub(crate) fn read_yaml_if_exists<T: DeserializeOwned>(
+    path: &Path,
+) -> Result<Option<T>, MigrationCheckError> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            return Err(MigrationCheckError::Io {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+    serde_yaml::from_str(&raw)
+        .map(Some)
+        .map_err(|source| MigrationCheckError::Parse {
+            path: path.to_path_buf(),
+            source,
+        })
+}
 
 /// Atomically write `contents` to `path`.
 ///

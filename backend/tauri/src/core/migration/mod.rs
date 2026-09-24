@@ -19,6 +19,8 @@ pub enum MigrationState {
     NotStarted,
     InProgress,
     Completed,
+    /// The check was satisfied without executing the step; advances revision.
+    Skipped,
     Failed,
 }
 
@@ -100,12 +102,64 @@ impl Ctx {
     }
 }
 
+/// What a step's check found on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepCheck {
+    Needed,
+    Satisfied,
+}
+
+impl StepCheck {
+    pub fn from_needed(needed: bool) -> Self {
+        if needed {
+            Self::Needed
+        } else {
+            Self::Satisfied
+        }
+    }
+}
+
+/// Why a check could not tell whether its step is needed. These are problems
+/// with the environment or the data; a defect in the check itself is not
+/// reported here (see [`MigrationStep::check`]).
+#[derive(Debug, thiserror::Error)]
+pub enum MigrationCheckError {
+    #[error("failed to access {}", path.display())]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to parse {}", path.display())]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: serde_yaml::Error,
+    },
+    #[error("failed to read the key-value storage at {}", path.display())]
+    Storage {
+        path: PathBuf,
+        #[source]
+        source: crate::core::storage::StorageOperationError,
+    },
+    /// Readable and well-formed, but in no shape the step knows.
+    #[error("{0}")]
+    Unrecognized(String),
+}
+
 pub trait MigrationStep: Send + Sync {
     fn id(&self) -> MigrationId;
     fn module(&self) -> ModuleId;
     fn revision(&self) -> u64;
     fn introduced_in(&self) -> &'static Version;
     fn name(&self) -> &'static str;
+    /// Whether the files on disk still need this step; `None` means the step
+    /// has no check and always runs. The runner records `Skipped` on `Satisfied`
+    /// and asks again after `run`, so `run` may assume `Needed`, and a check
+    /// that still says `Needed` afterwards is reported as a defect.
+    fn check(&self, _ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        Ok(None)
+    }
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()>;
     fn rollback(&self, _: &mut Ctx) -> anyhow::Result<()> {
         Ok(())

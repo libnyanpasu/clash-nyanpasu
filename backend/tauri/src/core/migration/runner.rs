@@ -1,5 +1,5 @@
 use super::{
-    Ctx, MigrationAdvice, MigrationState, MigrationStep, current_version, registry,
+    Ctx, MigrationAdvice, MigrationState, MigrationStep, StepCheck, current_version, registry,
     store::MigrationStore,
 };
 use crate::utils::path::PathResolver;
@@ -39,7 +39,9 @@ impl Runner {
         }
 
         match self.store.task_state(step.id()) {
-            Some(MigrationState::Completed) => return MigrationAdvice::Done,
+            Some(MigrationState::Completed | MigrationState::Skipped) => {
+                return MigrationAdvice::Done;
+            }
             Some(
                 MigrationState::Failed | MigrationState::InProgress | MigrationState::NotStarted,
             ) => {
@@ -183,20 +185,32 @@ impl Runner {
     }
 
     fn run_step(&mut self, step: &dyn MigrationStep) -> anyhow::Result<()> {
+        match step.check(&self.ctx) {
+            Ok(Some(StepCheck::Satisfied)) => {
+                println!("Migration {} is already satisfied, skipping.", step.id());
+                return self.finish_step(step, true);
+            }
+            Ok(Some(StepCheck::Needed) | None) => {}
+            Err(error) => {
+                let error =
+                    anyhow::Error::new(error).context(format!("failed to check {}", step.id()));
+                eprintln!("Migration {} failed: {error:#}", step.id());
+                return Err(self.record_failure(step, error));
+            }
+        }
+
         self.store.mark_in_progress(step);
         self.store
             .flush_atomic(&self.ctx.state_path())
             .with_context(|| format!("failed to persist {} in-progress state", step.id()))?;
 
-        match step.run(&mut self.ctx) {
+        match step
+            .run(&mut self.ctx)
+            .and_then(|()| ensure_satisfied(step, &self.ctx))
+        {
             Ok(()) => {
                 println!("Migration {} completed.", step.id());
-                self.store.mark_completed(step);
-                self.store.bump_module(step.module());
-                self.store
-                    .flush_atomic(&self.ctx.state_path())
-                    .with_context(|| format!("failed to persist {} completed state", step.id()))?;
-                Ok(())
+                self.finish_step(step, false)
             }
             Err(error) => {
                 eprintln!("Migration {} failed: {error:#}", step.id());
@@ -206,16 +220,47 @@ impl Runner {
                         step.id()
                     );
                 }
-                self.store.mark_failed(step, &error);
-                if let Err(flush_error) = self.store.flush_atomic(&self.ctx.state_path()) {
-                    return Err(error.context(format!(
-                        "failed to persist {} failed state: {flush_error:#}",
-                        step.id()
-                    )));
-                }
-                Err(error)
+                Err(self.record_failure(step, error))
             }
         }
+    }
+
+    fn finish_step(&mut self, step: &dyn MigrationStep, skipped: bool) -> anyhow::Result<()> {
+        if skipped {
+            self.store.mark_skipped(step);
+        } else {
+            self.store.mark_completed(step);
+        }
+        self.store.bump_module(step.module());
+        self.store
+            .flush_atomic(&self.ctx.state_path())
+            .with_context(|| format!("failed to persist {} finished state", step.id()))
+    }
+
+    fn record_failure(&mut self, step: &dyn MigrationStep, error: anyhow::Error) -> anyhow::Error {
+        self.store.mark_failed(step, &error);
+        match self.store.flush_atomic(&self.ctx.state_path()) {
+            Ok(()) => error,
+            Err(flush_error) => error.context(format!(
+                "failed to persist {} failed state: {flush_error:#}",
+                step.id()
+            )),
+        }
+    }
+}
+
+/// Asks a step's check again right after its run. Still `Needed` means the
+/// check or the run is defective, which must not be recorded as completed.
+fn ensure_satisfied(step: &dyn MigrationStep, ctx: &Ctx) -> anyhow::Result<()> {
+    match step.check(ctx) {
+        Ok(Some(StepCheck::Needed)) => bail!(
+            "migration {} ran but its check still reports it as needed; this is a bug in the \
+             migration",
+            step.id()
+        ),
+        Ok(Some(StepCheck::Satisfied) | None) => Ok(()),
+        Err(error) => Err(anyhow::Error::new(error)
+            .context(format!("failed to check {} after it ran", step.id()))),
     }
 }
 
@@ -235,7 +280,10 @@ fn introduced_in_reached(introduced_in: &Version, target: &Version) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::migration::store::{ModuleState, STORE_FILE_NAME};
+    use crate::core::migration::{
+        MigrationCheckError,
+        store::{ModuleState, STORE_FILE_NAME},
+    };
     use anyhow::bail;
     use once_cell::sync::Lazy;
 
@@ -704,6 +752,162 @@ mod tests {
         let error = format!("{:#}", result.unwrap_err());
         assert!(error.contains("legacy profile schema"), "{error}");
         assert_eq!(persisted.app.last_succeeded, None);
+    }
+
+    /// A step whose check answers with `check` and whose run always fails, so
+    /// a test can tell whether the runner reached it.
+    struct CheckedStep {
+        check: fn() -> Result<Option<StepCheck>, MigrationCheckError>,
+    }
+
+    impl MigrationStep for CheckedStep {
+        fn id(&self) -> &'static str {
+            "profiles/checked"
+        }
+
+        fn module(&self) -> &'static str {
+            "profiles"
+        }
+
+        fn revision(&self) -> u64 {
+            1
+        }
+
+        fn introduced_in(&self) -> &'static Version {
+            &TEST_VERSION
+        }
+
+        fn name(&self) -> &'static str {
+            "CheckedStep"
+        }
+
+        fn check(&self, _: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+            (self.check)()
+        }
+
+        fn run(&self, _: &mut Ctx) -> anyhow::Result<()> {
+            bail!("run must not be reached")
+        }
+    }
+
+    fn runner_with_profiles_at_zero() -> Runner {
+        let mut store = MigrationStore::default();
+        store
+            .modules
+            .insert("profiles".to_string(), ModuleState::default());
+        runner_with_store(store, false)
+    }
+
+    #[test]
+    fn satisfied_check_persists_skipped_without_running() {
+        let step = CheckedStep {
+            check: || Ok(Some(StepCheck::Satisfied)),
+        };
+        let mut runner = runner_with_profiles_at_zero();
+
+        runner.run_step(&step).unwrap();
+
+        let loaded = MigrationStore::load(&runner.ctx.state_path()).unwrap();
+        assert_eq!(loaded.task_state(step.id()), Some(MigrationState::Skipped));
+        assert_eq!(loaded.module_state("profiles").applied_revision, 1);
+        let task = &loaded.tasks[step.id()];
+        assert!(task.started_at.is_none());
+        assert!(task.finished_at.is_some());
+        assert!(task.error.is_none());
+
+        let mut restarted = runner_with_store(loaded, false);
+        assert_eq!(restarted.advice_step(&step), MigrationAdvice::Done);
+        restarted.force = true;
+        assert_eq!(restarted.advice_step(&step), MigrationAdvice::Pending);
+        restarted.run_migration(&step).unwrap();
+        assert_eq!(
+            restarted.store.task_state(step.id()),
+            Some(MigrationState::Skipped)
+        );
+    }
+
+    #[test]
+    fn satisfied_retry_replaces_the_previous_failure() {
+        let step = CheckedStep {
+            check: || Ok(Some(StepCheck::Satisfied)),
+        };
+        let mut runner = runner_with_profiles_at_zero();
+        runner
+            .store
+            .mark_failed(&step, &anyhow::anyhow!("previous failure"));
+
+        runner.run_step(&step).unwrap();
+
+        let loaded = MigrationStore::load(&runner.ctx.state_path()).unwrap();
+        let task = &loaded.tasks[step.id()];
+        assert_eq!(task.state, MigrationState::Skipped);
+        assert!(task.started_at.is_none());
+        assert!(task.error.is_none());
+        assert_eq!(loaded.module_state("profiles").applied_revision, 1);
+    }
+
+    #[test]
+    fn check_error_fails_without_running() {
+        let step = CheckedStep {
+            check: || Err(MigrationCheckError::Unrecognized("odd shape".to_string())),
+        };
+        let mut runner = runner_with_profiles_at_zero();
+
+        let error = format!("{:#}", runner.run_step(&step).unwrap_err());
+
+        assert!(error.contains("odd shape"), "{error}");
+        assert!(!error.contains("run must not be reached"), "{error}");
+        assert_eq!(
+            runner.store.task_state(step.id()),
+            Some(MigrationState::Failed)
+        );
+        assert_eq!(runner.store.module_state("profiles").applied_revision, 0);
+    }
+
+    struct NeverSatisfiedStep;
+
+    impl MigrationStep for NeverSatisfiedStep {
+        fn id(&self) -> &'static str {
+            "profiles/never_satisfied"
+        }
+
+        fn module(&self) -> &'static str {
+            "profiles"
+        }
+
+        fn revision(&self) -> u64 {
+            1
+        }
+
+        fn introduced_in(&self) -> &'static Version {
+            &TEST_VERSION
+        }
+
+        fn name(&self) -> &'static str {
+            "NeverSatisfiedStep"
+        }
+
+        fn check(&self, _: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+            Ok(Some(StepCheck::Needed))
+        }
+
+        fn run(&self, _: &mut Ctx) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn check_still_needed_after_run_is_reported_as_a_defect() {
+        let mut runner = runner_with_profiles_at_zero();
+
+        let error = format!("{:#}", runner.run_step(&NeverSatisfiedStep).unwrap_err());
+
+        assert!(error.contains("still reports it as needed"), "{error}");
+        assert_eq!(
+            runner.store.task_state(NeverSatisfiedStep.id()),
+            Some(MigrationState::Failed)
+        );
+        assert_eq!(runner.store.module_state("profiles").applied_revision, 0);
     }
 
     #[test]

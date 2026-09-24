@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::super::{Ctx, MigrationStep, ModuleMigrator};
+use super::super::{Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml::{
@@ -81,11 +81,12 @@ impl MigrationStep for MigrateProfilesNullValue {
         "MigrateProfilesNullValue"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_profiles(ctx, |profiles| profiles.values().any(Value::is_null))
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let profiles_path = ctx.profiles_path();
-        if !profiles_path.exists() {
-            return Ok(());
-        }
         let profiles = std::fs::read_to_string(profiles_path.clone())?;
         let mut profiles: Mapping = serde_yaml::from_str(&profiles)
             .map_err(|e| anyhow::anyhow!("failed to parse profiles: {e}"))?;
@@ -148,12 +149,12 @@ impl MigrationStep for MigrateProfileScriptNewtype {
         "MigrateProfileScriptNewtype"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_profiles(ctx, has_script_newtype)
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let profiles_path = ctx.profiles_path();
-        if !profiles_path.exists() {
-            eprintln!("profiles dir not found, skipping migration");
-            return Ok(());
-        }
         eprintln!("Trying to read profiles files...");
         let profiles = std::fs::read_to_string(profiles_path.clone())?;
         eprintln!("Trying to parse profiles files...");
@@ -217,6 +218,10 @@ impl MigrationStep for MigrateProfilesCleanSchema {
         "MigrateProfilesCleanSchema"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_profiles(ctx, |profiles| !is_clean_schema(profiles))
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         run_clean_schema(ctx)
     }
@@ -250,16 +255,14 @@ impl MigrationStep for MigrateProfilesRepairSchema {
         "MigrateProfilesRepairSchema"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_profiles(ctx, |profiles| !is_clean_schema(profiles))
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let path = ctx.profiles_path();
-        if !path.exists() {
-            return Ok(());
-        }
         let raw = std::fs::read_to_string(&path)?;
         let doc: Mapping = serde_yaml::from_str(&raw)?;
-        if is_clean_schema(&doc) {
-            return Ok(());
-        }
         let repaired = migrate_clean_schema(doc)?;
         let profiles: nyanpasu_config::profile::Profiles =
             serde_yaml::from_value(Value::Mapping(repaired))?;
@@ -297,15 +300,9 @@ fn is_clean_schema(doc: &Mapping) -> bool {
 
 fn run_clean_schema(ctx: &mut Ctx) -> anyhow::Result<()> {
     let path = ctx.profiles_path();
-    if !path.exists() {
-        return Ok(());
-    }
     let raw = std::fs::read_to_string(&path)?;
     let doc: Mapping =
         serde_yaml::from_str(&raw).map_err(|e| anyhow::anyhow!("failed to parse profiles: {e}"))?;
-    if is_clean_schema(&doc) {
-        return Ok(());
-    }
 
     // R15: backup first, then transform (D3: mandatory .bak)
     let bak = path.with_extension("yaml.bak");
@@ -895,6 +892,35 @@ fn write_profiles_atomic(
         None => body,
     };
     crate::core::migration::fs::atomic_write(path, content.as_bytes())
+}
+
+/// A missing profiles file has nothing to migrate.
+fn check_profiles(
+    ctx: &Ctx,
+    needs: fn(&Mapping) -> bool,
+) -> Result<Option<StepCheck>, MigrationCheckError> {
+    let profiles: Option<Mapping> =
+        crate::core::migration::fs::read_yaml_if_exists(&ctx.profiles_path())?;
+    Ok(Some(StepCheck::from_needed(
+        profiles.as_ref().is_some_and(needs),
+    )))
+}
+
+/// Whether any item still carries the `!script <kind>` tagged type that
+/// [`migrate_profile_data`] splits into `type` and `script_type`.
+fn has_script_newtype(profiles: &Mapping) -> bool {
+    profiles
+        .get("items")
+        .and_then(Value::as_sequence)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                item.as_mapping()
+                    .and_then(|item| item.get("type"))
+                    .is_some_and(|ty| {
+                        matches!(ty, Value::Tagged(tag) if tag.tag == "script" && tag.value.is_string())
+                    })
+            })
+        })
 }
 
 fn current_revision() -> u64 {
@@ -1589,9 +1615,11 @@ items:
         assert_eq!(profiles.items.len(), 7);
         assert!(profiles.current.is_some());
 
-        // 幂等重入:再跑一遍 no-op,内容不变
-        run_clean_schema(&mut ctx).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+        // 幂等重入:check 判定已满足,runner 不会再跑
+        assert_eq!(
+            CLEAN_SCHEMA.check(&ctx).unwrap(),
+            Some(StepCheck::Satisfied)
+        );
     }
 
     #[test]
@@ -1620,13 +1648,15 @@ items:
         assert!(profiles.global_transforms.is_empty());
         assert_eq!(profiles.items.len(), 1);
 
-        run_clean_schema(&mut ctx).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+        assert_eq!(
+            CLEAN_SCHEMA.check(&ctx).unwrap(),
+            Some(StepCheck::Satisfied)
+        );
     }
 
     #[test]
-    fn clean_schema_with_null_current_baselines_to_head_and_is_noop() {
-        let (_temp, mut ctx) = temp_ctx();
+    fn clean_schema_with_null_current_baselines_to_head_and_is_satisfied() {
+        let (_temp, ctx) = temp_ctx();
         let path = ctx.profiles_path();
         let clean = r#"current: null
 items:
@@ -1644,8 +1674,10 @@ items:
         std::fs::write(&path, clean).unwrap();
 
         assert_eq!(MIGRATOR.detect_baseline(&ctx).unwrap(), current_revision());
-        run_clean_schema(&mut ctx).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), clean);
+        assert_eq!(
+            CLEAN_SCHEMA.check(&ctx).unwrap(),
+            Some(StepCheck::Satisfied)
+        );
     }
 
     #[test]

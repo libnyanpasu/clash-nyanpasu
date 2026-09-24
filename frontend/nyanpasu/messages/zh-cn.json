@@ -513,5 +513,19 @@
   "release_channel_beta": "测试版",
   "release_channel_nightly": "每夜版",
   "release_channel_nightly_notice": "切换到每夜版后，将无法切回稳定版或测试版。",
-  "release_channel_stable_notice": "切换到稳定版后，将保留当前版本，直到有版本号更高的稳定版可用。"
+  "release_channel_stable_notice": "切换到稳定版后，将保留当前版本，直到有版本号更高的稳定版可用。",
+  "configuration_status": "配置状态",
+  "configuration_healthy": "已同步",
+  "configuration_pending": "处理中",
+  "configuration_retry_scheduled": "等待重试",
+  "configuration_waiting_dependency": "等待依赖就绪",
+  "configuration_blocked": "需要处理",
+  "configuration_recovery_required": "需要核实运行状态",
+  "configuration_runtime": "运行时",
+  "configuration_retry": "立即重试",
+  "configuration_recent_operations": "近期操作",
+  "configuration_committed_note": "配置保存与效果生效分别记录。重试只应用已保存值，不会再次保存。",
+  "configuration_unconfirmed": "暂时无法确认结果。再次保存前请查看近期操作。",
+  "configuration_hotkeys": "快捷键",
+  "configuration_tray": "系统托盘"
 }

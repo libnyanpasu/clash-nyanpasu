@@ -32,6 +32,7 @@ export { mutations, queries } from './bindings'
 export type * from './bindings'
 export type { ClashDelayOptions } from './use-clash-proxies'
 export {
+  MutationUnconfirmedError,
   invokeMutation,
   invokeQuery,
   unwrapQueryOptions,
@@ -39,3 +40,5 @@ export {
 
 export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
 export type { RuleProviderItem as ClashProviderRule } from './bindings'
+
+export { acceptConfigurationStatus } from './configuration-status'

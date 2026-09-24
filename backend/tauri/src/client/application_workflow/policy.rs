@@ -153,9 +153,6 @@ pub(in crate::client) struct TryFailureFacts {
     /// The candidate holds an item a deterministic check rejected, so no later
     /// attempt at it can converge.
     pub candidate_has_invalid_item: bool,
-    /// A convergence path and a retry budget exist for this target. Without
-    /// one, `Deferred` would be a state nothing ever leaves.
-    pub convergence_budget_defined: bool,
     /// The legacy `CoreError::retryable` flag.
     ///
     /// Reference input only: [`disposition`] never reads it. It is a caller's
@@ -180,7 +177,7 @@ pub(in crate::client) enum FailureDisposition {
 /// The whole conjunction, in one place.
 ///
 /// Deferring means committing a value the core is not running, so it takes all
-/// six conditions and not a single retryable flag.
+/// the typed failure, safe baseline, command policy and valid candidate.
 pub(in crate::client) fn disposition(facts: &TryFailureFacts) -> FailureDisposition {
     // An unobserved or unfinished operation decides nothing: the candidate may
     // already be running, and a rejection would describe a state nobody checked.
@@ -193,8 +190,7 @@ pub(in crate::client) fn disposition(facts: &TryFailureFacts) -> FailureDisposit
 
     let deferrable = facts.cause == TryCauseKind::Transient
         && facts.policy.allows_deferral()
-        && !facts.candidate_has_invalid_item
-        && facts.convergence_budget_defined;
+        && !facts.candidate_has_invalid_item;
 
     if deferrable {
         FailureDisposition::Deferrable
@@ -394,7 +390,6 @@ mod tests {
             baseline: BaselineAvailability::Known,
             policy: CommandPolicy::AllowDeferredWhenSafe,
             candidate_has_invalid_item: false,
-            convergence_budget_defined: true,
             legacy_retryable: true,
         }
     }
@@ -446,11 +441,6 @@ mod tests {
             Case {
                 condition: "the candidate holds a deterministically invalid item",
                 break_it: |facts| facts.candidate_has_invalid_item = true,
-                expected: FailureDisposition::Reject,
-            },
-            Case {
-                condition: "no convergence path or budget is defined",
-                break_it: |facts| facts.convergence_budget_defined = false,
                 expected: FailureDisposition::Reject,
             },
         ];
@@ -524,7 +514,6 @@ mod tests {
                                     baseline,
                                     policy,
                                     candidate_has_invalid_item: invalid,
-                                    convergence_budget_defined: budget,
                                     legacy_retryable,
                                 };
                                 assert_eq!(

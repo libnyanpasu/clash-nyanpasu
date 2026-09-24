@@ -1930,11 +1930,10 @@ async fn a_transient_failure_under_a_safe_baseline_commits_the_target_as_deferre
     assert_eq!(deferred.attempts_remaining, DEFERRED_RETRY_BUDGET);
 }
 
-/// The same target deferred again does not get a fresh budget: it spends the
-/// one it already has, and once that is gone the deferral is refused rather
-/// than committing a value nothing will ask the core to run again.
+/// Explicit saves and unavailable dependency checks do not consume the
+/// automatic apply budget reserved for the future scheduler.
 #[tokio::test]
-async fn a_repeated_deferral_spends_its_budget_and_then_refuses() {
+async fn a_repeated_manual_deferral_preserves_automatic_budget() {
     let Fixture {
         client,
         endpoint,
@@ -1984,11 +1983,11 @@ async fn a_repeated_deferral_spends_its_budget_and_then_refuses() {
     }
     assert_eq!(
         seen,
-        (0..=DEFERRED_RETRY_BUDGET).rev().collect::<Vec<_>>(),
-        "a repeated deferral of the same target does not refill its budget"
+        vec![DEFERRED_RETRY_BUDGET; usize::from(DEFERRED_RETRY_BUDGET) + 1],
+        "manual retries must not spend the automatic budget"
     );
 
-    // Budget spent: the same target may no longer be committed unapplied.
+    // Another explicit save still reaches the source transaction.
     let before = clash.snapshot_handle().load().version;
     let (operation_id, result) = mutate_with_hints(
         &mut clash,
@@ -1998,11 +1997,14 @@ async fn a_repeated_deferral_spends_its_budget_and_then_refuses() {
         names_overrides(),
     )
     .await;
-    assert!(refused(&result), "{result:?}");
-    assert_eq!(clash.snapshot_handle().load().version, before);
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_ne!(clash.snapshot_handle().load().version, before);
     assert_eq!(
         settled(&client, operation_id).await.outcome,
-        MutationOutcomeKind::Rejected
+        MutationOutcomeKind::Deferred
     );
 }
 
@@ -3022,9 +3024,8 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
             .deferred
             .unwrap()
             .attempts_remaining,
-        DEFERRED_RETRY_BUDGET - 1,
-        "a content update of the selected profile asks for the outstanding \
-         target, so it spends that target's budget"
+        DEFERRED_RETRY_BUDGET,
+        "a content update asks for the outstanding target without spending automatic budget"
     );
 
     // The same committed document saved again, described by a different hint:
@@ -3055,7 +3056,7 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
             .deferred
             .unwrap()
             .attempts_remaining,
-        DEFERRED_RETRY_BUDGET - 2,
+        DEFERRED_RETRY_BUDGET,
         "identity is what the core is asked to run, never what the request \
          said it changed"
     );
@@ -3072,7 +3073,7 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
 /// plain save it is. Saving that document back unchanged does not ask for it
 /// either — an empty diff proves nothing about what the request wanted. What
 /// does ask for it again is a request that named a runtime field, and that one
-/// is re-evaluated and spends an attempt, empty diff and all.
+/// is re-evaluated, empty diff and all, without spending automatic budget.
 #[tokio::test]
 async fn an_unrelated_save_keeps_the_outstanding_targets_identity_and_budget() {
     let Fixture {
@@ -3189,9 +3190,8 @@ async fn an_unrelated_save_keeps_the_outstanding_targets_identity_and_budget() {
     let deferred = client.mutation_journal().deferred.unwrap();
     assert_eq!(deferred.operation_id, third);
     assert_eq!(
-        deferred.attempts_remaining,
-        DEFERRED_RETRY_BUDGET - 1,
-        "a resubmission of the same target spends the budget it already has"
+        deferred.attempts_remaining, DEFERRED_RETRY_BUDGET,
+        "a manual resubmission preserves the automatic budget"
     );
 
     // A genuinely different runtime target is a different gap, with a budget of
@@ -3295,9 +3295,8 @@ async fn a_deferred_field_resubmitted_beside_an_unrelated_one_is_re_evaluated() 
         "and it is the same target, not a new one"
     );
     assert_eq!(
-        deferred.attempts_remaining,
-        DEFERRED_RETRY_BUDGET - 1,
-        "so it spends the budget that target already has"
+        deferred.attempts_remaining, DEFERRED_RETRY_BUDGET,
+        "manual reevaluation preserves the target's automatic budget"
     );
 }
 

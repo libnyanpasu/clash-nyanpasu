@@ -783,8 +783,6 @@ impl ApplicationWorkflow {
             baseline: facts.availability,
             policy,
             candidate_has_invalid_item: facts.invalid_item,
-            convergence_budget_defined: self
-                .convergence_budget_defined(facts.target_digest.as_deref()),
             // Reference only, and deliberately conservative: this path never
             // observed a legacy flag it could trust.
             legacy_retryable: facts.cause == TryCauseKind::Transient,
@@ -817,27 +815,6 @@ impl ApplicationWorkflow {
                     facts.message,
                 )))
             }
-        }
-    }
-
-    /// Whether this target still has somewhere to converge to.
-    ///
-    /// The budget bounds how often one document may be committed unapplied
-    /// (D11). It is per target: an unrelated save opens a budget of its own
-    /// rather than refilling this one (V22), and once the recorded budget for
-    /// *this* document is spent the deferral is refused — committing a value
-    /// nothing will ask the core to run again is the state nothing leaves
-    /// (V23 `Blocked`).
-    fn convergence_budget_defined(&self, target: Option<&str>) -> bool {
-        match (&self.deferred, target) {
-            (Some(deferred), Some(digest)) if deferred.digest == digest => {
-                deferred.attempts_remaining > 0
-            }
-            // A failure with no document of its own cannot be told apart from
-            // the outstanding target, so it inherits its budget rather than
-            // opening a fresh one.
-            (Some(deferred), None) => deferred.attempts_remaining > 0,
-            _ => true,
         }
     }
 
@@ -894,13 +871,10 @@ impl ApplicationWorkflow {
                 cause,
             } => {
                 let message = cause.message.clone();
-                // The same document deferred again is that document failing to
-                // converge once more, so it spends the budget it already has.
-                // A different one opens its own.
+                // Manual saves and unavailable dependency checks do not spend
+                // the automatic apply retry budget.
                 let attempts_remaining = match self.deferred.take() {
-                    Some(previous) if previous.digest == digest => {
-                        previous.attempts_remaining.saturating_sub(1)
-                    }
+                    Some(previous) if previous.digest == digest => previous.attempts_remaining,
                     _ => DEFERRED_RETRY_BUDGET,
                 };
                 self.deferred = Some(DeferredTarget {

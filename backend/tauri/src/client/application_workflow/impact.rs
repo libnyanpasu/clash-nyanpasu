@@ -203,9 +203,10 @@ pub(in crate::client) enum RuntimeField {
 /// The converse matters as much. A request that named no runtime-relevant
 /// field asked the runtime for nothing, even when the document it produces is
 /// byte-identical to the committed one. Reading the answer out of document
-/// equality instead would spend an outstanding target's convergence budget on
-/// a no-op save of an unrelated field, and would skip a genuine resubmission
-/// that happened to move an unrelated field alongside it.
+/// equality instead would re-evaluate an outstanding target on an unrelated
+/// save, and would skip a genuine resubmission that happened to move an
+/// unrelated field alongside it. Manual re-evaluation does not spend the
+/// automatic apply budget.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(in crate::client) struct RequestedRuntimeFields {
     named: BTreeSet<RuntimeField>,

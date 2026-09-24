@@ -1,11 +1,11 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
-use nyanpasu_core::state::PersistentStateManagerSetup;
+use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::{
@@ -16,8 +16,6 @@ use crate::state::{
     mirror::{ClashLegacyBridge, PreparedTypedReplace},
 };
 
-const CLASH_CONFIG_READ_TIMEOUT: Duration = Duration::from_secs(5);
-
 #[derive(Clone)]
 pub struct ClashConfigClient {
     inner: Arc<ClashConfigClientInner>,
@@ -25,6 +23,9 @@ pub struct ClashConfigClient {
 
 struct ClashConfigClientInner {
     actor_ref: ActorRef<ClashConfigActorMessage>,
+    /// Committed state, read straight from the coordinator's store so a reader
+    /// never queues behind a mutation the actor is still holding open.
+    snapshot: StateSnapshot<ClashConfig>,
 }
 
 #[allow(dead_code)]
@@ -50,6 +51,7 @@ impl ClashConfigClient {
                 .context("failed to initialize clash persistent state manager")?
         };
 
+        let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
             ClashConfigActor,
@@ -60,16 +62,23 @@ impl ClashConfigClient {
         .0;
 
         Ok(Self {
-            inner: Arc::new(ClashConfigClientInner { actor_ref }),
+            inner: Arc::new(ClashConfigClientInner {
+                actor_ref,
+                snapshot,
+            }),
         })
     }
 
-    pub async fn get(&self) -> anyhow::Result<ClashConfigSnapshot> {
-        self.call(
-            ClashConfigActorMessage::Get,
-            Some(CLASH_CONFIG_READ_TIMEOUT),
-        )
-        .await
+    /// The last committed clash config. Reads bypass the mailbox, so an
+    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    pub fn snapshot(&self) -> ClashConfigSnapshot {
+        ClashConfigSnapshot::from_versioned(&self.inner.snapshot.load())
+    }
+
+    /// Read-only handle for collaborators that must observe committed state
+    /// without holding a client that could write it.
+    pub(crate) fn snapshot_handle(&self) -> StateSnapshot<ClashConfig> {
+        self.inner.snapshot.clone()
     }
 
     pub async fn patch(&self, patch: ClashConfigPatch) -> anyhow::Result<ClashConfigSnapshot> {
@@ -155,7 +164,7 @@ impl ClashConfigClient {
     async fn call<F>(
         &self,
         make: F,
-        timeout: Option<Duration>,
+        timeout: Option<std::time::Duration>,
     ) -> anyhow::Result<ClashConfigSnapshot>
     where
         F: FnOnce(RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>) -> ClashConfigActorMessage,
@@ -214,7 +223,7 @@ mod tests {
     async fn get_patch_and_replace_clash_config() {
         let (client, _dir) = test_client().await;
 
-        let initial = client.get().await.expect("get should succeed");
+        let initial = client.snapshot();
         assert!(!initial.state.enable_tun_mode);
 
         let mut patch = ClashConfig::new_empty_patch();
@@ -232,7 +241,7 @@ mod tests {
     #[tokio::test]
     async fn replace_if_version_commits_matching_snapshot() {
         let (client, _dir) = test_client().await;
-        let current = client.get().await.expect("get should succeed");
+        let current = client.snapshot();
         let mut next = current.state.clone();
         next.enable_tun_mode = true;
 
@@ -253,14 +262,14 @@ mod tests {
     #[tokio::test]
     async fn concurrent_override_patches_preserve_unrelated_fields() {
         let (client, _dir) = test_client().await;
-        let before = serde_json::to_value(client.get().await.unwrap().state.overrides).unwrap();
+        let before = serde_json::to_value(client.snapshot().state.overrides).unwrap();
         let left = serde_json::from_value(serde_json::json!({"mode":"script"})).unwrap();
         let right = serde_json::from_value(serde_json::json!({"allow-lan":true})).unwrap();
         let (left, right) =
             tokio::join!(client.patch_overrides(left), client.patch_overrides(right));
         left.unwrap();
         right.unwrap();
-        let after = serde_json::to_value(client.get().await.unwrap().state.overrides).unwrap();
+        let after = serde_json::to_value(client.snapshot().state.overrides).unwrap();
         assert_eq!(after["mode"], "script");
         assert_eq!(after["allow-lan"], true);
         assert_eq!(after["secret"], before["secret"]);

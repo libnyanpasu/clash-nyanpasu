@@ -182,14 +182,12 @@ impl NyanpasuClient {
     /// Projects the effect inputs from the two typed domains plus the session
     /// port resolver. Session state carries no effect field and is absent by
     /// construction.
-    async fn effect_inputs(&self) -> Result<ApplicationEffectInputs> {
-        let app = self.inner.application.get().await?.state;
-        let clash = self.inner.clash_config.get().await?.state;
-        Ok(ApplicationEffectInputs::project(
-            &app,
-            &clash,
+    fn effect_inputs(&self) -> ApplicationEffectInputs {
+        ApplicationEffectInputs::project(
+            &self.inner.application.snapshot().state,
+            &self.inner.clash_config.snapshot().state,
             self.inner.ports.cached_ports(),
-        ))
+        )
     }
 
     /// The single mutation pipeline behind every typed config commit.
@@ -212,52 +210,45 @@ impl NyanpasuClient {
         Fut: Future<Output = Result<()>>,
     {
         let mut gate = self.inner.effects.gate().await;
-        let before = self.effect_inputs().await?;
+        let before = self.effect_inputs();
         commit().await?;
         // Allocated under the gate and after the commit, so revision order is
         // commit order for every mutation that goes through the facade.
         let revision = gate.allocate();
 
         let mut degradations = Vec::new();
-        let after = match self.effect_inputs().await {
-            Ok(committed) => match runtime_apply_kind(&before, &committed) {
-                RuntimeApplyKind::None => Some(committed),
-                RuntimeApplyKind::Rebuild => {
-                    if let Err(error) = self.rebuild_running_config().await {
-                        tracing::warn!(
-                            %error,
-                            "post-commit runtime rebuild failed; state stays committed (degraded)"
-                        );
-                        degradations.push(map_runtime_rebuild_degradation(&error));
-                    }
-                    self.resample_after_runtime_apply(&mut degradations).await
+        let committed = self.effect_inputs();
+        // Re-read once the runtime change landed, so the system proxy is handed
+        // the port the core actually listens on.
+        let after = match runtime_apply_kind(&before, &committed) {
+            RuntimeApplyKind::None => committed,
+            RuntimeApplyKind::Rebuild => {
+                if let Err(error) = self.rebuild_running_config().await {
+                    tracing::warn!(
+                        %error,
+                        "post-commit runtime rebuild failed; state stays committed (degraded)"
+                    );
+                    degradations.push(map_runtime_rebuild_degradation(&error));
                 }
-                RuntimeApplyKind::ControlChannel => {
-                    if let Err(error) = self.apply_control_channel().await {
-                        tracing::warn!(
-                            %error,
-                            "post-commit control channel apply failed; state stays committed (degraded)"
-                        );
-                        degradations.push(Self::map_control_channel_degradation(&error));
-                    }
-                    self.resample_after_runtime_apply(&mut degradations).await
+                self.effect_inputs()
+            }
+            RuntimeApplyKind::ControlChannel => {
+                if let Err(error) = self.apply_control_channel().await {
+                    tracing::warn!(
+                        %error,
+                        "post-commit control channel apply failed; state stays committed (degraded)"
+                    );
+                    degradations.push(Self::map_control_channel_degradation(&error));
                 }
-            },
-            Err(error) => {
-                degradations.push(Self::map_effect_sampling_degradation(&error));
-                None
+                self.effect_inputs()
             }
         };
 
-        // A resample failure leaves `after` unknown, so neither the diff nor a
-        // retry has a desired value to carry and the retry set stays untouched.
-        let plan = after
-            .map(|after| {
-                let plan = ApplicationEffectPlan::diff(&before, &after);
-                let pending = self.inner.effects.pending_retry();
-                plan.with_retries(&ApplicationEffectPlan::full(&after), &pending)
-            })
-            .unwrap_or_default();
+        let plan = {
+            let plan = ApplicationEffectPlan::diff(&before, &after);
+            let pending = self.inner.effects.pending_retry();
+            plan.with_retries(&ApplicationEffectPlan::full(&after), &pending)
+        };
         // Released before dispatch: an effect owner may block on the network
         // (PAC download), and a window-drag save must not queue behind it.
         drop(gate);
@@ -274,22 +265,6 @@ impl NyanpasuClient {
         Ok(runtime::MutationOutcome::from_parts((), degradations))
     }
 
-    /// Re-reads the inputs once the runtime change landed. A failure here is
-    /// post-commit, so it degrades and suppresses the dispatch rather than
-    /// reporting an error for state that was written.
-    async fn resample_after_runtime_apply(
-        &self,
-        degradations: &mut Vec<runtime::Degradation>,
-    ) -> Option<ApplicationEffectInputs> {
-        match self.effect_inputs().await {
-            Ok(after) => Some(after),
-            Err(error) => {
-                degradations.push(Self::map_effect_sampling_degradation(&error));
-                None
-            }
-        }
-    }
-
     /// Control-channel apply shares the rebuild's phase: both are the running
     /// core reacting to a committed clash-config change. The code differs so a
     /// caller can tell which one failed.
@@ -302,25 +277,12 @@ impl NyanpasuClient {
         }
     }
 
-    fn map_effect_sampling_degradation(error: &ClientError) -> runtime::Degradation {
-        tracing::warn!(
-            %error,
-            "could not read the committed config back; peripheral effects were skipped"
-        );
-        runtime::Degradation {
-            phase: runtime::DegradationPhase::SystemEffect,
-            code: "effect_inputs_unavailable".into(),
-            message: error.to_string(),
-            retryable: true,
-        }
-    }
-
     /// Full reconcile with no `before` snapshot: every effect is handed its
     /// desired value. Used at startup, where the OS state is whatever the last
     /// run left behind.
     pub async fn reconcile_application_effects(&self) -> Result<runtime::MutationOutcome<()>> {
         let mut gate = self.inner.effects.gate().await;
-        let inputs = self.effect_inputs().await?;
+        let inputs = self.effect_inputs();
         let revision = gate.allocate();
         drop(gate);
 

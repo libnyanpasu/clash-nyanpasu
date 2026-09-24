@@ -1,71 +1,37 @@
 use super::{Output, workflow::ApplicationWorkflow};
 use crate::{
-    client::{
-        ClientError,
-        core_lifecycle::{apply::RuntimeApplyOptions, domain_error},
-        runtime,
-    },
+    client::{ClientError, core_lifecycle::apply::RuntimeApplyOptions, runtime},
     core::connections::ConnectionScope,
+    state::profiles::CommitReport,
 };
-use nyanpasu_config::profile::ProfileId;
 use nyanpasu_core_manager::{CoreError, OperationId};
 
-pub(super) enum ProfileActivation {
-    Select(Option<ProfileId>),
-    IfNone(ProfileId),
-}
-
 impl ApplicationWorkflow {
-    pub(super) async fn activate_profile(
+    /// Applies an already committed profile selection. `affects_current` is the
+    /// actor's own atomic judgement for this commit, so it decides both the
+    /// connection interruption and whether a rebuild is owed.
+    pub(super) async fn apply_profile_activation(
         &mut self,
         id: OperationId,
-        activation: ProfileActivation,
+        report: CommitReport,
     ) -> Result<Output, CoreError> {
-        let previous = self
-            .profiles
-            .get()
-            .await
-            .map_err(domain_error)?
-            .current
-            .clone();
-        let will_change = match &activation {
-            ProfileActivation::Select(uid) => *uid != previous,
-            ProfileActivation::IfNone(_) => previous.is_none(),
-        };
-        let clash = self.clash.get().await.map_err(domain_error)?.state;
+        let clash = self.clash.load().state.clone();
         let context = self
             .lifecycle
             .prepare_apply(
                 id,
                 RuntimeApplyOptions {
-                    interrupt_connections: (will_change
+                    interrupt_connections: (report.affects_current
                         && clash.break_connection.on_profile_change)
                         .then_some(ConnectionScope::All),
                 },
             )
             .await;
-        let report = match activation {
-            ProfileActivation::Select(uid) => {
-                Some(self.profiles.set_current(uid).await.map_err(domain_error)?)
-            }
-            ProfileActivation::IfNone(uid) => self
-                .profiles
-                .set_current_if_none(uid)
-                .await
-                .map_err(domain_error)?,
-        };
-        let Some(report) = report else {
-            return Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
-                (),
-                Vec::new(),
-            )));
-        };
         let mut degradations: Vec<_> = report
             .degradations
             .iter()
             .map(map_profile_degradation)
             .collect();
-        // For SetCurrent / SetCurrentIfNone this is the actor's atomic CurrentChanged result.
         if report.affects_current {
             let applied = async {
                 let prepared = self

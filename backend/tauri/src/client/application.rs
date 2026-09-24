@@ -1,9 +1,9 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
-use nyanpasu_core::state::PersistentStateManagerSetup;
+use nyanpasu_core::state::{PersistentStateManager, PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::{
@@ -14,8 +14,6 @@ use crate::state::{
     mirror::{PreparedTypedReplace, VergeLegacyBridge},
 };
 
-const APPLICATION_READ_TIMEOUT: Duration = Duration::from_secs(5);
-
 #[derive(Clone)]
 pub struct ApplicationClient {
     inner: Arc<ApplicationClientInner>,
@@ -23,6 +21,9 @@ pub struct ApplicationClient {
 
 struct ApplicationClientInner {
     actor_ref: ActorRef<ApplicationActorMessage>,
+    /// Committed state, read straight from the coordinator's store so a reader
+    /// never queues behind a mutation the actor is still holding open.
+    snapshot: StateSnapshot<NyanpasuAppConfig>,
 }
 
 #[allow(dead_code)]
@@ -60,6 +61,16 @@ impl ApplicationClient {
                 .context("failed to persist release channel")?;
         }
 
+        Self::from_manager(manager, bridge).await
+    }
+
+    /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
+    /// so a caller can register state subscribers before the actor claims it.
+    pub(crate) async fn from_manager(
+        manager: PersistentStateManager<NyanpasuAppConfig>,
+        bridge: Arc<dyn VergeLegacyBridge>,
+    ) -> anyhow::Result<Self> {
+        let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
             ApplicationActor,
@@ -70,13 +81,23 @@ impl ApplicationClient {
         .0;
 
         Ok(Self {
-            inner: Arc::new(ApplicationClientInner { actor_ref }),
+            inner: Arc::new(ApplicationClientInner {
+                actor_ref,
+                snapshot,
+            }),
         })
     }
 
-    pub async fn get(&self) -> anyhow::Result<ApplicationSnapshot> {
-        self.call(ApplicationActorMessage::Get, Some(APPLICATION_READ_TIMEOUT))
-            .await
+    /// The last committed application config. Reads bypass the mailbox, so an
+    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    pub fn snapshot(&self) -> ApplicationSnapshot {
+        ApplicationSnapshot::from_versioned(&self.inner.snapshot.load())
+    }
+
+    /// Read-only handle for collaborators that must observe committed state
+    /// without holding a client that could write it.
+    pub(crate) fn snapshot_handle(&self) -> StateSnapshot<NyanpasuAppConfig> {
+        self.inner.snapshot.clone()
     }
 
     pub async fn patch(
@@ -154,7 +175,7 @@ impl ApplicationClient {
     async fn call<F>(
         &self,
         make: F,
-        timeout: Option<Duration>,
+        timeout: Option<std::time::Duration>,
     ) -> anyhow::Result<ApplicationSnapshot>
     where
         F: FnOnce(RpcReplyPort<anyhow::Result<ApplicationSnapshot>>) -> ApplicationActorMessage,
@@ -217,7 +238,7 @@ mod tests {
     async fn get_patch_and_replace_application_config() {
         let (client, _dir) = test_client().await;
 
-        let initial = client.get().await.expect("get should succeed");
+        let initial = client.snapshot();
         assert!(!initial.state.enable_system_proxy);
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
@@ -237,7 +258,7 @@ mod tests {
     #[tokio::test]
     async fn replace_if_version_rejects_stale_snapshot() {
         let (client, _dir) = test_client().await;
-        let current = client.get().await.expect("get should succeed");
+        let current = client.snapshot();
         let mut replacement = current.state.clone();
         replacement.enable_silent_start = true;
 
@@ -293,7 +314,7 @@ mod tests {
     async fn release_channel_revalidates_prepared_changes_at_commit() {
         use crate::bundle::Channel;
         let (client, _dir) = test_client().await;
-        let mut next = client.get().await.unwrap().state;
+        let mut next = client.snapshot().state;
         next.release_channel = Some(Channel::Beta);
         let prepared = client.prepare_replace(next).await.unwrap();
         let mut patch = NyanpasuAppConfig::new_empty_patch();
@@ -306,7 +327,7 @@ mod tests {
                 .is_err()
         );
         assert_eq!(
-            client.get().await.unwrap().state.release_channel,
+            client.snapshot().state.release_channel,
             Some(Channel::Nightly)
         );
     }
@@ -316,7 +337,7 @@ mod tests {
         use crate::bundle::Channel;
         let (client, dir) = test_client().await;
         assert_eq!(
-            client.get().await.unwrap().state.release_channel,
+            client.snapshot().state.release_channel,
             Some(Channel::Stable)
         );
         let nightly = ApplicationClient::new(
@@ -328,7 +349,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            nightly.get().await.unwrap().state.release_channel,
+            nightly.snapshot().state.release_channel,
             Some(Channel::Nightly)
         );
     }
@@ -351,10 +372,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(
-            beta.get().await.unwrap().state.release_channel,
-            Some(Channel::Beta)
-        );
+        assert_eq!(beta.snapshot().state.release_channel, Some(Channel::Beta));
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(Some(Channel::Stable));
         beta.patch(patch).await.unwrap();
@@ -368,7 +386,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            reloaded.get().await.unwrap().state.release_channel,
+            reloaded.snapshot().state.release_channel,
             Some(Channel::Stable)
         );
     }

@@ -574,7 +574,14 @@ impl ApplicationWorkflow {
                     }
                 }
                 Err(error) => {
-                    let cause = core_error_cause(&error);
+                    let cause = if error.handoff_started {
+                        core_error_cause(&error.error)
+                    } else {
+                        // Service preparation has not touched the Local core.
+                        // A refused elevation or unavailable daemon rejects this
+                        // request; a later explicit attempt can prepare again.
+                        TryCauseKind::Permanent
+                    };
                     return self.dispose(
                         request,
                         policy,
@@ -586,7 +593,8 @@ impl ApplicationWorkflow {
                             // one that failed on the way says nothing about who
                             // owns the runtime now, and the candidate was never
                             // submitted either way.
-                            availability: if cause == TryCauseKind::Unknown {
+                            availability: if error.handoff_started && cause == TryCauseKind::Unknown
+                            {
                                 BaselineAvailability::Unconfirmed
                             } else {
                                 BaselineAvailability::Known
@@ -595,7 +603,8 @@ impl ApplicationWorkflow {
                             target_digest: target.clone(),
                             message: format!(
                                 "the runtime could not be moved to the {target_host:?} execution \
-                                 host: {error}"
+                                host: {}",
+                                error.error
                             ),
                         },
                     );
@@ -978,9 +987,8 @@ impl ApplicationWorkflow {
                     // fact about who is holding the candidate's ports.
                     self.invalidate_unproven_ports();
                     return Err(format!(
-                        "the runtime could not be moved back to the {:?} execution host: \
-                         {error}",
-                        receipt.host
+                        "the runtime could not be moved back to the {:?} execution host: {}",
+                        receipt.host, error.error
                     )
                     .into());
                 }

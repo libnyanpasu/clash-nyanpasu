@@ -3568,6 +3568,72 @@ async fn selecting_the_saved_host_again_moves_the_actual_host() {
     assert_eq!(f.core.status().host, ExecutionHost::Service);
     assert_eq!(service.reconciled_bytes().len(), 1);
 }
+struct RefusedInstall;
+
+#[async_trait::async_trait]
+impl ServiceHostAdapter for RefusedInstall {
+    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        crate::client::tests::IdleServiceAdapter.probe().await
+    }
+    async fn install(&self) -> Result<(), String> {
+        Err("the user cancelled the elevation prompt".into())
+    }
+    async fn uninstall(&self) -> Result<(), String> {
+        unreachable!()
+    }
+    async fn start_daemon(&self) -> Result<(), String> {
+        unreachable!()
+    }
+    async fn stop_daemon(&self) -> Result<(), String> {
+        unreachable!()
+    }
+    async fn update(&self) -> Result<(), String> {
+        unreachable!()
+    }
+    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        unreachable!()
+    }
+}
+
+#[tokio::test]
+async fn refused_service_install_does_not_isolate_the_local_runtime() {
+    let mut f = fixture_with_daemon(test_budgets(), true, Some(Arc::new(RefusedInstall))).await;
+    let mut next = f.application.snapshot().as_ref().clone();
+    next.enable_service_mode = true;
+    let (id, result) = simple_mutate(
+        &mut f.application,
+        &f.client,
+        next,
+        CommandClass::ExplicitSwitch,
+    )
+    .await;
+    assert!(refused(&result), "{result:?}");
+    let receipt = settled(&f.client, id).await;
+    assert_eq!(f.core.status().host, ExecutionHost::Local);
+    assert!(f.endpoint.reconciled_bytes().is_empty());
+    assert_eq!(
+        receipt.outcome,
+        MutationOutcomeKind::Rejected,
+        "service preparation was refused before any core handoff: {receipt:?}"
+    );
+    assert!(!f.client.status().uncertain);
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_eq!(
+        settled(&f.client, id).await.conclusion,
+        MutationConclusion::Confirmed
+    );
+}
+
 #[tokio::test]
 async fn invalid_overlay_is_rejected_before_source_commit() {
     let mut f = fixture(test_budgets()).await;

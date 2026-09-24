@@ -397,7 +397,7 @@ impl ApplicationWorkflow {
         };
         let prepared = match self
             .preparation
-            .prepare_inputs(inputs.expect("critical operations capture runtime inputs"))
+            .prepare_candidate_inputs(inputs.expect("critical operations capture runtime inputs"))
             .await
         {
             Ok(prepared) => prepared,

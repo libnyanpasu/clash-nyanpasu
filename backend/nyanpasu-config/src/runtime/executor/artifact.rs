@@ -59,4 +59,13 @@ pub struct RuntimeArtifact {
     pub graph: ConfigSnapshotsGraph,
     pub step_logs: Vec<StepLog>,
     pub applied_fields: IndexSet<String>,
+    /// Execution failures that the legacy lenient pipeline passed through.
+    /// Candidate validation must refuse these even when the final YAML parses.
+    pub transform_failures: Vec<TransformFailure>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransformFailure {
+    Profile(String),
+    Builtin(String),
 }

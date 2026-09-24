@@ -18,11 +18,9 @@ pub(in crate::client) trait RuntimeBuildPort: Send + Sync + 'static {
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        profiles: Arc<nyanpasu_config::profile::Profiles>,
-        clash: nyanpasu_config::clash::config::ClashConfig,
-        app: nyanpasu_config::application::NyanpasuAppConfig,
+        inputs: super::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
-        content: super::inputs::FrozenProfileContent,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>>;
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()>;
 }

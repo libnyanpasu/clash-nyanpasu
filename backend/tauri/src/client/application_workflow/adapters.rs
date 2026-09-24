@@ -27,9 +27,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
                 .and_then(|item| item.definition.source())
             {
                 let path = &source_path.materialized().file;
-                let text = source
-                    .read(path)
-                    .map_err(|error| anyhow::anyhow!("{error}"))?;
+                let text = source.read(path).map_err(|error| error.to_string());
                 content.0.insert(path.to_string(), text);
             }
         }
@@ -46,13 +44,17 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        profiles: Arc<nyanpasu_config::profile::Profiles>,
-        clash: nyanpasu_config::clash::config::ClashConfig,
-        app: nyanpasu_config::application::NyanpasuAppConfig,
+        inputs: super::inputs::RuntimeInputs,
         resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
-        content: super::inputs::FrozenProfileContent,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
         tokio::task::spawn_blocking(move || {
+            let super::inputs::RuntimeInputs {
+                app,
+                clash,
+                profiles,
+                content,
+            } = inputs;
             let core = app.core;
             let builtin_enabled = app.enable_builtin_enhanced;
             let scripts = EnhanceScriptRunner::new()?;
@@ -63,6 +65,12 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
                 resolved_ports,
             };
             let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
+            if strict_transforms && !artifact.transform_failures.is_empty() {
+                anyhow::bail!(
+                    "runtime candidate contains failed transforms: {:?}",
+                    artifact.transform_failures
+                );
+            }
             let data =
                 runtime_snapshot_data_from_artifact(artifact, &profiles, core, builtin_enabled)?;
             let yaml = format!(

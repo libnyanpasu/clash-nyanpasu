@@ -97,11 +97,9 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        profiles: Arc<Profiles>,
-        clash: ClashConfig,
-        app: NyanpasuAppConfig,
+        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
-        content: crate::client::application_workflow::inputs::FrozenProfileContent,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
@@ -110,7 +108,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         }
         assert!(!self.panic.load(Ordering::SeqCst), "scripted build panic");
         self.delegate
-            .build(revision, profiles, clash, app, ports, content)
+            .build(revision, inputs, ports, strict_transforms)
             .await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
@@ -3569,4 +3567,74 @@ async fn selecting_the_saved_host_again_moves_the_actual_host() {
     );
     assert_eq!(f.core.status().host, ExecutionHost::Service);
     assert_eq!(service.reconciled_bytes().len(), 1);
+}
+#[tokio::test]
+async fn invalid_overlay_is_rejected_before_source_commit() {
+    let mut f = fixture(test_budgets()).await;
+    std::fs::create_dir_all(&f.profiles_dir).unwrap();
+    std::fs::write(f.profiles_dir.join("invalid.yaml"), "rules: [").unwrap();
+    let item = crate::enhance::golden_support::overlay("invalid", "invalid.yaml");
+    let mut next = f.profiles.snapshot().as_ref().clone();
+    next.global_transforms.push(item.uid.clone());
+    next.items.insert(item.uid.clone(), item);
+    let (id, result) = simple_mutate(&mut f.profiles, &f.client, next, CommandClass::Save).await;
+    let receipt = settled(&f.client, id).await;
+    assert!(
+        refused(&result),
+        "invalid overlay committed after its parse error was converted into passthrough: {receipt:?}"
+    );
+    assert!(f.endpoint.reconciled_bytes().is_empty());
+}
+
+#[tokio::test]
+async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
+    use super::super::ports::RuntimeBuildPort;
+    let f = fixture(test_budgets()).await;
+    let item = crate::enhance::golden_support::overlay("missing", "missing.yaml");
+    let mut profiles = Profiles::default();
+    profiles.global_transforms.push(item.uid.clone());
+    profiles.items.insert(item.uid.clone(), item);
+    let input = crate::enhance::RuntimeBuildInput {
+        profiles: Arc::new(profiles.clone()),
+        clash: ClashConfig::default(),
+        app: NyanpasuAppConfig::default(),
+        resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings {
+            mixed_port: 7890,
+            ..Default::default()
+        },
+    };
+    let old_content = crate::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
+    let built = tokio::task::spawn_blocking(move || {
+        let scripts = crate::enhance::EnhanceScriptRunner::new().unwrap();
+        crate::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
+    })
+    .await
+    .unwrap();
+    assert!(built.is_ok());
+    let captured = f.builder.capture_content(&profiles).await.unwrap();
+    let mut revisions = runtime::RuntimeRevisionAllocator::new();
+    let build = |revision, strict| {
+        f.builder.build(
+            revision,
+            super::super::inputs::RuntimeInputs {
+                profiles: Arc::new(profiles.clone()),
+                clash: ClashConfig::default(),
+                app: NyanpasuAppConfig::default(),
+                content: captured.clone(),
+            },
+            nyanpasu_config::runtime::executor::ResolvedPortBindings {
+                mixed_port: 7890,
+                ..Default::default()
+            },
+            strict,
+        )
+    };
+    assert!(
+        build(revisions.allocate().unwrap(), false).await.is_ok(),
+        "ordinary build keeps D7 passthrough"
+    );
+    assert!(
+        build(revisions.allocate().unwrap(), true).await.is_err(),
+        "TCC candidate rejects missing transform"
+    );
 }

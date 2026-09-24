@@ -9,14 +9,17 @@ use nyanpasu_config::{
 use std::{collections::BTreeMap, sync::Arc};
 
 #[derive(Debug, Clone, Default)]
-pub(in crate::client) struct FrozenProfileContent(pub BTreeMap<String, String>);
+pub(in crate::client) struct FrozenProfileContent(pub BTreeMap<String, Result<String, String>>);
 
 impl ProfileContentSource for FrozenProfileContent {
     fn read(&self, path: &ManagedProfilePath) -> Result<String, PortError> {
         self.0
             .get(&path.to_string())
             .cloned()
-            .ok_or_else(|| format!("profile content was not captured: {path}").into())
+            .map(|result| result.map_err(Into::into))
+            .ok_or_else(|| -> PortError {
+                format!("profile content was not captured: {path}").into()
+            })?
     }
 }
 
@@ -73,13 +76,13 @@ mod tests {
         inputs
             .content
             .0
-            .insert("profile.yaml".into(), "mode: rule".into());
+            .insert("profile.yaml".into(), Ok("mode: rule".into()));
         let content_changed = inputs.target_key().unwrap();
         assert_ne!(content_changed, clash_changed);
         inputs
             .content
             .0
-            .insert("profile.yaml".into(), "mode: direct".into());
+            .insert("profile.yaml".into(), Ok("mode: direct".into()));
         assert_ne!(inputs.target_key().unwrap(), content_changed);
     }
 }

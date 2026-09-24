@@ -80,7 +80,7 @@ pub(super) fn build_scoped_file(
     );
 
     for (index, transform_id) in file.transforms.iter().enumerate() {
-        let (next, kind, entries) =
+        let (next, kind, entries, failed) =
             apply_transform(profiles, content, runner, transform_id, &value);
         let tag = OperatorTag::ScopedTransform {
             host_profile_id: profile_id.clone(),
@@ -89,6 +89,7 @@ pub(super) fn build_scoped_file(
             transform_kind: kind,
             step_index: index as u32,
         };
+        logs.failed_profile(transform_id, failed);
         logs.extend(tag.node_key(), entries);
         builder.push(tag, next.clone())?;
         value = next;

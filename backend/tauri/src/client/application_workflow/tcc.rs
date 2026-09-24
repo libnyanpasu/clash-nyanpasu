@@ -777,15 +777,9 @@ impl ApplicationWorkflow {
     ) -> RuntimePrepareOutcome {
         let decision = disposition(&TryFailureFacts {
             cause: facts.cause,
-            // Everything routed here has a terminal answer: an operation still
-            // in flight never reaches this function.
-            terminated: true,
             baseline: facts.availability,
             policy,
             candidate_has_invalid_item: facts.invalid_item,
-            // Reference only, and deliberately conservative: this path never
-            // observed a legacy flag it could trust.
-            legacy_retryable: facts.cause == TryCauseKind::Transient,
         });
         match decision {
             FailureDisposition::Deferrable => RuntimePrepareOutcome::Deferred {

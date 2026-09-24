@@ -145,20 +145,11 @@ pub(in crate::client) enum BaselineAvailability {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::client) struct TryFailureFacts {
     pub cause: TryCauseKind,
-    /// Whether this attempt finished. An attempt still in flight has no result
-    /// yet, so whatever cause came with it describes nothing.
-    pub terminated: bool,
     pub baseline: BaselineAvailability,
     pub policy: CommandPolicy,
     /// The candidate holds an item a deterministic check rejected, so no later
     /// attempt at it can converge.
     pub candidate_has_invalid_item: bool,
-    /// The legacy `CoreError::retryable` flag.
-    ///
-    /// Reference input only: [`disposition`] never reads it. It is a caller's
-    /// guess made before the outcome was observed, and letting it decide is how
-    /// a lost receipt turns into an automatic retry.
-    pub legacy_retryable: bool,
 }
 
 /// What the commit decision may be after a critical Try failed.
@@ -179,9 +170,8 @@ pub(in crate::client) enum FailureDisposition {
 /// Deferring means committing a value the core is not running, so it takes all
 /// the typed failure, safe baseline, command policy and valid candidate.
 pub(in crate::client) fn disposition(facts: &TryFailureFacts) -> FailureDisposition {
-    // An unobserved or unfinished operation decides nothing: the candidate may
-    // already be running, and a rejection would describe a state nobody checked.
-    if facts.cause == TryCauseKind::Unknown || !facts.terminated {
+    // An unobserved outcome decides nothing: the candidate may already run.
+    if facts.cause == TryCauseKind::Unknown {
         return FailureDisposition::RecoveryRequired;
     }
     if facts.baseline == BaselineAvailability::Unconfirmed {
@@ -386,11 +376,9 @@ mod tests {
     fn deferrable() -> TryFailureFacts {
         TryFailureFacts {
             cause: TryCauseKind::Transient,
-            terminated: true,
             baseline: BaselineAvailability::Known,
             policy: CommandPolicy::AllowDeferredWhenSafe,
             candidate_has_invalid_item: false,
-            legacy_retryable: true,
         }
     }
 
@@ -421,11 +409,6 @@ mod tests {
             Case {
                 condition: "the outcome was not observed",
                 break_it: |facts| facts.cause = TryCauseKind::Unknown,
-                expected: FailureDisposition::RecoveryRequired,
-            },
-            Case {
-                condition: "the operation has not terminated",
-                break_it: |facts| facts.terminated = false,
                 expected: FailureDisposition::RecoveryRequired,
             },
             Case {
@@ -463,8 +446,6 @@ mod tests {
     fn an_unknown_outcome_never_enters_the_retryable_branch() {
         let facts = TryFailureFacts {
             cause: TryCauseKind::Unknown,
-            terminated: false,
-            legacy_retryable: true,
             ..deferrable()
         };
 
@@ -482,51 +463,6 @@ mod tests {
             ..deferrable()
         };
         assert_eq!(disposition(&facts), FailureDisposition::RecoveryRequired);
-    }
-
-    /// The legacy flag is carried, never consulted: flipping it must not move
-    /// a single decision.
-    #[test]
-    fn the_legacy_retryable_flag_changes_no_decision() {
-        for cause in [
-            TryCauseKind::Unknown,
-            TryCauseKind::Deterministic,
-            TryCauseKind::Permanent,
-            TryCauseKind::Transient,
-        ] {
-            for terminated in [true, false] {
-                for baseline in [
-                    BaselineAvailability::Known,
-                    BaselineAvailability::Unconfirmed,
-                ] {
-                    for policy in [
-                        CommandPolicy::MustApply,
-                        CommandPolicy::AllowDeferredWhenSafe,
-                        CommandPolicy::SaveOnly,
-                        CommandPolicy::SaveThenNotify,
-                        CommandPolicy::SavedInactive,
-                    ] {
-                        for invalid in [true, false] {
-                            for budget in [true, false] {
-                                let facts = |legacy_retryable| TryFailureFacts {
-                                    cause,
-                                    terminated,
-                                    baseline,
-                                    policy,
-                                    candidate_has_invalid_item: invalid,
-                                    legacy_retryable,
-                                };
-                                assert_eq!(
-                                    disposition(&facts(true)),
-                                    disposition(&facts(false)),
-                                    "{cause:?} {terminated} {baseline:?} {policy:?} {invalid} {budget}"
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     /// `ApplicationEffectPlan` is reachable from here, so the import that gives

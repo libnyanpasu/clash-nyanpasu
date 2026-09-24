@@ -40,8 +40,7 @@ use super::{
     super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, DirtyNotifier, adapters,
         impact::{
-            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, RuntimeField,
-            TouchedContent,
+            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, TouchedContent,
         },
         mutation::{
             CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationBudgets, MutationConclusion,
@@ -589,7 +588,7 @@ async fn settled(client: &ApplicationWorkflowClient, operation_id: OperationId) 
 /// the overrides looks like whether or not the value it carries moved.
 fn names_overrides() -> MutationHints {
     MutationHints {
-        requested: RequestedRuntimeFields::named([RuntimeField::Overrides]),
+        requested: RequestedRuntimeFields::runtime(),
         ..MutationHints::default()
     }
 }
@@ -3524,7 +3523,7 @@ async fn cross_domain_deferrals_share_the_complete_latest_target() {
         app,
         CommandClass::Save,
         MutationHints {
-            requested: RequestedRuntimeFields::named([RuntimeField::BuiltinEnhanced]),
+            requested: RequestedRuntimeFields::runtime(),
             ..MutationHints::default()
         },
     )

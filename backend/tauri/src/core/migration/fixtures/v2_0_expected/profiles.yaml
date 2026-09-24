@@ -1,3 +1,6 @@
+_nyanpasu:
+  document: profiles
+  schema_revision: 4
 valid:
   - dns
   - unified-delay

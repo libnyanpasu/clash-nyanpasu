@@ -1,4 +1,5 @@
 mod connection_policy;
+mod mutations;
 mod recovery;
 mod service_recovery;
 mod validation;
@@ -313,6 +314,7 @@ async fn dirty_graph_with_clients(
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ui: Arc::new(super::super::NoopUiEventSink),
             dirty,
+            budgets: mutation::MutationBudgets::default(),
         },
         schedule_ticks,
     )
@@ -577,6 +579,20 @@ impl Fixture {
             },
             progress,
         )
+    }
+}
+
+/// How many attempts still own a control context inside the actor.
+async fn live_mutation_contexts(client: &ApplicationWorkflowClient) -> usize {
+    match client
+        .0
+        .actor
+        .call(Message::LiveMutationContexts, Some(Duration::from_secs(5)))
+        .await
+        .unwrap()
+    {
+        CallResult::Success(live) => live,
+        other => panic!("the workflow should answer: {other:?}"),
     }
 }
 

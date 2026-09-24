@@ -405,6 +405,7 @@ impl NyanpasuClient {
                 installer: binary_installer,
                 ui: ui_sink.clone(),
                 dirty: dirty_rx,
+                budgets: application_workflow::mutation::MutationBudgets::default(),
             },
         )
         .await?;

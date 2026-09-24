@@ -48,4 +48,8 @@ pub(in crate::client) enum Output {
     Recover(RecoverReport),
     Service(Box<ServiceHostStatus>),
     Shutdown(ShutdownReport),
+    /// One source-config mutation, settled. The caller of a mutation is the
+    /// state transaction, which was answered during prepare; this is the
+    /// structured record the workflow keeps afterwards.
+    Settled(Box<super::application_workflow::mutation::MutationReceipt>),
 }

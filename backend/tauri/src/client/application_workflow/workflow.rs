@@ -4,7 +4,11 @@ use nyanpasu_config::{clash::config::ClashConfig, profile::Profiles};
 use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, OperationId};
 
-use super::{Command, Output, preparation::RuntimePreparation};
+use super::{
+    Command, Output,
+    mutation::{DeferredTarget, MutationBudgets, MutationCommand, RecoveryContext},
+    preparation::RuntimePreparation,
+};
 use crate::{
     client::{
         UiEventSink,
@@ -21,13 +25,20 @@ pub(super) struct ApplicationWorkflow {
     pub profiles: StateSnapshot<Profiles>,
     pub clash: StateSnapshot<ClashConfig>,
     pub preparation: RuntimePreparation,
-    /// The core's own config validation. Held, not yet called: what to do with
-    /// a rejected or unavailable check is a policy decision that belongs to
-    /// the per-mutation participant, which lands with the TCC workflow.
-    #[allow(dead_code)]
+    /// The core's own verdict on a candidate document, asked before the Try
+    /// submits it. An absent answer is never a passing one.
     pub validator: Arc<dyn super::ports::RuntimeValidatorPort>,
     pub lifecycle: CoreLifecycleWorkflow,
     pub ui: Arc<dyn UiEventSink>,
+    /// The separate budgets of one mutation (v2 §5.5), injected rather than
+    /// read from a constant so a test can reach an elapse path without waiting
+    /// out the production one.
+    pub budgets: MutationBudgets,
+    /// A committed desired value the core is not running.
+    pub deferred: Option<DeferredTarget>,
+    /// Why the execution domain is isolated, when it is. Survives the
+    /// operation that caused it so an explicit recovery has something to read.
+    pub recovery: Option<Box<RecoveryContext>>,
 }
 
 impl ApplicationWorkflow {
@@ -49,6 +60,10 @@ impl ApplicationWorkflow {
             }
             Command::ApplyProfileActivation(report) => {
                 self.apply_profile_activation(id, report).await
+            }
+            Command::Mutation(command) => {
+                let MutationCommand { request } = *command;
+                Ok(Output::Settled(Box::new(self.run_mutation(request).await)))
             }
         };
         self.lifecycle.uncertain |= self.lifecycle.core.outcome_uncertain();

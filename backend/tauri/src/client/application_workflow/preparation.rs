@@ -87,15 +87,24 @@ impl RuntimePreparation {
         &mut self,
         inputs: super::inputs::RuntimeInputs,
     ) -> Result<PreparedRuntime, CoreError> {
-        let super::inputs::RuntimeInputs {
-            app,
-            clash,
-            profiles,
-            content,
-        } = inputs;
+        self.prepare_inputs_with_policy(inputs, false).await
+    }
+
+    pub async fn prepare_candidate_inputs(
+        &mut self,
+        inputs: super::inputs::RuntimeInputs,
+    ) -> Result<PreparedRuntime, CoreError> {
+        self.prepare_inputs_with_policy(inputs, true).await
+    }
+
+    async fn prepare_inputs_with_policy(
+        &mut self,
+        inputs: super::inputs::RuntimeInputs,
+        strict_transforms: bool,
+    ) -> Result<PreparedRuntime, CoreError> {
         let revision = self.revisions.allocate().map_err(domain_error)?;
         let local_ipc = LocalIpcSettings {
-            policy: match clash.clash_control_channel {
+            policy: match inputs.clash.clash_control_channel {
                 nyanpasu_config::clash::config::ClashControlChannel::PreferIpc => {
                     LocalIpcPolicy::Prefer
                 }
@@ -103,22 +112,23 @@ impl RuntimePreparation {
                     LocalIpcPolicy::Disable
                 }
             },
-            keep_http_controller: !clash.clash_ipc_disable_http_controller,
+            keep_http_controller: !inputs.clash.clash_ipc_disable_http_controller,
         };
         // A candidate resolution, not an active one: nothing here touches the
         // confirmed binding, so a build that is never applied leaves the
         // running instance's ports alone (v2 §6.2).
-        let ports = self.ports.resolve_candidate(&clash).map_err(domain_error)?;
-        let core_type: nyanpasu_utils::core::CoreType = (&app.core).into();
+        let ports = self
+            .ports
+            .resolve_candidate(&inputs.clash)
+            .map_err(domain_error)?;
+        let core_type: nyanpasu_utils::core::CoreType = (&inputs.app.core).into();
         let snapshot = self
             .builder
             .build(
                 revision,
-                profiles,
-                clash,
-                app,
+                inputs,
                 ports.bindings().clone(),
-                content,
+                strict_transforms,
             )
             .await
             .map_err(domain_error)?;

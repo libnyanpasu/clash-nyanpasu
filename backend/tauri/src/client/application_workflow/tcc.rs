@@ -163,6 +163,12 @@ impl ApplicationWorkflow {
                 .await
             }
         };
+        if !matches!(
+            outcome,
+            RuntimePrepareOutcome::Applied(_) | RuntimePrepareOutcome::RecoveryRequired(_)
+        ) {
+            self.lifecycle.runtime.accept_transition();
+        }
         // The verdict leaves before anything below runs: the source transaction
         // cannot reach its decision until it arrives, and the decision is what
         // everything below waits for.
@@ -397,7 +403,7 @@ impl ApplicationWorkflow {
         };
         let prepared = match self
             .preparation
-            .prepare_inputs(inputs.expect("critical operations capture runtime inputs"))
+            .prepare_candidate_inputs(inputs.expect("critical operations capture runtime inputs"))
             .await
         {
             Ok(prepared) => prepared,
@@ -523,6 +529,7 @@ impl ApplicationWorkflow {
         // elapses the transaction aborts and this keeps running as a tracked
         // task, and the Cancel that follows waits for its real terminal result.
         // An elapsed ACK is never evidence that any of this was cancelled.
+        self.lifecycle.runtime.begin_transition();
         let mut handed_off = false;
         let mut expected = baseline
             .expected
@@ -574,7 +581,14 @@ impl ApplicationWorkflow {
                     }
                 }
                 Err(error) => {
-                    let cause = core_error_cause(&error);
+                    let cause = if error.handoff_started {
+                        core_error_cause(&error.error)
+                    } else {
+                        // Service preparation has not touched the Local core.
+                        // A refused elevation or unavailable daemon rejects this
+                        // request; a later explicit attempt can prepare again.
+                        TryCauseKind::Permanent
+                    };
                     return self.dispose(
                         request,
                         policy,
@@ -586,7 +600,8 @@ impl ApplicationWorkflow {
                             // one that failed on the way says nothing about who
                             // owns the runtime now, and the candidate was never
                             // submitted either way.
-                            availability: if cause == TryCauseKind::Unknown {
+                            availability: if error.handoff_started && cause == TryCauseKind::Unknown
+                            {
                                 BaselineAvailability::Unconfirmed
                             } else {
                                 BaselineAvailability::Known
@@ -595,7 +610,8 @@ impl ApplicationWorkflow {
                             target_digest: target.clone(),
                             message: format!(
                                 "the runtime could not be moved to the {target_host:?} execution \
-                                 host: {error}"
+                                host: {}",
+                                error.error
                             ),
                         },
                     );
@@ -761,17 +777,9 @@ impl ApplicationWorkflow {
     ) -> RuntimePrepareOutcome {
         let decision = disposition(&TryFailureFacts {
             cause: facts.cause,
-            // Everything routed here has a terminal answer: an operation still
-            // in flight never reaches this function.
-            terminated: true,
             baseline: facts.availability,
             policy,
             candidate_has_invalid_item: facts.invalid_item,
-            convergence_budget_defined: self
-                .convergence_budget_defined(facts.target_digest.as_deref()),
-            // Reference only, and deliberately conservative: this path never
-            // observed a legacy flag it could trust.
-            legacy_retryable: facts.cause == TryCauseKind::Transient,
         });
         match decision {
             FailureDisposition::Deferrable => RuntimePrepareOutcome::Deferred {
@@ -801,27 +809,6 @@ impl ApplicationWorkflow {
                     facts.message,
                 )))
             }
-        }
-    }
-
-    /// Whether this target still has somewhere to converge to.
-    ///
-    /// The budget bounds how often one document may be committed unapplied
-    /// (D11). It is per target: an unrelated save opens a budget of its own
-    /// rather than refilling this one (V22), and once the recorded budget for
-    /// *this* document is spent the deferral is refused — committing a value
-    /// nothing will ask the core to run again is the state nothing leaves
-    /// (V23 `Blocked`).
-    fn convergence_budget_defined(&self, target: Option<&str>) -> bool {
-        match (&self.deferred, target) {
-            (Some(deferred), Some(digest)) if deferred.digest == digest => {
-                deferred.attempts_remaining > 0
-            }
-            // A failure with no document of its own cannot be told apart from
-            // the outstanding target, so it inherits its budget rather than
-            // opening a fresh one.
-            (Some(deferred), None) => deferred.attempts_remaining > 0,
-            _ => true,
         }
     }
 
@@ -868,6 +855,7 @@ impl ApplicationWorkflow {
                     .await
                     .err()
                     .map(|error| format!("runtime_product_publish_failed: {error}"));
+                self.lifecycle.runtime.accept_transition();
                 self.ui.refresh_clash();
                 (MutationConclusion::Confirmed, detail)
             }
@@ -877,13 +865,10 @@ impl ApplicationWorkflow {
                 cause,
             } => {
                 let message = cause.message.clone();
-                // The same document deferred again is that document failing to
-                // converge once more, so it spends the budget it already has.
-                // A different one opens its own.
+                // Manual saves and unavailable dependency checks do not spend
+                // the automatic apply retry budget.
                 let attempts_remaining = match self.deferred.take() {
-                    Some(previous) if previous.digest == digest => {
-                        previous.attempts_remaining.saturating_sub(1)
-                    }
+                    Some(previous) if previous.digest == digest => previous.attempts_remaining,
                     _ => DEFERRED_RETRY_BUDGET,
                 };
                 self.deferred = Some(DeferredTarget {
@@ -938,7 +923,10 @@ impl ApplicationWorkflow {
             return (MutationConclusion::Withdrawn, None);
         };
         match self.restore(baseline).await {
-            Ok(()) => (MutationConclusion::Cancelled, None),
+            Ok(()) => {
+                self.lifecycle.runtime.accept_transition();
+                (MutationConclusion::Cancelled, None)
+            }
             Err(error) => {
                 let mut context = self.recovery_context(
                     request,
@@ -978,9 +966,8 @@ impl ApplicationWorkflow {
                     // fact about who is holding the candidate's ports.
                     self.invalidate_unproven_ports();
                     return Err(format!(
-                        "the runtime could not be moved back to the {:?} execution host: \
-                         {error}",
-                        receipt.host
+                        "the runtime could not be moved back to the {:?} execution host: {}",
+                        receipt.host, error.error
                     )
                     .into());
                 }
@@ -1075,7 +1062,11 @@ impl ApplicationWorkflow {
                             .runtime
                             .record_confirmed_apply(baseline.confirmed_build.clone(), restored);
                         if let Some(effective) = report.effective_config.clone()
-                            && let Some(pending) = self.lifecycle.runtime.read().pending
+                            && let Some(pending) = self
+                                .lifecycle
+                                .runtime
+                                .confirmed()
+                                .and_then(|record| record.artifact)
                             && let Ok(inspected) = pending.with_effective_config(
                                 effective,
                                 report.applied.host,

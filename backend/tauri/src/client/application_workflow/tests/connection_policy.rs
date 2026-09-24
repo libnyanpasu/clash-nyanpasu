@@ -908,19 +908,17 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     async fn build(
         &self,
         revision: crate::client::runtime::RuntimeRevision,
-        profiles: Arc<nyanpasu_config::profile::Profiles>,
-        clash: nyanpasu_config::clash::config::ClashConfig,
-        app: nyanpasu_config::application::NyanpasuAppConfig,
+        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
-        content: crate::client::application_workflow::inputs::FrozenProfileContent,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<crate::client::runtime::RuntimeSnapshot>> {
         self.inputs
             .lock()
             .unwrap()
-            .push((profiles.clone(), clash.clone()));
+            .push((inputs.profiles.clone(), inputs.clash.clone()));
         anyhow::ensure!(!self.fail_build, "scripted build failure");
         self.delegate
-            .build(revision, profiles, clash, app, ports, content)
+            .build(revision, inputs, ports, strict_transforms)
             .await
     }
     async fn publish(

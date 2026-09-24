@@ -42,11 +42,9 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        profiles: Arc<nyanpasu_config::profile::Profiles>,
-        clash: nyanpasu_config::clash::config::ClashConfig,
-        app: nyanpasu_config::application::NyanpasuAppConfig,
+        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
-        content: crate::client::application_workflow::inputs::FrozenProfileContent,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
@@ -54,7 +52,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         }
         anyhow::ensure!(!self.fail.load(Ordering::SeqCst), "scripted build failure");
         self.delegate
-            .build(revision, profiles, clash, app, ports, content)
+            .build(revision, inputs, ports, strict_transforms)
             .await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {

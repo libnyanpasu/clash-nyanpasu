@@ -165,6 +165,7 @@ pub(in crate::client) struct ConfirmedRuntime {
 struct RuntimeStoreState {
     promoted: Option<Arc<RuntimeSnapshot>>,
     confirmed: Option<ConfirmedRuntime>,
+    transition: bool,
 }
 
 /// One associated record publishes the artifact, receipt and inspection state.
@@ -196,6 +197,24 @@ impl RuntimeSnapshotStore {
         self.0.send_modify(|state| state.promoted = Some(snapshot));
     }
 
+    pub(in crate::client) fn generated_confirmed(&self, product: Arc<RuntimeSnapshot>) {
+        self.0.send_modify(|state| {
+            let inspected = state.confirmed.as_ref().and_then(|record| {
+                matches!(record.inspection, InspectionState::Ready)
+                    .then(|| record.artifact.clone())
+                    .flatten()
+            });
+            state.promoted = Some(
+                inspected
+                    .filter(|artifact| {
+                        artifact.identity_eq(&product)
+                            && artifact.applied_binding == product.applied_binding
+                    })
+                    .unwrap_or(product),
+            );
+        });
+    }
+
     pub(in crate::client) fn record_confirmed_apply(
         &self,
         artifact: Option<Arc<RuntimeSnapshot>>,
@@ -221,8 +240,27 @@ impl RuntimeSnapshotStore {
         });
     }
 
+    pub(in crate::client) fn begin_transition(&self) {
+        self.0.send_modify(|state| state.transition = true);
+    }
+
+    pub(in crate::client) fn accept_transition(&self) {
+        self.0.send_modify(|state| {
+            state.transition = false;
+        });
+    }
+
     pub(in crate::client) fn confirmed(&self) -> Option<ConfirmedRuntime> {
         self.0.borrow().confirmed.clone()
+    }
+
+    pub(in crate::client) fn accepted_binding(&self) -> Option<Arc<RuntimeApplyReceipt>> {
+        let state = self.0.borrow();
+        (!state.transition)
+            .then(|| state.confirmed.as_ref())
+            .flatten()
+            .filter(|record| record.available)
+            .map(|record| record.receipt.clone())
     }
 
     pub(in crate::client) fn last_confirmed_runtime_receipt(

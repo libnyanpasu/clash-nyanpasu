@@ -139,58 +139,6 @@ pub(in crate::client) struct TouchedContent {
     pub resource: Option<StagedResourceToken>,
 }
 
-/// A source-config field that the runtime build or the core lifecycle reads.
-///
-/// One variant per field the classification above reads — the application's
-/// host, core and builtin-transform selection, the clash build and control
-/// channel inputs, and the profiles closure — and nothing else. A request that
-/// names only fields outside them has asked the runtime for nothing, however
-/// much of the document it moved.
-///
-/// Two profiles inputs are deliberately absent: the current selection travels
-/// as an [`ActivationIntent`] and replaced managed bytes travel as
-/// [`TouchedContent`], because a request expresses both as intents rather than
-/// as document fields.
-// The producers are the three domain actors, which move onto the participant
-// in T6; until then the classification's own tests are the only callers.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(in crate::client) enum RuntimeField {
-    /// `enable_service_mode`: which host executes the core.
-    ExecutionHost,
-    /// `core`: the binary that gets started and the builtin transform table it
-    /// selects.
-    Core,
-    /// `enable_builtin_enhanced`: whether that transform table runs.
-    BuiltinEnhanced,
-    /// `overrides`: the clash document the build patches in.
-    Overrides,
-    /// `enable_clash_fields`.
-    ClashFields,
-    /// `enable_tun_mode`.
-    TunMode,
-    /// `tun_stack`.
-    TunStack,
-    /// `mixed_port`.
-    MixedPort,
-    /// `socks_port`.
-    SocksPort,
-    /// `http_port`.
-    HttpPort,
-    /// `external_controller`.
-    ExternalController,
-    /// `clash_control_channel`.
-    ControlChannel,
-    /// `clash_ipc_disable_http_controller`.
-    HttpController,
-    /// `global_transforms`.
-    GlobalTransforms,
-    /// `valid`.
-    Validity,
-    /// The definition of a profile the current closure resolves.
-    Definitions,
-}
-
 /// The runtime-relevant fields one request explicitly named.
 ///
 /// "Named" is struct-patch presence and never a value comparison: a `Some`
@@ -203,105 +151,65 @@ pub(in crate::client) enum RuntimeField {
 /// The converse matters as much. A request that named no runtime-relevant
 /// field asked the runtime for nothing, even when the document it produces is
 /// byte-identical to the committed one. Reading the answer out of document
-/// equality instead would spend an outstanding target's convergence budget on
-/// a no-op save of an unrelated field, and would skip a genuine resubmission
-/// that happened to move an unrelated field alongside it.
+/// equality instead would re-evaluate an outstanding target on an unrelated
+/// save, and would skip a genuine resubmission that happened to move an
+/// unrelated field alongside it. Manual re-evaluation does not spend the
+/// automatic apply budget.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(in crate::client) struct RequestedRuntimeFields {
-    named: BTreeSet<RuntimeField>,
-    /// The request replaced its whole document instead of patching it, so it
-    /// named every field the domain has — the runtime's among them.
-    whole_document: bool,
+    named: bool,
 }
 
-// Same producers as [`RuntimeField`]: the domain actors arrive in T6.
+// The domain actors begin producing this intent in T6.
 #[allow(dead_code)]
 impl RequestedRuntimeFields {
     /// A request that replaced the whole document rather than patching it.
     pub fn whole_document() -> Self {
-        Self {
-            named: BTreeSet::new(),
-            whole_document: true,
-        }
+        Self { named: true }
     }
 
-    /// The fields a domain names for itself. The profiles domain has no patch
-    /// DTO of its own, so this is how it reports what its request addressed.
-    pub fn named(fields: impl IntoIterator<Item = RuntimeField>) -> Self {
-        Self {
-            named: fields.into_iter().collect(),
-            whole_document: false,
-        }
+    pub fn runtime() -> Self {
+        Self { named: true }
     }
 
     /// The runtime-relevant fields an application-config patch carries.
     pub fn of_application(patch: &NyanpasuAppConfigPatch) -> Self {
-        let mut named = BTreeSet::new();
-        if patch.enable_service_mode.is_some() {
-            named.insert(RuntimeField::ExecutionHost);
-        }
-        if patch.core.is_some() {
-            named.insert(RuntimeField::Core);
-        }
-        if patch.enable_builtin_enhanced.is_some() {
-            named.insert(RuntimeField::BuiltinEnhanced);
-        }
         Self {
-            named,
-            whole_document: false,
+            named: patch.enable_service_mode.is_some()
+                || patch.core.is_some()
+                || patch.enable_builtin_enhanced.is_some(),
         }
     }
 
     /// The runtime-relevant fields a clash-config patch carries.
     pub fn of_clash(patch: &ClashConfigPatch) -> Self {
-        let mut named = BTreeSet::new();
-        if patch.overrides.is_some() {
-            named.insert(RuntimeField::Overrides);
-        }
-        if patch.enable_clash_fields.is_some() {
-            named.insert(RuntimeField::ClashFields);
-        }
-        if patch.enable_tun_mode.is_some() {
-            named.insert(RuntimeField::TunMode);
-        }
-        if patch.tun_stack.is_some() {
-            named.insert(RuntimeField::TunStack);
-        }
-        if patch.mixed_port.is_some() {
-            named.insert(RuntimeField::MixedPort);
-        }
-        if patch.socks_port.is_some() {
-            named.insert(RuntimeField::SocksPort);
-        }
-        if patch.http_port.is_some() {
-            named.insert(RuntimeField::HttpPort);
-        }
-        if patch.external_controller.is_some() {
-            named.insert(RuntimeField::ExternalController);
-        }
-        if patch.clash_control_channel.is_some() {
-            named.insert(RuntimeField::ControlChannel);
-        }
-        if patch.clash_ipc_disable_http_controller.is_some() {
-            named.insert(RuntimeField::HttpController);
-        }
         Self {
-            named,
-            whole_document: false,
+            named: patch.overrides.is_some()
+                || patch.enable_clash_fields.is_some()
+                || patch.enable_tun_mode.is_some()
+                || patch.tun_stack.is_some()
+                || patch.mixed_port.is_some()
+                || patch.socks_port.is_some()
+                || patch.http_port.is_some()
+                || patch.external_controller.is_some()
+                || patch.clash_control_channel.is_some()
+                || patch.clash_ipc_disable_http_controller.is_some(),
         }
     }
 
     /// The clash overrides are patched through an entry point of their own, so
-    /// a request that carries one names [`RuntimeField::Overrides`] exactly
+    /// a request that carries one names runtime exactly
     /// when that patch addresses a field.
     pub fn of_clash_overrides(patch: &ClashGuardOverridesPatch) -> Self {
         use struct_patch::Status as _;
-        Self::named((!patch.is_empty()).then_some(RuntimeField::Overrides))
+        Self {
+            named: !patch.is_empty(),
+        }
     }
 
     /// Whether the request named a runtime-relevant field at all.
     pub fn names_any(&self) -> bool {
-        self.whole_document || !self.named.is_empty()
+        self.named
     }
 }
 
@@ -1531,20 +1439,14 @@ mod tests {
             ..NyanpasuAppConfigPatch::default()
         });
         assert!(unchanged.names_any());
-        assert_eq!(
-            unchanged,
-            RequestedRuntimeFields::named([RuntimeField::Core])
-        );
+        assert_eq!(unchanged, RequestedRuntimeFields::runtime());
         assert_eq!(
             RequestedRuntimeFields::of_application(&NyanpasuAppConfigPatch {
                 enable_service_mode: Some(true),
                 enable_builtin_enhanced: Some(false),
                 ..NyanpasuAppConfigPatch::default()
             }),
-            RequestedRuntimeFields::named([
-                RuntimeField::ExecutionHost,
-                RuntimeField::BuiltinEnhanced,
-            ])
+            RequestedRuntimeFields::runtime()
         );
     }
 
@@ -1582,14 +1484,14 @@ mod tests {
                 web_ui_list: Some(Vec::new()),
                 ..ClashConfigPatch::default()
             }),
-            RequestedRuntimeFields::named([RuntimeField::TunMode, RuntimeField::MixedPort])
+            RequestedRuntimeFields::runtime()
         );
         assert_eq!(
             RequestedRuntimeFields::of_clash(&ClashConfigPatch {
                 overrides: Some(base_clash().overrides),
                 ..ClashConfigPatch::default()
             }),
-            RequestedRuntimeFields::named([RuntimeField::Overrides])
+            RequestedRuntimeFields::runtime()
         );
         // The overrides have an entry point of their own, and an empty patch
         // through it addressed nothing.
@@ -1598,7 +1500,7 @@ mod tests {
                 mode: Some(Mode::Direct),
                 ..ClashGuardOverridesPatch::default()
             }),
-            RequestedRuntimeFields::named([RuntimeField::Overrides])
+            RequestedRuntimeFields::runtime()
         );
         assert!(
             !RequestedRuntimeFields::of_clash_overrides(&ClashGuardOverridesPatch::default())

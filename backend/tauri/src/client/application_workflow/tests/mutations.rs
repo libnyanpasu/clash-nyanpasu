@@ -40,8 +40,7 @@ use super::{
     super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, DirtyNotifier, adapters,
         impact::{
-            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, RuntimeField,
-            TouchedContent,
+            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, TouchedContent,
         },
         mutation::{
             CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationBudgets, MutationConclusion,
@@ -97,11 +96,9 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        profiles: Arc<Profiles>,
-        clash: ClashConfig,
-        app: NyanpasuAppConfig,
+        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
-        content: crate::client::application_workflow::inputs::FrozenProfileContent,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
@@ -110,7 +107,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         }
         assert!(!self.panic.load(Ordering::SeqCst), "scripted build panic");
         self.delegate
-            .build(revision, profiles, clash, app, ports, content)
+            .build(revision, inputs, ports, strict_transforms)
             .await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
@@ -591,7 +588,7 @@ async fn settled(client: &ApplicationWorkflowClient, operation_id: OperationId) 
 /// the overrides looks like whether or not the value it carries moved.
 fn names_overrides() -> MutationHints {
     MutationHints {
-        requested: RequestedRuntimeFields::named([RuntimeField::Overrides]),
+        requested: RequestedRuntimeFields::runtime(),
         ..MutationHints::default()
     }
 }
@@ -1932,11 +1929,10 @@ async fn a_transient_failure_under_a_safe_baseline_commits_the_target_as_deferre
     assert_eq!(deferred.attempts_remaining, DEFERRED_RETRY_BUDGET);
 }
 
-/// The same target deferred again does not get a fresh budget: it spends the
-/// one it already has, and once that is gone the deferral is refused rather
-/// than committing a value nothing will ask the core to run again.
+/// Explicit saves and unavailable dependency checks do not consume the
+/// automatic apply budget reserved for the future scheduler.
 #[tokio::test]
-async fn a_repeated_deferral_spends_its_budget_and_then_refuses() {
+async fn a_repeated_manual_deferral_preserves_automatic_budget() {
     let Fixture {
         client,
         endpoint,
@@ -1986,11 +1982,11 @@ async fn a_repeated_deferral_spends_its_budget_and_then_refuses() {
     }
     assert_eq!(
         seen,
-        (0..=DEFERRED_RETRY_BUDGET).rev().collect::<Vec<_>>(),
-        "a repeated deferral of the same target does not refill its budget"
+        vec![DEFERRED_RETRY_BUDGET; usize::from(DEFERRED_RETRY_BUDGET) + 1],
+        "manual retries must not spend the automatic budget"
     );
 
-    // Budget spent: the same target may no longer be committed unapplied.
+    // Another explicit save still reaches the source transaction.
     let before = clash.snapshot_handle().load().version;
     let (operation_id, result) = mutate_with_hints(
         &mut clash,
@@ -2000,11 +1996,14 @@ async fn a_repeated_deferral_spends_its_budget_and_then_refuses() {
         names_overrides(),
     )
     .await;
-    assert!(refused(&result), "{result:?}");
-    assert_eq!(clash.snapshot_handle().load().version, before);
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_ne!(clash.snapshot_handle().load().version, before);
     assert_eq!(
         settled(&client, operation_id).await.outcome,
-        MutationOutcomeKind::Rejected
+        MutationOutcomeKind::Deferred
     );
 }
 
@@ -2552,7 +2551,7 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
         ..
     } = fixture(test_budgets()).await;
 
-    let (_, primed) = simple_mutate(
+    let (primed_id, primed) = simple_mutate(
         &mut clash,
         &client,
         overrides(serde_json::json!({"mode": "global"})),
@@ -2560,6 +2559,7 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
     )
     .await;
     assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&client, primed_id).await;
     let baseline = ports
         .confirmed()
         .expect("the priming apply confirmed its own ports");
@@ -2587,15 +2587,10 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
         })
     };
 
-    // The Try has applied, so the candidate's own ports are the confirmed ones.
+    // The Try has applied, but its binding is not accepted until the source commits.
     entered.notified().await;
-    let candidate = ports
-        .confirmed()
-        .expect("the applied candidate confirmed its own ports");
-    assert_ne!(
-        candidate.mixed_port, baseline.mixed_port,
-        "the candidate has to move a port for this to be about ports at all"
-    );
+    assert!(ports.confirmed().is_none());
+    assert_ne!(baseline.mixed_port, 7897);
 
     // From here the source write fails and the restore's result disappears.
     std::fs::remove_file(&clash_path).unwrap();
@@ -2652,11 +2647,12 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
         mut clash,
         clash_path,
         ports,
+        store,
         _dir,
         ..
     } = fixture(test_budgets()).await;
 
-    let (_, primed) = simple_mutate(
+    let (primed_id, primed) = simple_mutate(
         &mut clash,
         &client,
         overrides(serde_json::json!({"mode": "global"})),
@@ -2664,6 +2660,7 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
     )
     .await;
     assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&client, primed_id).await;
     let baseline = ports
         .confirmed()
         .expect("the priming apply confirmed its own ports");
@@ -2693,9 +2690,14 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
     };
 
     entered.notified().await;
+    assert!(ports.confirmed().is_none());
     assert_eq!(
-        ports.confirmed().as_ref(),
-        Some(&baseline),
+        store
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .ports
+            .bindings(),
+        &baseline,
         "the candidate asked for exactly the ports the baseline holds"
     );
 
@@ -2744,7 +2746,7 @@ async fn an_unobserved_apply_takes_unchanged_ports_away() {
         ..
     } = fixture(test_budgets()).await;
 
-    let (_, primed) = simple_mutate(
+    let (primed_id, primed) = simple_mutate(
         &mut clash,
         &client,
         overrides(serde_json::json!({"mode": "global"})),
@@ -2752,6 +2754,7 @@ async fn an_unobserved_apply_takes_unchanged_ports_away() {
     )
     .await;
     assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&client, primed_id).await;
     assert!(ports.confirmed().is_some());
 
     // The host admits the reconcile and then loses its result. Only the mode
@@ -3020,9 +3023,8 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
             .deferred
             .unwrap()
             .attempts_remaining,
-        DEFERRED_RETRY_BUDGET - 1,
-        "a content update of the selected profile asks for the outstanding \
-         target, so it spends that target's budget"
+        DEFERRED_RETRY_BUDGET,
+        "a content update asks for the outstanding target without spending automatic budget"
     );
 
     // The same committed document saved again, described by a different hint:
@@ -3053,7 +3055,7 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
             .deferred
             .unwrap()
             .attempts_remaining,
-        DEFERRED_RETRY_BUDGET - 2,
+        DEFERRED_RETRY_BUDGET,
         "identity is what the core is asked to run, never what the request \
          said it changed"
     );
@@ -3070,7 +3072,7 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
 /// plain save it is. Saving that document back unchanged does not ask for it
 /// either — an empty diff proves nothing about what the request wanted. What
 /// does ask for it again is a request that named a runtime field, and that one
-/// is re-evaluated and spends an attempt, empty diff and all.
+/// is re-evaluated, empty diff and all, without spending automatic budget.
 #[tokio::test]
 async fn an_unrelated_save_keeps_the_outstanding_targets_identity_and_budget() {
     let Fixture {
@@ -3187,9 +3189,8 @@ async fn an_unrelated_save_keeps_the_outstanding_targets_identity_and_budget() {
     let deferred = client.mutation_journal().deferred.unwrap();
     assert_eq!(deferred.operation_id, third);
     assert_eq!(
-        deferred.attempts_remaining,
-        DEFERRED_RETRY_BUDGET - 1,
-        "a resubmission of the same target spends the budget it already has"
+        deferred.attempts_remaining, DEFERRED_RETRY_BUDGET,
+        "a manual resubmission preserves the automatic budget"
     );
 
     // A genuinely different runtime target is a different gap, with a budget of
@@ -3293,9 +3294,8 @@ async fn a_deferred_field_resubmitted_beside_an_unrelated_one_is_re_evaluated() 
         "and it is the same target, not a new one"
     );
     assert_eq!(
-        deferred.attempts_remaining,
-        DEFERRED_RETRY_BUDGET - 1,
-        "so it spends the budget that target already has"
+        deferred.attempts_remaining, DEFERRED_RETRY_BUDGET,
+        "manual reevaluation preserves the target's automatic budget"
     );
 }
 
@@ -3523,7 +3523,7 @@ async fn cross_domain_deferrals_share_the_complete_latest_target() {
         app,
         CommandClass::Save,
         MutationHints {
-            requested: RequestedRuntimeFields::named([RuntimeField::BuiltinEnhanced]),
+            requested: RequestedRuntimeFields::runtime(),
             ..MutationHints::default()
         },
     )
@@ -3569,4 +3569,227 @@ async fn selecting_the_saved_host_again_moves_the_actual_host() {
     );
     assert_eq!(f.core.status().host, ExecutionHost::Service);
     assert_eq!(service.reconciled_bytes().len(), 1);
+}
+#[tokio::test]
+async fn successful_confirm_keeps_the_promoted_inspection() {
+    let mut f = fixture(test_budgets()).await;
+    f.endpoint.set_effective_enabled(true);
+    let _ = crate::core::actor_v2::endpoint::ControlEndpoint::effective_config(f.endpoint.as_ref())
+        .await;
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_eq!(
+        settled(&f.client, id).await.conclusion,
+        MutationConclusion::Confirmed
+    );
+    let runtime = f.store.read();
+    assert!(runtime.applied.as_ref().unwrap().effective.is_some());
+    assert!(runtime.pending.is_none());
+    assert!(
+        runtime.promoted.as_ref().unwrap().effective.is_some(),
+        "Confirm published the pre-inspection snapshot even though the core inspection already arrived"
+    );
+}
+
+struct RefusedInstall;
+
+#[async_trait::async_trait]
+impl ServiceHostAdapter for RefusedInstall {
+    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        crate::client::tests::IdleServiceAdapter.probe().await
+    }
+    async fn install(&self) -> Result<(), String> {
+        Err("the user cancelled the elevation prompt".into())
+    }
+    async fn uninstall(&self) -> Result<(), String> {
+        unreachable!()
+    }
+    async fn start_daemon(&self) -> Result<(), String> {
+        unreachable!()
+    }
+    async fn stop_daemon(&self) -> Result<(), String> {
+        unreachable!()
+    }
+    async fn update(&self) -> Result<(), String> {
+        unreachable!()
+    }
+    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        unreachable!()
+    }
+}
+
+#[tokio::test]
+async fn refused_service_install_does_not_isolate_the_local_runtime() {
+    let mut f = fixture_with_daemon(test_budgets(), true, Some(Arc::new(RefusedInstall))).await;
+    let mut next = f.application.snapshot().as_ref().clone();
+    next.enable_service_mode = true;
+    let (id, result) = simple_mutate(
+        &mut f.application,
+        &f.client,
+        next,
+        CommandClass::ExplicitSwitch,
+    )
+    .await;
+    assert!(refused(&result), "{result:?}");
+    let receipt = settled(&f.client, id).await;
+    assert_eq!(f.core.status().host, ExecutionHost::Local);
+    assert!(f.endpoint.reconciled_bytes().is_empty());
+    assert_eq!(
+        receipt.outcome,
+        MutationOutcomeKind::Rejected,
+        "service preparation was refused before any core handoff: {receipt:?}"
+    );
+    assert!(!f.client.status().uncertain);
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_eq!(
+        settled(&f.client, id).await.conclusion,
+        MutationConclusion::Confirmed
+    );
+}
+
+#[tokio::test]
+async fn invalid_overlay_is_rejected_before_source_commit() {
+    let mut f = fixture(test_budgets()).await;
+    std::fs::create_dir_all(&f.profiles_dir).unwrap();
+    std::fs::write(f.profiles_dir.join("invalid.yaml"), "rules: [").unwrap();
+    let item = crate::enhance::golden_support::overlay("invalid", "invalid.yaml");
+    let mut next = f.profiles.snapshot().as_ref().clone();
+    next.global_transforms.push(item.uid.clone());
+    next.items.insert(item.uid.clone(), item);
+    let (id, result) = simple_mutate(&mut f.profiles, &f.client, next, CommandClass::Save).await;
+    let receipt = settled(&f.client, id).await;
+    assert!(
+        refused(&result),
+        "invalid overlay committed after its parse error was converted into passthrough: {receipt:?}"
+    );
+    assert!(f.endpoint.reconciled_bytes().is_empty());
+}
+
+#[tokio::test]
+async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
+    use super::super::ports::RuntimeBuildPort;
+    let f = fixture(test_budgets()).await;
+    let item = crate::enhance::golden_support::overlay("missing", "missing.yaml");
+    let mut profiles = Profiles::default();
+    profiles.global_transforms.push(item.uid.clone());
+    profiles.items.insert(item.uid.clone(), item);
+    let input = crate::enhance::RuntimeBuildInput {
+        profiles: Arc::new(profiles.clone()),
+        clash: ClashConfig::default(),
+        app: NyanpasuAppConfig::default(),
+        resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings {
+            mixed_port: 7890,
+            ..Default::default()
+        },
+    };
+    let old_content = crate::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
+    let built = tokio::task::spawn_blocking(move || {
+        let scripts = crate::enhance::EnhanceScriptRunner::new().unwrap();
+        crate::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
+    })
+    .await
+    .unwrap();
+    assert!(built.is_ok());
+    let captured = f.builder.capture_content(&profiles).await.unwrap();
+    let mut revisions = runtime::RuntimeRevisionAllocator::new();
+    let build = |revision, strict| {
+        f.builder.build(
+            revision,
+            super::super::inputs::RuntimeInputs {
+                profiles: Arc::new(profiles.clone()),
+                clash: ClashConfig::default(),
+                app: NyanpasuAppConfig::default(),
+                content: captured.clone(),
+            },
+            nyanpasu_config::runtime::executor::ResolvedPortBindings {
+                mixed_port: 7890,
+                ..Default::default()
+            },
+            strict,
+        )
+    };
+    assert!(
+        build(revisions.allocate().unwrap(), false).await.is_ok(),
+        "ordinary build keeps D7 passthrough"
+    );
+    assert!(
+        build(revisions.allocate().unwrap(), true).await.is_err(),
+        "TCC candidate rejects missing transform"
+    );
+}
+
+#[tokio::test]
+async fn uncommitted_runtime_ports_are_not_available_to_peripheral_readers() {
+    let Fixture {
+        client,
+        mut clash,
+        store,
+        ports,
+        _dir,
+        ..
+    } = fixture(test_budgets()).await;
+    let source = clash.snapshot_handle();
+    let version = source.load().version;
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let id = OperationId::generate();
+    let work = {
+        let client = client.clone();
+        let entered = entered.clone();
+        let release = release.clone();
+        tokio::spawn(async move {
+            mutate(
+                &mut clash,
+                &client,
+                id,
+                on_mixed_port(7897),
+                CommandClass::Save,
+                Duration::from_secs(10),
+                plain(),
+                parked_local_write(entered, release),
+            )
+            .await
+        })
+    };
+    entered.notified().await;
+    assert_eq!(source.load().version, version);
+    let actual = store
+        .last_confirmed_runtime_receipt()
+        .expect("actual apply evidence");
+    assert_eq!(actual.ports.bindings().mixed_port, 7897);
+    assert!(store.read().pending.is_some() || store.read().applied.is_some());
+    let provisional = ports.confirmed();
+    release.notify_one();
+    assert!(matches!(
+        work.await.unwrap(),
+        Ok(ReplaceIfVersionResult::Replaced)
+    ));
+    assert_eq!(
+        settled(&client, id).await.conclusion,
+        MutationConclusion::Confirmed
+    );
+    assert!(
+        provisional.is_none(),
+        "peripheral reader received an uncommitted runtime binding: {provisional:?}"
+    );
+    assert_eq!(ports.confirmed().unwrap().mixed_port, 7897);
 }

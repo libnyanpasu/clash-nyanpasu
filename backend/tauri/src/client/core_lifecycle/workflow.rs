@@ -154,7 +154,11 @@ impl CoreLifecycleWorkflow {
                 Ok(Output::Unit)
             }
             Command::ChangeHost(host) => {
-                let report = self.core.change_execution_host(host).await?;
+                let report = self
+                    .core
+                    .change_execution_host(host)
+                    .await
+                    .map_err(|failure| failure.error)?;
                 self.follow_host();
                 self.note_interrupted_core(report.interrupted_running());
                 Ok(Output::Handoff(report))
@@ -402,7 +406,10 @@ impl CoreLifecycleWorkflow {
         } else {
             ExecutionHost::Local
         };
-        let report = self.move_execution_host(host).await?;
+        let report = self
+            .move_execution_host(host)
+            .await
+            .map_err(|failure| failure.error)?;
         if matches!(report, HandoffReport::Completed { .. }) {
             self.reconcile(preparation).await?;
         }
@@ -428,7 +435,7 @@ impl CoreLifecycleWorkflow {
     pub(in crate::client) async fn move_execution_host(
         &mut self,
         host: ExecutionHost,
-    ) -> Result<HandoffReport, CoreError> {
+    ) -> Result<HandoffReport, crate::core::actor_v2::facade::HostChangeFailure> {
         let report = self.core.change_execution_host(host).await?;
         // The host moved; whatever the caller does next is a follow-up effect
         // whose failure must not put the policy back on the old host.
@@ -583,7 +590,7 @@ impl CoreLifecycleWorkflow {
         preparation: &dyn RuntimePreparationPort,
     ) -> anyhow::Result<()> {
         preparation.publish(&product).await?;
-        self.runtime.generated(product);
+        self.runtime.generated_confirmed(product);
         Ok(())
     }
 

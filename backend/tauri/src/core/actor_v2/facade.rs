@@ -28,6 +28,13 @@ pub struct AppliedConfigBinding {
     pub generation: u64,
 }
 
+/// Failure before the router's host handoff cannot change the running core.
+#[derive(Debug)]
+pub(crate) struct HostChangeFailure {
+    pub error: CoreError,
+    pub handoff_started: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReconcileReport {
     pub applied: AppliedConfigBinding,
@@ -352,19 +359,28 @@ impl CoreFacade {
         })
     }
 
-    pub async fn change_execution_host(
+    pub(crate) async fn change_execution_host(
         &mut self,
         host: ExecutionHost,
-    ) -> Result<HandoffReport, CoreError> {
+    ) -> Result<HandoffReport, HostChangeFailure> {
         let target = match host {
             ExecutionHost::Local => self.core.initial_endpoint(),
             ExecutionHost::Service => {
-                let result = self.service.ensure_ready().await;
-                self.observe_mutation(result)?
+                self.service
+                    .ensure_ready()
+                    .await
+                    .map_err(|error| HostChangeFailure {
+                        error,
+                        handoff_started: false,
+                    })?
             }
         };
         let result = self.core.change_host(target).await;
         self.observe_mutation(result)
+            .map_err(|error| HostChangeFailure {
+                error,
+                handoff_started: true,
+            })
     }
 
     /// Move to the Service host only if the daemon is already `Ready`, never

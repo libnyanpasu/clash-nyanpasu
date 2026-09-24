@@ -409,15 +409,14 @@ pub(in crate::client) struct MutationReceipt {
     pub detail: Option<String>,
 }
 
-/// A committed desired value the core is not running, with what is left of its
+/// A committed desired value the core is not running, with its automatic
 /// convergence budget (D11).
 #[derive(Debug, Clone)]
 pub(in crate::client) struct DeferredTarget {
     pub operation_id: OperationId,
-    /// The digest of the document this target wants running. It is what tells
-    /// "the same target again" from "a different one": a repeated deferral of
-    /// the same document spends the budget, an unrelated save opens a new one
-    /// (D11, V22).
+    /// Identity of the complete runtime target, including captured content.
+    /// Only a different target opens a new automatic budget. A manual save of
+    /// the same target neither spends nor refills it (D11, V22).
     pub digest: String,
     pub baseline: KnownRuntimeState,
     pub cause: RetryableCause,
@@ -459,7 +458,6 @@ impl Default for MutationBudgets {
 
 /// How many automatic convergence attempts a deferred target is allowed (D11).
 ///
-/// A deferral is only permitted while this budget is defined and unspent: a
-/// committed desired value that nothing will ever try again is a state the
-/// application never leaves.
+/// Manual saves and WaitingDependency checks do not consume it. T8's automatic
+/// execution owner will decrement it for actual automatic apply attempts.
 pub(in crate::client) const DEFERRED_RETRY_BUDGET: u8 = 3;

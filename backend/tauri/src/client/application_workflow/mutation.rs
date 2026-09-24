@@ -36,7 +36,7 @@ use crate::{
 
 /// Which source domain a mutation belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::client) enum ConfigDomain {
+pub(crate) enum ConfigDomain {
     Application,
     Clash,
     Profiles,
@@ -49,7 +49,7 @@ pub(in crate::client) enum ConfigDomain {
 /// still holds the previous value, so re-reading it would build the wrong
 /// document. The *other two* domains are read after admission instead (C2).
 #[derive(Debug, Clone)]
-pub(in crate::client) enum DomainChange {
+pub(crate) enum DomainChange {
     Application {
         previous: Option<Arc<NyanpasuAppConfig>>,
         candidate: Arc<NyanpasuAppConfig>,
@@ -79,9 +79,7 @@ impl DomainChange {
 /// The participant is generic over the state type so it can be handed to the
 /// owning `PersistentStateManager` unchanged; this trait is what lets it erase
 /// that type into a [`DomainChange`] the workflow can classify.
-pub(in crate::client) trait MutationDomain:
-    Clone + Send + Sync + 'static
-{
+pub(crate) trait MutationDomain: Clone + Send + Sync + 'static {
     fn domain_change(change: StateChange<Self>) -> DomainChange;
 }
 
@@ -119,7 +117,7 @@ impl MutationDomain for Profiles {
 }
 
 /// What one mutation asks the workflow to do, delivered once at prepare time.
-pub(in crate::client) struct MutationRequest {
+pub(crate) struct MutationRequest {
     /// This attempt's identity. Never reused, not even by a retry of the same
     /// candidate on the same source version (C1/D9).
     pub operation_id: OperationId,
@@ -147,7 +145,7 @@ impl MutationRequest {
 }
 
 /// One admitted mutation, carrying its authoritative source decision handle.
-pub(in crate::client) struct MutationCommand {
+pub(crate) struct MutationCommand {
     pub request: MutationRequest,
 }
 
@@ -157,7 +155,7 @@ pub(in crate::client) struct MutationCommand {
 /// The payloads are diagnostics. Control flow reads the structured
 /// [`RuntimePrepareOutcome`] kept in the operation receipt, never these strings.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::client) enum TryAck {
+pub(crate) enum TryAck {
     Ok,
     Degraded(String),
     Rejected(String),
@@ -177,7 +175,7 @@ impl From<TryAck> for Ack {
 
 /// Which phase of the mutation a fact belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::client) enum MutationStage {
+pub(crate) enum MutationStage {
     Preparing,
     TryingCritical,
     AwaitDecision,
@@ -193,7 +191,7 @@ pub(in crate::client) enum MutationStage {
 /// rather than an absent receipt, because a user's Stop leaves no receipt at
 /// all and the last one still says it was running.
 #[derive(Debug, Clone)]
-pub(in crate::client) enum KnownRuntimeState {
+pub(crate) enum KnownRuntimeState {
     /// The last apply the core confirmed: these bytes, this core, this host.
     Applied(Arc<RuntimeApplyReceipt>),
     /// The core is stopped. Restoring means stopping it again, never starting
@@ -211,7 +209,7 @@ pub(in crate::client) enum KnownRuntimeState {
 /// why it is a plain refusal the caller may retry (v2 §2.4, first row) and
 /// never the isolated state §11.4 reserves for "结果可能已经执行".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::client) enum EvidenceGap {
+pub(crate) enum EvidenceGap {
     /// The core is mid-transition — starting, restarting, switching or
     /// stopping. That is an answer, but not one that says what a candidate
     /// would be applied on top of.
@@ -234,14 +232,14 @@ pub(in crate::client) enum EvidenceGap {
 /// submission is typed by the evidence it was missing. Collapsing them would
 /// make "we did not look" indistinguishable from "we looked and it failed".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::client) enum RefusalCause {
+pub(crate) enum RefusalCause {
     Try(TryCauseKind),
     Evidence(EvidenceGap),
 }
 
 /// A critical Try that did not apply, typed by the stage that observed it.
 #[derive(Debug, Clone)]
-pub(in crate::client) struct ApplyFailure {
+pub(crate) struct ApplyFailure {
     pub stage: MutationStage,
     pub cause: RefusalCause,
     pub message: String,
@@ -249,7 +247,7 @@ pub(in crate::client) struct ApplyFailure {
 
 /// Why a committed desired value is not the applied one.
 #[derive(Debug, Clone)]
-pub(in crate::client) struct RetryableCause {
+pub(crate) struct RetryableCause {
     pub stage: MutationStage,
     pub message: String,
 }
@@ -259,14 +257,15 @@ pub(in crate::client) struct RetryableCause {
 /// The receipt is the recovery baseline; the snapshot is the derived product,
 /// which is published only after the source commit (v2 §5.6).
 #[derive(Debug, Clone)]
-pub(in crate::client) struct AppliedCandidate {
+pub(crate) struct AppliedCandidate {
+    pub replaced: bool,
     pub receipt: Arc<RuntimeApplyReceipt>,
     pub product: Arc<RuntimeSnapshot>,
 }
 
 /// Everything a `RecoveryRequired` state has to remember (v2 §11.4).
 #[derive(Debug, Clone)]
-pub(in crate::client) struct RecoveryContext {
+pub(crate) struct RecoveryContext {
     pub operation_id: OperationId,
     pub runtime_operation: Option<OperationId>,
     pub domain: ConfigDomain,
@@ -285,7 +284,7 @@ pub(in crate::client) struct RecoveryContext {
 
 /// How the critical part of one mutation ended (v2 §4.3).
 #[derive(Debug, Clone)]
-pub(in crate::client) enum RuntimePrepareOutcome {
+pub(crate) enum RuntimePrepareOutcome {
     /// The core confirmed the candidate.
     Applied(AppliedCandidate),
     /// The candidate is safe to commit unapplied: every condition of
@@ -344,7 +343,7 @@ impl RuntimePrepareOutcome {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::client) enum MutationOutcomeKind {
+pub(crate) enum MutationOutcomeKind {
     Applied,
     Deferred,
     SavedInactive,
@@ -355,7 +354,7 @@ pub(in crate::client) enum MutationOutcomeKind {
 
 /// How a settled mutation ended, after its source decision was applied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::client) enum MutationConclusion {
+pub(crate) enum MutationConclusion {
     /// Committed, and whatever the Try produced was accepted.
     Confirmed,
     /// Aborted, and the runtime baseline was verified back in place.
@@ -374,7 +373,7 @@ pub(in crate::client) enum MutationConclusion {
 /// has only the apply as evidence, and whoever reads the operation later needs
 /// to know that (core-manager amendment A2: a check is never a precondition).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::client) enum CheckRecord {
+pub(crate) enum CheckRecord {
     /// No check was owed: nothing critical was going to be applied.
     NotOwed,
     /// The core accepted the document.
@@ -394,7 +393,8 @@ pub(in crate::client) enum CheckRecord {
 /// This is where the cause and the status live. Nothing reads them back out of
 /// an `Ack::Degraded(String)` (v2 §4.4).
 #[derive(Debug, Clone)]
-pub(in crate::client) struct MutationReceipt {
+pub(crate) struct MutationReceipt {
+    pub degradations: Vec<crate::client::runtime::Degradation>,
     pub operation_id: OperationId,
     pub domain: ConfigDomain,
     pub impact: RuntimeImpact,
@@ -412,7 +412,7 @@ pub(in crate::client) struct MutationReceipt {
 /// A committed desired value the core is not running, with its automatic
 /// convergence budget (D11).
 #[derive(Debug, Clone)]
-pub(in crate::client) struct DeferredTarget {
+pub(crate) struct DeferredTarget {
     pub operation_id: OperationId,
     /// Identity of the complete runtime target, including captured content.
     /// Only a different target opens a new automatic budget. A manual save of
@@ -421,12 +421,19 @@ pub(in crate::client) struct DeferredTarget {
     pub baseline: KnownRuntimeState,
     pub cause: RetryableCause,
     pub attempts_remaining: u8,
+    pub attempts: u32,
+    pub health: crate::client::convergence::ConvergenceHealth,
+    pub next_attempt: Option<tokio::time::Instant>,
+    pub domain: ConfigDomain,
+    pub decision: DecisionHandle,
 }
 
 /// What the workflow publishes about mutations, separate from the core
 /// lifecycle status so a diagnostic read never competes with admission.
 #[derive(Debug, Clone, Default)]
-pub(in crate::client) struct MutationJournal {
+pub(crate) struct MutationJournal {
+    pub maintenance: Option<String>,
+    pub event_seq: u64,
     pub completed: std::collections::VecDeque<MutationReceipt>,
     pub recovery: Option<Box<RecoveryContext>>,
     pub deferred: Option<DeferredTarget>,
@@ -437,7 +444,7 @@ pub(in crate::client) struct MutationJournal {
 /// They are deliberately not one number: waiting for admission, waiting for the
 /// source decision are different phases with independent bounds.
 #[derive(Debug, Clone, Copy)]
-pub(in crate::client) struct MutationBudgets {
+pub(crate) struct MutationBudgets {
     /// How long a Try may wait for the execution domain before the mutation is
     /// refused outright. Refusing here is safe: nothing has been tried and
     /// nothing has been committed.
@@ -460,4 +467,4 @@ impl Default for MutationBudgets {
 ///
 /// Manual saves and WaitingDependency checks do not consume it. T8's automatic
 /// execution owner will decrement it for actual automatic apply attempts.
-pub(in crate::client) const DEFERRED_RETRY_BUDGET: u8 = 3;
+pub(crate) const DEFERRED_RETRY_BUDGET: u8 = 3;

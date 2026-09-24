@@ -96,3 +96,26 @@ mod tests {
         assert!(NoopApplicationEffects.shutdown().await.is_empty());
     }
 }
+
+/// Post-commit notification only: never a source-transaction vote.
+pub(crate) trait CommitNotifications: Send + Sync + 'static {
+    fn committed(
+        &self,
+        inputs: super::plan::ApplicationEffectInputs,
+        refresh: bool,
+        requested: Vec<super::plan::EffectKind>,
+    );
+}
+
+#[cfg(test)]
+pub(crate) struct NoopCommitNotifications;
+#[cfg(test)]
+impl CommitNotifications for NoopCommitNotifications {
+    fn committed(
+        &self,
+        _: super::plan::ApplicationEffectInputs,
+        _: bool,
+        _: Vec<super::plan::EffectKind>,
+    ) {
+    }
+}

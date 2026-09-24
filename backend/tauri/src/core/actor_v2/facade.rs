@@ -136,6 +136,7 @@ pub struct CoreFacade {
     // Lost mutation replies must not release the application's execution domain.
     // Terminal operation failures and failed read-only preflights do not set this.
     outcome_uncertain: bool,
+    last_submission: Option<(OperationId, super::endpoint::EndpointHandle)>,
 }
 
 impl CoreFacade {
@@ -145,11 +146,31 @@ impl CoreFacade {
             service,
             shutdown: OnceCell::new(),
             outcome_uncertain: false,
+            last_submission: None,
         }
     }
 
     pub(crate) fn outcome_uncertain(&self) -> bool {
         self.outcome_uncertain
+    }
+
+    /// Queries the exact endpoint that accepted the unknown operation. A host
+    /// handoff must not turn this into a query of an unrelated operation store.
+    pub(crate) async fn original_operation_terminal(&self, id: OperationId) -> bool {
+        let Some((recorded, endpoint)) = &self.last_submission else {
+            return false;
+        };
+        if *recorded != id {
+            return false;
+        }
+        matches!(tokio::time::timeout(Duration::from_secs(5), endpoint.wait_operation(id, Duration::from_secs(5))).await,
+            Ok(Some(info)) if info.id == id.to_string() && matches!(info.phase, OperationPhase::Succeeded | OperationPhase::Failed))
+    }
+
+    /// Only called after the application's recovery verified the chosen target.
+    pub(crate) fn accept_verified_recovery(&mut self) {
+        self.outcome_uncertain = false;
+        self.last_submission = None;
     }
 
     fn observe_mutation<T>(&mut self, result: Result<T, CoreError>) -> Result<T, CoreError> {
@@ -498,6 +519,13 @@ impl CoreFacade {
         &mut self,
         submission: CoreSubmission,
     ) -> Result<OperationOutputInfo, CommandFailure> {
+        let id = submission.envelope.operation_id;
+        self.last_submission = self
+            .core
+            .connected_endpoint()
+            .await
+            .ok()
+            .map(|endpoint| (id, endpoint));
         let ticket = match self.core.submit(submission).await {
             Ok(ticket) => ticket,
             Err(SubmitFailure::NotSubmitted(error)) => {
@@ -508,6 +536,7 @@ impl CoreFacade {
                 return Err(CommandFailure::Unknown(error));
             }
         };
+        self.last_submission = Some((ticket.id, ticket.endpoint.clone()));
         let info = ticket
             .endpoint
             .wait_operation(ticket.id, OPERATION_WAIT)

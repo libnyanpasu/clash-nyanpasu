@@ -54,7 +54,12 @@ test('channel changes are displayed only after persistence succeeds', async ({
   await expect.poll(() => hook.result.current.mutation.isPending).toBe(true)
   expect(hook.result.current.query.data).toBe('stable')
   await hook.act(async () => {
-    commit({ status: 'applied', value: null })
+    commit({
+      status: 'committed',
+      value: null,
+      commits: [],
+      notifications_pending: true,
+    })
     await pending
   })
   await expect.poll(() => hook.result.current.query.data).toBe('beta')

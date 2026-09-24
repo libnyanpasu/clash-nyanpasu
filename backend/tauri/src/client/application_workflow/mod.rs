@@ -1,11 +1,11 @@
 //! Application workflow admission: serializes configuration commits, runtime application,
 //! connection interruption, host changes, binary installation, and shutdown.
 pub(crate) mod adapters;
-pub(in crate::client) mod impact;
+pub(crate) mod impact;
 pub(in crate::client) mod inputs;
-pub(in crate::client) mod mutation;
-pub(in crate::client) mod participant;
-pub(in crate::client) mod policy;
+pub(crate) mod mutation;
+pub(crate) mod participant;
+pub(crate) mod policy;
 pub(in crate::client) mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;
@@ -24,7 +24,6 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult}
 use tokio::sync::{broadcast, watch};
 
 use super::{
-    UiEventSink,
     core_lifecycle::{
         Command as CoreCommand, CoreLifecycleWorkflow, Output, RECOVERY_INTERVAL, ServiceRecovery,
         domain_error,
@@ -98,6 +97,9 @@ pub(super) enum Command {
     /// One source-config mutation, running as a Required participant of the
     /// transaction that produced its candidate.
     Mutation(Box<MutationCommand>),
+    RetryRuntime {
+        explicit: bool,
+    },
 }
 
 struct Response {
@@ -128,6 +130,7 @@ enum Message {
     AdmissionExpired(OperationId),
     DirtyTick,
     RecoveryTick,
+    ConvergenceTick,
     Close,
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
@@ -165,6 +168,7 @@ struct ApplicationWorkflowState {
     dirty: bool,
     timer: Option<tokio::task::JoinHandle<()>>,
     recovery_timer: Option<tokio::task::JoinHandle<()>>,
+    convergence_timer: Option<tokio::task::JoinHandle<()>>,
     recovery_due: bool,
     closing_token: tokio_util::sync::CancellationToken,
     status: watch::Sender<CoreLifecycleStatus>,
@@ -179,6 +183,7 @@ struct ApplicationWorkflowState {
 }
 
 pub(super) struct ApplicationWorkflowArgs {
+    pub notifications: Arc<dyn super::effects::ports::CommitNotifications>,
     /// Read-only committed state. The workflow reads the three source domains
     /// and writes none of them.
     pub application: StateSnapshot<nyanpasu_config::application::NyanpasuAppConfig>,
@@ -192,7 +197,6 @@ pub(super) struct ApplicationWorkflowArgs {
     /// and the core lifecycle confirms or invalidates the binding.
     pub ports: Arc<super::SessionPortResolver>,
     pub installer: Arc<dyn BinaryInstaller>,
-    pub ui: Arc<dyn UiEventSink>,
     pub dirty: watch::Receiver<()>,
     /// The separate budgets of one mutation (v2 §5.5).
     pub budgets: MutationBudgets,
@@ -223,6 +227,7 @@ impl ApplicationWorkflowState {
                 .collect();
             status.shutting_down = self.closing;
         });
+        self.publish_journal(None);
     }
 
     fn settle(&mut self, request: Response, result: Result<Output, CoreError>) {
@@ -287,6 +292,9 @@ impl ApplicationWorkflowState {
         self.closing = true;
         self.closing_token.cancel();
         self.recovery_due = false;
+        if let Some(timer) = self.convergence_timer.take() {
+            timer.abort();
+        }
         if let Some(timer) = self.recovery_timer.take() {
             timer.abort();
         }
@@ -317,7 +325,12 @@ impl ApplicationWorkflowState {
         if uncertain {
             self.status.send_modify(|status| status.uncertain = true);
             self.dirty = false;
+            let mut probes = VecDeque::new();
             while let Some(request) = self.pending.pop_front() {
+                if matches!(&request.command, Command::RetryRuntime { explicit: true }) {
+                    probes.push_back(request);
+                    continue;
+                }
                 // Same rule as the shutdown drain: a rejected mutation is a
                 // finished attempt, and its context moves into the bounded
                 // history with it. Leaving it in `mutations` would strand it —
@@ -325,9 +338,10 @@ impl ApplicationWorkflowState {
                 // settlement this transaction is still going to make would find
                 // a context nobody will act on again.
                 let operation_id = request.response.id;
-                self.reject(request, CoreError::new(CoreErrorKind::OperationConflict, "previous core lifecycle operation has an uncertain outcome; restart the application before further mutations", false));
+                self.reject(request, CoreError::new(CoreErrorKind::OperationConflict, "previous core lifecycle operation has an uncertain outcome; inspect Configuration status and request runtime verification before further mutations", false));
                 self.retire_mutation(operation_id);
             }
+            self.pending = probes;
         }
         let request = if self.closing {
             if self.shutdown.is_some() {
@@ -355,6 +369,23 @@ impl ApplicationWorkflowState {
         {
             Some(Request {
                 command: Command::Core(CoreCommand::RecoverServiceEndpoint),
+                response: Response {
+                    id: OperationId::generate(),
+                    reply: None,
+                },
+            })
+        } else if !uncertain
+            && self
+                .workflow
+                .as_ref()
+                .and_then(|w| w.deferred.as_ref())
+                .is_some_and(|d| {
+                    d.next_attempt
+                        .is_some_and(|at| at <= tokio::time::Instant::now())
+                })
+        {
+            Some(Request {
+                command: Command::RetryRuntime { explicit: false },
                 response: Response {
                     id: OperationId::generate(),
                     reply: None,
@@ -564,6 +595,7 @@ impl ApplicationWorkflowState {
     fn publish_journal(&self, receipt: Option<mutation::MutationReceipt>) {
         let workflow = self.workflow.as_ref();
         self.journal.send_modify(|journal| {
+            journal.event_seq += 1;
             if let Some(receipt) = receipt {
                 if journal.completed.len() == MAX_PENDING {
                     journal.completed.pop_front();
@@ -573,6 +605,10 @@ impl ApplicationWorkflowState {
             if let Some(workflow) = workflow {
                 journal.recovery = workflow.recovery.clone();
                 journal.deferred = workflow.deferred.clone();
+                journal.maintenance = workflow
+                    .pending_product
+                    .as_ref()
+                    .map(|(_, error)| error.clone());
             }
         });
     }
@@ -602,6 +638,9 @@ impl Actor for ApplicationWorkflowActor {
             recovery_timer: args
                 .schedule_dirty_ticks
                 .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick)),
+            convergence_timer: args.schedule_dirty_ticks.then(|| {
+                myself.send_interval(Duration::from_millis(250), || Message::ConvergenceTick)
+            }),
             recovery_due: false,
             status: args.status,
             shutdown: None,
@@ -684,9 +723,7 @@ impl Actor for ApplicationWorkflowActor {
                 // just as over. `retire_mutation` is a no-op for the ids that
                 // never had one, which is every non-mutation command.
                 state.retire_mutation(id);
-                if receipt.is_some() {
-                    state.publish_journal(receipt);
-                }
+                state.publish_journal(receipt);
                 state.settle(active.response, result);
             }
             Message::BeginMutation(request) => state.begin_mutation(*request, &myself),
@@ -712,6 +749,7 @@ impl Actor for ApplicationWorkflowActor {
                     state.dirty = true;
                 }
             }
+            Message::ConvergenceTick => {}
             Message::RecoveryTick => {
                 if !state.closing {
                     state.recovery_due = true;
@@ -743,6 +781,9 @@ impl Actor for ApplicationWorkflowActor {
             timer.abort();
         }
         state.closing_token.cancel();
+        if let Some(timer) = state.convergence_timer.take() {
+            timer.abort();
+        }
         if let Some(timer) = state.recovery_timer.take() {
             timer.abort();
         }
@@ -774,7 +815,7 @@ impl Drop for ClientInner {
 }
 
 #[derive(Clone)]
-pub(super) struct ApplicationWorkflowClient(Arc<ClientInner>);
+pub(crate) struct ApplicationWorkflowClient(Arc<ClientInner>);
 
 macro_rules! method {
     ($name:ident, $command:expr, $variant:ident, $output:ty) => {
@@ -810,19 +851,19 @@ impl ApplicationWorkflowClient {
             args.ports.clone(),
         );
         let workflow = ApplicationWorkflow {
+            notifications: args.notifications,
             profiles: args.profiles,
             clash: args.clash,
             preparation,
             validator: args.validator,
-            ui: args.ui.clone(),
             budgets: args.budgets,
             deferred: None,
+            pending_product: None,
             recovery: None,
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),
                 installer: args.installer,
-                ui: args.ui,
                 runtime: runtime.clone(),
                 ports: args.ports,
                 uncertain: false,
@@ -899,6 +940,40 @@ impl ApplicationWorkflowClient {
     pub(in crate::client) fn mutation_journal(&self) -> MutationJournal {
         self.0.mutations.borrow().clone()
     }
+    pub(crate) fn subscribe_mutations(&self) -> watch::Receiver<MutationJournal> {
+        self.0.mutations.clone()
+    }
+
+    pub(crate) async fn wait_mutation(
+        &self,
+        operation_id: OperationId,
+    ) -> Option<mutation::MutationReceipt> {
+        let mut journal = self.0.mutations.clone();
+        let settled = tokio::time::timeout(
+            Duration::from_secs(180),
+            journal.wait_for(|journal| {
+                journal
+                    .completed
+                    .iter()
+                    .any(|receipt| receipt.operation_id == operation_id)
+            }),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        settled
+            .completed
+            .iter()
+            .find(|receipt| receipt.operation_id == operation_id)
+            .cloned()
+    }
+
+    pub async fn retry_runtime(&self) -> Result<(), CoreError> {
+        self.call(Command::RetryRuntime { explicit: true })
+            .await
+            .map(|_| ())
+    }
+
     pub async fn apply_control_channel(&self) -> Result<(), CoreError> {
         self.call(Command::Core(CoreCommand::ApplyControlChannel))
             .await

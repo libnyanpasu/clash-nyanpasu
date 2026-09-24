@@ -13,15 +13,25 @@ use nyanpasu_config::profile::{
 use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 
-use crate::core::migration::modules::profiles::ProfilesFormat;
+use crate::{
+    client::application_workflow::{
+        impact::{
+            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
+            StagedResourceToken, TouchedContent,
+        },
+        policy::CommandClass,
+    },
+    core::migration::modules::profiles::ProfilesFormat,
+    state::mutation::MutationCoordinator,
+};
+use nyanpasu_core_manager::OperationId;
 use tokio::task::JoinHandle;
 
 use super::{
     ports::{
         MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
-        PreparedMaterialization, ProfileDegradation, ProfileDegradationCode,
-        ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort, RebuildNotifier,
-        SubscriptionFetcher,
+        ProfileDegradation, ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
+        ProfileMaterializationPort, SubscriptionFetcher,
     },
     scheduler::{ExternalWatchers, RemoteUpdateScheduler},
 };
@@ -61,8 +71,22 @@ pub enum ProfilesError {
     ImportFailed { message: String },
     #[error("failed to persist profiles: {0}")]
     Persist(String),
+    #[error("profiles source transaction failed: {source}; staging cleanup: {cleanup:?}")]
+    SourceTransaction {
+        #[source]
+        source: nyanpasu_core::state::ReplaceIfVersionError,
+        cleanup: Option<String>,
+    },
     #[error("profiles state version conflict: expected {expected}, actual {actual}")]
     VersionConflict { expected: u64, actual: u64 },
+    #[error(
+        "profiles state version conflict: expected {expected}, actual {actual}; staging cleanup failed: {cleanup}"
+    )]
+    ConflictCleanup {
+        expected: u64,
+        actual: u64,
+        cleanup: String,
+    },
     #[error("failed to advance profile revision: {0}")]
     Revision(#[from] ProfileRevisionError),
     #[error("profile materialization failed: {0}")]
@@ -79,23 +103,11 @@ pub struct CommitReport {
     pub affects_current: bool,
     /// Crate-internal detail for committed mutations that left maintenance work.
     pub(crate) degradations: Vec<ProfileDegradation>,
+    pub(crate) receipt: crate::client::runtime::CommitReceipt,
+    pub(crate) runtime_degradations: Vec<crate::client::runtime::Degradation>,
     /// Server-generated uid (D13); set by Add / import commit, consumed by
     /// facade auto-activation (design §9).
     pub created: Option<ProfileId>,
-}
-
-/// Outcome of undoing a state-first mutation after promote failure.
-/// Distinguishes full state rollback (hard error) from a retained forward head
-/// (committed + MaterializationDeferred degradation). No string matching required.
-enum StateFirstRollbackOutcome {
-    /// Compensating state commit succeeded. Residual cancel/compensate failures
-    /// still compound into a hard error at the call site.
-    RolledBack {
-        materialization_failures: Vec<String>,
-    },
-    /// Compensating state commit failed; forward head remains authoritative and
-    /// was reconciled for index/scheduler/journal recovery.
-    ForwardRetained { error: ProfilesError },
 }
 
 #[derive(Debug, Clone, serde::Deserialize, specta::Type)]
@@ -112,20 +124,20 @@ pub enum ReorderOp {
 }
 
 pub struct ProfilesActorArgs {
+    pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<Profiles, ProfilesFormat>,
     pub fs: Arc<dyn ProfileFsPort>,
     pub fetcher: Arc<dyn SubscriptionFetcher>,
     pub(crate) materialization: Arc<dyn ProfileMaterializationPort>,
-    pub notifier: Arc<dyn RebuildNotifier>,
 }
 
 pub struct ProfilesActorState {
+    mutations: MutationCoordinator,
     manager: PersistentStateManager<Profiles, ProfilesFormat>,
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,
     fetcher: Arc<dyn SubscriptionFetcher>,
     materialization: Arc<dyn ProfileMaterializationPort>,
-    notifier: Arc<dyn RebuildNotifier>,
     pending_refresh: HashMap<ProfileId, PendingRefresh>,
     pending_imports: HashMap<ImportOperationToken, PendingImport>,
     next_import_token: u64,
@@ -192,6 +204,11 @@ fn synced_name(custom_name: bool, filename: &Option<String>) -> Option<String> {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum ProfilesActorMessage {
+    SaveFile {
+        uid: ProfileId,
+        content: String,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
     SetCurrent {
         current: Option<ProfileId>,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
@@ -357,14 +374,48 @@ impl ProfilesActor {
         state: &mut ProfilesActorState,
         expected_version: Version,
         next: Profiles,
-    ) -> Result<Arc<Profiles>, ProfilesError> {
+        hints: MutationHints,
+        class: CommandClass,
+    ) -> Result<
+        (
+            Arc<Profiles>,
+            (
+                crate::client::runtime::CommitReceipt,
+                Vec<crate::client::runtime::Degradation>,
+            ),
+        ),
+        ProfilesError,
+    > {
+        let operation = OperationId::generate();
+        let participant = state
+            .mutations
+            .participant(operation, hints, class)
+            .map_err(|error| ProfilesError::Persist(error.to_string()))?;
         match state
             .manager
-            .replace_if_version(expected_version, next.clone())
+            .replace_if_version_with_participant(
+                expected_version,
+                next.clone(),
+                participant,
+                || async { Ok(()) },
+                || async { Ok(()) },
+            )
             .await
-            .map_err(|error| ProfilesError::Persist(error.to_string()))?
-        {
-            ReplaceIfVersionResult::Replaced => Ok(Arc::new(next)),
+            .map_err(|source| ProfilesError::SourceTransaction {
+                source,
+                cleanup: None,
+            })? {
+            ReplaceIfVersionResult::Replaced => {
+                let completion = state
+                    .mutations
+                    .finish(
+                        operation,
+                        "profiles",
+                        *state.manager.snapshot_handle().load().version.as_ref(),
+                    )
+                    .await;
+                Ok((Arc::new(next), completion))
+            }
             ReplaceIfVersionResult::Conflict { actual_version } => {
                 Err(ProfilesError::VersionConflict {
                     expected: *expected_version.as_ref(),
@@ -384,22 +435,6 @@ impl ProfilesActor {
         state.external_watchers.reconcile(snapshot, myself);
     }
 
-    fn rollback_candidate(
-        before: &Profiles,
-        committed: &Profiles,
-    ) -> Result<Profiles, ProfilesError> {
-        let mut rollback = committed.clone();
-        rollback.current = before.current.clone();
-        rollback.global_transforms = before.global_transforms.clone();
-        rollback.valid = before.valid.clone();
-        rollback.items = before.items.clone();
-        rollback.bump_revision()?;
-        rollback
-            .validate()
-            .map_err(ProfilesError::ValidationFailed)?;
-        Ok(rollback)
-    }
-
     async fn run_state_write<F>(
         myself: &ActorRef<ProfilesActorMessage>,
         state: &mut ProfilesActorState,
@@ -415,12 +450,16 @@ impl ProfilesActor {
         let mut next = before.clone();
         let affects = mutate(&mut next)?;
         let candidate = Self::prepare_candidate(next)?;
-        let snapshot = Self::persist_candidate(state, expected_version, candidate).await?;
+        let (hints, class) = Self::mutation_hints(&affects, &candidate);
+        let (snapshot, (receipt, runtime_degradations)) =
+            Self::persist_candidate(state, expected_version, candidate, hints, class).await?;
         Self::reconcile_committed(myself, state, &snapshot);
         Ok(CommitReport {
             affects_current: Self::evaluate_affects(&affects, &before, &snapshot),
             snapshot,
             degradations: Vec::new(),
+            receipt,
+            runtime_degradations,
             created: None,
         })
     }
@@ -554,64 +593,6 @@ impl ProfilesActor {
         Ok(())
     }
 
-    async fn rollback_state_first(
-        myself: &ActorRef<ProfilesActorMessage>,
-        state: &mut ProfilesActorState,
-        before: &Profiles,
-        prepared: Option<PreparedMaterialization>,
-        cleanup: Option<PreparedCleanup>,
-    ) -> StateFirstRollbackOutcome {
-        let versioned = state.manager.snapshot_handle().load();
-        let expected_version = versioned.version;
-        let committed = versioned.state.clone();
-        drop(versioned);
-        let rollback = match Self::rollback_candidate(before, &committed) {
-            Ok(rollback) => rollback,
-            Err(error) => {
-                // Forward state is already durable; keep derived state on that head.
-                Self::reconcile_committed(myself, state, &committed);
-                return StateFirstRollbackOutcome::ForwardRetained {
-                    error: ProfilesError::Materialization(format!(
-                        "compensating state commit failed; materialization journal remains recoverable: {error}"
-                    )),
-                };
-            }
-        };
-        let rollback_snapshot = match Self::persist_candidate(state, expected_version, rollback)
-            .await
-        {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                // Forward state is already durable. Keep all derived state aligned
-                // with that committed head while reconciliation finishes recovery.
-                Self::reconcile_committed(myself, state, &committed);
-                return StateFirstRollbackOutcome::ForwardRetained {
-                    error: ProfilesError::Materialization(format!(
-                        "compensating state commit failed; materialization journal remains recoverable: {error}"
-                    )),
-                };
-            }
-        };
-
-        let mut materialization_failures = Vec::new();
-        if let Some(cleanup) = cleanup
-            && let Err(error) =
-                Self::materialization_call(state, move |port| port.cancel_cleanup(&cleanup)).await
-        {
-            materialization_failures.push(format!("failed to cancel cleanup: {error}"));
-        }
-        if let Some(prepared) = prepared
-            && let Err(error) =
-                Self::materialization_call(state, move |port| port.compensate(&prepared)).await
-        {
-            materialization_failures.push(format!("failed to compensate materialization: {error}"));
-        }
-        Self::reconcile_committed(myself, state, &rollback_snapshot);
-        StateFirstRollbackOutcome::RolledBack {
-            materialization_failures,
-        }
-    }
-
     async fn finish_cleanup(
         state: &ProfilesActorState,
         cleanup: PreparedCleanup,
@@ -641,8 +622,42 @@ impl ProfilesActor {
         Vec::new()
     }
 
+    fn mutation_hints(
+        affects: &AffectsRule,
+        candidate: &Profiles,
+    ) -> (MutationHints, CommandClass) {
+        let mut hints = MutationHints::default();
+        if let AffectsRule::Touched(uid) = affects {
+            if let Some(source) = candidate
+                .items
+                .get(uid)
+                .and_then(|item| item.definition.source())
+            {
+                hints.touched.push(TouchedContent {
+                    path: source.materialized().file.clone(),
+                    content_digest: None,
+                    resource: None,
+                });
+            }
+        }
+        let class = if matches!(affects, AffectsRule::CurrentChanged) {
+            hints.activation = candidate
+                .current
+                .clone()
+                .map(ActivationIntent::Activate)
+                .unwrap_or(ActivationIntent::Deactivate);
+            CommandClass::ExplicitSwitch
+        } else {
+            if matches!(affects, AffectsRule::Always | AffectsRule::GlobalChanged) {
+                hints.requested = RequestedRuntimeFields::runtime();
+            }
+            CommandClass::Save
+        };
+        (hints, class)
+    }
+
     #[allow(clippy::too_many_arguments)]
-    async fn commit_state_first(
+    async fn commit_with_resources(
         myself: &ActorRef<ProfilesActorMessage>,
         state: &mut ProfilesActorState,
         expected_version: Version,
@@ -655,20 +670,61 @@ impl ProfilesActor {
     ) -> Result<CommitReport, ProfilesError> {
         let candidate = Self::prepare_candidate(next)?;
         let expected_revision = candidate.revision();
-        let prepared = match resource {
-            Some((path, resource)) => Some(
+        state
+            .mutations
+            .ensure_ready()
+            .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+        let operation = OperationId::generate();
+        let (mut hints, class) = Self::mutation_hints(&affects, &candidate);
+        let prepared = if let Some((path, resource)) = resource {
+            let content = match &resource {
+                MaterializationResource::File { content } => Some(content.clone()),
+                MaterializationResource::Symlink { .. }
+                    if !Self::current_closure(&candidate).iter().any(|uid| {
+                        candidate
+                            .items
+                            .get(uid)
+                            .and_then(|item| item.definition.source())
+                            .is_some_and(|source| source.materialized().file == path)
+                    }) =>
+                {
+                    None
+                }
+                MaterializationResource::Symlink { target } => {
+                    let fs = state.fs.clone();
+                    let target = target.clone();
+                    Some(
+                        tokio::task::spawn_blocking(move || fs.read_external(&target))
+                            .await
+                            .map_err(|error| {
+                                Self::materialization_error("source read task", error)
+                            })?
+                            .map_err(|error| Self::materialization_error("source read", error))?,
+                    )
+                }
+            };
+            hints.touched.push(TouchedContent {
+                path: path.clone(),
+                content_digest: content.as_ref().map(|content| {
+                    ContentDigest::new(nyanpasu_core_manager::payload_digest(content.as_bytes()))
+                }),
+                resource: Some(StagedResourceToken::new(operation.to_string())),
+            });
+            if let Some(content) = content {
+                hints.staged_content.insert(path.to_string(), content);
+            }
+            Some(
                 Self::materialization_call(state, move |port| {
-                    port.prepare_state_first(&path, resource, expected_revision)
+                    port.prepare_file_first(&path, resource, expected_revision)
                 })
                 .await
-                .map_err(|error| {
-                    Self::materialization_error("failed to prepare materialization", error)
-                })?,
-            ),
-            None => None,
+                .map_err(|error| Self::materialization_error("prepare materialization", error))?,
+            )
+        } else {
+            None
         };
-        let cleanup = match cleanup_path {
-            Some(path) => match Self::materialization_call(state, move |port| {
+        let cleanup = if let Some(path) = cleanup_path {
+            match Self::materialization_call(state, move |port| {
                 port.prepare_cleanup(&path, expected_revision)
             })
             .await
@@ -676,101 +732,132 @@ impl ProfilesActor {
                 Ok(cleanup) => Some(cleanup),
                 Err(error) => {
                     if let Some(prepared) = prepared {
-                        let _ = Self::materialization_call(state, move |port| {
-                            port.compensate(&prepared)
-                        })
-                        .await;
-                    }
-                    return Err(Self::materialization_error(
-                        "failed to prepare cleanup",
-                        error,
-                    ));
-                }
-            },
-            None => None,
-        };
-
-        let snapshot = match Self::persist_candidate(state, expected_version, candidate).await {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                let mut failures = Vec::new();
-                if let Some(cleanup) = cleanup
-                    && let Err(cancel) =
-                        Self::materialization_call(state, move |port| port.cancel_cleanup(&cleanup))
-                            .await
-                {
-                    failures.push(format!("failed to cancel cleanup: {cancel}"));
-                }
-                if let Some(prepared) = prepared
-                    && let Err(compensate) =
                         Self::materialization_call(state, move |port| port.compensate(&prepared))
                             .await
-                {
-                    failures.push(format!(
-                        "failed to compensate materialization: {compensate}"
-                    ));
+                            .map_err(|error| {
+                                Self::materialization_error("discard staged resource", error)
+                            })?;
+                    }
+                    return Err(Self::materialization_error("prepare cleanup", error));
                 }
-                return if failures.is_empty() {
-                    Err(error)
-                } else {
-                    Err(ProfilesError::Materialization(format!(
-                        "state commit failed: {error}; {}",
-                        failures.join("; ")
-                    )))
-                };
             }
+        } else {
+            None
         };
-
+        let participant = state
+            .mutations
+            .participant(operation, hints, class)
+            .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+        let write_port = state.materialization.clone();
+        let write_resource = prepared.clone();
+        let recover_port = state.materialization.clone();
+        let recover_resource = prepared.clone();
+        let recover_cleanup = cleanup.clone();
+        let result = state
+            .manager
+            .replace_if_version_with_participant(
+                expected_version,
+                candidate.clone(),
+                participant,
+                move || async move {
+                    tokio::task::spawn_blocking(move || {
+                        if let Some(prepared) = write_resource {
+                            write_port.promote(&prepared)?;
+                        }
+                        anyhow::Ok(())
+                    })
+                    .await?
+                },
+                move || async move {
+                    tokio::task::spawn_blocking(move || {
+                        let resource = recover_resource
+                            .as_ref()
+                            .map(|p| recover_port.compensate(p))
+                            .transpose();
+                        let cleanup = recover_cleanup
+                            .as_ref()
+                            .map(|c| recover_port.cancel_cleanup(c))
+                            .transpose();
+                        match (resource, cleanup) {
+                            (Ok(_), Ok(_)) => Ok(()),
+                            (resource, cleanup) => anyhow::bail!(
+                                "resource recovery: {resource:?}; cleanup recovery: {cleanup:?}"
+                            ),
+                        }
+                    })
+                    .await?
+                },
+            )
+            .await;
+        match result {
+            Ok(ReplaceIfVersionResult::Replaced) => {}
+            result => {
+                // Only a pre-persistence refusal leaves staging to discard here.
+                // Once local_write starts, the source task exclusively owns
+                // compensation and publishes its result before releasing admission.
+                let before_write = matches!(
+                    &result,
+                    Ok(ReplaceIfVersionResult::Conflict { .. })
+                        | Err(nyanpasu_core::state::ReplaceIfVersionError::State(
+                            nyanpasu_core::state::error::StateChangedError::PrepareAck(_)
+                        ))
+                );
+                let mut failures = Vec::new();
+                if before_write {
+                    if let Some(prepared) = prepared {
+                        if let Err(error) = Self::materialization_call(state, move |port| {
+                            port.compensate(&prepared)
+                        })
+                        .await
+                        {
+                            failures.push(error.to_string());
+                        }
+                    }
+                    if let Some(cleanup) = cleanup {
+                        if let Err(error) = Self::materialization_call(state, move |port| {
+                            port.cancel_cleanup(&cleanup)
+                        })
+                        .await
+                        {
+                            failures.push(error.to_string());
+                        }
+                    }
+                }
+                return Err(match result {
+                    Err(source) => ProfilesError::SourceTransaction {
+                        source,
+                        cleanup: (!failures.is_empty()).then(|| failures.join("; ")),
+                    },
+                    Ok(ReplaceIfVersionResult::Conflict { actual_version }) => {
+                        if failures.is_empty() {
+                            ProfilesError::VersionConflict {
+                                expected: *expected_version.as_ref(),
+                                actual: *actual_version.as_ref(),
+                            }
+                        } else {
+                            ProfilesError::ConflictCleanup {
+                                expected: *expected_version.as_ref(),
+                                actual: *actual_version.as_ref(),
+                                cleanup: failures.join("; "),
+                            }
+                        }
+                    }
+                    Ok(ReplaceIfVersionResult::Replaced) => unreachable!(),
+                });
+            }
+        }
+        let (receipt, runtime_degradations) = state
+            .mutations
+            .finish(
+                operation,
+                "profiles",
+                *state.manager.snapshot_handle().load().version.as_ref(),
+            )
+            .await;
+        let snapshot = Arc::new(candidate);
+        Self::reconcile_committed(myself, state, &snapshot);
         let mut degradations = Vec::new();
         if let Some(prepared) = prepared {
-            if let Err(error) = Self::materialization_call(state, {
-                let prepared = prepared.clone();
-                move |port| port.promote(&prepared)
-            })
-            .await
-            {
-                // State CAS already committed. Full rollback → hard error; failed
-                // compensating state with forward retained → degraded Ok report.
-                return match Self::rollback_state_first(
-                    myself,
-                    state,
-                    &before,
-                    Some(prepared),
-                    cleanup,
-                )
-                .await
-                {
-                    StateFirstRollbackOutcome::RolledBack {
-                        materialization_failures,
-                    } if materialization_failures.is_empty() => Err(Self::materialization_error(
-                        "materialization promotion failed",
-                        error,
-                    )),
-                    StateFirstRollbackOutcome::RolledBack {
-                        materialization_failures,
-                    } => {
-                        let residual =
-                            ProfilesError::Materialization(materialization_failures.join("; "));
-                        Err(ProfilesError::Materialization(format!(
-                            "materialization promotion failed: {error}; {residual}"
-                        )))
-                    }
-                    StateFirstRollbackOutcome::ForwardRetained {
-                        error: rollback_error,
-                    } => Ok(CommitReport {
-                        affects_current: Self::evaluate_affects(&affects, &before, &snapshot),
-                        snapshot,
-                        degradations: vec![ProfileDegradation {
-                            phase: ProfileDegradationPhase::Reconcile,
-                            code: ProfileDegradationCode::MaterializationDeferred,
-                            message: format!(
-                                "materialization promotion failed: {error}; {rollback_error}"
-                            ),
-                        }],
-                        created,
-                    }),
-                };
-            }
             if let Err(error) =
                 Self::materialization_call(state, move |port| port.complete(&prepared)).await
             {
@@ -781,8 +868,6 @@ impl ProfilesActor {
                 });
             }
         }
-
-        Self::reconcile_committed(myself, state, &snapshot);
         if let Some(cleanup) = cleanup {
             degradations.extend(Self::finish_cleanup(state, cleanup, &snapshot).await);
         }
@@ -790,6 +875,8 @@ impl ProfilesActor {
             affects_current: Self::evaluate_affects(&affects, &before, &snapshot),
             snapshot,
             degradations,
+            receipt,
+            runtime_degradations,
             created,
         })
     }
@@ -805,68 +892,18 @@ impl ProfilesActor {
         path: ManagedProfilePath,
         content: String,
     ) -> Result<CommitReport, ProfilesError> {
-        let candidate = Self::prepare_candidate(next)?;
-        let expected_revision = candidate.revision();
-        let prepared = Self::materialization_call(state, move |port| {
-            port.prepare_file_first(
-                &path,
-                MaterializationResource::File { content },
-                expected_revision,
-            )
-        })
+        Self::commit_with_resources(
+            myself,
+            state,
+            expected_version,
+            before,
+            next,
+            affects,
+            Some((path, MaterializationResource::File { content })),
+            None,
+            None,
+        )
         .await
-        .map_err(|error| {
-            Self::materialization_error("failed to prepare file materialization", error)
-        })?;
-        if let Err(error) = Self::materialization_call(state, {
-            let prepared = prepared.clone();
-            move |port| port.promote(&prepared)
-        })
-        .await
-        {
-            let compensation =
-                Self::materialization_call(state, move |port| port.compensate(&prepared)).await;
-            return Err(match compensation {
-                Ok(()) => {
-                    Self::materialization_error("file materialization promotion failed", error)
-                }
-                Err(compensation) => ProfilesError::Materialization(format!(
-                    "file materialization promotion failed: {error}; failed to restore previous bytes: {compensation}"
-                )),
-            });
-        }
-        let snapshot = match Self::persist_candidate(state, expected_version, candidate).await {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                return match Self::materialization_call(state, move |port| {
-                    port.compensate(&prepared)
-                })
-                .await
-                {
-                    Ok(()) => Err(error),
-                    Err(compensation) => Err(ProfilesError::Materialization(format!(
-                        "state commit failed: {error}; failed to restore previous bytes: {compensation}"
-                    ))),
-                };
-            }
-        };
-        Self::reconcile_committed(myself, state, &snapshot);
-        let mut degradations = Vec::new();
-        if let Err(error) =
-            Self::materialization_call(state, move |port| port.complete(&prepared)).await
-        {
-            degradations.push(ProfileDegradation {
-                phase: ProfileDegradationPhase::Reconcile,
-                code: ProfileDegradationCode::MaterializationDeferred,
-                message: format!("materialization completion deferred: {error}"),
-            });
-        }
-        Ok(CommitReport {
-            affects_current: Self::evaluate_affects(&affects, &before, &snapshot),
-            snapshot,
-            degradations,
-            created: None,
-        })
     }
 
     async fn reconcile_materializations(
@@ -1067,12 +1104,12 @@ impl Actor for ProfilesActor {
 
         let index = ProfileDependencyIndex::build(&args.manager.snapshot_handle().load().state);
         Ok(ProfilesActorState {
+            mutations: args.mutations,
             manager: args.manager,
             index,
             fs: args.fs,
             fetcher: args.fetcher,
             materialization: args.materialization,
-            notifier: args.notifier,
             pending_refresh: HashMap::new(),
             pending_imports: HashMap::new(),
             next_import_token: 1,
@@ -1117,6 +1154,47 @@ impl Actor for ProfilesActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            ProfilesActorMessage::SaveFile {
+                uid,
+                content,
+                reply,
+            } => {
+                let result = async {
+                    let versioned = state.manager.snapshot_handle().load();
+                    let before = versioned.state.clone();
+                    let item = before
+                        .items
+                        .get(&uid)
+                        .ok_or_else(|| ProfilesError::ProfileNotFound(uid.clone()))?;
+                    let source = item
+                        .definition
+                        .source()
+                        .ok_or(ProfilesError::ProfileHasNoFile)?;
+                    let path = match source {
+                        ProfileSource::Local {
+                            binding: LocalBinding::Managed { materialized },
+                        } => materialized.file.clone(),
+                        _ => {
+                            return Err(ProfilesError::FileNotWritable {
+                                reason: "only managed local profiles are writable".into(),
+                            });
+                        }
+                    };
+                    Self::commit_file_first(
+                        &myself,
+                        state,
+                        versioned.version,
+                        before.clone(),
+                        before,
+                        AffectsRule::Touched(uid),
+                        path,
+                        content,
+                    )
+                    .await
+                }
+                .await;
+                let _ = reply.send(result);
+            }
             ProfilesActorMessage::SetCurrent { current, reply } => {
                 let result = Self::run_state_write(&myself, state, |profiles| {
                     profiles.set_current(current);
@@ -1209,7 +1287,7 @@ impl Actor for ProfilesActor {
                             if !next.append_item(item) {
                                 Err(ProfilesError::Persist("uid collision".into()))
                             } else {
-                                Self::commit_state_first(
+                                Self::commit_with_resources(
                                     &myself,
                                     state,
                                     expected_version,
@@ -1250,7 +1328,7 @@ impl Actor for ProfilesActor {
                         .map(|source| source.materialized().file.clone());
                     let mut next = before.clone();
                     next.remove_item_unchecked(&uid);
-                    Self::commit_state_first(
+                    Self::commit_with_resources(
                         &myself,
                         state,
                         expected_version,
@@ -1577,12 +1655,6 @@ impl Actor for ProfilesActor {
                     }
                 };
 
-                if reply.is_none()
-                    && let Ok(report) = &result
-                    && report.affects_current
-                {
-                    state.notifier.request_rebuild();
-                }
                 if let Some(reply) = reply {
                     let _ = reply.send(result);
                 }
@@ -1743,7 +1815,7 @@ impl Actor for ProfilesActor {
                                 // If the caller closed between the pre-check and
                                 // the first durable step, a complete valid profile
                                 // may still remain — never an empty shell.
-                                Self::commit_state_first(
+                                Self::commit_with_resources(
                                     &myself,
                                     state,
                                     expected_version,
@@ -1855,7 +1927,6 @@ impl Actor for ProfilesActor {
                     )
                     .await
                     {
-                        Ok(report) if report.affects_current => state.notifier.request_rebuild(),
                         Ok(_) => {}
                         Err(error) => {
                             tracing::warn!(uid = %uid, %error, "failed to commit external profile change")
@@ -1883,7 +1954,6 @@ impl Actor for ProfilesActor {
                 })
                 .await;
                 match result {
-                    Ok(report) if report.affects_current => state.notifier.request_rebuild(),
                     Ok(_) => {}
                     Err(error) => {
                         tracing::warn!(uid = %uid, %error, "failed to commit external profile change")
@@ -1958,7 +2028,7 @@ impl Actor for ProfilesActor {
                                     .get_mut(&uid)
                                     .expect("replacement target remains in the candidate snapshot");
                                 item.set_definition(definition);
-                                Self::commit_state_first(
+                                Self::commit_with_resources(
                                     &myself,
                                     state,
                                     expected_version,

@@ -51,7 +51,7 @@ use super::{
 /// the ordinary Cancel path instead of being abandoned with the waiter.
 const MUTATION_ACK_TIMEOUT: Duration = Duration::from_secs(90);
 
-pub(in crate::client) struct ApplicationMutationParticipant<T: MutationDomain> {
+pub(crate) struct ApplicationMutationParticipant<T: MutationDomain> {
     operation_id: OperationId,
     hints: MutationHints,
     class: CommandClass,

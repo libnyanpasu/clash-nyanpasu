@@ -42,13 +42,12 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
     };
     let (application, _, clash) = test_typed_config_clients(dir).await;
-    let (notifier, _dirty) = super::super::DirtyNotifier::channel();
     let profiles = crate::client::profiles::ProfilesClient::new(
+        crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),
         Arc::new(MockProfileFsPort::new()),
         Arc::new(MockSubscriptionFetcher::new()),
         test_materialization_port(),
-        Arc::new(notifier),
     )
     .await
     .unwrap();

@@ -1,3 +1,4 @@
+use crate::client::UiEventSink;
 mod connection_policy;
 mod mutations;
 mod recovery;
@@ -270,11 +271,11 @@ async fn dirty_graph_with_clients(
     let (application, _, clash) = test_typed_config_clients(dir).await;
     let (notifier, dirty) = DirtyNotifier::channel();
     let profiles = super::super::profiles::ProfilesClient::new(
+        crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),
         Arc::new(MockProfileFsPort::new()),
         Arc::new(MockSubscriptionFetcher::new()),
         test_materialization_port(),
-        Arc::new(notifier.clone()),
     )
     .await
     .unwrap();
@@ -298,6 +299,7 @@ async fn dirty_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
@@ -310,7 +312,7 @@ async fn dirty_graph_with_clients(
             )),
             ports,
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-            ui: Arc::new(super::super::NoopUiEventSink),
+
             dirty,
             budgets: mutation::MutationBudgets::default(),
         },
@@ -463,11 +465,14 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     args.service = service;
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        client.reconcile_core().await.unwrap();
         let switch = {
             let client = client.clone();
             tokio::spawn(async move { client.set_execution_host(true).await })
         };
-        endpoint.entered.notified().await;
+        tokio::time::timeout(Duration::from_secs(5), endpoint.entered.notified())
+            .await
+            .unwrap();
         let mut uninstall = Box::pin(client.uninstall_service());
         assert!(uninstall.as_mut().now_or_never().is_none());
         barrier(&client.inner.application_workflow).await;
@@ -476,7 +481,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         endpoint.release.notify_one();
         assert!(matches!(
             switch.await.unwrap().unwrap(),
-            runtime::MutationOutcome::Applied { .. }
+            runtime::MutationOutcome::Committed { .. }
         ));
         assert_eq!(
             uninstall.await.unwrap_err().kind,
@@ -691,6 +696,8 @@ fn replacement_decisions_use_applied_identity_and_always_recover() {
     for (desired, kind, stopped, target, before_copy, restart) in cases {
         let f = Fixture::new(false, false, false);
         tauri::async_runtime::block_on(async {
+            f.endpoint
+                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
             let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
             patch.core = Some(desired);
             f.client.patch_app_config(patch).await.unwrap();
@@ -895,7 +902,9 @@ fn override_patch(
 async fn disable_mode_interruption(client: &NyanpasuClient) {
     let mut config = client.get_clash_config().await.unwrap();
     config.break_connection.on_mode_change = false;
-    client.replace_clash_config(config).await.unwrap();
+    let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+    patch.break_connection = Some(config.break_connection);
+    client.patch_clash_config(patch).await.unwrap();
 }
 
 #[test]
@@ -906,6 +915,7 @@ fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
         NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint.clone()))
             .unwrap();
     tauri::async_runtime::block_on(async {
+        endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let (left, right) = tokio::join!(
             client.patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"}))),
@@ -920,7 +930,7 @@ fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
         let applied = client.runtime_lifecycle_state().await.promoted.unwrap();
         assert_eq!(applied.config["mode"].as_str(), Some("global"));
         assert_eq!(applied.config["ipv6"].as_bool(), Some(true));
-        assert_eq!(applied.revision.get(), 2);
+        assert_eq!(applied.revision.get(), 3);
         assert_eq!(endpoint.submissions(), 2);
     });
 }
@@ -933,17 +943,17 @@ fn config_reconcile_failure_reports_committed_state_without_replaying() {
     let config_path = args.paths.clash_config_path();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let outcome = client
             .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"direct"})))
             .await
             .unwrap();
         assert_eq!(outcome.degradations().len(), 1);
-        assert_eq!(outcome.degradations()[0].code, "config_reconcile_failed");
-        assert!(
-            outcome.degradations()[0]
-                .message
-                .contains("configuration saved")
+        assert_eq!(outcome.degradations()[0].code, "runtime_deferred");
+        assert_eq!(
+            client.configuration_status().runtime.health,
+            crate::client::convergence::ConvergenceHealth::RetryScheduled
         );
         assert_eq!(endpoint.submissions(), 1);
         let persisted: nyanpasu_config::clash::config::ClashConfig =
@@ -985,6 +995,7 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     args.bridges.clash = bridge.clone();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let before = client.inner.clash_config.snapshot();
         bridge.0.store(true, Ordering::SeqCst);
@@ -1001,7 +1012,16 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
             serde_json::to_value(before.state).unwrap()
         );
         assert_eq!(endpoint.submissions(), 0);
-        assert!(client.runtime_lifecycle_state().await.promoted.is_none());
+        assert_eq!(
+            client
+                .runtime_lifecycle_state()
+                .await
+                .promoted
+                .unwrap()
+                .revision
+                .get(),
+            1
+        );
     });
 }
 
@@ -1042,15 +1062,18 @@ async fn queued_config_apply_waits_for_active_lifecycle_work() {
 }
 
 #[test]
-fn config_persistence_failure_leaves_state_unchanged_and_never_reconciles() {
+fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let args = test_client_args_with_endpoint(&dir, endpoint.clone());
     let path = args.paths.clash_config_path();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let before = client.inner.clash_config.snapshot();
+        let mut settled = client.inner.application_workflow.subscribe_mutations();
+        let completed = settled.borrow().completed.len();
         if path.exists() {
             std::fs::remove_file(&path).unwrap();
         }
@@ -1067,7 +1090,19 @@ fn config_persistence_failure_leaves_state_unchanged_and_never_reconciles() {
             serde_json::to_value(after.state).unwrap(),
             serde_json::to_value(before.state).unwrap()
         );
-        assert_eq!(endpoint.submissions(), 0);
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            settled.wait_for(|journal| journal.completed.len() > completed),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            endpoint.submissions(),
+            2,
+            "Try applied and Cancel restored the baseline"
+        );
+        assert!(!client.core_lifecycle_status().uncertain);
     });
 }
 
@@ -1088,7 +1123,7 @@ impl UiEventSink for FailingConfigTray {
 }
 
 #[test]
-fn config_ui_failure_is_degraded_after_successful_reconcile() {
+fn legacy_ui_callbacks_do_not_vote_on_a_successful_reconcile() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let ui = Arc::new(FailingConfigTray {
@@ -1098,19 +1133,14 @@ fn config_ui_failure_is_degraded_after_successful_reconcile() {
     args.ui_sink = ui.clone();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
+        endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let outcome = client
             .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
             .await
             .unwrap();
         assert_eq!(endpoint.submissions(), 1);
-        assert_eq!(ui.refreshed.load(Ordering::SeqCst), 1);
-        assert_eq!(outcome.degradations().len(), 1);
-        assert_eq!(outcome.degradations()[0].code, "config_tray_refresh_failed");
-        assert_eq!(
-            outcome.degradations()[0].phase,
-            runtime::DegradationPhase::UiEffect
-        );
+        assert!(outcome.degradations().is_empty());
         assert_eq!(
             client
                 .runtime_lifecycle_state()
@@ -1131,6 +1161,7 @@ fn control_channel_reconcile_reads_committed_clash_config() {
 
     let f = Fixture::new(false, false, false);
     tauri::async_runtime::block_on(async {
+        f.endpoint.prime(&f.client).await;
         for (channel, disable_http, policy) in [
             (ClashControlChannel::HttpOnly, true, LocalIpcPolicy::Disable),
             (

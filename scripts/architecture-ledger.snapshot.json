@@ -4,10 +4,10 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 83,
+      "total": 49,
       "byKey": {
-        "Config::verge()": 64,
-        "Config::clash()": 19
+        "Config::verge()": 32,
+        "Config::clash()": 17
       }
     },
     "service_globals": {
@@ -20,24 +20,23 @@
       }
     },
     "migration_markers": {
-      "total": 12,
+      "total": 8,
       "byKey": {
-        "TODO(actor-migration)": 9,
-        "FIXME(actor-migration)": 3
+        "TODO(actor-migration)": 6,
+        "FIXME(actor-migration)": 2
       }
     },
     "legacy_dto_refs": {
-      "total": 320,
+      "total": 235,
       "byKey": {
-        "IVerge": 183,
-        "IClashTemp": 31,
-        "LegacyVergeBridge": 31,
+        "IVerge": 120,
+        "IClashTemp": 30,
+        "LegacyVergeBridge": 21,
         "VergeLegacyBridge": 21,
         "ClashLegacyBridge": 19,
-        "LegacyClashBridge": 10,
-        "LegacyVergePatchRoute": 9,
-        "LegacyWindowBridge": 7,
-        "legacy_iverge_from_typed": 4,
+        "LegacyClashBridge": 8,
+        "LegacyWindowBridge": 6,
+        "legacy_iverge_from_typed": 5,
         "typed_patches_from_legacy_patch": 4,
         "IClash": 1
       }

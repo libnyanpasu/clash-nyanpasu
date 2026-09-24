@@ -46,7 +46,7 @@ use crate::{
 ///
 /// [`runtime_apply_kind`]: crate::client::effects::plan::runtime_apply_kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(in crate::client) enum RuntimeImpact {
+pub(crate) enum RuntimeImpact {
     /// No build input and no control-channel input moved. There is nothing
     /// critical to try, and the mutation is a plain source-config save.
     None,
@@ -67,7 +67,7 @@ pub(in crate::client) enum RuntimeImpact {
 /// not touch the selection" from "the user asked for the profile that is
 /// already selected", and the second still owes a one-shot action.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(in crate::client) enum ActivationIntent {
+pub(crate) enum ActivationIntent {
     /// The request does not address the current selection.
     #[default]
     None,
@@ -85,10 +85,8 @@ pub(in crate::client) enum ActivationIntent {
 /// Opaque here: the classification only needs it to travel with the path it
 /// belongs to, and the producer (the profiles domain) owns the algorithm.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::client) struct ContentDigest(String);
+pub(crate) struct ContentDigest(String);
 
-// Produced by the profiles actor when it stages bytes for a managed path (T6).
-#[allow(dead_code)]
 impl ContentDigest {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -105,10 +103,8 @@ impl ContentDigest {
 /// each stage their own bytes for one path, so the handle is bound to the
 /// request's `OperationId` (roadmap §4.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::client) struct StagedResourceToken(String);
+pub(crate) struct StagedResourceToken(String);
 
-// Produced by the profiles actor when it stages bytes for a managed path (T6).
-#[allow(dead_code)]
 impl StagedResourceToken {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -125,7 +121,7 @@ impl StagedResourceToken {
 /// cannot see that the same path now holds different content. A subscription
 /// refresh that rewrites the selected profile's file is exactly that case.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::client) struct TouchedContent {
+pub(crate) struct TouchedContent {
     /// The managed path whose bytes this request replaces.
     pub path: ManagedProfilePath,
     /// Digest of the staged bytes, when the producer computed one.
@@ -156,12 +152,10 @@ pub(in crate::client) struct TouchedContent {
 /// unrelated field alongside it. Manual re-evaluation does not spend the
 /// automatic apply budget.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(in crate::client) struct RequestedRuntimeFields {
+pub(crate) struct RequestedRuntimeFields {
     named: bool,
 }
 
-// The domain actors begin producing this intent in T6.
-#[allow(dead_code)]
 impl RequestedRuntimeFields {
     /// A request that replaced the whole document rather than patching it.
     pub fn whole_document() -> Self {
@@ -220,7 +214,8 @@ impl RequestedRuntimeFields {
 /// second still carries a command, and dropping it would silently change
 /// behaviour that users depend on (roadmap C7/D6).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(in crate::client) struct MutationHints {
+pub(crate) struct MutationHints {
+    pub requested_owners: Vec<crate::client::effects::plan::EffectKind>,
     /// The request carried a `mode` field, whether or not the value moved.
     ///
     /// This is the repeated-mode command semantics: re-submitting the current
@@ -231,6 +226,8 @@ pub(in crate::client) struct MutationHints {
     pub activation: ActivationIntent,
     /// Managed content this request replaces.
     pub touched: Vec<TouchedContent>,
+    /// Private candidate bytes, owned by this attempt until its source settles.
+    pub staged_content: std::collections::BTreeMap<String, String>,
     /// Which runtime-relevant fields the request explicitly named.
     pub requested: RequestedRuntimeFields,
 }
@@ -284,7 +281,7 @@ impl<'a> ApplicationRuntimeInputs<'a> {
     }
 }
 
-pub(in crate::client) fn classify_application(
+pub(crate) fn classify_application(
     previous: &NyanpasuAppConfig,
     candidate: &NyanpasuAppConfig,
 ) -> RuntimeImpact {
@@ -349,10 +346,7 @@ impl<'a> ClashRuntimeInputs<'a> {
 ///
 /// One verdict for build inputs and control-channel inputs alike: they are
 /// decided by the same candidate and settled by one reconcile (roadmap §6.2).
-pub(in crate::client) fn classify_clash(
-    previous: &ClashConfig,
-    candidate: &ClashConfig,
-) -> RuntimeImpact {
+pub(crate) fn classify_clash(previous: &ClashConfig, candidate: &ClashConfig) -> RuntimeImpact {
     if ClashRuntimeInputs::of(previous) == ClashRuntimeInputs::of(candidate) {
         RuntimeImpact::None
     } else {
@@ -376,7 +370,7 @@ pub(in crate::client) fn classify_clash(
 /// [`MutationHints::activation`] is not read here. Re-selecting the profile that
 /// is already current leaves the built config identical, so it owes a one-shot
 /// action rather than a rebuild, exactly as it does today.
-pub(in crate::client) fn classify_profiles(
+pub(crate) fn classify_profiles(
     previous: &Profiles,
     candidate: &Profiles,
     hints: &MutationHints,
@@ -440,11 +434,11 @@ pub(in crate::client) fn classify_profiles(
 ///
 /// `None` when the projection cannot be serialized. A target with no identity
 /// is never treated as equal to another one.
-pub(in crate::client) fn application_target(candidate: &NyanpasuAppConfig) -> Option<String> {
+pub(crate) fn application_target(candidate: &NyanpasuAppConfig) -> Option<String> {
     digest(&ApplicationRuntimeInputs::of(candidate))
 }
 
-pub(in crate::client) fn clash_target(candidate: &ClashConfig) -> Option<String> {
+pub(crate) fn clash_target(candidate: &ClashConfig) -> Option<String> {
     digest(&ClashRuntimeInputs::of(candidate))
 }
 
@@ -464,7 +458,7 @@ pub(in crate::client) fn clash_target(candidate: &ClashConfig) -> Option<String>
 /// This is the structural projection. `RuntimeInputs` combines it with the
 /// captured file contents so content changes remain distinct even when a
 /// producer has not advanced a materialization stamp.
-pub(in crate::client) fn profiles_target(candidate: &Profiles) -> Option<String> {
+pub(crate) fn profiles_target(candidate: &Profiles) -> Option<String> {
     let closure = ProfilesActor::current_closure(candidate);
     digest(&ProfilesRuntimeInputs {
         current: candidate.current.as_ref(),
@@ -524,7 +518,7 @@ fn closure_files<'a>(
 /// because then "nothing changed for you" and "you are behind" would be one
 /// indistinguishable signal.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(in crate::client) struct ChangedOwnerInputs(BTreeSet<EffectKind>);
+pub(crate) struct ChangedOwnerInputs(BTreeSet<EffectKind>);
 
 impl ChangedOwnerInputs {
     /// Reuses the effect plan's struct-patch diff, so an owner appears here on

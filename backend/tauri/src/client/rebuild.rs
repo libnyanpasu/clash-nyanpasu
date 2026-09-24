@@ -85,10 +85,7 @@ impl NyanpasuClient {
                 nyanpasu_config::application::ClashCore::Meow
             }
         };
-        self.update_core(core)
-            .await
-            .map(|_| ())
-            .map_err(super::client_error_from_core)
+        self.update_core(core).await.map(|_| ())
     }
 
     /// Boot fallback (spec §5.6, D8): the default config is ALSO routed through
@@ -144,6 +141,7 @@ mod tests {
         .unwrap();
 
         tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
             client
                 .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
                 .await
@@ -157,15 +155,16 @@ mod tests {
     }
 
     #[test]
-    fn change_core_failure_keeps_the_committed_selection() {
+    fn change_core_failure_preserves_the_previous_selection() {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = crate::client::tests::TestControlEndpoint::failing();
         let client = crate::client::NyanpasuClient::try_new_with_args(
-            crate::client::tests::test_client_args_with_endpoint(&dir, endpoint),
+            crate::client::tests::test_client_args_with_endpoint(&dir, endpoint.clone()),
         )
         .unwrap();
 
         tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
             assert!(
                 client
                     .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
@@ -174,7 +173,7 @@ mod tests {
             );
             assert_eq!(
                 client.get_app_config().await.unwrap().core,
-                nyanpasu_config::application::ClashCore::ClashRs
+                nyanpasu_config::application::ClashCore::Mihomo
             );
         });
     }
@@ -202,11 +201,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = crate::client::tests::TestControlEndpoint::succeeding();
         let client = crate::client::NyanpasuClient::try_new_with_args(
-            crate::client::tests::test_client_args_with_endpoint(&dir, endpoint),
+            crate::client::tests::test_client_args_with_endpoint(&dir, endpoint.clone()),
         )
         .unwrap();
 
         tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
             client
                 .change_core(crate::config::nyanpasu::ClashCore::ClashRs)
                 .await
@@ -223,11 +223,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = crate::client::tests::TestControlEndpoint::succeeding();
         let client = crate::client::NyanpasuClient::try_new_with_args(
-            crate::client::tests::test_client_args_with_endpoint(&dir, endpoint),
+            crate::client::tests::test_client_args_with_endpoint(&dir, endpoint.clone()),
         )
         .unwrap();
 
         tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
             client
                 .update_core(nyanpasu_config::application::ClashCore::ClashRs)
                 .await

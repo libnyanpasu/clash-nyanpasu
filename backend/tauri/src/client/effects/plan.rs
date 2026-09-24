@@ -144,7 +144,20 @@ impl ApplicationEffectInputs {
 /// Execution order of a plan. The ordering is load-bearing: the tray menu is
 /// rendered with the process-wide locale, and the proxy guard re-applies the
 /// system proxy value that the `SystemProxy` effect just installed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum EffectKind {
     Locale,
     Logger,
@@ -265,6 +278,10 @@ pub struct ApplicationEffectPlan {
 }
 
 impl ApplicationEffectPlan {
+    pub(crate) fn from_effects(effects: Vec<ApplicationEffect>) -> Self {
+        Self { effects }
+    }
+
     /// Incremental: fields that are equal in both snapshots produce nothing.
     pub fn diff(before: &ApplicationEffectInputs, after: &ApplicationEffectInputs) -> Self {
         after.desired().into_patch_by_diff(before.desired()).into()
@@ -1087,4 +1104,45 @@ mod tests {
         assert_eq!(runtime_apply_kind(&before, &after), RuntimeApplyKind::None);
         assert!(ApplicationEffectPlan::diff(&before, &after).is_empty());
     }
+}
+
+/// Named owner inputs matter even when a user saves the same failed value.
+pub(crate) fn requested_owners(
+    patch: &nyanpasu_config::application::NyanpasuAppConfigPatch,
+) -> Vec<EffectKind> {
+    let mut kinds = Vec::new();
+    if patch.enable_system_proxy.is_some()
+        || patch.system_proxy_bypass.is_some()
+        || patch.pac_url.is_some()
+    {
+        kinds.push(EffectKind::SystemProxy);
+    }
+    if patch.enable_proxy_guard.is_some() || patch.proxy_guard_interval.is_some() {
+        kinds.push(EffectKind::ProxyGuard);
+    }
+    if patch.hotkeys.is_some() {
+        kinds.push(EffectKind::Hotkeys);
+    }
+    if patch.enable_auto_launch.is_some() {
+        kinds.push(EffectKind::AutoLaunch);
+    }
+    if patch.language.is_some() {
+        kinds.push(EffectKind::Locale);
+    }
+    if patch.app_log_level.is_some() || patch.max_log_files.is_some() {
+        kinds.push(EffectKind::Logger);
+    }
+    if patch.network_statistic_widget.is_some() {
+        kinds.push(EffectKind::Widget);
+    }
+    if patch.language.is_some()
+        || patch.tray_menu_mode.is_some()
+        || patch.tray_selector_mode.is_some()
+        || patch.enable_tray_text.is_some()
+        || patch.enable_tray_traffic.is_some()
+        || patch.enable_system_proxy.is_some()
+    {
+        kinds.push(EffectKind::Tray);
+    }
+    kinds
 }

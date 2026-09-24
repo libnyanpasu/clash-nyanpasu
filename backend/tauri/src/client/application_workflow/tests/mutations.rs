@@ -79,6 +79,7 @@ struct ParkingBuilder {
     /// with no receipt at all.
     panic: AtomicBool,
     calls: AtomicUsize,
+    fail_publish: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -111,6 +112,10 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
             .await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.fail_publish.load(Ordering::SeqCst),
+            "scripted product publication failure"
+        );
         self.delegate.publish(snapshot).await
     }
 }
@@ -324,6 +329,7 @@ async fn fixture_with_daemon(
         release: Notify::new(),
         park: AtomicBool::new(false),
         panic: AtomicBool::new(false),
+        fail_publish: AtomicBool::new(false),
     });
     let store = runtime::RuntimeSnapshotStore::default();
     let ports = Arc::new(SessionPortResolver::new(store.clone()));
@@ -338,6 +344,7 @@ async fn fixture_with_daemon(
     let (_notifier, dirty) = DirtyNotifier::channel();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
@@ -347,7 +354,7 @@ async fn fixture_with_daemon(
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-            ui: Arc::new(crate::client::NoopUiEventSink),
+
             dirty,
             budgets,
         },
@@ -3792,4 +3799,283 @@ async fn uncommitted_runtime_ports_are_not_available_to_peripheral_readers() {
         "peripheral reader received an uncommitted runtime binding: {provisional:?}"
     );
     assert_eq!(ports.confirmed().unwrap().mixed_port, 7897);
+}
+
+// T6 exercises the production domain actor, including its own participant
+// construction, instead of supplying a participant directly from the test.
+struct DomainTestMirror;
+impl crate::state::mirror::VergeLegacyBridge for DomainTestMirror {
+    fn prepare(
+        &self,
+        _: &NyanpasuAppConfig,
+    ) -> anyhow::Result<Box<dyn crate::state::mirror::PreparedLegacyMirror>> {
+        Ok(Box::new(crate::state::mirror::NoopPreparedLegacyMirror))
+    }
+    fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
+        Ok(NyanpasuAppConfig::default())
+    }
+}
+
+#[tokio::test]
+async fn application_actor_rejection_keeps_source_version_and_bytes() {
+    use struct_patch::Patch;
+    let f = fixture(test_budgets()).await;
+    let mutations = crate::state::mutation::MutationCoordinator::pending();
+    mutations.connect(f.client.clone());
+    let snapshot = f.application.snapshot_handle();
+    let before = snapshot.load();
+    let bytes = std::fs::read(&f.app_path).ok();
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        Arc::new(DomainTestMirror),
+    )
+    .await
+    .unwrap();
+    f.endpoint.set_check_answer(TestCheckAnswer::Reject(
+        nyanpasu_core_manager::CoreError::new(
+            CoreErrorKind::InvalidConfig,
+            "invalid candidate",
+            false,
+        ),
+    ));
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.enable_builtin_enhanced = Some(!before.state.enable_builtin_enhanced);
+    assert!(application.patch(patch).await.is_err());
+    assert_eq!(snapshot.load().version, before.version);
+    assert_eq!(std::fs::read(&f.app_path).ok(), bytes);
+    assert_eq!(f.endpoint.submissions(), 0);
+    f.client.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn application_actor_prepare_does_not_block_committed_reads() {
+    use struct_patch::Patch;
+    let f = fixture(test_budgets()).await;
+    let mutations = crate::state::mutation::MutationCoordinator::pending();
+    mutations.connect(f.client.clone());
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        Arc::new(DomainTestMirror),
+    )
+    .await
+    .unwrap();
+    let before = application.snapshot();
+    f.builder.park.store(true, Ordering::SeqCst);
+    let writer = application.clone();
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.enable_builtin_enhanced = Some(!before.state.enable_builtin_enhanced);
+    let save = tokio::spawn(async move { writer.patch(patch).await });
+    f.builder.entered.notified().await;
+    assert_eq!(application.snapshot().version, before.version);
+    assert_eq!(
+        application.snapshot().state.enable_builtin_enhanced,
+        before.state.enable_builtin_enhanced
+    );
+    f.builder.release.notify_one();
+    save.await.unwrap().unwrap();
+    assert!(application.snapshot().version > before.version);
+    f.client.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn domain_actor_refuses_writes_before_composition_is_ready() {
+    use struct_patch::Patch;
+    let dir = tempfile::tempdir().unwrap();
+    let manager = manager(
+        temp_path(&dir, "application.yaml"),
+        NyanpasuAppConfig::default(),
+    )
+    .await;
+    let application = crate::client::application::ApplicationClient::from_manager(
+        crate::state::mutation::MutationCoordinator::pending(),
+        manager,
+        Arc::new(DomainTestMirror),
+    )
+    .await
+    .unwrap();
+    let before = application.snapshot().version;
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.enable_silent_start = Some(true);
+    assert!(
+        application
+            .patch(patch)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("not ready")
+    );
+    assert_eq!(application.snapshot().version, before);
+}
+
+async fn deferred_fixture() -> Fixture {
+    let mut f = fixture(test_budgets()).await;
+    f.endpoint.set_failure(Some("queue_full"));
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode":"direct"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_eq!(
+        settled(&f.client, id).await.outcome,
+        MutationOutcomeKind::Deferred
+    );
+    f
+}
+
+#[tokio::test]
+async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
+    use crate::client::convergence::ConvergenceHealth;
+    let f = deferred_fixture().await;
+    let source = f.clash.snapshot_handle().load().version;
+    for remaining in [2, 1, 0] {
+        f.client
+            .call(super::super::Command::RetryRuntime { explicit: false })
+            .await
+            .unwrap();
+        assert_eq!(
+            f.client
+                .mutation_journal()
+                .deferred
+                .unwrap()
+                .attempts_remaining,
+            remaining
+        );
+    }
+    let attempts = f.endpoint.submissions();
+    f.client
+        .call(super::super::Command::RetryRuntime { explicit: false })
+        .await
+        .unwrap();
+    assert_eq!(f.endpoint.submissions(), attempts);
+    assert_eq!(
+        f.client.mutation_journal().deferred.unwrap().health,
+        ConvergenceHealth::Blocked
+    );
+    f.endpoint.set_failure(None);
+    f.client.retry_runtime().await.unwrap();
+    assert!(f.client.mutation_journal().deferred.is_none());
+    assert_eq!(f.clash.snapshot_handle().load().version, source);
+    assert_eq!(
+        f.store
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .config_text
+            .contains("mode: direct"),
+        true
+    );
+    f.client.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn runtime_retry_waits_for_check_dependency_without_spending_apply_budget() {
+    use crate::client::convergence::ConvergenceHealth;
+    let f = deferred_fixture().await;
+    f.endpoint.set_failure(None);
+    f.endpoint
+        .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
+    let before = f.endpoint.submissions();
+    f.client
+        .call(super::super::Command::RetryRuntime { explicit: false })
+        .await
+        .unwrap();
+    let gap = f.client.mutation_journal().deferred.unwrap();
+    assert_eq!(gap.health, ConvergenceHealth::WaitingDependency);
+    assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET);
+    assert_eq!(gap.attempts, 0);
+    assert_eq!(f.endpoint.submissions(), before);
+    f.client.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn stopped_runtime_is_not_started_by_retry_now() {
+    use crate::client::convergence::ConvergenceHealth;
+    let f = deferred_fixture().await;
+    f.endpoint.set_failure(None);
+    f.endpoint
+        .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+    let before = f.endpoint.submissions();
+    f.client.retry_runtime().await.unwrap();
+    assert_eq!(f.endpoint.submissions(), before);
+    assert_eq!(
+        f.client.mutation_journal().deferred.unwrap().health,
+        ConvergenceHealth::WaitingDependency
+    );
+    f.client.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn unknown_retry_queries_original_before_restoring_aborted_source() {
+    let mut f = fixture(test_budgets()).await;
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode":"global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&f.client, id).await;
+    let source = f.clash.snapshot_handle().load().version;
+    let baseline = f.store.last_confirmed_runtime_receipt().unwrap();
+    f.endpoint.set_result_missing(true);
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode":"direct"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(refused(&result));
+    assert_eq!(
+        settled(&f.client, id).await.conclusion,
+        MutationConclusion::RecoveryRequired
+    );
+    let before = f.endpoint.submissions();
+    assert!(f.client.retry_runtime().await.is_err());
+    assert_eq!(f.endpoint.submissions(), before);
+    f.endpoint.set_result_missing(false);
+    f.client.retry_runtime().await.unwrap();
+    assert!(f.client.mutation_journal().recovery.is_none());
+    assert!(!f.client.status().uncertain);
+    assert_eq!(f.clash.snapshot_handle().load().version, source);
+    assert_eq!(
+        f.store
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .config_digest,
+        baseline.config_digest
+    );
+    f.client.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn committed_product_retry_does_not_resubmit_or_rewrite_source() {
+    let mut f = fixture(MutationBudgets::default()).await;
+    f.builder.fail_publish.store(true, Ordering::SeqCst);
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode":"global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(result.is_ok());
+    settled(&f.client, id).await;
+    assert!(f.client.mutation_journal().maintenance.is_some());
+    let submitted = f.endpoint.reconciled_bytes().len();
+    let version = f.clash.snapshot_handle().load().version;
+    f.builder.fail_publish.store(false, Ordering::SeqCst);
+    f.client.retry_runtime().await.unwrap();
+    assert!(f.client.mutation_journal().maintenance.is_none());
+    assert_eq!(f.endpoint.reconciled_bytes().len(), submitted);
+    assert_eq!(f.clash.snapshot_handle().load().version, version);
+    f.client.shutdown().await.unwrap();
 }

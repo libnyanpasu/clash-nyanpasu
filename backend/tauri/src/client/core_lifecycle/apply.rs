@@ -59,7 +59,14 @@ impl CoreLifecycleWorkflow {
         // A confirmed process replacement has already removed the source connections.
         let replaced = matches!(&report.output, OperationOutputInfo::Reconciled(outcome)
             if matches!(outcome.outcome, ReconcileOutcomeKind::Started | ReconcileOutcomeKind::Restarted | ReconcileOutcomeKind::Switched));
-        let interruption_error = if !replaced && let Some(interruption) = context.interruption {
+        let interruption_error = Self::finish_interruption(context, replaced).await;
+        Ok(RuntimeApplyOutcome { interruption_error })
+    }
+    pub async fn finish_interruption(
+        context: RuntimeApplyContext,
+        replaced: bool,
+    ) -> Option<ApiError> {
+        if !replaced && let Some(interruption) = context.interruption {
             let result = match interruption.source {
                 Ok(Some(source)) => interrupt_connections(&source, &interruption.scope).await,
                 Ok(None) => Ok(()),
@@ -72,7 +79,6 @@ impl CoreLifecycleWorkflow {
             result.err()
         } else {
             None
-        };
-        Ok(RuntimeApplyOutcome { interruption_error })
+        }
     }
 }

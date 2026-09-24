@@ -1,3 +1,4 @@
+use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -31,6 +32,7 @@ struct ClashConfigClientInner {
 #[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
+        mutations: MutationCoordinator,
         config_path: Utf8PathBuf,
         seed: ClashConfig,
         bridge: Arc<dyn ClashLegacyBridge>,
@@ -55,7 +57,11 @@ impl ClashConfigClient {
         let actor_ref = Actor::spawn(
             None,
             ClashConfigActor,
-            ClashConfigActorArgs { manager, bridge },
+            ClashConfigActorArgs {
+                manager,
+                bridge,
+                mutations,
+            },
         )
         .await
         .context("failed to spawn clash config actor")?
@@ -106,6 +112,30 @@ impl ClashConfigClient {
             None,
         )
         .await
+    }
+
+    pub(crate) async fn patch_if_version(
+        &self,
+        expected_version: u64,
+        patch: ClashConfigPatch,
+    ) -> anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>> {
+        match self
+            .inner
+            .actor_ref
+            .call(
+                |reply| ClashConfigActorMessage::PatchIfVersion {
+                    expected_version,
+                    patch,
+                    reply,
+                },
+                None,
+            )
+            .await?
+        {
+            CallResult::Success(result) => result,
+            CallResult::SenderError => anyhow::bail!("clash_config actor reply dropped"),
+            CallResult::Timeout => anyhow::bail!("clash_config actor call timed out"),
+        }
     }
 
     pub(crate) async fn replace_if_version(
@@ -210,6 +240,7 @@ mod tests {
     async fn test_client() -> (ClashConfigClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
         let client = ClashConfigClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(&dir),
             ClashConfig::default(),
             Arc::new(NoopClashBridge),

@@ -73,6 +73,17 @@ impl SessionStateClient {
         SessionStateSnapshot::from_versioned(&self.inner.snapshot.load())
     }
 
+    pub async fn save_main_window(
+        &self,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> anyhow::Result<SessionStateSnapshot> {
+        self.call(
+            |reply| SessionStateActorMessage::SaveMainWindow { geometry, reply },
+            Some(std::time::Duration::from_secs(10)),
+        )
+        .await
+    }
+
     pub async fn patch(&self, patch: PersistentStatePatch) -> anyhow::Result<SessionStateSnapshot> {
         self.call(
             |reply| SessionStateActorMessage::Patch { patch, reply },

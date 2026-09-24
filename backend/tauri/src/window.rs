@@ -809,16 +809,13 @@ pub trait AppWindow {
         broadcast_to_window_type(app_handle, target_type, self.label(), event, payload)
     }
 
-    /// Save window state with default implementation
-    fn save_state(&self, app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
+    /// Reads geometry without changing any source or projection.
+    fn capture_state(&self, app_handle: &AppHandle) -> Result<Option<WindowState>> {
         let win = app_handle
             .get_webview_window(self.label())
             .ok_or(anyhow::anyhow!("failed to get window"))?;
         if win.is_minimized()? {
-            if save_to_file {
-                Config::verge().data().save_file()?;
-            }
-            return Ok(());
+            return Ok(None);
         }
 
         let state = match win.current_monitor()? {
@@ -835,7 +832,7 @@ pub trait AppWindow {
                         size.width,
                         size.height
                     );
-                    return Ok(());
+                    return Ok(None);
                 }
 
                 let mut state = WindowState {
@@ -858,12 +855,17 @@ pub trait AppWindow {
             None => None,
         };
 
-        self.set_window_state(state);
+        Ok(state)
+    }
 
+    /// Legacy window adapters retain an in-memory projection for resize events.
+    fn save_state(&self, app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
+        if let Some(state) = self.capture_state(app_handle)? {
+            self.set_window_state(Some(state));
+        }
         if save_to_file {
             Config::verge().data().save_file()?;
         }
-
         Ok(())
     }
 }

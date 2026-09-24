@@ -565,13 +565,18 @@ async fn newer_ui_revision_still_applies_after_a_failure() {
         "{failed:?}"
     );
 
+    assert_eq!(failed[0].applied_revision, EffectRevision::default());
+
     // A failure consumes the revision, so the same one again is stale: the
     // facade re-dispatches a retryable failure with a fresh, higher revision.
     let replayed = executor.apply(EffectRevision::new(1), plan.clone()).await;
     assert_eq!(replayed[0].health, EffectHealth::Superseded, "{replayed:?}");
 
+    assert_eq!(replayed[0].applied_revision, EffectRevision::default());
+
     let retried = executor.apply(EffectRevision::new(2), plan).await;
     assert_eq!(retried[0].health, EffectHealth::Healthy, "{retried:?}");
+    assert_eq!(retried[0].applied_revision, EffectRevision::new(2));
     assert_eq!(
         attempts.load(Ordering::SeqCst),
         2,

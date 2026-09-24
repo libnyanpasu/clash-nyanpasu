@@ -1,0 +1,11 @@
+{
+  "openrpcDocument": "../openrpc.json",
+  "outDir": "./generated",
+  "components": [
+    {
+      "type": "client",
+      "name": "nyanpasu-client",
+      "language": "typescript"
+    }
+  ]
+}

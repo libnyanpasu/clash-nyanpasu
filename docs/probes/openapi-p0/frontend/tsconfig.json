@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "react"],
+  },
+  "include": [
+    "api-transport.ts",
+    "smoke.ts",
+    "tauri-host.ts",
+    "generated/**/*.ts",
+  ],
+}

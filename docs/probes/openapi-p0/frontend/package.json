@@ -1,0 +1,22 @@
+{
+  "name": "nyanpasu-openapi-p0-client",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.4.2",
+  "scripts": {
+    "generate": "orval --config ../orval.config.mjs",
+    "smoke": "node --experimental-strip-types smoke.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "@tanstack/react-query": "5.103.1",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.5",
+    "@types/react": "19.3.0",
+    "orval": "8.37.0",
+    "typescript": "7.0.2"
+  }
+}

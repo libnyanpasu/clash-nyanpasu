@@ -1,0 +1,120 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nyanpasu application API probe",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/profiles": {
+      "get": {
+        "tags": ["profiles"],
+        "operationId": "listProfiles",
+        "responses": {
+          "200": {
+            "description": "List profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Profile"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profiles/active": {
+      "post": {
+        "tags": ["profiles"],
+        "operationId": "activateProfile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileActivationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Profile activation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileActivation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Profile does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "Profile": {
+        "type": "object",
+        "required": ["id", "name", "active"],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ProfileActivation": {
+        "type": "object",
+        "required": ["profile_id", "active"],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "profile_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProfileActivationRequest": {
+        "type": "object",
+        "required": ["profile_id"],
+        "properties": {
+          "profile_id": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

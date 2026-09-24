@@ -1,0 +1,24 @@
+{
+  "name": "nyanpasu-openrpc-p0-client",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.4.2",
+  "scripts": {
+    "generate": "open-rpc-generator generate -c ./open-rpc-generator-config.json && node postprocess-generated.mjs",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node --experimental-strip-types smoke.ts"
+  },
+  "dependencies": {
+    "@open-rpc/meta-schema": "1.14.9",
+    "@open-rpc/schema-utils-js": "2.1.2",
+    "@open-rpc/client-js": "1.8.1",
+    "@tauri-apps/api": "2.11.1",
+    "lodash": "4.17.21"
+  },
+  "devDependencies": {
+    "@open-rpc/generator": "2.1.1",
+    "@types/lodash": "4.17.20",
+    "@types/node": "24.13.5",
+    "typescript": "7.0.2"
+  }
+}

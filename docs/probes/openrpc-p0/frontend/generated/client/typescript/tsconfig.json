@@ -1,0 +1,29 @@
+{
+  "lib": ["ES2015"],
+  "compilerOptions": {
+    "module": "ESNext",
+    "esModuleInterop": true,
+    "target": "ES2022",
+    "strict": true,
+    "sourceMap": true,
+    "outDir": "build",
+    "declarationDir": "build",
+    "declaration": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+  },
+  "typedocOptions": {
+    "name": "generated client",
+    "entryPoints": ["./src/index.ts"],
+    "out": "docs",
+    "readme": "./README.md",
+    "exclude": [
+      "node_modules",
+      "docs",
+      "build",
+      "jest.config.js",
+      "src/*.test.ts",
+      "src/**/*.test.ts",
+    ],
+  },
+}

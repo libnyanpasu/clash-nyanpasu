@@ -1,0 +1,37 @@
+{
+  "name": "nyanpasu-client",
+  "version": "0.1.0",
+  "description": "",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc && typedoc src/index.ts --out docs --excludeExternals --excludePrivate --hideGenerator --readme none",
+    "lint": "eslint src/**/*.ts"
+  },
+  "files": [
+    "build/*"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@open-rpc/client-js": "1.8.1",
+    "@open-rpc/meta-schema": "1.14.9",
+    "@open-rpc/schema-utils-js": "2.1.2",
+    "lodash": "^4.17.15"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.21.0",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.3",
+    "@types/isomorphic-fetch": "^0.0.39",
+    "@types/jest": "^29.5.12",
+    "@types/json-schema": "7.0.3",
+    "@types/lodash": "^4.14.149",
+    "@types/ws": "^6.0.1",
+    "globals": "^16.0.0",
+    "prettier": "^3.5.2",
+    "typedoc": "^0.27.9",
+    "typescript": "^5.0.0"
+  }
+}

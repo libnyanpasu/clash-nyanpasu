@@ -1,0 +1,152 @@
+{
+  "openrpc": "1.2.6",
+  "info": {
+    "title": "Nyanpasu Application API Probe",
+    "version": "0.1.0",
+    "description": "Contract-first internal JSON-RPC API used to validate request-response methods and subscriptions."
+  },
+  "methods": [
+    {
+      "name": "nyanpasu.v1.profiles.list",
+      "summary": "List profiles",
+      "description": "Returns the profiles visible to the current application context.",
+      "params": [],
+      "result": {
+        "name": "profiles",
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Profile"
+          }
+        }
+      },
+      "errors": []
+    },
+    {
+      "name": "nyanpasu.v1.profiles.activate",
+      "summary": "Activate a profile",
+      "description": "Makes the profile with the given identifier active.",
+      "paramStructure": "by-position",
+      "params": [
+        {
+          "name": "profileId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "activation",
+        "schema": {
+          "$ref": "#/components/schemas/ProfileActivation"
+        }
+      },
+      "errors": [
+        {
+          "code": -32004,
+          "message": "Profile not found",
+          "data": {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": "string"
+              }
+            },
+            "required": ["profileId"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "rpc.discover",
+      "summary": "Discover the API",
+      "description": "Returns this OpenRPC document.",
+      "params": [],
+      "result": {
+        "name": "openrpcDocument",
+        "schema": {
+          "$ref": "#/components/schemas/OpenRpcDocument"
+        }
+      },
+      "errors": []
+    },
+    {
+      "name": "nyanpasu.v1.clash.subscribe",
+      "summary": "Subscribe to Clash events",
+      "description": "Subscribes to ordered Clash state updates.",
+      "params": [],
+      "result": {
+        "name": "subscriptionId",
+        "schema": { "type": "string" }
+      },
+      "errors": []
+    },
+    {
+      "name": "nyanpasu.v1.clash.unsubscribe",
+      "summary": "Unsubscribe from Clash events",
+      "description": "Stops an active Clash event subscription.",
+      "paramStructure": "by-position",
+      "params": [
+        {
+          "name": "subscriptionId",
+          "required": true,
+          "schema": { "type": "string" }
+        }
+      ],
+      "result": {
+        "name": "unsubscribed",
+        "schema": { "type": "boolean" }
+      },
+      "errors": []
+    }
+  ],
+  "x-subscriptions": [
+    {
+      "name": "clashEvents",
+      "subscribeMethod": "nyanpasu.v1.clash.subscribe",
+      "notificationMethod": "nyanpasu.v1.clash.event",
+      "unsubscribeMethod": "nyanpasu.v1.clash.unsubscribe",
+      "notificationSchema": {
+        "$ref": "#/components/schemas/ClashEvent"
+      }
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Profile": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "active": { "type": "boolean" }
+        },
+        "required": ["id", "name", "active"],
+        "additionalProperties": false
+      },
+      "ProfileActivation": {
+        "type": "object",
+        "properties": {
+          "profileId": { "type": "string" },
+          "active": { "type": "boolean" }
+        },
+        "required": ["profileId", "active"],
+        "additionalProperties": false
+      },
+      "ClashEvent": {
+        "type": "object",
+        "properties": {
+          "sequence": { "type": "integer", "minimum": 0 },
+          "update": { "type": "string" }
+        },
+        "required": ["sequence", "update"],
+        "additionalProperties": false
+      },
+      "OpenRpcDocument": {
+        "type": "object",
+        "description": "The rpc.discover result is the static OpenRPC source document."
+      }
+    }
+  }
+}

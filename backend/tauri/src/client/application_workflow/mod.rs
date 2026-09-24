@@ -1,6 +1,9 @@
 //! Application workflow admission: serializes configuration commits, runtime application,
 //! connection interruption, host changes, binary installation, and shutdown.
 pub(crate) mod adapters;
+pub(in crate::client) mod impact;
+pub(in crate::client) mod inputs;
+pub(in crate::client) mod policy;
 pub(in crate::client) mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;

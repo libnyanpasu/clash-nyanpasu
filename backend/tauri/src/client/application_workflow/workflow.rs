@@ -21,6 +21,11 @@ pub(super) struct ApplicationWorkflow {
     pub profiles: StateSnapshot<Profiles>,
     pub clash: StateSnapshot<ClashConfig>,
     pub preparation: RuntimePreparation,
+    /// The core's own config validation. Held, not yet called: what to do with
+    /// a rejected or unavailable check is a policy decision that belongs to
+    /// the per-mutation participant, which lands with the TCC workflow.
+    #[allow(dead_code)]
+    pub validator: Arc<dyn super::ports::RuntimeValidatorPort>,
     pub lifecycle: CoreLifecycleWorkflow,
     pub ui: Arc<dyn UiEventSink>,
 }

@@ -3,7 +3,6 @@
 use std::time::Duration;
 
 use futures::future::{BoxFuture, FutureExt, Shared};
-use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{
     ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec, Epoch,
     InstanceOptions, OperationId, ReconcileRequest, RevisionId,
@@ -14,9 +13,9 @@ use nyanpasu_ipc::api::core::v2::{
 use tokio::sync::OnceCell;
 
 use super::{
-    CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport,
+    CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport, SubmitFailure,
     endpoint::{CoreSubmission, ExecutionHost},
-    intent::RuntimeIntentBuilder,
+    intent::RuntimeIntent,
     service_actor::{ServiceClient, ServiceHostStatus},
 };
 
@@ -37,6 +36,65 @@ pub struct ReconcileReport {
     pub status: CoreStatusProjection,
 }
 
+/// The core cleanly restored *its own* previous revision: the submitted
+/// document never took effect. The name is not a recovery proof — after a
+/// failed B→A restore the core is usually still on B (C4) — so the binding
+/// here is reported as what the core says it fell back to, nothing more.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RolledBackReport {
+    pub restored: AppliedConfigBinding,
+    pub failed_apply: Option<String>,
+    pub output: OperationOutputInfo,
+    pub status: CoreStatusProjection,
+}
+
+/// The submission's outcome could not be observed: a lost reply, a wait that
+/// elapsed, or an operation still queued/running. The core may or may not have
+/// applied it, so a caller must isolate the execution domain rather than
+/// classify this as a failure (§2.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct UncertainReconcile {
+    pub error: CoreError,
+    pub status: CoreStatusProjection,
+}
+
+/// Evidence from the apply boundary. Read-only failures and router refusals
+/// are distinct from submissions whose effects cannot yet be established.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReconcileResult {
+    NotSubmitted(CoreError),
+    /// A terminal refusal with a fresh observation proving the precondition still holds.
+    Unchanged(CoreError),
+    Reconciled(ReconcileReport),
+    RolledBack(RolledBackReport),
+    Unknown(UncertainReconcile),
+}
+
+impl ReconcileResult {
+    /// The report of an apply that actually took effect, or the error a caller
+    /// that can only handle success must report.
+    ///
+    /// `RolledBack` becomes a non-retryable `ApplyFailed`: the old config keeps
+    /// running, so letting activation or a config patch claim success here is
+    /// exactly the audited bug. `Unknown` keeps its own error, which the facade
+    /// has already recorded as an uncertain outcome.
+    pub fn into_applied(self) -> Result<ReconcileReport, CoreError> {
+        match self {
+            Self::Reconciled(report) => Ok(report),
+            Self::NotSubmitted(error) | Self::Unchanged(error) => Err(error),
+            Self::RolledBack(report) => Err(CoreError::new(
+                CoreErrorKind::ApplyFailed,
+                format!(
+                    "core reconcile was rolled back to the previous revision: {}",
+                    report.failed_apply.as_deref().unwrap_or("unknown reason")
+                ),
+                false,
+            )),
+            Self::Unknown(uncertain) => Err(uncertain.error),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StopReport {
     pub output: OperationOutputInfo,
@@ -47,6 +105,19 @@ pub struct StopReport {
 pub struct RecoverReport {
     pub output: OperationOutputInfo,
     pub status: CoreStatusProjection,
+}
+
+enum CommandFailure {
+    NotSubmitted(CoreError),
+    Terminal(CoreError),
+    Unknown(CoreError),
+}
+impl CommandFailure {
+    fn into_error(self) -> CoreError {
+        match self {
+            Self::NotSubmitted(e) | Self::Terminal(e) | Self::Unknown(e) => e,
+        }
+    }
 }
 
 type SharedShutdown = Shared<BoxFuture<'static, ShutdownReport>>;
@@ -105,41 +176,35 @@ impl CoreFacade {
         self.core.api_client().await.map(Some)
     }
 
+    /// Submits `intent` to the core. The bytes are the caller's, built once
+    /// and shared with the advisory check, so the two provably agree.
     pub async fn reconcile(
         &mut self,
-        core: ClashCore,
-        document: &serde_yaml::Mapping,
+        intent: &RuntimeIntent,
         core_spec: CoreSpec,
-        local_ipc: nyanpasu_core_manager::LocalIpcSettings,
-    ) -> Result<ReconcileReport, CoreError> {
-        // Admission-time authoritative read (F2), not the router's cached
-        // projection: the cache is refreshed only by the 2s pump, so a
-        // second reconcile inside one pump interval would otherwise submit
-        // the pre-first-reconcile revision and the runtime would answer
-        // `RevisionConflict`.
-        let expected_applied = self
-            .core
-            .refresh_status()
-            .await?
+        expected: &CoreStatusProjection,
+    ) -> Result<ReconcileResult, CoreError> {
+        let observed = match self.core.refresh_status().await {
+            Ok(observed) => observed,
+            Err(error) => return Ok(ReconcileResult::NotSubmitted(error)),
+        };
+        if !same_runtime_version(expected, &observed) {
+            return Ok(ReconcileResult::NotSubmitted(CoreError::new(
+                CoreErrorKind::RevisionConflict,
+                "runtime changed after the apply baseline was captured",
+                false,
+            )));
+        }
+        let expected_applied = expected
             .snapshot
-            .and_then(|snapshot| snapshot.revision);
-        let core_type: nyanpasu_utils::core::CoreType = (&core).into();
-        let intent =
-            RuntimeIntentBuilder::build(core_type.clone(), document, expected_applied, local_ipc)
-                .map_err(|error| {
-                CoreError::new(
-                    CoreErrorKind::InvalidConfig,
-                    format!("failed to serialize runtime config: {error}"),
-                    false,
-                )
-            })?;
+            .as_ref()
+            .and_then(|snapshot| snapshot.revision.clone());
         // `expected_applied` is the optimistic-concurrency guard: apply only if
         // the manager is still on this revision. The wire carries the epoch as a
         // plain `u64`, and `Epoch` rejects zero. Dropping the guard on a zero
         // would turn a guarded apply into an unguarded one, so a value we cannot
         // express is an error rather than `None`.
-        let expected_applied = intent
-            .expected_applied
+        let expected_applied = expected_applied
             .map(|revision| {
                 let epoch = Epoch::new(revision.epoch).ok_or_else(|| {
                     CoreError::new(
@@ -155,15 +220,21 @@ impl CoreFacade {
                     effective_hash: revision.effective_hash,
                 })
             })
-            .transpose()?;
+            .transpose();
+        let expected_applied = match expected_applied {
+            Ok(revision) => revision,
+            Err(error) => return Ok(ReconcileResult::NotSubmitted(error)),
+        };
+        let operation_id = OperationId::generate();
         let submission = CoreSubmission {
+            expected_owner: Some((expected.host, expected.generation)),
             envelope: CoreCommandEnvelope {
-                operation_id: OperationId::generate(),
+                operation_id,
                 command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
                     core: core_spec,
                     config: ConfigInput::Inline {
-                        bytes: intent.config_text.into_bytes(),
-                        expected_digest: Some(intent.digest),
+                        bytes: intent.config_text.clone().into_bytes(),
+                        expected_digest: Some(intent.digest.clone()),
                     },
                     options: InstanceOptions {
                         local_ipc: Some(intent.local_ipc),
@@ -172,34 +243,68 @@ impl CoreFacade {
                     expected_applied,
                 })),
             },
-            core_type: Some(core_type),
+            core_type: Some(intent.core_type.clone()),
         };
-        let applied_owner = self.core.status();
-        let output = self.submit_and_wait(submission).await?;
+        let applied_owner = expected.clone();
+        // Only a *new* uncertainty belongs to this submission; the flag is
+        // sticky, so a caller that was already uncertain must not have a
+        // terminal failure re-labelled as an unobserved one.
+        let output = match self.submit_and_wait(submission).await {
+            Ok(output) => output,
+            Err(CommandFailure::NotSubmitted(error)) => {
+                return Ok(ReconcileResult::NotSubmitted(error));
+            }
+            Err(CommandFailure::Unknown(error)) => {
+                return Ok(ReconcileResult::Unknown(UncertainReconcile {
+                    error: error.with_operation(operation_id),
+                    status: self.core.status(),
+                }));
+            }
+            Err(CommandFailure::Terminal(error)) => {
+                let status = self.core.refresh_status().await;
+                if status
+                    .as_ref()
+                    .is_ok_and(|status| same_runtime_version(expected, status))
+                {
+                    return Ok(ReconcileResult::Unchanged(error));
+                }
+                self.outcome_uncertain = true;
+                return Ok(ReconcileResult::Unknown(UncertainReconcile {
+                    error: error.with_operation(operation_id),
+                    status: self.core.status(),
+                }));
+            }
+        };
         let outcome = match &output {
             OperationOutputInfo::Reconciled(outcome) => outcome,
-            _ => return Err(unexpected_output("reconcile", &output)),
+            _ => {
+                self.outcome_uncertain = true;
+                return Ok(ReconcileResult::Unknown(UncertainReconcile {
+                    error: unexpected_output("reconcile", &output).with_operation(operation_id),
+                    status: self.core.status(),
+                }));
+            }
         };
         if let Some(warning) = &outcome.warning {
             tracing::warn!("core reconcile completed with a durability warning: {warning}");
         }
+        let owner = applied_owner;
         // `RolledBack` is an `Ok` transaction from the runtime's point of view
         // (the manager cleanly restored the previous revision), but the
-        // caller's desired config never took effect. Reporting it as success
-        // here would let profile activation and config patches claim success
-        // while the old config keeps running, so this is the choke point that
-        // turns it into a non-retryable error instead.
+        // caller's desired config never took effect, so it stays a distinct
+        // answer rather than folding into either success or a plain error.
         if outcome.outcome == ReconcileOutcomeKind::RolledBack {
-            return Err(CoreError::new(
-                CoreErrorKind::ApplyFailed,
-                format!(
-                    "core reconcile was rolled back to the previous revision: {}",
-                    outcome.failed_apply.as_deref().unwrap_or("unknown reason")
-                ),
-                false,
-            ));
+            return Ok(ReconcileResult::RolledBack(RolledBackReport {
+                restored: AppliedConfigBinding {
+                    revision: outcome.revision.clone(),
+                    host: owner.host,
+                    generation: owner.generation,
+                },
+                failed_apply: outcome.failed_apply.clone(),
+                output,
+                status: self.core.status(),
+            }));
         }
-        let owner = applied_owner;
         let effective_config = self
             .core
             .effective_config()
@@ -213,7 +318,7 @@ impl CoreFacade {
         if effective_config.is_none() {
             tracing::warn!("core applied configuration, but its effective snapshot is unavailable");
         }
-        Ok(ReconcileReport {
+        Ok(ReconcileResult::Reconciled(ReconcileReport {
             applied: AppliedConfigBinding {
                 revision: outcome.revision.clone(),
                 host: owner.host,
@@ -222,7 +327,7 @@ impl CoreFacade {
             effective_config,
             output,
             status,
-        })
+        }))
     }
 
     pub async fn stop(&mut self) -> Result<StopReport, CoreError> {
@@ -362,6 +467,7 @@ impl CoreFacade {
 
     async fn command(&mut self, command: CoreCommand) -> Result<OperationOutputInfo, CoreError> {
         self.submit_and_wait(CoreSubmission {
+            expected_owner: None,
             envelope: CoreCommandEnvelope {
                 operation_id: OperationId::generate(),
                 command,
@@ -369,32 +475,61 @@ impl CoreFacade {
             core_type: None,
         })
         .await
+        .map_err(CommandFailure::into_error)
     }
 
     async fn submit_and_wait(
         &mut self,
         submission: CoreSubmission,
-    ) -> Result<OperationOutputInfo, CoreError> {
-        let result = self.core.submit(submission).await;
-        let ticket = self.observe_mutation(result)?;
+    ) -> Result<OperationOutputInfo, CommandFailure> {
+        let ticket = match self.core.submit(submission).await {
+            Ok(ticket) => ticket,
+            Err(SubmitFailure::NotSubmitted(error)) => {
+                return Err(CommandFailure::NotSubmitted(error));
+            }
+            Err(SubmitFailure::Unknown(error)) => {
+                self.outcome_uncertain = true;
+                return Err(CommandFailure::Unknown(error));
+            }
+        };
         let info = ticket
             .endpoint
             .wait_operation(ticket.id, OPERATION_WAIT)
-            .await
-            .ok_or_else(|| {
-                self.outcome_uncertain = true;
+            .await;
+        let Some(info) = info else {
+            self.outcome_uncertain = true;
+            return Err(CommandFailure::Unknown(
                 CoreError::new(
                     CoreErrorKind::BackendUnavailable,
                     "the admitted core operation disappeared before reaching a terminal state",
                     true,
                 )
-                .with_operation(ticket.id)
-            })?;
-        if matches!(info.phase, OperationPhase::Queued | OperationPhase::Running) {
+                .with_operation(ticket.id),
+            ));
+        };
+        if matches!(info.phase, OperationPhase::Queued | OperationPhase::Running)
+            || (info.phase == OperationPhase::Succeeded && info.output.is_none())
+        {
             self.outcome_uncertain = true;
+            return Err(CommandFailure::Unknown(
+                terminal_output(info, ticket.id).unwrap_err(),
+            ));
         }
-        terminal_output(info, ticket.id)
+        terminal_output(info, ticket.id).map_err(CommandFailure::Terminal)
     }
+}
+
+fn same_runtime_version(expected: &CoreStatusProjection, observed: &CoreStatusProjection) -> bool {
+    expected.host == observed.host
+        && expected.generation == observed.generation
+        && expected
+            .snapshot
+            .as_ref()
+            .map(|s| (&s.revision, &s.source_hash, &s.state, &s.applied_kind))
+            == observed
+                .snapshot
+                .as_ref()
+                .map(|s| (&s.revision, &s.source_hash, &s.state, &s.applied_kind))
 }
 
 fn terminal_output(info: OperationInfo, id: OperationId) -> Result<OperationOutputInfo, CoreError> {
@@ -450,6 +585,7 @@ mod tests {
     };
 
     use camino::Utf8PathBuf;
+    use nyanpasu_config::application::ClashCore;
     use nyanpasu_core_manager::{CoreKind, CoreSpec};
     use nyanpasu_ipc::{
         api::{
@@ -478,6 +614,10 @@ mod tests {
         stops: AtomicUsize,
         calls: Arc<Mutex<Vec<&'static str>>>,
         reconcile_outcome: Mutex<ReconcileOutcomeInfo>,
+        /// Scripts a lost operation result: the submission was admitted but
+        /// the registry answers nothing, which is the shape of an outcome the
+        /// app cannot observe.
+        result_lost: std::sync::atomic::AtomicBool,
     }
 
     impl RecordingEndpoint {
@@ -489,6 +629,7 @@ mod tests {
                     state: Some(CoreStateDetail::Running { pid: 7, epoch: 1 }),
                     state_changed_at: 1,
                     revision,
+                    source_hash: None,
                     healthy: Some(true),
                     applied_kind: None,
                 },
@@ -506,7 +647,12 @@ mod tests {
                     warning: None,
                     failed_apply: None,
                 }),
+                result_lost: std::sync::atomic::AtomicBool::new(false),
             })
+        }
+
+        fn lose_the_result(&self) {
+            self.result_lost.store(true, Ordering::SeqCst);
         }
 
         /// Overrides the outcome the next `Reconcile` submissions answer with,
@@ -554,6 +700,9 @@ mod tests {
             id: OperationId,
             _timeout: Duration,
         ) -> Option<OperationInfo> {
+            if self.result_lost.load(Ordering::SeqCst) {
+                return None;
+            }
             self.submissions
                 .lock()
                 .unwrap()
@@ -652,6 +801,18 @@ mod tests {
         }
     }
 
+    fn intent(document: &serde_yaml::Mapping) -> super::RuntimeIntent {
+        super::super::intent::RuntimeIntentBuilder::build(
+            (&ClashCore::Mihomo).into(),
+            document,
+            nyanpasu_core_manager::LocalIpcSettings {
+                policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
+                keep_http_controller: true,
+            },
+        )
+        .expect("the fixture document serializes")
+    }
+
     #[tokio::test]
     async fn reconcile_builds_an_inline_intent_with_the_status_revision_as_cas_token() {
         let expected = RevisionIdInfo {
@@ -671,15 +832,7 @@ mod tests {
         };
 
         facade
-            .reconcile(
-                ClashCore::Mihomo,
-                &document,
-                spec,
-                nyanpasu_core_manager::LocalIpcSettings {
-                    policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
-                    keep_http_controller: true,
-                },
-            )
+            .reconcile(&intent(&document), spec, &facade.core_status())
             .await
             .unwrap();
 
@@ -705,7 +858,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reconcile_reports_a_rolled_back_outcome_as_an_apply_failed_error() {
+    async fn reconcile_keeps_a_rolled_back_outcome_distinct_from_success() {
         let local = RecordingEndpoint::new(ExecutionHost::Local, None);
         local.set_reconcile_outcome(ReconcileOutcomeInfo {
             outcome: ReconcileOutcomeKind::RolledBack,
@@ -728,22 +881,58 @@ mod tests {
             features: vec![],
         };
 
-        let error = facade
-            .reconcile(
-                ClashCore::Mihomo,
-                &document,
-                spec,
-                nyanpasu_core_manager::LocalIpcSettings {
-                    policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
-                    keep_http_controller: true,
-                },
-            )
+        let result = facade
+            .reconcile(&intent(&document), spec, &facade.core_status())
             .await
-            .unwrap_err();
+            .unwrap();
 
+        let ReconcileResult::RolledBack(report) = &result else {
+            panic!("expected a structured rolled-back result, got {result:?}");
+        };
+        assert_eq!(report.failed_apply.as_deref(), Some("boom"));
+        assert_eq!(report.restored.revision.generation, 2);
+        // A caller that can only handle success still gets the non-retryable
+        // apply failure -- the old config is what keeps running.
+        let error = result.into_applied().unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::ApplyFailed));
         assert!(!error.retryable);
         assert!(error.message.contains("boom"));
+    }
+
+    /// A lost operation result is not a failure: the core may well have
+    /// applied the document. It stays its own answer so a caller can isolate
+    /// the execution domain instead of classifying it (§2.2, §11.4).
+    #[tokio::test]
+    async fn reconcile_reports_a_lost_result_as_unknown_rather_than_failed() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        local.lose_the_result();
+        let (mut facade, _) = facade(local).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let spec = CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        };
+
+        let result = facade
+            .reconcile(&intent(&document), spec, &facade.core_status())
+            .await
+            .unwrap();
+
+        let ReconcileResult::Unknown(uncertain) = &result else {
+            panic!("expected an unobserved outcome, got {result:?}");
+        };
+        assert_eq!(
+            uncertain.error.kind,
+            Some(CoreErrorKind::BackendUnavailable)
+        );
+        assert!(
+            facade.outcome_uncertain(),
+            "an unobserved mutation must keep holding the execution domain"
+        );
+        assert!(result.into_applied().is_err());
     }
 
     #[tokio::test]
@@ -771,15 +960,7 @@ mod tests {
         };
 
         facade
-            .reconcile(
-                ClashCore::Mihomo,
-                &document,
-                spec,
-                nyanpasu_core_manager::LocalIpcSettings {
-                    policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
-                    keep_http_controller: true,
-                },
-            )
+            .reconcile(&intent(&document), spec, &facade.core_status())
             .await
             .unwrap();
     }
@@ -803,16 +984,10 @@ mod tests {
         };
 
         let error = facade
-            .reconcile(
-                ClashCore::Mihomo,
-                &document,
-                spec,
-                nyanpasu_core_manager::LocalIpcSettings {
-                    policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
-                    keep_http_controller: true,
-                },
-            )
+            .reconcile(&intent(&document), spec, &facade.core_status())
             .await
+            .unwrap()
+            .into_applied()
             .unwrap_err();
 
         assert_eq!(error.kind, Some(CoreErrorKind::Internal));

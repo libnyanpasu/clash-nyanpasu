@@ -49,6 +49,16 @@ pub struct CoreStatusSnapshot {
     pub state_changed_at: i64,
     /// The applied revision's CAS identity, when one is running.
     pub revision: Option<nyanpasu_ipc::api::status::RevisionIdInfo>,
+    /// The source identity of that same applied revision.
+    ///
+    /// Deliberately kept next to the CAS identity rather than folded into it:
+    /// `RevisionIdInfo` is what a reconcile sends back as `expected_applied`,
+    /// and `source_hash` takes no part in that comparison. It is here because
+    /// it is the only document identity that survives a restart — the effective
+    /// hash covers the epoch-specific controller endpoint the manager stamps
+    /// into every new epoch, so two epochs of one unchanged configuration never
+    /// share it.
+    pub source_hash: Option<String>,
     /// Healthy / unhealthy, when the host reports it.
     pub healthy: Option<bool>,
     /// The kind of core the host has actually applied -- not the desired
@@ -64,8 +74,35 @@ pub struct CoreStatusSnapshot {
 
 #[derive(Debug, Clone)]
 pub struct CoreSubmission {
+    pub expected_owner: Option<(ExecutionHost, u64)>,
     pub envelope: CoreCommandEnvelope,
     pub core_type: Option<nyanpasu_utils::core::CoreType>,
+}
+
+/// One advisory config check. It carries the document twice on purpose: the
+/// in-process control plane takes the bytes inline, while the daemon's
+/// `/core/check` opens a file itself, and both must see the same document the
+/// reconcile will submit.
+#[derive(Debug, Clone)]
+pub struct CheckSubmission {
+    pub core_spec: nyanpasu_core_manager::CoreSpec,
+    pub core_type: nyanpasu_utils::core::CoreType,
+    pub config_bytes: Vec<u8>,
+    /// `payload_digest` of `config_bytes`, verified on receipt where the host
+    /// supports it.
+    pub digest: String,
+    /// A private file holding exactly `config_bytes`, for a host that reads
+    /// the config from disk rather than from the request.
+    pub staged_config: Option<camino::Utf8PathBuf>,
+}
+
+/// A host's answer about a check. `Unsupported` is deliberately not an error:
+/// "this host cannot check" and "the core rejected the config" are different
+/// facts, and neither may be read as a pass.
+#[derive(Debug)]
+pub enum CheckSupport {
+    Ran(Result<(), CoreError>),
+    Unsupported { reason: String },
 }
 
 /// One host's control plane, as the router consumes it. Submit is the only
@@ -98,6 +135,16 @@ pub trait ControlEndpoint: Send + Sync {
     }
 
     fn host(&self) -> ExecutionHost;
+
+    /// Advisory, read-only config validation. It never enters the mutating
+    /// queue and is never a precondition for a change (core-manager amendment
+    /// A2). The default is `Unsupported`: a host that has no check capability
+    /// says so rather than answering "fine".
+    async fn check_config(&self, _submission: CheckSubmission) -> CheckSupport {
+        CheckSupport::Unsupported {
+            reason: "this execution host exposes no config check".into(),
+        }
+    }
 
     /// Admission into the host's executor. Returns the operation's
     /// admission-time snapshot; the transaction survives this future's drop.
@@ -196,6 +243,23 @@ impl ControlEndpoint for LocalEndpoint {
 
     fn host(&self) -> ExecutionHost {
         ExecutionHost::Local
+    }
+
+    /// The in-process control plane takes the document inline, so the staged
+    /// file a remote host would need is irrelevant here: these are literally
+    /// the bytes the reconcile will carry.
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
+        CheckSupport::Ran(
+            self.control
+                .check(nyanpasu_core_manager::CheckRequest {
+                    core: submission.core_spec,
+                    config: nyanpasu_core_manager::ConfigInput::Inline {
+                        bytes: submission.config_bytes,
+                        expected_digest: Some(submission.digest),
+                    },
+                })
+                .await,
+        )
     }
 
     async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
@@ -332,6 +396,10 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
                 effective_hash: revision.effective_hash.clone(),
             }
         }),
+        source_hash: status
+            .revision
+            .as_ref()
+            .map(|revision| revision.source_hash.clone()),
         healthy: status
             .health
             .as_ref()
@@ -427,6 +495,27 @@ impl ControlEndpoint for ServiceEndpoint {
 
     fn host(&self) -> ExecutionHost {
         ExecutionHost::Service
+    }
+
+    /// The daemon's check is the v1 `/core/check` operation, which takes a
+    /// path it opens itself: the v2 command surface has no check variant, so
+    /// there is no inline form to fall back to. Without a staged file the
+    /// capability simply is not available for this request.
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
+        let Some(path) = submission.staged_config else {
+            return CheckSupport::Unsupported {
+                reason: "the service host validates a config file, and none was staged".into(),
+            };
+        };
+        CheckSupport::Ran(
+            self.client
+                .check_config(&nyanpasu_ipc::api::core::check::CoreCheckReq {
+                    core_type: Cow::Owned(submission.core_type),
+                    config_file: Cow::Owned(path.into_std_path_buf()),
+                })
+                .await
+                .map_err(map_client_error),
+        )
     }
 
     async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
@@ -589,6 +678,10 @@ fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
         state: infos.detail.clone(),
         state_changed_at: infos.state_changed_at,
         revision: infos.revision.as_ref().map(|revision| revision.id()),
+        source_hash: infos
+            .revision
+            .as_ref()
+            .map(|revision| revision.source_hash.clone()),
         healthy: infos.health.as_ref().map(|health| {
             matches!(
                 health.state,

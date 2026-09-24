@@ -181,12 +181,13 @@ impl ApplicationEffects {
 impl NyanpasuClient {
     /// Projects the effect inputs from the two typed domains plus the session
     /// port resolver. Session state carries no effect field and is absent by
-    /// construction.
+    /// construction. Effects read the *confirmed* binding only: a port the
+    /// core has not accepted is not something to point the system proxy at.
     fn effect_inputs(&self) -> ApplicationEffectInputs {
         ApplicationEffectInputs::project(
             &self.inner.application.snapshot().state,
             &self.inner.clash_config.snapshot().state,
-            self.inner.ports.cached_ports(),
+            self.inner.ports.confirmed(),
         )
     }
 

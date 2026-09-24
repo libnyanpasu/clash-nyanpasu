@@ -105,6 +105,39 @@ impl RuntimeSnapshot {
     }
 }
 
+/// What the core actually accepted, recorded the moment it confirms an apply
+/// and never derived from a file or an inspection (v2 §5.3/§5.4, C3).
+///
+/// It is deliberately decoupled from [`RuntimeSnapshot`]: `promoted` tracks a
+/// derived product file and `applied` waits for an effective-config
+/// inspection that may arrive late or not at all, so neither can serve as the
+/// baseline a recovery has to restore. This can.
+#[derive(Debug, Clone)]
+pub(in crate::client) struct RuntimeApplyReceipt {
+    /// Which build produced these bytes. Diagnostic: a restore targets the
+    /// document, not the revision that happened to carry it.
+    #[allow(dead_code)]
+    pub revision: RuntimeRevision,
+    /// The exact document the core accepted — the same bytes the validator
+    /// checked, never a re-serialization of the snapshot.
+    pub config_text: Arc<str>,
+    /// `nyanpasu_core_manager::payload_digest` of `config_text`: the change
+    /// identity the core verified on receipt.
+    pub config_digest: String,
+    pub target_core: ClashCore,
+    pub core_spec: nyanpasu_core_manager::CoreSpec,
+    pub host: crate::core::actor_v2::endpoint::ExecutionHost,
+    /// Whether the app wants this runtime running at all. A core the user
+    /// stopped is a target too, and a recovery must not start it.
+    pub run_intent: super::application_workflow::policy::CoreRunIntent,
+    pub local_ipc: nyanpasu_core_manager::LocalIpcSettings,
+    /// The binding this apply produced. A recovery may legitimately land on a
+    /// newer instance generation, so only its content identity is a target.
+    pub binding: crate::core::actor_v2::facade::AppliedConfigBinding,
+    /// The ports this apply bound. Confirming them is gated on this receipt.
+    pub ports: super::ports::CandidatePortBindings,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeLifecycleState {
     pub promoted: Option<Arc<RuntimeSnapshot>>,
@@ -113,44 +146,111 @@ pub struct RuntimeLifecycleState {
     pub(crate) pending: Option<Arc<RuntimeSnapshot>>,
 }
 
-/// One shared read/write boundary; watch is a private implementation detail.
+#[derive(Debug, Clone)]
+pub(crate) enum InspectionState {
+    Pending,
+    Ready,
+    Unavailable,
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::client) struct ConfirmedRuntime {
+    pub receipt: Arc<RuntimeApplyReceipt>,
+    pub artifact: Option<Arc<RuntimeSnapshot>>,
+    pub inspection: InspectionState,
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RuntimeStoreState {
+    promoted: Option<Arc<RuntimeSnapshot>>,
+    confirmed: Option<ConfirmedRuntime>,
+}
+
+/// One associated record publishes the artifact, receipt and inspection state.
 #[derive(Clone)]
-pub(crate) struct RuntimeSnapshotStore(tokio::sync::watch::Sender<RuntimeLifecycleState>);
+pub(crate) struct RuntimeSnapshotStore(tokio::sync::watch::Sender<RuntimeStoreState>);
 
 impl Default for RuntimeSnapshotStore {
     fn default() -> Self {
-        Self(tokio::sync::watch::Sender::new(
-            RuntimeLifecycleState::default(),
-        ))
+        Self(tokio::sync::watch::Sender::new(RuntimeStoreState::default()))
     }
 }
 
 impl RuntimeSnapshotStore {
     pub(crate) fn read(&self) -> RuntimeLifecycleState {
-        self.0.borrow().clone()
+        let state = self.0.borrow();
+        let confirmed = state.confirmed.as_ref();
+        RuntimeLifecycleState {
+            promoted: state.promoted.clone(),
+            applied: confirmed
+                .filter(|c| c.available && matches!(c.inspection, InspectionState::Ready))
+                .and_then(|c| c.artifact.clone()),
+            pending: confirmed
+                .filter(|c| c.available && matches!(c.inspection, InspectionState::Pending))
+                .and_then(|c| c.artifact.clone()),
+        }
     }
+
     pub(crate) fn generated(&self, snapshot: Arc<RuntimeSnapshot>) {
         self.0.send_modify(|state| state.promoted = Some(snapshot));
     }
-    pub(crate) fn bind_applied(&self, snapshot: Arc<RuntimeSnapshot>) {
+
+    pub(in crate::client) fn record_confirmed_apply(
+        &self,
+        artifact: Option<Arc<RuntimeSnapshot>>,
+        receipt: Arc<RuntimeApplyReceipt>,
+    ) {
+        let artifact = artifact.map(|artifact| {
+            let mut rebound = artifact.without_effective_config();
+            rebound.applied_binding = Some(receipt.binding.clone());
+            Arc::new(rebound)
+        });
+        let inspection = if artifact.is_some() {
+            InspectionState::Pending
+        } else {
+            InspectionState::Unavailable
+        };
         self.0.send_modify(|state| {
-            if snapshot.applied_binding.is_some()
-                && state
-                    .promoted
-                    .as_ref()
-                    .is_some_and(|source| source.inspection_id == snapshot.inspection_id)
-            {
-                state.promoted = Some(snapshot.clone());
-                state.pending = Some(snapshot);
+            state.confirmed = Some(ConfirmedRuntime {
+                receipt,
+                artifact,
+                inspection,
+                available: true,
+            })
+        });
+    }
+
+    pub(in crate::client) fn confirmed(&self) -> Option<ConfirmedRuntime> {
+        self.0.borrow().confirmed.clone()
+    }
+
+    pub(in crate::client) fn last_confirmed_runtime_receipt(
+        &self,
+    ) -> Option<Arc<RuntimeApplyReceipt>> {
+        self.confirmed().map(|record| record.receipt)
+    }
+
+    pub(crate) fn invalidate(&self) {
+        self.0.send_modify(|state| {
+            if let Some(record) = &mut state.confirmed {
+                record.available = false;
             }
         });
     }
+
     pub(crate) fn applied(&self, source_id: &str, snapshot: Arc<RuntimeSnapshot>) {
         self.0.send_modify(|state| {
-            if !state.pending.as_ref().is_some_and(|pending| {
-                pending.inspection_id == source_id
-                    && pending.applied_binding == snapshot.applied_binding
-            }) {
+            let Some(record) = &mut state.confirmed else {
+                return;
+            };
+            if !record.available
+                || !record
+                    .artifact
+                    .as_ref()
+                    .is_some_and(|artifact| artifact.inspection_id == source_id)
+                || snapshot.applied_binding.as_ref() != Some(&record.receipt.binding)
+            {
                 return;
             }
             if state
@@ -160,9 +260,24 @@ impl RuntimeSnapshotStore {
             {
                 state.promoted = Some(snapshot.clone());
             }
-            state.applied = Some(snapshot);
-            state.pending = None;
+            record.artifact = Some(snapshot);
+            record.inspection = InspectionState::Ready;
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bind_applied(&self, snapshot: Arc<RuntimeSnapshot>) {
+        let Some(binding) = &snapshot.applied_binding else {
+            return;
+        };
+        let mut receipt = tests::receipt(snapshot.revision.get());
+        receipt.binding = binding.clone();
+        self.record_confirmed_apply(Some(snapshot), Arc::new(receipt));
+    }
+
+    #[cfg(test)]
+    pub(in crate::client) fn confirm_applied(&self, receipt: Arc<RuntimeApplyReceipt>) {
+        self.record_confirmed_apply(None, receipt);
     }
 }
 
@@ -462,8 +577,14 @@ pub enum DegradationPhase {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// A revision value for fixtures that need one but do not exercise the
+    /// allocator.
+    pub(crate) fn test_revision() -> RuntimeRevision {
+        RuntimeRevision(1)
+    }
 
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
@@ -570,6 +691,117 @@ mod tests {
     fn runtime_lifecycle_store_tracks_only_the_promoted_product() {
         let lifecycle = RuntimeLifecycleState::default();
         assert!(lifecycle.promoted.is_none());
+    }
+
+    fn binding() -> crate::core::actor_v2::facade::AppliedConfigBinding {
+        crate::core::actor_v2::facade::AppliedConfigBinding {
+            revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                epoch: 1,
+                generation: 3,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            generation: 0,
+        }
+    }
+
+    fn snapshot(revision: u64) -> Arc<RuntimeSnapshot> {
+        Arc::new(RuntimeSnapshot::from_data(
+            RuntimeRevision(revision),
+            ClashCore::default(),
+            Arc::from(&b"mode: rule\n"[..]),
+            RuntimeSnapshotData {
+                config: Mapping::new(),
+                exists_keys: Vec::new(),
+                postprocessing_output: PostProcessingOutput::default(),
+                inspection: Arc::new(super::super::runtime_inspection::tests::inspection_data()),
+            },
+        ))
+    }
+
+    /// v2 §5.6: the public runtime YAML is a derived product. An apply the
+    /// core confirmed is a fact about the core, so a product that was never
+    /// published must not erase it.
+    #[test]
+    fn an_apply_binds_even_when_no_product_was_promoted() {
+        let store = RuntimeSnapshotStore::default();
+        let mut bound = snapshot(1).as_ref().clone();
+        bound.applied_binding = Some(binding());
+        let bound = Arc::new(bound);
+
+        store.bind_applied(bound.clone());
+
+        let state = store.read();
+        assert!(
+            state.promoted.is_none(),
+            "nothing was published, so nothing is promoted"
+        );
+        assert_eq!(
+            state.pending.as_ref().map(|s| s.inspection_id.as_str()),
+            Some(bound.inspection_id.as_str()),
+            "the apply is recorded regardless of the product file"
+        );
+    }
+
+    #[test]
+    fn binding_a_snapshot_the_core_never_applied_records_nothing() {
+        let store = RuntimeSnapshotStore::default();
+        store.bind_applied(snapshot(1));
+        assert!(store.read().pending.is_none());
+    }
+
+    /// V09 at the store level: the recovery baseline follows the confirmed
+    /// apply, never the inspection. `applied` stays empty while the receipt
+    /// advances twice.
+    #[test]
+    fn the_recovery_baseline_advances_with_each_confirmed_apply() {
+        let store = RuntimeSnapshotStore::default();
+        assert!(store.last_confirmed_runtime_receipt().is_none());
+
+        let first = Arc::new(receipt(1));
+        store.confirm_applied(first.clone());
+        let second = Arc::new(receipt(2));
+        store.confirm_applied(second);
+
+        assert_eq!(
+            store
+                .last_confirmed_runtime_receipt()
+                .expect("a confirmed apply")
+                .revision
+                .get(),
+            2,
+        );
+        assert!(
+            store.read().applied.is_none(),
+            "no inspection arrived, and the baseline did not wait for one"
+        );
+        assert_eq!(first.revision.get(), 1);
+    }
+
+    pub(super) fn receipt(revision: u64) -> RuntimeApplyReceipt {
+        RuntimeApplyReceipt {
+            revision: RuntimeRevision(revision),
+            config_text: Arc::from("mode: rule\n"),
+            config_digest: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
+            target_core: ClashCore::default(),
+            core_spec: nyanpasu_core_manager::CoreSpec {
+                kind: nyanpasu_core_manager::CoreKind::Mihomo,
+                binary_path: camino::Utf8PathBuf::from("fake-core"),
+                version: None,
+                features: Vec::new(),
+            },
+            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
+            local_ipc: nyanpasu_core_manager::LocalIpcSettings {
+                policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
+                keep_http_controller: true,
+            },
+            binding: binding(),
+            ports: crate::client::ports::SessionPortResolver::default()
+                .resolve_candidate(&nyanpasu_config::clash::config::ClashConfig::default())
+                .expect("default port strategies resolve"),
+        }
     }
 
     #[test]

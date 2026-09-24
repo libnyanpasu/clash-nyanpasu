@@ -1,5 +1,7 @@
 mod connection_policy;
+mod recovery;
 mod service_recovery;
+mod validation;
 
 use super::{
     super::{
@@ -26,6 +28,13 @@ struct BlockingBuilder {
 
 #[async_trait::async_trait]
 impl ports::RuntimeBuildPort for BlockingBuilder {
+    async fn capture_content(
+        &self,
+        profiles: &nyanpasu_config::profile::Profiles,
+    ) -> anyhow::Result<super::inputs::FrozenProfileContent> {
+        self.delegate.capture_content(profiles).await
+    }
+
     fn core_spec(&self, core: &ClashCore) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
         self.delegate.core_spec(core)
     }
@@ -35,13 +44,17 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         profiles: Arc<nyanpasu_config::profile::Profiles>,
         clash: nyanpasu_config::clash::config::ClashConfig,
         app: nyanpasu_config::application::NyanpasuAppConfig,
+        ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
+        content: crate::client::application_workflow::inputs::FrozenProfileContent,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         anyhow::ensure!(!self.fail.load(Ordering::SeqCst), "scripted build failure");
-        self.delegate.build(revision, profiles, clash, app).await
+        self.delegate
+            .build(revision, profiles, clash, app, ports, content)
+            .await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
         self.delegate.publish(snapshot).await
@@ -83,6 +96,135 @@ async fn injected_snapshot_store_is_shared_by_workflow_and_reader() {
     client.shutdown().await.unwrap();
 }
 
+/// V09: an apply the core confirmed is the recovery checkpoint even when the
+/// effective-config inspection never arrives. The baseline must not fall back
+/// to an older apply, and it must not wait for an inspection that is only ever
+/// diagnostic. The fake core answers `effective_config` with `None` here, so
+/// `applied` stays empty throughout.
+#[tokio::test]
+async fn a_confirmed_apply_is_the_recovery_baseline_without_an_inspection() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = runtime::RuntimeSnapshotStore::default();
+    let (client, _notifier, builder, _, _) = dirty_graph_with_store(&dir, store.clone()).await;
+    builder.release.notify_one();
+
+    client.reconcile().await.unwrap();
+    let first = store
+        .last_confirmed_runtime_receipt()
+        .expect("the core confirmed the first apply");
+    assert!(
+        store.read().applied.is_none(),
+        "no effective config arrived, so nothing is inspected"
+    );
+    assert!(
+        store.read().pending.is_some(),
+        "the apply is recorded as awaiting its inspection"
+    );
+    assert_eq!(
+        first.config_digest,
+        nyanpasu_core_manager::payload_digest(first.config_text.as_bytes()),
+        "the receipt carries the bytes the core accepted, and their digest"
+    );
+
+    client.reconcile().await.unwrap();
+    let second = store
+        .last_confirmed_runtime_receipt()
+        .expect("the core confirmed the second apply");
+    assert!(
+        second.revision.get() > first.revision.get(),
+        "the baseline follows the latest confirmed apply, not the last inspected one"
+    );
+    assert!(store.read().applied.is_none());
+    client.shutdown().await.unwrap();
+}
+
+/// An unobserved reconcile is the third case where the confirmed binding stops
+/// being a fact, and the one where it matters most: the core may already be
+/// listening on the candidate's ports and the app cannot ask. Publishing the
+/// previous binding afterwards is exactly the "the port we used last time"
+/// decay the module disclaims.
+#[tokio::test]
+async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
+        .await
+        .unwrap();
+    let ports = Arc::new(super::super::SessionPortResolver::default());
+    let (client, _notifier, builder, _, clash) =
+        dirty_graph_with_clients(&dir, core, service, false, ports.clone()).await;
+    builder.release.notify_one();
+
+    // Two ports that are distinct by construction. Nothing binds them here, and
+    // two ephemeral probes can hand back the same number once the first
+    // listener is dropped, which would make the assertion below vacuous.
+    let mut config = clash.snapshot().state;
+    config.mixed_port = fixed_port(48611);
+    clash.replace(config.clone()).await.unwrap();
+    client.reconcile().await.unwrap();
+    let confirmed = ports
+        .confirmed()
+        .expect("the apply the core accepted confirms its ports");
+
+    // A new candidate on a different port, and a reconcile whose result is
+    // lost: the core may or may not have moved onto it.
+    config.mixed_port = fixed_port(48612);
+    clash.replace(config).await.unwrap();
+    endpoint.set_result_missing(true);
+    client
+        .reconcile()
+        .await
+        .expect_err("an unobserved outcome is not an applied one");
+
+    assert_eq!(
+        ports.confirmed(),
+        None,
+        "the previous binding on {} is no longer a fact about anything",
+        confirmed.mixed_port
+    );
+    client.shutdown().await.unwrap();
+}
+
+/// V11 (port half): the confirmed binding describes a running instance. When
+/// the user stops the core nothing is holding those ports any more, so the
+/// self-proxy source and the system proxy must get "unavailable" rather than
+/// the endpoint the stopped core used to listen on.
+#[tokio::test]
+async fn stopping_the_core_ends_the_confirmed_port_binding() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = CoreClient::spawn(TestControlEndpoint::succeeding())
+        .await
+        .unwrap();
+    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
+        .await
+        .unwrap();
+    let ports = Arc::new(super::super::SessionPortResolver::default());
+    let (client, _notifier, builder, _, _) =
+        dirty_graph_with_clients(&dir, core, service, false, ports.clone()).await;
+    builder.release.notify_one();
+
+    assert_eq!(
+        ports.confirmed(),
+        None,
+        "nothing has been applied yet, so nothing is listening"
+    );
+    client.reconcile().await.unwrap();
+    let running = ports
+        .confirmed()
+        .expect("the apply the core accepted confirms its ports");
+
+    client.stop_core().await.unwrap();
+
+    assert_eq!(
+        ports.confirmed(),
+        None,
+        "a stopped core is not still holding {}",
+        running.mixed_port
+    );
+    client.shutdown().await.unwrap();
+}
+
 async fn dirty_graph_with_store(
     dir: &tempfile::TempDir,
     snapshots: runtime::RuntimeSnapshotStore,
@@ -99,15 +241,24 @@ async fn dirty_graph_with_store(
     let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
         .await
         .unwrap();
-    dirty_graph_with_clients(dir, snapshots, core, service, false).await
+    dirty_graph_with_clients(
+        dir,
+        core,
+        service,
+        false,
+        Arc::new(super::super::SessionPortResolver::new(snapshots)),
+    )
+    .await
 }
 
 async fn dirty_graph_with_clients(
     dir: &tempfile::TempDir,
-    snapshots: runtime::RuntimeSnapshotStore,
     core: CoreClient,
     service: ServiceClient,
     schedule_ticks: bool,
+    // Injected so a test can read the binding the workflow confirms; the
+    // workflow is the only writer.
+    ports: Arc<super::super::SessionPortResolver>,
 ) -> (
     ApplicationWorkflowClient,
     DirtyNotifier,
@@ -134,11 +285,12 @@ async fn dirty_graph_with_clients(
             dir.path().join("data"),
         ))
         .unwrap();
+    let validator_paths = paths.clone();
+    let core_for_validator = core.clone();
     let builder = Arc::new(BlockingBuilder {
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths,
-            ports: Arc::new(super::super::SessionPortResolver::default()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
@@ -147,13 +299,17 @@ async fn dirty_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
-            snapshots,
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
             core,
             service,
             builder: builder.clone(),
+            validator: Arc::new(adapters::CoreCheckValidator::new(
+                core_for_validator,
+                validator_paths,
+            )),
+            ports,
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ui: Arc::new(super::super::NoopUiEventSink),
             dirty,
@@ -163,6 +319,13 @@ async fn dirty_graph_with_clients(
     .await
     .unwrap();
     (client, notifier, builder, application, clash)
+}
+
+fn fixed_port(port: u16) -> nyanpasu_config::clash::config::clash_strategy::port::PortStrategy {
+    nyanpasu_config::clash::config::clash_strategy::port::PortStrategy {
+        kind: nyanpasu_config::clash::config::clash_strategy::port::PortStrategyKind::Fixed,
+        start_port: port,
+    }
 }
 
 async fn tick(client: &ApplicationWorkflowClient) {

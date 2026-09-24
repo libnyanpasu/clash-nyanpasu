@@ -148,6 +148,21 @@ impl MigrationStore {
         task.error = None;
     }
 
+    pub fn mark_skipped(&mut self, step: &dyn MigrationStep) {
+        self.tasks.insert(
+            step.id().to_string(),
+            TaskRecord {
+                module: step.module().to_string(),
+                revision: step.revision(),
+                introduced_in: step.introduced_in().clone(),
+                state: MigrationState::Skipped,
+                started_at: None,
+                finished_at: Some(timestamp()),
+                error: None,
+            },
+        );
+    }
+
     pub fn mark_failed(&mut self, step: &dyn MigrationStep, error: &anyhow::Error) {
         let now = timestamp();
         let task = self
@@ -172,7 +187,7 @@ impl MigrationStore {
         task.error = Some(format!("{error:#}"));
     }
 
-    /// Advance `applied_revision` to the highest contiguously-completed revision
+    /// Advance `applied_revision` through contiguous completed or skipped steps
     /// for `module` (never below its baseline). Recomputing from task state keeps
     /// a single out-of-order `--migration <id>` run from over-claiming progress
     /// for the earlier revisions it skipped.
@@ -188,7 +203,10 @@ impl MigrationStore {
             let completed = self.tasks.values().any(|task| {
                 task.module == module
                     && task.revision == next
-                    && task.state == MigrationState::Completed
+                    && matches!(
+                        task.state,
+                        MigrationState::Completed | MigrationState::Skipped
+                    )
             });
             if completed {
                 applied = next;
@@ -281,6 +299,39 @@ mod tests {
             .insert("profiles/a".to_string(), completed_task("profiles", 1));
         store.bump_module("profiles");
         assert_eq!(store.module_state("profiles").applied_revision, 2);
+    }
+
+    #[test]
+    fn skipped_steps_advance_only_through_contiguous_successes() {
+        let mut store = MigrationStore::default();
+        let mut skipped = completed_task("profiles", 2);
+        skipped.state = MigrationState::Skipped;
+        store.tasks.insert("profiles/b".to_string(), skipped);
+        store.bump_module("profiles");
+        assert_eq!(store.module_state("profiles").applied_revision, 0);
+
+        for state in [
+            MigrationState::NotStarted,
+            MigrationState::InProgress,
+            MigrationState::Failed,
+        ] {
+            let mut first = completed_task("profiles", 1);
+            first.state = state;
+            store.tasks.insert("profiles/a".to_string(), first);
+            store.bump_module("profiles");
+            assert_eq!(store.module_state("profiles").applied_revision, 0);
+        }
+
+        for state in [MigrationState::Completed, MigrationState::Skipped] {
+            let mut first = completed_task("profiles", 1);
+            first.state = state;
+            store.tasks.insert("profiles/a".to_string(), first);
+            store
+                .tasks
+                .insert("profiles/c".to_string(), completed_task("profiles", 3));
+            store.bump_module("profiles");
+            assert_eq!(store.module_state("profiles").applied_revision, 3);
+        }
     }
 
     #[test]

@@ -189,9 +189,8 @@ impl SessionPortResolver {
 
     pub fn confirmed(&self) -> Option<ResolvedPortBindings> {
         self.runtime
-            .confirmed()
-            .filter(|record| record.available)
-            .map(|record| record.receipt.ports.bindings.clone())
+            .accepted_binding()
+            .map(|receipt| receipt.ports.bindings.clone())
     }
 
     pub fn invalidate(&self) {

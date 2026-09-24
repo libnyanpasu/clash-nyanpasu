@@ -163,6 +163,12 @@ impl ApplicationWorkflow {
                 .await
             }
         };
+        if !matches!(
+            outcome,
+            RuntimePrepareOutcome::Applied(_) | RuntimePrepareOutcome::RecoveryRequired(_)
+        ) {
+            self.lifecycle.runtime.accept_transition();
+        }
         // The verdict leaves before anything below runs: the source transaction
         // cannot reach its decision until it arrives, and the decision is what
         // everything below waits for.
@@ -523,6 +529,7 @@ impl ApplicationWorkflow {
         // elapses the transaction aborts and this keeps running as a tracked
         // task, and the Cancel that follows waits for its real terminal result.
         // An elapsed ACK is never evidence that any of this was cancelled.
+        self.lifecycle.runtime.begin_transition();
         let mut handed_off = false;
         let mut expected = baseline
             .expected
@@ -877,6 +884,7 @@ impl ApplicationWorkflow {
                     .await
                     .err()
                     .map(|error| format!("runtime_product_publish_failed: {error}"));
+                self.lifecycle.runtime.accept_transition();
                 self.ui.refresh_clash();
                 (MutationConclusion::Confirmed, detail)
             }
@@ -947,7 +955,10 @@ impl ApplicationWorkflow {
             return (MutationConclusion::Withdrawn, None);
         };
         match self.restore(baseline).await {
-            Ok(()) => (MutationConclusion::Cancelled, None),
+            Ok(()) => {
+                self.lifecycle.runtime.accept_transition();
+                (MutationConclusion::Cancelled, None)
+            }
             Err(error) => {
                 let mut context = self.recovery_context(
                     request,
@@ -1083,7 +1094,11 @@ impl ApplicationWorkflow {
                             .runtime
                             .record_confirmed_apply(baseline.confirmed_build.clone(), restored);
                         if let Some(effective) = report.effective_config.clone()
-                            && let Some(pending) = self.lifecycle.runtime.read().pending
+                            && let Some(pending) = self
+                                .lifecycle
+                                .runtime
+                                .confirmed()
+                                .and_then(|record| record.artifact)
                             && let Ok(inspected) = pending.with_effective_config(
                                 effective,
                                 report.applied.host,

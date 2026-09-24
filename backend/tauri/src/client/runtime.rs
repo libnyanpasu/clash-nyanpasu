@@ -165,6 +165,7 @@ pub(in crate::client) struct ConfirmedRuntime {
 struct RuntimeStoreState {
     promoted: Option<Arc<RuntimeSnapshot>>,
     confirmed: Option<ConfirmedRuntime>,
+    transition: bool,
 }
 
 /// One associated record publishes the artifact, receipt and inspection state.
@@ -221,8 +222,27 @@ impl RuntimeSnapshotStore {
         });
     }
 
+    pub(in crate::client) fn begin_transition(&self) {
+        self.0.send_modify(|state| state.transition = true);
+    }
+
+    pub(in crate::client) fn accept_transition(&self) {
+        self.0.send_modify(|state| {
+            state.transition = false;
+        });
+    }
+
     pub(in crate::client) fn confirmed(&self) -> Option<ConfirmedRuntime> {
         self.0.borrow().confirmed.clone()
+    }
+
+    pub(in crate::client) fn accepted_binding(&self) -> Option<Arc<RuntimeApplyReceipt>> {
+        let state = self.0.borrow();
+        (!state.transition)
+            .then(|| state.confirmed.as_ref())
+            .flatten()
+            .filter(|record| record.available)
+            .map(|record| record.receipt.clone())
     }
 
     pub(in crate::client) fn last_confirmed_runtime_receipt(

@@ -2550,7 +2550,7 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
         ..
     } = fixture(test_budgets()).await;
 
-    let (_, primed) = simple_mutate(
+    let (primed_id, primed) = simple_mutate(
         &mut clash,
         &client,
         overrides(serde_json::json!({"mode": "global"})),
@@ -2558,6 +2558,7 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
     )
     .await;
     assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&client, primed_id).await;
     let baseline = ports
         .confirmed()
         .expect("the priming apply confirmed its own ports");
@@ -2585,15 +2586,10 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
         })
     };
 
-    // The Try has applied, so the candidate's own ports are the confirmed ones.
+    // The Try has applied, but its binding is not accepted until the source commits.
     entered.notified().await;
-    let candidate = ports
-        .confirmed()
-        .expect("the applied candidate confirmed its own ports");
-    assert_ne!(
-        candidate.mixed_port, baseline.mixed_port,
-        "the candidate has to move a port for this to be about ports at all"
-    );
+    assert!(ports.confirmed().is_none());
+    assert_ne!(baseline.mixed_port, 7897);
 
     // From here the source write fails and the restore's result disappears.
     std::fs::remove_file(&clash_path).unwrap();
@@ -2650,11 +2646,12 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
         mut clash,
         clash_path,
         ports,
+        store,
         _dir,
         ..
     } = fixture(test_budgets()).await;
 
-    let (_, primed) = simple_mutate(
+    let (primed_id, primed) = simple_mutate(
         &mut clash,
         &client,
         overrides(serde_json::json!({"mode": "global"})),
@@ -2662,6 +2659,7 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
     )
     .await;
     assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&client, primed_id).await;
     let baseline = ports
         .confirmed()
         .expect("the priming apply confirmed its own ports");
@@ -2691,9 +2689,14 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
     };
 
     entered.notified().await;
+    assert!(ports.confirmed().is_none());
     assert_eq!(
-        ports.confirmed().as_ref(),
-        Some(&baseline),
+        store
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .ports
+            .bindings(),
+        &baseline,
         "the candidate asked for exactly the ports the baseline holds"
     );
 
@@ -2742,7 +2745,7 @@ async fn an_unobserved_apply_takes_unchanged_ports_away() {
         ..
     } = fixture(test_budgets()).await;
 
-    let (_, primed) = simple_mutate(
+    let (primed_id, primed) = simple_mutate(
         &mut clash,
         &client,
         overrides(serde_json::json!({"mode": "global"})),
@@ -2750,6 +2753,7 @@ async fn an_unobserved_apply_takes_unchanged_ports_away() {
     )
     .await;
     assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&client, primed_id).await;
     assert!(ports.confirmed().is_some());
 
     // The host admits the reconcile and then loses its result. Only the mode
@@ -3703,4 +3707,61 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
         build(revisions.allocate().unwrap(), true).await.is_err(),
         "TCC candidate rejects missing transform"
     );
+}
+
+#[tokio::test]
+async fn uncommitted_runtime_ports_are_not_available_to_peripheral_readers() {
+    let Fixture {
+        client,
+        mut clash,
+        store,
+        ports,
+        _dir,
+        ..
+    } = fixture(test_budgets()).await;
+    let source = clash.snapshot_handle();
+    let version = source.load().version;
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let id = OperationId::generate();
+    let work = {
+        let client = client.clone();
+        let entered = entered.clone();
+        let release = release.clone();
+        tokio::spawn(async move {
+            mutate(
+                &mut clash,
+                &client,
+                id,
+                on_mixed_port(7897),
+                CommandClass::Save,
+                Duration::from_secs(10),
+                plain(),
+                parked_local_write(entered, release),
+            )
+            .await
+        })
+    };
+    entered.notified().await;
+    assert_eq!(source.load().version, version);
+    let actual = store
+        .last_confirmed_runtime_receipt()
+        .expect("actual apply evidence");
+    assert_eq!(actual.ports.bindings().mixed_port, 7897);
+    assert!(store.read().pending.is_some() || store.read().applied.is_some());
+    let provisional = ports.confirmed();
+    release.notify_one();
+    assert!(matches!(
+        work.await.unwrap(),
+        Ok(ReplaceIfVersionResult::Replaced)
+    ));
+    assert_eq!(
+        settled(&client, id).await.conclusion,
+        MutationConclusion::Confirmed
+    );
+    assert!(
+        provisional.is_none(),
+        "peripheral reader received an uncommitted runtime binding: {provisional:?}"
+    );
+    assert_eq!(ports.confirmed().unwrap().mixed_port, 7897);
 }

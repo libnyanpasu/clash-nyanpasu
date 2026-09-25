@@ -1,11 +1,7 @@
-// TODO(actor-migration): compatibility bridge for legacy tray settings snapshots.
-// Reason: synchronous menu construction still reads the legacy settings mirror.
-// Remove when: tray settings snapshots are injected into menu construction.
-use crate::{
-    config::{Config, nyanpasu::ProxiesSelectorMode},
-    core::clash::proxies::Proxies,
-};
+use super::tray_view;
+use crate::{client::effects::plan::TrayView, core::clash::proxies::Proxies};
 use indexmap::IndexMap;
+use nyanpasu_config::{application::ProxiesSelectorMode, clash::config::overrides::Mode};
 use tauri::{AppHandle, Emitter, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
@@ -30,10 +26,10 @@ struct TrayProxyItem {
 type TrayProxies = IndexMap<String, TrayProxyItem>;
 
 /// Convert raw proxies to tray proxies
-fn to_tray_proxies(mode: &str, raw_proxies: &Proxies) -> TrayProxies {
+fn to_tray_proxies(mode: Mode, raw_proxies: &Proxies) -> TrayProxies {
     let mut tray_proxies = TrayProxies::new();
-    if matches!(mode, "global" | "rule" | "script") {
-        if mode == "global" || raw_proxies.proxies.is_empty() {
+    if matches!(mode, Mode::Global | Mode::Rule | Mode::Script) {
+        if mode == Mode::Global || raw_proxies.proxies.is_empty() {
             let global = TrayProxyItem {
                 current: raw_proxies.global.now.clone(),
                 all: raw_proxies
@@ -117,23 +113,20 @@ pub async fn proxies_updated_receiver(
     client: crate::client::NyanpasuClient,
 ) {
     let mut rx = client.subscribe_proxy_changes();
-    let mode = crate::utils::config::get_current_clash_mode();
-    let mut tray_proxies_holder = to_tray_proxies(mode.as_str(), &client.proxies_snapshot());
+    let mode = tray_view(&app_handle).map_or(Mode::default(), |view| view.part.mode);
+    let mut tray_proxies_holder = to_tray_proxies(mode, &client.proxies_snapshot());
     while rx.changed().await.is_ok() {
         let _ = app_handle.emit(
             crate::core::handle::STATE_CHANGED_URI,
             crate::core::handle::StateChanged::Proxies,
         );
-        let is_tray_selector_enabled = Config::verge()
-            .latest()
-            .clash_tray_selector
-            .unwrap_or_default()
-            != ProxiesSelectorMode::Hidden;
-        if !is_tray_selector_enabled {
+        let Some(view) = tray_view(&app_handle) else {
+            continue;
+        };
+        if view.menu.selector_mode == ProxiesSelectorMode::Hidden {
             continue;
         }
-        let mode = crate::utils::config::get_current_clash_mode();
-        let current = to_tray_proxies(mode.as_str(), &client.proxies_snapshot());
+        let current = to_tray_proxies(view.part.mode, &client.proxies_snapshot());
         match diff_proxies(&tray_proxies_holder, &current) {
             TrayUpdateType::Full => {
                 let _ = app_handle.emit("update_systray", ());
@@ -156,8 +149,9 @@ pub fn setup_proxies(app_handle: &AppHandle) {
 
 mod platform_impl {
     use super::{GroupName, ProxyName, ProxySelectAction, TrayProxyItem};
-    use crate::{config::nyanpasu::ProxiesSelectorMode, core::handle::Handle};
+    use crate::{client::effects::plan::TrayView, core::handle::Handle};
     use bimap::BiMap;
+    use nyanpasu_config::application::ProxiesSelectorMode;
     use once_cell::sync::Lazy;
     use parking_lot::Mutex;
     use rust_i18n::t;
@@ -240,12 +234,10 @@ mod platform_impl {
 
     pub fn setup_tray<'m, R: Runtime, M: Manager<R>>(
         app_handle: &AppHandle<R>,
+        view: &TrayView,
         mut menu: MenuBuilder<'m, R, M>,
     ) -> anyhow::Result<MenuBuilder<'m, R, M>> {
-        let selector_mode = crate::config::Config::verge()
-            .latest()
-            .clash_tray_selector
-            .unwrap_or_default();
+        let selector_mode = view.menu.selector_mode;
         menu = match selector_mode {
             ProxiesSelectorMode::Hidden => return Ok(menu),
             ProxiesSelectorMode::Normal => menu.separator(),
@@ -254,8 +246,7 @@ mod platform_impl {
         let proxies = app_handle
             .state::<crate::client::NyanpasuClient>()
             .proxies_snapshot();
-        let mode = crate::utils::config::get_current_clash_mode();
-        let tray_proxies = super::to_tray_proxies(mode.as_str(), &proxies);
+        let tray_proxies = super::to_tray_proxies(view.part.mode, &proxies);
         let items = generate_selectors::<R>(app_handle, &tray_proxies)?;
         match selector_mode {
             ProxiesSelectorMode::Normal => {
@@ -292,8 +283,12 @@ mod platform_impl {
             .as_ref()
             .unwrap()
             .state::<crate::core::tray::TrayState<tauri::Wry>>();
-        TRAY_ITEM_UPDATE_BARRIER.store(true, std::sync::atomic::Ordering::Release);
         let menu = tray_state.menu.lock();
+        let Some(menu) = menu.as_ref() else {
+            warn!("the tray menu is not built yet, skip this update");
+            return;
+        };
+        TRAY_ITEM_UPDATE_BARRIER.store(true, std::sync::atomic::Ordering::Release);
         // comment it just because we could not get the access to the menu item via the id
         // If the tauri team fixes this issue, we could use the following code to update the tray item
         // let item_ids = ITEM_IDS.lock();
@@ -388,7 +383,7 @@ mod platform_impl {
                     }).map(|item| item.as_check_menuitem_unchecked().clone())
             }
 
-            let from_item = find_check_item(&menu, action.0.clone(), action.1.clone());
+            let from_item = find_check_item(menu, action.0.clone(), action.1.clone());
             match from_item {
                 Some(item) => {
                     let _ = item.set_checked(false);
@@ -401,7 +396,7 @@ mod platform_impl {
                 }
             }
 
-            let to_item = find_check_item(&menu, action.0.clone(), action.2.clone());
+            let to_item = find_check_item(menu, action.0.clone(), action.2.clone());
             match to_item {
                 Some(item) => {
                     let _ = item.set_checked(true);
@@ -419,14 +414,14 @@ mod platform_impl {
 }
 
 pub trait SystemTrayMenuProxiesExt<R: Runtime> {
-    fn setup_proxies(self, app_handle: &AppHandle<R>) -> anyhow::Result<Self>
+    fn setup_proxies(self, app_handle: &AppHandle<R>, view: &TrayView) -> anyhow::Result<Self>
     where
         Self: Sized;
 }
 
 impl<R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'_, R, M> {
-    fn setup_proxies(self, app_handle: &AppHandle<R>) -> anyhow::Result<Self> {
-        platform_impl::setup_tray(app_handle, self)
+    fn setup_proxies(self, app_handle: &AppHandle<R>, view: &TrayView) -> anyhow::Result<Self> {
+        platform_impl::setup_tray(app_handle, view, self)
     }
 }
 

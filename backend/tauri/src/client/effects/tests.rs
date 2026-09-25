@@ -210,7 +210,8 @@ async fn queued_visual_targets_coalesce_and_full_subsumes_part() {
         calls[1].1,
         vec![
             ApplicationEffect::Locale(I18nLanguage::English),
-            ApplicationEffect::Tray(TrayRefresh::Full)
+            // Widened to the queued rebuild, rendered from the newest view.
+            ApplicationEffect::Tray(TrayRefresh::Full, desired.tray_view())
         ]
     );
     drop(calls);

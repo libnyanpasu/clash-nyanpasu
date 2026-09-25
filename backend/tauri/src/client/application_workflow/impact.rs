@@ -662,7 +662,8 @@ mod tests {
                 field: "core",
                 mutate: |app| app.core = ClashCore::ClashRs,
                 impact: RuntimeImpact::CoreSwap,
-                owners: &[],
+                // Only a Premium core offers the tray's script mode item.
+                owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "enable_builtin_enhanced",
@@ -1174,6 +1175,28 @@ mod tests {
         assert_eq!(
             classify_clash(&base_clash(), &base_clash()),
             RuntimeImpact::None
+        );
+    }
+
+    #[test]
+    fn a_mode_change_is_both_a_rebuild_and_a_tray_input() {
+        let previous = base_clash();
+        let candidate = overrides_patch(ClashGuardOverridesPatch {
+            mode: Some(Mode::Direct),
+            ..ClashGuardOverridesPatch::default()
+        });
+        let app = base_app();
+
+        assert_eq!(
+            classify_clash(&previous, &candidate),
+            RuntimeImpact::Reconcile
+        );
+        assert_eq!(
+            owners(
+                &effect_inputs(&app, &previous),
+                &effect_inputs(&app, &candidate)
+            ),
+            vec![EffectKind::Tray],
         );
     }
 

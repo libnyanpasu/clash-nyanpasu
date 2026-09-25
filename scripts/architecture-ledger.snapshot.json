@@ -4,10 +4,10 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 46,
+      "total": 39,
       "byKey": {
-        "Config::verge()": 31,
-        "Config::clash()": 15
+        "Config::verge()": 25,
+        "Config::clash()": 14
       }
     },
     "service_globals": {
@@ -20,9 +20,9 @@
       }
     },
     "migration_markers": {
-      "total": 8,
+      "total": 7,
       "byKey": {
-        "TODO(actor-migration)": 6,
+        "TODO(actor-migration)": 5,
         "FIXME(actor-migration)": 2
       }
     },

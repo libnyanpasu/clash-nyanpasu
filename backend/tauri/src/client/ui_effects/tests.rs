@@ -162,7 +162,7 @@ async fn locale_is_applied_before_tray_refresh() {
 
     let mut tray = MockTrayRefresher::new();
     let tray_log = log.clone();
-    tray.expect_refresh_full().times(1).returning(move || {
+    tray.expect_refresh_full().times(1).returning(move |_| {
         let log = tray_log.clone();
         Box::pin(async move {
             record(&log, "refresh_full");
@@ -214,7 +214,7 @@ async fn each_ui_failure_gets_its_own_code() {
     });
     let mut tray = MockTrayRefresher::new();
     tray.expect_refresh_full()
-        .returning(|| Box::pin(async { Err(anyhow::anyhow!("tray refused")) }));
+        .returning(|_| Box::pin(async { Err(anyhow::anyhow!("tray refused")) }));
 
     let executor = executor(
         Arc::new(locale),
@@ -267,8 +267,10 @@ fn language_change_requests_full_refresh() {
     let plan = ApplicationEffectPlan::diff(&before, &after);
 
     assert!(
-        plan.effects()
-            .contains(&ApplicationEffect::Tray(TrayRefresh::Full)),
+        plan.effects().contains(&ApplicationEffect::Tray(
+            TrayRefresh::Full,
+            after.tray_view()
+        )),
         "a language change rebuilds the menu: {:?}",
         plan.effects()
     );
@@ -280,7 +282,7 @@ fn language_change_requests_full_refresh() {
     let tray = plan
         .effects()
         .iter()
-        .position(|effect| matches!(effect, ApplicationEffect::Tray(_)))
+        .position(|effect| matches!(effect, ApplicationEffect::Tray(..)))
         .expect("a language change refreshes the tray");
     assert!(locale < tray, "the plan orders the locale before the tray");
 }
@@ -296,8 +298,10 @@ fn system_proxy_change_only_requests_part_refresh() {
     let plan = ApplicationEffectPlan::diff(&before, &after);
 
     assert!(
-        plan.effects()
-            .contains(&ApplicationEffect::Tray(TrayRefresh::Part)),
+        plan.effects().contains(&ApplicationEffect::Tray(
+            TrayRefresh::Part,
+            after.tray_view()
+        )),
         "nothing the menu is built from changed: {:?}",
         plan.effects()
     );
@@ -468,9 +472,9 @@ async fn widget_stop_clears_the_started_variant() {
 
 #[tokio::test]
 async fn late_full_tray_refresh_still_runs_after_a_newer_part_refresh() {
-    // A refresh carries no value, so dropping a late one loses the rebuild for
-    // good: the menu would stay in the old language until something else
-    // happened to rebuild it.
+    // A part refresh repaints a menu that is already built, so dropping a late
+    // rebuild loses it for good: the menu would stay in the old language until
+    // something else happened to rebuild it.
     let log: CallLog = Arc::default();
     let mut locale = MockLocaleSink::new();
     let locale_log = log.clone();
@@ -480,7 +484,7 @@ async fn late_full_tray_refresh_still_runs_after_a_newer_part_refresh() {
     });
     let mut tray = MockTrayRefresher::new();
     let part_log = log.clone();
-    tray.expect_refresh_part().times(1).returning(move || {
+    tray.expect_refresh_part().times(1).returning(move |_| {
         let log = part_log.clone();
         Box::pin(async move {
             record(&log, "refresh_part");
@@ -488,7 +492,7 @@ async fn late_full_tray_refresh_still_runs_after_a_newer_part_refresh() {
         })
     });
     let full_log = log.clone();
-    tray.expect_refresh_full().times(1).returning(move || {
+    tray.expect_refresh_full().times(1).returning(move |_| {
         let log = full_log.clone();
         Box::pin(async move {
             record(&log, "refresh_full");
@@ -594,7 +598,7 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     os.expect_set().returning(|_: &OsProxyConfig| Ok(()));
     let mut tray = MockTrayRefresher::new();
     tray.expect_refresh_part()
-        .returning(|| Box::pin(async { Ok(()) }));
+        .returning(|_| Box::pin(async { Ok(()) }));
     let executor = executor_with_ports(
         os,
         pac.clone(),

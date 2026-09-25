@@ -110,6 +110,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         accelerators: Arc::new(PlatformAcceleratorValidator),
     })
     .context("Failed to setup nyanpasu client")?;
+    // Seeded before anything can build the tray, so the first menu is rendered
+    // from the committed configuration rather than from defaults.
+    app.manage(crate::core::tray::TrayState::<tauri::Wry>::new(
+        client.tray_view(),
+    ));
     forward_actor_events(app_handle, client.clone());
     tauri::async_runtime::spawn(hotkey_action_pump(hotkey_rx, client.clone()));
     // The widget needs the client's connection stream and the client needs the

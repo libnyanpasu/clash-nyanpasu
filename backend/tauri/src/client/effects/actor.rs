@@ -156,7 +156,10 @@ impl State {
                 .iter()
                 .any(|effect| effect.kind() == EffectKind::Tray)
         {
-            effects.push(ApplicationEffect::Tray(TrayRefresh::Part));
+            effects.push(ApplicationEffect::Tray(
+                TrayRefresh::Part,
+                self.desired.tray_view(),
+            ));
         }
         if effects.is_empty() {
             return;
@@ -165,11 +168,13 @@ impl State {
         let revision = EffectRevision::new(self.revision);
         for mut effect in effects {
             let kind = effect.kind();
-            if matches!(
-                self.pending.get(&kind),
-                Some(ApplicationEffect::Tray(TrayRefresh::Full))
-            ) {
-                effect = ApplicationEffect::Tray(TrayRefresh::Full);
+            if let ApplicationEffect::Tray(refresh, _) = &mut effect
+                && matches!(
+                    self.pending.get(&kind),
+                    Some(ApplicationEffect::Tray(TrayRefresh::Full, _))
+                )
+            {
+                *refresh = TrayRefresh::Full;
             }
             let entry = self.entries.entry(kind).or_insert_with(|| Entry::new(kind));
             if changed.contains(&kind) {

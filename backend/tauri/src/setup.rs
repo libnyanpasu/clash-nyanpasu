@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::{
     client::{
         ClientSetupArgs, NyanpasuClient, OsSystemDnsCache, ProducerTasks, RuntimePaths,
-        TauriUiEventSink,
+        ShutdownBudgets, TauriUiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -101,6 +101,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         window: Arc::new(TauriWindowControl::new(app_handle.clone())),
         accelerators: Arc::new(PlatformAcceleratorValidator),
         producers: producers.clone(),
+        shutdown_budgets: ShutdownBudgets::default(),
     })
     .context("Failed to setup nyanpasu client")?;
     // The tray menu and the first window render with the process locale, so

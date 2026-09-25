@@ -1,9 +1,6 @@
 //! Peripheral effects are queued after commit and never vote on source state.
-use self::{
-    plan::{ApplicationEffectInputs, TrayView},
-    status::degradation_of,
-};
-use super::{NyanpasuClient, runtime};
+use self::plan::{ApplicationEffectInputs, TrayView};
+use super::NyanpasuClient;
 
 pub(crate) mod actor;
 pub mod executor;
@@ -21,16 +18,6 @@ impl NyanpasuClient {
             self.inner.ports.confirmed(),
         )
         .tray_view()
-    }
-
-    pub async fn shutdown_application_effects(&self) -> Vec<runtime::Degradation> {
-        self.inner
-            .effects
-            .shutdown()
-            .await
-            .iter()
-            .filter_map(degradation_of)
-            .collect()
     }
 }
 

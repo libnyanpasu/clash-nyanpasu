@@ -1109,8 +1109,6 @@ impl ApplicationWorkflowClient {
 
     /// Closes admission (T10 §5.4 step 1). The request is in the mailbox
     /// once the returned future has been polled once.
-    // The ordered shutdown (T10 §5.4) is the production caller.
-    #[allow(dead_code)]
     pub(crate) async fn begin_closing(&self) -> Reply<ClosingAck> {
         Reply::of(self.0.actor.call(Message::BeginClosing, None).await)
     }
@@ -1118,8 +1116,6 @@ impl ApplicationWorkflowClient {
     /// Waits up to `budget` for a closing workflow to have nothing running
     /// (T10 §5.4 step 3). It only watches: the running operation keeps its
     /// decision wait, and a Cancel runs to its real end.
-    // The ordered shutdown (T10 §5.4) is the production caller.
-    #[allow(dead_code)]
     pub(crate) async fn wait_settled(&self, budget: Duration) -> Settlement {
         let mut status = self.0.status.clone();
         let settled = tokio::time::timeout(
@@ -1143,6 +1139,12 @@ impl ApplicationWorkflowClient {
         }
     }
 
+    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
+    /// The request is sent before this returns; the handle only waits.
+    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
+        crate::client::Terminating::begin(self.0.actor.get_cell())
+    }
+
     /// Hands the workflow one mutation's Try. The verdict comes back on the
     /// request's own channel, so the caller — the source transaction's prepare
     /// — is the only thing waiting for it.
@@ -1153,6 +1155,12 @@ impl ApplicationWorkflowClient {
             .map_err(|_| {
                 anyhow::anyhow!("the application workflow is unavailable; the mutation was not run")
             })
+    }
+
+    /// The status watch, for a test that has to see closing begin.
+    #[cfg(test)]
+    pub(in crate::client) fn subscribe_status(&self) -> watch::Receiver<CoreLifecycleStatus> {
+        self.0.status.clone()
     }
 
     #[cfg(test)]

@@ -38,6 +38,12 @@ struct ProfilesClientInner {
 }
 
 impl ProfilesClient {
+    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
+    /// The request is sent before this returns; the handle only waits.
+    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
+        crate::client::Terminating::begin(self.inner.actor_ref.get_cell())
+    }
+
     pub(crate) async fn new(
         mutations: MutationCoordinator,
         profiles_path: Utf8PathBuf,
@@ -105,8 +111,6 @@ impl ProfilesClient {
 
     /// Stops every background producer for good and cuts pending downloads
     /// short; their callers are told the application is shutting down.
-    // The ordered shutdown (T10 §5.4 step 2) is the production caller.
-    #[allow(dead_code)]
     pub(crate) async fn stop_producers(
         &self,
         timeout: Duration,

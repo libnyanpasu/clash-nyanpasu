@@ -308,6 +308,12 @@ impl Drop for ClientInner {
 #[derive(Clone)]
 pub(crate) struct ProxiesClient(Arc<ClientInner>);
 impl ProxiesClient {
+    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
+    /// The request is sent before this returns; the handle only waits.
+    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
+        crate::client::Terminating::begin(self.0.actor.get_cell())
+    }
+
     pub async fn spawn(core: CoreClient) -> Result<Self> {
         let (snapshots, snapshot_rx) = watch::channel(None);
         let (changes, changes_rx) = watch::channel(());

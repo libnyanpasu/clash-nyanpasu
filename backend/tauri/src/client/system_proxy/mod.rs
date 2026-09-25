@@ -151,6 +151,13 @@ impl SystemProxyClient {
         }
     }
 
+    /// Fires the shutdown token and waits for nothing (T10 §5.5 step 2): the
+    /// work running on the mailbox abandons what it waits on, so the restore
+    /// queued behind it runs sooner, and nothing re-installs a proxy after it.
+    pub fn signal_shutdown(&self) {
+        self.cancel.cancel();
+    }
+
     pub async fn restore(&self) -> EffectStatus {
         // Cancelled before the message is queued, not after: a PAC download
         // owns the mailbox for longer than the bound below, and the app would
@@ -162,7 +169,21 @@ impl SystemProxyClient {
             .await
         {
             Ok(CallResult::Success(status)) => status,
-            other => {
+            Err(error) => {
+                tracing::warn!("the system proxy actor was gone before the restore: {error}");
+                EffectStatus {
+                    kind: EffectKind::SystemProxy,
+                    desired_revision: EffectRevision::default(),
+                    applied_revision: EffectRevision::default(),
+                    health: EffectHealth::Degraded {
+                        code: "system_proxy_unreachable",
+                        message: "the system proxy actor was gone before the restore was sent"
+                            .to_owned(),
+                        retryable: false,
+                    },
+                }
+            }
+            Ok(other) => {
                 tracing::warn!("the system proxy actor did not restore in time: {other:?}");
                 timed_out(EffectKind::SystemProxy, EffectRevision::default())
             }

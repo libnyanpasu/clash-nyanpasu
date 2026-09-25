@@ -122,7 +122,20 @@ impl HotkeyClient {
             .await
         {
             Ok(CallResult::Success(status)) => status,
-            other => {
+            Err(error) => {
+                tracing::warn!("the hotkey actor was gone before the release: {error}");
+                EffectStatus {
+                    kind: EffectKind::Hotkeys,
+                    desired_revision: EffectRevision::default(),
+                    applied_revision: EffectRevision::default(),
+                    health: EffectHealth::Degraded {
+                        code: "hotkey_unreachable",
+                        message: "the hotkey actor was gone before the release was sent".to_owned(),
+                        retryable: false,
+                    },
+                }
+            }
+            Ok(other) => {
                 tracing::warn!("the hotkey actor did not release its shortcuts in time: {other:?}");
                 timed_out(EffectRevision::default())
             }

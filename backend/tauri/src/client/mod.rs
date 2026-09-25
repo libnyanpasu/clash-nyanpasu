@@ -29,7 +29,7 @@ use self::{
 };
 use crate::{
     core::actor_v2::{
-        CoreClient as CoreClientV2, CoreStatusProjection, HandoffReport, ShutdownReport,
+        CoreClient as CoreClientV2, CoreStatusProjection, HandoffReport,
         endpoint::ExecutionHost,
         facade::{ReconcileReport, RecoverReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus},
@@ -56,7 +56,10 @@ use nyanpasu_config::{
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub use app_lifecycle::ProducerTasks;
+pub(crate) use app_lifecycle::Terminating;
+pub use app_lifecycle::{
+    MainWindowGeometry, ProducerTasks, ShutdownBudgets, ShutdownRequest, StepOutcome,
+};
 pub use clash_info::ClashInfo;
 pub use error::{ClientError, Result};
 #[cfg(test)]
@@ -82,6 +85,7 @@ pub struct ClientSetupArgs {
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     /// The boundary producers the composition root spawns and shutdown stops.
     pub producers: ProducerTasks,
+    pub shutdown_budgets: ShutdownBudgets,
 }
 
 #[derive(Clone)]
@@ -182,9 +186,12 @@ struct NyanpasuClientInner {
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
     accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-    // The ordered shutdown (T10 §5.4 step 2) stops these.
-    #[allow(dead_code)]
     producers: ProducerTasks,
+    shutdown_budgets: ShutdownBudgets,
+    /// The one ordered shutdown this client runs (T10 §5.2).
+    shutdown: tokio::sync::OnceCell<app_lifecycle::ShutdownRun>,
+    #[cfg(test)]
+    shutdown_probe: app_lifecycle::ShutdownProbe,
 }
 
 #[allow(dead_code)]
@@ -204,6 +211,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             producers,
+            shutdown_budgets,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -273,6 +281,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             producers,
+            shutdown_budgets,
         ))
     }
 
@@ -299,6 +308,7 @@ impl NyanpasuClient {
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
         producers: ProducerTasks,
+        shutdown_budgets: ShutdownBudgets,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
@@ -376,6 +386,10 @@ impl NyanpasuClient {
                 window,
                 accelerators,
                 producers,
+                shutdown_budgets,
+                shutdown: tokio::sync::OnceCell::new(),
+                #[cfg(test)]
+                shutdown_probe: app_lifecycle::ShutdownProbe::new(),
             }),
         })
     }
@@ -523,22 +537,6 @@ impl NyanpasuClient {
 
     pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {
         Ok(self.inner.updater.inspect(id).await?)
-    }
-
-    pub async fn shutdown_core(&self) -> ShutdownReport {
-        // Close both admission paths immediately; lifecycle shutdown waits for
-        // already admitted installations while updater cancels preparation work.
-        let (updater, shutdown) = tokio::join!(
-            self.inner.updater.shutdown(),
-            self.inner.application_workflow.shutdown(),
-        );
-        if let Err(error) = updater {
-            tracing::warn!(%error, "failed to shut down updater workers");
-        }
-        shutdown.unwrap_or_else(|error| ShutdownReport {
-            stop: Err(error),
-            final_status: self.core_status().snapshot,
-        })
     }
 
     pub async fn flush_system_dns_cache(&self) -> Result<()> {
@@ -2073,7 +2071,23 @@ pub(crate) mod tests {
                 .close_log_session(LogSource::App, "window".into(), session.id)
                 .await
                 .unwrap();
-            client.shutdown_logs().await.unwrap();
+            // The ordered shutdown ends with the application log: once it
+            // has returned, the log actor answers nothing.
+            client.shutdown(ShutdownRequest::default()).await;
+            assert_eq!(
+                client
+                    .open_log_session(
+                        LogSource::App,
+                        "window".into(),
+                        OpenLogs {
+                            request_id: "after".into(),
+                            file: None,
+                        },
+                    )
+                    .await
+                    .unwrap_err(),
+                LogError::Unavailable
+            );
         });
     }
 
@@ -2137,6 +2151,7 @@ pub(crate) mod tests {
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             ProducerTasks::default(),
+            ShutdownBudgets::default(),
         )
         .await
         .unwrap()
@@ -2360,6 +2375,7 @@ pub(crate) mod tests {
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             producers: ProducerTasks::default(),
+            shutdown_budgets: ShutdownBudgets::default(),
         }
     }
 
@@ -2664,6 +2680,7 @@ pub(crate) mod tests {
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             ProducerTasks::default(),
+            ShutdownBudgets::default(),
         )
         .await
         .unwrap();
@@ -2817,6 +2834,7 @@ pub(crate) mod tests {
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             producers: ProducerTasks::default(),
+            shutdown_budgets: ShutdownBudgets::default(),
         })
         .expect("client should construct with typed config actors");
 
@@ -3789,6 +3807,7 @@ pub(crate) mod tests {
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
                 ProducerTasks::default(),
+                ShutdownBudgets::default(),
             )
             .await
             .unwrap();
@@ -4100,7 +4119,7 @@ pub(crate) mod tests {
                     .and_then(serde_yaml::Value::as_str),
                 Some("t6-fresh")
             );
-            client.shutdown_core().await;
+            client.shutdown(ShutdownRequest::default()).await;
         });
     }
 }

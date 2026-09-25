@@ -63,6 +63,21 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     }
 }
 
+/// The workflow's own shutdown request: what the ordered shutdown's StopCore
+/// step sends once the transactions settled. A reply that never came is
+/// reported the way the core stop reports it, never as a stop.
+async fn workflow_shutdown(client: &NyanpasuClient) -> ShutdownReport {
+    client
+        .inner
+        .application_workflow
+        .shutdown()
+        .await
+        .unwrap_or_else(|error| ShutdownReport {
+            stop: Err(error),
+            final_status: client.core_status().snapshot,
+        })
+}
+
 async fn dirty_graph(
     dir: &tempfile::TempDir,
 ) -> (
@@ -1006,7 +1021,7 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         let (replace, _) = start_replacement(&f).await;
         let mut reconcile = Box::pin(f.client.reconcile_core());
         assert!(reconcile.as_mut().now_or_never().is_none());
-        let mut shutdown = Box::pin(f.client.shutdown_core());
+        let mut shutdown = Box::pin(workflow_shutdown(&f.client));
         assert!(shutdown.as_mut().now_or_never().is_none());
         barrier(&f.client.inner.application_workflow).await;
         assert!(f.client.core_lifecycle_status().shutting_down);
@@ -1019,7 +1034,7 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         replace.await.unwrap().unwrap();
         assert!(shutdown.await.stop.is_ok());
         let before = f.endpoint.submissions();
-        assert!(f.client.shutdown_core().await.stop.is_ok());
+        assert!(workflow_shutdown(&f.client).await.stop.is_ok());
         assert!(f.client.reconcile_core().await.is_err());
         assert_eq!(f.endpoint.submissions(), before);
     });
@@ -1062,7 +1077,7 @@ fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
         assert_eq!(outcomes.len(), 1);
         assert!(outcomes[0].as_ref().unwrap().contains("queue is full"));
         assert_eq!(f.endpoint.submissions(), 2);
-        let mut shutdown = Box::pin(f.client.shutdown_core());
+        let mut shutdown = Box::pin(workflow_shutdown(&f.client));
         assert!(shutdown.as_mut().now_or_never().is_none());
         barrier(core_lifecycle).await;
         for call in pending {
@@ -1092,7 +1107,7 @@ fn failed_installation_does_not_restart_and_a_panic_fails_admission_closed() {
                     f.client.reconcile_core().await.unwrap_err().kind,
                     Some(CoreErrorKind::OperationConflict)
                 );
-                assert!(f.client.shutdown_core().await.stop.is_ok());
+                assert!(workflow_shutdown(&f.client).await.stop.is_ok());
             } else {
                 f.client.reconcile_core().await.unwrap();
             }
@@ -1124,7 +1139,7 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
         );
         assert_eq!(f.endpoint.submissions(), 1);
         f.endpoint.set_result_missing(false);
-        assert!(f.client.shutdown_core().await.stop.is_ok());
+        assert!(workflow_shutdown(&f.client).await.stop.is_ok());
     });
 }
 
@@ -1454,7 +1469,7 @@ fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_i
                 barrier(client).await;
                 assert!(client.status().uncertain);
             } else {
-                let mut shutdown = Box::pin(f.client.shutdown_core());
+                let mut shutdown = Box::pin(workflow_shutdown(&f.client));
                 assert!(shutdown.as_mut().now_or_never().is_none());
                 barrier(client).await;
                 f.installer.release.notify_one();

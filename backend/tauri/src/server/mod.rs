@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use axum::{
     Router,
     body::Body,
-    extract::Query,
+    extract::{Query, State},
     http::{HeaderValue, Response, StatusCode},
     routing::get,
 };
@@ -70,7 +70,7 @@ async fn remove_cache_file(cache_file: &Path) {
     }
 }
 
-async fn cache_icon_inner(url: &str) -> Result<(HeaderValue, Bytes)> {
+async fn cache_icon_inner(url: &str, self_proxy_port: u16) -> Result<(HeaderValue, Bytes)> {
     let url = BASE64_STANDARD.decode(url)?;
     let url = String::from_utf8_lossy(&url);
     let url = Url::parse(&url)?;
@@ -105,7 +105,7 @@ async fn cache_icon_inner(url: &str) -> Result<(HeaderValue, Bytes)> {
         }
         _ => (),
     }
-    let client = get_reqwest_client()?;
+    let client = get_reqwest_client(self_proxy_port)?;
     let response = client.get(url).send().await?.error_for_status()?;
     let mime = response
         .headers()
@@ -127,9 +127,12 @@ async fn cache_icon_inner(url: &str) -> Result<(HeaderValue, Bytes)> {
         .expect("It's impossible to fail, if failed, it must a bug, or memory corruption"))
 }
 
-#[tracing_attributes::instrument]
-async fn cache_icon(query: Query<CacheIcon>) -> Response<Body> {
-    match cache_icon_inner(&query.url).await {
+#[tracing_attributes::instrument(skip(client))]
+async fn cache_icon(
+    State(client): State<crate::client::NyanpasuClient>,
+    query: Query<CacheIcon>,
+) -> Response<Body> {
+    match cache_icon_inner(&query.url, client.clash_info().port).await {
         Ok((mime, bytes)) => {
             let mut response = Response::new(Body::from(bytes));
             response.headers_mut().insert("content-type", mime);
@@ -159,11 +162,12 @@ async fn tray_icon(query: Query<TrayIconReq>) -> Response<Body> {
     response
 }
 
-#[instrument]
-pub async fn run(port: u16) -> std::io::Result<()> {
+#[instrument(skip(client))]
+pub async fn run(port: u16, client: crate::client::NyanpasuClient) -> std::io::Result<()> {
     let app = Router::new()
         .route("/cache/icon", get(cache_icon))
-        .route("/tray/icon", get(tray_icon));
+        .route("/tray/icon", get(tray_icon))
+        .with_state(client);
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     tracing::debug!(
         "internal http server listening on {}",

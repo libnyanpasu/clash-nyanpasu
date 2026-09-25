@@ -456,11 +456,11 @@ impl Tray {
             "open_window" => resolve::create_window(app_handle),
             "system_proxy" => dispatch_action(app_handle, HotkeyAction::ToggleSystemProxy),
             "tun_mode" => dispatch_action(app_handle, HotkeyAction::ToggleTunMode),
-            "copy_env_sh" => feat::copy_clash_env(app_handle, &CopyEnvOption::Shell),
+            "copy_env_sh" => copy_clash_env(app_handle, CopyEnvOption::Shell),
             #[cfg(target_os = "windows")]
-            "copy_env_cmd" => feat::copy_clash_env(app_handle, &CopyEnvOption::Cmd),
+            "copy_env_cmd" => copy_clash_env(app_handle, CopyEnvOption::Cmd),
             #[cfg(target_os = "windows")]
-            "copy_env_ps" => feat::copy_clash_env(app_handle, &CopyEnvOption::Pwsh),
+            "copy_env_ps" => copy_clash_env(app_handle, CopyEnvOption::Pwsh),
             "open_app_config_dir" => crate::log_err!(ipc::open_app_config_dir()),
             "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
@@ -500,6 +500,15 @@ impl Tray {
             _ => {}
         }
     }
+}
+
+/// Copies the proxy environment for the port the facade reports.
+fn copy_clash_env(app_handle: &AppHandle, option: CopyEnvOption) {
+    let Some(client) = app_handle.try_state::<NyanpasuClient>() else {
+        tracing::warn!("the tray copied the proxy env before the client was ready");
+        return;
+    };
+    feat::copy_clash_env(app_handle, client.clash_info().port, &option);
 }
 
 /// Runs a tray item through the facade, the same path a global shortcut takes.

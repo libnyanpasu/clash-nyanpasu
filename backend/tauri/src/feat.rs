@@ -164,8 +164,7 @@ pub enum CopyEnvOption {
 }
 
 /// copy env variable
-pub fn copy_clash_env(app_handle: &AppHandle, option: &CopyEnvOption) {
-    let port = { Config::verge().latest().verge_mixed_port.unwrap_or(7890) };
+pub fn copy_clash_env(app_handle: &AppHandle, port: u16, option: &CopyEnvOption) {
     let http_proxy = format!("http://127.0.0.1:{port}");
     let socks5_proxy = format!("socks5://127.0.0.1:{port}");
 

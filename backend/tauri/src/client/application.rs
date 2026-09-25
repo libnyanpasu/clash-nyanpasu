@@ -126,30 +126,6 @@ impl ApplicationClient {
         .await
     }
 
-    pub(crate) async fn patch_if_version(
-        &self,
-        expected_version: u64,
-        patch: NyanpasuAppConfigPatch,
-    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ApplicationActorMessage::PatchIfVersion {
-                    expected_version,
-                    patch,
-                    reply,
-                },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
-        }
-    }
-
     pub(crate) async fn replace_if_version(
         &self,
         expected_version: u64,

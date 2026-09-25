@@ -555,46 +555,6 @@ async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
     client.shutdown().await;
 }
 
-#[test]
-fn forward_repair_rejects_stale_source_version() {
-    let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
-    endpoint.set_status(
-        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
-        None,
-    );
-    let client =
-        NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint)).unwrap();
-    tauri::async_runtime::block_on(async {
-        let old = client.inner.application.snapshot().version;
-        client
-            .patch_app_config(language(I18nLanguage::Korean))
-            .await
-            .unwrap();
-        assert!(matches!(
-            client
-                .repair_app_config(old, language(I18nLanguage::English))
-                .await,
-            Err(crate::client::ClientError::SourceVersionConflict { .. })
-        ));
-        assert_eq!(
-            client.get_app_config().await.unwrap().language,
-            I18nLanguage::Korean
-        );
-        let current = client.inner.application.snapshot().version;
-        client
-            .repair_app_config(current, language(I18nLanguage::English))
-            .await
-            .unwrap();
-        assert_eq!(
-            client.get_app_config().await.unwrap().language,
-            I18nLanguage::English
-        );
-        client.shutdown_application_effects().await;
-        client.shutdown_core().await;
-    });
-}
-
 #[tokio::test]
 async fn commit_receipt_and_status_keep_source_separate_from_pending_notifications() {
     let dir = tempfile::tempdir().unwrap();

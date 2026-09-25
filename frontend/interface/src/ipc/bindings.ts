@@ -185,10 +185,6 @@ export const commands = {
     typedError<null, string>(
       __TAURI_INVOKE('retry_configuration_effect', { kind }),
     ),
-  repairVergeConfig: (expectedVersion: number, payload: IVerge_Deserialize) =>
-    typedError<MutationOutcome<null>, string>(
-      __TAURI_INVOKE('repair_verge_config', { expectedVersion, payload }),
-    ),
   setReleaseChannel: (channel: ReleaseChannel) =>
     typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('set_release_channel', { channel }),
@@ -3092,11 +3088,6 @@ export const mutations = {
     mutationKey: ['retryConfigurationEffect'],
     mutationFn: (input: Parameters<typeof commands.retryConfigurationEffect>) =>
       commands.retryConfigurationEffect(...input),
-  }),
-  repairVergeConfig: mutationOptions({
-    mutationKey: ['repairVergeConfig'],
-    mutationFn: (input: Parameters<typeof commands.repairVergeConfig>) =>
-      commands.repairVergeConfig(...input),
   }),
   setReleaseChannel: mutationOptions({
     mutationKey: ['setReleaseChannel'],

@@ -63,11 +63,6 @@ pub struct ApplicationActorState {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum ApplicationActorMessage {
-    PatchIfVersion {
-        expected_version: u64,
-        patch: NyanpasuAppConfigPatch,
-        reply: RpcReplyPort<anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>>>,
-    },
     Patch {
         patch: NyanpasuAppConfigPatch,
         reply: RpcReplyPort<anyhow::Result<ApplicationSnapshot>>,
@@ -246,21 +241,6 @@ impl Actor for ApplicationActor {
         match message {
             ApplicationActorMessage::Patch { patch, reply } => {
                 let _ = reply.send(Self::patch(state, patch).await);
-            }
-            ApplicationActorMessage::PatchIfVersion {
-                expected_version,
-                patch,
-                reply,
-            } => {
-                let actual_version = Self::snapshot(state).version;
-                let result = if actual_version != expected_version {
-                    Ok(ConditionalReplaceResult::Conflict { actual_version })
-                } else {
-                    Self::patch(state, patch)
-                        .await
-                        .map(ConditionalReplaceResult::Replaced)
-                };
-                let _ = reply.send(result);
             }
             ApplicationActorMessage::Replace { state: next, reply } => {
                 let _ = reply.send(

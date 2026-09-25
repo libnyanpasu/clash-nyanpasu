@@ -27,6 +27,10 @@ impl Default for LegacyVergeBridge {
 
 struct LegacyVergeBridgeInner {
     client: NyanpasuClient,
+    /// Serializes legacy saves: composite typed fields (mixed port, break
+    /// connection, external controller) are rebuilt from the snapshot base, so
+    /// a save must not read its base while another save is still committing.
+    save_lock: tokio::sync::Mutex<()>,
 }
 
 pub(crate) trait LegacyVergeStore: Send + Sync {
@@ -90,7 +94,10 @@ impl LegacyVergeBridge {
 
     pub(crate) fn new(client: NyanpasuClient, legacy_store: Arc<dyn LegacyVergeStore>) -> Self {
         Self {
-            managed: Some(Arc::new(LegacyVergeBridgeInner { client })),
+            managed: Some(Arc::new(LegacyVergeBridgeInner {
+                client,
+                save_lock: tokio::sync::Mutex::new(()),
+            })),
             legacy_store,
         }
     }
@@ -104,7 +111,9 @@ impl LegacyVergeBridge {
         payload: IVerge,
     ) -> ClientResult<runtime::MutationOutcome<()>> {
         Self::validate_patch(&payload)?;
-        let client = &self.managed()?.client;
+        let managed = self.managed()?;
+        let client = &managed.client;
+        let _guard = managed.save_lock.lock().await;
         let snapshots = client.typed_config_snapshots();
         let base = super::legacy_iverge_from_typed(
             self.legacy_store.snapshot()?,
@@ -116,13 +125,9 @@ impl LegacyVergeBridge {
         let plan = Self::typed_patch_plan(base, &payload, &super::yaml_convert(&clash.overrides)?)?;
         validate_single_domain(&plan)?;
         if let Some(patch) = plan.application {
-            client
-                .repair_app_config(snapshots.application.version, patch)
-                .await
+            client.patch_app_config(patch).await
         } else if let Some(patch) = plan.clash_config {
-            client
-                .repair_clash_config(snapshots.clash.version, patch)
-                .await
+            client.patch_clash_config(patch).await
         } else if let Some(patch) = plan.session_state {
             let geometry = patch
                 .window_state
@@ -133,46 +138,6 @@ impl LegacyVergeBridge {
             client.save_main_window_geometry(geometry).await
         } else {
             Ok(runtime::MutationOutcome::from_parts((), Vec::new()))
-        }
-    }
-
-    pub async fn repair_verge_config(
-        &self,
-        expected_version: u64,
-        payload: IVerge,
-    ) -> ClientResult<runtime::MutationOutcome<()>> {
-        Self::validate_patch(&payload)?;
-        let client = &self.managed()?.client;
-        let snapshots = client.typed_config_snapshots();
-        let base = super::legacy_iverge_from_typed(
-            self.legacy_store.snapshot()?,
-            &snapshots.application.state,
-            &snapshots.session.state,
-            &snapshots.clash.state,
-        )?;
-        let clash = &snapshots.clash.state;
-        let plan = Self::typed_patch_plan(base, &payload, &super::yaml_convert(&clash.overrides)?)?;
-        validate_single_domain(&plan)?;
-        if let Some(patch) = plan.application {
-            if expected_version != snapshots.application.version {
-                return Err(crate::client::ClientError::SourceVersionConflict {
-                    domain: "application",
-                    expected: expected_version,
-                    actual: snapshots.application.version,
-                });
-            }
-            client.repair_app_config(expected_version, patch).await
-        } else if let Some(patch) = plan.clash_config {
-            if expected_version != snapshots.clash.version {
-                return Err(crate::client::ClientError::SourceVersionConflict {
-                    domain: "clash",
-                    expected: expected_version,
-                    actual: snapshots.clash.version,
-                });
-            }
-            client.repair_clash_config(expected_version, patch).await
-        } else {
-            Err(anyhow::anyhow!("repair must target Application or ClashConfig").into())
         }
     }
 
@@ -834,38 +799,45 @@ mod tests {
         });
     }
     #[test]
-    fn concurrent_repairs_accept_only_one_source_version() {
+    fn overlapping_saves_of_different_fields_both_persist() {
         let _serial = INTERLEAVING_TEST_LOCK.lock();
         let dir = tempdir().unwrap();
         let (client, bridge) = test_bridge(&dir);
         tauri::async_runtime::block_on(async {
-            let version = client.typed_config_snapshots().application.version;
-            let (first, second) = tokio::join!(
-                bridge.repair_verge_config(
-                    version,
-                    IVerge {
-                        theme_color: Some("#112233".into()),
-                        ..Default::default()
-                    }
-                ),
-                bridge.repair_verge_config(
-                    version,
-                    IVerge {
-                        theme_color: Some("#334455".into()),
-                        ..Default::default()
-                    }
-                ),
+            let (theme, layout) = tokio::join!(
+                bridge.patch_verge_config(IVerge {
+                    theme_color: Some("#112233".into()),
+                    ..Default::default()
+                }),
+                bridge.patch_verge_config(IVerge {
+                    proxy_layout_column: Some(3),
+                    ..Default::default()
+                }),
             );
-            assert_ne!(first.is_ok(), second.is_ok());
+            theme.unwrap();
+            layout.unwrap();
+            let app = client.get_app_config().await.unwrap();
+            assert_eq!(app.theme_color.to_string(), "#112233");
+            assert_eq!(app.proxy_layout_column, 3);
+
+            let (proxy, profile) = tokio::join!(
+                bridge.patch_verge_config(IVerge {
+                    break_when_proxy_change: Some(legacy_app::BreakWhenProxyChange::None),
+                    ..Default::default()
+                }),
+                bridge.patch_verge_config(IVerge {
+                    break_when_profile_change: Some(false),
+                    ..Default::default()
+                }),
+            );
+            proxy.unwrap();
+            profile.unwrap();
+            let clash = client.get_clash_config().await.unwrap();
             assert_eq!(
-                client.typed_config_snapshots().application.version,
-                version + 1
+                clash.break_connection.on_proxy_change,
+                nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode::Off
             );
-            let error = first.err().or_else(|| second.err()).unwrap();
-            assert!(matches!(
-                error,
-                crate::client::ClientError::SourceVersionConflict { .. }
-            ));
+            assert!(!clash.break_connection.on_profile_change);
         });
     }
 

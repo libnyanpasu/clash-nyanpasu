@@ -56,6 +56,7 @@ use nyanpasu_config::{
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
+pub use app_lifecycle::ProducerTasks;
 pub use clash_info::ClashInfo;
 pub use error::{ClientError, Result};
 #[cfg(test)]
@@ -79,6 +80,8 @@ pub struct ClientSetupArgs {
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    /// The boundary producers the composition root spawns and shutdown stops.
+    pub producers: ProducerTasks,
 }
 
 #[derive(Clone)]
@@ -179,6 +182,9 @@ struct NyanpasuClientInner {
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
     accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    // The ordered shutdown (T10 §5.4 step 2) stops these.
+    #[allow(dead_code)]
+    producers: ProducerTasks,
 }
 
 #[allow(dead_code)]
@@ -197,6 +203,7 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
+            producers,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -265,6 +272,7 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
+            producers,
         ))
     }
 
@@ -290,6 +298,7 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+        producers: ProducerTasks,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
@@ -366,6 +375,7 @@ impl NyanpasuClient {
                 effects,
                 window,
                 accelerators,
+                producers,
             }),
         })
     }
@@ -2126,6 +2136,7 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            ProducerTasks::default(),
         )
         .await
         .unwrap()
@@ -2348,6 +2359,7 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            producers: ProducerTasks::default(),
         }
     }
 
@@ -2651,6 +2663,7 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            ProducerTasks::default(),
         )
         .await
         .unwrap();
@@ -2803,6 +2816,7 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            producers: ProducerTasks::default(),
         })
         .expect("client should construct with typed config actors");
 
@@ -3705,6 +3719,7 @@ pub(crate) mod tests {
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+                ProducerTasks::default(),
             )
             .await
             .unwrap();

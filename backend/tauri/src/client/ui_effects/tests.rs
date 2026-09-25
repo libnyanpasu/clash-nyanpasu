@@ -17,7 +17,8 @@ use super::{
     adapters::TauriWidgetController,
     ports::{
         LocaleSink, LoggerRefresher, MockLocaleSink, MockLoggerRefresher, MockTrayRefresher,
-        MockWidgetController, MockWidgetRuntime, TrayRefresher, WidgetController, WidgetError,
+        MockWidgetController, MockWidgetRuntime, TrayRefresher, WIDGET_STOP_BOUND,
+        WidgetController, WidgetError,
     },
 };
 use crate::client::{
@@ -28,7 +29,7 @@ use crate::client::{
             TrayRefresh,
         },
         ports::ApplicationEffectsPort,
-        status::{EffectHealth, EffectRevision},
+        status::{EffectHealth, EffectRevision, EffectStatus},
     },
     hotkey::{
         HotkeyArgs, HotkeyClient,
@@ -373,12 +374,9 @@ async fn widget_variant_change_restarts_the_widget() {
 async fn disabled_config_stops_a_running_widget() {
     let mut runtime = MockWidgetRuntime::new();
     runtime
-        .expect_is_running()
-        .returning(|| Box::pin(async { true }));
-    runtime
         .expect_stop()
         .times(1)
-        .returning(|| Box::pin(async { Ok(()) }));
+        .returning(|_| Box::pin(async { Ok(()) }));
     runtime.expect_start().never();
     let controller = controller_with(runtime);
 
@@ -388,13 +386,16 @@ async fn disabled_config_stops_a_running_widget() {
         .expect("disabling stops the widget");
 }
 
+/// Whether the widget runs is not asked: one that is owned without running
+/// has to be stopped too, and a stop with nothing owned is a no-op.
 #[tokio::test]
-async fn disabled_config_is_a_noop_when_nothing_runs() {
+async fn disabled_config_stops_without_asking_whether_the_widget_runs() {
     let mut runtime = MockWidgetRuntime::new();
+    runtime.expect_is_running().never();
     runtime
-        .expect_is_running()
-        .returning(|| Box::pin(async { false }));
-    runtime.expect_stop().never();
+        .expect_stop()
+        .times(1)
+        .returning(|_| Box::pin(async { Ok(()) }));
     runtime.expect_start().never();
     let controller = controller_with(runtime);
 
@@ -421,7 +422,10 @@ async fn widget_before_install_degrades() {
     );
     // The shutdown path treats the same state as nothing to do.
     assert!(matches!(
-        controller.stop().await.expect_err("still uninstalled"),
+        controller
+            .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
+            .await
+            .expect_err("still uninstalled"),
         WidgetError::Unavailable
     ));
 }
@@ -460,14 +464,111 @@ async fn widget_stop_clears_the_started_variant() {
     runtime
         .expect_stop()
         .times(1)
-        .returning(|| Box::pin(async { Ok(()) }));
+        .returning(|_| Box::pin(async { Ok(()) }));
     let controller = controller_with(runtime);
 
     let desired = NetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Small);
     controller.apply(desired).await.expect("start");
-    controller.stop().await.expect("stop");
+    controller
+        .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
+        .await
+        .expect("stop");
     // After a shutdown the same variant is no longer running, so it starts again.
     controller.apply(desired).await.expect("restart");
+}
+
+fn widget_health(statuses: Vec<EffectStatus>) -> EffectHealth {
+    let [status] = <[EffectStatus; 1]>::try_from(statuses).expect("a widget-only plan");
+    assert_eq!(status.kind, EffectKind::Widget);
+    status.health
+}
+
+/// A start whose cleanup could not release the handshake leaves the widget
+/// owned in `Starting`, which is not running. Every disable retries that
+/// cleanup and stays degraded until the worker is seen to end; once nothing
+/// is owned, a disable is a clean no-op.
+#[tokio::test(start_paused = true)]
+async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
+    let host = crate::widget::tests::FakeWidgetHost::blocking();
+    host.refuse_release();
+    let manager = crate::widget::WidgetManager::new(host.clone());
+    let controller = Arc::new(TauriWidgetController::default());
+    controller
+        .install(Arc::new(manager.clone()))
+        .expect("the runtime installs once");
+    let executor = executor(
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        controller,
+        Arc::new(MockTrayRefresher::new()),
+    )
+    .await;
+    let disabled = inputs(NyanpasuAppConfig::default());
+    let enabled = inputs(NyanpasuAppConfig {
+        network_statistic_widget: NetworkStatisticWidgetConfig::Enabled(
+            StatisticWidgetVariant::Small,
+        ),
+        ..NyanpasuAppConfig::default()
+    });
+    let disable = || ApplicationEffectPlan::diff(&enabled, &disabled);
+
+    // The child dies before it connects and the release reaches nothing, so
+    // the start fails and its cleanup runs out of time on the blocked worker.
+    // That worker also keeps the paused clock from moving on its own.
+    let mut starting = std::pin::pin!(executor.apply(
+        EffectRevision::new(1),
+        ApplicationEffectPlan::diff(&disabled, &enabled)
+    ));
+    tokio::select! {
+        statuses = &mut starting => panic!("the start ended before its spawn: {statuses:?}"),
+        () = host.spawned.notified() => {}
+    }
+    host.exit();
+    tokio::select! {
+        statuses = &mut starting => panic!("the start ended before its cleanup: {statuses:?}"),
+        () = host.released.notified() => {}
+    }
+    tokio::time::advance(WIDGET_STOP_BOUND).await;
+    assert!(
+        matches!(
+            widget_health(starting.await),
+            EffectHealth::Degraded { code: "widget_apply_failed", ref message, .. }
+                if message.contains("Widget process exited")
+        ),
+        "the start failed"
+    );
+    assert_eq!(manager.owned().await, Some("starting"));
+
+    let mut disabling = std::pin::pin!(executor.apply(EffectRevision::new(2), disable()));
+    tokio::select! {
+        statuses = &mut disabling => panic!("disabled without a cleanup: {statuses:?}"),
+        () = host.released.notified() => {}
+    }
+    tokio::time::advance(WIDGET_STOP_BOUND).await;
+    assert_eq!(
+        widget_health(disabling.await),
+        EffectHealth::Degraded {
+            code: "widget_apply_failed",
+            message: "widget handshake worker still blocked".into(),
+            retryable: true,
+        }
+    );
+    assert_eq!(manager.owned().await, Some("starting"));
+
+    // Once the handshake ends, the next disable sees the worker gone.
+    host.unblock();
+    assert_eq!(
+        widget_health(executor.apply(EffectRevision::new(3), disable()).await),
+        EffectHealth::Healthy
+    );
+    assert_eq!(manager.owned().await, None);
+
+    let before = host.events();
+    assert_eq!(
+        widget_health(executor.apply(EffectRevision::new(4), disable()).await),
+        EffectHealth::Healthy
+    );
+    assert_eq!(host.events(), before, "nothing was left to stop");
 }
 
 #[tokio::test]

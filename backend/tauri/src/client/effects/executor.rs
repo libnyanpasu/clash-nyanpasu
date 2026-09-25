@@ -25,7 +25,8 @@ use crate::client::{
     },
     system_proxy::SystemProxyClient,
     ui_effects::ports::{
-        LocaleSink, LoggerRefresher, TrayRefresher, WidgetController, WidgetError,
+        LocaleSink, LoggerRefresher, TrayRefresher, WIDGET_STOP_BOUND, WidgetController,
+        WidgetError,
     },
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
@@ -127,6 +128,15 @@ impl ApplicationEffectExecutor {
                 format!("{error:#}"),
                 true,
             ),
+            // A disable whose stop ran out of time: the old widget is still
+            // owned, and the next reconcile stops it again.
+            Err(error @ (WidgetError::StillOwned | WidgetError::HandshakeBlocked)) => degraded(
+                EffectKind::Widget,
+                revision,
+                "widget_apply_failed",
+                error.to_string(),
+                true,
+            ),
         }
     }
 
@@ -216,11 +226,15 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
 
     async fn shutdown(&self) -> Vec<EffectStatus> {
         let revision = EffectRevision::default();
-        let widget = match self.widget.stop().await {
+        let widget = match self
+            .widget
+            .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
+            .await
+        {
             Ok(()) => healthy(EffectKind::Widget, revision),
             // Never installed means there is nothing left running to tear down.
             Err(WidgetError::Unavailable) => healthy(EffectKind::Widget, revision),
-            Err(WidgetError::Failed(error)) => degraded(
+            Err(error) => degraded(
                 EffectKind::Widget,
                 revision,
                 "widget_stop_failed",

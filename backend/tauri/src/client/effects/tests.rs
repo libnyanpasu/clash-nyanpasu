@@ -136,12 +136,15 @@ async fn blocked_pac_does_not_block_visual_or_hotkey_group() {
                 .any(|s| s.kind == EffectKind::Hotkeys && s.health == EffectHealth::Healthy)
     })
     .await;
-    assert!(
-        state
-            .statuses
-            .iter()
-            .any(|s| s.kind == EffectKind::SystemProxy && s.health == EffectHealth::Pending)
-    );
+    for kind in [EffectKind::SystemProxy, EffectKind::AutoLaunch] {
+        assert!(
+            state
+                .statuses
+                .iter()
+                .any(|s| s.kind == kind && s.health == EffectHealth::Pending),
+            "{kind:?} shares the held system proxy owner"
+        );
+    }
     port.release.notify_one();
     wait(&client, |s| {
         s.statuses.iter().all(|s| s.health == EffectHealth::Healthy)

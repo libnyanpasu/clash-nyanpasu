@@ -103,8 +103,9 @@ enum Message {
 
 fn group(kind: EffectKind) -> usize {
     match kind {
-        EffectKind::SystemProxy | EffectKind::ProxyGuard => 0,
-        EffectKind::Hotkeys | EffectKind::AutoLaunch => 1,
+        // One owner: the system proxy actor also applies auto-launch.
+        EffectKind::SystemProxy | EffectKind::ProxyGuard | EffectKind::AutoLaunch => 0,
+        EffectKind::Hotkeys => 1,
         EffectKind::Locale | EffectKind::Logger | EffectKind::Widget | EffectKind::Tray => 2,
     }
 }
@@ -235,14 +236,10 @@ impl State {
             if kinds.is_empty() {
                 continue;
             }
-            let mut effects: Vec<_> = kinds
+            let effects: Vec<_> = kinds
                 .iter()
                 .map(|kind| self.pending.remove(kind).unwrap())
                 .collect();
-            // Hotkeys remain independent even if autolaunch queues behind a PAC operation.
-            if index == 1 {
-                effects.sort_by_key(|effect| effect.kind() != EffectKind::Hotkeys);
-            }
             let revision = EffectRevision::new(self.revision);
             for kind in &kinds {
                 self.statuses.get_mut(kind).unwrap().desired_revision = revision;

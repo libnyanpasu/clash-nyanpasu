@@ -317,6 +317,7 @@ impl ApplicationWorkflow {
     pub(super) fn advance(&mut self, stage: AttemptStage) {
         if let Some(live) = &mut self.live {
             live.stage = stage;
+            self.stage.send_replace(Some((live.operation_id, stage)));
         }
     }
 
@@ -382,14 +383,14 @@ impl ApplicationWorkflow {
             .consume_settled_action()
             .await
             .map_err(refuse)?;
-        let Some(live) = self.live.as_mut() else {
+        let Some(origin) = self.live.as_ref().map(|live| live.origin.kind()) else {
             // An action with no attempt behind it has finished, which is all
             // it owed.
             self.notify_committed(true);
             return Ok(());
         };
-        live.stage = AttemptStage::Recovering;
-        let continued = match live.origin.kind() {
+        self.advance(AttemptStage::Recovering);
+        let continued = match origin {
             AttemptOriginKind::SourceDecision => self.recover_source_decision().await,
             AttemptOriginKind::CommittedTarget => self.recover_committed_target().await,
             AttemptOriginKind::Lifecycle { .. } => self.recover_by_reestablishing().await,

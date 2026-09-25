@@ -1,4 +1,5 @@
 use crate::client::UiEventSink;
+mod closing;
 mod connection_policy;
 mod mutations;
 mod recovery;
@@ -470,6 +471,8 @@ enum WaitScript {
     Running,
     /// The waiter itself panics while the operation runs on.
     Panic,
+    /// The real terminal result, held until the test releases it.
+    Held,
 }
 
 /// A control endpoint whose operation waits are scripted per operation.
@@ -482,6 +485,8 @@ struct ScriptedWaitEndpoint {
     delegate: Arc<TestControlEndpoint>,
     queued: std::sync::Mutex<std::collections::VecDeque<WaitScript>>,
     scripts: std::sync::Mutex<Vec<(OperationId, WaitScript)>>,
+    held: Notify,
+    release: Notify,
 }
 
 impl ScriptedWaitEndpoint {
@@ -490,7 +495,19 @@ impl ScriptedWaitEndpoint {
             delegate,
             queued: std::sync::Mutex::new(std::collections::VecDeque::new()),
             scripts: std::sync::Mutex::new(Vec::new()),
+            held: Notify::new(),
+            release: Notify::new(),
         })
+    }
+
+    /// Resolves once a `Held` wait is holding its result.
+    async fn held(&self) {
+        self.held.notified().await;
+    }
+
+    /// Lets the held wait deliver.
+    fn release(&self) {
+        self.release.notify_one();
     }
 
     /// The script the next submission takes.
@@ -584,6 +601,11 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
                 error: None,
             }),
             WaitScript::Panic => panic!("scripted panic while waiting for operation {id}"),
+            WaitScript::Held => {
+                self.held.notify_one();
+                self.release.notified().await;
+                self.delegate.wait_operation(id, timeout).await
+            }
         }
     }
     async fn status(

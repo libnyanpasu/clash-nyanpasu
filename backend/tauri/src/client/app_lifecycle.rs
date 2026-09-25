@@ -1,6 +1,7 @@
 //! The application lifecycle the composition root drives (T10 §1.2, §2).
 use std::{future::Future, time::Duration};
 
+use ractor::{MessagingErr, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport};
@@ -42,6 +43,25 @@ impl ProducerTasks {
         self.tasks.close();
         let _ = tokio::time::timeout(budget, self.tasks.wait()).await;
         self.tasks.len()
+    }
+}
+
+/// How an owner answered one shutdown request.
+pub(crate) enum Reply<T> {
+    Answered(T),
+    /// Sent, and no answer came back: the request may still run, or have run.
+    Unanswered,
+    /// The send failed, so the owner never saw the request.
+    NotSent,
+}
+
+impl<T> Reply<T> {
+    pub(crate) fn of<M>(call: std::result::Result<CallResult<T>, MessagingErr<M>>) -> Self {
+        match call {
+            Ok(CallResult::Success(answer)) => Self::Answered(answer),
+            Ok(CallResult::Timeout | CallResult::SenderError) => Self::Unanswered,
+            Err(_) => Self::NotSent,
+        }
     }
 }
 

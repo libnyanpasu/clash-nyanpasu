@@ -690,7 +690,7 @@ pub(super) fn overrides(value: serde_json::Value) -> ClashConfig {
 
 /// A registered subscriber that vetoes every prepare, so the transaction aborts
 /// after the workflow's Try has already run.
-struct Rejector;
+pub(super) struct Rejector;
 
 #[async_trait::async_trait]
 impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for Rejector {

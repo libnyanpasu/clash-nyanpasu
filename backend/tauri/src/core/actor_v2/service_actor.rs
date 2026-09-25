@@ -85,6 +85,19 @@ pub struct ServiceHostStatus {
     pub restart_attempts: u8,
 }
 
+/// Which mutating command an elevated call belongs to. It names the helper
+/// the actor still owns when that call outlives its bound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceCommandKind {
+    EnsureReady,
+    Install,
+    Update,
+    Uninstall,
+    StartDaemon,
+    StopDaemon,
+    RecoverEndpoint,
+}
+
 pub enum ServiceActorMessage {
     /// Idempotent convergence to `Ready`: install → start → probe → gate, as
     /// needed. The reply carries the endpoint the CoreActor will route to.
@@ -161,6 +174,14 @@ pub struct ServiceActorState {
     /// nobody has re-armed.
     exhausted: bool,
     command_timeout: std::time::Duration,
+    /// A mutating adapter call that outlived `command_timeout`. An elevated
+    /// command is not cancelled by dropping its future, so the helper keeps
+    /// running and stays owned here until it ends; until then nothing that
+    /// hands out the endpoint, and no other mutating command, is served.
+    outstanding: Option<(
+        ServiceCommandKind,
+        tokio::task::JoinHandle<Result<(), String>>,
+    )>,
 }
 
 impl ServiceActorState {
@@ -210,6 +231,76 @@ impl ServiceActorState {
         tokio::time::timeout(self.command_timeout, call)
             .await
             .unwrap_or_else(|_| Err(format!("timed out after {:?}", self.command_timeout)))
+    }
+
+    /// Bounds one mutating adapter call without abandoning it. The call runs
+    /// as a helper task the actor owns; when the bound elapses the helper is
+    /// kept in `outstanding` rather than dropped, because an elevated command
+    /// whose caller stopped waiting may still be changing the daemon.
+    async fn tracked(
+        &mut self,
+        command: ServiceCommandKind,
+        call: impl FnOnce(Arc<dyn ServiceHostAdapter>) -> BoxFuture<'static, Result<(), String>>,
+    ) -> Result<(), String> {
+        debug_assert!(
+            self.outstanding.is_none(),
+            "a mutating call only starts once no helper is outstanding"
+        );
+        let mut helper = tokio::spawn(call(self.adapter.clone()));
+        match tokio::time::timeout(self.command_timeout, &mut helper).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => Err(format!("the command's task ended abnormally: {error}")),
+            Err(_) => {
+                self.outstanding = Some((command, helper));
+                Err(format!(
+                    "timed out after {:?}; the command is still running",
+                    self.command_timeout
+                ))
+            }
+        }
+    }
+
+    /// Whether no command helper is still running. A finished one is reaped
+    /// here without a probe of its own: every gated message probes as part of
+    /// its own legs, and its caller budget has no room for another (F6).
+    async fn reap_outstanding(&mut self) -> bool {
+        match &self.outstanding {
+            None => return true,
+            Some((_, helper)) if !helper.is_finished() => return false,
+            Some(_) => {}
+        }
+        let (command, helper) = self.outstanding.take().expect("checked above");
+        match helper.await {
+            Ok(Ok(())) => {
+                tracing::info!("the service {command:?} command finished after its bound")
+            }
+            Ok(Err(error)) => {
+                tracing::warn!("the service {command:?} command failed after its bound: {error}")
+            }
+            Err(error) => {
+                tracing::warn!("the service {command:?} command's task ended abnormally: {error}")
+            }
+        }
+        true
+    }
+
+    /// The refusal every endpoint-handing or mutating message gets while a
+    /// helper is still running. A probe that reports `Ready` meanwhile does
+    /// not lift it: the helper can still be installing or updating the very
+    /// daemon that probe answered for.
+    async fn refuse_while_running(&mut self) -> Option<CoreError> {
+        if self.reap_outstanding().await {
+            return None;
+        }
+        let (command, _) = self
+            .outstanding
+            .as_ref()
+            .expect("an unsettled helper is outstanding");
+        Some(CoreError::new(
+            CoreErrorKind::OperationConflict,
+            format!("a service {command:?} command started earlier is still running"),
+            true,
+        ))
     }
 
     /// Turns one probe answer into the compat fact and the phase it implies.
@@ -284,18 +375,25 @@ impl ServiceActorState {
             }
             self.restart_attempts += 1;
             self.publish(ServicePhase::Restarting, ServiceCompat::Unknown);
-            let started =
-                tokio::time::timeout(self.command_timeout, self.adapter.start_daemon()).await;
+            let started = self
+                .tracked(ServiceCommandKind::RecoverEndpoint, |adapter| {
+                    Box::pin(async move { adapter.start_daemon().await })
+                })
+                .await;
+            let still_running = self.outstanding.is_some();
             let observed = self.probe_and_publish().await;
             compat = observed.1;
             phase = observed.2;
-            // A returned OS error is a completed attempt. A timeout can leave
-            // an elevated command running after its future is dropped.
-            started.map_err(|_| CoreError::new(
-                CoreErrorKind::Internal,
-                "daemon recovery start timed out; the elevated command may still be running",
-                false,
-            ))?.map_err(|error| Self::command_error("recovery start", error))?;
+            // A returned OS error is a completed attempt. A timeout leaves
+            // the elevated command running in its helper.
+            if still_running {
+                return Err(CoreError::new(
+                    CoreErrorKind::Internal,
+                    "daemon recovery start timed out; the elevated command may still be running",
+                    false,
+                ));
+            }
+            started.map_err(|error| Self::command_error("recovery start", error))?;
         }
         if phase == ServicePhase::Ready {
             Ok(self.adapter.endpoint())
@@ -326,20 +424,24 @@ impl ServiceActorState {
         result
     }
 
-    async fn converge(&self) -> Result<EndpointHandle, CoreError> {
+    async fn converge(&mut self) -> Result<EndpointHandle, CoreError> {
         let (_, _, phase) = self.probe_and_publish().await;
         if phase == ServicePhase::NotInstalled {
             self.publish(ServicePhase::Installing, ServiceCompat::Unknown);
-            self.bounded(self.adapter.install())
-                .await
-                .map_err(|error| Self::command_error("install", error))?;
+            self.tracked(ServiceCommandKind::EnsureReady, |adapter| {
+                Box::pin(async move { adapter.install().await })
+            })
+            .await
+            .map_err(|error| Self::command_error("install", error))?;
         }
         let (_, _, phase) = self.probe_and_publish().await;
         if phase == ServicePhase::DaemonStopped {
             self.publish(ServicePhase::StartingDaemon, ServiceCompat::Unknown);
-            self.bounded(self.adapter.start_daemon())
-                .await
-                .map_err(|error| Self::command_error("start", error))?;
+            self.tracked(ServiceCommandKind::EnsureReady, |adapter| {
+                Box::pin(async move { adapter.start_daemon().await })
+            })
+            .await
+            .map_err(|error| Self::command_error("start", error))?;
         }
         let (_, compat, phase) = self.probe_and_publish().await;
         match phase {
@@ -370,13 +472,14 @@ impl Actor for ServiceActor {
         _myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let state = ServiceActorState {
+        let mut state = ServiceActorState {
             adapter: args.adapter,
             status_tx: args.status_tx,
             restart_budget: args.restart_budget,
             restart_attempts: 0,
             exhausted: false,
             command_timeout: args.command_timeout,
+            outstanding: None,
         };
         // Startup version reconcile: an outdated-but-running daemon is
         // upgraded once, preserving the product's auto `update_service`
@@ -385,7 +488,16 @@ impl Actor for ServiceActor {
         let (_, compat, phase) = state.probe_and_publish().await;
         if phase == ServicePhase::Incompatible {
             tracing::info!("daemon incompatible at startup ({compat:?}); attempting one update");
-            if let Err(error) = state.bounded(state.adapter.update()).await {
+            // Tracked like every other mutating call: this runs before any
+            // facade exists, so an update that outlives its bound is known
+            // only to `outstanding`, and nothing can adopt the daemon until
+            // it ends.
+            if let Err(error) = state
+                .tracked(ServiceCommandKind::Update, |adapter| {
+                    Box::pin(async move { adapter.update().await })
+                })
+                .await
+            {
                 tracing::warn!("startup daemon update failed: {error}");
             }
             let _ = state.probe_and_publish().await;
@@ -401,9 +513,17 @@ impl Actor for ServiceActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             ServiceActorMessage::EnsureReady { reply } => {
+                if let Some(refusal) = state.refuse_while_running().await {
+                    let _ = reply.send(Err(refusal));
+                    return Ok(());
+                }
                 let _ = reply.send(state.ensure_ready().await);
             }
             ServiceActorMessage::AdoptIfReady { reply } => {
+                if let Some(refusal) = state.refuse_while_running().await {
+                    let _ = reply.send(Err(refusal));
+                    return Ok(());
+                }
                 let (_, compat, phase) = state.probe_and_publish().await;
                 let result = if phase == ServicePhase::Ready {
                     Ok(state.adapter.endpoint())
@@ -419,23 +539,39 @@ impl Actor for ServiceActor {
                 let _ = reply.send(result);
             }
             ServiceActorMessage::Install { reply } => {
+                if let Some(refusal) = state.refuse_while_running().await {
+                    let _ = reply.send(Err(refusal));
+                    return Ok(());
+                }
                 state.publish(ServicePhase::Installing, ServiceCompat::Unknown);
                 let result = state
-                    .bounded(state.adapter.install())
+                    .tracked(ServiceCommandKind::Install, |adapter| {
+                        Box::pin(async move { adapter.install().await })
+                    })
                     .await
                     .map_err(|error| ServiceActorState::command_error("install", error));
                 let _ = state.probe_and_publish().await;
                 let _ = reply.send(result);
             }
             ServiceActorMessage::Update { reply } => {
+                if let Some(refusal) = state.refuse_while_running().await {
+                    let _ = reply.send(Err(refusal));
+                    return Ok(());
+                }
                 let result = state
-                    .bounded(state.adapter.update())
+                    .tracked(ServiceCommandKind::Update, |adapter| {
+                        Box::pin(async move { adapter.update().await })
+                    })
                     .await
                     .map_err(|error| ServiceActorState::command_error("update", error));
                 let _ = state.probe_and_publish().await;
                 let _ = reply.send(result);
             }
             ServiceActorMessage::Uninstall { reply } => {
+                if let Some(refusal) = state.refuse_while_running().await {
+                    let _ = reply.send(Err(refusal));
+                    return Ok(());
+                }
                 let result = async {
                     // Self-check half of the double guard: never uninstall
                     // under a daemon that may still own a core. Fail-closed --
@@ -502,7 +638,9 @@ impl Actor for ServiceActor {
                     }
                     state.publish(ServicePhase::Uninstalling, ServiceCompat::Unknown);
                     state
-                        .bounded(state.adapter.stop_daemon())
+                        .tracked(ServiceCommandKind::Uninstall, |adapter| {
+                            Box::pin(async move { adapter.stop_daemon().await })
+                        })
                         .await
                         .map_err(|error| ServiceActorState::command_error("stop", error))?;
                     let stopped = state.bounded(state.adapter.probe()).await;
@@ -520,7 +658,9 @@ impl Actor for ServiceActor {
                         ));
                     }
                     state
-                        .bounded(state.adapter.uninstall())
+                        .tracked(ServiceCommandKind::Uninstall, |adapter| {
+                            Box::pin(async move { adapter.uninstall().await })
+                        })
                         .await
                         .map_err(|error| ServiceActorState::command_error("uninstall", error))
                 }
@@ -529,8 +669,14 @@ impl Actor for ServiceActor {
                 let _ = reply.send(result);
             }
             ServiceActorMessage::StartDaemon { reply } => {
+                if let Some(refusal) = state.refuse_while_running().await {
+                    let _ = reply.send(Err(refusal));
+                    return Ok(());
+                }
                 let result = state
-                    .bounded(state.adapter.start_daemon())
+                    .tracked(ServiceCommandKind::StartDaemon, |adapter| {
+                        Box::pin(async move { adapter.start_daemon().await })
+                    })
                     .await
                     .map_err(|error| ServiceActorState::command_error("start", error));
                 if result.is_ok() {
@@ -541,8 +687,14 @@ impl Actor for ServiceActor {
                 let _ = reply.send(result);
             }
             ServiceActorMessage::StopDaemon { reply } => {
+                if let Some(refusal) = state.refuse_while_running().await {
+                    let _ = reply.send(Err(refusal));
+                    return Ok(());
+                }
                 let result = state
-                    .bounded(state.adapter.stop_daemon())
+                    .tracked(ServiceCommandKind::StopDaemon, |adapter| {
+                        Box::pin(async move { adapter.stop_daemon().await })
+                    })
                     .await
                     .map_err(|error| ServiceActorState::command_error("stop", error));
                 let _ = state.probe_and_publish().await;
@@ -553,6 +705,10 @@ impl Actor for ServiceActor {
                 let _ = reply.send(state.status_tx.borrow().clone());
             }
             ServiceActorMessage::RecoverEndpoint { reply } => {
+                if let Some(refusal) = state.refuse_while_running().await {
+                    let _ = reply.send(Err(refusal));
+                    return Ok(());
+                }
                 let _ = reply.send(state.recover_endpoint().await);
             }
         }
@@ -826,6 +982,13 @@ mod tests {
         /// end it.
         hang_install: AtomicBool,
         hang_start: AtomicBool,
+        /// `install` and `update` held at a barrier the test releases, the
+        /// shape of an elevated command that outlives the actor's bound and
+        /// then finishes on its own.
+        park_install: AtomicBool,
+        park_update: AtomicBool,
+        parked: tokio::sync::Notify,
+        release: tokio::sync::Notify,
         stop_succeeds: AtomicBool,
         calls: Mutex<Vec<&'static str>>,
     }
@@ -845,6 +1008,10 @@ mod tests {
                 probe_fail: AtomicBool::new(false),
                 hang_install: AtomicBool::new(false),
                 hang_start: AtomicBool::new(false),
+                park_install: AtomicBool::new(false),
+                park_update: AtomicBool::new(false),
+                parked: tokio::sync::Notify::new(),
+                release: tokio::sync::Notify::new(),
                 stop_succeeds: AtomicBool::new(true),
                 calls: Mutex::new(Vec::new()),
             })
@@ -937,6 +1104,10 @@ mod tests {
                 // bound (F6) can end this call.
                 return std::future::pending::<Result<(), String>>().await;
             }
+            if self.park_install.load(Ordering::SeqCst) {
+                self.parked.notify_one();
+                self.release.notified().await;
+            }
 
             self.installs.fetch_add(1, Ordering::SeqCst);
             if self.fail_install.load(Ordering::SeqCst) {
@@ -972,6 +1143,10 @@ mod tests {
             Ok(())
         }
         async fn update(&self) -> Result<(), String> {
+            if self.park_update.load(Ordering::SeqCst) {
+                self.parked.notify_one();
+                self.release.notified().await;
+            }
             self.updates.fetch_add(1, Ordering::SeqCst);
             self.state.lock().unwrap().2 = "2.0.0".to_owned();
             Ok(())
@@ -979,6 +1154,128 @@ mod tests {
         fn endpoint(&self) -> EndpointHandle {
             Arc::new(NullEndpoint)
         }
+    }
+
+    fn probes(daemon: &FakeDaemon) -> usize {
+        daemon
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|call| **call == "probe")
+            .count()
+    }
+
+    /// Retries `adopt_if_ready` until the released helper has ended and is
+    /// reaped. The helper ends on its own task, so the first tries can race
+    /// it; each is a real mailbox round trip, not a timed guess. A refusal
+    /// probes nothing, and the message that reaps probes only its own leg, so
+    /// the whole loop costs exactly one probe (F6).
+    async fn adopt_once_reaped(client: &ServiceClient, daemon: &FakeDaemon) -> EndpointHandle {
+        let before = probes(daemon);
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                match client.adopt_if_ready().await {
+                    Err(error) if error.kind == Some(CoreErrorKind::OperationConflict) => {
+                        tokio::task::yield_now().await;
+                    }
+                    result => break result,
+                }
+            }
+        })
+        .await
+        .expect("the released helper must end");
+        assert_eq!(
+            probes(daemon) - before,
+            1,
+            "reaping a finished helper adds no leg to the message that reaps it"
+        );
+        result.unwrap_or_else(|error| panic!("the reaped daemon is adoptable: {error}"))
+    }
+
+    /// N3 (T10 §1.11): an install that outlives its bound is still running,
+    /// and a probe that finds the daemon `Ready` meanwhile proves nothing
+    /// about it. Until the helper ends nothing may hand the endpoint out or
+    /// start another elevated command.
+    #[tokio::test]
+    async fn a_helper_that_outlives_its_bound_blocks_endpoint_handing_until_it_ends() {
+        let daemon = FakeDaemon::new(false, false, "2.0.0");
+        let client = ServiceClient::spawn_with_bounds(
+            daemon.clone(),
+            2,
+            std::time::Duration::from_millis(50),
+        )
+        .await
+        .unwrap();
+
+        daemon.park_install.store(true, Ordering::SeqCst);
+        let error = client.install().await.unwrap_err();
+        assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
+        assert!(error.message.contains("still running"), "{}", error.message);
+        daemon.parked.notified().await;
+
+        // The elevated install has already taken effect; its helper has not
+        // returned. A probe now reads a stable `Ready`.
+        *daemon.state.lock().unwrap() = (true, true, "2.0.0".to_owned());
+        assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
+        let conflicts = [
+            client.adopt_if_ready().await.err().map(|error| error.kind),
+            client.ensure_ready().await.err().map(|error| error.kind),
+            client
+                .recover_endpoint()
+                .await
+                .err()
+                .map(|error| error.kind),
+            client.install().await.err().map(|error| error.kind),
+            client.update().await.err().map(|error| error.kind),
+            client.uninstall().await.err().map(|error| error.kind),
+            client.start_daemon().await.err().map(|error| error.kind),
+            client.stop_daemon().await.err().map(|error| error.kind),
+        ];
+        assert_eq!(
+            conflicts,
+            [Some(Some(CoreErrorKind::OperationConflict)); 8],
+            "nothing is served past a helper that is still running"
+        );
+        assert_eq!(daemon.installs.load(Ordering::SeqCst), 0);
+        assert_eq!(daemon.updates.load(Ordering::SeqCst), 0);
+        assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 0);
+
+        daemon.release.notify_one();
+        let endpoint = adopt_once_reaped(&client, &daemon).await;
+        assert_eq!(endpoint.host(), ExecutionHost::Service);
+        assert_eq!(daemon.installs.load(Ordering::SeqCst), 1);
+    }
+
+    /// S21 (T10 §1.3): the startup auto-update runs before any facade exists,
+    /// so the actor alone knows it outlived its bound. Adopting the daemon on
+    /// the strength of a `Ready` probe would race the update that is still
+    /// replacing it.
+    #[tokio::test]
+    async fn a_startup_update_that_outlives_its_bound_blocks_adoption_until_it_ends() {
+        let daemon = FakeDaemon::new(true, true, "1.4.5");
+        daemon.park_update.store(true, Ordering::SeqCst);
+        let client = ServiceClient::spawn_with_bounds(
+            daemon.clone(),
+            2,
+            std::time::Duration::from_millis(50),
+        )
+        .await
+        .unwrap();
+        daemon.parked.notified().await;
+
+        daemon.state.lock().unwrap().2 = "2.0.0".to_owned();
+        assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Ready);
+        assert_eq!(
+            client.adopt_if_ready().await.err().map(|error| error.kind),
+            Some(Some(CoreErrorKind::OperationConflict))
+        );
+
+        daemon.release.notify_one();
+        let endpoint = adopt_once_reaped(&client, &daemon).await;
+        assert_eq!(endpoint.host(), ExecutionHost::Service);
+        assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
+        assert_eq!(client.status().phase, ServicePhase::Ready);
     }
 
     #[tokio::test]

@@ -336,6 +336,26 @@ async fn tick(client: &ApplicationWorkflowClient) {
 }
 
 #[tokio::test]
+async fn idle_ticks_do_not_advance_the_journal() {
+    let dir = tempfile::tempdir().unwrap();
+    let (client, ..) = dirty_graph(&dir).await;
+    barrier(&client).await;
+    let mut journal = client.subscribe_mutations();
+    journal.borrow_and_update();
+    let before = client.mutation_journal().event_seq;
+    for message in [
+        Message::DirtyTick,
+        Message::ConvergenceTick,
+        Message::RecoveryTick,
+    ] {
+        client.0.actor.cast(message).unwrap();
+    }
+    barrier(&client).await;
+    assert_eq!(client.mutation_journal().event_seq, before);
+    assert!(!journal.has_changed().unwrap());
+}
+
+#[tokio::test]
 async fn dirty_during_build_coalesces_and_eventually_applies_the_new_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let (client, notifier, builder, application, _) = dirty_graph(&dir).await;

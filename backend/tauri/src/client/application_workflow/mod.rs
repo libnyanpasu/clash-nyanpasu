@@ -179,7 +179,28 @@ struct ApplicationWorkflowState {
     /// Queued and in-flight mutation contexts.
     mutations: Vec<MutationContext>,
     journal: watch::Sender<MutationJournal>,
+    /// What the journal last announced; see [`PublishedView`].
+    published: PublishedView,
     budgets: MutationBudgets,
+}
+
+/// The parts of this actor that `configuration_status` reads. The journal
+/// sequence advances only when these change, so idle ticks publish nothing.
+#[derive(Default, PartialEq)]
+struct PublishedView {
+    active: Option<OperationId>,
+    queued: Vec<OperationId>,
+    uncertain: bool,
+    last_completed: Option<OperationId>,
+    maintenance: Option<String>,
+    recovery: Option<(OperationId, String)>,
+    deferred: Option<(
+        OperationId,
+        super::convergence::ConvergenceHealth,
+        u32,
+        u8,
+        String,
+    )>,
 }
 
 pub(super) struct ApplicationWorkflowArgs {
@@ -216,7 +237,7 @@ fn conflict(message: &str) -> CoreError {
 }
 
 impl ApplicationWorkflowState {
-    fn publish(&self) {
+    fn publish(&mut self) {
         self.status.send_modify(|status| {
             status.active = self.active.as_ref().map(|op| op.response.id);
             status.queued = self
@@ -592,10 +613,37 @@ impl ApplicationWorkflowState {
         context.decision_waiter.abort();
     }
 
-    fn publish_journal(&self, receipt: Option<mutation::MutationReceipt>) {
+    fn publish_journal(&mut self, receipt: Option<mutation::MutationReceipt>) {
         let workflow = self.workflow.as_ref();
-        self.journal.send_modify(|journal| {
-            journal.event_seq += 1;
+        let view = {
+            let status = self.status.borrow();
+            PublishedView {
+                active: status.active,
+                queued: status.queued.clone(),
+                uncertain: status.uncertain,
+                last_completed: status.completed.back().map(|result| result.id),
+                maintenance: workflow
+                    .and_then(|w| w.pending_product.as_ref())
+                    .map(|(_, error)| error.clone()),
+                recovery: workflow
+                    .and_then(|w| w.recovery.as_ref())
+                    .map(|r| (r.operation_id, r.error.clone())),
+                deferred: workflow.and_then(|w| w.deferred.as_ref()).map(|d| {
+                    (
+                        d.operation_id,
+                        d.health,
+                        d.attempts,
+                        d.attempts_remaining,
+                        d.cause.message.clone(),
+                    )
+                }),
+            }
+        };
+        let changed = receipt.is_some() || view != self.published;
+        self.journal.send_if_modified(|journal| {
+            if changed {
+                journal.event_seq += 1;
+            }
             if let Some(receipt) = receipt {
                 if journal.completed.len() == MAX_PENDING {
                     journal.completed.pop_front();
@@ -610,7 +658,9 @@ impl ApplicationWorkflowState {
                     .as_ref()
                     .map(|(_, error)| error.clone());
             }
+            changed
         });
+        self.published = view;
     }
 }
 
@@ -649,6 +699,7 @@ impl Actor for ApplicationWorkflowActor {
             abandoned: false,
             mutations: Vec::new(),
             journal: args.journal,
+            published: PublishedView::default(),
             budgets: args.budgets,
         })
     }

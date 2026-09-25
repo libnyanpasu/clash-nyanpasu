@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use super::{ManifestVersion, instance::UpdaterState, shared::CoreTypeMeta};
 use crate::{
     client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary},
-    config::nyanpasu::ClashCore,
     core::download::DownloadStatus,
 };
+use nyanpasu_config::application::ClashCore;
 
 #[derive(Clone)]
 pub struct UpdaterProgress(Arc<dyn Fn(UpdaterState, Option<DownloadStatus>) + Send + Sync>);

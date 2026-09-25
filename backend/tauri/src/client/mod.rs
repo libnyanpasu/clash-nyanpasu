@@ -519,7 +519,7 @@ impl NyanpasuClient {
         &self,
         core: nyanpasu_config::application::ClashCore,
     ) -> Result<usize> {
-        Ok(self.inner.updater.update(core.into()).await?)
+        Ok(self.inner.updater.update(core).await?)
     }
 
     pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {

@@ -7,7 +7,7 @@ use super::super::runtime;
 
 /// Owns the staging directory until installation and its restart have finished.
 pub struct PreparedCoreBinary {
-    pub target: crate::config::nyanpasu::ClashCore,
+    pub target: nyanpasu_config::application::ClashCore,
     pub source: PathBuf,
     pub destination: PathBuf,
     pub staging: Arc<TempDir>,

@@ -872,7 +872,7 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
         let staging = Arc::new(tempfile::tempdir().unwrap());
         let progress = Arc::new(super::Progress::default());
         let artifact = crate::client::core_lifecycle::ports::PreparedCoreBinary {
-            target: f.client.get_app_config().await.unwrap().core.into(),
+            target: f.client.get_app_config().await.unwrap().core,
             source: staging.path().join("prepared-core"),
             destination: f._dir.path().join("installed-core"),
             staging,

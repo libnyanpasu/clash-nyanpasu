@@ -594,7 +594,7 @@ impl Fixture {
         let progress = Arc::new(Progress::default());
         (
             PreparedCoreBinary {
-                target: target.into(),
+                target,
                 source,
                 destination: self.dir.path().join("installed-core"),
                 staging,

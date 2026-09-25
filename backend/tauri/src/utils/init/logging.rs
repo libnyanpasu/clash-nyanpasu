@@ -1,5 +1,6 @@
-use crate::{config, utils::dirs};
+use crate::utils::dirs;
 use anyhow::{Result, anyhow, bail};
+use nyanpasu_config::application::LoggingLevel;
 use parking_lot::Mutex;
 use std::{
     fs,
@@ -18,9 +19,7 @@ use tracing_appender::{
 use tracing_log::log_tracer;
 use tracing_subscriber::{EnvFilter, filter, fmt, layer::SubscriberExt, reload};
 
-use super::nyanpasu::LoggingLevel;
-
-pub type ReloadSignal = (Option<config::nyanpasu::LoggingLevel>, Option<usize>);
+pub type ReloadSignal = (Option<LoggingLevel>, Option<usize>);
 
 struct Channel(Option<Sender<ReloadSignal>>);
 impl Channel {

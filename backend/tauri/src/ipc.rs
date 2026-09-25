@@ -619,7 +619,7 @@ pub async fn fetch_latest_core_versions(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
-    match resolve::resolve_core_version(&app_handle, &core_type.into()).await {
+    match resolve::resolve_core_version(&app_handle, &core_type).await {
         Ok(version) => Ok(version),
         Err(err) => Err(IpcError::from(err)),
     }

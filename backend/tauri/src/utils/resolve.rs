@@ -1,13 +1,15 @@
 use crate::{
     client::NyanpasuClient,
-    config::nyanpasu::ClashCore,
     core::{storage::Storage, tray::proxies, *},
     log_err,
     utils::init,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
 use anyhow::Result;
-use nyanpasu_config::{application::TrayMenuCloseBehavior, state::window::WindowState};
+use nyanpasu_config::{
+    application::{ClashCore, TrayMenuCloseBehavior},
+    state::window::WindowState,
+};
 use semver::Version;
 use std::{
     collections::HashMap,
@@ -708,7 +710,7 @@ pub fn is_editor_window_open(
 // TODO: use enum instead
 pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore) -> Result<String> {
     let shell = app_handle.shell();
-    let core = core_type.clone().to_string();
+    let core = core_type.binary_name();
     log::debug!(target: "app", "check config in `{core}`");
     let cmd = match core_type {
         ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha | ClashCore::Meow => {

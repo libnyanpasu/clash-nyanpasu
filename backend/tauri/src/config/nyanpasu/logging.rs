@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
-use tracing_subscriber::filter;
 
-#[derive(Deserialize, Serialize, Debug, Clone, specta::Type, EnumString, Display)]
-#[strum(serialize_all = "kebab-case")]
+#[derive(Deserialize, Serialize, Debug, Clone, specta::Type)]
 pub enum LoggingLevel {
     #[serde(rename = "silent", alias = "off")]
     Silent,
@@ -28,18 +25,5 @@ impl Default for LoggingLevel {
     #[cfg(not(debug_assertions))]
     fn default() -> Self {
         Self::Info
-    }
-}
-
-impl From<LoggingLevel> for filter::LevelFilter {
-    fn from(level: LoggingLevel) -> Self {
-        match level {
-            LoggingLevel::Silent => filter::LevelFilter::OFF,
-            LoggingLevel::Trace => filter::LevelFilter::TRACE,
-            LoggingLevel::Debug => filter::LevelFilter::DEBUG,
-            LoggingLevel::Info => filter::LevelFilter::INFO,
-            LoggingLevel::Warn => filter::LevelFilter::WARN,
-            LoggingLevel::Error => filter::LevelFilter::ERROR,
-        }
     }
 }

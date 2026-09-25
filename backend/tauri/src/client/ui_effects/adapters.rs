@@ -68,22 +68,7 @@ pub struct TracingLoggerRefresher;
 
 impl LoggerRefresher for TracingLoggerRefresher {
     fn refresh(&self, level: Option<LoggingLevel>, max_files: Option<usize>) -> anyhow::Result<()> {
-        crate::utils::init::refresh_logger((level.map(legacy_logging_level), max_files))
-    }
-}
-
-/// The logger still speaks the legacy enum. Written out rather than derived so
-/// that adding a level to either side fails to compile instead of silently
-/// mapping to the wrong one.
-fn legacy_logging_level(level: LoggingLevel) -> crate::config::nyanpasu::LoggingLevel {
-    use crate::config::nyanpasu::LoggingLevel as Legacy;
-    match level {
-        LoggingLevel::Silent => Legacy::Silent,
-        LoggingLevel::Trace => Legacy::Trace,
-        LoggingLevel::Debug => Legacy::Debug,
-        LoggingLevel::Info => Legacy::Info,
-        LoggingLevel::Warn => Legacy::Warn,
-        LoggingLevel::Error => Legacy::Error,
+        crate::utils::init::refresh_logger((level, max_files))
     }
 }
 

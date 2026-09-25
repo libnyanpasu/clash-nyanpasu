@@ -32,7 +32,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::fetch_latest_core_versions,
             ipc::inspect_updater,
             ipc::get_core_version,
-            ipc::get_verge_config,
             ipc::get_app_config,
             ipc::get_clash_config,
             ipc::get_hotkey_functions,
@@ -85,7 +84,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::uwp::invoke_uwp_tool,
             ipc::update_core,
             ipc::collect_logs,
-            ipc::patch_verge_config,
             ipc::enhance_profiles,
             ipc::import_profile,
             ipc::get_pending_deep_link,
@@ -289,6 +287,10 @@ mod tests {
         assert!(
             !generated.contains("export type PatchRuntimeConfig"),
             "the whitelisted overrides DTO is replaced by ClashGuardOverridesPatch"
+        );
+        assert!(
+            !generated.contains("export type IVerge") && !generated.contains("export type Legacy"),
+            "no legacy verge DTO may stay on the wire"
         );
 
         // The plain `ClashConfig` name belongs to the typed persistent config,

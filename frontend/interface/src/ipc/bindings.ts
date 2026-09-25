@@ -104,8 +104,6 @@ export const commands = {
     typedError<string, string>(
       __TAURI_INVOKE('get_core_version', { coreType }),
     ),
-  getVergeConfig: () =>
-    typedError<IVerge_Serialize, string>(__TAURI_INVOKE('get_verge_config')),
   getAppConfig: () =>
     typedError<NyanpasuAppConfig_Serialize, string>(
       __TAURI_INVOKE('get_app_config'),
@@ -261,10 +259,6 @@ export const commands = {
   updateCore: (coreType: ClashCore_Deserialize) =>
     typedError<number, string>(__TAURI_INVOKE('update_core', { coreType })),
   collectLogs: () => typedError<null, string>(__TAURI_INVOKE('collect_logs')),
-  patchVergeConfig: (payload: IVerge_Deserialize) =>
-    typedError<MutationOutcome<null>, string>(
-      __TAURI_INVOKE('patch_verge_config', { payload }),
-    ),
   /**
    *  Rebuild-only command: there is no prior state commit, so a failure is a
    *  plain error — the committed/degraded model (spec §6.2) does not apply.
@@ -478,8 +472,6 @@ export type BreakConnectionStrategyPatch_Serialize = {
   on_mode_change?: boolean | null
 }
 
-export type BreakWhenProxyChange = 'none' | 'chain' | 'all'
-
 export type BuildInfo = {
   app_name: string
   app_version: string
@@ -657,10 +649,6 @@ export type ClashRule = {
   type: string
   payload: string
   proxy: string
-}
-
-export type ClashStrategy = {
-  external_controller_port_strategy: ExternalControllerPortStrategy
 }
 
 export type ClashVersion = {
@@ -1149,9 +1137,6 @@ export type EnvInfo = {
  */
 export type ExecutionHost = 'local' | 'service'
 
-export type ExternalControllerPortStrategy =
-  'fixed' | 'random' | 'allow_fallback'
-
 export type ExternalControllerStrategy = {
   host: string
   port: PortStrategy
@@ -1239,299 +1224,6 @@ export type I18nLanguage_Deserialize =
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
-
-/**  ### `verge.yaml` schema */
-export type IVerge = IVerge_Serialize | IVerge_Deserialize
-
-/**  ### `verge.yaml` schema */
-export type IVerge_Deserialize =
-  | ({
-      /**  app listening port for app singleton */
-      app_singleton_port: number | null
-      /**
-       *  app log level
-       *  silent | error | warn | info | debug | trace
-       */
-      app_log_level: LoggingLevel_Deserialize | null
-      language: string | null
-      /**  `light` or `dark` or `system` */
-      theme_mode: string | null
-      /**  enable traffic graph default is true */
-      traffic_graph: boolean | null
-      /**  show memory info (only for Clash Meta) */
-      enable_memory_usage: boolean | null
-      /**  global ui framer motion effects */
-      lighten_animation_effects: boolean | null
-      /**  clash tun mode */
-      enable_tun_mode: boolean | null
-      /**  windows service mode */
-      enable_service_mode: boolean | null
-      /**  can the app auto startup */
-      enable_auto_launch: boolean | null
-      /**  not show the window on launch */
-      enable_silent_start: boolean | null
-      /**  set system proxy */
-      enable_system_proxy: boolean | null
-      /**  enable proxy guard */
-      enable_proxy_guard: boolean | null
-      /**  set system proxy bypass */
-      system_proxy_bypass: string | null
-      /**  theme setting */
-      theme_color: string | null
-      /**  web ui list */
-      web_ui_list: string[] | null
-      /**  clash core path */
-      clash_core: ClashCore_Deserialize | null
-      clash_control_channel: ClashControlChannel | null
-      clash_ipc_disable_http_controller: boolean | null
-      /**
-       *  hotkey map
-       *  format: {func},{key}
-       */
-      hotkeys: string[] | null
-      /**
-       *  切换代理时自动关闭连接 (已弃用)
-       * @deprecated use `break_when_proxy_change` instead
-       */
-      auto_close_connection: boolean | null
-      /**
-       *  切换代理时中断连接
-       *  None: 不中断
-       *  Chain: 仅中断使用该代理链的连接
-       *  All: 中断所有连接
-       */
-      break_when_proxy_change: BreakWhenProxyChange | null
-      /**
-       *  切换配置时中断连接
-       *  true: 中断所有连接
-       *  false: 不中断连接
-       */
-      break_when_profile_change: boolean | null
-      /**
-       *  切换模式时中断连接
-       *  true: 中断所有连接
-       *  false: 不中断连接
-       */
-      break_when_mode_change: boolean | null
-      /**  默认的延迟测试连接 */
-      default_latency_test: string | null
-      /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真 */
-      enable_clash_fields: boolean | null
-      /**  是否使用内部的脚本支持，默认为真 */
-      enable_builtin_enhanced: boolean | null
-      /**  proxy 页面布局 列数 */
-      proxy_layout_column: number | null
-      /**
-       *  日志清理
-       *  分钟数； 0 为不清理
-       * @deprecated use `max_log_files` instead
-       */
-      auto_log_clean: number | null
-      /**  日记轮转时间，单位：天 */
-      max_log_files: number | null
-      /**
-       *  window size and position
-       * @deprecated use `window_size_state` instead
-       */
-      window_size_position: (number | null)[] | null
-      window_size_state: WindowState | null
-      /**  是否启用随机端口 */
-      enable_random_port: boolean | null
-      /**  verge mixed port 用于覆盖 clash 的 mixed port */
-      verge_mixed_port: number | null
-      /**  Check update when app launch */
-      enable_auto_check_update: boolean | null
-      /**  Clash 相关策略 */
-      clash_strategy: ClashStrategy | null
-      /**  是否启用代理托盘选择 */
-      clash_tray_selector: ProxiesSelectorMode | null
-      always_on_top: boolean | null
-      /**
-       *  Tun 堆栈选择
-       *  TODO: 弃用此字段，转移到 clash config 里
-       */
-      tun_stack: TunStack | null
-      /**  是否启用网络统计信息浮窗 */
-      network_statistic_widget: LegacyNetworkStatisticWidgetConfig | null
-      /**
-       *  PAC URL for automatic proxy configuration
-       *  This field is used to set PAC proxy without exposing it to the frontend UI
-       */
-      pac_url: string | null
-      /**
-       *  enable tray text display on Linux systems
-       *  When enabled, shows proxy and TUN mode status as text next to the tray icon
-       *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-       */
-      enable_tray_text: boolean | null
-      /**
-       *  Window type to use when opening the app window
-       *  Main: opens new main window
-       */
-      window_type: WindowType | null
-      /**
-       *  Tray menu implementation mode
-       *  Native: use the OS system tray menu (default on non-Windows)
-       *  Webview: use a custom WebView window (default on Windows)
-       */
-      tray_menu_mode: TrayMenuMode | null
-      /**
-       *  Webview tray menu window dismiss behavior
-       *  Hide: hide the window on close (fast re-open, higher memory usage)
-       *  Close: destroy the window on close (slower re-open, lower memory usage)
-       */
-      tray_menu_close_behavior: TrayMenuCloseBehavior | null
-    } & {
-      /**  proxy guard interval */
-      proxy_guard_interval: number | null
-    })
-  | {
-      /**  proxy guard interval */
-      proxy_guard_duration: number | null
-    }
-
-/**  ### `verge.yaml` schema */
-export type IVerge_Serialize = {
-  /**  app listening port for app singleton */
-  app_singleton_port: number | null
-  /**
-   *  app log level
-   *  silent | error | warn | info | debug | trace
-   */
-  app_log_level: LoggingLevel_Serialize | null
-  language: string | null
-  /**  `light` or `dark` or `system` */
-  theme_mode: string | null
-  /**  enable traffic graph default is true */
-  traffic_graph: boolean | null
-  /**  show memory info (only for Clash Meta) */
-  enable_memory_usage: boolean | null
-  /**  global ui framer motion effects */
-  lighten_animation_effects: boolean | null
-  /**  clash tun mode */
-  enable_tun_mode: boolean | null
-  /**  windows service mode */
-  enable_service_mode?: boolean | null
-  /**  can the app auto startup */
-  enable_auto_launch: boolean | null
-  /**  not show the window on launch */
-  enable_silent_start: boolean | null
-  /**  set system proxy */
-  enable_system_proxy: boolean | null
-  /**  enable proxy guard */
-  enable_proxy_guard: boolean | null
-  /**  set system proxy bypass */
-  system_proxy_bypass: string | null
-  /**  proxy guard interval */
-  proxy_guard_interval: number | null
-  /**  theme setting */
-  theme_color: string | null
-  /**  web ui list */
-  web_ui_list: string[] | null
-  /**  clash core path */
-  clash_core?: ClashCore_Serialize | null
-  clash_control_channel: ClashControlChannel | null
-  clash_ipc_disable_http_controller: boolean | null
-  /**
-   *  hotkey map
-   *  format: {func},{key}
-   */
-  hotkeys: string[] | null
-  /**
-   *  切换代理时自动关闭连接 (已弃用)
-   * @deprecated use `break_when_proxy_change` instead
-   */
-  auto_close_connection: boolean | null
-  /**
-   *  切换代理时中断连接
-   *  None: 不中断
-   *  Chain: 仅中断使用该代理链的连接
-   *  All: 中断所有连接
-   */
-  break_when_proxy_change: BreakWhenProxyChange | null
-  /**
-   *  切换配置时中断连接
-   *  true: 中断所有连接
-   *  false: 不中断连接
-   */
-  break_when_profile_change: boolean | null
-  /**
-   *  切换模式时中断连接
-   *  true: 中断所有连接
-   *  false: 不中断连接
-   */
-  break_when_mode_change: boolean | null
-  /**  默认的延迟测试连接 */
-  default_latency_test: string | null
-  /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真 */
-  enable_clash_fields: boolean | null
-  /**  是否使用内部的脚本支持，默认为真 */
-  enable_builtin_enhanced: boolean | null
-  /**  proxy 页面布局 列数 */
-  proxy_layout_column: number | null
-  /**
-   *  日志清理
-   *  分钟数； 0 为不清理
-   * @deprecated use `max_log_files` instead
-   */
-  auto_log_clean: number | null
-  /**  日记轮转时间，单位：天 */
-  max_log_files: number | null
-  /**
-   *  window size and position
-   * @deprecated use `window_size_state` instead
-   */
-  window_size_position?: (number | null)[] | null
-  window_size_state?: WindowState | null
-  /**  是否启用随机端口 */
-  enable_random_port: boolean | null
-  /**  verge mixed port 用于覆盖 clash 的 mixed port */
-  verge_mixed_port: number | null
-  /**  Check update when app launch */
-  enable_auto_check_update: boolean | null
-  /**  Clash 相关策略 */
-  clash_strategy: ClashStrategy | null
-  /**  是否启用代理托盘选择 */
-  clash_tray_selector: ProxiesSelectorMode | null
-  always_on_top: boolean | null
-  /**
-   *  Tun 堆栈选择
-   *  TODO: 弃用此字段，转移到 clash config 里
-   */
-  tun_stack: TunStack | null
-  /**  是否启用网络统计信息浮窗 */
-  network_statistic_widget?: LegacyNetworkStatisticWidgetConfig | null
-  /**
-   *  PAC URL for automatic proxy configuration
-   *  This field is used to set PAC proxy without exposing it to the frontend UI
-   */
-  pac_url?: string | null
-  /**
-   *  enable tray text display on Linux systems
-   *  When enabled, shows proxy and TUN mode status as text next to the tray icon
-   *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-   */
-  enable_tray_text: boolean | null
-  /**
-   *  Window type to use when opening the app window
-   *  Main: opens new main window
-   */
-  window_type: WindowType | null
-  /**
-   *  Tray menu implementation mode
-   *  Native: use the OS system tray menu (default on non-Windows)
-   *  Webview: use a custom WebView window (default on Windows)
-   */
-  tray_menu_mode: TrayMenuMode | null
-  /**
-   *  Webview tray menu window dismiss behavior
-   *  Hide: hide the window on close (fast re-open, higher memory usage)
-   *  Close: destroy the window on close (slower re-open, lower memory usage)
-   */
-  tray_menu_close_behavior: TrayMenuCloseBehavior | null
-}
-
-export type LegacyNetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
 
 export type Level =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'unknown'
@@ -3228,17 +2920,6 @@ export type WindowReadyEvent = {
   label: string
 }
 
-export type WindowState = {
-  width: number
-  height: number
-  x: number
-  y: number
-  maximized: boolean
-  fullscreen: boolean
-}
-
-export type WindowType = 'main'
-
 /* Tauri Specta runtime */
 async function typedError<T, E>(
   result: Promise<T>,
@@ -3418,11 +3099,6 @@ export const queries = {
     queryOptions({
       queryKey: ['getCoreVersion', ...args],
       queryFn: () => commands.getCoreVersion(...args),
-    }),
-  getVergeConfig: (...args: Parameters<typeof commands.getVergeConfig>) =>
-    queryOptions({
-      queryKey: ['getVergeConfig', ...args],
-      queryFn: () => commands.getVergeConfig(...args),
     }),
   getAppConfig: (...args: Parameters<typeof commands.getAppConfig>) =>
     queryOptions({
@@ -3685,11 +3361,6 @@ export const mutations = {
     mutationKey: ['collectLogs'],
     mutationFn: (input: Parameters<typeof commands.collectLogs>) =>
       commands.collectLogs(...input),
-  }),
-  patchVergeConfig: mutationOptions({
-    mutationKey: ['patchVergeConfig'],
-    mutationFn: (input: Parameters<typeof commands.patchVergeConfig>) =>
-      commands.patchVergeConfig(...input),
   }),
   enhanceProfiles: mutationOptions({
     mutationKey: ['enhanceProfiles'],

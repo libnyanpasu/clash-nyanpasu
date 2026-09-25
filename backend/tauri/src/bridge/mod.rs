@@ -6,26 +6,11 @@ pub mod window;
 #[cfg(test)]
 pub(crate) static LEGACY_CONFIG_TEST_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
-use crate::{config::IVerge, state::TypedConfigPatchPlan};
+use crate::config::IVerge;
 use nyanpasu_config::{
-    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
-    clash::config::{ClashConfig, ClashConfigPatch},
-    state::{PersistentState, PersistentStatePatch},
+    application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
 use serde::{Serialize, de::DeserializeOwned};
-use struct_patch::Patch;
-
-pub(crate) fn legacy_iverge_from_typed(
-    mut base: IVerge,
-    app: &NyanpasuAppConfig,
-    session: &PersistentState,
-    clash: &ClashConfig,
-) -> anyhow::Result<IVerge> {
-    verge::apply_app_config_to_legacy_verge(&mut base, app)?;
-    window::apply_session_state_to_legacy_verge(&mut base, session)?;
-    clash::apply_clash_config_to_legacy_verge(&mut base, clash)?;
-    Ok(base)
-}
 
 pub(crate) fn typed_config_from_legacy_parts(
     legacy: &IVerge,
@@ -38,151 +23,6 @@ pub(crate) fn typed_config_from_legacy_parts(
     ))
 }
 
-pub(crate) fn typed_patches_from_legacy_patch(
-    mut base: IVerge,
-    patch: &IVerge,
-    legacy_clash: &serde_yaml::Mapping,
-) -> anyhow::Result<TypedConfigPatchPlan> {
-    base.patch_config(patch.clone());
-    let (app, session, clash) = typed_config_from_legacy_parts(&base, legacy_clash)?;
-
-    Ok(TypedConfigPatchPlan {
-        application: application_patch_from_legacy_patch(patch, app),
-        session_state: session_patch_from_legacy_patch(patch, session),
-        clash_config: clash_patch_from_legacy_patch(patch, clash),
-    })
-}
-
-fn application_patch_from_legacy_patch(
-    patch: &IVerge,
-    next: NyanpasuAppConfig,
-) -> Option<NyanpasuAppConfigPatch> {
-    let mut app = NyanpasuAppConfig::new_empty_patch();
-    let mut touched = false;
-
-    macro_rules! set_if_some {
-        ($legacy:ident, $target:ident) => {
-            if patch.$legacy.is_some() {
-                app.$target = Some(next.$target);
-                touched = true;
-            }
-        };
-    }
-
-    set_if_some!(app_singleton_port, app_singleton_port);
-    set_if_some!(app_log_level, app_log_level);
-    set_if_some!(language, language);
-    set_if_some!(theme_mode, theme_mode);
-    set_if_some!(traffic_graph, traffic_graph);
-    set_if_some!(enable_memory_usage, enable_memory_usage);
-    set_if_some!(lighten_animation_effects, lighten_animation_effects);
-    set_if_some!(enable_service_mode, enable_service_mode);
-    set_if_some!(enable_auto_launch, enable_auto_launch);
-    set_if_some!(enable_silent_start, enable_silent_start);
-    set_if_some!(enable_system_proxy, enable_system_proxy);
-    set_if_some!(enable_proxy_guard, enable_proxy_guard);
-    set_if_some!(system_proxy_bypass, system_proxy_bypass);
-    set_if_some!(proxy_guard_interval, proxy_guard_interval);
-    set_if_some!(theme_color, theme_color);
-    set_if_some!(hotkeys, hotkeys);
-    set_if_some!(default_latency_test, default_latency_test);
-    set_if_some!(enable_builtin_enhanced, enable_builtin_enhanced);
-    set_if_some!(proxy_layout_column, proxy_layout_column);
-    set_if_some!(max_log_files, max_log_files);
-    set_if_some!(enable_auto_check_update, enable_auto_check_update);
-    set_if_some!(always_on_top, always_on_top);
-    set_if_some!(network_statistic_widget, network_statistic_widget);
-    set_if_some!(enable_tray_text, enable_tray_text);
-    set_if_some!(tray_menu_mode, tray_menu_mode);
-    set_if_some!(tray_menu_close_behavior, tray_menu_close_behavior);
-
-    if patch.clash_core.is_some() {
-        app.core = Some(next.core);
-        touched = true;
-    }
-    if patch.clash_tray_selector.is_some() {
-        app.tray_selector_mode = Some(next.tray_selector_mode);
-        touched = true;
-    }
-    if patch.pac_url.is_some() {
-        app.pac_url = Some(next.pac_url);
-        touched = true;
-    }
-    if patch.window_type.is_some() {
-        app.use_legacy_ui = Some(next.use_legacy_ui);
-        touched = true;
-    }
-
-    touched.then_some(app)
-}
-
-fn session_patch_from_legacy_patch(
-    patch: &IVerge,
-    next: PersistentState,
-) -> Option<PersistentStatePatch> {
-    #[allow(deprecated)]
-    let touched = patch.window_size_state.is_some() || patch.window_size_position.is_some();
-
-    if !touched {
-        return None;
-    }
-
-    let mut session = PersistentState::new_empty_patch();
-    session.window_state = Some(next.window_state);
-    Some(session)
-}
-
-fn clash_patch_from_legacy_patch(patch: &IVerge, next: ClashConfig) -> Option<ClashConfigPatch> {
-    let mut clash = ClashConfig::new_empty_patch();
-    let mut touched = false;
-
-    if patch.clash_control_channel.is_some() {
-        clash.clash_control_channel = Some(next.clash_control_channel);
-        touched = true;
-    }
-    if patch.clash_ipc_disable_http_controller.is_some() {
-        clash.clash_ipc_disable_http_controller = Some(next.clash_ipc_disable_http_controller);
-        touched = true;
-    }
-    if patch.enable_tun_mode.is_some() {
-        clash.enable_tun_mode = Some(next.enable_tun_mode);
-        touched = true;
-    }
-    if patch.web_ui_list.is_some() {
-        clash.web_ui_list = Some(next.web_ui_list);
-        touched = true;
-    }
-    if patch.enable_clash_fields.is_some() {
-        clash.enable_clash_fields = Some(next.enable_clash_fields);
-        touched = true;
-    }
-    if patch.tun_stack.is_some() {
-        clash.tun_stack = Some(next.tun_stack);
-        touched = true;
-    }
-    if patch.enable_random_port.is_some() || patch.verge_mixed_port.is_some() {
-        clash.mixed_port = next.mixed_port.into_patch();
-        touched = true;
-    }
-    if patch.clash_strategy.is_some() {
-        clash.external_controller = next.external_controller.into_patch();
-        touched = true;
-    }
-
-    #[allow(deprecated)]
-    let break_connection_touched = patch.auto_close_connection.is_some()
-        || patch.break_when_proxy_change.is_some()
-        || patch.break_when_profile_change.is_some()
-        || patch.break_when_mode_change.is_some();
-
-    if break_connection_touched {
-        clash.break_connection = next.break_connection.into_patch();
-        touched = true;
-    }
-
-    touched.then_some(clash)
-}
-
 pub(super) fn yaml_convert<T, U>(value: T) -> anyhow::Result<U>
 where
     T: Serialize,
@@ -190,55 +30,4 @@ where
 {
     let value = serde_yaml::to_value(value)?;
     Ok(serde_yaml::from_value(value)?)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use nyanpasu_config::clash::config::ClashControlChannel;
-
-    #[test]
-    fn control_channel_patch_is_clash_owned_and_round_trips() {
-        let legacy = IVerge {
-            clash_control_channel: Some(ClashControlChannel::HttpOnly),
-            clash_ipc_disable_http_controller: Some(true),
-            ..IVerge::default()
-        };
-        let plan = typed_patches_from_legacy_patch(
-            IVerge::default(),
-            &legacy,
-            &serde_yaml::Mapping::new(),
-        )
-        .unwrap();
-        assert!(plan.application.is_none());
-        assert!(plan.session_state.is_none());
-        let mut clash = ClashConfig::default();
-        clash.apply(plan.clash_config.unwrap());
-        assert_eq!(clash.clash_control_channel, ClashControlChannel::HttpOnly);
-        assert!(clash.clash_ipc_disable_http_controller);
-
-        let projected = legacy_iverge_from_typed(
-            IVerge::default(),
-            &NyanpasuAppConfig::default(),
-            &PersistentState::default(),
-            &clash,
-        )
-        .unwrap();
-        assert_eq!(
-            projected.clash_control_channel,
-            legacy.clash_control_channel
-        );
-        assert_eq!(projected.clash_ipc_disable_http_controller, Some(true));
-
-        let patch = IVerge {
-            clash_ipc_disable_http_controller: Some(false),
-            ..IVerge::default()
-        };
-        let plan = typed_patches_from_legacy_patch(projected, &patch, &serde_yaml::Mapping::new())
-            .unwrap();
-        assert!(plan.application.is_none());
-        clash.apply(plan.clash_config.unwrap());
-        assert_eq!(clash.clash_control_channel, ClashControlChannel::HttpOnly);
-        assert!(!clash.clash_ipc_disable_http_controller);
-    }
 }

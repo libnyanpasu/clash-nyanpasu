@@ -1,7 +1,5 @@
 use crate::{
-    bridge::verge::LegacyVergeBridge,
     client::{ClientError, NyanpasuClient},
-    config::*,
     core::{logger::Logger, storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat::{self, CopyEnvOption},
@@ -493,26 +491,11 @@ pub async fn patch_runtime_overrides(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_verge_config(legacy: State<'_, LegacyVergeBridge>) -> Result<IVerge> {
-    Ok(legacy.get_verge_config().await?)
-}
-
-#[tauri::command]
-#[specta::specta]
 pub fn get_hotkey_functions() -> Vec<&'static str> {
     crate::client::hotkey::ports::HotkeyAction::all()
         .iter()
         .map(|action| action.as_str())
         .collect()
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_verge_config(
-    legacy: State<'_, LegacyVergeBridge>,
-    payload: IVerge,
-) -> Result<crate::client::runtime::MutationOutcome<()>> {
-    Ok(legacy.patch_verge_config(payload).await?)
 }
 
 #[tauri::command]

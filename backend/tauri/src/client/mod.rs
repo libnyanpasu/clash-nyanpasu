@@ -36,8 +36,6 @@ use crate::{
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::{
-        application::ApplicationSnapshot,
-        clash_config::ClashConfigSnapshot,
         mirror::{
             ClashLegacyBridge as ClashLegacyBridgeTrait,
             VergeLegacyBridge as VergeLegacyBridgeTrait,
@@ -47,7 +45,6 @@ use crate::{
             CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
             ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
         },
-        session_state::SessionStateSnapshot,
     },
     utils::path::PathResolver,
 };
@@ -102,12 +99,6 @@ pub struct LegacyBridgeSet {
 #[derive(Clone)]
 pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
-}
-
-pub(crate) struct TypedConfigSnapshots {
-    pub application: ApplicationSnapshot,
-    pub session: SessionStateSnapshot,
-    pub clash: ClashConfigSnapshot,
 }
 
 async fn new_typed_config_clients(
@@ -747,14 +738,6 @@ impl NyanpasuClient {
     ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.clash_config.clone();
         Ok(client.replace(state).await?.outcome())
-    }
-
-    pub(crate) fn typed_config_snapshots(&self) -> TypedConfigSnapshots {
-        TypedConfigSnapshots {
-            application: self.inner.application.snapshot(),
-            session: self.inner.session_state.snapshot(),
-            clash: self.inner.clash_config.snapshot(),
-        }
     }
 
     // ---- profiles domain (PR-3 T07) ----

@@ -96,7 +96,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths,
         runtime_paths: runtime_paths.clone(),
         bridges: LegacyBridgeSet {
-            verge: Arc::new(LegacyVergeBridge::with_store(legacy_verge_store.clone())),
+            verge: Arc::new(LegacyVergeBridge::with_store(legacy_verge_store)),
             window: Arc::new(LegacyWindowBridge::new(legacy_lock.clone())),
             clash: Arc::new(LegacyClashBridge::new(legacy_lock)),
         },
@@ -111,7 +111,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     })
     .context("Failed to setup nyanpasu client")?;
     forward_actor_events(app_handle, client.clone());
-    app.manage(LegacyVergeBridge::new(client.clone(), legacy_verge_store));
     tauri::async_runtime::spawn(hotkey_action_pump(hotkey_rx, client.clone()));
     // The widget needs the client's connection stream and the client needs the
     // widget controller, so the controller is built empty and filled here, in

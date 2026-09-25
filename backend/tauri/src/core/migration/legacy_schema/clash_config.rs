@@ -1,4 +1,7 @@
-use crate::config::{IClashTemp, IVerge, nyanpasu as legacy_app};
+use super::{
+    clash::IClashTemp,
+    verge::{self as legacy_app, IVerge},
+};
 use nyanpasu_config::clash::config::{
     ClashConfig,
     clash_strategy::{
@@ -8,7 +11,7 @@ use nyanpasu_config::clash::config::{
 use serde_yaml::{Mapping, Value};
 use std::net::SocketAddr;
 
-pub(crate) fn clash_config_from_legacy(
+pub(super) fn clash_config_from_legacy(
     legacy_verge: &IVerge,
     legacy_clash: &Mapping,
 ) -> anyhow::Result<ClashConfig> {

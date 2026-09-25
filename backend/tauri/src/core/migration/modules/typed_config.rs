@@ -1,11 +1,9 @@
 use super::super::{
-    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
+    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck,
+    fs::try_exists,
+    legacy_schema::{IClashTemp, IVerge, typed_config_from_legacy_parts},
 };
-use crate::{
-    bridge::typed_config_from_legacy_parts,
-    config::{IClashTemp, IVerge},
-    utils::help,
-};
+use crate::utils::help;
 use anyhow::Context as _;
 use once_cell::sync::Lazy;
 use semver::Version;
@@ -428,7 +426,7 @@ fn current_revision() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{IClashTemp, nyanpasu::WindowState as LegacyWindowState};
+    use crate::core::migration::legacy_schema::WindowState as LegacyWindowState;
     use nyanpasu_config::{
         application::NyanpasuAppConfig,
         clash::config::ClashConfig,

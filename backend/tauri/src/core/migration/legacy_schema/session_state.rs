@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::config::IVerge;
+use super::verge::IVerge;
 use nyanpasu_config::state::{
     PersistentState,
     window::{WindowLabel, WindowState},
@@ -8,7 +8,7 @@ use nyanpasu_config::state::{
 
 const MAIN_WINDOW_LABEL: &str = "main";
 
-pub(crate) fn persistent_state_from_legacy(legacy: &IVerge) -> anyhow::Result<PersistentState> {
+pub(super) fn persistent_state_from_legacy(legacy: &IVerge) -> anyhow::Result<PersistentState> {
     let state = if let Some(window_state) = legacy.window_size_state.as_ref() {
         super::yaml_convert::<_, WindowState>(window_state)?
     } else {

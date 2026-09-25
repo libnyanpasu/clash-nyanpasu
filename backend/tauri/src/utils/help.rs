@@ -7,7 +7,7 @@ use fast_image_resize::{
 use fs_err as fs;
 use image::{ColorType, ImageEncoder, ImageReader, codecs::png::PngEncoder};
 use nanoid::nanoid;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
 use serde_yaml::{Mapping, Value};
 use std::{
     io::{BufWriter, Cursor},
@@ -53,26 +53,6 @@ pub fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
             path.display()
         ))?
         .to_owned())
-}
-
-/// save the data to the file
-/// can set `prefix` string to add some comments
-pub fn save_yaml<T: Serialize, P: AsRef<Path>>(
-    path: P,
-    data: &T,
-    prefix: Option<&str>,
-) -> Result<()> {
-    let path = path.as_ref();
-    let data_str = serde_yaml::to_string(data)?;
-
-    let yaml_str = match prefix {
-        Some(prefix) => format!("{prefix}\n\n{data_str}"),
-        None => data_str,
-    };
-
-    let path_str = path.as_os_str().to_string_lossy().to_string();
-    fs::write(path, yaml_str.as_bytes())
-        .with_context(|| format!("failed to save file \"{path_str}\""))
 }
 
 const ALPHABET: [char; 62] = [

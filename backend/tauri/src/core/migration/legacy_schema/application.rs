@@ -1,10 +1,10 @@
-use crate::config::{IVerge, nyanpasu as legacy_app};
+use super::verge::{self as legacy_app, IVerge};
 use nyanpasu_config::application::{
     NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
 };
 use nyanpasu_egui::widget::StatisticWidgetVariant;
 
-pub(crate) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<NyanpasuAppConfig> {
+pub(super) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<NyanpasuAppConfig> {
     let mut next = NyanpasuAppConfig::default();
 
     if let Some(value) = legacy.app_singleton_port {

@@ -1,24 +1,10 @@
-// use log::LevelFilter;
-use enumflags2::bitflags;
 use nyanpasu_macro::VergePatch;
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
-mod clash_strategy;
-pub mod logging;
-mod widget;
-
-pub use self::clash_strategy::ClashStrategy;
-pub use logging::LoggingLevel;
-pub use widget::LegacyNetworkStatisticWidgetConfig;
-
-// TODO: when support sing-box, remove this struct
-#[bitflags]
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
-    ClashPremium = 0b0001,
+    ClashPremium,
     #[serde(rename = "clash-rs")]
     ClashRs,
     #[serde(rename = "mihomo", alias = "clash-meta")]
@@ -40,7 +26,7 @@ impl Default for ClashCore {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ProxiesSelectorMode {
     Hidden,
@@ -49,7 +35,7 @@ pub enum ProxiesSelectorMode {
     Submenu,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TunStack {
     System,
@@ -58,17 +44,7 @@ pub enum TunStack {
     Mixed,
 }
 
-impl AsRef<str> for TunStack {
-    fn as_ref(&self) -> &str {
-        match self {
-            TunStack::System => "system",
-            TunStack::Gvisor => "gvisor",
-            TunStack::Mixed => "mixed",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum BreakWhenProxyChange {
     #[default]
@@ -77,24 +53,14 @@ pub enum BreakWhenProxyChange {
     All,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrayMenuMode {
     Native,
     Webview,
 }
 
-impl Default for TrayMenuMode {
-    fn default() -> Self {
-        if cfg!(windows) {
-            TrayMenuMode::Webview
-        } else {
-            TrayMenuMode::Native
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
 pub enum TrayMenuCloseBehavior {
@@ -103,7 +69,7 @@ pub enum TrayMenuCloseBehavior {
     Close,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowType {
     #[default]
@@ -111,20 +77,15 @@ pub enum WindowType {
 }
 
 /// ### `verge.yaml` schema
-// Enum fields whose serde values match a typed `nyanpasu_config` enum export
-// that typed enum to TS, so each name is declared once while `IVerge` is
-// still on the wire.
-#[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch)]
 #[verge(patch_fn = "patch_config")]
-// TODO: use new managedState and builder pattern instead
 pub struct IVerge {
     /// app listening port for app singleton
     pub app_singleton_port: Option<u16>,
 
     /// app log level
     /// silent | error | warn | info | debug | trace
-    #[specta(type = Option<nyanpasu_config::application::LoggingLevel>)]
-    pub app_log_level: Option<logging::LoggingLevel>,
+    pub app_log_level: Option<LoggingLevel>,
 
     // i18n
     pub language: Option<String>,
@@ -175,7 +136,6 @@ pub struct IVerge {
 
     /// clash core path
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(type = Option<nyanpasu_config::application::ClashCore>)]
     pub clash_core: Option<ClashCore>,
     pub clash_control_channel: Option<nyanpasu_config::clash::config::ClashControlChannel>,
     pub clash_ipc_disable_http_controller: Option<bool>,
@@ -243,14 +203,12 @@ pub struct IVerge {
     pub clash_strategy: Option<ClashStrategy>,
 
     /// 是否启用代理托盘选择
-    #[specta(type = Option<nyanpasu_config::application::ProxiesSelectorMode>)]
     pub clash_tray_selector: Option<ProxiesSelectorMode>,
 
     pub always_on_top: Option<bool>,
 
     /// Tun 堆栈选择
     /// TODO: 弃用此字段，转移到 clash config 里
-    #[specta(type = Option<nyanpasu_config::clash::config::tun_stack::TunStack>)]
     pub tun_stack: Option<TunStack>,
 
     /// 是否启用网络统计信息浮窗
@@ -274,17 +232,15 @@ pub struct IVerge {
     /// Tray menu implementation mode
     /// Native: use the OS system tray menu (default on non-Windows)
     /// Webview: use a custom WebView window (default on Windows)
-    #[specta(type = Option<nyanpasu_config::application::TrayMenuMode>)]
     pub tray_menu_mode: Option<TrayMenuMode>,
 
     /// Webview tray menu window dismiss behavior
     /// Hide: hide the window on close (fast re-open, higher memory usage)
     /// Close: destroy the window on close (slower re-open, lower memory usage)
-    #[specta(type = Option<nyanpasu_config::application::TrayMenuCloseBehavior>)]
     pub tray_menu_close_behavior: Option<TrayMenuCloseBehavior>,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct WindowState {
     pub width: u32,
     pub height: u32,
@@ -303,7 +259,7 @@ impl IVerge {
             ),
             clash_ipc_disable_http_controller: Some(false),
             language: Some(crate::utils::help::detect_system_i18n_key().into()),
-            app_log_level: Some(logging::LoggingLevel::default()),
+            app_log_level: Some(LoggingLevel::default()),
             theme_mode: Some("system".into()),
             traffic_graph: Some(true),
             enable_memory_usage: Some(true),
@@ -338,4 +294,57 @@ impl IVerge {
             ..Self::default()
         }
     }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum LoggingLevel {
+    #[serde(rename = "silent", alias = "off")]
+    Silent,
+    #[serde(rename = "trace", alias = "tracing")]
+    Trace,
+    #[serde(rename = "debug")]
+    Debug,
+    #[serde(rename = "info")]
+    Info,
+    #[serde(rename = "warn", alias = "warning")]
+    Warn,
+    #[serde(rename = "error")]
+    Error,
+}
+
+impl Default for LoggingLevel {
+    #[cfg(debug_assertions)]
+    fn default() -> Self {
+        Self::Trace
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn default() -> Self {
+        Self::Info
+    }
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub struct ClashStrategy {
+    pub external_controller_port_strategy: ExternalControllerPortStrategy,
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalControllerPortStrategy {
+    Fixed,
+    Random,
+    #[default]
+    AllowFallback,
+}
+
+// Legacy flat widget setting; the typed `NetworkStatisticWidgetConfig` is
+// tagged instead.
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LegacyNetworkStatisticWidgetConfig {
+    #[default]
+    Disabled,
+    Large,
+    Small,
 }

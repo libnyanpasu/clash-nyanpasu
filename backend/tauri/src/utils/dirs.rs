@@ -200,14 +200,6 @@ pub fn app_logs_dir() -> Result<PathBuf> {
     Ok(path)
 }
 
-pub fn clash_guard_overrides_path() -> Result<PathBuf> {
-    Ok(app_config_dir()?.join(CLASH_CFG_GUARD_OVERRIDES))
-}
-
-pub fn nyanpasu_config_path() -> Result<PathBuf> {
-    Ok(app_config_dir()?.join(NYANPASU_CONFIG))
-}
-
 pub fn profiles_path() -> Result<PathBuf> {
     Ok(app_config_dir()?.join(PROFILE_YAML))
 }

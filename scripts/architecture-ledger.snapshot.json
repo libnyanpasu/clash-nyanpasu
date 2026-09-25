@@ -23,10 +23,10 @@
       }
     },
     "legacy_dto_refs": {
-      "total": 45,
+      "total": 22,
       "byKey": {
-        "IVerge": 31,
-        "IClashTemp": 14
+        "IVerge": 18,
+        "IClashTemp": 4
       }
     },
     "test_real_dirs": {
@@ -34,11 +34,5 @@
       "byKey": {}
     }
   },
-  "bridgeFiles": [
-    "backend/tauri/src/bridge/clash.rs",
-    "backend/tauri/src/bridge/mapping.rs",
-    "backend/tauri/src/bridge/mod.rs",
-    "backend/tauri/src/bridge/verge.rs",
-    "backend/tauri/src/bridge/window.rs"
-  ]
+  "bridgeFiles": []
 }

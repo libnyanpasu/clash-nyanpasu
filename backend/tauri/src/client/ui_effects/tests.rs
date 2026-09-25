@@ -897,3 +897,121 @@ async fn a_plan_in_flight_at_shutdown_does_not_restart_the_widget() {
         "{shutdown:?}"
     );
 }
+
+/// Parks a PAC apply until the test releases it, counting how often the actor
+/// reached it.
+#[derive(Default)]
+struct HeldPac {
+    applies: AtomicUsize,
+    started: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+#[async_trait::async_trait]
+impl PacPort for HeldPac {
+    fn is_supported(&self) -> bool {
+        true
+    }
+
+    async fn apply(
+        &self,
+        _url: &url::Url,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> anyhow::Result<()> {
+        self.applies.fetch_add(1, Ordering::SeqCst);
+        self.started.notify_one();
+        self.release.notified().await;
+        Ok(())
+    }
+
+    fn disable(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
+    use crate::client::{
+        NoopUiEventSink,
+        convergence::ConvergenceHealth,
+        effects::{
+            actor::{EffectsArgs, EffectsClient},
+            ports::CommitNotifications,
+        },
+    };
+
+    let pac = Arc::new(HeldPac::default());
+    let mut os = MockOsProxyPort::new();
+    os.expect_get()
+        .returning(|| Err(anyhow::anyhow!("no system proxy is set")));
+    os.expect_default_bypass().return_const("bypass");
+    os.expect_set().returning(|_: &OsProxyConfig| Ok(()));
+    let mut tray = MockTrayRefresher::new();
+    tray.expect_refresh_part()
+        .returning(|| Box::pin(async { Ok(()) }));
+    let executor = executor_with_ports(
+        os,
+        pac.clone(),
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        Arc::new(MockWidgetController::new()),
+        Arc::new(tray),
+    )
+    .await;
+    let effects = EffectsClient::spawn(EffectsArgs {
+        port: Arc::new(executor),
+        ui: Arc::new(NoopUiEventSink),
+        initial: proxied_inputs(NyanpasuAppConfig::default()),
+    })
+    .await
+    .expect("the effects actor should spawn");
+
+    effects.committed(
+        proxied_inputs(NyanpasuAppConfig {
+            enable_system_proxy: true,
+            pac_url: Some(
+                "http://example.test/proxy.pac"
+                    .parse()
+                    .expect("a valid url"),
+            ),
+            ..NyanpasuAppConfig::default()
+        }),
+        false,
+        Vec::new(),
+    );
+    pac.started.notified().await;
+
+    // Well past any RPC bound and every automatic retry delay. A paused clock
+    // runs each timer on the way, so any retry would have been submitted.
+    tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+    effects.barrier().await;
+    let proxy = |effects: &EffectsClient| {
+        effects
+            .snapshot()
+            .progress
+            .into_iter()
+            .find(|progress| progress.kind == EffectKind::SystemProxy)
+            .expect("the plan carries the system proxy")
+    };
+    let held = proxy(&effects);
+    assert_eq!(
+        (held.health, held.attempts),
+        (ConvergenceHealth::Pending, 1),
+        "the group must not be released or retried while the owner still runs"
+    );
+
+    pac.release.notify_one();
+    let mut status = effects.subscribe();
+    status
+        .wait_for(|snapshot| {
+            snapshot.progress.iter().any(|progress| {
+                progress.kind == EffectKind::SystemProxy
+                    && progress.health == ConvergenceHealth::Healthy
+            })
+        })
+        .await
+        .expect("the effects actor is alive");
+    assert_eq!(proxy(&effects).attempts, 1);
+    assert_eq!(pac.applies.load(Ordering::SeqCst), 1);
+    effects.shutdown().await;
+}

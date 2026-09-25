@@ -197,14 +197,6 @@ impl CoreLifecycleWorkflow {
                     degradations,
                 )))
             }
-            Command::RestoreExecutionHost => {
-                if self.application.load().state.enable_service_mode {
-                    self.adopt_ready_service()
-                        .await
-                        .map_err(|failure| failure.error)?;
-                }
-                Ok(Output::Unit)
-            }
             Command::ReplaceCoreBinary(artifact) => {
                 Ok(if self.replace_binary(artifact, preparation).await? {
                     Output::RestartWithheld
@@ -225,9 +217,6 @@ impl CoreLifecycleWorkflow {
                 Ok(Output::Stop(report))
             }
             Command::RecoverCore => Ok(Output::Recover(self.core.recover().await?)),
-            Command::ProbeService => {
-                Ok(Output::Service(Box::new(self.core.probe_service().await?)))
-            }
             Command::InstallService => {
                 self.core.install_service().await?;
                 Ok(Output::Unit)

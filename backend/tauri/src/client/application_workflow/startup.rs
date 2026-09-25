@@ -468,7 +468,7 @@ impl ApplicationWorkflow {
             );
             return (observation, waiting);
         }
-        let service = ServiceEvidence::from_probe(&self.lifecycle.core.probe_service().await);
+        let service = ServiceEvidence::from_probe(&self.lifecycle.core.probe_service_host().await);
         let runtime = self.lifecycle.core.refresh_status().await.ok();
         let owner = runtime.as_ref().map_or_else(
             || self.lifecycle.core.core_status().host,

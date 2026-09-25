@@ -9,7 +9,6 @@ use crate::core::actor_v2::{
     HandoffReport, ShutdownReport,
     endpoint::ExecutionHost,
     facade::{ReconcileReport, RecoverReport, StopReport},
-    service_actor::ServiceHostStatus,
 };
 use ports::PreparedCoreBinary;
 use std::time::Duration;
@@ -25,11 +24,9 @@ pub(in crate::client) enum Command {
     ApplyControlChannel,
     ChangeHost(ExecutionHost),
     SetExecutionHost(bool),
-    RestoreExecutionHost,
     ReplaceCoreBinary(PreparedCoreBinary),
     StopCore,
     RecoverCore,
-    ProbeService,
     InstallService,
     StartService,
     StopService,
@@ -47,7 +44,6 @@ pub(in crate::client) enum Output {
     Mutation(runtime::MutationOutcome<()>),
     Stop(StopReport),
     Recover(RecoverReport),
-    Service(Box<ServiceHostStatus>),
     Shutdown(ShutdownReport),
     /// The binary was installed, and the restart it owed was left to the
     /// open reestablish target: no host is proven to own the runtime

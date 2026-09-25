@@ -687,7 +687,7 @@ impl CoreFacade {
         self.service.status()
     }
 
-    pub async fn probe_service(&self) -> Result<ServiceHostStatus, CoreError> {
+    pub async fn probe_service_host(&self) -> Result<ServiceHostStatus, CoreError> {
         self.service.probe().await
     }
 

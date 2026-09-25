@@ -1139,12 +1139,6 @@ impl ApplicationWorkflowClient {
         Recover,
         RecoverReport
     );
-    pub async fn probe_service(&self) -> Result<ServiceHostStatus, CoreError> {
-        match self.call(Command::Core(CoreCommand::ProbeService)).await? {
-            Output::Service(result) => Ok(*result),
-            _ => unreachable!(),
-        }
-    }
     method!(
         shutdown,
         Command::Core(CoreCommand::Shutdown),
@@ -1175,10 +1169,6 @@ impl ApplicationWorkflowClient {
     }
     pub async fn replace_binary(&self, artifact: PreparedCoreBinary) -> Result<(), CoreError> {
         self.unit(Command::Core(CoreCommand::ReplaceCoreBinary(artifact)))
-            .await
-    }
-    pub async fn restore_host(&self) -> Result<(), CoreError> {
-        self.unit(Command::Core(CoreCommand::RestoreExecutionHost))
             .await
     }
     pub async fn install_service(&self) -> Result<(), CoreError> {

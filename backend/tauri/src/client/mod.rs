@@ -427,12 +427,6 @@ impl NyanpasuClient {
         self.inner.application_workflow.recover_core().await
     }
 
-    pub async fn probe_service(
-        &self,
-    ) -> std::result::Result<ServiceHostStatus, nyanpasu_core_manager::CoreError> {
-        self.inner.application_workflow.probe_service().await
-    }
-
     pub async fn replace_core_binary(
         &self,
         artifact: core_lifecycle::ports::PreparedCoreBinary,
@@ -477,13 +471,6 @@ impl NyanpasuClient {
     }
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
         self.inner.application_workflow.service_events()
-    }
-    pub async fn restore_execution_host(&self) -> Result<()> {
-        self.inner
-            .application_workflow
-            .restore_host()
-            .await
-            .map_err(client_error_from_core)
     }
     pub async fn install_service(
         &self,

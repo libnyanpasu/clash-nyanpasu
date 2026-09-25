@@ -4,7 +4,10 @@ use specta::Type;
 use std::fmt::{self, Display, Formatter};
 use tracing_attributes::instrument;
 
+// The container rename only names the TS export (JSON ignores struct names):
+// the typed persistent `ClashConfig` owns the plain name.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
+#[serde(rename = "ClashApiConfig")]
 pub struct ClashConfig {
     pub port: Option<u16>,
     pub mode: Option<String>,

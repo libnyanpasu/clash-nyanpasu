@@ -21,7 +21,7 @@ mod widget;
 
 pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
 pub use logging::LoggingLevel;
-pub use widget::NetworkStatisticWidgetConfig;
+pub use widget::LegacyNetworkStatisticWidgetConfig;
 
 // TODO: when support sing-box, remove this struct
 #[bitflags]
@@ -204,6 +204,9 @@ pub enum WindowType {
 }
 
 /// ### `verge.yaml` schema
+// Enum fields whose serde values match a typed `nyanpasu_config` enum export
+// that typed enum to TS, so each name is declared once while `IVerge` is
+// still on the wire.
 #[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
 #[verge(patch_fn = "patch_config")]
 // TODO: use new managedState and builder pattern instead
@@ -213,6 +216,7 @@ pub struct IVerge {
 
     /// app log level
     /// silent | error | warn | info | debug | trace
+    #[specta(type = Option<nyanpasu_config::application::LoggingLevel>)]
     pub app_log_level: Option<logging::LoggingLevel>,
 
     // i18n
@@ -264,6 +268,7 @@ pub struct IVerge {
 
     /// clash core path
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<nyanpasu_config::application::ClashCore>)]
     pub clash_core: Option<ClashCore>,
     pub clash_control_channel: Option<nyanpasu_config::clash::config::ClashControlChannel>,
     pub clash_ipc_disable_http_controller: Option<bool>,
@@ -331,17 +336,19 @@ pub struct IVerge {
     pub clash_strategy: Option<ClashStrategy>,
 
     /// 是否启用代理托盘选择
+    #[specta(type = Option<nyanpasu_config::application::ProxiesSelectorMode>)]
     pub clash_tray_selector: Option<ProxiesSelectorMode>,
 
     pub always_on_top: Option<bool>,
 
     /// Tun 堆栈选择
     /// TODO: 弃用此字段，转移到 clash config 里
+    #[specta(type = Option<nyanpasu_config::clash::config::tun_stack::TunStack>)]
     pub tun_stack: Option<TunStack>,
 
     /// 是否启用网络统计信息浮窗
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub network_statistic_widget: Option<NetworkStatisticWidgetConfig>,
+    pub network_statistic_widget: Option<LegacyNetworkStatisticWidgetConfig>,
 
     /// PAC URL for automatic proxy configuration
     /// This field is used to set PAC proxy without exposing it to the frontend UI
@@ -360,11 +367,13 @@ pub struct IVerge {
     /// Tray menu implementation mode
     /// Native: use the OS system tray menu (default on non-Windows)
     /// Webview: use a custom WebView window (default on Windows)
+    #[specta(type = Option<nyanpasu_config::application::TrayMenuMode>)]
     pub tray_menu_mode: Option<TrayMenuMode>,
 
     /// Webview tray menu window dismiss behavior
     /// Hide: hide the window on close (fast re-open, higher memory usage)
     /// Close: destroy the window on close (slower re-open, lower memory usage)
+    #[specta(type = Option<nyanpasu_config::application::TrayMenuCloseBehavior>)]
     pub tray_menu_close_behavior: Option<TrayMenuCloseBehavior>,
 }
 

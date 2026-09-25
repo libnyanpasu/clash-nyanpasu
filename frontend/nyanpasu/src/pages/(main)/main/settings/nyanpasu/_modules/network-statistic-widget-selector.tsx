@@ -10,7 +10,7 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import {
   useSetting,
-  type NetworkStatisticWidgetConfig,
+  type LegacyNetworkStatisticWidgetConfig,
 } from '@nyanpasu/interface'
 import {
   ItemContainer,
@@ -24,15 +24,17 @@ import {
 export default function NetworkStatisticWidgetSelector() {
   const { value, upsert } = useSetting('network_statistic_widget')
 
-  const handleChange = useLockFn(async (mode: NetworkStatisticWidgetConfig) => {
-    await upsert(mode)
-  })
+  const handleChange = useLockFn(
+    async (mode: LegacyNetworkStatisticWidgetConfig) => {
+      await upsert(mode)
+    },
+  )
 
   const messages = {
     disabled: m.settings_nyanpasu_network_statistic_widget_disabled(),
     large: m.settings_nyanpasu_network_statistic_widget_large(),
     small: m.settings_nyanpasu_network_statistic_widget_small(),
-  } satisfies Record<NetworkStatisticWidgetConfig, string>
+  } satisfies Record<LegacyNetworkStatisticWidgetConfig, string>
 
   const current = value ?? 'disabled'
 
@@ -67,7 +69,9 @@ export default function NetworkStatisticWidgetSelector() {
             <DropdownMenuCheckboxItem
               checked={current === key}
               key={key}
-              onSelect={() => handleChange(key as NetworkStatisticWidgetConfig)}
+              onSelect={() =>
+                handleChange(key as LegacyNetworkStatisticWidgetConfig)
+              }
             >
               {message}
             </DropdownMenuCheckboxItem>

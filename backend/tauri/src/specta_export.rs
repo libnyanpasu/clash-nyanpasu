@@ -33,6 +33,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::inspect_updater,
             ipc::get_core_version,
             ipc::get_verge_config,
+            ipc::get_app_config,
+            ipc::get_clash_config,
             ipc::get_hotkey_functions,
             ipc::get_profiles,
             ipc::read_profile_file,
@@ -74,7 +76,9 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::open_web_url,
             ipc::open_core_dir,
             ipc::restart_sidecar,
+            ipc::patch_app_config,
             ipc::patch_clash_config,
+            ipc::patch_runtime_overrides,
             ipc::change_clash_core,
             ipc::clash_api_delete_connections,
             ipc::clash_api_update_providers_rules,
@@ -258,6 +262,12 @@ mod tests {
             "MutationOutcome",
             "Degradation",
             "DegradationPhase",
+            "NyanpasuAppConfig",
+            "NyanpasuAppConfigPatch",
+            "ClashConfig",
+            "ClashConfigPatch",
+            "ClashGuardOverridesPatch",
+            "ClashApiConfig",
         ] {
             assert!(
                 generated.contains(&format!("export type {name}"))
@@ -275,6 +285,19 @@ mod tests {
             !generated.contains("export type CommitOutcome")
                 && !generated.contains("export interface CommitOutcome"),
             "old CommitOutcome wire must be removed from bindings"
+        );
+        assert!(
+            !generated.contains("export type PatchRuntimeConfig"),
+            "the whitelisted overrides DTO is replaced by ClashGuardOverridesPatch"
+        );
+
+        // The plain `ClashConfig` name belongs to the typed persistent config,
+        // not to the clash-API `/configs` DTO.
+        let clash_config = exported_type(&generated, "ClashConfig");
+        assert_contains_all(
+            clash_config,
+            "ClashConfig",
+            &["overrides: ClashGuardOverrides", "mixed_port: PortStrategy"],
         );
 
         for phase in ["Deserialize", "Serialize"] {

@@ -582,9 +582,9 @@ impl NyanpasuClient {
 
     pub async fn download_core_update(
         &self,
-        core: crate::config::nyanpasu::ClashCore,
+        core: nyanpasu_config::application::ClashCore,
     ) -> Result<usize> {
-        Ok(self.inner.updater.update(core).await?)
+        Ok(self.inner.updater.update(core.into()).await?)
     }
 
     pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {

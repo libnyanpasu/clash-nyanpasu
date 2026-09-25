@@ -30,7 +30,7 @@ pub enum ClashControlChannel {
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, Type)))]
-#[patch(attribute(serde(rename_all = "snake_case")))]
+#[patch(attribute(serde(default, rename_all = "snake_case")))]
 #[serde(rename_all = "snake_case")]
 pub struct ClashConfig {
     /// Clash Overrides config, used to patch clash config directly
@@ -58,10 +58,12 @@ pub struct ClashConfig {
 
     /// Socks5 Proxy Port
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<PortStrategy>>)))]
     pub socks_port: Option<PortStrategy>,
 
     /// HTTP Proxy Port
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<PortStrategy>>)))]
     pub http_port: Option<PortStrategy>,
 
     /// 断开连接策略

@@ -82,6 +82,7 @@ impl ReleaseChannel {
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, specta::Type)))]
+#[patch(attribute(serde(default)))]
 pub struct NyanpasuAppConfig {
     /// app listening port for app singleton
     pub app_singleton_port: u16,
@@ -158,6 +159,7 @@ pub struct NyanpasuAppConfig {
     /// None in older configurations means the channel of the installed build.
     #[serde(default)]
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<ReleaseChannel>>)))]
     pub release_channel: Option<ReleaseChannel>,
 
     /// 是否启用代理托盘选择
@@ -181,6 +183,7 @@ pub struct NyanpasuAppConfig {
     /// This field is used to set PAC proxy without exposing it to the frontend UI
     #[serde(skip_serializing_if = "Option::is_none")]
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<Url>>)))]
     pub pac_url: Option<Url>,
 
     /// enable tray text display on Linux systems
@@ -199,7 +202,11 @@ pub struct NyanpasuAppConfig {
     /// enable colored tray icons on macOS
     /// When enabled, uses colored icons instead of template icons to show proxy status
     /// When disabled, uses system template icons that adapt to light/dark mode
+    // Kept out of the TS bindings: a macOS-only field would make the generated
+    // bindings differ per platform, and CI checks their freshness on Linux.
     #[cfg(target_os = "macos")]
+    #[specta(skip)]
+    #[patch(attribute(specta(skip)))]
     pub enable_macos_colored_icons: bool,
 }
 

@@ -466,16 +466,16 @@ pub(crate) fn apply_app_config_to_legacy_verge(
 }
 
 fn network_widget_from_legacy(
-    value: legacy_app::NetworkStatisticWidgetConfig,
+    value: legacy_app::LegacyNetworkStatisticWidgetConfig,
 ) -> AppNetworkStatisticWidgetConfig {
     match value {
-        legacy_app::NetworkStatisticWidgetConfig::Disabled => {
+        legacy_app::LegacyNetworkStatisticWidgetConfig::Disabled => {
             AppNetworkStatisticWidgetConfig::Disabled
         }
-        legacy_app::NetworkStatisticWidgetConfig::Large => {
+        legacy_app::LegacyNetworkStatisticWidgetConfig::Large => {
             AppNetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Large)
         }
-        legacy_app::NetworkStatisticWidgetConfig::Small => {
+        legacy_app::LegacyNetworkStatisticWidgetConfig::Small => {
             AppNetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Small)
         }
     }
@@ -483,16 +483,16 @@ fn network_widget_from_legacy(
 
 fn network_widget_to_legacy(
     value: AppNetworkStatisticWidgetConfig,
-) -> legacy_app::NetworkStatisticWidgetConfig {
+) -> legacy_app::LegacyNetworkStatisticWidgetConfig {
     match value {
         AppNetworkStatisticWidgetConfig::Disabled => {
-            legacy_app::NetworkStatisticWidgetConfig::Disabled
+            legacy_app::LegacyNetworkStatisticWidgetConfig::Disabled
         }
         AppNetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Large) => {
-            legacy_app::NetworkStatisticWidgetConfig::Large
+            legacy_app::LegacyNetworkStatisticWidgetConfig::Large
         }
         AppNetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Small) => {
-            legacy_app::NetworkStatisticWidgetConfig::Small
+            legacy_app::LegacyNetworkStatisticWidgetConfig::Small
         }
     }
 }

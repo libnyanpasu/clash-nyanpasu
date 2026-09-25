@@ -66,7 +66,7 @@ impl NyanpasuClient {
                 operation_id: Some(recovery.operation_id.to_string()),
                 attempts: 0,
                 automatic_remaining: 0,
-                message: Some(recovery.error.clone()),
+                message: Some(recovery.reason.clone()),
             }
         } else if execution.uncertain {
             RuntimeConvergence { health: ConvergenceHealth::RecoveryRequired, operation_id: execution.completed.back().map(|r| r.id.to_string()), attempts: 0, automatic_remaining: 0, message: Some("A lifecycle operation has an unresolved outcome; further mutations remain isolated.".into()) }

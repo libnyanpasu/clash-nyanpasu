@@ -2,14 +2,18 @@ use std::sync::Arc;
 
 use nyanpasu_config::{clash::config::ClashConfig, profile::Profiles};
 use nyanpasu_core::state::StateSnapshot;
-use nyanpasu_core_manager::CoreError;
+use nyanpasu_core_manager::{CoreError, OperationId};
 
 use super::{
     Command, Output,
-    mutation::{DeferredTarget, MutationBudgets, MutationCommand, RecoveryContext},
+    attempt::{LifecycleCommand, LiveAttempt},
+    mutation::{DeferredTarget, MutationBudgets, MutationCommand},
     preparation::RuntimePreparation,
 };
-use crate::client::{core_lifecycle::CoreLifecycleWorkflow, runtime};
+use crate::client::{
+    core_lifecycle::{Command as CoreCommand, CoreLifecycleWorkflow},
+    runtime,
+};
 
 /// Applies already committed source config to the running core. The two state
 /// handles are read-only and are sampled only once the actor has admitted the
@@ -30,12 +34,28 @@ pub(super) struct ApplicationWorkflow {
     /// A committed desired value the core is not running.
     pub deferred: Option<DeferredTarget>,
     pub pending_product: Option<(Arc<runtime::RuntimeSnapshot>, String)>,
-    /// Why the execution domain is isolated, when it is. Survives the
-    /// operation that caused it so an explicit recovery has something to read.
-    pub recovery: Option<Box<RecoveryContext>>,
+    /// The daemon a confirmed move off service mode still has to release,
+    /// and why the last attempt failed. An explicit retry releases it.
+    pub pending_release: Option<String>,
+    /// The attempt running now, or the latest one that did not settle
+    /// (T10 §1.11). With the facade's pending action it is all that an
+    /// explicit recovery reads, and it survives a panic unchanged.
+    pub live: Option<LiveAttempt>,
 }
 
 impl ApplicationWorkflow {
+    /// The retryable work confirmed commits left behind, for the status
+    /// surface.
+    pub(super) fn maintenance(&self) -> Option<String> {
+        let items: Vec<&str> = self
+            .pending_product
+            .iter()
+            .map(|(_, error)| error.as_str())
+            .chain(self.pending_release.as_deref())
+            .collect();
+        (!items.is_empty()).then(|| items.join("; "))
+    }
+
     pub(super) fn notify_committed(&self, refresh: bool) {
         self.notify_requested(refresh, Vec::new());
     }
@@ -55,34 +75,65 @@ impl ApplicationWorkflow {
         );
     }
 
-    pub async fn execute(&mut self, command: Command) -> Result<Output, CoreError> {
+    pub async fn execute(
+        &mut self,
+        operation_id: OperationId,
+        command: Command,
+    ) -> Result<Output, CoreError> {
         // Observe the old host before any operation can replace its projection.
         self.lifecycle.capture_core_intent();
-        let lifecycle_command = matches!(&command, Command::Core(_));
-        let result = match command {
-            Command::Core(command) => self.lifecycle.execute(command, &mut self.preparation).await,
-            Command::RetryRuntime { explicit } => {
-                self.retry_runtime(explicit).await.map(|_| Output::Unit)
-            }
+        match command {
+            Command::Core(command) => self.execute_lifecycle(operation_id, command).await,
+            Command::RetryRuntime { explicit } => self
+                .retry_runtime(operation_id, explicit)
+                .await
+                .map(|_| Output::Unit),
             Command::Mutation(command) => {
                 let MutationCommand { request } = *command;
                 Ok(Output::Settled(Box::new(self.run_mutation(request).await)))
             }
-        };
-        if lifecycle_command {
-            if matches!(&result, Ok(Output::Reconcile(_))) {
-                self.deferred = None;
-            }
-            if matches!(&result, Ok(Output::Stop(_))) {
-                if let Some(deferred) = &mut self.deferred {
-                    deferred.health =
-                        crate::client::convergence::ConvergenceHealth::WaitingDependency;
-                    deferred.next_attempt = None;
-                }
-            }
-            self.notify_committed(true);
         }
-        self.lifecycle.uncertain |= self.lifecycle.core.outcome_uncertain();
+    }
+
+    /// Runs one lifecycle command as an attempt of its own. Shutdown is not
+    /// one: nothing follows it that a recovery could continue.
+    async fn execute_lifecycle(
+        &mut self,
+        operation_id: OperationId,
+        command: CoreCommand,
+    ) -> Result<Output, CoreError> {
+        let tracked = LifecycleCommand::of(&command);
+        if let Some(command) = tracked {
+            // The actor admits nothing but an explicit recovery or shutdown
+            // while the domain is isolated, so no unresolved attempt is here.
+            debug_assert!(
+                self.live.is_none(),
+                "an unresolved attempt is never replaced"
+            );
+            self.live = Some(LiveAttempt::lifecycle(operation_id, command));
+        }
+        let result = self.lifecycle.execute(command, &mut self.preparation).await;
+        if matches!(&result, Ok(Output::Reconcile(_))) {
+            self.deferred = None;
+        }
+        if matches!(&result, Ok(Output::Stop(_)))
+            && let Some(deferred) = &mut self.deferred
+        {
+            deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
+            deferred.next_attempt = None;
+        }
+        self.notify_committed(true);
+        if tracked.is_some() {
+            // Returning is the command's own conclusion; an action it left
+            // pending is not, and the error it returned says why.
+            let reason = self
+                .lifecycle
+                .core
+                .pending_action()
+                .and(result.as_ref().err())
+                .map(ToString::to_string);
+            self.conclude_attempt(reason);
+        }
         result
     }
 }

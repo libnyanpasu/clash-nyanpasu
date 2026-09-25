@@ -317,6 +317,15 @@ pub enum CoreActorMessage {
         target: EndpointHandle,
         reply: RpcReplyPort<Result<HandoffReport, CoreError>>,
     },
+    /// Whether the handoff begun from `generation` has been processed to
+    /// completion (T10 §1.11). The mailbox answers it only after that
+    /// handoff's `ChangeHost`, so only its stop leg can still be running. A
+    /// health read is not this evidence: `RefreshStatus` refuses a degraded
+    /// router, and a failed handoff whose source went down ends degraded.
+    HandoffSettled {
+        generation: ControllerGeneration,
+        reply: RpcReplyPort<bool>,
+    },
     /// Pump feedback: a status frame from the endpoint of `generation`.
     EndpointEvent {
         generation: ControllerGeneration,
@@ -881,6 +890,15 @@ impl Actor for CoreActor {
                 self.change_host(&myself, state, target, reply).await;
             }
 
+            CoreActorMessage::HandoffSettled { generation, reply } => {
+                // Completed, refused, failed back to a working or a degraded
+                // source, or overtaken by shutdown: all of them are over. Only
+                // a stop leg still in flight from that generation is not.
+                let running = matches!(state.slot, EndpointSlot::HandingOff { .. })
+                    && state.generation == generation;
+                let _ = reply.send(!running);
+            }
+
             CoreActorMessage::HandoffStopped {
                 generation,
                 result,
@@ -1420,6 +1438,26 @@ impl CoreClient {
             ),
         )
         .await?
+    }
+
+    /// Whether the handoff begun from `generation` has been processed to
+    /// completion: the completion evidence of an unanswered `change_host`,
+    /// the way `ServiceClient::command_settled` is for a service command.
+    /// Whether the router is healthy afterwards is a separate question.
+    pub async fn handoff_settled(
+        &self,
+        generation: ControllerGeneration,
+    ) -> Result<bool, CoreError> {
+        self.call(
+            |reply| CoreActorMessage::HandoffSettled { generation, reply },
+            self.submit_budget,
+            CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "the caller-side budget elapsed before the router answered whether the handoff finished; ask again once it responds",
+                true,
+            ),
+        )
+        .await
     }
 
     pub async fn shutdown(&self) -> Result<ShutdownReport, CoreError> {

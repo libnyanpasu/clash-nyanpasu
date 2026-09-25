@@ -1471,7 +1471,7 @@ async fn an_abort_whose_persistence_outcome_is_unknown_isolates_the_domain() {
     assert_eq!(recovery.operation_id, abandoned);
     assert_eq!(
         recovery.stage,
-        super::super::mutation::MutationStage::AwaitDecision
+        super::super::attempt::AttemptStage::AwaitDecision
     );
     assert_eq!(
         endpoint.reconciled_bytes().len(),
@@ -2319,7 +2319,7 @@ async fn an_unobserved_apply_after_a_handoff_keeps_its_recovery_context() {
             .recovery
             .expect("an isolated domain names why")
             .stage,
-        super::super::mutation::MutationStage::TryingCritical
+        super::super::attempt::AttemptStage::TryingCritical
     );
     assert!(!application.snapshot().enable_service_mode);
 }
@@ -2545,7 +2545,7 @@ async fn a_restore_that_cannot_be_observed_is_not_a_clean_cancel() {
             .recovery
             .expect("an isolated domain names why")
             .stage,
-        super::super::mutation::MutationStage::Cancelling
+        super::super::attempt::AttemptStage::Cancelling
     );
 }
 
@@ -2630,12 +2630,10 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
     );
     assert!(client.status().uncertain);
     assert!(
-        client
-            .mutation_journal()
-            .recovery
-            .unwrap()
-            .runtime_operation
-            .is_some(),
+        matches!(
+            client.mutation_journal().recovery.unwrap().action,
+            Some(super::super::attempt::ActionView::Submission { .. })
+        ),
         "an unknown restore retains its lower operation identity"
     );
     assert!(
@@ -3553,8 +3551,8 @@ async fn cross_domain_deferrals_share_the_complete_latest_target() {
     );
     assert_eq!(f.endpoint.checked().len(), checks + 1);
     assert_eq!(
-        f.client.mutation_journal().deferred.unwrap().digest,
-        deferred.digest
+        f.client.mutation_journal().deferred.unwrap().identity,
+        deferred.identity
     );
 }
 

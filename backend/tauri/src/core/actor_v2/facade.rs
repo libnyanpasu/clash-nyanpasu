@@ -13,10 +13,11 @@ use nyanpasu_ipc::api::core::v2::{
 use tokio::sync::OnceCell;
 
 use super::{
-    CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport, SubmitFailure,
-    endpoint::{CoreSubmission, ExecutionHost},
+    ControllerGeneration, CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport,
+    SubmitFailure,
+    endpoint::{CoreSubmission, EndpointHandle, ExecutionHost},
     intent::RuntimeIntent,
-    service_actor::{ServiceClient, ServiceHostStatus},
+    service_actor::{ServiceClient, ServiceCommandKind, ServiceHostStatus},
 };
 
 const OPERATION_WAIT: Duration = Duration::from_secs(60);
@@ -129,14 +130,105 @@ impl CommandFailure {
 
 type SharedShutdown = Shared<BoxFuture<'static, ShutdownReport>>;
 
+/// The one external action this application started and has not yet seen
+/// finish (T10 §1.11).
+///
+/// It is written *before* the await that could start the action, so a panic,
+/// a lost reply or an elapsed wait always leaves the latest action here, never
+/// nothing and never an older one. It is cleared only on positive evidence
+/// that this exact action finished, or that it was never submitted.
+pub(crate) enum PendingAction {
+    Submission {
+        operation: OperationId,
+        /// The endpoint that accepted it. Only its own operation store can
+        /// say whether it finished: a later owner's store knows nothing of it.
+        endpoint: EndpointHandle,
+        host: ExecutionHost,
+        generation: ControllerGeneration,
+        accepted: bool,
+        /// A terminal answer arrived and could not be classified: the runtime
+        /// moved unexpectedly, or the output was not the one asked for. The
+        /// operation itself is over.
+        observed_terminal: bool,
+    },
+    Handoff {
+        target: ExecutionHost,
+        /// The generation it started from, which its completion query is
+        /// keyed on.
+        generation_before: ControllerGeneration,
+    },
+    ServiceCommand {
+        command: ServiceCommandKind,
+    },
+}
+
+impl std::fmt::Debug for PendingAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Submission {
+                operation,
+                host,
+                generation,
+                accepted,
+                observed_terminal,
+                ..
+            } => f
+                .debug_struct("Submission")
+                .field("operation", operation)
+                .field("host", host)
+                .field("generation", generation)
+                .field("accepted", accepted)
+                .field("observed_terminal", observed_terminal)
+                .finish(),
+            Self::Handoff {
+                target,
+                generation_before,
+            } => f
+                .debug_struct("Handoff")
+                .field("target", target)
+                .field("generation_before", generation_before)
+                .finish(),
+            Self::ServiceCommand { command } => f
+                .debug_struct("ServiceCommand")
+                .field("command", command)
+                .finish(),
+        }
+    }
+}
+
+impl std::fmt::Display for PendingAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Submission { operation, .. } => {
+                write!(
+                    f,
+                    "core operation {operation} has not been observed finishing"
+                )
+            }
+            Self::Handoff { target, .. } => write!(
+                f,
+                "the handoff to the {target:?} host has not been observed finishing"
+            ),
+            Self::ServiceCommand { command } => write!(
+                f,
+                "the service {command:?} command has not been observed finishing"
+            ),
+        }
+    }
+}
+
+/// What the evidence says about the pending action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ActionEvidence {
+    Settled,
+    Pending(String),
+}
+
 pub struct CoreFacade {
     core: CoreClient,
     service: ServiceClient,
     shutdown: OnceCell<SharedShutdown>,
-    // Lost mutation replies must not release the application's execution domain.
-    // Terminal operation failures and failed read-only preflights do not set this.
-    outcome_uncertain: bool,
-    last_submission: Option<(OperationId, super::endpoint::EndpointHandle)>,
+    pending: Option<PendingAction>,
 }
 
 impl CoreFacade {
@@ -145,42 +237,174 @@ impl CoreFacade {
             core,
             service,
             shutdown: OnceCell::new(),
-            outcome_uncertain: false,
-            last_submission: None,
+            pending: None,
         }
     }
 
-    pub(crate) fn outcome_uncertain(&self) -> bool {
-        self.outcome_uncertain
+    pub(crate) fn pending_action(&self) -> Option<&PendingAction> {
+        self.pending.as_ref()
     }
 
-    /// Queries the exact endpoint that accepted the unknown operation. A host
-    /// handoff must not turn this into a query of an unrelated operation store.
-    pub(crate) async fn original_operation_terminal(&self, id: OperationId) -> bool {
-        let Some((recorded, endpoint)) = &self.last_submission else {
-            return false;
-        };
-        if *recorded != id {
-            return false;
-        }
-        matches!(tokio::time::timeout(Duration::from_secs(5), endpoint.wait_operation(id, Duration::from_secs(5))).await,
-            Ok(Some(info)) if info.id == id.to_string() && matches!(info.phase, OperationPhase::Succeeded | OperationPhase::Failed))
-    }
-
-    /// Only called after the application's recovery verified the chosen target.
-    pub(crate) fn accept_verified_recovery(&mut self) {
-        self.outcome_uncertain = false;
-        self.last_submission = None;
-    }
-
-    fn observe_mutation<T>(&mut self, result: Result<T, CoreError>) -> Result<T, CoreError> {
-        if let Err(error) = &result
-            && matches!(
-                error.kind,
-                Some(CoreErrorKind::BackendUnavailable | CoreErrorKind::Internal)
+    /// Asks the pending action's own evidence whether it finished.
+    ///
+    /// A router generation that moved is deliberately not evidence: re-adopting
+    /// a degraded host advances it without stopping anything the old endpoint
+    /// was running.
+    pub(crate) async fn action_evidence(&self) -> Option<ActionEvidence> {
+        let evidence = match self.pending.as_ref()? {
+            PendingAction::Submission {
+                observed_terminal: true,
+                ..
+            } => ActionEvidence::Settled,
+            PendingAction::Submission {
+                operation,
+                endpoint,
+                ..
+            } => match tokio::time::timeout(
+                Duration::from_secs(5),
+                endpoint.wait_operation(*operation, Duration::from_secs(5)),
             )
+            .await
+            {
+                Ok(Some(info))
+                    if info.id == operation.to_string()
+                        && matches!(
+                            info.phase,
+                            OperationPhase::Succeeded | OperationPhase::Failed
+                        ) =>
+                {
+                    ActionEvidence::Settled
+                }
+                Ok(Some(info)) => ActionEvidence::Pending(format!(
+                    "core operation {operation} is still {:?}",
+                    info.phase
+                )),
+                _ => ActionEvidence::Pending(format!(
+                    "core operation {operation} has not been observed finishing"
+                )),
+            },
+            // Completion, not health: a failed handoff whose source went down
+            // is over, and every status read of the degraded router it left
+            // is refused.
+            PendingAction::Handoff {
+                target,
+                generation_before,
+            } => match self.core.handoff_settled(*generation_before).await {
+                Ok(true) => ActionEvidence::Settled,
+                Ok(false) => ActionEvidence::Pending(format!(
+                    "the handoff to {target:?} is still stopping its source"
+                )),
+                Err(error) => ActionEvidence::Pending(format!(
+                    "the handoff to {target:?} has not been observed finishing: {error}"
+                )),
+            },
+            PendingAction::ServiceCommand { command } => match self.service.command_settled().await
+            {
+                Ok(true) => ActionEvidence::Settled,
+                Ok(false) => ActionEvidence::Pending(format!(
+                    "the service {command:?} command is still running"
+                )),
+                Err(error) => ActionEvidence::Pending(format!(
+                    "the service {command:?} command has not been observed finishing: {error}"
+                )),
+            },
+        };
+        Some(evidence)
+    }
+
+    /// Consumes the pending action once its evidence says it finished, which
+    /// is what frees the slot for the next one. Nothing is consumed while the
+    /// action may still be running.
+    pub(crate) async fn consume_settled_action(&mut self) -> Result<(), String> {
+        match self.action_evidence().await {
+            None => Ok(()),
+            Some(ActionEvidence::Settled) => {
+                self.pending = None;
+                Ok(())
+            }
+            Some(ActionEvidence::Pending(reason)) => Err(reason),
+        }
+    }
+
+    /// Records the action about to start. An unresolved one is never
+    /// overwritten: recovery resolves it first, so the slot always holds the
+    /// latest action.
+    fn begin(&mut self, action: PendingAction) -> Result<(), CoreError> {
+        if self.pending.is_some() {
+            return Err(CoreError::new(
+                CoreErrorKind::OperationConflict,
+                "an earlier action is unresolved",
+                false,
+            ));
+        }
+        self.pending = Some(action);
+        Ok(())
+    }
+
+    fn finish(&mut self) {
+        self.pending = None;
+    }
+
+    /// The submission ended in a terminal answer this facade cannot classify.
+    /// It stays recorded, because the runtime is not where anyone expected;
+    /// its own completion no longer has to be waited for.
+    fn observed_terminal(&mut self) {
+        if let Some(PendingAction::Submission {
+            observed_terminal, ..
+        }) = &mut self.pending
         {
-            self.outcome_uncertain = true;
+            *observed_terminal = true;
+        }
+    }
+
+    /// One router handoff. Every reply the router gives is definite about what
+    /// happened, refusals included; only a reply that never arrived — the
+    /// caller's budget elapsed or the router is gone — leaves it pending.
+    async fn handoff(
+        &mut self,
+        target: EndpointHandle,
+    ) -> Result<HandoffReport, HostChangeFailure> {
+        self.begin(PendingAction::Handoff {
+            target: target.host(),
+            generation_before: self.core.status().generation,
+        })
+        .map_err(|error| HostChangeFailure {
+            error,
+            handoff_started: false,
+        })?;
+        let result = self.core.change_host(target).await;
+        if !matches!(&result, Err(error) if error.kind == Some(CoreErrorKind::Internal)) {
+            self.finish();
+        }
+        result.map_err(|error| HostChangeFailure {
+            error,
+            handoff_started: true,
+        })
+    }
+
+    /// One mutating ServiceActor command. A reply other than an unavailable
+    /// backend is a definite answer. An unavailable backend may be a helper
+    /// that outlived its bound, so the actor is asked whether its commands
+    /// have all finished; a reply that never arrived stays pending.
+    async fn service_command<T>(
+        &mut self,
+        command: ServiceCommandKind,
+        call: impl Future<Output = Result<T, CoreError>>,
+    ) -> Result<T, CoreError> {
+        self.begin(PendingAction::ServiceCommand { command })?;
+        let result = call.await;
+        let settled = match &result {
+            Ok(_) => true,
+            Err(error) => match error.kind {
+                Some(CoreErrorKind::Internal) => false,
+                Some(CoreErrorKind::BackendUnavailable) => {
+                    self.service.command_settled().await.unwrap_or(false)
+                }
+                _ => true,
+            },
+        };
+        if settled {
+            self.finish();
         }
         result
     }
@@ -274,9 +498,6 @@ impl CoreFacade {
             core_type: Some(intent.core_type.clone()),
         };
         let applied_owner = expected.clone();
-        // Only a *new* uncertainty belongs to this submission; the flag is
-        // sticky, so a caller that was already uncertain must not have a
-        // terminal failure re-labelled as an unobserved one.
         let output = match self.submit_and_wait(submission).await {
             Ok(output) => output,
             Err(CommandFailure::NotSubmitted(error)) => {
@@ -294,9 +515,10 @@ impl CoreFacade {
                     .as_ref()
                     .is_ok_and(|status| same_runtime_version(expected, status))
                 {
+                    self.finish();
                     return Ok(ReconcileResult::Unchanged(error));
                 }
-                self.outcome_uncertain = true;
+                self.observed_terminal();
                 return Ok(ReconcileResult::Unknown(UncertainReconcile {
                     error: error.with_operation(operation_id),
                     status: self.core.status(),
@@ -304,9 +526,12 @@ impl CoreFacade {
             }
         };
         let outcome = match &output {
-            OperationOutputInfo::Reconciled(outcome) => outcome,
+            OperationOutputInfo::Reconciled(outcome) => {
+                self.finish();
+                outcome
+            }
             _ => {
-                self.outcome_uncertain = true;
+                self.observed_terminal();
                 return Ok(ReconcileResult::Unknown(UncertainReconcile {
                     error: unexpected_output("reconcile", &output).with_operation(operation_id),
                     status: self.core.status(),
@@ -361,8 +586,10 @@ impl CoreFacade {
     pub async fn stop(&mut self) -> Result<StopReport, CoreError> {
         let output = self.command(CoreCommand::Stop).await?;
         if output != OperationOutputInfo::Stopped {
+            self.observed_terminal();
             return Err(unexpected_output("stop", &output));
         }
+        self.finish();
         Ok(StopReport {
             output,
             status: self.core.status(),
@@ -372,8 +599,10 @@ impl CoreFacade {
     pub async fn recover(&mut self) -> Result<RecoverReport, CoreError> {
         let output = self.command(CoreCommand::Recover).await?;
         if output != OperationOutputInfo::Recovered {
+            self.observed_terminal();
             return Err(unexpected_output("recover", &output));
         }
+        self.finish();
         Ok(RecoverReport {
             output,
             status: self.core.status(),
@@ -387,21 +616,20 @@ impl CoreFacade {
         let target = match host {
             ExecutionHost::Local => self.core.initial_endpoint(),
             ExecutionHost::Service => {
-                self.service
-                    .ensure_ready()
-                    .await
-                    .map_err(|error| HostChangeFailure {
-                        error,
-                        handoff_started: false,
-                    })?
+                let service = self.service.clone();
+                // A ready daemon is a finished command, consumed here before
+                // the handoff that follows is written.
+                self.service_command(ServiceCommandKind::EnsureReady, async move {
+                    service.ensure_ready().await
+                })
+                .await
+                .map_err(|error| HostChangeFailure {
+                    error,
+                    handoff_started: false,
+                })?
             }
         };
-        let result = self.core.change_host(target).await;
-        self.observe_mutation(result)
-            .map_err(|error| HostChangeFailure {
-                error,
-                handoff_started: true,
-            })
+        self.handoff(target).await
     }
 
     /// Move to the Service host only if the daemon is already `Ready`, never
@@ -409,8 +637,7 @@ impl CoreFacade {
     /// installing or starting a service on the user's behalf.
     pub async fn adopt_service_host(&mut self) -> Result<HandoffReport, CoreError> {
         let target = self.service.adopt_if_ready().await?;
-        let result = self.core.change_host(target).await;
-        self.observe_mutation(result)
+        self.handoff(target).await.map_err(|failure| failure.error)
     }
 
     /// Re-adopt the same Service owner after a transport failure. Ordinary
@@ -419,24 +646,22 @@ impl CoreFacade {
         &mut self,
         closing: &tokio_util::sync::CancellationToken,
     ) -> Result<HandoffReport, CoreError> {
-        let result = async {
-            let endpoint = self.service.recover_endpoint().await?;
-            if closing.is_cancelled() {
-                return Err(CoreError::new(
-                    CoreErrorKind::ShuttingDown,
-                    "service recovery cancelled by shutdown",
-                    false,
-                ));
-            }
-            self.core.change_host(endpoint).await
+        let service = self.service.clone();
+        let endpoint = self
+            .service_command(ServiceCommandKind::RecoverEndpoint, async move {
+                service.recover_endpoint().await
+            })
+            .await?;
+        if closing.is_cancelled() {
+            return Err(CoreError::new(
+                CoreErrorKind::ShuttingDown,
+                "service recovery cancelled by shutdown",
+                false,
+            ));
         }
-        .await;
-        if let Err(error) = &result
-            && error.kind == Some(CoreErrorKind::Internal)
-        {
-            self.outcome_uncertain = true;
-        }
-        result
+        self.handoff(endpoint)
+            .await
+            .map_err(|failure| failure.error)
     }
 
     pub fn core_status(&self) -> CoreStatusProjection {
@@ -460,23 +685,35 @@ impl CoreFacade {
     }
 
     pub async fn install_service(&mut self) -> Result<(), CoreError> {
-        let result = self.service.install().await;
-        self.observe_mutation(result)
+        let service = self.service.clone();
+        self.service_command(ServiceCommandKind::Install, async move {
+            service.install().await
+        })
+        .await
     }
 
     pub async fn start_service(&mut self) -> Result<(), CoreError> {
-        let result = self.service.start_daemon().await;
-        self.observe_mutation(result)
+        let service = self.service.clone();
+        self.service_command(ServiceCommandKind::StartDaemon, async move {
+            service.start_daemon().await
+        })
+        .await
     }
 
     pub async fn stop_service(&mut self) -> Result<(), CoreError> {
-        let result = self.service.stop_daemon().await;
-        self.observe_mutation(result)
+        let service = self.service.clone();
+        self.service_command(ServiceCommandKind::StopDaemon, async move {
+            service.stop_daemon().await
+        })
+        .await
     }
 
     pub async fn uninstall_service(&mut self) -> Result<(), CoreError> {
-        let result = self.service.uninstall().await;
-        self.observe_mutation(result)
+        let service = self.service.clone();
+        self.service_command(ServiceCommandKind::Uninstall, async move {
+            service.uninstall().await
+        })
+        .await
     }
 
     pub async fn shutdown(&self) -> ShutdownReport {
@@ -502,6 +739,8 @@ impl CoreFacade {
             .await
     }
 
+    /// A command whose terminal output the caller still has to classify: the
+    /// submission stays recorded until it does.
     async fn command(&mut self, command: CoreCommand) -> Result<OperationOutputInfo, CoreError> {
         self.submit_and_wait(CoreSubmission {
             expected_owner: None,
@@ -512,37 +751,63 @@ impl CoreFacade {
             core_type: None,
         })
         .await
-        .map_err(CommandFailure::into_error)
+        .map_err(|failure| {
+            // A terminal failure is a classified answer about this operation.
+            if matches!(failure, CommandFailure::Terminal(_)) {
+                self.finish();
+            }
+            failure.into_error()
+        })
     }
 
+    /// Submits one operation and waits for its terminal answer.
+    ///
+    /// The submission is recorded before it is sent, against the endpoint it
+    /// is about to reach, and updated with the accepted ticket. Only a refusal
+    /// before submission clears it here; a terminal answer is left for the
+    /// caller, which alone knows whether it can classify it.
     async fn submit_and_wait(
         &mut self,
         submission: CoreSubmission,
     ) -> Result<OperationOutputInfo, CommandFailure> {
-        let id = submission.envelope.operation_id;
-        self.last_submission = self
+        let operation = submission.envelope.operation_id;
+        let endpoint = self
             .core
             .connected_endpoint()
             .await
-            .ok()
-            .map(|endpoint| (id, endpoint));
+            .map_err(CommandFailure::NotSubmitted)?;
+        self.begin(PendingAction::Submission {
+            operation,
+            host: endpoint.host(),
+            endpoint,
+            generation: self.core.status().generation,
+            accepted: false,
+            observed_terminal: false,
+        })
+        .map_err(CommandFailure::NotSubmitted)?;
         let ticket = match self.core.submit(submission).await {
             Ok(ticket) => ticket,
             Err(SubmitFailure::NotSubmitted(error)) => {
+                self.finish();
                 return Err(CommandFailure::NotSubmitted(error));
             }
             Err(SubmitFailure::Unknown(error)) => {
-                self.outcome_uncertain = true;
                 return Err(CommandFailure::Unknown(error));
             }
         };
-        self.last_submission = Some((ticket.id, ticket.endpoint.clone()));
+        self.pending = Some(PendingAction::Submission {
+            operation: ticket.id,
+            host: ticket.endpoint.host(),
+            endpoint: ticket.endpoint.clone(),
+            generation: ticket.generation,
+            accepted: true,
+            observed_terminal: false,
+        });
         let info = ticket
             .endpoint
             .wait_operation(ticket.id, OPERATION_WAIT)
             .await;
         let Some(info) = info else {
-            self.outcome_uncertain = true;
             return Err(CommandFailure::Unknown(
                 CoreError::new(
                     CoreErrorKind::BackendUnavailable,
@@ -555,7 +820,6 @@ impl CoreFacade {
         if matches!(info.phase, OperationPhase::Queued | OperationPhase::Running)
             || (info.phase == OperationPhase::Succeeded && info.output.is_none())
         {
-            self.outcome_uncertain = true;
             return Err(CommandFailure::Unknown(
                 terminal_output(info, ticket.id).unwrap_err(),
             ));
@@ -974,7 +1238,14 @@ mod tests {
             Some(CoreErrorKind::BackendUnavailable)
         );
         assert!(
-            facade.outcome_uncertain(),
+            matches!(
+                facade.pending_action(),
+                Some(PendingAction::Submission {
+                    accepted: true,
+                    observed_terminal: false,
+                    ..
+                })
+            ),
             "an unobserved mutation must keep holding the execution domain"
         );
         assert!(result.into_applied().is_err());
@@ -1038,7 +1309,7 @@ mod tests {
         assert_eq!(error.kind, Some(CoreErrorKind::Internal));
         assert!(!error.retryable);
         assert!(
-            !facade.outcome_uncertain(),
+            facade.pending_action().is_none(),
             "validation failed before any mutation was submitted"
         );
     }

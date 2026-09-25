@@ -772,6 +772,69 @@ async fn a_second_change_host_during_a_handoff_is_refused() {
     client.shutdown().await.unwrap();
 }
 
+/// T10 §1.11: whether a handoff finished is answered by the handoff, not by
+/// the router's health. Its stop leg in flight is unfinished; a failed leg
+/// whose source went down meanwhile is finished although the degraded
+/// router it leaves refuses every status read, and so are a completed
+/// handoff and a shut-down router.
+#[tokio::test]
+async fn a_handoff_is_settled_by_its_own_completion_not_by_router_health() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let service = FakeEndpoint::new(
+        ExecutionHost::Service,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+    let generation = client.status().generation;
+    local.script_stop(StopScript::Failed {
+        kind: Some("apply_failed"),
+        retryable: false,
+    });
+    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
+    assert!(!client.handoff_settled(generation).await.unwrap());
+
+    // Queued ahead of the stop leg's own answer, as the source's pump would.
+    client
+        .actor
+        .cast(CoreActorMessage::EndpointDown {
+            generation,
+            reason: "the source stopped answering".into(),
+        })
+        .unwrap();
+    local.release_stop();
+    assert!(handoff.await.unwrap().is_err());
+    assert!(matches!(
+        client.status().connectivity,
+        EndpointConnectivity::Degraded {
+            desired: ExecutionHost::Local,
+            ..
+        }
+    ));
+    assert_eq!(
+        client.refresh_status().await.unwrap_err().kind,
+        Some(CoreErrorKind::BackendUnavailable)
+    );
+    assert!(client.handoff_settled(generation).await.unwrap());
+
+    let fresh = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    assert!(client.change_host(fresh).await.unwrap().completed());
+    assert!(client.handoff_settled(generation).await.unwrap());
+
+    client.shutdown().await.unwrap();
+    assert!(
+        client
+            .handoff_settled(client.status().generation)
+            .await
+            .unwrap()
+    );
+}
+
 /// Fencing use #2: a completion belonging to an abandoned handoff must not
 /// move ownership.
 #[tokio::test]

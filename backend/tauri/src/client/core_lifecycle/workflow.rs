@@ -27,8 +27,6 @@ pub(in crate::client) struct CoreLifecycleWorkflow {
     /// confirms a candidate when the core accepts it and ends the confirmed
     /// binding when the core stops.
     pub ports: Arc<SessionPortResolver>,
-    // A lost lower-level reply is not evidence its side effects have finished.
-    pub uncertain: bool,
     pub recovery: ServiceRecovery,
     pub closing: tokio_util::sync::CancellationToken,
 }

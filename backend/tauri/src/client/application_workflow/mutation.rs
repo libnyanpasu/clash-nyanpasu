@@ -29,10 +29,7 @@ use super::{
     impact::{MutationHints, RuntimeImpact},
     policy::{CommandClass, CommandPolicy, TryCauseKind},
 };
-use crate::{
-    client::runtime::{RuntimeApplyReceipt, RuntimeSnapshot},
-    core::actor_v2::facade::AppliedConfigBinding,
-};
+use crate::client::runtime::{RuntimeApplyReceipt, RuntimeSnapshot};
 
 /// Which source domain a mutation belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,25 +260,6 @@ pub(crate) struct AppliedCandidate {
     pub product: Arc<RuntimeSnapshot>,
 }
 
-/// Everything a `RecoveryRequired` state has to remember (v2 §11.4).
-#[derive(Debug, Clone)]
-pub(crate) struct RecoveryContext {
-    pub operation_id: OperationId,
-    pub runtime_operation: Option<OperationId>,
-    pub domain: ConfigDomain,
-    pub stage: MutationStage,
-    /// The source commit decision this attempt reached, kept so an explicit
-    /// recovery can choose a direction instead of guessing one.
-    pub decision: DecisionHandle,
-    /// What was running before the attempt.
-    pub baseline: KnownRuntimeState,
-    /// What the attempt was trying to reach, when it got far enough to have one.
-    pub target: Option<Arc<RuntimeApplyReceipt>>,
-    /// The last binding the app could observe.
-    pub binding: Option<AppliedConfigBinding>,
-    pub error: String,
-}
-
 /// How the critical part of one mutation ended (v2 §4.3).
 #[derive(Debug, Clone)]
 pub(crate) enum RuntimePrepareOutcome {
@@ -307,8 +285,9 @@ pub(crate) enum RuntimePrepareOutcome {
         restored: KnownRuntimeState,
     },
     /// What actually ran cannot be established, so no commit decision may be
-    /// derived from it.
-    RecoveryRequired(Box<RecoveryContext>),
+    /// derived from it. The attempt and its pending action say what is
+    /// unknown; this carries why.
+    RecoveryRequired(String),
 }
 
 impl RuntimePrepareOutcome {
@@ -318,7 +297,7 @@ impl RuntimePrepareOutcome {
             Self::Applied(_) | Self::SavedInactive | Self::Saved => TryAck::Ok,
             Self::Deferred { cause, .. } => TryAck::Degraded(cause.message.clone()),
             Self::Rejected { cause, .. } => TryAck::Rejected(cause.message.clone()),
-            Self::RecoveryRequired(context) => TryAck::Failed(context.error.clone()),
+            Self::RecoveryRequired(error) => TryAck::Failed(error.clone()),
         }
     }
 
@@ -411,21 +390,39 @@ pub(crate) struct MutationReceipt {
 
 /// A committed desired value the core is not running, with its automatic
 /// convergence budget (D11).
+///
+/// It carries no decision handle: its source is already committed, and a
+/// retry of it is never another source transaction.
 #[derive(Debug, Clone)]
 pub(crate) struct DeferredTarget {
     pub operation_id: OperationId,
+    pub origin: TargetOrigin,
     /// Identity of the complete runtime target, including captured content.
     /// Only a different target opens a new automatic budget. A manual save of
     /// the same target neither spends nor refills it (D11, V22).
-    pub digest: String,
+    pub identity: String,
     pub baseline: KnownRuntimeState,
     pub cause: RetryableCause,
     pub attempts_remaining: u8,
     pub attempts: u32,
     pub health: crate::client::convergence::ConvergenceHealth,
     pub next_attempt: Option<tokio::time::Instant>,
-    pub domain: ConfigDomain,
-    pub decision: DecisionHandle,
+}
+
+/// Where a committed target came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TargetOrigin {
+    /// A source mutation committed it unapplied.
+    Mutation { domain: ConfigDomain },
+    /// The runtime has to be re-established from the committed configuration.
+    Reestablish(ReestablishCause),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReestablishCause {
+    Startup,
+    Recovery,
+    ExplicitStart,
 }
 
 /// What the workflow publishes about mutations, separate from the core
@@ -435,7 +432,9 @@ pub(crate) struct MutationJournal {
     pub maintenance: Option<String>,
     pub event_seq: u64,
     pub completed: std::collections::VecDeque<MutationReceipt>,
-    pub recovery: Option<Box<RecoveryContext>>,
+    /// Why the execution domain is isolated, projected from the live attempt
+    /// and the pending action.
+    pub recovery: Option<super::attempt::RecoveryView>,
     pub deferred: Option<DeferredTarget>,
 }
 

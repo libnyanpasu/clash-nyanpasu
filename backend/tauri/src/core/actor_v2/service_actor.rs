@@ -142,6 +142,11 @@ pub enum ServiceActorMessage {
     RecoverEndpoint {
         reply: RpcReplyPort<Result<EndpointHandle, CoreError>>,
     },
+    /// Whether every command this actor accepted has finished. The mailbox
+    /// answers it only after the commands queued ahead of it, and `false`
+    /// while a helper that outlived its bound is still running. A stable
+    /// phase is not this evidence, and neither is `Exhausted`.
+    CommandSettled { reply: RpcReplyPort<bool> },
 }
 
 pub struct ServiceActor;
@@ -280,6 +285,20 @@ impl ServiceActorState {
             Err(error) => {
                 tracing::warn!("the service {command:?} command's task ended abnormally: {error}")
             }
+        }
+        true
+    }
+
+    /// `CommandSettled`: whether every accepted command has ended. Reaping a
+    /// finished helper probes once, since the phase published when its bound
+    /// elapsed says nothing about what it went on to do.
+    async fn settle_outstanding(&mut self) -> bool {
+        let reaping = self.outstanding.is_some();
+        if !self.reap_outstanding().await {
+            return false;
+        }
+        if reaping {
+            let _ = self.probe_and_publish().await;
         }
         true
     }
@@ -711,6 +730,9 @@ impl Actor for ServiceActor {
                 }
                 let _ = reply.send(state.recover_endpoint().await);
             }
+            ServiceActorMessage::CommandSettled { reply } => {
+                let _ = reply.send(state.settle_outstanding().await);
+            }
         }
         Ok(())
     }
@@ -913,6 +935,17 @@ impl ServiceClient {
             self.probe_budget + self.command_and_probe_budget,
         )
         .await?
+    }
+
+    /// Positive evidence that every command this actor accepted has ended,
+    /// including a helper that outlived its bound. Reaping a finished helper
+    /// probes once, so this borrows `probe`'s budget.
+    pub async fn command_settled(&self) -> Result<bool, CoreError> {
+        self.call(
+            |reply| ServiceActorMessage::CommandSettled { reply },
+            self.probe_budget,
+        )
+        .await
     }
 
     async fn call<T: Send + 'static>(

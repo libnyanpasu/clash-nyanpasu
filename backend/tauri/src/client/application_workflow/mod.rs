@@ -1,6 +1,7 @@
 //! Application workflow admission: serializes configuration commits, runtime application,
 //! connection interruption, host changes, binary installation, and shutdown.
 pub(crate) mod adapters;
+mod attempt;
 pub(crate) mod impact;
 pub(in crate::client) mod inputs;
 pub(crate) mod mutation;
@@ -188,7 +189,7 @@ struct PublishedView {
     uncertain: bool,
     last_completed: Option<OperationId>,
     maintenance: Option<String>,
-    recovery: Option<(OperationId, String)>,
+    recovery: Option<attempt::RecoveryView>,
     deferred: Option<(
         OperationId,
         super::convergence::ConvergenceHealth,
@@ -334,10 +335,7 @@ impl ApplicationWorkflowState {
             self.publish();
             return;
         }
-        let uncertain = self
-            .workflow
-            .as_ref()
-            .is_some_and(|w| w.lifecycle.uncertain);
+        let uncertain = self.workflow.as_ref().is_some_and(|w| w.isolated());
         if uncertain {
             self.status.send_modify(|status| status.uncertain = true);
             self.dirty = false;
@@ -454,17 +452,17 @@ impl ApplicationWorkflowState {
                     }
                     _ => None,
                 };
-                let result = match AssertUnwindSafe(workflow.execute(command))
+                // A panic records nothing: the attempt and its pending action
+                // are fields of the workflow, and return with it holding
+                // exactly what they held when it unwound.
+                let result = match AssertUnwindSafe(workflow.execute(id, command))
                     .catch_unwind()
                     .await
                 {
                     Ok(result) => result,
-                    Err(_) => {
-                        workflow.lifecycle.uncertain = true;
-                        Err(domain_error(
-                            "core lifecycle workflow panicked; execution state is uncertain",
-                        ))
-                    }
+                    Err(_) => Err(domain_error(
+                        "core lifecycle workflow panicked; execution state is uncertain",
+                    )),
                 };
                 if let Some(progress) = progress {
                     let error = result.as_ref().err().map(ToString::to_string);
@@ -502,11 +500,11 @@ impl ApplicationWorkflowState {
     ///
     /// A mutation has to be answered while the workflow may be out on a tracked
     /// task, so the published flag is consulted too: it is the last value the
-    /// latch had before the tracked task started.
+    /// isolation had before the tracked task started.
     fn recovery_required(&self) -> bool {
         self.workflow
             .as_ref()
-            .is_some_and(|workflow| workflow.lifecycle.uncertain)
+            .is_some_and(|workflow| workflow.isolated())
             || self.status.borrow().uncertain
     }
 
@@ -617,12 +615,8 @@ impl ApplicationWorkflowState {
                 queued: status.queued.clone(),
                 uncertain: status.uncertain,
                 last_completed: status.completed.back().map(|result| result.id),
-                maintenance: workflow
-                    .and_then(|w| w.pending_product.as_ref())
-                    .map(|(_, error)| error.clone()),
-                recovery: workflow
-                    .and_then(|w| w.recovery.as_ref())
-                    .map(|r| (r.operation_id, r.error.clone())),
+                maintenance: workflow.and_then(|w| w.maintenance()),
+                recovery: workflow.and_then(|w| w.recovery_view()),
                 deferred: workflow.and_then(|w| w.deferred.as_ref()).map(|d| {
                     (
                         d.operation_id,
@@ -646,12 +640,9 @@ impl ApplicationWorkflowState {
                 journal.completed.push_back(receipt);
             }
             if let Some(workflow) = workflow {
-                journal.recovery = workflow.recovery.clone();
+                journal.recovery = workflow.recovery_view();
                 journal.deferred = workflow.deferred.clone();
-                journal.maintenance = workflow
-                    .pending_product
-                    .as_ref()
-                    .map(|(_, error)| error.clone());
+                journal.maintenance = workflow.maintenance();
             }
             changed
         });
@@ -737,7 +728,7 @@ impl Actor for ApplicationWorkflowActor {
                 let _ = active.task.await;
                 state.status.send_modify(|status| {
                     status.active = None;
-                    status.uncertain = workflow.lifecycle.uncertain;
+                    status.uncertain = workflow.isolated();
                 });
                 if active.shutdown
                     && let Err(error) = result
@@ -905,14 +896,14 @@ impl ApplicationWorkflowClient {
             budgets: args.budgets,
             deferred: None,
             pending_product: None,
-            recovery: None,
+            pending_release: None,
+            live: None,
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),
                 installer: args.installer,
                 runtime: runtime.clone(),
                 ports: args.ports,
-                uncertain: false,
                 recovery: ServiceRecovery::default(),
                 closing: tokio_util::sync::CancellationToken::new(),
             },

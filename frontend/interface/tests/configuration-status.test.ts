@@ -49,6 +49,17 @@ describe('configuration status', () => {
         [],
       ),
     ).rejects.toBeInstanceOf(MutationUnconfirmedError)
+    const bug = new TypeError('undefined is not a function')
+    await expect(
+      invokeMutation(
+        {
+          mutationFn: async () => {
+            throw bug
+          },
+        },
+        [],
+      ),
+    ).rejects.toBe(bug)
     const refused = { status: 'error', error: 'validation rejected' }
     expect(await invokeMutation({ mutationFn: async () => refused }, [])).toBe(
       refused,

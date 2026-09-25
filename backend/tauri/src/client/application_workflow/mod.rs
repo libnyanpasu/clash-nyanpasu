@@ -38,7 +38,7 @@ use crate::{
         facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus},
     },
-    state::profiles::{CommitReport, ports::RebuildNotifier},
+    state::profiles::ports::RebuildNotifier,
 };
 use mutation::{MutationBudgets, MutationCommand, MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
@@ -84,16 +84,11 @@ pub struct CoreLifecycleOperationResult {
     pub backend_operation_id: Option<OperationId>,
 }
 
-/// Apply-side work only. Source config is committed by the facade through the
-/// owning domain actor before any of these is submitted, so the workflow never
+/// Work serialized by the execution domain. A source mutation runs as a
+/// participant of its owning domain's transaction, so the workflow never
 /// becomes a second commit point for a configuration domain.
 pub(super) enum Command {
     Core(CoreCommand),
-    ApplyClashOverrides {
-        committed: nyanpasu_config::clash::config::ClashConfig,
-        mode_changed: bool,
-    },
-    ApplyProfileActivation(CommitReport),
     /// One source-config mutation, running as a Required participant of the
     /// transaction that produced its candidate.
     Mutation(Box<MutationCommand>),
@@ -179,7 +174,28 @@ struct ApplicationWorkflowState {
     /// Queued and in-flight mutation contexts.
     mutations: Vec<MutationContext>,
     journal: watch::Sender<MutationJournal>,
+    /// What the journal last announced; see [`PublishedView`].
+    published: PublishedView,
     budgets: MutationBudgets,
+}
+
+/// The parts of this actor that `configuration_status` reads. The journal
+/// sequence advances only when these change, so idle ticks publish nothing.
+#[derive(Default, PartialEq)]
+struct PublishedView {
+    active: Option<OperationId>,
+    queued: Vec<OperationId>,
+    uncertain: bool,
+    last_completed: Option<OperationId>,
+    maintenance: Option<String>,
+    recovery: Option<(OperationId, String)>,
+    deferred: Option<(
+        OperationId,
+        super::convergence::ConvergenceHealth,
+        u32,
+        u8,
+        String,
+    )>,
 }
 
 pub(super) struct ApplicationWorkflowArgs {
@@ -216,7 +232,7 @@ fn conflict(message: &str) -> CoreError {
 }
 
 impl ApplicationWorkflowState {
-    fn publish(&self) {
+    fn publish(&mut self) {
         self.status.send_modify(|status| {
             status.active = self.active.as_ref().map(|op| op.response.id);
             status.queued = self
@@ -438,7 +454,7 @@ impl ApplicationWorkflowState {
                     }
                     _ => None,
                 };
-                let result = match AssertUnwindSafe(workflow.execute(id, command))
+                let result = match AssertUnwindSafe(workflow.execute(command))
                     .catch_unwind()
                     .await
                 {
@@ -592,10 +608,37 @@ impl ApplicationWorkflowState {
         context.decision_waiter.abort();
     }
 
-    fn publish_journal(&self, receipt: Option<mutation::MutationReceipt>) {
+    fn publish_journal(&mut self, receipt: Option<mutation::MutationReceipt>) {
         let workflow = self.workflow.as_ref();
-        self.journal.send_modify(|journal| {
-            journal.event_seq += 1;
+        let view = {
+            let status = self.status.borrow();
+            PublishedView {
+                active: status.active,
+                queued: status.queued.clone(),
+                uncertain: status.uncertain,
+                last_completed: status.completed.back().map(|result| result.id),
+                maintenance: workflow
+                    .and_then(|w| w.pending_product.as_ref())
+                    .map(|(_, error)| error.clone()),
+                recovery: workflow
+                    .and_then(|w| w.recovery.as_ref())
+                    .map(|r| (r.operation_id, r.error.clone())),
+                deferred: workflow.and_then(|w| w.deferred.as_ref()).map(|d| {
+                    (
+                        d.operation_id,
+                        d.health,
+                        d.attempts,
+                        d.attempts_remaining,
+                        d.cause.message.clone(),
+                    )
+                }),
+            }
+        };
+        let changed = receipt.is_some() || view != self.published;
+        self.journal.send_if_modified(|journal| {
+            if changed {
+                journal.event_seq += 1;
+            }
             if let Some(receipt) = receipt {
                 if journal.completed.len() == MAX_PENDING {
                     journal.completed.pop_front();
@@ -610,7 +653,9 @@ impl ApplicationWorkflowState {
                     .as_ref()
                     .map(|(_, error)| error.clone());
             }
+            changed
         });
+        self.published = view;
     }
 }
 
@@ -649,6 +694,7 @@ impl Actor for ApplicationWorkflowActor {
             abandoned: false,
             mutations: Vec::new(),
             journal: args.journal,
+            published: PublishedView::default(),
             budgets: args.budgets,
         })
     }
@@ -1031,35 +1077,6 @@ impl ApplicationWorkflowClient {
         ShutdownReport
     );
 
-    /// Applies a clash-config commit the facade already made. `mode_changed`
-    /// comes from the submitted patch, not from a re-read of the domain.
-    pub async fn apply_clash_overrides(
-        &self,
-        committed: nyanpasu_config::clash::config::ClashConfig,
-        mode_changed: bool,
-    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self
-            .call(Command::ApplyClashOverrides {
-                committed,
-                mode_changed,
-            })
-            .await?
-        {
-            Output::Mutation(result) => Ok(result),
-            _ => unreachable!(),
-        }
-    }
-
-    /// Applies a profile selection the facade already committed.
-    pub async fn apply_profile_activation(
-        &self,
-        report: CommitReport,
-    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self.call(Command::ApplyProfileActivation(report)).await? {
-            Output::Mutation(result) => Ok(result),
-            _ => unreachable!(),
-        }
-    }
     pub async fn change_host(&self, host: ExecutionHost) -> Result<HandoffReport, CoreError> {
         match self
             .call(Command::Core(CoreCommand::ChangeHost(host)))

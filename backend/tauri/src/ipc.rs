@@ -51,7 +51,6 @@ impl From<String> for IpcError {
 impl From<ClientError> for IpcError {
     fn from(err: ClientError) -> Self {
         match err {
-            err @ ClientError::SourceVersionConflict { .. } => IpcError::Custom(err.to_string()),
             ClientError::Io(err) => IpcError::Io(err),
             ClientError::SerdeYaml(err) => IpcError::SerdeYaml(err),
             ClientError::SerdeJson(err) => IpcError::SerdeJson(err),
@@ -1379,15 +1378,4 @@ pub fn retry_configuration_effect(
     kind: crate::client::effects::plan::EffectKind,
 ) -> Result<()> {
     Ok(client.retry_effect_now(kind)?)
-}
-#[tauri::command]
-#[specta::specta]
-pub async fn repair_verge_config(
-    legacy: State<'_, LegacyVergeBridge>,
-    expected_version: u64,
-    payload: IVerge,
-) -> Result<crate::client::runtime::MutationOutcome<()>> {
-    Ok(legacy
-        .repair_verge_config(expected_version, payload)
-        .await?)
 }

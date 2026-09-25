@@ -66,11 +66,6 @@ pub struct ClashConfigActorState {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum ClashConfigActorMessage {
-    PatchIfVersion {
-        expected_version: u64,
-        patch: ClashConfigPatch,
-        reply: RpcReplyPort<anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>>>,
-    },
     Patch {
         patch: ClashConfigPatch,
         reply: RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>,
@@ -232,21 +227,6 @@ impl Actor for ClashConfigActor {
         match message {
             ClashConfigActorMessage::Patch { patch, reply } => {
                 let _ = reply.send(Self::patch(state, patch).await);
-            }
-            ClashConfigActorMessage::PatchIfVersion {
-                expected_version,
-                patch,
-                reply,
-            } => {
-                let actual_version = Self::snapshot(state).version;
-                let result = if actual_version != expected_version {
-                    Ok(ConditionalReplaceResult::Conflict { actual_version })
-                } else {
-                    Self::patch(state, patch)
-                        .await
-                        .map(ConditionalReplaceResult::Replaced)
-                };
-                let _ = reply.send(result);
             }
             ClashConfigActorMessage::PatchOverrides { patch, reply } => {
                 let mut next = state.manager.snapshot_handle().load().state.clone();

@@ -4,12 +4,6 @@ pub type Result<T = ()> = std::result::Result<T, ClientError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
-    #[error("{domain} source version changed: expected {expected}, actual {actual}")]
-    SourceVersionConflict {
-        domain: &'static str,
-        expected: u64,
-        actual: u64,
-    },
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]

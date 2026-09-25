@@ -114,30 +114,6 @@ impl ClashConfigClient {
         .await
     }
 
-    pub(crate) async fn patch_if_version(
-        &self,
-        expected_version: u64,
-        patch: ClashConfigPatch,
-    ) -> anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ClashConfigActorMessage::PatchIfVersion {
-                    expected_version,
-                    patch,
-                    reply,
-                },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash_config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash_config actor call timed out"),
-        }
-    }
-
     pub(crate) async fn replace_if_version(
         &self,
         expected_version: u64,

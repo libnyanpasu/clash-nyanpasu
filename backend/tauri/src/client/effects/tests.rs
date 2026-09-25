@@ -128,23 +128,32 @@ async fn blocked_pac_does_not_block_visual_or_hotkey_group() {
     client.reconcile(inputs());
     port.entered.notified().await;
     let state = wait(&client, |s| {
-        s.statuses
+        s.effects
             .iter()
+            .map(|e| &e.status)
             .any(|s| s.kind == EffectKind::Tray && s.health == EffectHealth::Healthy)
-            && s.statuses
+            && s.effects
                 .iter()
+                .map(|e| &e.status)
                 .any(|s| s.kind == EffectKind::Hotkeys && s.health == EffectHealth::Healthy)
     })
     .await;
-    assert!(
-        state
-            .statuses
-            .iter()
-            .any(|s| s.kind == EffectKind::SystemProxy && s.health == EffectHealth::Pending)
-    );
+    for kind in [EffectKind::SystemProxy, EffectKind::AutoLaunch] {
+        assert!(
+            state
+                .effects
+                .iter()
+                .map(|e| &e.status)
+                .any(|s| s.kind == kind && s.health == EffectHealth::Pending),
+            "{kind:?} shares the held system proxy owner"
+        );
+    }
     port.release.notify_one();
     wait(&client, |s| {
-        s.statuses.iter().all(|s| s.health == EffectHealth::Healthy)
+        s.effects
+            .iter()
+            .map(|e| &e.status)
+            .all(|s| s.health == EffectHealth::Healthy)
     })
     .await;
     client.shutdown().await;
@@ -160,8 +169,9 @@ async fn blocked_gui_does_not_block_proxy_group() {
     client.reconcile(inputs());
     port.entered.notified().await;
     wait(&client, |s| {
-        s.statuses
+        s.effects
             .iter()
+            .map(|e| &e.status)
             .any(|s| s.kind == EffectKind::SystemProxy && s.health == EffectHealth::Healthy)
     })
     .await;
@@ -188,7 +198,10 @@ async fn queued_visual_targets_coalesce_and_full_subsumes_part() {
     assert_eq!(port.calls.lock().unwrap().len(), 1);
     port.release.notify_one();
     wait(&client, |s| {
-        s.statuses.iter().all(|s| s.health == EffectHealth::Healthy)
+        s.effects
+            .iter()
+            .map(|e| &e.status)
+            .all(|s| s.health == EffectHealth::Healthy)
     })
     .await;
     let calls = port.calls.lock().unwrap();
@@ -222,14 +235,15 @@ async fn stale_completion_does_not_publish_success_for_new_desired() {
     port.fail.store(true, Ordering::SeqCst);
     port.release.notify_one();
     let state = wait(&client, |s| {
-        s.statuses.iter().any(|s| {
+        s.effects.iter().map(|e| &e.status).any(|s| {
             s.kind == EffectKind::SystemProxy && matches!(s.health, EffectHealth::Degraded { .. })
         })
     })
     .await;
     let status = state
-        .statuses
+        .effects
         .iter()
+        .map(|e| &e.status)
         .find(|s| s.kind == EffectKind::SystemProxy)
         .unwrap();
     assert_eq!(status.desired_revision.get(), revision);
@@ -250,7 +264,11 @@ async fn independent_graphs_and_shutdown_admission() {
     assert!(a.calls.lock().unwrap().is_empty());
     right.reconcile(inputs());
     wait(&right, |s| {
-        s.statuses.len() == 8 && s.statuses.iter().all(|s| s.health == EffectHealth::Healthy)
+        s.effects.len() == 8
+            && s.effects
+                .iter()
+                .map(|e| &e.status)
+                .all(|s| s.health == EffectHealth::Healthy)
     })
     .await;
     assert_eq!(b.calls.lock().unwrap().len(), 3);
@@ -311,15 +329,17 @@ fn asynchronous_failure_is_status_and_never_cancels_source() {
             .unwrap();
         assert!(result.degradations().is_empty());
         let status = wait(&client.inner.effects, |s| {
-            s.statuses
+            s.effects
                 .iter()
+                .map(|e| &e.status)
                 .any(|s| matches!(s.health, EffectHealth::Degraded { .. }))
         })
         .await;
         assert!(
             status
-                .statuses
+                .effects
                 .iter()
+                .map(|e| &e.status)
                 .all(|s| s.applied_revision.get() == 0)
         );
         assert_eq!(
@@ -410,16 +430,16 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
     desired.app.language = I18nLanguage::Korean;
     client.committed(desired.clone(), false, Vec::new());
     wait(&client, |s| {
-        s.progress
-            .iter()
-            .any(|p| p.kind == EffectKind::Locale && p.health == ConvergenceHealth::RetryScheduled)
+        s.effects.iter().any(|p| {
+            p.status.kind == EffectKind::Locale && p.health == ConvergenceHealth::RetryScheduled
+        })
     })
     .await;
     for (delay, remaining) in [(1, 2), (5, 1), (30, 0)] {
         tokio::time::advance(Duration::from_secs(delay)).await;
         wait(&client, |s| {
-            s.progress.iter().any(|p| {
-                p.kind == EffectKind::Locale
+            s.effects.iter().any(|p| {
+                p.status.kind == EffectKind::Locale
                     && p.automatic_remaining == remaining
                     && p.health != ConvergenceHealth::Pending
             })
@@ -429,9 +449,9 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
     let exhausted = client.snapshot();
     assert!(
         exhausted
-            .progress
+            .effects
             .iter()
-            .filter(|p| p.kind == EffectKind::Locale)
+            .filter(|p| p.status.kind == EffectKind::Locale)
             .all(|p| p.health == ConvergenceHealth::Blocked && p.attempts == 4)
     );
     let count = port.calls.lock().unwrap().len();
@@ -445,17 +465,17 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
     assert_eq!(
         client
             .snapshot()
-            .progress
+            .effects
             .iter()
-            .find(|p| p.kind == EffectKind::Locale)
+            .find(|p| p.status.kind == EffectKind::Locale)
             .unwrap()
             .automatic_remaining,
         0
     );
     client.retry_now(EffectKind::Locale).unwrap();
     wait(&client, |s| {
-        s.progress.iter().any(|p| {
-            p.kind == EffectKind::Locale
+        s.effects.iter().any(|p| {
+            p.status.kind == EffectKind::Locale
                 && p.attempts == 5
                 && p.health == ConvergenceHealth::Blocked
         })
@@ -464,9 +484,9 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
     assert_eq!(
         client
             .snapshot()
-            .progress
+            .effects
             .iter()
-            .find(|p| p.kind == EffectKind::Locale)
+            .find(|p| p.status.kind == EffectKind::Locale)
             .unwrap()
             .automatic_remaining,
         0
@@ -484,31 +504,33 @@ async fn missing_binding_waits_without_spending_apply_budget() {
     desired.app.enable_proxy_guard = true;
     client.committed(desired, false, Vec::new());
     let state = wait(&client, |s| {
-        s.progress.iter().any(|p| {
-            p.kind == EffectKind::SystemProxy && p.health == ConvergenceHealth::WaitingDependency
+        s.effects.iter().any(|p| {
+            p.status.kind == EffectKind::SystemProxy
+                && p.health == ConvergenceHealth::WaitingDependency
         })
     })
     .await;
     let proxy = state
-        .progress
+        .effects
         .iter()
-        .find(|p| p.kind == EffectKind::SystemProxy)
+        .find(|p| p.status.kind == EffectKind::SystemProxy)
         .unwrap();
     assert_eq!((proxy.attempts, proxy.automatic_remaining), (0, 3));
 
     client.retry_now(EffectKind::SystemProxy).unwrap();
     client.barrier().await;
     let state = wait(&client, |s| {
-        s.progress.iter().any(|p| {
-            p.kind == EffectKind::SystemProxy && p.health == ConvergenceHealth::WaitingDependency
+        s.effects.iter().any(|p| {
+            p.status.kind == EffectKind::SystemProxy
+                && p.health == ConvergenceHealth::WaitingDependency
         })
     })
     .await;
     assert_eq!(
         state
-            .progress
+            .effects
             .iter()
-            .find(|p| p.kind == EffectKind::SystemProxy)
+            .find(|p| p.status.kind == EffectKind::SystemProxy)
             .unwrap()
             .attempts,
         0
@@ -528,71 +550,31 @@ async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
     desired.app.language = I18nLanguage::Korean;
     client.committed(desired.clone(), false, vec![EffectKind::Locale]);
     wait(&client, |s| {
-        s.progress
+        s.effects
             .iter()
-            .any(|p| p.kind == EffectKind::Locale && p.health == ConvergenceHealth::Blocked)
+            .any(|p| p.status.kind == EffectKind::Locale && p.health == ConvergenceHealth::Blocked)
     })
     .await;
     assert_eq!(
         client
             .snapshot()
-            .progress
+            .effects
             .iter()
-            .find(|p| p.kind == EffectKind::Locale)
+            .find(|p| p.status.kind == EffectKind::Locale)
             .unwrap()
             .attempts,
         1
     );
     client.committed(desired, false, vec![EffectKind::Locale]);
     wait(&client, |s| {
-        s.progress.iter().any(|p| {
-            p.kind == EffectKind::Locale
+        s.effects.iter().any(|p| {
+            p.status.kind == EffectKind::Locale
                 && p.attempts == 2
                 && p.health == ConvergenceHealth::Blocked
         })
     })
     .await;
     client.shutdown().await;
-}
-
-#[test]
-fn forward_repair_rejects_stale_source_version() {
-    let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
-    endpoint.set_status(
-        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
-        None,
-    );
-    let client =
-        NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint)).unwrap();
-    tauri::async_runtime::block_on(async {
-        let old = client.inner.application.snapshot().version;
-        client
-            .patch_app_config(language(I18nLanguage::Korean))
-            .await
-            .unwrap();
-        assert!(matches!(
-            client
-                .repair_app_config(old, language(I18nLanguage::English))
-                .await,
-            Err(crate::client::ClientError::SourceVersionConflict { .. })
-        ));
-        assert_eq!(
-            client.get_app_config().await.unwrap().language,
-            I18nLanguage::Korean
-        );
-        let current = client.inner.application.snapshot().version;
-        client
-            .repair_app_config(current, language(I18nLanguage::English))
-            .await
-            .unwrap();
-        assert_eq!(
-            client.get_app_config().await.unwrap().language,
-            I18nLanguage::English
-        );
-        client.shutdown_application_effects().await;
-        client.shutdown_core().await;
-    });
 }
 
 #[tokio::test]
@@ -632,8 +614,9 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
     port.release.notify_one();
     wait(&client.inner.effects, |state| {
         state
-            .statuses
+            .effects
             .iter()
+            .map(|e| &e.status)
             .all(|s| s.health == EffectHealth::Healthy)
     })
     .await;

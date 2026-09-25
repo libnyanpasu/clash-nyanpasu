@@ -62,7 +62,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_configuration_status,
             ipc::retry_configuration_runtime,
             ipc::retry_configuration_effect,
-            ipc::repair_verge_config,
             ipc::set_release_channel,
             // Side-effecting commands
             ipc::open_log_session,

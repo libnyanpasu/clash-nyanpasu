@@ -82,7 +82,7 @@ impl OsProxyPort for RecordingOsProxy {
 }
 
 /// Holds the mailbox inside `apply` until the shutdown token fires, the way a
-/// real PAC download does while it retries a url that will not answer.
+/// real PAC download does while it waits on a url that will not answer.
 struct BlockingPac {
     started: tokio::sync::Notify,
 }
@@ -840,9 +840,9 @@ async fn auto_launch_already_in_the_desired_state_is_not_rewritten() {
 
 #[tokio::test]
 async fn restore_cancels_an_in_flight_pac_download() {
-    // A PAC download owns the mailbox for as long as its retries last, which is
-    // far longer than the restore's bound: without cancellation the app exits
-    // with its proxy still installed.
+    // A PAC download owns the mailbox for as long as it lasts, which is longer
+    // than the restore's bound: without cancellation the app exits with its
+    // proxy still installed.
     let os = RecordingOsProxy::new();
     let pac = BlockingPac::new();
     let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;

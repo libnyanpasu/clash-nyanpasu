@@ -22,28 +22,35 @@ pub struct EffectsSnapshot {
     pub event_seq: u64,
     #[cfg(test)]
     pub revision: u64,
-    pub statuses: Vec<EffectStatus>,
-    pub progress: Vec<EffectProgress>,
+    pub effects: Vec<EffectProgress>,
 }
 
+/// One effect kind: what its owner last reported, and how convergence is going.
 #[derive(Clone, Debug)]
 pub struct EffectProgress {
-    pub kind: EffectKind,
+    pub status: EffectStatus,
     pub health: ConvergenceHealth,
     pub attempts: u32,
     pub automatic_remaining: u8,
 }
-struct RetryState {
-    budget: RetryBudget,
+struct Entry {
+    status: EffectStatus,
     health: ConvergenceHealth,
+    budget: RetryBudget,
     next: Option<tokio::time::Instant>,
     automatic: bool,
 }
-impl Default for RetryState {
-    fn default() -> Self {
+impl Entry {
+    fn new(kind: EffectKind) -> Self {
         Self {
-            budget: RetryBudget::default(),
+            status: EffectStatus {
+                kind,
+                desired_revision: EffectRevision::default(),
+                applied_revision: EffectRevision::default(),
+                health: EffectHealth::Pending,
+            },
             health: ConvergenceHealth::Pending,
+            budget: RetryBudget::default(),
             next: None,
             automatic: false,
         }
@@ -73,11 +80,10 @@ struct State {
     desired: ApplicationEffectInputs,
     revision: u64,
     pending: BTreeMap<EffectKind, ApplicationEffect>,
-    statuses: BTreeMap<EffectKind, EffectStatus>,
+    entries: BTreeMap<EffectKind, Entry>,
     active: [Option<tokio::task::JoinHandle<()>>; 3],
     status: watch::Sender<EffectsSnapshot>,
     closed: bool,
-    retries: BTreeMap<EffectKind, RetryState>,
     timer: tokio::task::JoinHandle<()>,
 }
 
@@ -103,8 +109,9 @@ enum Message {
 
 fn group(kind: EffectKind) -> usize {
     match kind {
-        EffectKind::SystemProxy | EffectKind::ProxyGuard => 0,
-        EffectKind::Hotkeys | EffectKind::AutoLaunch => 1,
+        // One owner: the system proxy actor also applies auto-launch.
+        EffectKind::SystemProxy | EffectKind::ProxyGuard | EffectKind::AutoLaunch => 0,
+        EffectKind::Hotkeys => 1,
         EffectKind::Locale | EffectKind::Logger | EffectKind::Widget | EffectKind::Tray => 2,
     }
 }
@@ -116,15 +123,14 @@ impl State {
             event_seq,
             #[cfg(test)]
             revision: self.revision,
-            statuses: self.statuses.values().cloned().collect(),
-            progress: self
-                .retries
-                .iter()
-                .map(|(kind, retry)| EffectProgress {
-                    kind: *kind,
-                    health: retry.health,
-                    attempts: retry.budget.attempts,
-                    automatic_remaining: retry.budget.remaining,
+            effects: self
+                .entries
+                .values()
+                .map(|entry| EffectProgress {
+                    status: entry.status.clone(),
+                    health: entry.health,
+                    attempts: entry.budget.attempts,
+                    automatic_remaining: entry.budget.remaining,
                 })
                 .collect(),
         });
@@ -165,27 +171,16 @@ impl State {
             ) {
                 effect = ApplicationEffect::Tray(TrayRefresh::Full);
             }
+            let entry = self.entries.entry(kind).or_insert_with(|| Entry::new(kind));
             if changed.contains(&kind) {
-                self.retries.insert(kind, RetryState::default());
+                entry.budget = RetryBudget::default();
+                entry.automatic = false;
             }
-            let retry = self.retries.entry(kind).or_default();
-            retry.next = None;
-            retry.health = ConvergenceHealth::Pending;
+            entry.next = None;
+            entry.health = ConvergenceHealth::Pending;
+            entry.status.desired_revision = revision;
+            entry.status.health = EffectHealth::Pending;
             self.pending.insert(kind, effect);
-            let applied_revision = self
-                .statuses
-                .get(&kind)
-                .map(|s| s.applied_revision)
-                .unwrap_or_default();
-            self.statuses.insert(
-                kind,
-                EffectStatus {
-                    kind,
-                    desired_revision: revision,
-                    applied_revision,
-                    health: EffectHealth::Pending,
-                },
-            );
         }
         if binding_ready {
             self.retry(EffectKind::ProxyGuard, false);
@@ -193,14 +188,14 @@ impl State {
     }
 
     fn retry(&mut self, kind: EffectKind, automatic: bool) {
-        let Some(retry) = self.retries.get_mut(&kind) else {
+        let Some(entry) = self.entries.get_mut(&kind) else {
             return;
         };
-        if retry.health == ConvergenceHealth::Pending || retry.health == ConvergenceHealth::Healthy
+        if entry.health == ConvergenceHealth::Pending || entry.health == ConvergenceHealth::Healthy
         {
             return;
         }
-        if automatic && retry.health == ConvergenceHealth::Blocked {
+        if automatic && entry.health == ConvergenceHealth::Blocked {
             return;
         }
         let Some(effect) = ApplicationEffectPlan::full(&self.desired)
@@ -211,14 +206,13 @@ impl State {
         else {
             return;
         };
-        retry.automatic = automatic && retry.health == ConvergenceHealth::RetryScheduled;
-        retry.next = None;
-        retry.health = ConvergenceHealth::Pending;
+        entry.automatic = automatic && entry.health == ConvergenceHealth::RetryScheduled;
+        entry.next = None;
+        entry.health = ConvergenceHealth::Pending;
         self.revision += 1;
+        entry.status.desired_revision = EffectRevision::new(self.revision);
+        entry.status.health = EffectHealth::Pending;
         self.pending.insert(kind, effect);
-        let status = self.statuses.get_mut(&kind).unwrap();
-        status.desired_revision = EffectRevision::new(self.revision);
-        status.health = EffectHealth::Pending;
     }
 
     fn drive(&mut self, myself: &ActorRef<Message>) {
@@ -235,23 +229,19 @@ impl State {
             if kinds.is_empty() {
                 continue;
             }
-            let mut effects: Vec<_> = kinds
+            let effects: Vec<_> = kinds
                 .iter()
                 .map(|kind| self.pending.remove(kind).unwrap())
                 .collect();
-            // Hotkeys remain independent even if autolaunch queues behind a PAC operation.
-            if index == 1 {
-                effects.sort_by_key(|effect| effect.kind() != EffectKind::Hotkeys);
-            }
             let revision = EffectRevision::new(self.revision);
             for kind in &kinds {
-                self.statuses.get_mut(kind).unwrap().desired_revision = revision;
-                let retry = self.retries.get_mut(kind).unwrap();
-                retry.budget.attempts += 1;
-                if retry.automatic {
-                    retry.budget.remaining = retry.budget.remaining.saturating_sub(1);
+                let entry = self.entries.get_mut(kind).unwrap();
+                entry.status.desired_revision = revision;
+                entry.budget.attempts += 1;
+                if entry.automatic {
+                    entry.budget.remaining = entry.budget.remaining.saturating_sub(1);
                 }
-                retry.health = ConvergenceHealth::Pending;
+                entry.health = ConvergenceHealth::Pending;
             }
             let port = self.port.clone();
             let ui = self.ui.clone();
@@ -296,11 +286,10 @@ impl Actor for EffectsActor {
             desired: args.dependencies.initial,
             revision: 0,
             pending: BTreeMap::new(),
-            statuses: BTreeMap::new(),
+            entries: BTreeMap::new(),
             active: [None, None, None],
             status: args.status,
             closed: false,
-            retries: BTreeMap::new(),
             timer: myself.send_interval(Duration::from_millis(250), || Message::Tick),
         })
     }
@@ -340,33 +329,26 @@ impl Actor for EffectsActor {
             } if !state.closed => {
                 state.active[completed_group] = None;
                 for kind in kinds {
-                    let current = state.statuses.get_mut(&kind).unwrap();
-                    if current.desired_revision != revision {
+                    let entry = state.entries.get_mut(&kind).unwrap();
+                    // A newer desired revision was queued meanwhile; this result is stale.
+                    if entry.status.desired_revision != revision {
                         continue;
                     }
-                    let reported = statuses.iter().find(|s| s.kind == kind);
-                    match reported {
+                    match statuses.iter().find(|s| s.kind == kind) {
                         Some(status) if status.health == EffectHealth::Healthy => {
-                            current.applied_revision = revision;
-                            current.health = EffectHealth::Healthy;
+                            entry.status.applied_revision = revision;
+                            entry.status.health = EffectHealth::Healthy;
                         }
-                        Some(status) => current.health = status.health.clone(),
+                        Some(status) => entry.status.health = status.health.clone(),
                         None => {
-                            current.health = EffectHealth::Degraded {
+                            entry.status.health = EffectHealth::Degraded {
                                 code: "effect_owner_silent",
                                 message: format!("{kind:?} returned no result"),
                                 retryable: false,
                             }
                         }
                     }
-                }
-                for status in state.statuses.values() {
-                    if status.desired_revision != revision || group(status.kind) != completed_group
-                    {
-                        continue;
-                    }
-                    let retry = state.retries.get_mut(&status.kind).unwrap();
-                    retry.health = match &status.health {
+                    entry.health = match &entry.status.health {
                         EffectHealth::Healthy => ConvergenceHealth::Healthy,
                         EffectHealth::Degraded {
                             code:
@@ -375,18 +357,18 @@ impl Actor for EffectsActor {
                                 | "proxy_guard_waiting_dependency",
                             ..
                         } => {
-                            retry.budget.attempts = retry.budget.attempts.saturating_sub(1);
-                            if retry.automatic {
-                                retry.budget.remaining += 1;
+                            entry.budget.attempts = entry.budget.attempts.saturating_sub(1);
+                            if entry.automatic {
+                                entry.budget.remaining += 1;
                             }
-                            retry.next =
+                            entry.next =
                                 Some(tokio::time::Instant::now() + Duration::from_secs(30));
                             ConvergenceHealth::WaitingDependency
                         }
                         EffectHealth::Degraded {
                             retryable: true, ..
-                        } if retry.budget.remaining > 0 => {
-                            retry.next = retry
+                        } if entry.budget.remaining > 0 => {
+                            entry.next = entry
                                 .budget
                                 .next_delay()
                                 .map(|delay| tokio::time::Instant::now() + delay);
@@ -394,15 +376,15 @@ impl Actor for EffectsActor {
                         }
                         _ => ConvergenceHealth::Blocked,
                     };
-                    retry.automatic = false;
+                    entry.automatic = false;
                 }
                 if completed_group == 0
                     && state
-                        .retries
+                        .entries
                         .get(&EffectKind::SystemProxy)
                         .is_some_and(|r| r.health == ConvergenceHealth::Healthy)
                     && state
-                        .retries
+                        .entries
                         .get(&EffectKind::ProxyGuard)
                         .is_some_and(|r| r.health == ConvergenceHealth::WaitingDependency)
                 {
@@ -413,7 +395,7 @@ impl Actor for EffectsActor {
             Message::Completed { .. } => {}
             Message::Tick if !state.closed => {
                 let ready: Vec<_> = state
-                    .retries
+                    .entries
                     .iter()
                     .filter(|(_, r)| r.next.is_some_and(|at| at <= tokio::time::Instant::now()))
                     .map(|(kind, _)| *kind)

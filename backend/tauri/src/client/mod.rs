@@ -35,7 +35,6 @@ use crate::{
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::{
-        ConditionalReplaceResult,
         application::ApplicationSnapshot,
         clash_config::ClashConfigSnapshot,
         mirror::{
@@ -623,70 +622,6 @@ impl NyanpasuClient {
         }
         let client = self.inner.application.clone();
         Ok(client.patch(patch).await?.outcome())
-    }
-
-    /// Explicit forward repair; a stale repair can never overwrite a newer save.
-    pub async fn repair_app_config(
-        &self,
-        expected_version: u64,
-        patch: NyanpasuAppConfigPatch,
-    ) -> Result<runtime::MutationOutcome<()>> {
-        let snapshot = self.inner.application.snapshot();
-        if snapshot.version != expected_version {
-            return Err(ClientError::SourceVersionConflict {
-                domain: "application",
-                expected: expected_version,
-                actual: snapshot.version,
-            });
-        }
-        if let Some(hotkeys) = patch.hotkeys.as_deref() {
-            hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_ref())?;
-        }
-        match self
-            .inner
-            .application
-            .patch_if_version(expected_version, patch)
-            .await?
-        {
-            ConditionalReplaceResult::Replaced(snapshot) => Ok(snapshot.outcome()),
-            ConditionalReplaceResult::Conflict { actual_version } => {
-                Err(ClientError::SourceVersionConflict {
-                    domain: "application",
-                    expected: expected_version,
-                    actual: actual_version,
-                })
-            }
-        }
-    }
-
-    pub async fn repair_clash_config(
-        &self,
-        expected_version: u64,
-        patch: ClashConfigPatch,
-    ) -> Result<runtime::MutationOutcome<()>> {
-        let snapshot = self.inner.clash_config.snapshot();
-        if snapshot.version != expected_version {
-            return Err(ClientError::SourceVersionConflict {
-                domain: "clash",
-                expected: expected_version,
-                actual: snapshot.version,
-            });
-        }
-        match self
-            .inner
-            .clash_config
-            .patch_if_version(expected_version, patch)
-            .await?
-        {
-            ConditionalReplaceResult::Replaced(snapshot) => Ok(snapshot.outcome()),
-            ConditionalReplaceResult::Conflict { actual_version } => {
-                Err(ClientError::SourceVersionConflict {
-                    domain: "clash",
-                    expected: expected_version,
-                    actual: actual_version,
-                })
-            }
-        }
     }
 
     pub async fn retry_runtime_now(&self) -> Result<()> {

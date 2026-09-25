@@ -125,7 +125,7 @@ async fn blocked_pac_does_not_block_visual_or_hotkey_group() {
         ..Default::default()
     });
     let client = graph(port.clone()).await;
-    client.reconcile(inputs());
+    client.publish_full(inputs());
     port.entered.notified().await;
     let state = wait(&client, |s| {
         s.effects
@@ -166,7 +166,7 @@ async fn blocked_gui_does_not_block_proxy_group() {
         ..Default::default()
     });
     let client = graph(port.clone()).await;
-    client.reconcile(inputs());
+    client.publish_full(inputs());
     port.entered.notified().await;
     wait(&client, |s| {
         s.effects
@@ -260,10 +260,10 @@ async fn independent_graphs_and_shutdown_admission() {
     let left = graph(a.clone()).await;
     let right = graph(b.clone()).await;
     left.shutdown().await;
-    left.reconcile(inputs());
+    left.publish_full(inputs());
     left.barrier().await;
     assert!(a.calls.lock().unwrap().is_empty());
-    right.reconcile(inputs());
+    right.publish_full(inputs());
     wait(&right, |s| {
         s.effects.len() == 8
             && s.effects

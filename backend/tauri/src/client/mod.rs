@@ -1,3 +1,4 @@
+mod app_lifecycle;
 mod application;
 pub mod application_workflow;
 mod clash_api;
@@ -322,6 +323,7 @@ impl NyanpasuClient {
                 installer: binary_installer,
                 dirty: dirty_rx,
                 budgets: application_workflow::mutation::MutationBudgets::default(),
+                ownership: core_lifecycle::Ownership::Unproven,
             },
         )
         .await?;
@@ -1280,12 +1282,25 @@ pub(crate) mod tests {
             })
         }
 
+        /// Boots `client` the way setup does: StartupReconcile proves the
+        /// owner and applies the committed configuration. A host that has not
+        /// been told otherwise boots with its core stopped, as a fresh one
+        /// does.
         pub(crate) async fn prime(&self, client: &NyanpasuClient) {
             let failed = self.fail.swap(false, std::sync::atomic::Ordering::SeqCst);
-            client
-                .reconcile_core()
-                .await
-                .expect("fixture boot reconcile");
+            {
+                let mut status = self.status_override.lock().unwrap();
+                if status.0.is_none() {
+                    status.0 =
+                        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None });
+                }
+            }
+            let report = client.startup_reconcile().await;
+            assert_eq!(
+                report.outcome,
+                application_workflow::startup::StartupOutcome::Ready,
+                "fixture boot: {report:?}"
+            );
             self.fail.store(failed, std::sync::atomic::Ordering::SeqCst);
             self.submissions
                 .store(0, std::sync::atomic::Ordering::SeqCst);
@@ -1436,6 +1451,10 @@ pub(crate) mod tests {
                 submission.envelope.command,
                 nyanpasu_core_manager::CoreCommand::Stop
             ) {
+                // A host that stopped its core says so when it is next read,
+                // which is the proof a retired or stopped owner is held to.
+                self.status_override.lock().unwrap().0 =
+                    Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None });
                 return nyanpasu_ipc::api::core::v2::OperationInfo {
                     id,
                     phase: nyanpasu_ipc::api::core::v2::OperationPhase::Succeeded,
@@ -1682,6 +1701,20 @@ pub(crate) mod tests {
                 calls,
                 delegate: TestControlEndpoint::succeeding_on(host),
             })
+        }
+
+        /// A freshly launched host with no core running, which is what
+        /// startup finds.
+        pub(crate) fn stopped(
+            host: ExecutionHost,
+            calls: Arc<StdMutex<Vec<&'static str>>>,
+        ) -> Arc<Self> {
+            let endpoint = Self::new(host, calls);
+            endpoint.delegate.set_status(
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+                None,
+            );
+            endpoint
         }
     }
     #[async_trait::async_trait]
@@ -2393,8 +2426,9 @@ pub(crate) mod tests {
         service_seed: bool,
     ) -> NyanpasuClient {
         let mut args = test_client_args_with_endpoint(dir, Arc::new(IdleEndpoint));
-        let local = HostTransitionEndpoint::new(ExecutionHost::Local, calls.clone());
-        let service_endpoint = HostTransitionEndpoint::new(ExecutionHost::Service, calls.clone());
+        let local = HostTransitionEndpoint::stopped(ExecutionHost::Local, calls.clone());
+        let service_endpoint =
+            HostTransitionEndpoint::stopped(ExecutionHost::Service, calls.clone());
         let adapter = Arc::new(PersistedSwitchProbe {
             delegate: HostTransitionServiceAdapter {
                 endpoint: service_endpoint,
@@ -2427,7 +2461,12 @@ pub(crate) mod tests {
         }
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         if !service_seed {
-            tauri::async_runtime::block_on(client.reconcile_core()).unwrap();
+            let report = tauri::async_runtime::block_on(client.startup_reconcile());
+            assert_eq!(
+                report.outcome,
+                application_workflow::startup::StartupOutcome::Ready,
+                "{report:?}"
+            );
         }
         calls.lock().unwrap().clear();
         client
@@ -3055,17 +3094,23 @@ pub(crate) mod tests {
         });
     }
 
-    /// Boot has to restore the persisted execution host, because the core
-    /// actor always spawns on Local.
+    /// S5 (the adopting half; `startup.rs` covers a residual core): the core
+    /// actor always spawns on Local, so startup hands the runtime to a
+    /// persisted Service host, and applies the configuration there.
     #[test]
-    fn boot_restore_moves_to_the_service_host_when_the_daemon_is_ready() {
+    fn startup_adopts_a_ready_service_host_and_starts_the_core_there() {
         let dir = tempdir().unwrap();
         let calls = Arc::new(StdMutex::new(Vec::new()));
         let client = host_transition_client_seeded(&dir, calls.clone(), true);
 
         tauri::async_runtime::block_on(async {
-            client.restore_execution_host().await.unwrap();
+            let report = client.startup_reconcile().await;
 
+            assert_eq!(
+                report.outcome,
+                application_workflow::startup::StartupOutcome::Ready,
+                "{report:?}"
+            );
             assert_eq!(client.core_status().host, ExecutionHost::Service);
         });
 
@@ -3076,19 +3121,26 @@ pub(crate) mod tests {
                 .any(|call| *call == "install" || *call == "start_daemon"),
             "adopting a ready daemon must not converge it: {calls:?}"
         );
+        assert!(
+            calls.contains(&"reconcile_service") && !calls.contains(&"reconcile_local"),
+            "{calls:?}"
+        );
     }
 
-    /// ...but only by adopting a daemon that is already up. Converging one
-    /// would install and start the service, raising a UAC prompt at every
-    /// launch for a user who merely left the setting on, which the legacy
-    /// `RunType` classification never did. The refusal has to come from the
-    /// probe the actor takes itself -- a phase read before the call is a
-    /// different guarantee, because the daemon can stop in between.
+    /// S8 (leader ruling R8): ...and only by adopting a daemon that is
+    /// already up. Converging one would install and start the service,
+    /// raising a UAC prompt at every launch for a user who merely left the
+    /// setting on, and starting the core locally instead would silently run
+    /// it on a host nobody asked for. Startup waits for the daemon.
     #[test]
-    fn boot_restore_refuses_to_converge_an_absent_daemon() {
+    fn startup_neither_converges_an_absent_daemon_nor_falls_back_to_local() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
-        let args = test_client_args_with_endpoint(&dir, endpoint);
+        endpoint.set_status(
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+            None,
+        );
+        let args = test_client_args_with_endpoint(&dir, endpoint.clone());
         let seed = NyanpasuAppConfig {
             enable_service_mode: true,
             ..Default::default()
@@ -3100,21 +3152,28 @@ pub(crate) mod tests {
         .unwrap();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         tauri::async_runtime::block_on(async {
-            let result = client.restore_execution_host().await;
+            let report = client.startup_reconcile().await;
 
             assert!(
-                result.is_err(),
-                "an absent daemon cannot be adopted, and boot must hear about it"
+                matches!(
+                    report.outcome,
+                    application_workflow::startup::StartupOutcome::ReadyDegraded {
+                        health: crate::client::convergence::ConvergenceHealth::WaitingDependency,
+                        ..
+                    }
+                ),
+                "{report:?}"
             );
             assert_eq!(
                 client.core_status().host,
                 ExecutionHost::Local,
-                "an absent daemon must not be installed and started by a boot restore"
+                "an absent daemon must not be installed and started by startup"
             );
-            client
-                .reconcile_core()
-                .await
-                .expect("a refused adoption must still allow local boot");
+            assert_eq!(endpoint.submissions(), 0, "nothing started locally instead");
+            assert_eq!(
+                client.configuration_status().runtime.health,
+                crate::client::convergence::ConvergenceHealth::WaitingDependency
+            );
         });
     }
 
@@ -3239,6 +3298,7 @@ pub(crate) mod tests {
                  revision both reconciles below submit expected_applied: None, which never \
                  conflicts, and this test would pass without exercising the CAS check at all"
             );
+            endpoint.prime(&client).await;
 
             client
                 .reconcile_core()
@@ -3306,11 +3366,14 @@ pub(crate) mod tests {
     fn failed_reconcile_still_advances_the_promoted_read_model() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
-        let client =
-            NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint))
-                .unwrap();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
 
         tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
             let first = client
                 .rebuild_running_config()
                 .await
@@ -3337,6 +3400,7 @@ pub(crate) mod tests {
         .unwrap();
 
         tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
             let promoted = client.promote_existing_runtime_product().await.unwrap();
             client.start_promoted_runtime().await.unwrap();
             assert!(client.promoted_runtime().await.unwrap().revision > promoted.revision);

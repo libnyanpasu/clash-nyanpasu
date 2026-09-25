@@ -105,6 +105,10 @@ pub(crate) trait CommitNotifications: Send + Sync + 'static {
         refresh: bool,
         requested: Vec<super::plan::EffectKind>,
     );
+
+    /// Hands every owner its complete desired value and rebuilds the tray.
+    /// StartupReconcile sends it once (T10 §1.9).
+    fn publish_full(&self, inputs: super::plan::ApplicationEffectInputs);
 }
 
 #[cfg(test)]
@@ -118,4 +122,6 @@ impl CommitNotifications for NoopCommitNotifications {
         _: Vec<super::plan::EffectKind>,
     ) {
     }
+
+    fn publish_full(&self, _: super::plan::ApplicationEffectInputs) {}
 }

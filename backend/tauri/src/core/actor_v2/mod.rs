@@ -1324,6 +1324,28 @@ impl CoreClient {
         Self::spawn_with_bounds(initial, PUMP_STATUS_TIMEOUT, STOP_WAIT).await
     }
 
+    /// This client, giving up on a handoff after `handoff_budget`, as a
+    /// caller queued behind other mailbox work does: the handoff runs on, and
+    /// its answer goes unread.
+    #[cfg(test)]
+    pub(crate) fn impatient(mut self, handoff_budget: Duration) -> Self {
+        self.handoff_budget = handoff_budget;
+        self
+    }
+
+    /// Reports the current endpoint down, as its pump does once a status
+    /// read fails. Mid-handoff that is the source going away under its stop
+    /// leg; a test sends it rather than waiting out a pump interval.
+    #[cfg(test)]
+    pub(crate) fn report_endpoint_down(&self, reason: &str) {
+        self.actor
+            .cast(CoreActorMessage::EndpointDown {
+                generation: self.status().generation,
+                reason: reason.to_owned(),
+            })
+            .expect("the core router is running");
+    }
+
     /// Same, with the two wait bounds injected. Only the tests need bounds
     /// short enough to elapse inside one.
     async fn spawn_with_bounds(

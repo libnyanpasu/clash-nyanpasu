@@ -10,6 +10,7 @@ pub(crate) mod policy;
 pub(in crate::client) mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;
+pub(crate) mod startup;
 mod tcc;
 mod workflow;
 
@@ -26,8 +27,8 @@ use tokio::sync::{broadcast, watch};
 
 use super::{
     core_lifecycle::{
-        Command as CoreCommand, CoreLifecycleWorkflow, Output, RECOVERY_INTERVAL, ServiceRecovery,
-        domain_error,
+        Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
+        ServiceRecovery, domain_error,
         ports::{BinaryInstaller, PreparedCoreBinary},
     },
     runtime,
@@ -89,6 +90,9 @@ pub struct CoreLifecycleOperationResult {
 /// participant of its owning domain's transaction, so the workflow never
 /// becomes a second commit point for a configuration domain.
 pub(super) enum Command {
+    /// Proves who owns the runtime and applies the committed configuration,
+    /// once per session (T10 §1).
+    StartupReconcile,
     Core(CoreCommand),
     /// One source-config mutation, running as a Required participant of the
     /// transaction that produced its candidate.
@@ -139,6 +143,10 @@ enum Message {
     /// Confirm calls no port a test could fail in its place.
     #[cfg(test)]
     PanicAtConfirm(RpcReplyPort<bool>),
+    /// Which owner the workflow holds proven; `None` while it is out on a
+    /// tracked task.
+    #[cfg(test)]
+    Ownership(RpcReplyPort<Option<Ownership>>),
 }
 
 struct ApplicationWorkflowActor;
@@ -221,6 +229,9 @@ pub(super) struct ApplicationWorkflowArgs {
     pub dirty: watch::Receiver<()>,
     /// The separate budgets of one mutation (v2 §5.5).
     pub budgets: MutationBudgets,
+    /// Who owns the runtime when the workflow starts. Production starts
+    /// `Unproven` and lets StartupReconcile prove it (T10 §1.2).
+    pub ownership: Ownership,
 }
 
 struct ActorArgs {
@@ -356,7 +367,23 @@ impl ApplicationWorkflowState {
                 // settlement this transaction is still going to make would find
                 // a context nobody will act on again.
                 let operation_id = request.response.id;
-                self.reject(request, CoreError::new(CoreErrorKind::OperationConflict, "previous core lifecycle operation has an uncertain outcome; inspect Configuration status and request runtime verification before further mutations", false));
+                let error = CoreError::new(
+                    CoreErrorKind::OperationConflict,
+                    "previous core lifecycle operation has an uncertain outcome; inspect Configuration status and request runtime verification before further mutations",
+                    false,
+                );
+                // A refused first startup still hands every owner its full
+                // desired value, once (T10 §1.9); the workflow is idle here.
+                if matches!(request.command, Command::StartupReconcile)
+                    && let Some(workflow) = self.workflow.as_mut()
+                    && std::panic::catch_unwind(AssertUnwindSafe(|| {
+                        workflow.startup_unsettled(operation_id, &error)
+                    }))
+                    .is_err()
+                {
+                    tracing::error!("the full effects publish panicked");
+                }
+                self.reject(request, error);
                 self.retire_mutation(operation_id);
             }
             self.pending = probes;
@@ -456,6 +483,7 @@ impl ApplicationWorkflowState {
                     }
                     _ => None,
                 };
+                let startup = matches!(command, Command::StartupReconcile);
                 // A panic records nothing: the attempt and its pending action
                 // are fields of the workflow, and return with it holding
                 // exactly what they held when it unwound.
@@ -464,9 +492,23 @@ impl ApplicationWorkflowState {
                     .await
                 {
                     Ok(result) => result,
-                    Err(_) => Err(domain_error(
-                        "core lifecycle workflow panicked; execution state is uncertain",
-                    )),
+                    Err(_) => {
+                        let error = domain_error(
+                            "core lifecycle workflow panicked; execution state is uncertain",
+                        );
+                        // Every owner is still handed its full desired value
+                        // once (T10 §1.9); a notifier must not keep the actor
+                        // from settling admission either.
+                        if startup
+                            && std::panic::catch_unwind(AssertUnwindSafe(|| {
+                                workflow.startup_unsettled(id, &error)
+                            }))
+                            .is_err()
+                        {
+                            tracing::error!("the full effects publish panicked");
+                        }
+                        Err(error)
+                    }
                 };
                 if let Some(progress) = progress {
                     let error = result.as_ref().err().map(ToString::to_string);
@@ -817,6 +859,15 @@ impl Actor for ApplicationWorkflowActor {
                     .is_some();
                 let _ = reply.send(armed);
             }
+            #[cfg(test)]
+            Message::Ownership(reply) => {
+                let _ = reply.send(
+                    state
+                        .workflow
+                        .as_ref()
+                        .map(|workflow| workflow.lifecycle.ownership),
+                );
+            }
         }
         state.drive(&myself);
         Ok(())
@@ -911,6 +962,7 @@ impl ApplicationWorkflowClient {
             pending_product: None,
             pending_release: None,
             live: None,
+            startup: None,
             #[cfg(test)]
             panic_at_confirm: false,
             lifecycle: CoreLifecycleWorkflow {
@@ -921,6 +973,7 @@ impl ApplicationWorkflowClient {
                 ports: args.ports,
                 recovery: ServiceRecovery::default(),
                 closing: tokio_util::sync::CancellationToken::new(),
+                ownership: args.ownership,
             },
         };
         let (actor, _) = Actor::spawn(
@@ -1018,6 +1071,22 @@ impl ApplicationWorkflowClient {
             .iter()
             .find(|receipt| receipt.operation_id == operation_id)
             .cloned()
+    }
+
+    /// StartupReconcile (T10 §1.2): once per session, and its report on every
+    /// later call. A reply that never came is `Unsettled`, never a guess.
+    pub async fn startup_reconcile(&self) -> startup::StartupReport {
+        match self.call(Command::StartupReconcile).await {
+            Ok(Output::Startup(report)) => *report,
+            Ok(_) => unreachable!("StartupReconcile answers with its report"),
+            Err(error) => startup::StartupReport {
+                operation_id: error.operation_id.unwrap_or_else(OperationId::generate),
+                observation: None,
+                outcome: startup::StartupOutcome::Unsettled {
+                    reason: error.to_string(),
+                },
+            },
+        }
     }
 
     pub async fn retry_runtime(&self) -> Result<(), CoreError> {

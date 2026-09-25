@@ -482,16 +482,6 @@ impl EffectsClient {
     pub fn subscribe(&self) -> watch::Receiver<EffectsSnapshot> {
         self.status.clone()
     }
-    pub fn reconcile(&self, inputs: ApplicationEffectInputs) {
-        if let Err(error) = self.actor.cast(Message::Publish {
-            inputs: Box::new(inputs),
-            refresh: true,
-            full: true,
-            requested: Vec::new(),
-        }) {
-            tracing::warn!(%error, "effects reconcile could not be queued");
-        }
-    }
     pub async fn shutdown(&self) -> Vec<EffectStatus> {
         match self
             .actor
@@ -536,6 +526,17 @@ impl CommitNotifications for EffectsClient {
             requested,
         }) {
             tracing::warn!(%error, "committed effects could not be queued");
+        }
+    }
+
+    fn publish_full(&self, inputs: ApplicationEffectInputs) {
+        if let Err(error) = self.actor.cast(Message::Publish {
+            inputs: Box::new(inputs),
+            refresh: true,
+            full: true,
+            requested: Vec::new(),
+        }) {
+            tracing::warn!(%error, "the full effects publish could not be queued");
         }
     }
 }

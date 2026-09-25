@@ -81,7 +81,7 @@ pub(crate) enum AttemptStage {
 pub(super) enum TryVerdict {
     Applied(AppliedVerdict),
     Deferred { identity: String },
-    SavedInactive,
+    SavedInactive { identity: String },
     Saved,
     Rejected,
 }
@@ -119,7 +119,9 @@ impl TryVerdict {
             RuntimePrepareOutcome::Deferred { digest, .. } => Some(Self::Deferred {
                 identity: digest.clone(),
             }),
-            RuntimePrepareOutcome::SavedInactive => Some(Self::SavedInactive),
+            RuntimePrepareOutcome::SavedInactive { identity } => Some(Self::SavedInactive {
+                identity: identity.clone(),
+            }),
             RuntimePrepareOutcome::Saved => Some(Self::Saved),
             RuntimePrepareOutcome::Rejected { .. } => Some(Self::Rejected),
             RuntimePrepareOutcome::RecoveryRequired(_) => None,
@@ -394,7 +396,7 @@ impl ApplicationWorkflow {
         let continued = match live.origin.kind() {
             AttemptOriginKind::SourceDecision => self.recover_source_decision().await,
             AttemptOriginKind::CommittedTarget => self.recover_committed_target().await,
-            AttemptOriginKind::Lifecycle { .. } => self.reestablish(),
+            AttemptOriginKind::Lifecycle { .. } => self.recover_by_reestablishing().await,
         };
         if let Err(reason) = continued {
             self.conclude_attempt(Some(reason.clone()));
@@ -499,10 +501,9 @@ impl ApplicationWorkflow {
                     );
                     Ok(())
                 }
-                // What Confirm owed a save the stopped core never ran: the
-                // outstanding target is superseded, as `confirm` drops it.
-                (Some(TryVerdict::SavedInactive), _) => {
-                    self.deferred = None;
+                // What Confirm owed a save the stopped core never ran.
+                (Some(TryVerdict::SavedInactive { identity }), _) => {
+                    self.confirm_saved_inactive(identity);
                     Ok(())
                 }
                 (Some(TryVerdict::Saved), _) | (_, None) => Ok(()),
@@ -535,19 +536,7 @@ impl ApplicationWorkflow {
         );
         match live.baseline.clone() {
             Some(baseline) if mutation && self.runtime_matches(&baseline).await => Ok(()),
-            _ => self.reestablish(),
+            _ => self.recover_by_reestablishing().await,
         }
-    }
-
-    /// The runtime has to be re-established from the latest committed
-    /// configuration under a proven owner: nothing an attempt recorded says
-    /// what it should be. Until that owner can be proven here, the attempt
-    /// stays isolated with this reason on the status surface.
-    fn reestablish(&self) -> Result<(), String> {
-        Err(
-            "the runtime has to be re-established from the committed configuration under a \
-             proven owner; restart the application to recover"
-                .into(),
-        )
     }
 }

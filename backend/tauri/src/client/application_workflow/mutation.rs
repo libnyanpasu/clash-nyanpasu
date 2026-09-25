@@ -258,6 +258,8 @@ pub(crate) struct AppliedCandidate {
     pub replaced: bool,
     pub receipt: Arc<RuntimeApplyReceipt>,
     pub product: Arc<RuntimeSnapshot>,
+    /// What the core answered, for an explicit start that reports it.
+    pub report: Box<crate::core::actor_v2::facade::ReconcileReport>,
 }
 
 /// How the critical part of one mutation ended (v2 §4.3).
@@ -274,8 +276,9 @@ pub(crate) enum RuntimePrepareOutcome {
         cause: RetryableCause,
     },
     /// The user stopped the core. The candidate was validated and may be
-    /// saved, but nothing is started (R7).
-    SavedInactive,
+    /// saved, but nothing is started (R7). `identity` is the candidate's
+    /// target, which decides what the save does to an open target (T10 §1.7).
+    SavedInactive { identity: String },
     /// Nothing critical was owed: a plain source save, with or without
     /// peripheral owners to notify afterwards.
     Saved,
@@ -294,7 +297,7 @@ impl RuntimePrepareOutcome {
     /// The ACK this outcome owes the state transaction (v2 §4.4).
     pub fn ack(&self) -> TryAck {
         match self {
-            Self::Applied(_) | Self::SavedInactive | Self::Saved => TryAck::Ok,
+            Self::Applied(_) | Self::SavedInactive { .. } | Self::Saved => TryAck::Ok,
             Self::Deferred { cause, .. } => TryAck::Degraded(cause.message.clone()),
             Self::Rejected { cause, .. } => TryAck::Rejected(cause.message.clone()),
             Self::RecoveryRequired(error) => TryAck::Failed(error.clone()),
@@ -313,7 +316,7 @@ impl RuntimePrepareOutcome {
         match self {
             Self::Applied(_) => MutationOutcomeKind::Applied,
             Self::Deferred { .. } => MutationOutcomeKind::Deferred,
-            Self::SavedInactive => MutationOutcomeKind::SavedInactive,
+            Self::SavedInactive { .. } => MutationOutcomeKind::SavedInactive,
             Self::Saved => MutationOutcomeKind::Saved,
             Self::Rejected { .. } => MutationOutcomeKind::Rejected,
             Self::RecoveryRequired(_) => MutationOutcomeKind::RecoveryRequired,

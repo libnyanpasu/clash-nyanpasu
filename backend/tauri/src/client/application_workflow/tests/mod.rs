@@ -3,6 +3,7 @@ mod connection_policy;
 mod mutations;
 mod recovery;
 mod service_recovery;
+mod startup;
 mod validation;
 
 use super::{
@@ -287,6 +288,11 @@ async fn dirty_graph_with_clients(
         .unwrap();
     let validator_paths = paths.clone();
     let core_for_validator = core.clone();
+    // The graph's router already drives the host it was built on, and these
+    // tests are not about proving that.
+    let ownership = super::super::core_lifecycle::Ownership::Established {
+        host: core.status().host,
+    };
     let builder = Arc::new(BlockingBuilder {
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
@@ -315,6 +321,7 @@ async fn dirty_graph_with_clients(
 
             dirty,
             budgets: mutation::MutationBudgets::default(),
+            ownership,
         },
         schedule_ticks,
     )
@@ -592,12 +599,17 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
 #[derive(Default)]
 struct RecordingNotifications {
     committed: AtomicUsize,
+    full: AtomicUsize,
     panic_next: AtomicBool,
 }
 
 impl RecordingNotifications {
     fn committed(&self) -> usize {
         self.committed.load(Ordering::SeqCst)
+    }
+
+    fn full(&self) -> usize {
+        self.full.load(Ordering::SeqCst)
     }
 }
 
@@ -614,6 +626,10 @@ impl crate::client::effects::ports::CommitNotifications for RecordingNotificatio
         );
         self.committed.fetch_add(1, Ordering::SeqCst);
     }
+
+    fn publish_full(&self, _: crate::client::effects::plan::ApplicationEffectInputs) {
+        self.full.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 #[test]
@@ -627,7 +643,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         release: Notify::new(),
     });
     let (core, service) = tauri::async_runtime::block_on(async {
-        let core = CoreClient::spawn(HostTransitionEndpoint::new(
+        let core = CoreClient::spawn(HostTransitionEndpoint::stopped(
             ExecutionHost::Local,
             calls.clone(),
         ))
@@ -650,7 +666,10 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     args.service = service;
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
-        client.reconcile_core().await.unwrap();
+        assert_eq!(
+            client.startup_reconcile().await.outcome,
+            super::startup::StartupOutcome::Ready
+        );
         let switch = {
             let client = client.clone();
             tokio::spawn(async move { client.set_execution_host(true).await })
@@ -798,6 +817,20 @@ async fn live_mutation_contexts(client: &ApplicationWorkflowClient) -> usize {
     }
 }
 
+/// Which owner the idle workflow holds proven.
+async fn ownership(client: &ApplicationWorkflowClient) -> Ownership {
+    match client
+        .0
+        .actor
+        .call(Message::Ownership, Some(Duration::from_secs(5)))
+        .await
+        .unwrap()
+    {
+        CallResult::Success(Some(ownership)) => ownership,
+        other => panic!("the idle workflow should answer: {other:?}"),
+    }
+}
+
 async fn barrier(client: &ApplicationWorkflowClient) {
     assert!(matches!(
         client
@@ -829,6 +862,7 @@ async fn start_replacement(
 fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation() {
     let f = Fixture::new(true, false, false);
     tauri::async_runtime::block_on(async {
+        f.endpoint.prime(&f.client).await;
         let (task, staging) = start_replacement(&f).await;
         assert_eq!(
             f.endpoint.submissions(),
@@ -895,6 +929,7 @@ fn replacement_decisions_use_applied_identity_and_always_recover() {
     for (desired, kind, stopped, target, before_copy, restart) in cases {
         let f = Fixture::new(false, false, false);
         tauri::async_runtime::block_on(async {
+            f.endpoint.prime(&f.client).await;
             f.endpoint
                 .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
             let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
@@ -1047,6 +1082,7 @@ fn failed_installation_does_not_restart_and_a_panic_fails_admission_closed() {
 fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product() {
     let f = Fixture::new(false, false, false);
     tauri::async_runtime::block_on(async {
+        f.endpoint.prime(&f.client).await;
         f.endpoint.set_result_missing(true);
         let error = f.client.reconcile_core().await.unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
@@ -1342,6 +1378,7 @@ fn control_channel_reconcile_reads_committed_clash_config() {
 fn control_channel_application_does_not_start_a_stopped_core() {
     let f = Fixture::new(false, false, false);
     tauri::async_runtime::block_on(async {
+        f.endpoint.prime(&f.client).await;
         f.endpoint.set_status(
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
             None,

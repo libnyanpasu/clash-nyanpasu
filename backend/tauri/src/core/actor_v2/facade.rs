@@ -633,11 +633,18 @@ impl CoreFacade {
     }
 
     /// Move to the Service host only if the daemon is already `Ready`, never
-    /// by converging one. Boot uses this to restore a persisted host without
-    /// installing or starting a service on the user's behalf.
-    pub async fn adopt_service_host(&mut self) -> Result<HandoffReport, CoreError> {
-        let target = self.service.adopt_if_ready().await?;
-        self.handoff(target).await.map_err(|failure| failure.error)
+    /// by converging one. Startup uses this to take a persisted host back
+    /// without installing or starting a service on the user's behalf.
+    pub(crate) async fn adopt_service_host(&mut self) -> Result<HandoffReport, HostChangeFailure> {
+        let target = self
+            .service
+            .adopt_if_ready()
+            .await
+            .map_err(|error| HostChangeFailure {
+                error,
+                handoff_started: false,
+            })?;
+        self.handoff(target).await
     }
 
     /// Re-adopt the same Service owner after a transport failure. Ordinary
@@ -682,6 +689,12 @@ impl CoreFacade {
 
     pub async fn probe_service(&self) -> Result<ServiceHostStatus, CoreError> {
         self.service.probe().await
+    }
+
+    /// Whether every command the ServiceActor accepted has ended, including
+    /// one it started before this facade existed (T10 §1.3).
+    pub(crate) async fn service_command_settled(&self) -> Result<bool, CoreError> {
+        self.service.command_settled().await
     }
 
     pub async fn install_service(&mut self) -> Result<(), CoreError> {

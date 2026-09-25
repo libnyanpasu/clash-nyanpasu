@@ -7,8 +7,9 @@ use nyanpasu_core_manager::{CoreError, OperationId};
 use super::{
     Command, Output,
     attempt::{LifecycleCommand, LiveAttempt},
-    mutation::{DeferredTarget, MutationBudgets, MutationCommand},
+    mutation::{DeferredTarget, MutationBudgets, MutationCommand, ReestablishCause, TargetOrigin},
     preparation::RuntimePreparation,
+    startup::StartupReport,
 };
 use crate::client::{
     core_lifecycle::{Command as CoreCommand, CoreLifecycleWorkflow},
@@ -41,6 +42,9 @@ pub(super) struct ApplicationWorkflow {
     /// (T10 §1.11). With the facade's pending action it is all that an
     /// explicit recovery reads, and it survives a panic unchanged.
     pub live: Option<LiveAttempt>,
+    /// StartupReconcile's first report. It runs once; asking again returns
+    /// this and touches nothing (T10 §1.2).
+    pub startup: Option<StartupReport>,
     /// One-shot test fault: the next Confirm panics before it changes anything.
     #[cfg(test)]
     pub panic_at_confirm: bool,
@@ -62,6 +66,18 @@ impl ApplicationWorkflow {
     pub(super) fn notify_committed(&self, refresh: bool) {
         self.notify_requested(refresh, Vec::new());
     }
+    /// Hands every owner its complete desired value. StartupReconcile sends
+    /// this exactly once, whatever it found (T10 §1.9).
+    pub(super) fn publish_full(&self) {
+        self.notifications.publish_full(
+            crate::client::effects::plan::ApplicationEffectInputs::project(
+                &self.lifecycle.application.load().state,
+                &self.clash.load().state,
+                self.lifecycle.ports.confirmed(),
+            ),
+        );
+    }
+
     pub(super) fn notify_requested(
         &self,
         refresh: bool,
@@ -86,6 +102,9 @@ impl ApplicationWorkflow {
         // Observe the old host before any operation can replace its projection.
         self.lifecycle.capture_core_intent();
         match command {
+            Command::StartupReconcile => Ok(Output::Startup(Box::new(
+                self.startup_reconcile(operation_id).await,
+            ))),
             Command::Core(command) => self.execute_lifecycle(operation_id, command).await,
             Command::RetryRuntime { explicit } => self
                 .retry_runtime(operation_id, explicit)
@@ -105,6 +124,21 @@ impl ApplicationWorkflow {
         operation_id: OperationId,
         command: CoreCommand,
     ) -> Result<Output, CoreError> {
+        // An explicit start without a proven owner of the desired host
+        // re-establishes one instead of refusing (T10 §1.7 #5).
+        if matches!(command, CoreCommand::Reconcile) && !self.lifecycle.start_permitted() {
+            let result = self.explicit_start(operation_id).await;
+            self.notify_committed(true);
+            return result;
+        }
+        // A stop accepted after an explicit start takes back the start it
+        // authorised; the ownership obligation stays (T10 §1.7).
+        if matches!(command, CoreCommand::StopCore)
+            && let Some(target) = &mut self.deferred
+            && target.origin == TargetOrigin::Reestablish(ReestablishCause::ExplicitStart)
+        {
+            target.origin = TargetOrigin::Reestablish(ReestablishCause::Recovery);
+        }
         let tracked = LifecycleCommand::of(&command);
         if let Some(command) = tracked {
             // The actor admits nothing but an explicit recovery or shutdown
@@ -115,12 +149,27 @@ impl ApplicationWorkflow {
             );
             self.live = Some(LiveAttempt::lifecycle(operation_id, command));
         }
-        let result = self.lifecycle.execute(command, &mut self.preparation).await;
+        let result = match self.lifecycle.execute(command, &mut self.preparation).await {
+            // The restart a binary replacement owed waits for a proven owner:
+            // the open reestablish target is what brings it (T10 §1.7 #7).
+            Ok(Output::RestartWithheld) => {
+                if let Some(target) = &mut self.deferred
+                    && matches!(target.origin, TargetOrigin::Reestablish(_))
+                {
+                    target.next_attempt = Some(tokio::time::Instant::now());
+                }
+                Ok(Output::Unit)
+            }
+            result => result,
+        };
         if matches!(&result, Ok(Output::Reconcile(_))) {
             self.deferred = None;
         }
+        // A stop does not clear a reestablish target: the next attempt proves
+        // the owner and confirms the stop, and that is what ends it.
         if matches!(&result, Ok(Output::Stop(_)))
             && let Some(deferred) = &mut self.deferred
+            && matches!(deferred.origin, TargetOrigin::Mutation { .. })
         {
             deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
             deferred.next_attempt = None;

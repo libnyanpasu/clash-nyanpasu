@@ -53,7 +53,9 @@ use super::{
 };
 use crate::{
     client::{
-        SessionPortResolver, runtime,
+        SessionPortResolver,
+        core_lifecycle::Ownership,
+        runtime,
         tests::{TestCheckAnswer, TestControlEndpoint},
     },
     core::actor_v2::{
@@ -195,7 +197,7 @@ pub(super) struct Fixture {
     _dir: tempfile::TempDir,
 }
 
-async fn manager<T>(path: Utf8PathBuf, state: T) -> PersistentStateManager<T>
+pub(super) async fn manager<T>(path: Utf8PathBuf, state: T) -> PersistentStateManager<T>
 where
     T: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
 {
@@ -208,7 +210,7 @@ where
         .expect("the state manager should initialize")
 }
 
-fn temp_path(dir: &tempfile::TempDir, name: &str) -> Utf8PathBuf {
+pub(super) fn temp_path(dir: &tempfile::TempDir, name: &str) -> Utf8PathBuf {
     Utf8PathBuf::from_path_buf(dir.path().join(name)).expect("temp path should be UTF-8")
 }
 
@@ -248,6 +250,7 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
         ports: SessionPortResolver::default()
             .resolve_candidate(&ClashConfig::default())
             .expect("the default port strategies resolve"),
+        target: None,
     }
 }
 
@@ -318,6 +321,33 @@ async fn fixture_with_parts(
     daemon: Option<Arc<dyn ServiceHostAdapter>>,
     scripted: bool,
 ) -> Fixture {
+    let service = match daemon {
+        Some(daemon) => ServiceClient::spawn(daemon, 0).await.unwrap(),
+        None => ServiceClient::spawn(Arc::new(crate::client::tests::IdleServiceAdapter), 0)
+            .await
+            .unwrap(),
+    };
+    fixture_from(
+        budgets,
+        confirmed_apply,
+        service,
+        scripted,
+        Ownership::Established {
+            host: ExecutionHost::Local,
+        },
+    )
+    .await
+}
+
+/// The graph over the caller's own service client, starting from `ownership`.
+/// A test about proving the owner starts `Unproven`, as production does.
+pub(super) async fn fixture_from(
+    budgets: MutationBudgets,
+    confirmed_apply: bool,
+    service: ServiceClient,
+    scripted: bool,
+    ownership: Ownership,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     endpoint.set_source_hash(&nyanpasu_core_manager::payload_digest(b"mode: rule\n"));
@@ -329,12 +359,6 @@ async fn fixture_with_parts(
     let core = match &scripted {
         Some(scripted) => CoreClient::spawn(scripted.clone()).await.unwrap(),
         None => CoreClient::spawn(endpoint.clone()).await.unwrap(),
-    };
-    let service = match daemon {
-        Some(daemon) => ServiceClient::spawn(daemon, 0).await.unwrap(),
-        None => ServiceClient::spawn(Arc::new(crate::client::tests::IdleServiceAdapter), 0)
-            .await
-            .unwrap(),
     };
 
     let clash_path = temp_path(&dir, "clash-config.yaml");
@@ -389,6 +413,7 @@ async fn fixture_with_parts(
 
             dirty,
             budgets,
+            ownership,
         },
         false,
     )
@@ -2067,7 +2092,13 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
     };
 
     assert_eq!(RuntimePrepareOutcome::Saved.ack(), TryAck::Ok);
-    assert_eq!(RuntimePrepareOutcome::SavedInactive.ack(), TryAck::Ok);
+    assert_eq!(
+        RuntimePrepareOutcome::SavedInactive {
+            identity: String::new()
+        }
+        .ack(),
+        TryAck::Ok
+    );
     assert_eq!(
         RuntimePrepareOutcome::Deferred {
             baseline: super::super::mutation::KnownRuntimeState::Stopped,
@@ -4053,6 +4084,59 @@ async fn dependency_retries_count_waits_until_an_application_result() {
     assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET - 1);
     assert_eq!(gap.attempts, 1);
     f.client.shutdown().await.unwrap();
+}
+
+/// T10 §1.7 #2 (D11): an automatic retry never moves the runtime to another
+/// host, since that can mean installing or starting the daemon behind the
+/// user's back. It waits for the owner instead, and spends nothing.
+#[tokio::test]
+async fn an_automatic_retry_never_moves_the_runtime_to_another_host() {
+    use crate::client::convergence::ConvergenceHealth;
+    let service = TestControlEndpoint::succeeding_on(ExecutionHost::Service);
+    let mut f = fixture_with_hosts(test_budgets(), true, Some(service.clone())).await;
+    f.endpoint.set_failure(Some("queue_full"));
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode":"direct"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+    assert_eq!(
+        settled(&f.client, id).await.outcome,
+        MutationOutcomeKind::Deferred
+    );
+    f.endpoint.set_failure(None);
+    // The runtime now runs on the other host, on an apply this session
+    // confirmed there: a baseline a Try would accept, on a host the committed
+    // configuration does not ask for.
+    f.client.change_host(ExecutionHost::Service).await.unwrap();
+    service.set_source_hash(&nyanpasu_core_manager::payload_digest(b"mode: rule\n"));
+    service.set_status(
+        Some(CoreStateDetail::Running { epoch: 1, pid: 7 }),
+        Some(CoreKind::Mihomo),
+    );
+    let mut receipt = adopted_baseline();
+    receipt.host = ExecutionHost::Service;
+    receipt.binding.host = ExecutionHost::Service;
+    receipt.binding.generation = f.core.status().generation;
+    f.store.confirm_applied(Arc::new(receipt));
+    let before = f.client.mutation_journal().deferred.unwrap();
+
+    f.client
+        .call(super::super::Command::RetryRuntime { explicit: false })
+        .await
+        .unwrap();
+
+    let target = f.client.mutation_journal().deferred.unwrap();
+    assert_eq!(target.health, ConvergenceHealth::WaitingDependency);
+    assert_eq!(
+        (target.attempts_remaining, target.attempts),
+        (before.attempts_remaining, before.attempts)
+    );
+    assert_eq!(f.core.status().host, ExecutionHost::Service);
+    assert!(service.reconciled_bytes().is_empty());
 }
 
 #[tokio::test]

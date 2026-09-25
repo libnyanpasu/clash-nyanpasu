@@ -145,7 +145,7 @@ impl RecoveryGraph {
         core.change_host(endpoint).await.unwrap();
         core.refresh_status().await.unwrap();
         let service = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
-        let (client, _, builder, _, _) = dirty_graph_with_clients(
+        let (client, _, builder, application, _) = dirty_graph_with_clients(
             &dir,
             core.clone(),
             service,
@@ -153,6 +153,11 @@ impl RecoveryGraph {
             Arc::new(crate::client::SessionPortResolver::default()),
         )
         .await;
+        // The Service host these tests recover is the one the configuration
+        // asks for: restoring its core is a start, and needs that owner.
+        let mut service_mode = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
+        service_mode.enable_service_mode = Some(true);
+        application.patch(service_mode).await.unwrap();
         builder.release.notify_one();
         Self {
             _dir: dir,

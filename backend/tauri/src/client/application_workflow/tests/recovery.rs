@@ -842,15 +842,20 @@ async fn an_automatic_retry_never_recovers() {
     assert!(isolated(&f.client));
     assert!(recovery(&f.client).action.is_some());
 
-    let _ = f.client.retry_runtime().await;
-    assert_eq!(recovery(&f.client).action, None);
+    f.client.retry_runtime().await.unwrap();
+    assert!(
+        f.client.mutation_journal().recovery.is_none(),
+        "the explicit retry consumed the action and re-established the runtime"
+    );
+    assert!(!isolated(&f.client));
 }
 
 /// A lifecycle attempt has no source decision and no committed target to
-/// continue from. Once its action is resolved it still stays isolated, with
-/// the reason on the status surface, until the runtime is re-established.
+/// continue from. It stays isolated while its action is unobserved; once the
+/// action is resolved, recovery re-establishes the runtime under a proven
+/// owner from the committed configuration (§4.2), and admission reopens.
 #[tokio::test]
-async fn a_lifecycle_attempt_stays_isolated_once_its_action_is_resolved() {
+async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
     let mut f = fixture(test_budgets()).await;
     f.endpoint.set_result_missing(true);
     assert!(f.client.reconcile().await.is_err());
@@ -869,22 +874,31 @@ async fn a_lifecycle_attempt_stays_isolated_once_its_action_is_resolved() {
     assert!(recovery(&f.client).action.is_some(), "still unobserved");
 
     f.endpoint.set_result_missing(false);
-    let error = f.client.retry_runtime().await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
-    let view = recovery(&f.client);
-    assert_eq!(view.action, None);
-    assert_eq!(view.stage, AttemptStage::Recovering);
-    assert!(view.reason.contains("re-established"), "{}", view.reason);
-    assert!(isolated(&f.client));
+    let submitted = f.endpoint.reconciled_bytes().len();
+    f.client.retry_runtime().await.unwrap();
+    assert!(!isolated(&f.client));
+    assert!(f.client.mutation_journal().recovery.is_none());
+    assert!(f.client.mutation_journal().deferred.is_none());
+    // The lost reconcile left a core running no receipt describes: it was
+    // retired, and the committed configuration applied once, from a stop.
+    assert_eq!(f.endpoint.reconciled_bytes().len(), submitted + 1);
+    assert_eq!(
+        f.store
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .config_text
+            .as_bytes(),
+        f.endpoint.reconciled_bytes().last().unwrap().as_slice()
+    );
 
-    let (_, refused_result) = simple_mutate(
+    let (_, admitted) = simple_mutate(
         &mut f.application,
         &f.client,
         app_with_core(nyanpasu_config::application::ClashCore::ClashRs),
         CommandClass::ExplicitSwitch,
     )
     .await;
-    assert!(refused(&refused_result), "{refused_result:?}");
+    assert!(admitted.is_ok(), "{admitted:?}");
 }
 
 /// L13 (review 3 #1): the Try succeeded and nothing is pending, but the
@@ -1330,10 +1344,10 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall 
     }
 }
 
-/// L8 (N3), up to what this layer owns: an install whose helper outlives its
-/// bound isolates the domain although the daemon probes `Ready`. The pending
-/// service command resolves only once the helper has ended; the lifecycle
-/// attempt then waits for the runtime to be re-established.
+/// L8 (N3): an install whose helper outlives its bound isolates the domain
+/// although the daemon probes `Ready`. The pending service command resolves
+/// only once the helper has ended, and recovery then re-establishes the
+/// runtime.
 #[tokio::test]
 async fn a_service_command_still_running_keeps_the_domain_isolated() {
     let dir = tempfile::tempdir().unwrap();
@@ -1348,9 +1362,12 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
         parked: tokio::sync::Notify::new(),
         release: tokio::sync::Notify::new(),
     });
-    let core = CoreClient::spawn(TestControlEndpoint::succeeding())
-        .await
-        .unwrap();
+    let local = TestControlEndpoint::succeeding();
+    local.set_status(
+        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+        None,
+    );
+    let core = CoreClient::spawn(local.clone()).await.unwrap();
     let service =
         ServiceClient::spawn_bounded(daemon.clone(), 0, std::time::Duration::from_millis(50))
             .await
@@ -1394,11 +1411,17 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     assert!(client.retry_runtime().await.is_err());
     assert!(recovery(&client).action.is_some(), "the helper still runs");
 
+    assert!(local.reconciled_bytes().is_empty());
+
     daemon.release.notify_one();
     let resolved = tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
             let _ = client.retry_runtime().await;
-            if recovery(&client).action.is_none() {
+            if client
+                .mutation_journal()
+                .recovery
+                .is_none_or(|view| view.action.is_none())
+            {
                 break;
             }
             tokio::task::yield_now().await;
@@ -1406,6 +1429,182 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     })
     .await;
     assert!(resolved.is_ok(), "the finished helper settles the command");
-    assert!(client.status().uncertain);
-    assert!(recovery(&client).reason.contains("re-established"));
+    assert!(!client.status().uncertain);
+    assert!(client.mutation_journal().recovery.is_none());
+    assert_eq!(
+        local.reconciled_bytes().len(),
+        1,
+        "the runtime was re-established once the helper had ended"
+    );
+}
+
+/// The router drives a service host whose core no receipt describes, and
+/// Local is asked for. The handoff back is held at its stop past its caller's
+/// budget, so startup ends with the handoff pending, and while the router is
+/// still handing off a retry leaves it pending and the domain isolated. That
+/// handoff is the only one the workflow makes, and it cannot finish before
+/// its stop is released, so the caller's short budget decides nothing else.
+async fn a_lost_handoff() -> super::startup::Graph {
+    use super::startup::{DaemonState, Setup, graph};
+    let g = graph(Setup {
+        daemon: DaemonState::Running,
+        residual: true,
+        owner_on_service: true,
+        handoff_budget: Some(std::time::Duration::from_millis(300)),
+        ..Setup::default()
+    })
+    .await;
+    g.service_host.hold_stop.store(true, Ordering::SeqCst);
+
+    let report = g.start().await;
+
+    assert!(
+        matches!(
+            report.outcome,
+            crate::client::application_workflow::startup::StartupOutcome::RecoveryRequired { .. }
+        ),
+        "{report:?}"
+    );
+    assert!(isolated(&g.client));
+    assert_eq!(
+        recovery(&g.client).action,
+        Some(ActionView::Handoff {
+            target: crate::core::actor_v2::endpoint::ExecutionHost::Local
+        })
+    );
+    assert_eq!(
+        g.client.retry_runtime().await.unwrap_err().kind,
+        Some(CoreErrorKind::OperationConflict),
+        "the router is still handing off"
+    );
+    assert!(isolated(&g.client));
+    assert!(recovery(&g.client).action.is_some());
+    g
+}
+
+/// L10: the lost handoff completes. Once the router settles, recovery
+/// resolves the handoff and re-establishes the runtime.
+#[tokio::test]
+async fn a_handoff_whose_answer_was_lost_is_recovered_once_the_router_settles() {
+    let g = a_lost_handoff().await;
+
+    g.service_host.release.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while g.client.retry_runtime().await.is_err() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the settled router lets recovery through");
+
+    assert!(!isolated(&g.client));
+    assert!(g.client.mutation_journal().deferred.is_none());
+    assert_eq!(g.log(), ["service:stop", "local:reconcile"]);
+}
+
+/// L10, degraded (T10 §1.11): the lost handoff fails after its source
+/// stopped answering, so the router is left degraded on the service host and
+/// refuses every status read. The handoff is over all the same: recovery
+/// resolves it and goes on to re-establish, which proves no owner through a
+/// degraded router and leaves a waiting target rather than an isolated
+/// domain.
+#[tokio::test]
+async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
+    use crate::core::actor_v2::{EndpointConnectivity, endpoint::ExecutionHost};
+    let g = a_lost_handoff().await;
+    let mut status = g.core.subscribe();
+
+    g.core
+        .report_endpoint_down("scripted: the service host stopped answering");
+    g.service_host.delegate.set_failure(Some("apply_failed"));
+    g.service_host.release.notify_one();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        status.wait_for(|status| {
+            matches!(
+                status.connectivity,
+                EndpointConnectivity::Degraded {
+                    desired: ExecutionHost::Service,
+                    ..
+                }
+            )
+        }),
+    )
+    .await
+    .expect("the failed handoff leaves the router degraded")
+    .unwrap();
+    assert!(g.core.refresh_status().await.is_err());
+
+    g.client.retry_runtime().await.unwrap();
+
+    assert!(!isolated(&g.client));
+    assert!(g.client.mutation_journal().recovery.is_none());
+    let target = g
+        .client
+        .mutation_journal()
+        .deferred
+        .expect("the runtime still waits for a proven owner");
+    assert_eq!(
+        target.health,
+        crate::client::convergence::ConvergenceHealth::RecoveryRequired
+    );
+    assert_eq!(
+        g.log(),
+        ["service:stop"],
+        "nothing started without an owner"
+    );
+}
+
+/// L11: a stop whose result was lost, over a core that still reports
+/// running. Recovery honours the stop before anything else: it does not
+/// settle while the stop fails, and once the core is seen stopped it settles
+/// without starting anything.
+#[tokio::test]
+async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
+    let f = fixture(test_budgets()).await;
+    f.endpoint.set_result_missing(true);
+    assert!(f.client.stop_core().await.is_err());
+    assert_eq!(
+        recovery(&f.client).origin,
+        AttemptOriginKind::Lifecycle {
+            command: LifecycleCommand::StopCore
+        }
+    );
+    f.endpoint.set_result_missing(false);
+    f.endpoint.set_status(
+        Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
+        Some(nyanpasu_core_manager::CoreKind::Mihomo),
+    );
+    f.endpoint.set_failure(Some("apply_failed"));
+    let submitted = f.endpoint.reconciled_bytes().len();
+
+    let error = f.client.retry_runtime().await.unwrap_err();
+
+    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(isolated(&f.client));
+    let view = recovery(&f.client);
+    assert!(
+        view.reason.contains("stop intent not satisfied"),
+        "{}",
+        view.reason
+    );
+
+    f.endpoint.set_failure(None);
+    f.client.retry_runtime().await.unwrap();
+
+    assert!(!isolated(&f.client));
+    assert!(f.client.mutation_journal().recovery.is_none());
+    assert!(f.client.mutation_journal().deferred.is_none());
+    assert_eq!(
+        f.endpoint.reconciled_bytes().len(),
+        submitted,
+        "the stop is all recovery owed"
+    );
+    assert!(matches!(
+        crate::core::actor_v2::endpoint::ControlEndpoint::status(f.endpoint.as_ref())
+            .await
+            .unwrap()
+            .state,
+        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+    ));
 }

@@ -37,7 +37,7 @@ use super::{
 use crate::{
     client::{
         convergence::{OutcomeClass, next_wait},
-        core_lifecycle::{RuntimeSubmission, ports::RuntimePreparationPort},
+        core_lifecycle::{RuntimeSubmission, desired_host, ports::RuntimePreparationPort},
         effects::plan::ApplicationEffectInputs,
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
@@ -299,7 +299,7 @@ impl ApplicationWorkflow {
         receipt
     }
 
-    async fn publish_committed_product(
+    pub(super) async fn publish_committed_product(
         &mut self,
         product: Arc<crate::client::runtime::RuntimeSnapshot>,
     ) -> Option<String> {
@@ -365,11 +365,16 @@ impl ApplicationWorkflow {
         let Some(target) = self.deferred.take() else {
             return Ok(());
         };
+        let reestablish = matches!(target.origin, TargetOrigin::Reestablish(_));
         // A move between two slots of the box, with nothing held in a local an
         // unwind could drop: a panic from here on leaves the target inside the
         // attempt.
         self.live = Some(LiveAttempt::committed_target(operation_id, target));
-        self.retry_committed_target(explicit).await;
+        if reestablish {
+            self.retry_reestablish(explicit).await;
+        } else {
+            self.retry_committed_target(explicit).await;
+        }
         Ok(())
     }
 
@@ -405,7 +410,11 @@ impl ApplicationWorkflow {
         }
         let baseline = self.observe_baseline().await;
         self.record_baseline(&baseline);
-        if !baseline.settled || baseline.run_intent == CoreRunIntent::StoppedByUser {
+        // An automatic retry never moves the runtime to another host: that
+        // can mean installing or starting the daemon behind the user's back
+        // (T10 §1.7 #2, D11). It waits for the owner instead.
+        let moves_host = !explicit && desired_host(&inputs.app) != baseline.host;
+        if !baseline.settled || baseline.run_intent == CoreRunIntent::StoppedByUser || moves_host {
             let target = self.committed_target();
             target.waits = next_wait(target.waits, OutcomeClass::Dependency).1;
             target.health = ConvergenceHealth::WaitingDependency;
@@ -500,7 +509,7 @@ impl ApplicationWorkflow {
                 target.next_attempt = waiting
                     .then(|| tokio::time::Instant::now() + std::time::Duration::from_secs(5));
             }
-            RuntimePrepareOutcome::SavedInactive | RuntimePrepareOutcome::Saved => {
+            RuntimePrepareOutcome::SavedInactive { .. } | RuntimePrepareOutcome::Saved => {
                 target.health = ConvergenceHealth::WaitingDependency;
                 target.next_attempt = None;
             }
@@ -519,7 +528,7 @@ impl ApplicationWorkflow {
 
     /// The committed target the live attempt carries. Only reached while a
     /// retry of one is running, which is what installed it.
-    fn committed_target(&mut self) -> &mut DeferredTarget {
+    pub(super) fn committed_target(&mut self) -> &mut DeferredTarget {
         self.live
             .as_mut()
             .and_then(LiveAttempt::target_mut)
@@ -527,7 +536,7 @@ impl ApplicationWorkflow {
     }
 
     /// Charges one attempt to the committed target the live attempt carries.
-    fn charge_attempt(&mut self, charge: AttemptCharge) {
+    pub(super) fn charge_attempt(&mut self, charge: AttemptCharge) {
         let AttemptCharge::Target { automatic } = charge else {
             return;
         };
@@ -541,7 +550,7 @@ impl ApplicationWorkflow {
 
     /// The latest committed inputs of all three domains: a committed target
     /// is re-read from the committed state, never from a request.
-    async fn capture_committed(&self) -> anyhow::Result<super::inputs::RuntimeInputs> {
+    pub(super) async fn capture_committed(&self) -> anyhow::Result<super::inputs::RuntimeInputs> {
         self.preparation
             .capture_inputs(
                 self.lifecycle.application.load().state.clone(),
@@ -720,7 +729,7 @@ impl ApplicationWorkflow {
 
     // -- TryingCritical ----------------------------------------------------
 
-    async fn try_critical(
+    pub(super) async fn try_critical(
         &mut self,
         policy: CommandPolicy,
         baseline: &RestorableBaseline,
@@ -903,7 +912,9 @@ impl ApplicationWorkflow {
         // R7: the user stopped the core. The target is validated and may be
         // saved; starting one here would fight the Stop the user asked for.
         if policy == CommandPolicy::SavedInactive {
-            return RuntimePrepareOutcome::SavedInactive;
+            return RuntimePrepareOutcome::SavedInactive {
+                identity: target.expect("a validated critical candidate has its target identity"),
+            };
         }
 
         // A host switch is the one impact the reconcile below cannot deliver on
@@ -1028,6 +1039,7 @@ impl ApplicationWorkflow {
                     receipt,
                     product,
                     replaced,
+                    report: Box::new(report),
                 })
             }
             // The core's own transaction restored its own previous revision, so
@@ -1123,7 +1135,7 @@ impl ApplicationWorkflow {
             // failure this may compensate.
             RuntimePrepareOutcome::RecoveryRequired(_)
             | RuntimePrepareOutcome::Saved
-            | RuntimePrepareOutcome::SavedInactive => return outcome,
+            | RuntimePrepareOutcome::SavedInactive { .. } => return outcome,
         }
         match self.restore(baseline).await {
             Ok(()) => outcome,
@@ -1285,8 +1297,8 @@ impl ApplicationWorkflow {
                 );
                 (MutationConclusion::Confirmed, Some(message))
             }
-            RuntimePrepareOutcome::SavedInactive => {
-                self.deferred = None;
+            RuntimePrepareOutcome::SavedInactive { identity } => {
+                self.confirm_saved_inactive(identity);
                 (MutationConclusion::Confirmed, None)
             }
             RuntimePrepareOutcome::Saved => (MutationConclusion::Confirmed, None),
@@ -1640,7 +1652,7 @@ impl ApplicationWorkflow {
 
 /// Who pays for a Try once it reaches the runtime (T10 §1.8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AttemptCharge {
+pub(super) enum AttemptCharge {
     /// A source mutation spends no automatic budget.
     None,
     /// A retry of the committed target the live attempt carries: one attempt,

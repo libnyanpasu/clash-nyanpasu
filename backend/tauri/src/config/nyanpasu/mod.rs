@@ -1,25 +1,14 @@
-use crate::utils::{dirs, help};
-use anyhow::Result;
 // use log::LevelFilter;
 use enumflags2::bitflags;
 use nyanpasu_macro::VergePatch;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-/// Validates if a string is a valid hex color code
-pub fn is_hex_color(color: &str) -> bool {
-    if color.len() != 7 || !color.starts_with('#') {
-        return false;
-    }
-
-    color[1..].chars().all(|c| c.is_ascii_hexdigit())
-}
-
 mod clash_strategy;
 pub mod logging;
 mod widget;
 
-pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
+pub use self::clash_strategy::ClashStrategy;
 pub use logging::LoggingLevel;
 pub use widget::LegacyNetworkStatisticWidgetConfig;
 
@@ -118,7 +107,7 @@ impl From<&ClashCore> for nyanpasu_utils::core::CoreType {
 impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
     type Error = anyhow::Error;
 
-    fn try_from(core: &nyanpasu_utils::core::CoreType) -> Result<Self> {
+    fn try_from(core: &nyanpasu_utils::core::CoreType) -> anyhow::Result<Self> {
         match core {
             nyanpasu_utils::core::CoreType::Clash(clash) => match clash {
                 nyanpasu_utils::core::ClashCoreType::ClashPremium => Ok(ClashCore::ClashPremium),
@@ -388,92 +377,6 @@ pub struct WindowState {
 }
 
 impl IVerge {
-    pub fn new() -> Self {
-        match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge, _>(&path)) {
-            Ok(mut config) => {
-                // Validate and fix theme_color if it's invalid
-                if let Some(ref theme_color) = config.theme_color
-                    && !theme_color.is_empty()
-                    && !is_hex_color(theme_color)
-                {
-                    log::warn!(target: "app", "Invalid theme color detected: {}, resetting to default", theme_color);
-                    config.theme_color = None;
-                }
-
-                Self::merge_with_template(config)
-            }
-            Err(err) => {
-                log::error!(target: "app", "{err:?}");
-                Self::template()
-            }
-        }
-    }
-
-    #[allow(deprecated)]
-    fn merge_with_template(mut config: IVerge) -> Self {
-        let template = Self::template();
-
-        if config.enable_auto_check_update.is_none() {
-            config.enable_auto_check_update = template.enable_auto_check_update;
-        }
-
-        if config.clash_tray_selector.is_none() {
-            config.clash_tray_selector = template.clash_tray_selector;
-        }
-
-        if config.max_log_files.is_none() {
-            config.max_log_files = template.max_log_files;
-        }
-
-        if config.lighten_animation_effects.is_none() {
-            config.lighten_animation_effects = template.lighten_animation_effects;
-        }
-
-        if config.enable_service_mode.is_none() {
-            config.enable_service_mode = template.enable_service_mode;
-        }
-
-        // Handle deprecated auto_close_connection by migrating to break_when_proxy_change
-        if config.auto_close_connection.is_some() && config.break_when_proxy_change.is_none() {
-            config.break_when_proxy_change = if config.auto_close_connection.unwrap() {
-                Some(BreakWhenProxyChange::All)
-            } else {
-                Some(BreakWhenProxyChange::None)
-            };
-        }
-
-        // Set defaults for new options if not present
-        if config.break_when_proxy_change.is_none() {
-            config.break_when_proxy_change = template.break_when_proxy_change;
-        }
-
-        if config.break_when_profile_change.is_none() {
-            config.break_when_profile_change = template.break_when_profile_change;
-        }
-
-        if config.break_when_mode_change.is_none() {
-            config.break_when_mode_change = template.break_when_mode_change;
-        }
-
-        if config.enable_tray_text.is_none() {
-            config.enable_tray_text = template.enable_tray_text;
-        }
-
-        if config.window_type.is_none() {
-            config.window_type = template.window_type;
-        }
-
-        if config.tray_menu_mode.is_none() {
-            config.tray_menu_mode = template.tray_menu_mode;
-        }
-
-        if config.tray_menu_close_behavior.is_none() {
-            config.tray_menu_close_behavior = template.tray_menu_close_behavior;
-        }
-
-        config
-    }
-
     pub fn template() -> Self {
         Self {
             clash_core: Some(ClashCore::default()),
@@ -516,14 +419,5 @@ impl IVerge {
             tray_menu_close_behavior: Some(TrayMenuCloseBehavior::default()),
             ..Self::default()
         }
-    }
-
-    /// Save IVerge App Config
-    pub fn save_file(&self) -> Result<()> {
-        help::save_yaml(
-            &dirs::nyanpasu_config_path()?,
-            &self,
-            Some("# Clash Nyanpasu Config"),
-        )
     }
 }

@@ -4,34 +4,29 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 15,
-      "byKey": {
-        "Config::clash()": 9,
-        "Config::verge()": 6
-      }
+      "total": 0,
+      "byKey": {}
     },
     "service_globals": {
-      "total": 22,
+      "total": 20,
       "byKey": {
-        "Self::global()": 8,
         "WindowManager::global()": 8,
+        "Self::global()": 6,
         "Handle::global()": 5,
         "Logger::global()": 1
       }
     },
     "migration_markers": {
-      "total": 2,
+      "total": 1,
       "byKey": {
-        "FIXME(actor-migration)": 1,
         "TODO(actor-migration)": 1
       }
     },
     "legacy_dto_refs": {
-      "total": 76,
+      "total": 45,
       "byKey": {
-        "IVerge": 52,
-        "IClashTemp": 23,
-        "IClash": 1
+        "IVerge": 31,
+        "IClashTemp": 14
       }
     },
     "test_real_dirs": {

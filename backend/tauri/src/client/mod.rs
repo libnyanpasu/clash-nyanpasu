@@ -14,7 +14,6 @@ pub mod hotkey;
 pub mod logs;
 mod ports;
 pub mod profiles;
-pub mod rebuild;
 pub mod runtime;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
@@ -2876,6 +2875,68 @@ pub(crate) mod tests {
         assert!(second.revision > first.revision);
     }
 
+    #[test]
+    fn repeated_core_updates_advance_the_runtime_revision() {
+        use nyanpasu_config::application::ClashCore;
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
+            client.update_core(ClashCore::ClashRs).await.unwrap();
+            let first = client.promoted_runtime().await.unwrap();
+            client.update_core(ClashCore::Mihomo).await.unwrap();
+            let second = client.promoted_runtime().await.unwrap();
+            assert_eq!(first.target_core, ClashCore::ClashRs);
+            assert_eq!(second.target_core, ClashCore::Mihomo);
+            assert!(second.revision > first.revision);
+        });
+        assert_eq!(endpoint.submissions(), 2);
+    }
+
+    /// Each composition root builds its own graph: what one client commits
+    /// and submits never reaches another.
+    #[test]
+    fn two_client_graphs_are_independent() {
+        use nyanpasu_config::application::ClashCore;
+        let (dir_a, dir_b) = (tempdir().unwrap(), tempdir().unwrap());
+        let (endpoint_a, endpoint_b) = (
+            TestControlEndpoint::succeeding(),
+            TestControlEndpoint::succeeding(),
+        );
+        let client_a = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir_a,
+            endpoint_a.clone(),
+        ))
+        .unwrap();
+        let client_b = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir_b,
+            endpoint_b.clone(),
+        ))
+        .unwrap();
+        let default_core = NyanpasuAppConfig::default().core;
+        tauri::async_runtime::block_on(async {
+            endpoint_a.prime(&client_a).await;
+            endpoint_b.prime(&client_b).await;
+            client_b.update_core(ClashCore::ClashRs).await.unwrap();
+            assert_eq!(client_a.get_app_config().await.unwrap().core, default_core);
+            assert_eq!(
+                client_a.promoted_runtime().await.unwrap().target_core,
+                default_core
+            );
+            assert_eq!(
+                client_b.get_app_config().await.unwrap().core,
+                ClashCore::ClashRs
+            );
+        });
+        assert_eq!(endpoint_a.submissions(), 0);
+        assert_eq!(endpoint_b.submissions(), 1);
+    }
+
     #[tokio::test]
     async fn reconcile_product_matches_the_published_snapshot() {
         let dir = tempdir().unwrap();
@@ -3055,20 +3116,6 @@ pub(crate) mod tests {
                 .await
                 .expect("a refused adoption must still allow local boot");
         });
-    }
-
-    #[test]
-    fn legacy_regeneration_path_still_errors_on_rebuild_failure() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::failing();
-        let client =
-            NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint))
-                .unwrap();
-        let result = tauri::async_runtime::block_on(client.regenerate_runtime_for_legacy());
-        assert!(
-            result.is_err(),
-            "legacy callers rely on Err to discard their drafts"
-        );
     }
 
     #[test]

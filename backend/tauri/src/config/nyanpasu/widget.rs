@@ -1,4 +1,3 @@
-use nyanpasu_egui::widget::StatisticWidgetVariant;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -12,14 +11,4 @@ pub enum LegacyNetworkStatisticWidgetConfig {
     Disabled,
     Large,
     Small,
-}
-
-impl LegacyNetworkStatisticWidgetConfig {
-    pub fn to_variant(self) -> Option<StatisticWidgetVariant> {
-        match self {
-            Self::Disabled => None,
-            Self::Large => Some(StatisticWidgetVariant::Large),
-            Self::Small => Some(StatisticWidgetVariant::Small),
-        }
-    }
 }

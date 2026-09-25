@@ -1,4 +1,3 @@
-use crate::config::nyanpasu::ExternalControllerPortStrategy;
 use anyhow::{Context, Result, anyhow, bail};
 use display_info::DisplayInfo;
 use fast_image_resize::{
@@ -152,30 +151,6 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
 /// locale in the frontend; both use the same lowercase spelling.
 pub fn detect_system_i18n_key() -> &'static str {
     nyanpasu_config::application::default_i18n_language().as_str()
-}
-
-pub fn get_clash_external_port(
-    strategy: &ExternalControllerPortStrategy,
-    port: u16,
-) -> anyhow::Result<u16> {
-    match strategy {
-        ExternalControllerPortStrategy::Fixed => {
-            if !port_scanner::local_port_available(port) {
-                bail!("Port {} is not available", port);
-            }
-        }
-        ExternalControllerPortStrategy::Random | ExternalControllerPortStrategy::AllowFallback => {
-            if ExternalControllerPortStrategy::AllowFallback == *strategy
-                && port_scanner::local_port_available(port)
-            {
-                return Ok(port);
-            }
-            let new_port = port_scanner::request_open_port()
-                .ok_or_else(|| anyhow!("Can't find an open port"))?;
-            return Ok(new_port);
-        }
-    }
-    Ok(port)
 }
 
 pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {

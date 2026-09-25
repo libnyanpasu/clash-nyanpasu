@@ -36,6 +36,7 @@ use super::{
 };
 use crate::{
     client::{
+        convergence::{OutcomeClass, next_wait},
         core_lifecycle::{RuntimeSubmission, ports::RuntimePreparationPort},
         effects::plan::ApplicationEffectInputs,
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
@@ -272,14 +273,24 @@ impl ApplicationWorkflow {
         };
         receipt.conclusion = conclusion;
         receipt.detail = detail;
-        if matches!(receipt.check, CheckRecord::Unserviceable(_))
-            && let Some(deferred) = &mut self.deferred
+        if let Some(deferred) = &mut self.deferred
             && deferred.operation_id == receipt.operation_id
-            && deferred.attempts_remaining > 0
         {
-            deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
-            deferred.next_attempt =
-                Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5));
+            let unserviceable = matches!(receipt.check, CheckRecord::Unserviceable(_));
+            deferred.waits = next_wait(
+                deferred.waits,
+                if unserviceable {
+                    OutcomeClass::Dependency
+                } else {
+                    OutcomeClass::Application
+                },
+            )
+            .1;
+            if unserviceable && deferred.attempts_remaining > 0 {
+                deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
+                deferred.next_attempt =
+                    Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5));
+            }
         }
         self.conclude_attempt(
             (receipt.conclusion == MutationConclusion::RecoveryRequired)
@@ -365,6 +376,8 @@ impl ApplicationWorkflow {
     /// One attempt at the committed target the live attempt carries.
     async fn retry_committed_target(&mut self, explicit: bool) {
         use crate::client::convergence::{ConvergenceHealth, RETRY_DELAYS};
+        // A mutation's target keeps T8's fixed wait between dependency
+        // results; `waits` still counts them.
         let target = self.committed_target();
         if !explicit && target.attempts_remaining == 0 {
             target.health = ConvergenceHealth::Blocked;
@@ -394,6 +407,7 @@ impl ApplicationWorkflow {
         self.record_baseline(&baseline);
         if !baseline.settled || baseline.run_intent == CoreRunIntent::StoppedByUser {
             let target = self.committed_target();
+            target.waits = next_wait(target.waits, OutcomeClass::Dependency).1;
             target.health = ConvergenceHealth::WaitingDependency;
             target.next_attempt = if baseline.run_intent == CoreRunIntent::StoppedByUser {
                 None
@@ -491,6 +505,15 @@ impl ApplicationWorkflow {
                 target.next_attempt = None;
             }
         }
+        target.waits = next_wait(
+            target.waits,
+            if waiting {
+                OutcomeClass::Dependency
+            } else {
+                OutcomeClass::Application
+            },
+        )
+        .1;
         self.conclude_attempt(None);
     }
 
@@ -1398,6 +1421,7 @@ impl ApplicationWorkflow {
             cause,
             attempts_remaining,
             attempts: previous.as_ref().map_or(0, |p| p.attempts),
+            waits: previous.as_ref().map_or(0, |p| p.waits),
             health: if attempts_remaining > 0 {
                 crate::client::convergence::ConvergenceHealth::RetryScheduled
             } else {

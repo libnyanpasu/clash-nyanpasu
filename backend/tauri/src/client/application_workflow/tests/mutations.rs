@@ -3983,6 +3983,41 @@ async fn runtime_retry_waits_for_check_dependency_without_spending_apply_budget(
     f.client.shutdown().await.unwrap();
 }
 
+/// S17 on a committed target: consecutive dependency results count up
+/// without touching the budget or the attempt count, and the first
+/// application result starts the count over.
+#[tokio::test]
+async fn dependency_retries_count_waits_until_an_application_result() {
+    let f = deferred_fixture().await;
+    f.endpoint.set_failure(None);
+    f.endpoint
+        .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
+    for waits in 1..=3 {
+        f.client
+            .call(super::super::Command::RetryRuntime { explicit: false })
+            .await
+            .unwrap();
+        let gap = f.client.mutation_journal().deferred.unwrap();
+        assert_eq!(gap.waits, waits);
+        assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET);
+        assert_eq!(gap.attempts, 0);
+    }
+
+    // The check answers again and the apply fails transiently: an attempt
+    // that reached the runtime leaves the backoff and pays for itself.
+    f.endpoint.set_check_answer(TestCheckAnswer::Pass);
+    f.endpoint.set_failure(Some("queue_full"));
+    f.client
+        .call(super::super::Command::RetryRuntime { explicit: false })
+        .await
+        .unwrap();
+    let gap = f.client.mutation_journal().deferred.unwrap();
+    assert_eq!(gap.waits, 0);
+    assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET - 1);
+    assert_eq!(gap.attempts, 1);
+    f.client.shutdown().await.unwrap();
+}
+
 #[tokio::test]
 async fn stopped_runtime_is_not_started_by_retry_now() {
     use crate::client::convergence::ConvergenceHealth;

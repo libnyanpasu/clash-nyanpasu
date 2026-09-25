@@ -43,6 +43,16 @@ export async function invokeMutation<TInput, TOutput>(
   try {
     return await options.mutationFn!(input, undefined as never)
   } catch (error) {
+    // Domain refusals resolve as `{ status: 'error' }`; only invoke-layer
+    // failures are unconfirmed, while local programming errors propagate.
+    if (
+      error instanceof TypeError ||
+      error instanceof ReferenceError ||
+      error instanceof SyntaxError ||
+      error instanceof RangeError
+    ) {
+      throw error
+    }
     throw new MutationUnconfirmedError(error)
   }
 }

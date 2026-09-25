@@ -1030,7 +1030,6 @@ export type Degradation = {
 
 /**  Public degradation phases for mutation outcomes. Serde/Specta use snake_case. */
 export type DegradationPhase =
-  | 'legacy_mirror'
   | 'profile_materialization'
   | 'runtime_build'
   | 'runtime_check'

@@ -652,7 +652,6 @@ pub struct Degradation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum DegradationPhase {
-    LegacyMirror,
     ProfileMaterialization,
     RuntimeBuild,
     RuntimeCheck,

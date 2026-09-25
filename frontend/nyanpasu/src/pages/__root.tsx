@@ -123,8 +123,6 @@ function WindowReveal() {
 
 function localizeDegradationPhase(phase: DegradationPhase): string {
   switch (phase) {
-    case 'legacy_mirror':
-      return m.mutation_degradation_phase_legacy_mirror()
     case 'profile_materialization':
       return m.mutation_degradation_phase_profile_materialization()
     case 'runtime_build':

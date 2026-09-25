@@ -418,7 +418,6 @@ mod tests {
             phase,
             "DegradationPhase",
             &[
-                "'legacy_mirror'",
                 "'profile_materialization'",
                 "'runtime_build'",
                 "'runtime_check'",
@@ -429,6 +428,10 @@ mod tests {
                 "'system_effect'",
                 "'ui_effect'",
             ],
+        );
+        assert!(
+            !generated.contains("legacy_mirror"),
+            "nothing constructs the legacy_mirror phase, so it may not return to the wire"
         );
 
         // create/import must return the instantiated generic carrying ProfileId.

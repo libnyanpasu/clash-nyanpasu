@@ -172,6 +172,9 @@ pub fn resolve_setup(app: &mut App) {
                 report.operation_id
             ),
         }
+        // Even an unsettled startup lets them run: what they change queues
+        // behind the startup command.
+        log_err!(client.start_background_sources());
     }
 
     log::trace!("init storage");

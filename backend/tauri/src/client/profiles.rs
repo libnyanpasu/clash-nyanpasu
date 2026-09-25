@@ -17,8 +17,8 @@ use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use crate::{
     core::migration::modules::profiles::ProfilesFormat,
     state::profiles::{
-        CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-        ProfilesError, RefreshOrigin, ReorderOp,
+        CommitReport, NewProfileRequest, ProducersStopped, ProfilesActor, ProfilesActorArgs,
+        ProfilesActorMessage, ProfilesError, RefreshOrigin, ReorderOp,
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
     },
 };
@@ -87,6 +87,39 @@ impl ProfilesClient {
                 snapshot,
             }),
         })
+    }
+
+    /// Lets the refresh scheduler, the external watchers and the journal
+    /// ticker run. Until then they stay held; only the first call counts.
+    pub(crate) fn start_producers(&self) -> Result<(), ProfilesError> {
+        self.inner
+            .actor_ref
+            .cast(ProfilesActorMessage::StartProducers)
+            .map_err(|error| ProfilesError::Rpc(error.to_string()))
+    }
+
+    /// Stops every background producer for good and cuts pending downloads
+    /// short; their callers are told the application is shutting down.
+    // The ordered shutdown (T10 §5.4 step 2) is the production caller.
+    #[allow(dead_code)]
+    pub(crate) async fn stop_producers(
+        &self,
+        timeout: Duration,
+    ) -> Result<ProducersStopped, ProfilesError> {
+        match self
+            .inner
+            .actor_ref
+            .call(
+                |reply| ProfilesActorMessage::StopProducers { reply },
+                Some(timeout),
+            )
+            .await
+        {
+            Ok(CallResult::Success(stopped)) => Ok(stopped),
+            Ok(CallResult::SenderError) => Err(ProfilesError::Rpc("reply dropped".into())),
+            Ok(CallResult::Timeout) => Err(ProfilesError::Rpc("call timed out".into())),
+            Err(e) => Err(ProfilesError::Rpc(e.to_string())),
+        }
     }
 
     /// The last committed profiles document. Reads bypass the mailbox, so an
@@ -919,6 +952,7 @@ mod tests {
         )
         .await
         .unwrap();
+        client.start_producers().unwrap();
 
         let report = client
             .import(
@@ -1220,6 +1254,7 @@ mod tests {
         )
         .await
         .unwrap();
+        client.start_producers().unwrap();
         let mut item = remote_config_item("r1");
         if let Some(source) = item.definition.source_mut() {
             source.materialized_mut().updated_at = Some(time::OffsetDateTime::now_utc());
@@ -1246,7 +1281,21 @@ mod tests {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             anyhow::bail!("count only")
         });
-        let (client, _dir) = remote_seeded_client(MockProfileFsPort::new(), fetcher).await;
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+        )
+        .await
+        .unwrap();
+        // Armed before the seed, so the seed is scheduled without a catch-up.
+        client.start_producers().unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
 
         client
             .replace_definition(ProfileId("r1".into()), file_config_item("r1").definition)
@@ -1298,7 +1347,7 @@ mod tests {
             profiles.append_item(item);
             client.replace(profiles).await.unwrap();
         }
-        let _client = ProfilesClient::new(
+        let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             std::sync::Arc::new(MockProfileFsPort::new()),
@@ -1307,6 +1356,7 @@ mod tests {
         )
         .await
         .unwrap();
+        client.start_producers().unwrap();
         for _ in 0..200 {
             if fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 1 {
                 break;
@@ -1340,6 +1390,7 @@ mod tests {
         )
         .await
         .unwrap();
+        client.start_producers().unwrap();
         let mut profiles = Profiles::default();
         profiles.append_item(external_item(
             "ext1",
@@ -1391,6 +1442,7 @@ mod tests {
         )
         .await
         .unwrap();
+        client.start_producers().unwrap();
         let mut profiles = Profiles::default();
         profiles.append_item(external_item(
             "ext1",
@@ -1427,6 +1479,7 @@ mod tests {
         )
         .await
         .unwrap();
+        client.start_producers().unwrap();
         let mut profiles = Profiles::default();
         profiles.append_item(external_item(
             "ext1",
@@ -1466,6 +1519,7 @@ mod tests {
         )
         .await
         .unwrap();
+        client.start_producers().unwrap();
         let mut profiles = Profiles::default();
         profiles.append_item(external_item(
             "ext1",
@@ -3399,5 +3453,539 @@ mod tests {
             .expect_err("zero interval");
         assert!(matches!(err, ProfilesError::ValidationFailed(_)));
         assert!(client.snapshot().items.is_empty());
+    }
+
+    // --- T10 §2 producer gating (P1–P5) ---
+
+    use crate::state::profiles::{RefreshAttemptToken, RefreshOutcome};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// A round trip through the mailbox: every message cast before it has
+    /// been handled once it returns, whatever the gate answers.
+    async fn round_trip(client: &ProfilesClient) {
+        let result = client.refresh(ProfileId("ghost".into()), None).await;
+        assert!(
+            !matches!(result, Err(ProfilesError::Rpc(_))),
+            "profiles actor must survive: {result:?}"
+        );
+    }
+
+    /// Fails a test whose call parks instead of answering.
+    async fn bounded<T>(call: impl std::future::Future<Output = T>) -> T {
+        tokio::time::timeout(std::time::Duration::from_secs(10), call)
+            .await
+            .expect("call parked instead of answering")
+    }
+
+    fn yaml(profiles: &Profiles) -> String {
+        serde_yaml::to_string(profiles).unwrap()
+    }
+
+    fn cast(client: &ProfilesClient, message: ProfilesActorMessage) {
+        client.inner.actor_ref.cast(message).unwrap();
+    }
+
+    fn scheduled_refresh(uid: &str) -> ProfilesActorMessage {
+        ProfilesActorMessage::RefreshRemote {
+            uid: ProfileId(uid.into()),
+            patch: None,
+            origin: RefreshOrigin::Scheduled,
+            reply: None,
+        }
+    }
+
+    /// A remote profile refreshed just now, so starting the producers does
+    /// not catch it up.
+    fn fresh_remote_item(uid: &str) -> nyanpasu_config::profile::ProfileItem {
+        let mut item = remote_config_item(uid);
+        if let Some(source) = item.definition.source_mut() {
+            source.materialized_mut().updated_at = Some(time::OffsetDateTime::now_utc());
+        }
+        item
+    }
+
+    async fn client_with(
+        dir: &TempDir,
+        fetcher: Arc<dyn SubscriptionFetcher>,
+        materialization: Arc<dyn ProfileMaterializationPort>,
+        items: Vec<nyanpasu_config::profile::ProfileItem>,
+    ) -> ProfilesClient {
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(dir),
+            Arc::new(MockProfileFsPort::new()),
+            fetcher,
+            materialization,
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        for item in items {
+            profiles.append_item(item);
+        }
+        client.replace(profiles).await.unwrap();
+        client
+    }
+
+    async fn reach(count: &mut tokio::sync::watch::Receiver<usize>, n: usize) {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            count.wait_for(|calls| *calls >= n),
+        )
+        .await
+        .expect("call count not reached")
+        .unwrap();
+    }
+
+    /// Parks every fetch until released. Reports each start, and counts the
+    /// parked fetches that were dropped instead of finishing.
+    struct ParkedFetcher {
+        started: tokio::sync::mpsc::UnboundedSender<()>,
+        release: Arc<tokio::sync::Notify>,
+        dropped: Arc<AtomicUsize>,
+    }
+
+    struct Parked(Option<Arc<AtomicUsize>>);
+
+    impl Drop for Parked {
+        fn drop(&mut self) {
+            if let Some(dropped) = self.0.take() {
+                dropped.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+
+    impl ParkedFetcher {
+        fn new() -> (
+            Arc<Self>,
+            tokio::sync::mpsc::UnboundedReceiver<()>,
+            Arc<tokio::sync::Notify>,
+            Arc<AtomicUsize>,
+        ) {
+            let (started, started_rx) = tokio::sync::mpsc::unbounded_channel();
+            let release = Arc::new(tokio::sync::Notify::new());
+            let dropped = Arc::new(AtomicUsize::new(0));
+            (
+                Arc::new(Self {
+                    started,
+                    release: Arc::clone(&release),
+                    dropped: Arc::clone(&dropped),
+                }),
+                started_rx,
+                release,
+                dropped,
+            )
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SubscriptionFetcher for ParkedFetcher {
+        async fn fetch(
+            &self,
+            _url: &url::Url,
+            _options: &RemoteProfileOptions,
+        ) -> anyhow::Result<FetchedSubscription> {
+            let mut parked = Parked(Some(Arc::clone(&self.dropped)));
+            let _ = self.started.send(());
+            self.release.notified().await;
+            parked.0 = None;
+            Ok(FetchedSubscription {
+                content: "proxies: []\n".into(),
+                filename: None,
+                subscription: SubscriptionInfo::default(),
+                suggested_update_interval_minutes: None,
+            })
+        }
+    }
+
+    /// P1: nothing runs while held; StartProducers catches the overdue
+    /// profile up exactly once and arms the scheduler and the journal ticker.
+    #[tokio::test(start_paused = true)]
+    async fn producers_stay_held_until_started_and_catch_up_once() {
+        let (fetches, mut fetched) = tokio::sync::watch::channel(0usize);
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().returning(move |_, _| {
+            fetches.send_modify(|calls| *calls += 1);
+            anyhow::bail!("count only")
+        });
+        let (reconciles, mut reconciled) = tokio::sync::watch::channel(0usize);
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization.expect_reconcile().returning(move |_| {
+            reconciles.send_modify(|calls| *calls += 1);
+            Ok(MaterializationReconcileReport::default())
+        });
+        let dir = tempdir().unwrap();
+        // Never refreshed, so overdue from the start.
+        let client = client_with(
+            &dir,
+            Arc::new(fetcher),
+            Arc::new(materialization),
+            vec![remote_config_item("r1")],
+        )
+        .await;
+
+        tokio::time::advance(std::time::Duration::from_secs(6 * 60 * 60)).await;
+        cast(&client, scheduled_refresh("r1"));
+        cast(&client, ProfilesActorMessage::ReconcileMaterializations);
+        round_trip(&client).await;
+        assert_eq!(*fetched.borrow(), 0, "held: no catch-up, tick or refresh");
+        assert_eq!(*reconciled.borrow(), 1, "held: only the startup reconcile");
+
+        client.start_producers().unwrap();
+        reach(&mut fetched, 1).await;
+        client.start_producers().unwrap();
+        round_trip(&client).await;
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(*fetched.borrow(), 1, "a second start catches up nothing");
+
+        tokio::time::advance(std::time::Duration::from_secs(120 * 60)).await;
+        reach(&mut fetched, 2).await;
+        reach(&mut reconciled, 2).await;
+    }
+
+    /// P1: an external file event is dropped while held and applied once the
+    /// producers run.
+    #[tokio::test]
+    async fn external_file_events_wait_for_start() {
+        let fixture = ExternalFixture::new(None).await;
+        std::fs::write(&fixture.target, "proxies: []\n# edited\n").unwrap();
+        let before = yaml(&fixture.client.snapshot());
+
+        cast(
+            &fixture.client,
+            ProfilesActorMessage::ExternalFileChanged {
+                uid: ProfileId("ext1".into()),
+            },
+        );
+        round_trip(&fixture.client).await;
+        assert_eq!(yaml(&fixture.client.snapshot()), before);
+        assert!(!fixture.mirrored.exists());
+
+        fixture.client.start_producers().unwrap();
+        cast(
+            &fixture.client,
+            ProfilesActorMessage::ExternalFileChanged {
+                uid: ProfileId("ext1".into()),
+            },
+        );
+        wait_for_updated_at(&fixture.client, "ext1").await;
+        assert!(
+            std::fs::read_to_string(&fixture.mirrored)
+                .unwrap()
+                .contains("# edited")
+        );
+    }
+
+    /// P2: held producers still admit a manual refresh and an import.
+    #[tokio::test]
+    async fn held_producers_admit_manual_refresh_and_import() {
+        let dir = tempdir().unwrap();
+        let client = client_with(
+            &dir,
+            Arc::new(ok_fetch("proxies: []\n")),
+            test_materialization_port(),
+            vec![remote_config_item("r1")],
+        )
+        .await;
+
+        client
+            .refresh(ProfileId("r1".into()), None)
+            .await
+            .expect("manual refresh while held");
+        let report = client
+            .import(
+                url::Url::parse("https://example.com/subs/held.yaml").unwrap(),
+                import_metadata("held", true),
+                RemoteProfileOptions::default(),
+                false,
+            )
+            .await
+            .expect("import while held");
+        assert_eq!(report.snapshot.items.len(), 2);
+    }
+
+    /// P3: StopProducers aborts every pending download, tells its caller the
+    /// application is shutting down, and a late completion for the aborted
+    /// attempt commits nothing even though the definition is unchanged.
+    #[tokio::test]
+    async fn stop_aborts_pending_downloads_and_drops_their_late_completions() {
+        let (fetcher, mut started, _release, dropped) = ParkedFetcher::new();
+        let dir = tempdir().unwrap();
+        let client = client_with(
+            &dir,
+            fetcher,
+            test_materialization_port(),
+            vec![fresh_remote_item("r1")],
+        )
+        .await;
+        client.start_producers().unwrap();
+
+        let refresh_client = client.clone();
+        let manual =
+            tokio::spawn(async move { refresh_client.refresh(ProfileId("r1".into()), None).await });
+        let import_client = client.clone();
+        let import = tokio::spawn(async move {
+            import_client
+                .import(
+                    url::Url::parse("https://example.com/subs/stopped.yaml").unwrap(),
+                    import_metadata("stopped", true),
+                    RemoteProfileOptions::default(),
+                    false,
+                )
+                .await
+        });
+        started.recv().await.unwrap();
+        started.recv().await.unwrap();
+        let before = yaml(&client.snapshot());
+
+        let stopped = client
+            .stop_producers(std::time::Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(
+            stopped,
+            ProducersStopped {
+                refreshes: 1,
+                imports: 1,
+                unfinished: 0,
+            }
+        );
+        assert_eq!(dropped.load(Ordering::SeqCst), 2, "both downloads aborted");
+        assert!(matches!(
+            bounded(manual).await.unwrap(),
+            Err(ProfilesError::ShuttingDown)
+        ));
+        assert!(matches!(
+            bounded(import).await.unwrap(),
+            Err(ProfilesError::ShuttingDown)
+        ));
+
+        let definition = client.snapshot().items[&ProfileId("r1".into())]
+            .definition
+            .clone();
+        cast(
+            &client,
+            ProfilesActorMessage::CommitRefreshed {
+                uid: ProfileId("r1".into()),
+                token: RefreshAttemptToken::nth(1),
+                url: url::Url::parse("https://example.com/sub").unwrap(),
+                definition_fingerprint: serde_yaml::to_string(&definition).unwrap(),
+                outcome: RefreshOutcome::Succeeded {
+                    subscription: SubscriptionInfo::default(),
+                    suggested_update_interval_minutes: None,
+                    content: "proxies: []\n".into(),
+                    filename: None,
+                },
+            },
+        );
+        round_trip(&client).await;
+        assert_eq!(yaml(&client.snapshot()), before);
+    }
+
+    /// P4: once stopped, new manual work is refused, background input is
+    /// dropped, a second stop is a no-op and a later start re-arms nothing.
+    #[tokio::test(start_paused = true)]
+    async fn stopped_producers_refuse_new_work_for_good() {
+        let (fetches, fetched) = tokio::sync::watch::channel(0usize);
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().returning(move |_, _| {
+            fetches.send_modify(|calls| *calls += 1);
+            anyhow::bail!("count only")
+        });
+        let dir = tempdir().unwrap();
+        // Only an external event that got through would read the Mirror
+        // target; the read is counted and refused.
+        let reads = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&reads);
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_read_external().returning(move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            anyhow::bail!("a stopped actor reads no external file")
+        });
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(&dir),
+            Arc::new(fs),
+            Arc::new(fetcher),
+            test_materialization_port(),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        profiles.append_item(external_item(
+            "ext1",
+            ExternalMode::Mirror,
+            external_path(&dir.path().join("external.yaml")),
+        ));
+        client.replace(profiles).await.unwrap();
+
+        assert_eq!(
+            client
+                .stop_producers(std::time::Duration::from_secs(5))
+                .await
+                .unwrap(),
+            ProducersStopped::default()
+        );
+        assert!(matches!(
+            client.refresh(ProfileId("r1".into()), None).await,
+            Err(ProfilesError::ShuttingDown)
+        ));
+        assert!(matches!(
+            client
+                .import(
+                    url::Url::parse("https://example.com/subs/late.yaml").unwrap(),
+                    import_metadata("late", true),
+                    RemoteProfileOptions::default(),
+                    false,
+                )
+                .await,
+            Err(ProfilesError::ShuttingDown)
+        ));
+        assert_eq!(
+            client
+                .stop_producers(std::time::Duration::from_secs(5))
+                .await
+                .unwrap(),
+            ProducersStopped::default()
+        );
+
+        client.start_producers().unwrap();
+        cast(&client, scheduled_refresh("r1"));
+        cast(
+            &client,
+            ProfilesActorMessage::ExternalFileChanged {
+                uid: ProfileId("ext1".into()),
+            },
+        );
+        tokio::time::advance(std::time::Duration::from_secs(6 * 60 * 60)).await;
+        round_trip(&client).await;
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            0,
+            "stopped: the external event is dropped"
+        );
+        assert_eq!(
+            *fetched.borrow(),
+            0,
+            "stopped: no catch-up, tick or refresh"
+        );
+    }
+
+    /// P5: a completion carrying another attempt's token commits nothing and
+    /// leaves the pending attempt in place; the attempt's own completion
+    /// still settles it.
+    #[tokio::test]
+    async fn refresh_completion_must_carry_the_pending_attempt_token() {
+        let (fetcher, mut started, release, _dropped) = ParkedFetcher::new();
+        let dir = tempdir().unwrap();
+        let client = client_with(
+            &dir,
+            fetcher,
+            test_materialization_port(),
+            vec![fresh_remote_item("r1")],
+        )
+        .await;
+        let refresh_client = client.clone();
+        let pending =
+            tokio::spawn(async move { refresh_client.refresh(ProfileId("r1".into()), None).await });
+        started.recv().await.unwrap();
+        let before = yaml(&client.snapshot());
+
+        let definition = client.snapshot().items[&ProfileId("r1".into())]
+            .definition
+            .clone();
+        cast(
+            &client,
+            ProfilesActorMessage::CommitRefreshed {
+                uid: ProfileId("r1".into()),
+                token: RefreshAttemptToken::nth(2),
+                url: url::Url::parse("https://example.com/sub").unwrap(),
+                definition_fingerprint: serde_yaml::to_string(&definition).unwrap(),
+                outcome: RefreshOutcome::Succeeded {
+                    subscription: SubscriptionInfo {
+                        upload: Some(42),
+                        ..Default::default()
+                    },
+                    suggested_update_interval_minutes: None,
+                    content: "proxies: []\n".into(),
+                    filename: None,
+                },
+            },
+        );
+        assert!(matches!(
+            bounded(client.refresh(ProfileId("r1".into()), None)).await,
+            Err(ProfilesError::RefreshFailed { message }) if message.contains("in progress")
+        ));
+        assert_eq!(yaml(&client.snapshot()), before);
+
+        release.notify_waiters();
+        let report = bounded(pending)
+            .await
+            .unwrap()
+            .expect("its own completion commits");
+        let ProfileSource::Remote { subscription, .. } = report.snapshot.items
+            [&ProfileId("r1".into())]
+            .definition
+            .source()
+            .unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(subscription.upload, None, "the foreign payload was dropped");
+    }
+
+    /// A Mirror profile over a real file service. The watcher is live once
+    /// the producers start, so a test writes the target only while the
+    /// outcome of every event is the same.
+    struct ExternalFixture {
+        client: ProfilesClient,
+        target: std::path::PathBuf,
+        mirrored: std::path::PathBuf,
+        _dirs: [TempDir; 3],
+    }
+
+    impl ExternalFixture {
+        async fn new(materialization: Option<Arc<dyn ProfileMaterializationPort>>) -> Self {
+            let config_dir = tempdir().unwrap();
+            let data_dir = tempdir().unwrap();
+            let target_dir = tempdir().unwrap();
+            let target = target_dir.path().join("external.yaml");
+            std::fs::write(&target, "proxies: []\n").unwrap();
+            let fs = Arc::new(ProfileFileService::new(
+                PathResolver::with_base_dirs(
+                    config_dir.path().to_path_buf(),
+                    data_dir.path().to_path_buf(),
+                ),
+                Arc::new(NoProxyPort),
+            ));
+            let client = ProfilesClient::new(
+                crate::state::mutation::MutationCoordinator::isolated(),
+                Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
+                fs.clone() as Arc<dyn ProfileFsPort>,
+                Arc::new(MockSubscriptionFetcher::new()),
+                materialization.unwrap_or(fs as Arc<dyn ProfileMaterializationPort>),
+            )
+            .await
+            .unwrap();
+            let mut profiles = Profiles::default();
+            profiles.append_item(external_item(
+                "ext1",
+                ExternalMode::Mirror,
+                external_path(&target),
+            ));
+            client.replace(profiles).await.unwrap();
+            Self {
+                client,
+                target,
+                mirrored: config_dir.path().join("profiles").join("ext1.yaml"),
+                _dirs: [config_dir, data_dir, target_dir],
+            }
+        }
     }
 }

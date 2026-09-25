@@ -241,7 +241,7 @@ pub fn get_max_scale_factor() -> f64 {
 
 #[instrument(skip(app_handle))]
 pub fn cleanup_processes(app_handle: &AppHandle) {
-    let _ = super::resolve::save_window_state(app_handle, true);
+    let _ = super::resolve::save_window_state(app_handle);
     // Managed Tauri state — no process-global client lookup. The lifecycle
     // actor closes admission and drains active work before stopping the core,
     // so exit cannot race a background dirty rebuild. Tauri ExitRequested is already

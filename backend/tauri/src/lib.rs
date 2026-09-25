@@ -28,7 +28,6 @@ mod widget;
 mod window;
 
 use crate::{
-    config::Config,
     core::handle::Handle,
     utils::{init, resolve},
 };
@@ -222,9 +221,6 @@ pub fn run() -> std::io::Result<()> {
         };
     }
 
-    let verge = { Config::verge().latest().language.clone().unwrap() };
-    rust_i18n::set_locale(verge.to_lowercase().as_str());
-
     // show a dialog to print the single instance error
     // Hold the guard until the end of the program if acquired
     let _singleton = match single_instance_result {
@@ -352,18 +348,13 @@ pub fn run() -> std::io::Result<()> {
             }
             tauri::WindowEvent::CloseRequested { .. } => {
                 log::debug!(target: "app", "window close requested");
-                let _ = resolve::save_window_state(app_handle, true);
+                let _ = resolve::save_window_state(app_handle);
                 #[cfg(target_os = "macos")]
                 crate::utils::dock::macos::hide_dock_icon();
             }
             tauri::WindowEvent::Destroyed => {
                 log::debug!(target: "app", "window destroyed");
                 reset_window_open_counter();
-            }
-            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
-                log::debug!(target: "app", "window moved or resized");
-                std::thread::sleep(std::time::Duration::from_nanos(1));
-                let _ = resolve::save_window_state(app_handle, false);
             }
             _ => {}
         },

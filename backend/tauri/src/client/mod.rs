@@ -463,6 +463,12 @@ impl NyanpasuClient {
         Ok(self.inner.application.snapshot().state)
     }
 
+    /// The committed application config, for boundary code that runs
+    /// synchronously (window creation, window event handlers) and cannot await.
+    pub fn app_config_snapshot(&self) -> NyanpasuAppConfig {
+        self.inner.application.snapshot().state
+    }
+
     pub async fn reconcile_core(
         &self,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
@@ -661,6 +667,11 @@ impl NyanpasuClient {
                 },
             ),
         )
+    }
+
+    /// The geometry the main window reopens with, as last saved.
+    pub fn main_window_geometry(&self) -> Option<nyanpasu_config::state::window::WindowState> {
+        self.inner.session_state.main_window_geometry()
     }
 
     pub async fn get_session_state(&self) -> Result<PersistentState> {

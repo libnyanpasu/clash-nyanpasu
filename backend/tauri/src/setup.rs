@@ -23,8 +23,12 @@ use crate::{
             SystemProxyArgs, SystemProxyClient,
             adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
         },
-        ui_effects::adapters::{
-            RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
+        ui_effects::{
+            adapters::{
+                RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController,
+                TracingLoggerRefresher,
+            },
+            ports::LocaleSink,
         },
     },
     utils::path::PathResolver,
@@ -110,6 +114,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         accelerators: Arc::new(PlatformAcceleratorValidator),
     })
     .context("Failed to setup nyanpasu client")?;
+    // The tray menu and the first window render with the process locale, so
+    // the configured language replaces the system default before either exists.
+    RustI18nLocaleSink
+        .set_locale(client.app_config_snapshot().language)
+        .context("Failed to apply the configured locale")?;
     // Seeded before anything can build the tray, so the first menu is rendered
     // from the committed configuration rather than from defaults.
     app.manage(crate::core::tray::TrayState::<tauri::Wry>::new(

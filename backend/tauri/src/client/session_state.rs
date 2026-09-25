@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
-use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
+use nyanpasu_config::state::{
+    PersistentState, PersistentStatePatch,
+    window::{WindowLabel, WindowState},
+};
 use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
@@ -71,6 +74,11 @@ impl SessionStateClient {
     /// in-flight transaction parked in `on_prepare` cannot delay them.
     pub fn snapshot(&self) -> SessionStateSnapshot {
         SessionStateSnapshot::from_versioned(&self.inner.snapshot.load())
+    }
+
+    /// The geometry the main window reopens with.
+    pub fn main_window_geometry(&self) -> Option<WindowState> {
+        main_window_geometry(&self.snapshot().state)
     }
 
     pub async fn save_main_window(
@@ -169,6 +177,14 @@ impl SessionStateClient {
     }
 }
 
+/// The entry `save_main_window` writes: the one under the main window label.
+fn main_window_geometry(state: &PersistentState) -> Option<WindowState> {
+    state
+        .window_state
+        .get(&WindowLabel(crate::consts::MAIN_WINDOW_LABEL.into()))
+        .cloned()
+}
+
 impl Drop for SessionStateClientInner {
     fn drop(&mut self) {
         self.actor_ref.stop(None);
@@ -179,7 +195,6 @@ impl Drop for SessionStateClientInner {
 mod tests {
     use super::*;
     use crate::state::mirror::{NoopPreparedLegacyMirror, PreparedLegacyMirror};
-    use nyanpasu_config::state::window::{WindowLabel, WindowState};
     use std::collections::BTreeMap;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
@@ -243,6 +258,46 @@ mod tests {
             .await
             .expect("replace should succeed");
         assert!(replaced.state.window_state.is_empty());
+    }
+
+    fn geometry(x: i32) -> WindowState {
+        WindowState {
+            width: 1024,
+            height: 768,
+            x,
+            y: 20,
+            maximized: false,
+            fullscreen: false,
+        }
+    }
+
+    #[test]
+    fn main_window_geometry_reads_only_the_main_label() {
+        let state = PersistentState {
+            window_state: BTreeMap::from([
+                (WindowLabel("editor-css".into()), geometry(1)),
+                (WindowLabel("main".into()), geometry(2)),
+            ]),
+        };
+        assert_eq!(main_window_geometry(&state), Some(geometry(2)));
+
+        let without_main = PersistentState {
+            window_state: BTreeMap::from([(WindowLabel("editor-css".into()), geometry(1))]),
+        };
+        assert_eq!(main_window_geometry(&without_main), None);
+    }
+
+    #[tokio::test]
+    async fn a_saved_main_window_geometry_is_what_the_window_restores() {
+        let (client, _dir) = test_client().await;
+        assert_eq!(client.main_window_geometry(), None);
+
+        client
+            .save_main_window(geometry(42))
+            .await
+            .expect("saving the main window geometry should succeed");
+
+        assert_eq!(client.main_window_geometry(), Some(geometry(42)));
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 
 use super::{
-    super::{SessionPortResolver, UiEventSink, runtime},
+    super::{SessionPortResolver, runtime},
     Command, Output,
     ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
 };
@@ -22,7 +22,6 @@ pub(in crate::client) struct CoreLifecycleWorkflow {
     pub application: StateSnapshot<NyanpasuAppConfig>,
     pub core: CoreFacade,
     pub installer: Arc<dyn BinaryInstaller>,
-    pub ui: Arc<dyn UiEventSink>,
     pub runtime: runtime::RuntimeSnapshotStore,
     /// The session's port bindings. The workflow is the only writer: it
     /// confirms a candidate when the core accepts it and ends the confirmed
@@ -150,7 +149,6 @@ impl CoreLifecycleWorkflow {
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
             Command::RuntimeDirty => {
                 self.reconcile(preparation).await?;
-                self.ui.refresh_clash();
                 Ok(Output::Unit)
             }
             Command::ChangeHost(host) => {
@@ -387,7 +385,6 @@ impl CoreLifecycleWorkflow {
                 // because shutdown is serialized behind this operation and
                 // stops whatever it started.
                 self.reconcile(preparation).await?;
-                self.ui.refresh_clash();
             }
             // Any other state proves nothing about whether the core should be
             // running, so the intent stays owed to the next attempt.

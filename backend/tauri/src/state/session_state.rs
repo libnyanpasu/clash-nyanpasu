@@ -41,6 +41,10 @@ pub struct SessionStateActorState {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum SessionStateActorMessage {
+    SaveMainWindow {
+        geometry: nyanpasu_config::state::window::WindowState,
+        reply: RpcReplyPort<anyhow::Result<SessionStateSnapshot>>,
+    },
     Patch {
         patch: PersistentStatePatch,
         reply: RpcReplyPort<anyhow::Result<SessionStateSnapshot>>,
@@ -140,6 +144,14 @@ impl Actor for SessionStateActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            SessionStateActorMessage::SaveMainWindow { geometry, reply } => {
+                let mut next = Self::snapshot(state).state;
+                next.window_state.insert(
+                    nyanpasu_config::state::window::WindowLabel("main".into()),
+                    geometry,
+                );
+                let _ = reply.send(Self::commit(state, next).await);
+            }
             SessionStateActorMessage::Patch { patch, reply } => {
                 let result = async {
                     let mut next = state.manager.snapshot_handle().load().state.clone();

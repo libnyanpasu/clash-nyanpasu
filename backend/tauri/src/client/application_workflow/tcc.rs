@@ -104,6 +104,31 @@ impl ApplicationWorkflow {
         let operation_id = request.operation_id;
         let domain = request.change.domain();
 
+        let clash = match &request.change {
+            DomainChange::Clash { candidate, .. } => candidate.as_ref().clone(),
+            _ => self.clash.load().state.clone(),
+        };
+        let selection_changed = matches!(&request.change,
+            DomainChange::Profiles { previous: Some(previous), candidate }
+                if previous.current != candidate.current);
+        let interrupt = (request.hints.mode_requested && clash.break_connection.on_mode_change)
+            || (selection_changed && clash.break_connection.on_profile_change);
+        let interruption = if interrupt {
+            Some(
+                self.lifecycle
+                    .prepare_apply(
+                        operation_id,
+                        crate::client::core_lifecycle::apply::RuntimeApplyOptions {
+                            interrupt_connections: Some(
+                                crate::core::connections::ConnectionScope::All,
+                            ),
+                        },
+                    )
+                    .await,
+            )
+        } else {
+            None
+        };
         let classified = classify(&request.change, &request.hints);
         let needs_runtime = classified != RuntimeImpact::None
             || request.class == CommandClass::ExplicitSwitch
@@ -115,7 +140,7 @@ impl ApplicationWorkflow {
         });
         // UI-only saves do not read the core or the runtime's source files.
         let inputs = if needs_runtime {
-            Some(self.capture_candidate(&request.change).await)
+            Some(self.capture_candidate(&request).await)
         } else {
             None
         };
@@ -175,6 +200,7 @@ impl ApplicationWorkflow {
         request.answer(outcome.ack());
 
         let mut receipt = MutationReceipt {
+            degradations: Vec::new(),
             operation_id,
             domain,
             impact,
@@ -194,7 +220,16 @@ impl ApplicationWorkflow {
         }
 
         let (conclusion, detail) = match self.await_decision(&request).await {
-            DecisionOutcome::Committed => self.confirm(outcome, &request).await,
+            DecisionOutcome::Committed => {
+                let result = self
+                    .confirm(outcome, &request, interruption, &mut receipt.degradations)
+                    .await;
+                self.notify_requested(
+                    needs_runtime || matches!(&request.change, DomainChange::Profiles { .. }),
+                    request.hints.requested_owners.clone(),
+                );
+                result
+            }
             DecisionOutcome::Aborted => self.cancel(outcome, &request, &baseline).await,
             DecisionOutcome::Unresolved(reason) => {
                 let error = format!("the source transaction of operation {operation_id} {reason}");
@@ -210,7 +245,290 @@ impl ApplicationWorkflow {
         };
         receipt.conclusion = conclusion;
         receipt.detail = detail;
+        if matches!(receipt.check, CheckRecord::Unserviceable(_))
+            && let Some(deferred) = &mut self.deferred
+            && deferred.operation_id == receipt.operation_id
+            && deferred.attempts_remaining > 0
+        {
+            deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
+            deferred.next_attempt =
+                Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5));
+        }
         receipt
+    }
+
+    async fn publish_committed_product(
+        &mut self,
+        product: Arc<crate::client::runtime::RuntimeSnapshot>,
+    ) -> Option<String> {
+        match self
+            .lifecycle
+            .publish_applied_product(product.clone(), &self.preparation)
+            .await
+        {
+            Ok(()) => {
+                self.pending_product = None;
+                None
+            }
+            Err(error) => {
+                let message = format!("runtime_product_publish_failed: {error}");
+                self.pending_product = Some((product, message.clone()));
+                Some(message)
+            }
+        }
+    }
+
+    /// Reconciles a committed target. This is not another source transaction:
+    /// the original authoritative decision is retained solely for recovery.
+    pub(super) async fn retry_runtime(&mut self, explicit: bool) -> Result<(), CoreError> {
+        use crate::client::convergence::{ConvergenceHealth, RETRY_DELAYS};
+        if self.recovery.is_some() {
+            return self.inspect_mutation_recovery().await;
+        }
+        if self.lifecycle.uncertain {
+            return Err(CoreError::new(
+                CoreErrorKind::OperationConflict,
+                "the lifecycle outcome has no source transaction recovery context; verify its original operation before retrying",
+                false,
+            ));
+        }
+        if explicit && let Some((product, _)) = self.pending_product.clone() {
+            if self
+                .lifecycle
+                .runtime
+                .last_confirmed_runtime_receipt()
+                .is_some_and(|receipt| receipt.revision == product.revision)
+            {
+                self.publish_committed_product(product).await;
+            } else {
+                self.pending_product = None;
+            }
+        }
+        let Some(mut deferred) = self.deferred.take() else {
+            return Ok(());
+        };
+        if !explicit && deferred.attempts_remaining == 0 {
+            deferred.health = ConvergenceHealth::Blocked;
+            deferred.next_attempt = None;
+            self.deferred = Some(deferred);
+            return Ok(());
+        }
+        let app = Arc::new(self.lifecycle.application.load().state.clone());
+        let clash = Arc::new(self.clash.load().state.clone());
+        let profiles = Arc::new(self.profiles.load().state.clone());
+        let change = match deferred.domain {
+            super::mutation::ConfigDomain::Application => DomainChange::Application {
+                previous: Some(app.clone()),
+                candidate: app,
+            },
+            super::mutation::ConfigDomain::Clash => DomainChange::Clash {
+                previous: Some(clash.clone()),
+                candidate: clash,
+            },
+            super::mutation::ConfigDomain::Profiles => DomainChange::Profiles {
+                previous: Some(profiles.clone()),
+                candidate: profiles,
+            },
+        };
+        let request = MutationRequest {
+            operation_id: nyanpasu_core_manager::OperationId::generate(),
+            change,
+            hints: MutationHints::default(),
+            class: CommandClass::Save,
+            decision: deferred.decision.clone(),
+            ack: None,
+        };
+        let inputs = match self.capture_candidate(&request).await {
+            Ok(inputs) => inputs,
+            Err(error) => {
+                deferred.health = ConvergenceHealth::Blocked;
+                deferred.cause.message = error.to_string();
+                deferred.next_attempt = None;
+                self.deferred = Some(deferred);
+                return Ok(());
+            }
+        };
+        if inputs.target_key().ok().as_ref() != Some(&deferred.digest) {
+            // A newer committed source owns convergence now. Never reapply the old bytes.
+            return Ok(());
+        }
+        let baseline = self.observe_baseline().await;
+        if !baseline.settled || baseline.run_intent == CoreRunIntent::StoppedByUser {
+            deferred.health = ConvergenceHealth::WaitingDependency;
+            deferred.next_attempt = if baseline.run_intent == CoreRunIntent::StoppedByUser {
+                None
+            } else {
+                Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5))
+            };
+            self.deferred = Some(deferred);
+            return Ok(());
+        }
+        let mut check = CheckRecord::NotOwed;
+        let outcome = self
+            .try_critical(
+                &request,
+                CommandPolicy::AllowDeferredWhenSafe,
+                &baseline,
+                Some(deferred.digest.clone()),
+                Some(inputs),
+                &mut check,
+            )
+            .await;
+        let waiting = matches!(check, CheckRecord::Unserviceable(_))
+            || matches!(
+                outcome,
+                RuntimePrepareOutcome::Rejected {
+                    cause: ApplyFailure {
+                        cause: RefusalCause::Evidence(_),
+                        ..
+                    },
+                    ..
+                }
+            );
+        if !waiting {
+            deferred.attempts += 1;
+            if !explicit {
+                deferred.attempts_remaining = deferred.attempts_remaining.saturating_sub(1);
+            }
+        }
+        match outcome {
+            RuntimePrepareOutcome::Applied(candidate) => {
+                self.publish_committed_product(candidate.product).await;
+                self.lifecycle.runtime.accept_transition();
+                self.notify_committed(true);
+                return Ok(());
+            }
+            RuntimePrepareOutcome::RecoveryRequired(context) => {
+                deferred.health = ConvergenceHealth::RecoveryRequired;
+                deferred.next_attempt = None;
+                self.enter_recovery(context);
+            }
+            RuntimePrepareOutcome::Deferred { cause, .. } => {
+                deferred.cause = cause;
+                deferred.health = if waiting {
+                    ConvergenceHealth::WaitingDependency
+                } else if deferred.attempts_remaining > 0 {
+                    ConvergenceHealth::RetryScheduled
+                } else {
+                    ConvergenceHealth::Blocked
+                };
+                deferred.next_attempt = if waiting {
+                    Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5))
+                } else {
+                    (deferred.attempts_remaining > 0).then(|| {
+                        tokio::time::Instant::now()
+                            + RETRY_DELAYS
+                                [RETRY_DELAYS.len() - usize::from(deferred.attempts_remaining)]
+                    })
+                };
+            }
+            RuntimePrepareOutcome::Rejected { cause, .. } => {
+                deferred.cause.message = cause.message;
+                deferred.health = if waiting {
+                    ConvergenceHealth::WaitingDependency
+                } else {
+                    ConvergenceHealth::Blocked
+                };
+                deferred.next_attempt = waiting
+                    .then(|| tokio::time::Instant::now() + std::time::Duration::from_secs(5));
+            }
+            RuntimePrepareOutcome::SavedInactive | RuntimePrepareOutcome::Saved => {
+                deferred.health = ConvergenceHealth::WaitingDependency;
+                deferred.next_attempt = None;
+            }
+        }
+        self.deferred = Some(deferred);
+        Ok(())
+    }
+
+    pub(super) async fn inspect_mutation_recovery(&mut self) -> Result<(), CoreError> {
+        let Some(context) = self.recovery.clone() else {
+            return Ok(());
+        };
+        let unresolved = |message: &str| {
+            CoreError::new(CoreErrorKind::OperationConflict, message.to_owned(), false)
+                .with_operation(context.operation_id)
+        };
+        if let Some(operation) = context.runtime_operation {
+            if !self
+                .lifecycle
+                .core
+                .original_operation_terminal(operation)
+                .await
+            {
+                return Err(unresolved(
+                    "the original runtime operation has not been observed terminal",
+                ));
+            }
+        }
+        if let Some(recovery) = &mut self.recovery {
+            recovery.runtime_operation = None;
+        }
+        let target = match context.decision.decision() {
+            StateDecision::Aborted {
+                resources: AbortResourceState::Restored,
+            } => context.baseline.clone(),
+            StateDecision::Committed { .. } => match context.target.clone() {
+                Some(receipt) => KnownRuntimeState::Applied(receipt),
+                None if self.deferred.is_some() => context.baseline.clone(),
+                None => {
+                    return Err(unresolved(
+                        "the committed runtime target has no recovery receipt",
+                    ));
+                }
+            },
+            _ => {
+                return Err(unresolved(
+                    "source decision or local resource recovery is unresolved",
+                ));
+            }
+        };
+        let observed = self.lifecycle.core.refresh_status().await?;
+        let baseline = RestorableBaseline {
+            expected: Some(observed.clone()), settled: true,
+            observed: observed.snapshot.as_ref().and_then(|s| s.state.clone()),
+            state: target.clone(), host: observed.host,
+            run_intent: CoreRunIntent::Running, binding: context.binding.clone(),
+            confirmed_build: self.lifecycle.runtime.confirmed()
+                .filter(|record| matches!(&target, KnownRuntimeState::Applied(receipt) if record.receipt.config_digest == receipt.config_digest && record.receipt.target_core == receipt.target_core))
+                .and_then(|record| record.artifact),
+        };
+        match target {
+            KnownRuntimeState::Applied(ref receipt) => {
+                let facts = ObservedRuntime::from_status(&observed);
+                if verify_recovery_target(receipt, &facts, Some(&receipt.binding))
+                    != RecoveryVerification::Verified
+                {
+                    if let Err(error) = self.restore(&baseline).await {
+                        if let Some(recovery) = &mut self.recovery {
+                            recovery.runtime_operation = error.operation;
+                            recovery.error = error.to_string();
+                        }
+                        return Err(unresolved(&error.to_string()));
+                    }
+                } else {
+                    self.lifecycle
+                        .runtime
+                        .record_confirmed_apply(baseline.confirmed_build.clone(), receipt.clone());
+                }
+            }
+            KnownRuntimeState::Stopped | KnownRuntimeState::NeverApplied => {
+                if !matches!(baseline.observed, Some(CoreStateDetail::Stopped { .. })) {
+                    return Err(unresolved("the stopped baseline has not been verified"));
+                }
+                self.lifecycle.ports.invalidate();
+            }
+        }
+        self.lifecycle.core.accept_verified_recovery();
+        self.lifecycle.uncertain = false;
+        self.lifecycle.runtime.accept_transition();
+        self.recovery = None;
+        if let Some(deferred) = &mut self.deferred {
+            deferred.health = crate::client::convergence::ConvergenceHealth::Blocked;
+            deferred.next_attempt = None;
+        }
+        self.notify_committed(true);
+        Ok(())
     }
 
     // -- Preparing ---------------------------------------------------------
@@ -625,8 +943,18 @@ impl ApplicationWorkflow {
             .await
         {
             Ok(RuntimeSubmission::Applied {
-                product, receipt, ..
-            }) => RuntimePrepareOutcome::Applied(AppliedCandidate { receipt, product }),
+                product,
+                receipt,
+                report,
+            }) => {
+                let replaced = matches!(&report.output, nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(outcome)
+                    if matches!(outcome.outcome, nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Restarted | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Switched));
+                RuntimePrepareOutcome::Applied(AppliedCandidate {
+                    receipt,
+                    product,
+                    replaced,
+                })
+            }
             // The core's own transaction restored its own previous revision, so
             // the submitted document never took effect. This is the one place
             // that reading is admissible: it describes the request that just
@@ -749,8 +1077,9 @@ impl ApplicationWorkflow {
 
     async fn capture_candidate(
         &self,
-        change: &DomainChange,
+        request: &MutationRequest,
     ) -> anyhow::Result<super::inputs::RuntimeInputs> {
+        let change = &request.change;
         let app = match change {
             DomainChange::Application { candidate, .. } => candidate.as_ref().clone(),
             _ => self.lifecycle.application.load().state.clone(),
@@ -763,7 +1092,16 @@ impl ApplicationWorkflow {
             DomainChange::Profiles { candidate, .. } => candidate.clone(),
             _ => Arc::new(self.profiles.load().state.clone()),
         };
-        self.preparation.capture_inputs(app, clash, profiles).await
+        let mut inputs = self
+            .preparation
+            .capture_inputs(app, clash, profiles)
+            .await?;
+        for (path, content) in &request.hints.staged_content {
+            if let Some(captured) = inputs.content.0.get_mut(path) {
+                *captured = Ok(content.clone());
+            }
+        }
+        Ok(inputs)
     }
 
     /// The whole deferral conjunction in one place: a failed Try may still
@@ -839,6 +1177,8 @@ impl ApplicationWorkflow {
         &mut self,
         outcome: RuntimePrepareOutcome,
         request: &MutationRequest,
+        interruption: Option<crate::client::core_lifecycle::apply::RuntimeApplyContext>,
+        degradations: &mut Vec<crate::client::runtime::Degradation>,
     ) -> (MutationConclusion, Option<String>) {
         match outcome {
             RuntimePrepareOutcome::Applied(candidate) => {
@@ -849,14 +1189,60 @@ impl ApplicationWorkflow {
                 // it would announce a document the transaction could still
                 // abort, and a failure here never undoes either the committed
                 // source or the running runtime (v2 §5.6).
-                let detail = self
-                    .lifecycle
-                    .publish_applied_product(candidate.product, &self.preparation)
-                    .await
-                    .err()
-                    .map(|error| format!("runtime_product_publish_failed: {error}"));
+                let mut detail = self.publish_committed_product(candidate.product).await;
                 self.lifecycle.runtime.accept_transition();
-                self.ui.refresh_clash();
+                if let Some(message) = &detail {
+                    degradations.push(crate::client::runtime::Degradation {
+                        phase: crate::client::runtime::DegradationPhase::RuntimeBuild,
+                        code: "runtime_product_publish_failed".into(),
+                        message: message.clone(),
+                        retryable: true,
+                    });
+                }
+                // Only a confirmed move releases the old daemon. Cancel must still be able
+                // to restore it while the source transaction is undecided.
+                if matches!(&request.change, DomainChange::Application { previous: Some(previous), candidate } if previous.enable_service_mode && !candidate.enable_service_mode)
+                    && self.lifecycle.core.core_status().host == ExecutionHost::Local
+                    && !matches!(
+                        self.lifecycle.core.service_status().phase,
+                        crate::core::actor_v2::service_actor::ServicePhase::NotInstalled
+                            | crate::core::actor_v2::service_actor::ServicePhase::DaemonStopped
+                    )
+                    && let Err(error) = self.lifecycle.core.stop_service().await
+                {
+                    degradations.push(crate::client::runtime::Degradation {
+                        phase: crate::client::runtime::DegradationPhase::SystemEffect,
+                        code: "service_stop_failed".into(),
+                        message: error.to_string(),
+                        retryable: true,
+                    });
+                }
+                if let Some(context) = interruption {
+                    if let Some(error) =
+                        crate::client::core_lifecycle::CoreLifecycleWorkflow::finish_interruption(
+                            context,
+                            candidate.replaced,
+                        )
+                        .await
+                    {
+                        degradations.push(crate::client::runtime::Degradation {
+                            phase: crate::client::runtime::DegradationPhase::SystemEffect,
+                            code: if request.hints.mode_requested {
+                                "mode_interruption_failed"
+                            } else {
+                                "profile_interruption_failed"
+                            }
+                            .into(),
+                            message: error.to_string(),
+                            retryable: false,
+                        });
+                        let message = format!("source_interruption_failed: {error}");
+                        detail =
+                            Some(detail.map_or(message.clone(), |previous| {
+                                format!("{previous}; {message}")
+                            }));
+                    }
+                }
                 (MutationConclusion::Confirmed, detail)
             }
             RuntimePrepareOutcome::Deferred {
@@ -867,22 +1253,40 @@ impl ApplicationWorkflow {
                 let message = cause.message.clone();
                 // Manual saves and unavailable dependency checks do not spend
                 // the automatic apply retry budget.
-                let attempts_remaining = match self.deferred.take() {
-                    Some(previous) if previous.digest == digest => previous.attempts_remaining,
-                    _ => DEFERRED_RETRY_BUDGET,
-                };
+                let previous = self
+                    .deferred
+                    .take()
+                    .filter(|previous| previous.digest == digest);
+                let attempts_remaining = previous
+                    .as_ref()
+                    .map_or(DEFERRED_RETRY_BUDGET, |p| p.attempts_remaining);
                 self.deferred = Some(DeferredTarget {
                     operation_id: request.operation_id,
-                    digest,
                     baseline,
+                    digest,
                     cause,
                     attempts_remaining,
+                    attempts: previous.as_ref().map_or(0, |p| p.attempts),
+                    health: if attempts_remaining > 0 {
+                        crate::client::convergence::ConvergenceHealth::RetryScheduled
+                    } else {
+                        crate::client::convergence::ConvergenceHealth::Blocked
+                    },
+                    next_attempt: previous.and_then(|p| p.next_attempt).or_else(|| {
+                        (attempts_remaining > 0).then(|| {
+                            tokio::time::Instant::now() + std::time::Duration::from_secs(1)
+                        })
+                    }),
+                    domain: request.change.domain(),
+                    decision: request.decision.clone(),
                 });
                 (MutationConclusion::Confirmed, Some(message))
             }
-            RuntimePrepareOutcome::SavedInactive | RuntimePrepareOutcome::Saved => {
+            RuntimePrepareOutcome::SavedInactive => {
+                self.deferred = None;
                 (MutationConclusion::Confirmed, None)
             }
+            RuntimePrepareOutcome::Saved => (MutationConclusion::Confirmed, None),
             // A Required rejection aborts the transaction, so a commit on top of
             // one means the store and this workflow disagree about what was
             // decided. Nothing here may assume which is right.

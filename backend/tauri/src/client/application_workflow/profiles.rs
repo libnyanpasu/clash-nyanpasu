@@ -56,7 +56,7 @@ impl ApplicationWorkflow {
                             retryable: false,
                         });
                     }
-                    self.ui.refresh_clash();
+                    self.notify_committed(true);
                 }
             }
         }

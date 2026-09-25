@@ -1,3 +1,4 @@
+use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -29,6 +30,7 @@ struct ApplicationClientInner {
 #[allow(dead_code)]
 impl ApplicationClient {
     pub(crate) async fn new(
+        mutations: MutationCoordinator,
         build_channel: crate::bundle::Channel,
         config_path: Utf8PathBuf,
         mut seed: NyanpasuAppConfig,
@@ -61,12 +63,13 @@ impl ApplicationClient {
                 .context("failed to persist release channel")?;
         }
 
-        Self::from_manager(manager, bridge).await
+        Self::from_manager(mutations, manager, bridge).await
     }
 
     /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
     /// so a caller can register state subscribers before the actor claims it.
     pub(crate) async fn from_manager(
+        mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig>,
         bridge: Arc<dyn VergeLegacyBridge>,
     ) -> anyhow::Result<Self> {
@@ -74,7 +77,11 @@ impl ApplicationClient {
         let actor_ref = Actor::spawn(
             None,
             ApplicationActor,
-            ApplicationActorArgs { manager, bridge },
+            ApplicationActorArgs {
+                manager,
+                bridge,
+                mutations,
+            },
         )
         .await
         .context("failed to spawn application actor")?
@@ -117,6 +124,30 @@ impl ApplicationClient {
             None,
         )
         .await
+    }
+
+    pub(crate) async fn patch_if_version(
+        &self,
+        expected_version: u64,
+        patch: NyanpasuAppConfigPatch,
+    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
+        match self
+            .inner
+            .actor_ref
+            .call(
+                |reply| ApplicationActorMessage::PatchIfVersion {
+                    expected_version,
+                    patch,
+                    reply,
+                },
+                None,
+            )
+            .await?
+        {
+            CallResult::Success(result) => result,
+            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
+            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
+        }
     }
 
     pub(crate) async fn replace_if_version(
@@ -224,6 +255,7 @@ mod tests {
     async fn test_client() -> (ApplicationClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
         let client = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             crate::bundle::Channel::Stable,
             temp_config_path(&dir),
             NyanpasuAppConfig::default(),
@@ -287,6 +319,7 @@ mod tests {
         drop(client);
         // Reload without relying on the original actor's memory.
         let reloaded = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Stable,
             temp_config_path(&dir),
             NyanpasuAppConfig::default(),
@@ -341,6 +374,7 @@ mod tests {
             Some(Channel::Stable)
         );
         let nightly = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Nightly,
             temp_config_path(&dir),
             NyanpasuAppConfig::default(),
@@ -365,6 +399,7 @@ mod tests {
             .unwrap();
         drop(manager);
         let beta = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Beta,
             temp_config_path(&dir),
             NyanpasuAppConfig::default(),
@@ -378,6 +413,7 @@ mod tests {
         beta.patch(patch).await.unwrap();
         drop(beta);
         let reloaded = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Beta,
             temp_config_path(&dir),
             NyanpasuAppConfig::default(),

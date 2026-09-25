@@ -30,6 +30,7 @@ impl EffectRevision {
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectHealth {
+    Pending,
     Healthy,
     Degraded {
         /// Stable snake_case code, not a free-form phrase.
@@ -49,12 +50,7 @@ pub enum EffectHealth {
 pub struct EffectStatus {
     pub kind: EffectKind,
     pub desired_revision: EffectRevision,
-    /// The revision the effect owner has installed.
-    ///
-    /// For [`EffectKind::Tray`] this is the attempt sequence instead: a
-    /// refresh carries no value, so nothing about it is "installed" and the
-    /// plan revision cannot order two of them. The executor numbers the
-    /// attempts in the order they run and reports the number here.
+    /// Last successfully installed desired revision. Failed attempts never advance it.
     pub applied_revision: EffectRevision,
     pub health: EffectHealth,
 }

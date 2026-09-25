@@ -519,72 +519,122 @@ fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
         .map_err(|path| anyhow::anyhow!("runtime path is not UTF-8: {}", path.display()))
 }
 
-/// Public mutation wire (PR-4S S08 / plan §12): state is committed first; post-
-/// commit side-effect failures degrade instead of erroring.
-///
-/// Final wire is only `applied` / `committed_degraded` — no `_v1` alias.
+/// A source commit and its critical runtime result. Peripheral owners settle separately.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct CommitReceipt {
+    pub operation_id: Option<String>,
+    pub domain: String,
+    pub source_version: u64,
+    pub runtime: RuntimeCommitStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeCommitStatus {
+    Applied,
+    Deferred,
+    SavedInactive,
+    Unchanged,
+    Pending,
+    RecoveryRequired,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum MutationOutcome<T> {
-    Applied {
+    Committed {
         value: T,
+        commits: Vec<CommitReceipt>,
+        notifications_pending: bool,
     },
     CommittedDegraded {
         value: T,
+        commits: Vec<CommitReceipt>,
+        notifications_pending: bool,
         degradations: Vec<Degradation>,
     },
 }
 
 impl<T> MutationOutcome<T> {
-    /// Applied iff the degradation list is empty.
     pub fn from_parts(value: T, degradations: Vec<Degradation>) -> Self {
         if degradations.is_empty() {
-            Self::Applied { value }
+            Self::Committed {
+                value,
+                commits: Vec::new(),
+                notifications_pending: true,
+            }
         } else {
             Self::CommittedDegraded {
                 value,
+                commits: Vec::new(),
+                notifications_pending: true,
                 degradations,
             }
         }
     }
 
+    pub fn with_commit(mut self, receipt: CommitReceipt) -> Self {
+        match &mut self {
+            Self::Committed { commits, .. } | Self::CommittedDegraded { commits, .. } => {
+                commits.push(receipt)
+            }
+        }
+        self
+    }
+
+    pub fn append_commit_result(self, result: MutationOutcome<()>) -> Self {
+        let commits = match &result {
+            MutationOutcome::Committed { commits, .. }
+            | MutationOutcome::CommittedDegraded { commits, .. } => commits.clone(),
+        };
+        let mut outcome = self.extend_degradations(result.into_parts().1);
+        for commit in commits {
+            outcome = outcome.with_commit(commit);
+        }
+        outcome
+    }
+
     pub fn value(&self) -> &T {
         match self {
-            Self::Applied { value } | Self::CommittedDegraded { value, .. } => value,
+            Self::Committed { value, .. } | Self::CommittedDegraded { value, .. } => value,
         }
     }
 
-    #[allow(dead_code)]
     pub fn into_value(self) -> T {
-        match self {
-            Self::Applied { value } | Self::CommittedDegraded { value, .. } => value,
-        }
+        self.into_parts().0
     }
 
-    #[allow(dead_code)]
     pub fn degradations(&self) -> &[Degradation] {
         match self {
-            Self::Applied { .. } => &[],
+            Self::Committed { .. } => &[],
             Self::CommittedDegraded { degradations, .. } => degradations,
         }
     }
 
     pub fn into_parts(self) -> (T, Vec<Degradation>) {
         match self {
-            Self::Applied { value } => (value, Vec::new()),
+            Self::Committed { value, .. } => (value, Vec::new()),
             Self::CommittedDegraded {
                 value,
                 degradations,
+                ..
             } => (value, degradations),
         }
     }
 
-    /// Append degradations from a later committed step; Applied only when both
-    /// sides contributed none.
     pub fn extend_degradations(self, extra: Vec<Degradation>) -> Self {
+        let commits = match &self {
+            Self::Committed { commits, .. } | Self::CommittedDegraded { commits, .. } => {
+                commits.clone()
+            }
+        };
         let (value, mut degradations) = self.into_parts();
         degradations.extend(extra);
-        Self::from_parts(value, degradations)
+        let mut outcome = Self::from_parts(value, degradations);
+        for receipt in commits {
+            outcome = outcome.with_commit(receipt);
+        }
+        outcome
     }
 }
 
@@ -639,7 +689,7 @@ pub(crate) mod tests {
     fn mutation_outcome_applied_iff_degradations_empty() {
         let applied = MutationOutcome::from_parts("uid", Vec::new());
         assert!(
-            matches!(applied, MutationOutcome::Applied { .. }),
+            matches!(applied, MutationOutcome::Committed { .. }),
             "empty degradations must be Applied"
         );
         assert_eq!(applied.value(), &"uid");
@@ -685,7 +735,7 @@ pub(crate) mod tests {
     fn mutation_outcome_wire_uses_applied_and_committed_degraded() {
         let applied = MutationOutcome::from_parts((), Vec::new());
         let applied_json = serde_json::to_value(&applied).unwrap();
-        assert_eq!(applied_json["status"], "applied");
+        assert_eq!(applied_json["status"], "committed");
         assert!(applied_json.get("value").is_some());
 
         let degraded = MutationOutcome::from_parts(

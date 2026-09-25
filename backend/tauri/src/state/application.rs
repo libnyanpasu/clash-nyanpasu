@@ -1,3 +1,11 @@
+use crate::{
+    client::application_workflow::{
+        impact::{MutationHints, RequestedRuntimeFields},
+        policy::CommandClass,
+    },
+    state::mutation::MutationCoordinator,
+};
+use nyanpasu_core_manager::OperationId;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -17,11 +25,23 @@ use super::{
 pub struct ApplicationSnapshot {
     pub state: NyanpasuAppConfig,
     pub version: u64,
+    pub(crate) receipt: Option<crate::client::runtime::CommitReceipt>,
+    pub(crate) degradations: Vec<crate::client::runtime::Degradation>,
 }
 
 impl ApplicationSnapshot {
+    pub(crate) fn outcome(self) -> crate::client::runtime::MutationOutcome<()> {
+        let outcome = crate::client::runtime::MutationOutcome::from_parts((), self.degradations);
+        match self.receipt {
+            Some(receipt) => outcome.with_commit(receipt),
+            None => outcome,
+        }
+    }
+
     pub(crate) fn from_versioned(versioned: &VersionedState<NyanpasuAppConfig>) -> Self {
         Self {
+            receipt: None,
+            degradations: Vec::new(),
             state: versioned.state.clone(),
             version: *versioned.version.as_ref(),
         }
@@ -29,11 +49,13 @@ impl ApplicationSnapshot {
 }
 
 pub struct ApplicationActorArgs {
+    pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<NyanpasuAppConfig>,
     pub bridge: Arc<dyn VergeLegacyBridge>,
 }
 
 pub struct ApplicationActorState {
+    mutations: MutationCoordinator,
     manager: PersistentStateManager<NyanpasuAppConfig>,
     bridge: Arc<dyn VergeLegacyBridge>,
 }
@@ -41,6 +63,11 @@ pub struct ApplicationActorState {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum ApplicationActorMessage {
+    PatchIfVersion {
+        expected_version: u64,
+        patch: NyanpasuAppConfigPatch,
+        reply: RpcReplyPort<anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>>>,
+    },
     Patch {
         patch: NyanpasuAppConfigPatch,
         reply: RpcReplyPort<anyhow::Result<ApplicationSnapshot>>,
@@ -63,6 +90,25 @@ pub enum ApplicationActorMessage {
 pub struct ApplicationActor;
 
 impl ApplicationActor {
+    async fn patch(
+        state: &mut ApplicationActorState,
+        patch: NyanpasuAppConfigPatch,
+    ) -> anyhow::Result<ApplicationSnapshot> {
+        let mut next = state.manager.snapshot_handle().load().state.clone();
+        let hints = MutationHints {
+            requested: RequestedRuntimeFields::of_application(&patch),
+            requested_owners: crate::client::effects::plan::requested_owners(&patch),
+            ..Default::default()
+        };
+        let class = if patch.core.is_some() || patch.enable_service_mode.is_some() {
+            CommandClass::ExplicitSwitch
+        } else {
+            CommandClass::Save
+        };
+        next.apply(patch);
+        Self::commit(state, next, hints, class).await
+    }
+
     fn snapshot(state: &ApplicationActorState) -> ApplicationSnapshot {
         ApplicationSnapshot::from_versioned(&state.manager.snapshot_handle().load())
     }
@@ -97,15 +143,33 @@ impl ApplicationActor {
     async fn commit(
         state: &mut ApplicationActorState,
         next: NyanpasuAppConfig,
+        hints: MutationHints,
+        class: CommandClass,
     ) -> anyhow::Result<ApplicationSnapshot> {
         let (next, mirror) = Self::prepare_replace(state, next)?.into_parts();
+        let version = state.manager.snapshot_handle().load().version;
+        let operation = OperationId::generate();
+        let participant = state.mutations.participant(operation, hints, class)?;
         state
             .manager
-            .upsert(next)
+            .replace_if_version_with_participant(
+                version,
+                next,
+                participant,
+                || async { Ok(()) },
+                || async { Ok(()) },
+            )
             .await
             .context("failed to persist application config")?;
         mirror.apply();
-        Ok(Self::snapshot(state))
+        let mut snapshot = Self::snapshot(state);
+        let (receipt, degradations) = state
+            .mutations
+            .finish(operation, "application", snapshot.version)
+            .await;
+        snapshot.receipt = Some(receipt);
+        snapshot.degradations = degradations;
+        Ok(snapshot)
     }
 
     async fn replace_prepared_if_version(
@@ -115,15 +179,37 @@ impl ApplicationActor {
     ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
         let (mut next, mirror) = prepared.into_parts();
         Self::validate_channel(state, &mut next)?;
+        let operation = OperationId::generate();
+        let participant = state.mutations.participant(
+            operation,
+            MutationHints {
+                requested: RequestedRuntimeFields::whole_document(),
+                ..Default::default()
+            },
+            CommandClass::Save,
+        )?;
         match state
             .manager
-            .replace_if_version(Version::new(expected_version), next)
+            .replace_if_version_with_participant(
+                Version::new(expected_version),
+                next,
+                participant,
+                || async { Ok(()) },
+                || async { Ok(()) },
+            )
             .await
             .context("failed to conditionally persist application config")?
         {
             ReplaceIfVersionResult::Replaced => {
                 mirror.apply();
-                Ok(ConditionalReplaceResult::Replaced(Self::snapshot(state)))
+                let mut snapshot = Self::snapshot(state);
+                let (receipt, degradations) = state
+                    .mutations
+                    .finish(operation, "application", snapshot.version)
+                    .await;
+                snapshot.receipt = Some(receipt);
+                snapshot.degradations = degradations;
+                Ok(ConditionalReplaceResult::Replaced(snapshot))
             }
             ReplaceIfVersionResult::Conflict { actual_version } => {
                 Ok(ConditionalReplaceResult::Conflict {
@@ -145,6 +231,7 @@ impl Actor for ApplicationActor {
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(ApplicationActorState {
+            mutations: args.mutations,
             manager: args.manager,
             bridge: args.bridge,
         })
@@ -158,16 +245,36 @@ impl Actor for ApplicationActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             ApplicationActorMessage::Patch { patch, reply } => {
-                let result = async {
-                    let mut next = state.manager.snapshot_handle().load().state.clone();
-                    next.apply(patch);
-                    Self::commit(state, next).await
-                }
-                .await;
+                let _ = reply.send(Self::patch(state, patch).await);
+            }
+            ApplicationActorMessage::PatchIfVersion {
+                expected_version,
+                patch,
+                reply,
+            } => {
+                let actual_version = Self::snapshot(state).version;
+                let result = if actual_version != expected_version {
+                    Ok(ConditionalReplaceResult::Conflict { actual_version })
+                } else {
+                    Self::patch(state, patch)
+                        .await
+                        .map(ConditionalReplaceResult::Replaced)
+                };
                 let _ = reply.send(result);
             }
             ApplicationActorMessage::Replace { state: next, reply } => {
-                let _ = reply.send(Self::commit(state, next).await);
+                let _ = reply.send(
+                    Self::commit(
+                        state,
+                        next,
+                        MutationHints {
+                            requested: RequestedRuntimeFields::whole_document(),
+                            ..Default::default()
+                        },
+                        CommandClass::Save,
+                    )
+                    .await,
+                );
             }
             ApplicationActorMessage::PrepareReplace { state: next, reply } => {
                 let _ = reply.send(Self::prepare_replace(state, next));
@@ -231,7 +338,11 @@ mod tests {
         let (actor_ref, _handle) = Actor::spawn(
             None,
             ApplicationActor,
-            ApplicationActorArgs { manager, bridge },
+            ApplicationActorArgs {
+                manager,
+                bridge,
+                mutations: MutationCoordinator::isolated(),
+            },
         )
         .await
         .expect("application actor should spawn");

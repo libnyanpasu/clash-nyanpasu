@@ -988,9 +988,9 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     let proxy = |effects: &EffectsClient| {
         effects
             .snapshot()
-            .progress
+            .effects
             .into_iter()
-            .find(|progress| progress.kind == EffectKind::SystemProxy)
+            .find(|progress| progress.status.kind == EffectKind::SystemProxy)
             .expect("the plan carries the system proxy")
     };
     let held = proxy(&effects);
@@ -1004,8 +1004,8 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     let mut status = effects.subscribe();
     status
         .wait_for(|snapshot| {
-            snapshot.progress.iter().any(|progress| {
-                progress.kind == EffectKind::SystemProxy
+            snapshot.effects.iter().any(|progress| {
+                progress.status.kind == EffectKind::SystemProxy
                     && progress.health == ConvergenceHealth::Healthy
             })
         })

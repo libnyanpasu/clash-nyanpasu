@@ -104,23 +104,20 @@ impl NyanpasuClient {
             active: execution.active.map(|id| id.to_string()),
             queued: execution.queued.iter().map(ToString::to_string).collect(),
             effects: effects
-                .statuses
+                .effects
                 .iter()
-                .map(|status| {
-                    let progress = effects.progress.iter().find(|p| p.kind == status.kind);
-                    EffectConvergence {
-                        kind: status.kind,
-                        health: progress.map_or(ConvergenceHealth::Pending, |p| p.health),
-                        desired_revision: status.desired_revision.get(),
-                        applied_revision: status.applied_revision.get(),
-                        attempts: progress.map_or(0, |p| p.attempts),
-                        automatic_remaining: progress.map_or(0, |p| p.automatic_remaining),
-                        message: match &status.health {
-                            EffectHealth::Degraded { message, .. } => Some(message.clone()),
-                            EffectHealth::Unsupported { code } => Some((*code).into()),
-                            _ => None,
-                        },
-                    }
+                .map(|progress| EffectConvergence {
+                    kind: progress.status.kind,
+                    health: progress.health,
+                    desired_revision: progress.status.desired_revision.get(),
+                    applied_revision: progress.status.applied_revision.get(),
+                    attempts: progress.attempts,
+                    automatic_remaining: progress.automatic_remaining,
+                    message: match &progress.status.health {
+                        EffectHealth::Degraded { message, .. } => Some(message.clone()),
+                        EffectHealth::Unsupported { code } => Some((*code).into()),
+                        _ => None,
+                    },
                 })
                 .collect(),
             recent_operations: journal

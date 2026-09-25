@@ -38,7 +38,7 @@ use crate::{
         facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus},
     },
-    state::profiles::{CommitReport, ports::RebuildNotifier},
+    state::profiles::ports::RebuildNotifier,
 };
 use mutation::{MutationBudgets, MutationCommand, MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
@@ -84,16 +84,11 @@ pub struct CoreLifecycleOperationResult {
     pub backend_operation_id: Option<OperationId>,
 }
 
-/// Apply-side work only. Source config is committed by the facade through the
-/// owning domain actor before any of these is submitted, so the workflow never
+/// Work serialized by the execution domain. A source mutation runs as a
+/// participant of its owning domain's transaction, so the workflow never
 /// becomes a second commit point for a configuration domain.
 pub(super) enum Command {
     Core(CoreCommand),
-    ApplyClashOverrides {
-        committed: nyanpasu_config::clash::config::ClashConfig,
-        mode_changed: bool,
-    },
-    ApplyProfileActivation(CommitReport),
     /// One source-config mutation, running as a Required participant of the
     /// transaction that produced its candidate.
     Mutation(Box<MutationCommand>),
@@ -459,7 +454,7 @@ impl ApplicationWorkflowState {
                     }
                     _ => None,
                 };
-                let result = match AssertUnwindSafe(workflow.execute(id, command))
+                let result = match AssertUnwindSafe(workflow.execute(command))
                     .catch_unwind()
                     .await
                 {
@@ -1082,35 +1077,6 @@ impl ApplicationWorkflowClient {
         ShutdownReport
     );
 
-    /// Applies a clash-config commit the facade already made. `mode_changed`
-    /// comes from the submitted patch, not from a re-read of the domain.
-    pub async fn apply_clash_overrides(
-        &self,
-        committed: nyanpasu_config::clash::config::ClashConfig,
-        mode_changed: bool,
-    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self
-            .call(Command::ApplyClashOverrides {
-                committed,
-                mode_changed,
-            })
-            .await?
-        {
-            Output::Mutation(result) => Ok(result),
-            _ => unreachable!(),
-        }
-    }
-
-    /// Applies a profile selection the facade already committed.
-    pub async fn apply_profile_activation(
-        &self,
-        report: CommitReport,
-    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self.call(Command::ApplyProfileActivation(report)).await? {
-            Output::Mutation(result) => Ok(result),
-            _ => unreachable!(),
-        }
-    }
     pub async fn change_host(&self, host: ExecutionHost) -> Result<HandoffReport, CoreError> {
         match self
             .call(Command::Core(CoreCommand::ChangeHost(host)))

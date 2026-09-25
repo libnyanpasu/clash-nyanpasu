@@ -1045,42 +1045,6 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     });
 }
 
-#[tokio::test]
-async fn queued_config_apply_waits_for_active_lifecycle_work() {
-    let dir = tempfile::tempdir().unwrap();
-    let (client, _, builder, _, clash) = dirty_graph(&dir).await;
-    let mut config = clash.snapshot().state;
-    config.break_connection.on_mode_change = false;
-    clash.replace(config).await.unwrap();
-    let active = {
-        let client = client.clone();
-        tokio::spawn(async move { client.reconcile().await })
-    };
-    builder.entered.notified().await;
-    // The facade's own commit does not wait for the workflow, so the candidate
-    // that queues here is already the committed one.
-    let committed = clash
-        .patch_overrides(override_patch(serde_json::json!({"mode":"global"})))
-        .await
-        .unwrap();
-    let mut apply = Box::pin(client.apply_clash_overrides(committed.state, true));
-    assert!(apply.as_mut().now_or_never().is_none());
-    barrier(&client).await;
-    assert_eq!(client.status().queued.len(), 1);
-    assert_eq!(
-        builder.calls.load(Ordering::SeqCst),
-        1,
-        "a queued apply must not build ahead of lifecycle admission"
-    );
-    builder.release.notify_one();
-    active.await.unwrap().unwrap();
-    assert!(apply.await.unwrap().degradations().is_empty());
-    let config = &client.runtime().promoted.unwrap().config;
-    assert_eq!(config["mode"].as_str(), Some("global"));
-    assert_eq!(builder.calls.load(Ordering::SeqCst), 2);
-    client.shutdown().await.unwrap();
-}
-
 #[test]
 fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
     let dir = tempfile::tempdir().unwrap();

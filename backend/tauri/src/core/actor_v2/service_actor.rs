@@ -853,6 +853,17 @@ impl ServiceClient {
         })
     }
 
+    /// The same seam for a workflow test that needs an elevated command to
+    /// outlive a short bound.
+    #[cfg(test)]
+    pub(crate) async fn spawn_bounded(
+        adapter: Arc<dyn ServiceHostAdapter>,
+        restart_budget: u8,
+        command_timeout: std::time::Duration,
+    ) -> Result<Self, ractor::SpawnErr> {
+        Self::spawn_with_bounds(adapter, restart_budget, command_timeout).await
+    }
+
     pub fn status(&self) -> ServiceHostStatus {
         self.status_rx.borrow().clone()
     }
@@ -1309,6 +1320,47 @@ mod tests {
         assert_eq!(endpoint.host(), ExecutionHost::Service);
         assert_eq!(daemon.updates.load(Ordering::SeqCst), 1);
         assert_eq!(client.status().phase, ServicePhase::Ready);
+    }
+
+    /// `CommandSettled` is the completion evidence (T10 §1.11): false while a
+    /// helper runs, true for a command that answered and left none, and the
+    /// query that reaps a finished helper probes once so the published phase
+    /// follows what the helper did.
+    #[tokio::test]
+    async fn command_settled_waits_out_a_running_helper_and_reaps_it_with_one_probe() {
+        let daemon = FakeDaemon::new(false, false, "2.0.0");
+        daemon.fail_start.store(true, Ordering::SeqCst);
+        let client = ServiceClient::spawn_with_bounds(
+            daemon.clone(),
+            2,
+            std::time::Duration::from_millis(50),
+        )
+        .await
+        .unwrap();
+
+        // A command that failed on its own is finished the moment it answers.
+        assert!(client.start_daemon().await.is_err());
+        assert!(client.command_settled().await.unwrap());
+
+        daemon.park_install.store(true, Ordering::SeqCst);
+        assert!(client.install().await.is_err());
+        daemon.parked.notified().await;
+        let before = probes(&daemon);
+        assert!(!client.command_settled().await.unwrap());
+        assert_eq!(probes(&daemon), before, "a running helper is not probed");
+
+        daemon.release.notify_one();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while !client.command_settled().await.unwrap() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the released helper must end");
+        assert_eq!(probes(&daemon), before + 1);
+        assert_eq!(client.status().phase, ServicePhase::Ready);
+        assert!(client.command_settled().await.unwrap());
+        assert_eq!(probes(&daemon), before + 1, "nothing left to reap");
     }
 
     #[tokio::test]

@@ -927,6 +927,10 @@ mod tests {
         /// the registry answers nothing, which is the shape of an outcome the
         /// app cannot observe.
         result_lost: std::sync::atomic::AtomicBool,
+        /// The same for one chosen submission only, so a later operation on
+        /// this endpoint — a handoff's stop — still answers.
+        lose_next: std::sync::atomic::AtomicBool,
+        lost: Mutex<Vec<OperationId>>,
     }
 
     impl RecordingEndpoint {
@@ -957,11 +961,21 @@ mod tests {
                     failed_apply: None,
                 }),
                 result_lost: std::sync::atomic::AtomicBool::new(false),
+                lose_next: std::sync::atomic::AtomicBool::new(false),
+                lost: Mutex::new(Vec::new()),
             })
         }
 
         fn lose_the_result(&self) {
             self.result_lost.store(true, Ordering::SeqCst);
+        }
+
+        fn lose_the_next_result(&self) {
+            self.lose_next.store(true, Ordering::SeqCst);
+        }
+
+        fn deliver(&self, id: OperationId) {
+            self.lost.lock().unwrap().retain(|lost| *lost != id);
         }
 
         /// Overrides the outcome the next `Reconcile` submissions answer with,
@@ -999,6 +1013,12 @@ mod tests {
             if matches!(submission.envelope.command, CoreCommand::Stop) {
                 self.stops.fetch_add(1, Ordering::SeqCst);
             }
+            if self.lose_next.swap(false, Ordering::SeqCst) {
+                self.lost
+                    .lock()
+                    .unwrap()
+                    .push(submission.envelope.operation_id);
+            }
             let info = self.operation(&submission);
             self.submissions.lock().unwrap().push(submission);
             Ok(info)
@@ -1009,7 +1029,7 @@ mod tests {
             id: OperationId,
             _timeout: Duration,
         ) -> Option<OperationInfo> {
-            if self.result_lost.load(Ordering::SeqCst) {
+            if self.result_lost.load(Ordering::SeqCst) || self.lost.lock().unwrap().contains(&id) {
                 return None;
             }
             self.submissions
@@ -1346,5 +1366,145 @@ mod tests {
             .position(|call| *call == "change_host")
             .unwrap();
         assert!(ensure < handoff);
+    }
+
+    fn fake_spec() -> CoreSpec {
+        CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        }
+    }
+
+    /// T10 §1.11 (N2): an unresolved action is never overwritten. Every write
+    /// is refused before anything is sent, so the slot keeps naming the
+    /// action recovery has to resolve first.
+    #[tokio::test]
+    async fn an_unresolved_action_refuses_every_further_write() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        let (mut facade, _) = facade(local.clone()).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        local.lose_the_next_result();
+        let lost = facade
+            .reconcile(&intent(&document), fake_spec(), &facade.core_status())
+            .await
+            .unwrap();
+        assert!(matches!(lost, ReconcileResult::Unknown(_)), "{lost:?}");
+        let Some(PendingAction::Submission { operation, .. }) = facade.pending_action() else {
+            panic!("the lost submission is recorded");
+        };
+        let operation = *operation;
+
+        let refused = facade
+            .reconcile(&intent(&document), fake_spec(), &facade.core_status())
+            .await
+            .unwrap();
+        let ReconcileResult::NotSubmitted(error) = refused else {
+            panic!("a second submission must not be sent, got {refused:?}");
+        };
+        assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+        assert_eq!(
+            facade.stop().await.unwrap_err().kind,
+            Some(CoreErrorKind::OperationConflict)
+        );
+        assert!(matches!(
+            facade.change_execution_host(ExecutionHost::Service).await,
+            Err(HostChangeFailure {
+                handoff_started: false,
+                ..
+            })
+        ));
+        assert_eq!(local.submissions.lock().unwrap().len(), 1);
+        assert!(matches!(
+            facade.pending_action(),
+            Some(PendingAction::Submission { operation: recorded, .. }) if *recorded == operation
+        ));
+    }
+
+    /// L15 (review 3 #7): a submission is settled only by its own operation's
+    /// terminal answer from the endpoint that accepted it. The router moving
+    /// to a new generation proves nothing about it.
+    #[tokio::test]
+    async fn a_new_router_generation_is_not_evidence_that_a_submission_finished() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        let (mut facade, _) = facade(local.clone()).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        local.lose_the_next_result();
+        let lost = facade
+            .reconcile(&intent(&document), fake_spec(), &facade.core_status())
+            .await
+            .unwrap();
+        assert!(matches!(lost, ReconcileResult::Unknown(_)), "{lost:?}");
+        let Some(PendingAction::Submission { operation, .. }) = facade.pending_action() else {
+            panic!("the lost submission is recorded");
+        };
+        let operation = *operation;
+
+        let generation = facade.core_status().generation;
+        facade
+            .core
+            .change_host(RecordingEndpoint::new(ExecutionHost::Service, None))
+            .await
+            .unwrap();
+        assert!(facade.core_status().generation > generation);
+        assert!(matches!(
+            facade.action_evidence().await,
+            Some(ActionEvidence::Pending(_))
+        ));
+        assert!(facade.consume_settled_action().await.is_err());
+
+        local.deliver(operation);
+        assert_eq!(
+            facade.action_evidence().await,
+            Some(ActionEvidence::Settled)
+        );
+        facade.consume_settled_action().await.unwrap();
+        assert!(facade.pending_action().is_none());
+    }
+
+    /// A handoff the router answered, refusal included, is over; one whose
+    /// reply never arrived stays pending until the router is seen settled.
+    #[tokio::test]
+    async fn a_handoff_stays_pending_only_without_a_reply() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        let (mut facade, _) = facade(local.clone()).await;
+        wait_for_snapshot(&facade.core).await;
+        local.lose_the_result();
+        let refused = facade
+            .change_execution_host(ExecutionHost::Service)
+            .await
+            .err()
+            .map(|failure| failure.error.kind);
+        assert_eq!(refused, Some(Some(CoreErrorKind::StopUnconfirmed)));
+        assert!(facade.pending_action().is_none());
+
+        facade.pending = Some(PendingAction::Handoff {
+            target: ExecutionHost::Service,
+            generation_before: 0,
+        });
+        assert_eq!(
+            facade.action_evidence().await,
+            Some(ActionEvidence::Settled)
+        );
+        facade.pending = None;
+
+        facade.core.actor.stop_and_wait(None, None).await.unwrap();
+        let lost = facade
+            .change_execution_host(ExecutionHost::Local)
+            .await
+            .err()
+            .map(|failure| (failure.error.kind, failure.handoff_started));
+        assert_eq!(lost, Some((Some(CoreErrorKind::Internal), true)));
+        assert!(matches!(
+            facade.pending_action(),
+            Some(PendingAction::Handoff { .. })
+        ));
+        assert!(matches!(
+            facade.action_evidence().await,
+            Some(ActionEvidence::Pending(_))
+        ));
     }
 }

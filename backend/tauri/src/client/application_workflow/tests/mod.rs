@@ -451,6 +451,171 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ParkedEndpoint {
     }
 }
 
+/// How [`ScriptedWaitEndpoint`] answers the wait for one operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WaitScript {
+    /// The real terminal result.
+    Deliver,
+    /// The registry answers nothing: an admitted operation whose result is
+    /// lost.
+    Missing,
+    /// The operation is admitted and still running.
+    Running,
+    /// The waiter itself panics while the operation runs on.
+    Panic,
+}
+
+/// A control endpoint whose operation waits are scripted per operation.
+///
+/// Each submission takes the next queued script (`Deliver` once the queue is
+/// empty) and keeps it until a test rescripts that operation, so the one
+/// operation a test cares about can be lost, left running or made to panic
+/// its waiter, and later delivered, while everything else is real.
+struct ScriptedWaitEndpoint {
+    delegate: Arc<TestControlEndpoint>,
+    queued: std::sync::Mutex<std::collections::VecDeque<WaitScript>>,
+    scripts: std::sync::Mutex<Vec<(OperationId, WaitScript)>>,
+}
+
+impl ScriptedWaitEndpoint {
+    fn new(delegate: Arc<TestControlEndpoint>) -> Arc<Self> {
+        Arc::new(Self {
+            delegate,
+            queued: std::sync::Mutex::new(std::collections::VecDeque::new()),
+            scripts: std::sync::Mutex::new(Vec::new()),
+        })
+    }
+
+    /// The script the next submission takes.
+    fn queue(&self, script: WaitScript) {
+        self.queued.lock().unwrap().push_back(script);
+    }
+
+    fn rescript(&self, operation: OperationId, script: WaitScript) {
+        let mut scripts = self.scripts.lock().unwrap();
+        let entry = scripts
+            .iter_mut()
+            .find(|(id, _)| *id == operation)
+            .expect("only a submitted operation is rescripted");
+        entry.1 = script;
+    }
+
+    fn submitted(&self) -> usize {
+        self.scripts.lock().unwrap().len()
+    }
+
+    /// Every submitted operation, in order.
+    fn operations(&self) -> Vec<OperationId> {
+        self.scripts
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(operation, _)| *operation)
+            .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
+    async fn effective_config(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
+        self.delegate.effective_config().await
+    }
+    async fn api_connection(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>, CoreError> {
+        self.delegate.api_connection().await
+    }
+    async fn api_changes(
+        &self,
+    ) -> Result<Option<crate::core::actor_v2::endpoint::ApiChanges>, CoreError> {
+        self.delegate.api_changes().await
+    }
+    fn host(&self) -> ExecutionHost {
+        self.delegate.host()
+    }
+    async fn check_config(
+        &self,
+        submission: crate::core::actor_v2::endpoint::CheckSubmission,
+    ) -> crate::core::actor_v2::endpoint::CheckSupport {
+        self.delegate.check_config(submission).await
+    }
+    async fn submit(
+        &self,
+        submission: crate::core::actor_v2::endpoint::CoreSubmission,
+    ) -> Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError> {
+        let operation = submission.envelope.operation_id;
+        let script = self
+            .queued
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(WaitScript::Deliver);
+        self.scripts.lock().unwrap().push((operation, script));
+        self.delegate.submit(submission).await
+    }
+    async fn wait_operation(
+        &self,
+        id: OperationId,
+        timeout: Duration,
+    ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
+        let script = self
+            .scripts
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(operation, _)| *operation == id)
+            .map_or(WaitScript::Deliver, |(_, script)| *script);
+        match script {
+            WaitScript::Deliver => self.delegate.wait_operation(id, timeout).await,
+            WaitScript::Missing => None,
+            WaitScript::Running => Some(nyanpasu_ipc::api::core::v2::OperationInfo {
+                id: id.to_string(),
+                phase: nyanpasu_ipc::api::core::v2::OperationPhase::Running,
+                output: None,
+                error: None,
+            }),
+            WaitScript::Panic => panic!("scripted panic while waiting for operation {id}"),
+        }
+    }
+    async fn status(
+        &self,
+    ) -> Result<crate::core::actor_v2::endpoint::CoreStatusSnapshot, CoreError> {
+        self.delegate.status().await
+    }
+}
+
+/// Commit notifications that count what they were told, and can panic the
+/// next one: a notification is the step right after a Confirm, which is where
+/// an interruption leaves a committed mutation unsettled.
+#[derive(Default)]
+struct RecordingNotifications {
+    committed: AtomicUsize,
+    panic_next: AtomicBool,
+}
+
+impl RecordingNotifications {
+    fn committed(&self) -> usize {
+        self.committed.load(Ordering::SeqCst)
+    }
+}
+
+impl crate::client::effects::ports::CommitNotifications for RecordingNotifications {
+    fn committed(
+        &self,
+        _: crate::client::effects::plan::ApplicationEffectInputs,
+        _: bool,
+        _: Vec<crate::client::effects::plan::EffectKind>,
+    ) {
+        assert!(
+            !self.panic_next.swap(false, Ordering::SeqCst),
+            "scripted notification panic"
+        );
+        self.committed.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 #[test]
 fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     use super::super::tests::{HostTransitionEndpoint, HostTransitionServiceAdapter};
@@ -603,6 +768,20 @@ impl Fixture {
             progress,
         )
     }
+}
+
+/// Arms the one-shot panic at the next Confirm. The workflow is idle, so the
+/// fault lands on the next attempt.
+async fn panic_at_confirm(client: &ApplicationWorkflowClient) {
+    assert!(matches!(
+        client
+            .0
+            .actor
+            .call(Message::PanicAtConfirm, Some(Duration::from_secs(5)))
+            .await
+            .unwrap(),
+        CallResult::Success(true)
+    ));
 }
 
 /// How many attempts still own a control context inside the actor.

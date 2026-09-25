@@ -1233,6 +1233,11 @@ impl ApplicationWorkflow {
         interruption: Option<crate::client::core_lifecycle::apply::RuntimeApplyContext>,
         degradations: &mut Vec<crate::client::runtime::Degradation>,
     ) -> (MutationConclusion, Option<String>) {
+        #[cfg(test)]
+        assert!(
+            !std::mem::take(&mut self.panic_at_confirm),
+            "scripted panic at Confirm"
+        );
         match outcome {
             RuntimePrepareOutcome::Applied(candidate) => {
                 let applied = AppliedVerdict::new(&candidate, leaves_service_mode(&request.change));

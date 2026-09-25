@@ -49,7 +49,7 @@ use super::{
         participant::ApplicationMutationParticipant,
         policy::{CommandClass, CommandPolicy},
     },
-    live_mutation_contexts,
+    RecordingNotifications, ScriptedWaitEndpoint, live_mutation_contexts,
 };
 use crate::{
     client::{
@@ -70,16 +70,19 @@ use crate::{
 /// Parking the build is how these tests keep a Try in flight for as long as they
 /// need without a sleep: the tracked task is genuinely mid-operation, which is
 /// the state every ordering claim here is about.
-struct ParkingBuilder {
+pub(super) struct ParkingBuilder {
     delegate: adapters::FsRuntimeBuildAdapter,
-    entered: Notify,
-    release: Notify,
-    park: AtomicBool,
+    pub(super) entered: Notify,
+    pub(super) release: Notify,
+    pub(super) park: AtomicBool,
     /// Scripts the build panicking, which is the one way a mutation finishes
     /// with no receipt at all.
-    panic: AtomicBool,
+    pub(super) panic: AtomicBool,
+    /// Scripts the content capture panicking: the mutation is still
+    /// preparing, and has not read the runtime yet.
+    pub(super) panic_capture: AtomicBool,
     calls: AtomicUsize,
-    fail_publish: AtomicBool,
+    pub(super) fail_publish: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -88,6 +91,10 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
     ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
+        assert!(
+            !self.panic_capture.load(Ordering::SeqCst),
+            "scripted capture panic"
+        );
         self.delegate.capture_content(profiles).await
     }
 
@@ -162,15 +169,15 @@ impl ServiceHostAdapter for ParkingDaemon {
     }
 }
 
-struct Fixture {
-    client: ApplicationWorkflowClient,
-    endpoint: Arc<TestControlEndpoint>,
-    builder: Arc<ParkingBuilder>,
-    application: PersistentStateManager<NyanpasuAppConfig>,
-    clash: PersistentStateManager<ClashConfig>,
+pub(super) struct Fixture {
+    pub(super) client: ApplicationWorkflowClient,
+    pub(super) endpoint: Arc<TestControlEndpoint>,
+    pub(super) builder: Arc<ParkingBuilder>,
+    pub(super) application: PersistentStateManager<NyanpasuAppConfig>,
+    pub(super) clash: PersistentStateManager<ClashConfig>,
     profiles: PersistentStateManager<Profiles>,
-    store: runtime::RuntimeSnapshotStore,
-    clash_path: Utf8PathBuf,
+    pub(super) store: runtime::RuntimeSnapshotStore,
+    pub(super) clash_path: Utf8PathBuf,
     app_path: Utf8PathBuf,
     /// Where the build reads managed profile content from, so a test that
     /// drives the profiles domain can put a real document behind a path.
@@ -181,6 +188,10 @@ struct Fixture {
     /// The same resolver the workflow holds, and the one the rest of the
     /// application reads its endpoint from.
     ports: Arc<SessionPortResolver>,
+    /// The endpoint the core is reached through, when a test scripts how its
+    /// operation waits answer.
+    pub(super) scripted: Option<Arc<ScriptedWaitEndpoint>>,
+    pub(super) notifications: Arc<RecordingNotifications>,
     _dir: tempfile::TempDir,
 }
 
@@ -206,7 +217,7 @@ fn temp_path(dir: &tempfile::TempDir, name: &str) -> Utf8PathBuf {
 /// Its identity and exact bytes match the fresh fake endpoint observation.
 /// A stale or unrelated receipt is tested explicitly rather than admitted by
 /// the default fixture.
-fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
+pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
     runtime::RuntimeApplyReceipt {
         revision: runtime::tests::test_revision(),
         config_text: Arc::from("mode: rule\n"),
@@ -245,7 +256,7 @@ fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
 /// The endpoint publishes a running core with a known applied kind on purpose:
 /// the baseline a Cancel restores is verified against what the host says is
 /// running, and an absent fact is a mismatch rather than a benefit of the doubt.
-async fn fixture(budgets: MutationBudgets) -> Fixture {
+pub(super) async fn fixture(budgets: MutationBudgets) -> Fixture {
     fixture_with(budgets, true).await
 }
 
@@ -287,10 +298,25 @@ fn host_transition_daemon(
 
 /// The same graph with the caller's own daemon, for a test that has to hold one
 /// of the handoff's legs still.
-async fn fixture_with_daemon(
+pub(super) async fn fixture_with_daemon(
     budgets: MutationBudgets,
     confirmed_apply: bool,
     daemon: Option<Arc<dyn ServiceHostAdapter>>,
+) -> Fixture {
+    fixture_with_parts(budgets, confirmed_apply, daemon, false).await
+}
+
+/// The default graph, with the core reached through a [`ScriptedWaitEndpoint`]
+/// so a test can lose, stall or panic the wait for one chosen operation.
+pub(super) async fn scripted_fixture(budgets: MutationBudgets) -> Fixture {
+    fixture_with_parts(budgets, true, None, true).await
+}
+
+async fn fixture_with_parts(
+    budgets: MutationBudgets,
+    confirmed_apply: bool,
+    daemon: Option<Arc<dyn ServiceHostAdapter>>,
+    scripted: bool,
 ) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
@@ -299,7 +325,11 @@ async fn fixture_with_daemon(
         Some(CoreStateDetail::Running { epoch: 1, pid: 7 }),
         Some(CoreKind::Mihomo),
     );
-    let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+    let scripted = scripted.then(|| ScriptedWaitEndpoint::new(endpoint.clone()));
+    let core = match &scripted {
+        Some(scripted) => CoreClient::spawn(scripted.clone()).await.unwrap(),
+        None => CoreClient::spawn(endpoint.clone()).await.unwrap(),
+    };
     let service = match daemon {
         Some(daemon) => ServiceClient::spawn(daemon, 0).await.unwrap(),
         None => ServiceClient::spawn(Arc::new(crate::client::tests::IdleServiceAdapter), 0)
@@ -329,6 +359,7 @@ async fn fixture_with_daemon(
         release: Notify::new(),
         park: AtomicBool::new(false),
         panic: AtomicBool::new(false),
+        panic_capture: AtomicBool::new(false),
         fail_publish: AtomicBool::new(false),
     });
     let store = runtime::RuntimeSnapshotStore::default();
@@ -342,9 +373,10 @@ async fn fixture_with_daemon(
         store.confirm_applied(Arc::new(adopted_baseline()));
     }
     let (_notifier, dirty) = DirtyNotifier::channel();
+    let notifications = Arc::new(RecordingNotifications::default());
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
-            notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+            notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
@@ -375,13 +407,15 @@ async fn fixture_with_daemon(
         profiles_dir: dir.path().join("profiles"),
         core,
         ports,
+        scripted,
+        notifications,
         _dir: dir,
     }
 }
 
 /// Budgets that keep every wait short enough to observe without a sleep. The
 /// admission budget stays generous; the tests that exercise it set it to zero.
-fn test_budgets() -> MutationBudgets {
+pub(super) fn test_budgets() -> MutationBudgets {
     MutationBudgets {
         admission: Duration::from_secs(10),
 
@@ -389,9 +423,9 @@ fn test_budgets() -> MutationBudgets {
     }
 }
 
-type Decorate<T> = Box<dyn FnOnce(StateParticipant<T>) -> StateParticipant<T> + Send>;
+pub(super) type Decorate<T> = Box<dyn FnOnce(StateParticipant<T>) -> StateParticipant<T> + Send>;
 
-fn plain<T: Clone + Send + Sync + 'static>() -> Decorate<T> {
+pub(super) fn plain<T: Clone + Send + Sync + 'static>() -> Decorate<T> {
     Box::new(|participant| participant)
 }
 
@@ -400,7 +434,7 @@ fn plain<T: Clone + Send + Sync + 'static>() -> Decorate<T> {
 /// The attempt identity is the caller's so a test can address a settlement
 /// before the attempt has finished, exactly as the domain actor will.
 #[allow(clippy::too_many_arguments)]
-async fn mutate<T>(
+pub(super) async fn mutate<T>(
     manager: &mut PersistentStateManager<T>,
     client: &ApplicationWorkflowClient,
     operation_id: OperationId,
@@ -440,7 +474,7 @@ where
 /// One mutation carrying request-local hints, which is how a content update
 /// says that the bytes behind a managed path moved without the document doing
 /// so.
-async fn mutate_with_hints<T>(
+pub(super) async fn mutate_with_hints<T>(
     manager: &mut PersistentStateManager<T>,
     client: &ApplicationWorkflowClient,
     next: T,
@@ -478,7 +512,7 @@ where
 }
 
 /// The ordinary case: a fresh identity, no decorator, no local write.
-async fn simple_mutate<T>(
+pub(super) async fn simple_mutate<T>(
     manager: &mut PersistentStateManager<T>,
     client: &ApplicationWorkflowClient,
     next: T,
@@ -507,7 +541,7 @@ where
 
 /// Parks the transaction between prepare and the compare-and-swap, which is
 /// exactly the window in which the workflow sits in `AwaitDecision`.
-fn parked_local_write(
+pub(super) fn parked_local_write(
     entered: Arc<Notify>,
     release: Arc<Notify>,
 ) -> impl FnOnce() -> futures::future::BoxFuture<'static, anyhow::Result<()>> {
@@ -531,7 +565,7 @@ async fn wait_queued(client: &ApplicationWorkflowClient, depth: usize) {
     .expect("the workflow should stay alive");
 }
 
-fn refused(result: &Result<ReplaceIfVersionResult, ReplaceIfVersionError>) -> bool {
+pub(super) fn refused(result: &Result<ReplaceIfVersionResult, ReplaceIfVersionError>) -> bool {
     matches!(
         result,
         Err(ReplaceIfVersionError::State(StateChangedError::PrepareAck(
@@ -543,7 +577,7 @@ fn refused(result: &Result<ReplaceIfVersionResult, ReplaceIfVersionError>) -> bo
 /// A host that has the check capability and could not serve it: the class the
 /// failure matrix defaults to refusing, and the one that carries a typed
 /// retryability the adapter actually observed.
-fn unserviceable_check() -> nyanpasu_core_manager::CoreError {
+pub(super) fn unserviceable_check() -> nyanpasu_core_manager::CoreError {
     nyanpasu_core_manager::CoreError::new(
         CoreErrorKind::BackendUnavailable,
         "scripted: the config check service is briefly unreachable",
@@ -551,14 +585,14 @@ fn unserviceable_check() -> nyanpasu_core_manager::CoreError {
     )
 }
 
-fn app_with_core(core: ClashCore) -> NyanpasuAppConfig {
+pub(super) fn app_with_core(core: ClashCore) -> NyanpasuAppConfig {
     NyanpasuAppConfig {
         core,
         ..NyanpasuAppConfig::default()
     }
 }
 
-fn no_local_write() -> futures::future::BoxFuture<'static, anyhow::Result<()>> {
+pub(super) fn no_local_write() -> futures::future::BoxFuture<'static, anyhow::Result<()>> {
     Box::pin(std::future::ready(Ok(())))
 }
 
@@ -567,7 +601,10 @@ async fn barrier(client: &ApplicationWorkflowClient) {
 }
 
 /// The structured record of one attempt, once the workflow has settled it.
-async fn settled(client: &ApplicationWorkflowClient, operation_id: OperationId) -> MutationReceipt {
+pub(super) async fn settled(
+    client: &ApplicationWorkflowClient,
+    operation_id: OperationId,
+) -> MutationReceipt {
     let mut journal = client.0.mutations.clone();
     let guard = tokio::time::timeout(
         Duration::from_secs(5),
@@ -593,7 +630,7 @@ async fn settled(client: &ApplicationWorkflowClient, operation_id: OperationId) 
 /// overrides — which is where every `overrides(...)` document below comes from.
 /// A struct-patch field is "named" by being present, so this is what a save of
 /// the overrides looks like whether or not the value it carries moved.
-fn names_overrides() -> MutationHints {
+pub(super) fn names_overrides() -> MutationHints {
     MutationHints {
         requested: RequestedRuntimeFields::runtime(),
         ..MutationHints::default()
@@ -615,7 +652,7 @@ fn on_mixed_port(start_port: u16) -> ClashConfig {
     }
 }
 
-fn overrides(value: serde_json::Value) -> ClashConfig {
+pub(super) fn overrides(value: serde_json::Value) -> ClashConfig {
     use struct_patch::Patch;
     let mut config = ClashConfig::default();
     config

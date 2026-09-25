@@ -41,6 +41,9 @@ pub(super) struct ApplicationWorkflow {
     /// (T10 §1.11). With the facade's pending action it is all that an
     /// explicit recovery reads, and it survives a panic unchanged.
     pub live: Option<LiveAttempt>,
+    /// One-shot test fault: the next Confirm panics before it changes anything.
+    #[cfg(test)]
+    pub panic_at_confirm: bool,
 }
 
 impl ApplicationWorkflow {

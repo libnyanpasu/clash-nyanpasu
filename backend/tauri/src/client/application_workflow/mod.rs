@@ -135,6 +135,10 @@ enum Message {
     /// that outlives its attempt is unreachable, not visibly wrong.
     #[cfg(test)]
     LiveMutationContexts(RpcReplyPort<usize>),
+    /// Makes the next Confirm panic before it changes anything: a deferral's
+    /// Confirm calls no port a test could fail in its place.
+    #[cfg(test)]
+    PanicAtConfirm(RpcReplyPort<bool>),
 }
 
 struct ApplicationWorkflowActor;
@@ -804,6 +808,15 @@ impl Actor for ApplicationWorkflowActor {
             Message::LiveMutationContexts(reply) => {
                 let _ = reply.send(state.mutations.len());
             }
+            #[cfg(test)]
+            Message::PanicAtConfirm(reply) => {
+                let armed = state
+                    .workflow
+                    .as_mut()
+                    .map(|workflow| workflow.panic_at_confirm = true)
+                    .is_some();
+                let _ = reply.send(armed);
+            }
         }
         state.drive(&myself);
         Ok(())
@@ -898,6 +911,8 @@ impl ApplicationWorkflowClient {
             pending_product: None,
             pending_release: None,
             live: None,
+            #[cfg(test)]
+            panic_at_confirm: false,
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),

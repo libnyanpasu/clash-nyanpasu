@@ -208,12 +208,16 @@ fn forward_actor_events(
     client: NyanpasuClient,
     producers: &ProducerTasks,
 ) {
-    let (mut mutations, mut effects) = client.subscribe_configuration_changes();
+    let (mut mutations, mut effects, mut sources) = client.subscribe_configuration_changes();
     let configuration_client = client.clone();
     let configuration_handle = app_handle.clone();
     tauri::async_runtime::spawn(producers.track(async move {
         loop {
-            let changed = tokio::select! { result = mutations.changed() => result, result = effects.changed() => result };
+            let changed = tokio::select! {
+                result = mutations.changed() => result,
+                result = effects.changed() => result,
+                result = sources.changed() => result,
+            };
             if changed.is_err() {
                 break;
             }

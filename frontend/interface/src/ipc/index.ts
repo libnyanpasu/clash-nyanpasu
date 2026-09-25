@@ -42,4 +42,8 @@ export {
 export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
 export type { RuleProviderItem as ClashProviderRule } from './bindings'
 
-export { acceptConfigurationStatus } from './configuration-status'
+export {
+  acceptConfigurationStatus,
+  attentionSources,
+  sourceMessage,
+} from './configuration-status'

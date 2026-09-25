@@ -4,6 +4,7 @@ use super::{
     convergence::ConvergenceHealth,
     effects::{plan::EffectKind, status::EffectHealth},
 };
+use crate::state::profiles::sources::{SourceStatus, SourcesSnapshot};
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ConfigurationStatus {
@@ -12,6 +13,8 @@ pub struct ConfigurationStatus {
     pub source_versions: SourceVersions,
     pub runtime: RuntimeConvergence,
     pub effects: Vec<EffectConvergence>,
+    /// The latest background-source receipt per profile.
+    pub sources: Vec<SourceStatus>,
     pub active: Option<String>,
     pub queued: Vec<String>,
     pub recent_operations: Vec<OperationStatus>,
@@ -53,6 +56,7 @@ impl NyanpasuClient {
     pub fn configuration_status(&self) -> ConfigurationStatus {
         let journal = self.inner.application_workflow.mutation_journal();
         let effects = self.inner.effects.snapshot();
+        let sources = self.inner.profiles.sources();
         let execution = self.inner.application_workflow.status();
         let source_versions = SourceVersions {
             application: self.inner.application.snapshot().version,
@@ -95,6 +99,7 @@ impl NyanpasuClient {
             maintenance: journal.maintenance.clone(),
             event_seq: journal.event_seq
                 + effects.event_seq
+                + sources.event_seq
                 + source_versions.application
                 + source_versions.clash
                 + source_versions.session
@@ -120,6 +125,7 @@ impl NyanpasuClient {
                     },
                 })
                 .collect(),
+            sources: sources.entries,
             recent_operations: journal
                 .completed
                 .iter()
@@ -139,10 +145,12 @@ impl NyanpasuClient {
     ) -> (
         tokio::sync::watch::Receiver<super::application_workflow::mutation::MutationJournal>,
         tokio::sync::watch::Receiver<super::effects::actor::EffectsSnapshot>,
+        tokio::sync::watch::Receiver<SourcesSnapshot>,
     ) {
         (
             self.inner.application_workflow.subscribe_mutations(),
             self.inner.effects.subscribe(),
+            self.inner.profiles.subscribe_sources(),
         )
     }
 }

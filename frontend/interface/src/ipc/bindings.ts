@@ -839,6 +839,8 @@ export type ConfigurationStatus = {
   source_versions: SourceVersions
   runtime: RuntimeConvergence
   effects: EffectConvergence[]
+  /**  The latest background-source receipt per profile. */
+  sources: SourceStatus[]
   active: string | null
   queued: string[]
   recent_operations: OperationStatus[]
@@ -2724,6 +2726,30 @@ export type SnapshotDiffHunk = {
   new_lines: number
   /**  Unified diff lines, including their space, plus, or minus prefix. */
   lines: string[]
+}
+
+export type SourceOrigin =
+  'scheduled_refresh' | 'manual_refresh' | 'external_file'
+
+export type SourceOutcome =
+  | { kind: 'committed'; operation_id: string | null }
+  /**  Its result no longer applied to the profile and was dropped (V31). */
+  | { kind: 'superseded'; reason: string }
+  | { kind: 'failed'; message: string }
+  /**
+   *  The content reached the source transaction and was refused; nothing
+   *  was committed and an external file is never rewritten (V33).
+   */
+  | { kind: 'rejected'; code: string; message: string }
+
+export type SourceStatus = {
+  profile: ProfileId
+  name: string
+  origin: SourceOrigin
+  outcome: SourceOutcome
+  health: ConvergenceHealth
+  /**  Unix milliseconds. */
+  at: number
 }
 
 export type SourceVersions = {

@@ -2,10 +2,12 @@ import { useEffect } from 'react'
 import { m } from '@/paraglide/messages'
 import {
   acceptConfigurationStatus,
+  attentionSources,
   commands,
   events,
   invokeMutation,
   MutationUnconfirmedError,
+  sourceMessage,
   unwrapResult,
   type ConfigurationStatus,
   type ConvergenceHealth,
@@ -129,11 +131,13 @@ export function ConfigurationStatusPanel() {
       ? m.configuration_unconfirmed()
       : undefined
 
+  const sources = status ? attentionSources(status) : []
   const attention =
     status &&
     (status.maintenance ||
       status.runtime.health !== 'healthy' ||
-      status.effects.some((effect) => effect.health !== 'healthy'))
+      status.effects.some((effect) => effect.health !== 'healthy') ||
+      sources.length > 0)
   return (
     <details className="bg-background fixed right-4 bottom-4 z-40 max-w-md rounded-xl border p-3 text-sm shadow-lg">
       <summary className="cursor-pointer">
@@ -179,6 +183,22 @@ export function ConfigurationStatusPanel() {
                 )}
               </div>
             ))}
+            {sources.length > 0 && (
+              <div>
+                <strong>{m.configuration_sources()}</strong>
+                {sources.map((source) => {
+                  const message = sourceMessage(source)
+                  return (
+                    <div key={source.profile}>
+                      <span>
+                        {source.name}: {healthLabel(source.health)}
+                      </span>
+                      {message && <p>{message}</p>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
             <details>
               <summary>{m.configuration_recent_operations()}</summary>
               {status.active && (

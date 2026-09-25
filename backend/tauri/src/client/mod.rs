@@ -3450,6 +3450,75 @@ pub(crate) mod tests {
         });
     }
 
+    /// R6/R7: a source receipt reaches the configuration status and its
+    /// change stream, the status sequence only grows, and deleting the
+    /// profile drops its row.
+    #[test]
+    fn configuration_status_projects_source_receipts_and_prunes_them() {
+        let dir = tempdir().unwrap();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::clone(&calls);
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().returning(move |_, _| {
+            if counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 2 {
+                Ok(crate::state::profiles::ports::FetchedSubscription {
+                    content: "proxies: []\n".into(),
+                    subscription: SubscriptionInfo::default(),
+                    filename: None,
+                    suggested_update_interval_minutes: None,
+                })
+            } else {
+                anyhow::bail!("dns exploded")
+            }
+        });
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
+            let (_, _, sources) = client.subscribe_configuration_changes();
+            // The first import becomes current; the second stays deletable.
+            client
+                .import_profile(
+                    url::Url::parse("https://example.com/subs/current.yaml").unwrap(),
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+            let uid = client
+                .import_profile(
+                    url::Url::parse("https://example.com/subs/other.yaml").unwrap(),
+                    None,
+                    None,
+                )
+                .await
+                .unwrap()
+                .into_value();
+            let before = client.configuration_status();
+            assert!(before.sources.is_empty());
+
+            assert!(client.refresh_profile(uid.clone(), None).await.is_err());
+            assert!(sources.has_changed().unwrap());
+            let failed = client.configuration_status();
+            assert!(failed.event_seq > before.event_seq);
+            // No source moved, so only the receipt advanced the sequence.
+            let (was, now) = (&before.source_versions, &failed.source_versions);
+            assert_eq!(
+                (was.application, was.clash, was.session, was.profiles),
+                (now.application, now.clash, now.session, now.profiles)
+            );
+            assert_eq!(failed.sources.len(), 1);
+            assert_eq!(failed.sources[0].profile, uid);
+            assert_eq!(
+                failed.sources[0].health,
+                convergence::ConvergenceHealth::Blocked
+            );
+
+            client.delete_profile(uid).await.unwrap();
+            let pruned = client.configuration_status();
+            assert!(pruned.sources.is_empty());
+            assert!(pruned.event_seq > failed.event_seq);
+        });
+    }
+
     #[test]
     fn facade_import_keeps_explicit_interval_over_server_suggestion() {
         let dir = tempdir().unwrap();

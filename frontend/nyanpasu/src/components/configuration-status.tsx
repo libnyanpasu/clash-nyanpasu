@@ -45,7 +45,7 @@ function effectLabel(kind: EffectKind) {
 }
 
 const CONFIGURATION_MUTATIONS = new Set<unknown>([
-  'patchVergeConfig',
+  'patchAppConfig',
   'patchClashConfig',
   'patchRuntimeOverrides',
   'changeClashCore',

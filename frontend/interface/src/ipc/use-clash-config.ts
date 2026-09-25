@@ -4,7 +4,7 @@ import {
   mutations,
   queries,
   type ClashApiConfig,
-  type ClashGuardOverridesPatch,
+  type ClashGuardOverridesPatch_Deserialize,
 } from './bindings'
 import { invokeMutation, unwrapQueryOptions } from './query-options'
 
@@ -19,14 +19,8 @@ export const useClashConfig = () => {
 
   const upsert = useMutation({
     mutationKey: patchConfig.mutationKey,
-    mutationFn: async (
-      payload: ClashGuardOverridesPatch & Partial<ClashApiConfig>,
-    ) => {
-      return unwrapResult(
-        await invokeMutation(patchConfig, [
-          payload as ClashGuardOverridesPatch,
-        ]),
-      )
+    mutationFn: async (payload: ClashGuardOverridesPatch_Deserialize) => {
+      return unwrapResult(await invokeMutation(patchConfig, [payload]))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

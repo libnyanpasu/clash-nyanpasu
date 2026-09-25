@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useSetting } from '@nyanpasu/interface'
+import { useClashSetting } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -23,8 +23,8 @@ import {
 } from '../../_modules/settings-card'
 
 export default function ControlChannelSettings() {
-  const channel = useSetting('clash_control_channel')
-  const disableHttp = useSetting('clash_ipc_disable_http_controller')
+  const channel = useClashSetting('clash_control_channel')
+  const disableHttp = useClashSetting('clash_ipc_disable_http_controller')
   const current = channel.value ?? 'prefer_ipc'
   const options = {
     prefer_ipc: m.settings_clash_control_channel_prefer_ipc(),

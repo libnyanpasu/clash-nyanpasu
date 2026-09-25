@@ -102,6 +102,7 @@
   "settings_clash_settings_random_port_disabled": "Случайный порт отключен, после перезапуска для вступления в силу.",
   "settings_clash_settings_external_controll_label": "Внешнее управление",
   "settings_clash_settings_external_controll_label_edit": "Изменить внешнее управление",
+  "settings_clash_settings_external_controll_invalid_address": "Введите IP-адрес и порт, например 127.0.0.1:9090 или [::1]:9090",
   "settings_clash_settings_port_strategy_label": "Стратегия порта",
   "settings_clash_settings_allow_fallback_label": "Разрешить откат",
   "settings_clash_settings_fixed_label": "Фиксированный",

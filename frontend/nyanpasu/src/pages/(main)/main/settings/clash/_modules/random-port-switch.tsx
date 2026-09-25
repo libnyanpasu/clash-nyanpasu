@@ -2,7 +2,7 @@ import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useSetting } from '@nyanpasu/interface'
+import { randomPortKind, useClashSetting } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -10,11 +10,13 @@ import {
 } from '../../_modules/settings-card'
 
 export default function RandomPortSwitch() {
-  const enableRandomPort = useSetting('enable_random_port')
+  const mixedPort = useClashSetting('mixed_port')
+
+  const isRandomPort = mixedPort.value?.kind === 'random'
 
   const handleRandomPort = async () => {
     try {
-      await enableRandomPort.upsert(!enableRandomPort.value)
+      await mixedPort.upsert({ kind: randomPortKind(!isRandomPort) })
     } catch (e) {
       message(formatError(e), {
         title: 'Error',
@@ -22,7 +24,7 @@ export default function RandomPortSwitch() {
       })
     } finally {
       message(
-        enableRandomPort.value
+        isRandomPort
           ? m.settings_clash_settings_random_port_disabled()
           : m.settings_clash_settings_random_port_enabled(),
         {
@@ -42,9 +44,9 @@ export default function RandomPortSwitch() {
       </ItemLabel>
 
       <Switch
-        checked={Boolean(enableRandomPort.value)}
+        checked={isRandomPort}
         onCheckedChange={handleRandomPort}
-        loading={enableRandomPort.isPending}
+        loading={mixedPort.isPending}
       />
     </ItemContainer>
   )

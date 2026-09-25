@@ -17,7 +17,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useClashConfig, useSetting } from '@nyanpasu/interface'
+import { useClashConfig, useClashSetting } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -37,7 +37,7 @@ const formSchema = z.object({
 export default function MixedPortConfig() {
   const [open, setOpen] = useState(false)
 
-  const mixedPort = useSetting('verge_mixed_port')
+  const mixedPort = useClashSetting('mixed_port')
 
   const clashConfig = useClashConfig()
 
@@ -48,10 +48,10 @@ export default function MixedPortConfig() {
     },
   })
 
-  // get current mixed port from clash config or verge setting
+  // get current mixed port from the configured strategy or the running core
   const currentMixedPort = useMemo(() => {
     return (
-      mixedPort.value ||
+      mixedPort.value?.start_port ||
       clashConfig.query.data?.['mixed-port'] ||
       DEFAULT_MIXED_PORT
     )
@@ -64,7 +64,7 @@ export default function MixedPortConfig() {
 
   const handleSubmit = form.handleSubmit(async (data) => {
     try {
-      await mixedPort.upsert(data.mixedPort)
+      await mixedPort.upsert({ start_port: data.mixedPort })
 
       form.reset({
         mixedPort: data.mixedPort,

@@ -174,7 +174,7 @@ const CoreItem = ({
   item: ClashCoresDetail
   onClick: (core: ClashCore) => void
 }) => {
-  const { value: currentCore } = useSetting('clash_core')
+  const { value: currentCore } = useSetting('core')
 
   const icon = useCoreIcon(core)
 
@@ -276,7 +276,7 @@ export default function CoreManagerCard() {
 
   const { deleteConnections } = useClashConnections()
 
-  const { value: currentCoreKey } = useSetting('clash_core')
+  const { value: currentCoreKey } = useSetting('core')
 
   const currentCoreIcon = useCoreIcon(currentCoreKey)
 

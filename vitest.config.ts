@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
@@ -17,6 +18,29 @@ export default defineConfig({
       },
       {
         plugins: [react()],
+        resolve: {
+          // The app's aliases, for the nyanpasu modules a browser test loads.
+          alias: [
+            {
+              find: '@',
+              replacement: fileURLToPath(
+                new URL('frontend/nyanpasu/src', import.meta.url),
+              ),
+            },
+            {
+              find: '@interface',
+              replacement: fileURLToPath(
+                new URL('frontend/interface/src', import.meta.url),
+              ),
+            },
+            {
+              find: '@nyanpasu/interface',
+              replacement: fileURLToPath(
+                new URL('frontend/interface/src', import.meta.url),
+              ),
+            },
+          ],
+        },
         test: {
           name: 'browser',
           include: browserTests,

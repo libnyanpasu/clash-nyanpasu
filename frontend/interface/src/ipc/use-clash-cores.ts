@@ -118,7 +118,7 @@ export const useClashCores = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKey })
       queryClient.invalidateQueries({
-        queryKey: queries.getVergeConfig().queryKey,
+        queryKey: queries.getAppConfig().queryKey,
       })
       queryClient.invalidateQueries({
         queryKey: queries.clashApiGetVersion().queryKey,

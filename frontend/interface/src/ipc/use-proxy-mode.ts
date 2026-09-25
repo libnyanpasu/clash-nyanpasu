@@ -19,7 +19,7 @@ export type ProxyMode = 'rule' | 'global' | 'direct' | 'script'
 export const useProxyMode = () => {
   const clashConfig = useClashConfig()
 
-  const clashCore = useSetting('clash_core')
+  const clashCore = useSetting('core')
 
   const value = useMemo(() => {
     const modes: Record<'rule' | 'global' | 'direct', boolean> & {

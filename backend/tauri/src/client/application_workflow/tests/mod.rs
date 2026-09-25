@@ -989,36 +989,23 @@ fn config_reconcile_failure_reports_committed_state_without_replaying() {
     });
 }
 
-struct RejectConfigMirror(AtomicBool);
-impl crate::state::mirror::ClashLegacyBridge for RejectConfigMirror {
-    fn prepare(
-        &self,
-        _: &nyanpasu_config::clash::config::ClashConfig,
-    ) -> anyhow::Result<Box<dyn crate::state::mirror::PreparedLegacyMirror>> {
-        anyhow::ensure!(
-            !self.0.load(Ordering::SeqCst),
-            "config preparation rejected"
-        );
-        Ok(Box::new(crate::state::mirror::NoopPreparedLegacyMirror))
-    }
-    fn snapshot_legacy(&self) -> anyhow::Result<nyanpasu_config::clash::config::ClashConfig> {
-        Ok(Default::default())
-    }
-}
-
 #[test]
 fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
-    let bridge = Arc::new(RejectConfigMirror(AtomicBool::new(false)));
-    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
-    args.bridges.clash = bridge.clone();
+    let args = test_client_args_with_endpoint(&dir, endpoint.clone());
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
         let before = client.inner.clash_config.snapshot();
-        bridge.0.store(true, Ordering::SeqCst);
+        endpoint.set_check_answer(crate::client::tests::TestCheckAnswer::Reject(
+            nyanpasu_core_manager::CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed,
+                "candidate rejected",
+                false,
+            ),
+        ));
         assert!(
             client
                 .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))

@@ -3814,19 +3814,6 @@ async fn uncommitted_runtime_ports_are_not_available_to_peripheral_readers() {
 
 // T6 exercises the production domain actor, including its own participant
 // construction, instead of supplying a participant directly from the test.
-struct DomainTestMirror;
-impl crate::state::mirror::VergeLegacyBridge for DomainTestMirror {
-    fn prepare(
-        &self,
-        _: &NyanpasuAppConfig,
-    ) -> anyhow::Result<Box<dyn crate::state::mirror::PreparedLegacyMirror>> {
-        Ok(Box::new(crate::state::mirror::NoopPreparedLegacyMirror))
-    }
-    fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
-        Ok(NyanpasuAppConfig::default())
-    }
-}
-
 #[tokio::test]
 async fn application_actor_rejection_keeps_source_version_and_bytes() {
     use struct_patch::Patch;
@@ -3836,13 +3823,10 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     let snapshot = f.application.snapshot_handle();
     let before = snapshot.load();
     let bytes = std::fs::read(&f.app_path).ok();
-    let application = crate::client::application::ApplicationClient::from_manager(
-        mutations,
-        f.application,
-        Arc::new(DomainTestMirror),
-    )
-    .await
-    .unwrap();
+    let application =
+        crate::client::application::ApplicationClient::from_manager(mutations, f.application)
+            .await
+            .unwrap();
     f.endpoint.set_check_answer(TestCheckAnswer::Reject(
         nyanpasu_core_manager::CoreError::new(
             CoreErrorKind::InvalidConfig,
@@ -3865,13 +3849,10 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     let f = fixture(test_budgets()).await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(f.client.clone());
-    let application = crate::client::application::ApplicationClient::from_manager(
-        mutations,
-        f.application,
-        Arc::new(DomainTestMirror),
-    )
-    .await
-    .unwrap();
+    let application =
+        crate::client::application::ApplicationClient::from_manager(mutations, f.application)
+            .await
+            .unwrap();
     let before = application.snapshot();
     f.builder.park.store(true, Ordering::SeqCst);
     let writer = application.clone();
@@ -3902,7 +3883,6 @@ async fn domain_actor_refuses_writes_before_composition_is_ready() {
     let application = crate::client::application::ApplicationClient::from_manager(
         crate::state::mutation::MutationCoordinator::pending(),
         manager,
-        Arc::new(DomainTestMirror),
     )
     .await
     .unwrap();

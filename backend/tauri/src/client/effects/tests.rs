@@ -373,40 +373,25 @@ fn no_op_and_session_saves_do_not_dispatch() {
     });
 }
 
-struct RejectMirror(AtomicBool);
-impl crate::state::mirror::VergeLegacyBridge for RejectMirror {
-    fn prepare(
-        &self,
-        _: &NyanpasuAppConfig,
-    ) -> anyhow::Result<Box<dyn crate::state::mirror::PreparedLegacyMirror>> {
-        anyhow::ensure!(
-            !self.0.load(Ordering::SeqCst),
-            "injected application mirror"
-        );
-        Ok(Box::new(crate::state::mirror::NoopPreparedLegacyMirror))
-    }
-    fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
-        Ok(Default::default())
-    }
-}
-
 #[test]
 fn rejected_source_never_dispatches() {
+    use crate::bundle::Channel;
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
     let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
     args.effects = port.clone();
-    let mirror = Arc::new(RejectMirror(AtomicBool::new(false)));
-    args.bridges.verge = mirror.clone();
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
-    mirror.0.store(true, Ordering::SeqCst);
     tauri::async_runtime::block_on(async {
-        assert!(
-            client
-                .patch_app_config(language(I18nLanguage::Korean))
-                .await
-                .is_err()
-        );
+        let mut nightly = NyanpasuAppConfig::new_empty_patch();
+        nightly.release_channel = Some(Some(Channel::Nightly));
+        client.patch_app_config(nightly).await.unwrap();
+        client.inner.effects.barrier().await;
+        port.calls.lock().unwrap().clear();
+        // The application actor refuses to leave the nightly channel, so the
+        // language change riding on the same patch is never committed.
+        let mut rejected = language(I18nLanguage::Korean);
+        rejected.release_channel = Some(Some(Channel::Stable));
+        assert!(client.patch_app_config(rejected).await.is_err());
         client.inner.effects.barrier().await;
         assert!(port.calls.lock().unwrap().is_empty());
         assert_ne!(

@@ -2,14 +2,8 @@
 use std::sync::Arc;
 
 use crate::{
-    bridge::{
-        clash::LegacyClashBridge,
-        verge::{ConfigLegacyVergeStore, LegacyVergeBridge, LegacyVergeStore},
-        window::LegacyWindowBridge,
-    },
     client::{
-        ClientSetupArgs, LegacyBridgeSet, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
-        TauriUiEventSink,
+        ClientSetupArgs, NyanpasuClient, OsSystemDnsCache, RuntimePaths, TauriUiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -82,9 +76,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
     let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
     let (effects, widget_controller) = build_application_effects(&app_handle, &paths, hotkey_tx)?;
-    let legacy_lock = Arc::new(parking_lot::Mutex::new(()));
-    let legacy_verge_store: Arc<dyn LegacyVergeStore> =
-        Arc::new(ConfigLegacyVergeStore::new(legacy_lock.clone()));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         logging: crate::client::logs::LoggingSetup {
@@ -99,11 +90,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         },
         paths,
         runtime_paths: runtime_paths.clone(),
-        bridges: LegacyBridgeSet {
-            verge: Arc::new(LegacyVergeBridge::with_store(legacy_verge_store)),
-            window: Arc::new(LegacyWindowBridge::new(legacy_lock.clone())),
-            clash: Arc::new(LegacyClashBridge::new(legacy_lock)),
-        },
         ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
         core_v2,
         service,

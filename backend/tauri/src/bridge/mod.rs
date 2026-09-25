@@ -3,9 +3,6 @@ pub mod mapping;
 pub mod verge;
 pub mod window;
 
-#[cfg(test)]
-pub(crate) static LEGACY_CONFIG_TEST_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
-
 use crate::config::IVerge;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,

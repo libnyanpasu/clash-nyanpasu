@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { m } from '@/paraglide/messages'
 import {
   acceptConfigurationStatus,
@@ -11,7 +11,12 @@ import {
   type ConvergenceHealth,
   type EffectKind,
 } from '@nyanpasu/interface'
-import { useMutationState } from '@tanstack/react-query'
+import {
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 function healthLabel(health: ConvergenceHealth) {
   const labels = {
@@ -39,42 +44,68 @@ function effectLabel(kind: EffectKind) {
   return labels[kind]()
 }
 
+const CONFIGURATION_MUTATIONS = new Set<unknown>([
+  'patchVergeConfig',
+  'patchClashConfig',
+  'changeClashCore',
+  'setHotkeys',
+  'createProfile',
+  'updateProfile',
+  'patchProfileMetadata',
+  'patchRemoteProfileOptions',
+  'replaceProfileDefinition',
+  'activateProfile',
+  'setProfileValidFields',
+  'reorderProfilesByList',
+  'deleteProfile',
+  'saveProfileFile',
+])
+
+const STATUS_KEY = ['getConfigurationStatus']
+
 export function ConfigurationStatusPanel() {
-  const mutations = useMutationState({ select: (mutation) => mutation.state })
-  const latest = mutations.toSorted((a, b) => b.submittedAt - a.submittedAt)[0]
+  const queryClient = useQueryClient()
+  const mutations = useMutationState({
+    filters: {
+      predicate: (mutation) =>
+        CONFIGURATION_MUTATIONS.has(mutation.options.mutationKey?.[0]),
+    },
+    select: (mutation) => mutation.state,
+  })
+  let latest: (typeof mutations)[number] | undefined
+  for (const mutation of mutations) {
+    if (!latest || mutation.submittedAt > latest.submittedAt) latest = mutation
+  }
   const unconfirmed = latest?.error instanceof MutationUnconfirmedError
-  const [status, setStatus] = useState<ConfigurationStatus>()
-  const [error, setError] = useState<string>()
-  const [busy, setBusy] = useState(false)
+
+  const { data: status, isError } = useQuery({
+    queryKey: STATUS_KEY,
+    // A late poll must not replace a newer event already in the cache.
+    queryFn: async () => {
+      const next = await commands.getConfigurationStatus()
+      // Compare with the cache after the reply: an event may have landed meanwhile.
+      return acceptConfigurationStatus(
+        queryClient.getQueryData<ConfigurationStatus>(STATUS_KEY),
+        next,
+      )
+    },
+    refetchInterval: 10_000,
+  })
   useEffect(() => {
-    let disposed = false
-    const accept = (next: ConfigurationStatus) => {
-      if (disposed) return
-      setStatus((previous) => acceptConfigurationStatus(previous, next))
-      setError(undefined)
-    }
-    const read = () =>
-      commands
-        .getConfigurationStatus()
-        .then(accept)
-        .catch(() => {
-          if (!disposed) setError(m.configuration_unconfirmed())
-        })
     const listener = events.configurationStatusChanged
-      .listen((event) => accept(event.payload))
+      .listen((event) =>
+        queryClient.setQueryData<ConfigurationStatus>(STATUS_KEY, (previous) =>
+          acceptConfigurationStatus(previous, event.payload),
+        ),
+      )
       .catch(() => undefined)
-    read()
-    const timer = window.setInterval(read, 5000)
     return () => {
-      disposed = true
-      window.clearInterval(timer)
       listener.then((unlisten) => unlisten?.())
     }
-  }, [])
+  }, [queryClient])
 
-  const retry = async (kind?: EffectKind) => {
-    setBusy(true)
-    try {
+  const retry = useMutation({
+    mutationFn: async (kind?: EffectKind) =>
       unwrapResult(
         await invokeMutation(
           {
@@ -85,20 +116,18 @@ export function ConfigurationStatusPanel() {
           },
           undefined,
         ),
-      )
-      const next = await commands.getConfigurationStatus()
-      setStatus((previous) => acceptConfigurationStatus(previous, next))
-      setError(undefined)
-    } catch (error) {
-      setError(
-        error instanceof MutationUnconfirmedError
-          ? m.configuration_unconfirmed()
-          : String(error),
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: STATUS_KEY }),
+  })
+  const busy = retry.isPending
+  const error = retry.error
+    ? retry.error instanceof MutationUnconfirmedError
+      ? m.configuration_unconfirmed()
+      : String(retry.error)
+    : isError
+      ? m.configuration_unconfirmed()
+      : undefined
+
   const attention =
     status &&
     (status.maintenance ||
@@ -126,9 +155,7 @@ export function ConfigurationStatusPanel() {
                 <button
                   className="underline"
                   disabled={busy}
-                  onClick={() => {
-                    retry()
-                  }}
+                  onClick={() => retry.mutate(undefined)}
                 >
                   {m.configuration_retry()}
                 </button>
@@ -144,9 +171,7 @@ export function ConfigurationStatusPanel() {
                   <button
                     className="ml-2 underline"
                     disabled={busy}
-                    onClick={() => {
-                      retry(effect.kind)
-                    }}
+                    onClick={() => retry.mutate(effect.kind)}
                   >
                     {m.configuration_retry()}
                   </button>

@@ -111,7 +111,7 @@ where
         // 检测 external-controller port 是否修改
         if let Some(external_controller) = patch.get("external-controller") {
             let external_controller = external_controller.as_str().unwrap();
-            let changed = external_controller != Config::clash().data().get_client_info().server;
+            let changed = external_controller != Config::clash().data().get_client_ctrl();
             if changed {
                 let (_, port) = external_controller.split_once(':').unwrap();
                 let port = port.parse::<u16>()?;

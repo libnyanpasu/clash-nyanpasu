@@ -79,24 +79,13 @@ impl IClashTemp {
         Self::guard_mixed_port(&self.0)
     }
 
-    pub fn get_client_info(&self) -> ClashInfo {
-        let config = &self.0;
-
-        ClashInfo {
-            port: Self::guard_mixed_port(config),
-            server: Self::guard_client_ctrl(config),
-            secret: config.get("secret").and_then(|value| match value {
-                Value::String(val_str) => Some(val_str.clone()),
-                Value::Bool(val_bool) => Some(val_bool.to_string()),
-                Value::Number(val_num) => Some(val_num.to_string()),
-                _ => None,
-            }),
-        }
+    pub fn get_client_ctrl(&self) -> String {
+        Self::guard_client_ctrl(&self.0)
     }
 
     #[allow(dead_code)]
     pub fn get_external_controller_port(&self) -> u16 {
-        let server = self.get_client_info().server;
+        let server = self.get_client_ctrl();
         let port = server.split(':').next_back().unwrap_or("9090");
         port.parse().unwrap_or(9090)
     }
@@ -107,7 +96,7 @@ impl IClashTemp {
         let strategy = Config::verge()
             .latest()
             .get_external_controller_port_strategy();
-        let server = self.get_client_info().server;
+        let server = self.get_client_ctrl();
         let (server_ip, server_port) = server.split_once(':').unwrap_or(("127.0.0.1", "9090"));
         let server_port = server_port.parse::<u16>().unwrap_or(9090);
         let port = get_clash_external_port(&strategy, server_port)?;
@@ -192,36 +181,27 @@ impl IClashTemp {
     }
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
-pub struct ClashInfo {
-    /// clash core port
-    pub port: u16,
-    /// same as `external-controller`
-    pub server: String,
-    /// clash secret
-    pub secret: Option<String>,
-}
-
 #[test]
 fn test_clash_info() {
-    fn get_case<T: Into<Value>, D: Into<Value>>(mp: T, ec: D) -> ClashInfo {
+    fn get_endpoint(map: Mapping) -> (u16, String) {
+        let clash = IClashTemp(IClashTemp::guard(map));
+        (clash.get_mixed_port(), clash.get_client_ctrl())
+    }
+
+    fn get_case<T: Into<Value>, D: Into<Value>>(mp: T, ec: D) -> (u16, String) {
         let mut map = Mapping::new();
         map.insert("mixed-port".into(), mp.into());
         map.insert("external-controller".into(), ec.into());
 
-        IClashTemp(IClashTemp::guard(map)).get_client_info()
+        get_endpoint(map)
     }
 
-    fn get_result<S: Into<String>>(port: u16, server: S) -> ClashInfo {
-        ClashInfo {
-            port,
-            server: server.into(),
-            secret: None,
-        }
+    fn get_result<S: Into<String>>(port: u16, server: S) -> (u16, String) {
+        (port, server.into())
     }
 
     assert_eq!(
-        IClashTemp(IClashTemp::guard(Mapping::new())).get_client_info(),
+        get_endpoint(Mapping::new()),
         get_result(7890, "127.0.0.1:9090")
     );
 

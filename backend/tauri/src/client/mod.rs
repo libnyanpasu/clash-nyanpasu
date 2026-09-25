@@ -2,6 +2,7 @@ mod application;
 pub mod application_workflow;
 mod clash_api;
 mod clash_config;
+mod clash_info;
 mod clash_streams;
 pub mod configuration_status;
 pub mod convergence;
@@ -65,6 +66,7 @@ use nyanpasu_config::{
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
+pub use clash_info::ClashInfo;
 pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
@@ -712,6 +714,13 @@ impl NyanpasuClient {
 
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {
         Ok(self.inner.clash_config.snapshot().state)
+    }
+
+    pub fn clash_info(&self) -> ClashInfo {
+        ClashInfo::derive(
+            self.session_ports().as_ref(),
+            &self.inner.clash_config.snapshot().state,
+        )
     }
 
     pub async fn patch_runtime_overrides(

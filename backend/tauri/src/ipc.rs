@@ -318,8 +318,8 @@ pub async fn save_profile_file(
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_clash_info() -> Result<ClashInfo> {
-    Ok(Config::clash().latest().get_client_info())
+pub fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<crate::client::ClashInfo> {
+    Ok(client.clash_info())
 }
 
 /// get the runtime config

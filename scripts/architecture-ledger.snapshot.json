@@ -4,10 +4,10 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 49,
+      "total": 48,
       "byKey": {
         "Config::verge()": 32,
-        "Config::clash()": 17
+        "Config::clash()": 16
       }
     },
     "service_globals": {
@@ -27,10 +27,10 @@
       }
     },
     "legacy_dto_refs": {
-      "total": 233,
+      "total": 231,
       "byKey": {
         "IVerge": 120,
-        "IClashTemp": 30,
+        "IClashTemp": 28,
         "VergeLegacyBridge": 21,
         "LegacyVergeBridge": 20,
         "ClashLegacyBridge": 19,

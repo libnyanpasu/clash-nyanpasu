@@ -83,6 +83,16 @@ impl Default for ClashGuardOverrides {
     }
 }
 
+impl ClashGuardOverrides {
+    pub fn secret(&self) -> &str {
+        &self.secret
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+}
+
 #[cfg(test)]
 mod patch_tests {
     use super::*;

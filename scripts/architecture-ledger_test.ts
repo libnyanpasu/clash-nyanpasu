@@ -15,6 +15,7 @@ import {
   evaluateGate,
   isBridgePath,
   isDedicatedTestPath,
+  isLegacyDtoAllowlisted,
   isLikelyFnDefinition,
   isTestCfgAttr,
   matchRealDirDenylist,
@@ -407,6 +408,34 @@ mod tests {
       k.includes("runtime_config_path")
     ),
   );
+});
+
+Deno.test("scanFile: the migration's legacy schema does not count as legacy DTO refs", () => {
+  const source = `
+pub struct IVerge {}
+fn guard(_: &IClashTemp) {}
+`;
+  const schema = createBuckets();
+  scanFile(
+    "backend/tauri/src/core/migration/legacy_schema/verge.rs",
+    source,
+    schema,
+  );
+  assertEquals(schema.legacyDtos.total, 0);
+
+  // Only that directory: its callers and look-alike paths still count.
+  for (
+    const relPath of [
+      "backend/tauri/src/core/migration/modules/typed_config.rs",
+      "backend/tauri/src/core/migration/legacy_schema.rs",
+      "backend/tauri/src/client/legacy_schema/verge.rs",
+    ]
+  ) {
+    assertFalse(isLegacyDtoAllowlisted(relPath), relPath);
+    const buckets = createBuckets();
+    scanFile(relPath, source, buckets);
+    assertEquals(buckets.legacyDtos.total, 2, relPath);
+  }
 });
 
 Deno.test("scanFile: bare imported denylist calls in test regions", () => {

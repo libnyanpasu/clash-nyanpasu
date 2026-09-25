@@ -51,6 +51,25 @@ const LEGACY_DTO_RE =
   /\b(?:IVerge|IClashTemp|IClash|IProfiles|ProfilesBuilder|LegacyVergeBridge|LegacyClashBridge|LegacyWindowBridge|VergeLegacyBridge|ClashLegacyBridge|legacy_iverge_from_typed|legacy_iverge_base_for_typed_read|typed_config_from_legacy|typed_patches_from_legacy_patch|LegacyVergePatchRoute)\b/g;
 
 /**
+ * Paths excluded from `legacy_dto_refs`. Each entry must say why its legacy
+ * names are not an application DTO surface.
+ */
+export const LEGACY_DTO_ALLOWLIST: ReadonlyArray<
+  { prefix: string; reason: string }
+> = [
+  {
+    prefix: "backend/tauri/src/core/migration/legacy_schema/",
+    // The pre-typed `verge.yaml` / clash overrides shape the typed config
+    // migration reads to upgrade old installs; nothing else may use it.
+    reason: "on-disk upgrade input schema, not an application DTO",
+  },
+];
+
+export function isLegacyDtoAllowlisted(relPath: string): boolean {
+  return LEGACY_DTO_ALLOWLIST.some(({ prefix }) => relPath.startsWith(prefix));
+}
+
+/**
  * Real product/user-dir and free global runtime path helpers that tests must
  * not resolve (design §8.4).
  *
@@ -602,6 +621,7 @@ export function scanFile(
 ): void {
   const lines = source.split(/\r?\n/);
   const testMask = testLineMask(lines, isDedicatedTestPath(relPath));
+  const countLegacyDtos = !isLegacyDtoAllowlisted(relPath);
   const lexState = createLexState();
 
   for (let i = 0; i < lines.length; i++) {
@@ -636,12 +656,14 @@ export function scanFile(
       });
     }
 
-    for (const m of matchAll(LEGACY_DTO_RE, code)) {
-      record(buckets.legacyDtos, m.match, {
-        file: relPath,
-        line: lineNo,
-        text: raw.trim(),
-      });
+    if (countLegacyDtos) {
+      for (const m of matchAll(LEGACY_DTO_RE, code)) {
+        record(buckets.legacyDtos, m.match, {
+          file: relPath,
+          line: lineNo,
+          text: raw.trim(),
+        });
+      }
     }
 
     if (testMask[i]) {

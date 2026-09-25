@@ -39,7 +39,6 @@
     "backend/tauri/src/bridge/mapping.rs",
     "backend/tauri/src/bridge/mod.rs",
     "backend/tauri/src/bridge/verge.rs",
-    "backend/tauri/src/bridge/window.rs",
-    "backend/tauri/src/enhance/artifact_bridge.rs"
+    "backend/tauri/src/bridge/window.rs"
   ]
 }

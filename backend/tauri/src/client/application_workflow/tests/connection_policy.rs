@@ -11,6 +11,7 @@ use nyanpasu_ipc::api::{
     core::v2::{CoreApiConnection, OperationInfo},
     status::{CoreControllerInfo, CoreStateDetail},
 };
+use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
 use crate::{
@@ -213,7 +214,7 @@ fn disabled_policy_and_non_mode_patches_do_not_close_connections() {
         config.break_connection.on_mode_change = false;
         f.client
             .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
-                break_connection: Some(config.break_connection),
+                break_connection: config.break_connection.into_patch(),
                 ..Default::default()
             })
             .await
@@ -453,7 +454,7 @@ fn profile_autoactivation_uses_policy_and_does_not_interrupt_an_existing_selecti
             config.break_connection.on_profile_change = enabled;
             f.client
                 .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
-                    break_connection: Some(config.break_connection),
+                    break_connection: config.break_connection.into_patch(),
                     ..Default::default()
                 })
                 .await
@@ -631,7 +632,7 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
         config.break_connection.on_profile_change = false;
         f.client
             .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
-                break_connection: Some(config.break_connection.clone()),
+                break_connection: config.break_connection.clone().into_patch(),
                 ..Default::default()
             })
             .await
@@ -642,7 +643,7 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
         config.break_connection.on_profile_change = true;
         f.client
             .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
-                break_connection: Some(config.break_connection),
+                break_connection: config.break_connection.into_patch(),
                 ..Default::default()
             })
             .await

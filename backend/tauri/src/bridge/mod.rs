@@ -161,11 +161,11 @@ fn clash_patch_from_legacy_patch(patch: &IVerge, next: ClashConfig) -> Option<Cl
         touched = true;
     }
     if patch.enable_random_port.is_some() || patch.verge_mixed_port.is_some() {
-        clash.mixed_port = Some(next.mixed_port);
+        clash.mixed_port = next.mixed_port.into_patch();
         touched = true;
     }
     if patch.clash_strategy.is_some() {
-        clash.external_controller = Some(next.external_controller);
+        clash.external_controller = next.external_controller.into_patch();
         touched = true;
     }
 
@@ -176,7 +176,7 @@ fn clash_patch_from_legacy_patch(patch: &IVerge, next: ClashConfig) -> Option<Cl
         || patch.break_when_mode_change.is_some();
 
     if break_connection_touched {
-        clash.break_connection = Some(next.break_connection);
+        clash.break_connection = next.break_connection.into_patch();
         touched = true;
     }
 

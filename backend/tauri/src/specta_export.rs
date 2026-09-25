@@ -299,6 +299,18 @@ mod tests {
             "ClashConfig",
             &["overrides: ClashGuardOverrides", "mixed_port: PortStrategy"],
         );
+        // The composite clash fields take nested patches, so edits of sibling
+        // sub-fields merge in the actor instead of replacing each other.
+        let clash_patch = exported_type(&generated, "ClashConfigPatch_Deserialize");
+        assert_contains_all(
+            clash_patch,
+            "ClashConfigPatch_Deserialize",
+            &[
+                "mixed_port?: PortStrategyPatch_Deserialize",
+                "external_controller?: ExternalControllerStrategyPatch_Deserialize",
+                "break_connection?: BreakConnectionStrategyPatch_Deserialize",
+            ],
+        );
 
         for phase in ["Deserialize", "Serialize"] {
             let name = format!("ConfigDefinition_{phase}");

@@ -462,6 +462,22 @@ export type BreakConnectionStrategy = {
   on_mode_change: boolean
 }
 
+export type BreakConnectionStrategyPatch =
+  | BreakConnectionStrategyPatch_Serialize
+  | BreakConnectionStrategyPatch_Deserialize
+
+export type BreakConnectionStrategyPatch_Deserialize = {
+  on_proxy_change?: ProxyChangeBreakMode | null
+  on_profile_change?: boolean | null
+  on_mode_change?: boolean | null
+}
+
+export type BreakConnectionStrategyPatch_Serialize = {
+  on_proxy_change?: ProxyChangeBreakMode | null
+  on_profile_change?: boolean | null
+  on_mode_change?: boolean | null
+}
+
 export type BreakWhenProxyChange = 'none' | 'chain' | 'all'
 
 export type BuildInfo = {
@@ -534,13 +550,13 @@ export type ClashConfigPatch_Deserialize = {
   enable_tun_mode?: boolean | null
   web_ui_list?: string[] | null
   enable_clash_fields?: boolean | null
-  external_controller?: ExternalControllerStrategy | null
+  external_controller?: ExternalControllerStrategyPatch_Deserialize
   clash_control_channel?: ClashControlChannel | null
   clash_ipc_disable_http_controller?: boolean | null
-  mixed_port?: PortStrategy | null
+  mixed_port?: PortStrategyPatch_Deserialize
   socks_port?: PortStrategy | null
   http_port?: PortStrategy | null
-  break_connection?: BreakConnectionStrategy | null
+  break_connection?: BreakConnectionStrategyPatch_Deserialize
   tun_stack?: TunStack | null
 }
 
@@ -549,13 +565,13 @@ export type ClashConfigPatch_Serialize = {
   enable_tun_mode?: boolean | null
   web_ui_list?: string[] | null
   enable_clash_fields?: boolean | null
-  external_controller?: ExternalControllerStrategy | null
+  external_controller: ExternalControllerStrategyPatch_Serialize
   clash_control_channel?: ClashControlChannel | null
   clash_ipc_disable_http_controller?: boolean | null
-  mixed_port?: PortStrategy | null
+  mixed_port: PortStrategyPatch_Serialize
   socks_port?: PortStrategy | null
   http_port?: PortStrategy | null
-  break_connection?: BreakConnectionStrategy | null
+  break_connection: BreakConnectionStrategyPatch_Serialize
   tun_stack?: TunStack | null
 }
 
@@ -1139,6 +1155,20 @@ export type ExternalControllerPortStrategy =
 export type ExternalControllerStrategy = {
   host: string
   port: PortStrategy
+}
+
+export type ExternalControllerStrategyPatch =
+  | ExternalControllerStrategyPatch_Serialize
+  | ExternalControllerStrategyPatch_Deserialize
+
+export type ExternalControllerStrategyPatch_Deserialize = {
+  host?: string | null
+  port?: PortStrategyPatch_Deserialize
+}
+
+export type ExternalControllerStrategyPatch_Serialize = {
+  host?: string | null
+  port: PortStrategyPatch_Serialize
 }
 
 export type ExternalMode = 'symlink' | 'mirror'
@@ -2114,6 +2144,19 @@ export type PortStrategy = {
 }
 
 export type PortStrategyKind = 'fixed' | 'random' | 'allow_fallback'
+
+export type PortStrategyPatch =
+  PortStrategyPatch_Serialize | PortStrategyPatch_Deserialize
+
+export type PortStrategyPatch_Deserialize = {
+  kind?: PortStrategyKind | null
+  start_port?: number | null
+}
+
+export type PortStrategyPatch_Serialize = {
+  kind?: PortStrategyKind | null
+  start_port?: number | null
+}
 
 /**  后处理输出 */
 export type PostProcessingOutput = {

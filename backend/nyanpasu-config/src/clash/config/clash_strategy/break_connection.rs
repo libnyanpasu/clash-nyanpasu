@@ -15,7 +15,8 @@ pub enum ProxyChangeBreakMode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
-#[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, Type)))]
+#[patch(attribute(derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Type)))]
+#[patch(attribute(serde(default)))]
 pub struct BreakConnectionStrategy {
     /// 切换代理时中断连接
     pub on_proxy_change: ProxyChangeBreakMode,

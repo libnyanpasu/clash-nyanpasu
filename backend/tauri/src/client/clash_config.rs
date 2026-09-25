@@ -282,4 +282,48 @@ mod tests {
         assert_eq!(after["secret"], before["secret"]);
         assert_eq!(after["ipv6"], before["ipv6"]);
     }
+
+    /// Racing patches of sibling sub-fields of one composite field all land:
+    /// each nested patch is merged into the latest committed value.
+    #[tokio::test]
+    async fn concurrent_nested_patches_preserve_sibling_sub_fields() {
+        use nyanpasu_config::clash::config::clash_strategy::{
+            break_connection::ProxyChangeBreakMode, port::PortStrategyKind,
+        };
+
+        let (client, _dir) = test_client().await;
+        let before = client.snapshot().state;
+        let patch = |value| serde_json::from_value::<ClashConfigPatch>(value).unwrap();
+        let (proxy, profile, kind, port) = tokio::join!(
+            client.patch(patch(serde_json::json!({
+                "break_connection": { "on_proxy_change": "off" }
+            }))),
+            client.patch(patch(serde_json::json!({
+                "break_connection": { "on_profile_change": false }
+            }))),
+            client.patch(patch(serde_json::json!({
+                "mixed_port": { "kind": "random" }
+            }))),
+            client.patch(patch(serde_json::json!({
+                "mixed_port": { "start_port": 7899 }
+            }))),
+        );
+        proxy.unwrap();
+        profile.unwrap();
+        kind.unwrap();
+        port.unwrap();
+
+        let after = client.snapshot().state;
+        assert_eq!(
+            after.break_connection.on_proxy_change,
+            ProxyChangeBreakMode::Off
+        );
+        assert!(!after.break_connection.on_profile_change);
+        assert_eq!(
+            after.break_connection.on_mode_change,
+            before.break_connection.on_mode_change
+        );
+        assert_eq!(after.mixed_port.kind, PortStrategyKind::Random);
+        assert_eq!(after.mixed_port.start_port, 7899);
+    }
 }

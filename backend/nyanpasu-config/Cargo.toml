@@ -7,8 +7,12 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default = ["default-meta"]
+default = ["default-meta", "nesting"]
 default-meta = []
+# `#[patch(nesting)]` needs struct-patch's `nesting`. The `Patch` derive also
+# emits `cfg(feature = "nesting")` into the deriving crate, so this crate needs
+# a feature of that name whenever struct-patch's is on.
+nesting = ["struct-patch/nesting"]
 snapshot-persistence = ["dep:rmp-serde", "dep:zstd"]
 
 [dependencies]

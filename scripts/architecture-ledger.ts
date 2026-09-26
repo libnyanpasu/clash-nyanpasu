@@ -53,21 +53,30 @@ const LEGACY_DTO_RE =
 
 /**
  * Paths excluded from `legacy_dto_refs`. Each entry must say why its legacy
- * names are not an application DTO surface.
+ * names are not an application DTO surface. A path ending in `/` covers that
+ * directory; any other path covers exactly that file.
  */
 export const LEGACY_DTO_ALLOWLIST: ReadonlyArray<
-  { prefix: string; reason: string }
+  { paths: ReadonlyArray<string>; reason: string }
 > = [
   {
-    prefix: "backend/tauri/src/core/migration/legacy_schema/",
+    paths: [
+      "backend/tauri/src/core/migration/legacy_schema/",
+      "backend/tauri/src/core/migration/modules/typed_config.rs",
+    ],
     // The pre-typed `verge.yaml` / clash overrides shape the typed config
-    // migration reads to upgrade old installs; nothing else may use it.
+    // migration reads to upgrade old installs, and the migration module that
+    // reads it; nothing else may use it.
     reason: "on-disk upgrade input schema, not an application DTO",
   },
 ];
 
 export function isLegacyDtoAllowlisted(relPath: string): boolean {
-  return LEGACY_DTO_ALLOWLIST.some(({ prefix }) => relPath.startsWith(prefix));
+  return LEGACY_DTO_ALLOWLIST.some(({ paths }) =>
+    paths.some((entry) =>
+      entry.endsWith("/") ? relPath.startsWith(entry) : relPath === entry
+    )
+  );
 }
 
 /** A `static` keyword: not a `'static` lifetime, not part of an identifier. */

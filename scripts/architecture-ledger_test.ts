@@ -429,10 +429,9 @@ fn guard(_: &IClashTemp) {}
   );
   assertEquals(schema.legacyDtos.total, 0);
 
-  // Only that directory: its callers and look-alike paths still count.
+  // Only that directory: look-alike paths still count.
   for (
     const relPath of [
-      "backend/tauri/src/core/migration/modules/typed_config.rs",
       "backend/tauri/src/core/migration/legacy_schema.rs",
       "backend/tauri/src/client/legacy_schema/verge.rs",
     ]
@@ -441,6 +440,35 @@ fn guard(_: &IClashTemp) {}
     const buckets = createBuckets();
     scanFile(relPath, source, buckets);
     assertEquals(buckets.legacyDtos.total, 2, relPath);
+  }
+});
+
+Deno.test("scanFile: only the typed config migration module may read the legacy schema", () => {
+  const source = `
+use super::legacy_schema::{IClashTemp, IVerge};
+fn read(_: &IVerge) {}
+`;
+  const reader = createBuckets();
+  scanFile(
+    "backend/tauri/src/core/migration/modules/typed_config.rs",
+    source,
+    reader,
+  );
+  assertEquals(reader.legacyDtos.total, 0);
+
+  // A file entry covers exactly that file: sibling modules and paths that
+  // merely start with its name still count.
+  for (
+    const relPath of [
+      "backend/tauri/src/core/migration/modules/app_config.rs",
+      "backend/tauri/src/core/migration/modules/typed_config.rs.orig",
+      "backend/tauri/src/core/migration/modules/typed_config/mod.rs",
+    ]
+  ) {
+    assertFalse(isLegacyDtoAllowlisted(relPath), relPath);
+    const buckets = createBuckets();
+    scanFile(relPath, source, buckets);
+    assertEquals(buckets.legacyDtos.total, 3, relPath);
   }
 });
 

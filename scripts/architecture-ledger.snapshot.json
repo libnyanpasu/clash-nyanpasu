@@ -16,11 +16,8 @@
       "byKey": {}
     },
     "legacy_dto_refs": {
-      "total": 22,
-      "byKey": {
-        "IVerge": 18,
-        "IClashTemp": 4
-      }
+      "total": 0,
+      "byKey": {}
     },
     "test_real_dirs": {
       "total": 0,

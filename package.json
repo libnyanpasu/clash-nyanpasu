@@ -71,7 +71,7 @@
     "@tauri-apps/cli": "2.11.5",
     "@types/node": "24.19.0",
     "@vitejs/plugin-react": "6.1.1",
-    "@vitest/browser-playwright": "5.0.1",
+    "@vitest/browser-playwright": "5.0.2",
     "knip": "6.36.0",
     "lint-staged": "17.6.0",
     "npm-run-all2": "9.0.3",
@@ -95,7 +95,7 @@
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.1",
-    "vitest": "5.0.1"
+    "vitest": "5.0.2"
   },
   "packageManager": "pnpm@12.4.2",
   "engines": {

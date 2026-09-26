@@ -30,7 +30,6 @@ use anyhow::Context;
 use specta_typescript::Typescript;
 use tauri::Manager;
 use tauri_specta::Event;
-use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("./locales");
 
@@ -116,6 +115,17 @@ fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
             None => std::process::exit(1),
         }
     }));
+}
+
+/// Queues a deep link for the frontend, then pokes any listening frontend to
+/// take it. With no frontend listening yet the poke is lost but the link is
+/// not: a frontend drains the queue once it has registered its listener.
+fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
+    app_handle.state::<crate::ipc::PendingDeepLinks>().push(url);
+    log_err!(
+        crate::ipc::SchemeRequestReceivedEvent.emit(app_handle),
+        "failed to emit scheme-request-received event"
+    );
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -277,28 +287,14 @@ pub fn run() -> std::io::Result<()> {
 
             // setup custom scheme
             let handle = app.handle().clone();
-            // Pending deep-link store, drained once by the frontend on startup.
-            // Covers the cold-start race where `scheme-request-received` may be
-            // emitted before the JS listener is attached.
-            app.manage(crate::ipc::PendingDeepLink::default());
+            // Deep links wait here until a frontend takes them.
+            app.manage(crate::ipc::PendingDeepLinks::default());
             // For start new app from schema
             #[cfg(not(target_os = "macos"))]
             if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
-                *app.state::<crate::ipc::PendingDeepLink>().0.lock().unwrap() =
-                    Some(url.to_string());
+                queue_deep_link(&handle, url.to_string());
                 resolve::create_window(&handle.clone());
-                while !is_window_opened() {
-                    log::info!(target: "app", "waiting for window open");
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-                let event = crate::ipc::SchemeRequestReceivedEvent {
-                    url: url.to_string(),
-                };
-                log_err!(
-                    event.emit(&handle),
-                    "failed to emit scheme-request-received event"
-                );
             }
             // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
             log_err!(tauri_plugin_deep_link::register(
@@ -306,14 +302,7 @@ pub fn run() -> std::io::Result<()> {
                 move |request| {
                     log::info!(target: "app", "scheme request received: {:?}", request);
                     resolve::create_window(&handle.clone()); // create window if not exists
-                    while !is_window_opened() {
-                        log::info!(target: "app", "waiting for window open");
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                    }
-                    log_err!(
-                        crate::ipc::SchemeRequestReceivedEvent { url: request }.emit(&handle),
-                        "failed to emit scheme-request-received event"
-                    );
+                    queue_deep_link(&handle, request);
                 }
             ));
             let client = app.state::<crate::client::NyanpasuClient>().inner().clone();
@@ -349,7 +338,6 @@ pub fn run() -> std::io::Result<()> {
             }
             tauri::WindowEvent::Destroyed => {
                 log::debug!(target: "app", "window destroyed");
-                reset_window_open_counter();
             }
             _ => {}
         },

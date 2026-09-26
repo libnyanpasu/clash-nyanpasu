@@ -12,14 +12,13 @@ use nyanpasu_config::{
 use semver::Version;
 use std::{
     collections::HashMap,
-    sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{App, AppHandle, Listener, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::Event;
 
-static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 static TRAY_MENU_PERSISTENT: AtomicBool = AtomicBool::new(false);
 /// Set to true only after the window has received Focused(true) at least once.
 /// Prevents spurious Focused(false) events during window creation from triggering
@@ -35,14 +34,6 @@ static TRAY_MENU_IGNORE_BLUR_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
 
 const TRAY_MENU_SHOW_BLUR_GRACE_MS: u64 = 750;
 const TRAY_MENU_FOCUS_BLUR_GRACE_MS: u64 = 250;
-
-pub fn is_window_opened() -> bool {
-    OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 // 0 means no window open or windows is initialized
-}
-
-pub fn reset_window_open_counter() {
-    OPEN_WINDOWS_COUNTER.store(0, Ordering::Release);
-}
 
 fn unix_time_millis() -> u64 {
     SystemTime::now()
@@ -116,9 +107,8 @@ pub fn resolve_setup(app: &mut App) {
     WindowReadyEvent::listen(app, move |event| {
         let label = &event.payload.label;
         tracing::debug!("Window '{}' is ready", label);
+        #[cfg(target_os = "macos")]
         if label == crate::consts::MAIN_WINDOW_LABEL {
-            reset_window_open_counter();
-            #[cfg(target_os = "macos")]
             log_err!(ready_app_handle.run_on_main_thread(|| {
                 crate::utils::dock::macos::show_dock_icon();
             }));

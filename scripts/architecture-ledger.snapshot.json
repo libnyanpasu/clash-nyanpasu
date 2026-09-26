@@ -8,10 +8,8 @@
       "byKey": {}
     },
     "service_globals": {
-      "total": 8,
-      "byKey": {
-        "WindowManager::global()": 8
-      }
+      "total": 0,
+      "byKey": {}
     },
     "migration_markers": {
       "total": 1,

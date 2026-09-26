@@ -23,6 +23,7 @@
   },
   "include": [
     "vitest.config.ts",
+    "frontend/nyanpasu/src/services/types.d.ts",
     "frontend/*/tests/**/*.ts",
     "frontend/*/tests/**/*.tsx"
   ]

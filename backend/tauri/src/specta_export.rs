@@ -85,7 +85,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::collect_logs,
             ipc::enhance_profiles,
             ipc::import_profile,
-            ipc::get_pending_deep_link,
+            ipc::take_pending_deep_links,
             ipc::create_profile,
             ipc::reorder_profile,
             ipc::reorder_profiles_by_list,

@@ -142,35 +142,40 @@ pub async fn import_profile(
     Ok(client.import_profile(url, name, option).await?)
 }
 
-/// Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
-/// link is received: either from a secondary instance while the app is already
-/// running, or on cold start once the window exists. The frontend listens for
-/// this to import the referenced `install-config` profile. On cold start the
-/// same URL is also stashed in [`PendingDeepLink`] and drained once via
-/// [`get_pending_deep_link`], covering the race where the event fires before the
-/// JS listener attaches.
+/// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
+/// link joins [`PendingDeepLinks`]. It carries no URL: it only asks a listening
+/// frontend to take the queue through [`take_pending_deep_links`].
 ///
 /// Event name: `scheme-request-received-event` (derived by `tauri_specta`).
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
-pub struct SchemeRequestReceivedEvent {
-    /// The raw deep-link URL as received from the OS.
-    pub url: String,
+pub struct SchemeRequestReceivedEvent;
+
+/// Deep links no frontend has taken yet, oldest first: the cold-start link from
+/// argv and every link a later instance forwards. A link leaves the queue only
+/// when a frontend takes it, so one that arrives while no frontend listens,
+/// before the window loads or while it reloads, waits for the next frontend
+/// to mount and drain it. Managed Tauri state, not a global singleton.
+#[derive(Debug, Default)]
+pub struct PendingDeepLinks(std::sync::Mutex<Vec<String>>);
+
+impl PendingDeepLinks {
+    pub fn push(&self, url: String) {
+        self.0.lock().unwrap().push(url);
+    }
+
+    /// Takes every queued link, oldest first, and leaves the queue empty.
+    pub fn take_all(&self) -> Vec<String> {
+        std::mem::take(&mut *self.0.lock().unwrap())
+    }
 }
 
-/// Deep-link URL captured on cold start (from argv) before the frontend could
-/// receive the [`SchemeRequestReceivedEvent`] event. The frontend drains it once
-/// on startup via [`get_pending_deep_link`], closing the race where the event is
-/// emitted before the JS listener has attached. Managed Tauri state, not a
-/// global singleton.
-#[derive(Default)]
-pub struct PendingDeepLink(pub std::sync::Mutex<Option<String>>);
-
-/// Take and clear the pending cold-start deep link, if any. Called once by the
-/// frontend during startup.
+/// Take and clear the queued deep links, oldest first. The frontend calls it
+/// once its [`SchemeRequestReceivedEvent`] listener is registered, and again on
+/// every such event.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<String>> {
-    Ok(pending.0.lock().unwrap().take())
+pub async fn take_pending_deep_links(pending: State<'_, PendingDeepLinks>) -> Result<Vec<String>> {
+    Ok(pending.take_all())
 }
 
 /// create a new profile
@@ -1378,4 +1383,34 @@ pub fn retry_configuration_effect(
     kind: crate::client::effects::plan::EffectKind,
 ) -> Result<()> {
     Ok(client.retry_effect_now(kind)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PendingDeepLinks;
+
+    #[test]
+    fn deep_links_queued_while_no_frontend_listens_are_taken_oldest_first() {
+        let pending = PendingDeepLinks::default();
+        assert!(pending.take_all().is_empty());
+
+        pending.push("clash://install-config?url=https%3A%2F%2Fa".into());
+        pending.push("clash://install-config?url=https%3A%2F%2Fb".into());
+        pending.push("clash://install-config?url=https%3A%2F%2Fa".into());
+        assert_eq!(
+            pending.take_all(),
+            [
+                "clash://install-config?url=https%3A%2F%2Fa",
+                "clash://install-config?url=https%3A%2F%2Fb",
+                "clash://install-config?url=https%3A%2F%2Fa",
+            ]
+        );
+        assert!(pending.take_all().is_empty(), "taking empties the queue");
+
+        pending.push("clash://install-config?url=https%3A%2F%2Fc".into());
+        assert_eq!(
+            pending.take_all(),
+            ["clash://install-config?url=https%3A%2F%2Fc"]
+        );
+    }
 }

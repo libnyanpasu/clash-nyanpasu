@@ -11,21 +11,10 @@ use anyhow::Result;
 use nyanpasu_config::state::window::WindowState;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::{
-    collections::HashMap,
-    sync::{
-        Mutex, OnceLock,
-        atomic::{AtomicU16, Ordering},
-    },
-};
+use std::{collections::HashMap, sync::Mutex};
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
-/// Global counter for tracking open windows
-static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
-
-/// Global window manager instance
-static WINDOW_MANAGER: OnceLock<Mutex<WindowManager>> = OnceLock::new();
 /// Window configuration options
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -206,19 +195,15 @@ pub fn build_url_with_params(base_url: &str, params: Option<&WindowParams>) -> S
         _ => base_url.to_string(),
     }
 }
-/// Window manager for tracking window instances
+/// The window instances this app created. Pure bookkeeping, shared through
+/// [`WindowRegistry`].
 #[derive(Debug, Default)]
-pub struct WindowManager {
+pub struct WindowInstances {
     /// Maps base label to list of instance labels
     instances: HashMap<String, Vec<String>>,
 }
 
-impl WindowManager {
-    /// Get global window manager instance
-    pub fn global() -> &'static Mutex<Self> {
-        WINDOW_MANAGER.get_or_init(|| Mutex::new(Self::default()))
-    }
-
+impl WindowInstances {
     /// Generate a unique label for a window
     ///
     /// For singleton windows, returns None if an instance already exists.
@@ -272,6 +257,36 @@ impl WindowManager {
     pub fn instance_count(&self, base_label: &str) -> usize {
         self.instances.get(base_label).map(|v| v.len()).unwrap_or(0)
     }
+}
+
+/// The window registry, managed as Tauri state by the composition root.
+#[derive(Debug, Default)]
+pub struct WindowRegistry {
+    instances: Mutex<WindowInstances>,
+}
+
+impl WindowRegistry {
+    pub fn instances(&self, base_label: &str) -> Vec<String> {
+        self.instances.lock().unwrap().get_instances(base_label)
+    }
+
+    /// See [`WindowInstances::generate_label`].
+    pub fn generate_label(&self, base_label: &str, singleton: bool) -> Option<String> {
+        self.instances
+            .lock()
+            .unwrap()
+            .generate_label(base_label, singleton)
+    }
+
+    pub fn remove_instance(&self, label: &str) {
+        self.instances.lock().unwrap().remove_instance(label);
+    }
+}
+
+fn registry(app_handle: &AppHandle) -> Result<tauri::State<'_, WindowRegistry>> {
+    app_handle
+        .try_state::<WindowRegistry>()
+        .ok_or_else(|| anyhow::anyhow!("the window registry is not managed yet"))
 }
 /// Event emitted by the frontend when a window's webview is ready and visible.
 /// Carries the window label so the backend can handle per-window logic.
@@ -346,10 +361,7 @@ pub fn broadcast_to_window_type(
     event: &str,
     payload: serde_json::Value,
 ) -> Result<()> {
-    let instances = {
-        let manager = WindowManager::global().lock().unwrap();
-        manager.get_instances(base_label)
-    };
+    let instances = registry(app_handle)?.instances(base_label);
 
     for label in instances {
         if app_handle.get_webview_window(&label).is_some() {
@@ -425,10 +437,6 @@ pub trait AppWindow {
     /// The geometry to restore the window with, if it remembers one.
     fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState>;
 
-    fn reset_window_open_counter(&self) {
-        OPEN_WINDOWS_COUNTER.fetch_sub(1, Ordering::Release);
-    }
-
     /// Create window with optional URL parameters
     ///
     /// Returns the label of the created (or existing) window
@@ -439,46 +447,33 @@ pub trait AppWindow {
     ) -> Result<WindowCreateResult> {
         let config = self.config();
         let base_label = self.label();
+        let registry = registry(app_handle)?;
 
         // Clean up stale window records before generating label
         // This handles cases where the window was destroyed but the record wasn't cleaned up
-        {
-            let mut manager = WindowManager::global().lock().unwrap();
-            let stale_labels: Vec<String> = manager
-                .get_instances(base_label)
-                .into_iter()
-                .filter(|label| app_handle.get_webview_window(label).is_none())
-                .collect();
-            for label in stale_labels {
-                tracing::debug!("cleaning up stale window record: {}", label);
-                manager.remove_instance(&label);
-            }
+        let stale_labels: Vec<String> = registry
+            .instances(base_label)
+            .into_iter()
+            .filter(|label| app_handle.get_webview_window(label).is_none())
+            .collect();
+        for label in stale_labels {
+            tracing::debug!("cleaning up stale window record: {}", label);
+            registry.remove_instance(&label);
         }
 
         // Generate unique label
-        let label = {
-            let mut manager = WindowManager::global().lock().unwrap();
-            // After cleanup above, generate_label should work correctly
-            // For singleton windows, if it returns None, the window truly exists
-            manager
-                .generate_label(base_label, config.singleton)
-                .unwrap_or_else(|| {
-                    // Singleton window already exists - try to focus it
-                    if let Some(window) = app_handle.get_webview_window(base_label) {
-                        tracing::debug!("{} window is already opened, try to focus it", base_label);
-                        trace_err!(window.unminimize(), "set win unminimize");
-                        trace_err!(window.show(), "set win visible");
-                        trace_err!(window.set_focus(), "set win focus");
-                    }
-                    // Return early indicator - we'll handle this below
-                    String::new()
-                })
-        };
-
-        // Handle singleton window that already exists
-        if label.is_empty() {
+        // After cleanup above, generate_label should work correctly
+        // For singleton windows, if it returns None, the window truly exists
+        let Some(label) = registry.generate_label(base_label, config.singleton) else {
+            // Singleton window already exists - try to focus it
+            if let Some(window) = app_handle.get_webview_window(base_label) {
+                tracing::debug!("{} window is already opened, try to focus it", base_label);
+                trace_err!(window.unminimize(), "set win unminimize");
+                trace_err!(window.show(), "set win visible");
+                trace_err!(window.set_focus(), "set win focus");
+            }
             return Ok(WindowCreateResult::existing(base_label.to_string()));
-        }
+        };
 
         let always_on_top = config.always_on_top.unwrap_or_else(|| {
             app_handle
@@ -663,27 +658,24 @@ pub trait AppWindow {
                     crate::window::macos::setup_traffic_lights_pos(win.clone(), (18.0, 22.0), mtm);
                 }
 
-                // Register window close event to clean up WindowManager
+                // Register window close event to clean up the registry
                 let label_clone = label.clone();
+                let registry_handle = app_handle.clone();
                 win.on_window_event(move |event| {
                     if let tauri::WindowEvent::Destroyed = event {
-                        tracing::debug!("window {} destroyed, removing from manager", label_clone);
-                        let mut manager = WindowManager::global().lock().unwrap();
-                        manager.remove_instance(&label_clone);
-                        OPEN_WINDOWS_COUNTER.fetch_sub(1, Ordering::Release);
+                        tracing::debug!("window {} destroyed, removing from registry", label_clone);
+                        if let Some(registry) = registry_handle.try_state::<WindowRegistry>() {
+                            registry.remove_instance(&label_clone);
+                        }
                     }
                 });
 
-                OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
                 Ok(WindowCreateResult::new(label))
             }
             Err(err) => {
                 log::error!(target: "app", "failed to create window, {err:?}");
-                // Remove from manager on failure
-                {
-                    let mut manager = WindowManager::global().lock().unwrap();
-                    manager.remove_instance(&label);
-                }
+                // Remove from the registry on failure
+                registry.remove_instance(&label);
                 if let Some(win) = app_handle.get_webview_window(&label) {
                     // Cleanup window if failed to create, it's a workaround for tauri bug
                     log_err!(
@@ -730,12 +722,12 @@ pub trait AppWindow {
 
     /// Close window by label
     ///
-    /// Note: The WindowManager cleanup is handled automatically by the
+    /// Note: The registry cleanup is handled automatically by the
     /// on_window_event callback registered during window creation.
     fn close_by_label(&self, app_handle: &AppHandle, label: &str) {
         if let Some(window) = app_handle.get_webview_window(label) {
             trace_err!(window.close(), "close window");
-            // WindowManager cleanup is handled by on_window_event(Destroyed)
+            // Registry cleanup is handled by on_window_event(Destroyed)
         }
     }
 
@@ -746,10 +738,9 @@ pub trait AppWindow {
 
     /// Close all instances of this window type
     fn close_all(&self, app_handle: &AppHandle) {
-        let instances = {
-            let manager = WindowManager::global().lock().unwrap();
-            manager.get_instances(self.label())
-        };
+        let instances = registry(app_handle)
+            .map(|registry| registry.instances(self.label()))
+            .unwrap_or_default();
         for label in instances {
             self.close_by_label(app_handle, &label);
         }
@@ -762,18 +753,14 @@ pub trait AppWindow {
 
     /// Check if any instance of this window type is open
     fn has_any_instance(&self, app_handle: &AppHandle) -> bool {
-        let manager = WindowManager::global().lock().unwrap();
-        let instances = manager.get_instances(self.label());
-        instances
-            .iter()
-            .any(|label| app_handle.get_webview_window(label).is_some())
+        !self.get_open_instances(app_handle).is_empty()
     }
 
     /// Get all open window labels for this type
     fn get_open_instances(&self, app_handle: &AppHandle) -> Vec<String> {
-        let manager = WindowManager::global().lock().unwrap();
-        manager
-            .get_instances(self.label())
+        registry(app_handle)
+            .map(|registry| registry.instances(self.label()))
+            .unwrap_or_default()
             .into_iter()
             .filter(|label| app_handle.get_webview_window(label).is_some())
             .collect()
@@ -1122,5 +1109,43 @@ pub mod macos {
         TRAFFIC_LIGHTS_WINDOW_DELEGATE_GUARD.replace(Some(TrafficLightsWindowDelegateGuard {
             _delegate: delegate,
         }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_singleton_label_is_handed_out_once_until_it_is_removed() {
+        let mut instances = WindowInstances::default();
+        assert_eq!(
+            instances.generate_label("main", true),
+            Some("main".to_string())
+        );
+        assert_eq!(instances.generate_label("main", true), None);
+
+        instances.remove_instance("main");
+        assert_eq!(
+            instances.generate_label("main", true),
+            Some("main".to_string())
+        );
+    }
+
+    #[test]
+    fn other_instances_take_the_lowest_free_number() {
+        let mut instances = WindowInstances::default();
+        for expected in ["editor", "editor-1", "editor-2"] {
+            assert_eq!(
+                instances.generate_label("editor", false).as_deref(),
+                Some(expected)
+            );
+        }
+        instances.remove_instance("editor-1");
+        assert_eq!(
+            instances.generate_label("editor", false).as_deref(),
+            Some("editor-1")
+        );
+        assert_eq!(instances.instance_count("editor"), 3);
     }
 }

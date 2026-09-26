@@ -340,10 +340,16 @@ impl Tray {
         };
         let tray_id = get_tray_id();
         tracing::debug!("updating tray part: {}", tray_id);
-        let tray = app_handle
-            .tray_by_id(tray_id.as_ref())
-            .expect("tray not found");
-        let state = app_handle.state::<TrayState<R>>();
+        let Some(tray) = app_handle.tray_by_id(tray_id.as_ref()) else {
+            // Startup and tray recreation can request a partial refresh before
+            // the full refresh has installed the icon and menu.
+            tracing::debug!("tray not ready; full refresh will update it");
+            return Ok(());
+        };
+        let Some(state) = app_handle.try_state::<TrayState<R>>() else {
+            tracing::debug!("tray menu not ready; full refresh will update it");
+            return Ok(());
+        };
         let menu = state.menu.lock();
 
         let _ = menu

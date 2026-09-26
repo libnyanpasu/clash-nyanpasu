@@ -1,8 +1,11 @@
 use serde_json::json;
 
-use super::support::{ExprReply, FakeScriptRunner, PredicateReply};
+use super::support::{
+    ExprReply, FakeScriptRunner, MapContentSource, PredicateReply, RunReply, overlay_item,
+    profiles_with, script_item,
+};
 use crate::runtime::{
-    executor::{StepLogLevel, overlay::apply_overlay},
+    executor::{StepLogEntry, StepLogLevel, apply_transform, overlay::apply_overlay},
     value::ConfigValue,
 };
 
@@ -23,13 +26,70 @@ fn apply_with(
     runner: &FakeScriptRunner,
 ) -> (serde_json::Value, Vec<(StepLogLevel, String)>) {
     let mut logs = Vec::new();
-    let result = apply_overlay(&value(overlay), value(config), runner, &mut logs);
+    let (result, _) = apply_overlay(&value(overlay), value(config), runner, &mut logs);
     (
         result.to_json(),
         logs.into_iter()
             .map(|entry| (entry.level, entry.message))
             .collect(),
     )
+}
+
+#[test]
+fn lua_filter_errors_are_transform_failures_even_with_warning_logs() {
+    let profiles = profiles_with(
+        None,
+        &["overlay"],
+        &[],
+        vec![overlay_item("overlay", "overlay.yaml")],
+    );
+    let content = MapContentSource::from_pairs(&[("overlay.yaml", "filter__proxies: boom")]);
+    let mut runner = FakeScriptRunner::default();
+    runner.predicates.insert(
+        "boom".into(),
+        PredicateReply::Fail("lua predicate failed".into()),
+    );
+    let (_, _, logs, failed) = apply_transform(
+        &profiles,
+        &content,
+        &runner,
+        &super::support::pid("overlay"),
+        &std::sync::Arc::new(value(json!({"proxies": [{"name": "a"}]}))),
+    );
+    assert!(failed);
+    assert!(logs.iter().any(|entry| entry.level == StepLogLevel::Warn));
+}
+
+#[test]
+fn script_console_error_log_does_not_mean_execution_failed() {
+    let profiles = profiles_with(
+        None,
+        &["script"],
+        &[],
+        vec![script_item(
+            "script",
+            "script.js",
+            crate::profile::ScriptRuntime::JavaScript,
+        )],
+    );
+    let content = MapContentSource::from_pairs(&[("script.js", "console.error('diagnostic')")]);
+    let mut runner = FakeScriptRunner::default();
+    runner.runs.insert(
+        "console.error('diagnostic')".into(),
+        RunReply::Replace(
+            json!({"mode": "direct"}),
+            vec![StepLogEntry::error("diagnostic")],
+        ),
+    );
+    let (_, _, logs, failed) = apply_transform(
+        &profiles,
+        &content,
+        &runner,
+        &super::support::pid("script"),
+        &std::sync::Arc::new(value(json!({"mode": "rule"}))),
+    );
+    assert!(!failed);
+    assert!(logs.iter().any(|entry| entry.level == StepLogLevel::Error));
 }
 
 #[test]

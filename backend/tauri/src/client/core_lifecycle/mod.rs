@@ -11,17 +11,17 @@ use crate::core::actor_v2::{
     facade::{ReconcileReport, RecoverReport, StopReport},
     service_actor::ServiceHostStatus,
 };
-use nyanpasu_config::application::ClashCore;
 use ports::PreparedCoreBinary;
 use std::time::Duration;
-pub(in crate::client) use workflow::{CoreLifecycleWorkflow, ServiceRecovery, domain_error};
+pub(in crate::client) use workflow::{
+    CoreLifecycleWorkflow, RuntimeSubmission, ServiceRecovery, domain_error,
+};
 
 pub(in crate::client) const RECOVERY_INTERVAL: Duration = Duration::from_secs(5);
 
 pub(in crate::client) enum Command {
     Reconcile,
     ApplyControlChannel,
-    SelectCore(ClashCore),
     ChangeHost(ExecutionHost),
     SetExecutionHost(bool),
     RestoreExecutionHost,
@@ -48,4 +48,8 @@ pub(in crate::client) enum Output {
     Recover(RecoverReport),
     Service(Box<ServiceHostStatus>),
     Shutdown(ShutdownReport),
+    /// One source-config mutation, settled. The caller of a mutation is the
+    /// state transaction, which was answered during prepare; this is the
+    /// structured record the workflow keeps afterwards.
+    Settled(Box<super::application_workflow::mutation::MutationReceipt>),
 }

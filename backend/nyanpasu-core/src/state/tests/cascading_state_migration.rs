@@ -170,9 +170,11 @@ async fn cascade_no_commit_on_effect_failure() {
 
     let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = chain
         .a
-        .with_pending_state(&42, |_state| async {
-            Err::<(), _>(anyhow::anyhow!("effect failed"))
-        })
+        .with_pending_state(
+            &42,
+            |_state| async { Err::<(), _>(anyhow::anyhow!("effect failed")) },
+            |_committed: i32| async { Ok(()) },
+        )
         .await;
 
     assert!(result.is_err());
@@ -203,9 +205,11 @@ async fn cascade_effect_failure_with_prev_state() {
     // Second: with_pending_state where effect fails
     let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = chain
         .a
-        .with_pending_state(&2, |_state| async {
-            Err::<(), _>(anyhow::anyhow!("disk write failed"))
-        })
+        .with_pending_state(
+            &2,
+            |_state| async { Err::<(), _>(anyhow::anyhow!("disk write failed")) },
+            |_committed: i32| async { Ok(()) },
+        )
         .await;
 
     assert!(result.is_err());

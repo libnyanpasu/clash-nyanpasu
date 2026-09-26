@@ -177,6 +177,14 @@ export const commands = {
     typedError<string | null, string>(
       __TAURI_INVOKE('get_system_accent_color'),
     ),
+  getConfigurationStatus: () =>
+    __TAURI_INVOKE<ConfigurationStatus>('get_configuration_status'),
+  retryConfigurationRuntime: () =>
+    typedError<null, string>(__TAURI_INVOKE('retry_configuration_runtime')),
+  retryConfigurationEffect: (kind: EffectKind) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('retry_configuration_effect', { kind }),
+    ),
   setReleaseChannel: (channel: ReleaseChannel) =>
     typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('set_release_channel', { channel }),
@@ -336,7 +344,7 @@ export const commands = {
   viewProfile: (uid: ProfileId) =>
     typedError<null, string>(__TAURI_INVOKE('view_profile', { uid })),
   saveProfileFile: (uid: ProfileId, fileData: string) =>
-    typedError<null, string>(
+    typedError<MutationOutcome<null>, string>(
       __TAURI_INVOKE('save_profile_file', { uid, fileData }),
     ),
   setCustomAppDir: (path: string) =>
@@ -411,6 +419,9 @@ export const events = {
     'clash-connections-event',
   ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
+  configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
+    'configuration-status-changed',
+  ),
   coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
     'core-status-changed-event',
   ),
@@ -586,6 +597,14 @@ export type ClashWsUpdate =
   | { kind: 'recording_changed'; data: ClashWsRecording }
   | { kind: 'history_cleared'; data: ClashWsKind }
 
+/**  A source commit and its critical runtime result. Peripheral owners settle separately. */
+export type CommitReceipt = {
+  operation_id: string | null
+  domain: string
+  source_version: number
+  runtime: RuntimeCommitStatus
+}
+
 export type CompositionConfig =
   CompositionConfig_Serialize | CompositionConfig_Deserialize
 
@@ -694,6 +713,27 @@ export type ConfigRevisionInfo = {
   source_hash: string
   effective_hash: string
 }
+
+export type ConfigurationStatus = {
+  event_seq: number
+  maintenance: string | null
+  source_versions: SourceVersions
+  runtime: RuntimeConvergence
+  effects: EffectConvergence[]
+  active: string | null
+  queued: string[]
+  recent_operations: OperationStatus[]
+}
+
+export type ConfigurationStatusChanged = ConfigurationStatus
+
+export type ConvergenceHealth =
+  | 'healthy'
+  | 'pending'
+  | 'retry_scheduled'
+  | 'waiting_dependency'
+  | 'blocked'
+  | 'recovery_required'
 
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 
@@ -915,6 +955,31 @@ export type DownloaderState =
  *  Used to derive the window label (for singleton logic) and URL path params.
  */
 export type EditorWindowType = 'profile' | 'css-editor'
+
+export type EffectConvergence = {
+  kind: EffectKind
+  health: ConvergenceHealth
+  desired_revision: number
+  applied_revision: number
+  attempts: number
+  automatic_remaining: number
+  message: string | null
+}
+
+/**
+ *  Execution order of a plan. The ordering is load-bearing: the tray menu is
+ *  rendered with the process-wide locale, and the proxy guard re-applies the
+ *  system proxy value that the `SystemProxy` effect just installed.
+ */
+export type EffectKind =
+  | 'locale'
+  | 'logger'
+  | 'auto_launch'
+  | 'system_proxy'
+  | 'proxy_guard'
+  | 'hotkeys'
+  | 'widget'
+  | 'tray'
 
 export type EndpointConnectivity =
   | { kind: 'connected' }
@@ -1488,15 +1553,20 @@ export type MaterializedFile_Serialize = {
   updated_at?: number | null
 }
 
-/**
- *  Public mutation wire (PR-4S S08 / plan §12): state is committed first; post-
- *  commit side-effect failures degrade instead of erroring.
- *
- *  Final wire is only `applied` / `committed_degraded` — no `_v1` alias.
- */
 export type MutationOutcome<T> =
-  | { status: 'applied'; value: T }
-  | { status: 'committed_degraded'; value: T; degradations: Degradation[] }
+  | {
+      status: 'committed'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+    }
+  | {
+      status: 'committed_degraded'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+      degradations: Degradation[]
+    }
 
 export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
 
@@ -1518,6 +1588,14 @@ export type NewProfileRequest_Serialize = {
 export type OpenLogs = {
   request_id: string
   file: string | null
+}
+
+export type OperationStatus = {
+  operation_id: string
+  domain: string
+  outcome: string
+  conclusion: string
+  message: string | null
 }
 
 /**  The pipeline operator that produced a snapshot node. */
@@ -2261,6 +2339,22 @@ export type RulesRes = {
   rules: ClashRule[]
 }
 
+export type RuntimeCommitStatus =
+  | 'applied'
+  | 'deferred'
+  | 'saved_inactive'
+  | 'unchanged'
+  | 'pending'
+  | 'recovery_required'
+
+export type RuntimeConvergence = {
+  health: ConvergenceHealth
+  operation_id: string | null
+  attempts: number
+  automatic_remaining: number
+  message: string | null
+}
+
 export type RuntimeInfos = {
   service_data_dir: string
   service_config_dir: string
@@ -2464,6 +2558,13 @@ export type SnapshotDiffHunk = {
   new_lines: number
   /**  Unified diff lines, including their space, plus, or minus prefix. */
   lines: string[]
+}
+
+export type SourceVersions = {
+  application: number
+  clash: number
+  session: number
+  profiles: number
 }
 
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize
@@ -2972,6 +3073,22 @@ export const queries = {
     }),
 }
 export const mutations = {
+  getConfigurationStatus: mutationOptions({
+    mutationKey: ['getConfigurationStatus'],
+    mutationFn: (input: Parameters<typeof commands.getConfigurationStatus>) =>
+      commands.getConfigurationStatus(...input),
+  }),
+  retryConfigurationRuntime: mutationOptions({
+    mutationKey: ['retryConfigurationRuntime'],
+    mutationFn: (
+      input: Parameters<typeof commands.retryConfigurationRuntime>,
+    ) => commands.retryConfigurationRuntime(...input),
+  }),
+  retryConfigurationEffect: mutationOptions({
+    mutationKey: ['retryConfigurationEffect'],
+    mutationFn: (input: Parameters<typeof commands.retryConfigurationEffect>) =>
+      commands.retryConfigurationEffect(...input),
+  }),
   setReleaseChannel: mutationOptions({
     mutationKey: ['setReleaseChannel'],
     mutationFn: (input: Parameters<typeof commands.setReleaseChannel>) =>

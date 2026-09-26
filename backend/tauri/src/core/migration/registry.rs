@@ -45,4 +45,29 @@ mod tests {
             }
         }
     }
+
+    /// Heuristic modules are frozen: a new step would need another shape
+    /// probe. New config migrations belong in a document module.
+    #[test]
+    fn heuristic_modules_gain_no_steps() {
+        use super::super::ModuleKind;
+
+        for module in modules() {
+            let head = module.steps().last().map_or(0, |step| step.revision());
+            match module.kind() {
+                ModuleKind::Heuristic => {
+                    let frozen = match module.module() {
+                        "app_config" => 4,
+                        "typed_config" => 2,
+                        "storage" => 2,
+                        other => panic!("{other} is a new heuristic module; make it a document"),
+                    };
+                    assert_eq!(head, frozen, "{} is frozen", module.module());
+                }
+                ModuleKind::Document(spec) => {
+                    assert!(spec.unstamped_ceiling <= head, "{}", module.module());
+                }
+            }
+        }
+    }
 }

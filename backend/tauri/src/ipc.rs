@@ -57,7 +57,6 @@ impl From<ClientError> for IpcError {
             ClientError::Storage(err) => IpcError::Storage(err),
             ClientError::Anyhow(err) => IpcError::Anyhow(err),
             ClientError::Profiles(err) => IpcError::Profiles(err),
-            ClientError::PartialCommit(err) => IpcError::Custom(err.to_string()),
             ClientError::Custom(err) => IpcError::Custom(err),
         }
     }
@@ -313,9 +312,8 @@ pub async fn save_profile_file(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     file_data: String,
-) -> Result {
-    client.save_profile_file(uid, file_data).await?;
-    Ok(())
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.save_profile_file(uid, file_data).await?)
 }
 
 #[tauri::command]
@@ -1284,24 +1282,10 @@ pub async fn check_update(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn save_window_size_state(
-    legacy: State<'_, LegacyVergeBridge>,
-    app_handle: AppHandle,
-    label: String,
-) -> Result<()> {
-    // Window-state save writes `Config::verge().window_size_state` directly; reseed typed
-    // actors so a later pure patch does not revert the saved geometry.
-    legacy
-        .run_legacy_verge_mutation(|| async move {
-            match label.as_str() {
-                crate::consts::MAIN_WINDOW_LABEL => {
-                    resolve::save_main_window_state_async(&app_handle, true).await?;
-                }
-                _ => log::warn!("Unknown window label: {}", label),
-            }
-            Ok(())
-        })
-        .await?;
+pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()> {
+    if label == crate::consts::MAIN_WINDOW_LABEL {
+        resolve::save_main_window_state_async(&app_handle, true).await?;
+    }
     Ok(())
 }
 
@@ -1370,4 +1354,28 @@ pub fn create_editor_window(
 #[specta::specta]
 pub fn get_system_accent_color() -> Result<Option<String>> {
     Ok(crate::utils::color::get_system_accent_color())
+}
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct ConfigurationStatusChanged(pub crate::client::configuration_status::ConfigurationStatus);
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_configuration_status(
+    client: State<'_, NyanpasuClient>,
+) -> crate::client::configuration_status::ConfigurationStatus {
+    client.configuration_status()
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn retry_configuration_runtime(client: State<'_, NyanpasuClient>) -> Result<()> {
+    Ok(client.retry_runtime_now().await?)
+}
+#[tauri::command]
+#[specta::specta]
+pub fn retry_configuration_effect(
+    client: State<'_, NyanpasuClient>,
+    kind: crate::client::effects::plan::EffectKind,
+) -> Result<()> {
+    Ok(client.retry_effect_now(kind)?)
 }

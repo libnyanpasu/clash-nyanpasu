@@ -1,10 +1,12 @@
-use super::super::{Ctx, MigrationStep, ModuleMigrator};
+use super::super::{
+    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
+};
 use crate::{
     bridge::typed_config_from_legacy_parts,
     config::{IClashTemp, IVerge},
     utils::help,
 };
-use anyhow::{Context as _, bail};
+use anyhow::Context as _;
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Serialize, de::DeserializeOwned};
@@ -38,6 +40,23 @@ impl ModuleMigrator for TypedConfigMigrator {
     fn steps(&self) -> &'static [&'static dyn MigrationStep] {
         &STEPS
     }
+
+    fn files_behind(&self, ctx: &Ctx, applied: u64) -> anyhow::Result<Option<String>> {
+        Ok(match typed_file_state(ctx)? {
+            TypedFileState::All => None,
+            TypedFileState::None if applied >= SPLIT_LEGACY_CONFIG.revision() => Some(format!(
+                "application.yaml and session-state.yaml are missing from {}",
+                ctx.paths().app_config_dir().display()
+            )),
+            TypedFileState::NeedsClashRepair if applied >= REPAIR_CLASH_CONFIG_PATH.revision() => {
+                Some(format!(
+                    "{} is not a typed clash config",
+                    ctx.clash_config_path().display()
+                ))
+            }
+            TypedFileState::None | TypedFileState::NeedsClashRepair => None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -64,13 +83,14 @@ impl MigrationStep for SplitLegacyConfig {
         "SplitLegacyConfig"
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        match typed_file_state(ctx)? {
-            TypedFileState::All => return Ok(()),
-            TypedFileState::None => {}
-            TypedFileState::NeedsClashRepair => return Ok(()),
-        }
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        Ok(Some(match typed_file_state(ctx)? {
+            TypedFileState::None => StepCheck::Needed,
+            TypedFileState::All | TypedFileState::NeedsClashRepair => StepCheck::Satisfied,
+        }))
+    }
 
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
         let legacy_clash = read_legacy_clash_inputs(ctx)?;
         let (application, session_state, clash_config) =
@@ -111,15 +131,18 @@ impl MigrationStep for RepairClashConfigPath {
         "RepairClashConfigPath"
     }
 
-    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
         match typed_file_state(ctx)? {
-            TypedFileState::All => return Ok(()),
-            TypedFileState::None => {
-                bail!("cannot repair typed clash config before split_legacy_config has completed")
-            }
-            TypedFileState::NeedsClashRepair => {}
+            TypedFileState::All => Ok(Some(StepCheck::Satisfied)),
+            TypedFileState::NeedsClashRepair => Ok(Some(StepCheck::Needed)),
+            TypedFileState::None => Err(MigrationCheckError::Unrecognized(
+                "cannot repair typed clash config before split_legacy_config has completed"
+                    .to_string(),
+            )),
         }
+    }
 
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let previous_typed_path = ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE);
         let clash_config = if previous_typed_path.exists() {
             read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&previous_typed_path)
@@ -153,9 +176,9 @@ enum SharedClashFileState {
     Unrecognized,
 }
 
-fn typed_file_state(ctx: &Ctx) -> anyhow::Result<TypedFileState> {
-    let application_exists = typed_path_exists(&ctx.application_config_path())?;
-    let session_exists = typed_path_exists(&ctx.session_state_path())?;
+fn typed_file_state(ctx: &Ctx) -> Result<TypedFileState, MigrationCheckError> {
+    let application_exists = try_exists(&ctx.application_config_path())?;
+    let session_exists = try_exists(&ctx.session_state_path())?;
     let clash_state = classify_shared_clash_file(ctx)?;
 
     if !application_exists && !session_exists {
@@ -166,12 +189,7 @@ fn typed_file_state(ctx: &Ctx) -> anyhow::Result<TypedFileState> {
                 vec!["clash-config.yaml"],
                 vec!["application.yaml", "session-state.yaml"],
             ),
-            SharedClashFileState::Unrecognized => bail!(
-                "unrecognized typed config migration state: existing {} is neither \
-                 a valid typed clash config nor a recognized legacy runtime config; restore or \
-                 remove it before retrying",
-                ctx.clash_config_path().display()
-            ),
+            SharedClashFileState::Unrecognized => Err(unrecognized_clash_file(ctx)),
         };
     }
 
@@ -190,12 +208,7 @@ fn typed_file_state(ctx: &Ctx) -> anyhow::Result<TypedFileState> {
     }
 
     if clash_state == SharedClashFileState::Unrecognized {
-        bail!(
-            "unrecognized typed config migration state: existing {} is neither \
-             a valid typed clash config nor a recognized legacy runtime config; restore or \
-             remove it before retrying",
-            ctx.clash_config_path().display()
-        );
+        return Err(unrecognized_clash_file(ctx));
     }
 
     let mut existing = Vec::new();
@@ -223,14 +236,18 @@ fn typed_file_state(ctx: &Ctx) -> anyhow::Result<TypedFileState> {
     partial_typed_file_state(existing, missing)
 }
 
-fn typed_path_exists(path: &Path) -> anyhow::Result<bool> {
-    path.try_exists()
-        .with_context(|| format!("failed to inspect typed config file {}", path.display()))
+fn unrecognized_clash_file(ctx: &Ctx) -> MigrationCheckError {
+    MigrationCheckError::Unrecognized(format!(
+        "unrecognized typed config migration state: existing {} is neither \
+         a valid typed clash config nor a recognized legacy runtime config; restore or \
+         remove it before retrying",
+        ctx.clash_config_path().display()
+    ))
 }
 
-fn classify_shared_clash_file(ctx: &Ctx) -> anyhow::Result<SharedClashFileState> {
+fn classify_shared_clash_file(ctx: &Ctx) -> Result<SharedClashFileState, MigrationCheckError> {
     let path = ctx.clash_config_path();
-    if !typed_path_exists(&path)? {
+    if !try_exists(&path)? {
         return Ok(SharedClashFileState::Missing);
     }
 
@@ -238,10 +255,7 @@ fn classify_shared_clash_file(ctx: &Ctx) -> anyhow::Result<SharedClashFileState>
         return Ok(SharedClashFileState::Typed);
     }
 
-    let raw = std::fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
-    let value: Value = serde_yaml::from_str(&raw)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
+    let value: Value = read_yaml(&path)?;
 
     if looks_like_legacy_runtime_clash_mapping(&value) {
         return Ok(SharedClashFileState::LegacyRuntime);
@@ -295,27 +309,24 @@ fn push_file_state(
 fn partial_typed_file_state(
     existing: Vec<&'static str>,
     missing: Vec<&'static str>,
-) -> anyhow::Result<TypedFileState> {
-    bail!(
+) -> Result<TypedFileState, MigrationCheckError> {
+    Err(MigrationCheckError::Unrecognized(format!(
         "partial typed config migration state: existing [{}], missing [{}]; \
          restore or remove the typed config files before retrying",
         existing.join(", "),
         missing.join(", ")
-    );
+    )))
 }
 
-fn validate_existing_typed_files(ctx: &Ctx) -> anyhow::Result<()> {
+fn validate_existing_typed_files(ctx: &Ctx) -> Result<(), MigrationCheckError> {
     validate_existing_application_and_session(ctx)?;
-    read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&ctx.clash_config_path())
-        .context("failed to validate existing clash config")?;
+    read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&ctx.clash_config_path())?;
     Ok(())
 }
 
-fn validate_existing_application_and_session(ctx: &Ctx) -> anyhow::Result<()> {
-    read_yaml::<nyanpasu_config::application::NyanpasuAppConfig>(&ctx.application_config_path())
-        .context("failed to validate existing application config")?;
-    read_yaml::<nyanpasu_config::state::PersistentState>(&ctx.session_state_path())
-        .context("failed to validate existing session state")?;
+fn validate_existing_application_and_session(ctx: &Ctx) -> Result<(), MigrationCheckError> {
+    read_yaml::<nyanpasu_config::application::NyanpasuAppConfig>(&ctx.application_config_path())?;
+    read_yaml::<nyanpasu_config::state::PersistentState>(&ctx.session_state_path())?;
     Ok(())
 }
 
@@ -357,10 +368,15 @@ fn merge_legacy_clash_file(merged: &mut Mapping, path: &Path) -> anyhow::Result<
     Ok(())
 }
 
-fn read_yaml<T: DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
-    let raw = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
-    serde_yaml::from_str(&raw).with_context(|| format!("failed to parse {}", path.display()))
+fn read_yaml<T: DeserializeOwned>(path: &Path) -> Result<T, MigrationCheckError> {
+    let raw = std::fs::read_to_string(path).map_err(|source| MigrationCheckError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    serde_yaml::from_str(&raw).map_err(|source| MigrationCheckError::Parse {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 fn serialize_yaml<T: Serialize>(value: &T) -> anyhow::Result<String> {
@@ -537,10 +553,10 @@ mod tests {
 
     #[test]
     fn typed_clash_config_alone_still_fails_as_partial_typed_state() {
-        let (mut ctx, _temp) = test_ctx();
+        let (ctx, _temp) = test_ctx();
         write_yaml(&ctx.clash_config_path(), &ClashConfig::default());
 
-        let err = SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap_err();
+        let err = SPLIT_LEGACY_CONFIG.check(&ctx).unwrap_err();
 
         assert!(
             err.to_string()
@@ -608,45 +624,46 @@ mod tests {
     }
 
     #[test]
-    fn all_existing_valid_typed_files_are_not_overwritten() {
-        let (mut ctx, _temp) = test_ctx();
-        let application = NyanpasuAppConfig {
-            enable_system_proxy: true,
-            ..NyanpasuAppConfig::default()
-        };
-        write_yaml(&ctx.application_config_path(), &application);
+    fn all_existing_valid_typed_files_satisfy_the_split() {
+        let (ctx, _temp) = test_ctx();
+        write_yaml(
+            &ctx.application_config_path(),
+            &NyanpasuAppConfig::default(),
+        );
         write_yaml(&ctx.session_state_path(), &PersistentState::default());
         write_yaml(&ctx.clash_config_path(), &ClashConfig::default());
         write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
 
-        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
-
-        let application: NyanpasuAppConfig = read_typed(&ctx.application_config_path());
-        assert!(application.enable_system_proxy);
+        assert_eq!(
+            SPLIT_LEGACY_CONFIG.check(&ctx).unwrap(),
+            Some(StepCheck::Satisfied)
+        );
     }
 
     #[test]
     fn all_existing_invalid_typed_files_fail_validation() {
-        let (mut ctx, _temp) = test_ctx();
+        let (ctx, _temp) = test_ctx();
         std::fs::write(ctx.application_config_path(), "application sentinel").unwrap();
         write_yaml(&ctx.session_state_path(), &PersistentState::default());
         write_yaml(&ctx.clash_config_path(), &ClashConfig::default());
 
-        let err = SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap_err();
+        let err = SPLIT_LEGACY_CONFIG.check(&ctx).unwrap_err();
 
         assert!(
-            err.to_string()
-                .contains("failed to validate existing application config"),
+            matches!(
+                &err,
+                MigrationCheckError::Parse { path, .. } if *path == ctx.application_config_path()
+            ),
             "{err:#}"
         );
     }
 
     #[test]
     fn partial_typed_files_fail_with_clear_error() {
-        let (mut ctx, _temp) = test_ctx();
+        let (ctx, _temp) = test_ctx();
         std::fs::write(ctx.application_config_path(), "application sentinel").unwrap();
 
-        let err = SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap_err();
+        let err = SPLIT_LEGACY_CONFIG.check(&ctx).unwrap_err();
 
         assert!(
             err.to_string()

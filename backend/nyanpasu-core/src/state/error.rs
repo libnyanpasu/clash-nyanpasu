@@ -108,12 +108,54 @@ impl<Manager> fmt::Display for ManagerInitError<Manager> {
 
 impl<Manager> std::error::Error for ManagerInitError<Manager> {}
 
+/// What a failed persistence recovery left behind.
+///
+/// A recovery only runs after the candidate was already written outside the
+/// store and the commit was then refused, so when the recovery itself fails the
+/// external side keeps a state the store never accepted.
+#[derive(Debug, Clone)]
+pub struct InconsistentPersistence {
+    /// The config file that still holds the rejected candidate.
+    pub config_path: camino::Utf8PathBuf,
+    /// Whether the caller's own local write step (for example publishing a
+    /// staged resource) had already completed, so it still needs compensating.
+    pub local_write_completed: bool,
+}
+
+impl fmt::Display for InconsistentPersistence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "config file {} holds a rejected candidate",
+            self.config_path
+        )?;
+        if self.local_write_completed {
+            write!(f, " and a completed local write still needs compensation")?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum UpsertError {
     #[error("state changed error: {0}")]
     State(StateChangedError),
     #[error("write config error: {0}")]
     WriteConfig(anyhow::Error),
+    #[error("persistence failed ({cause}) and resource recovery failed: {recovery_error}")]
+    ResourceRecovery {
+        cause: anyhow::Error,
+        recovery_error: anyhow::Error,
+    },
+    #[error(
+        "state commit failed ({commit_error}) and restoring the persisted state failed ({recovery_error}): {inconsistent}"
+    )]
+    Recovery {
+        commit_error: StateChangedError,
+        #[source]
+        recovery_error: anyhow::Error,
+        inconsistent: InconsistentPersistence,
+    },
 }
 
 impl UpsertError {
@@ -132,4 +174,20 @@ pub enum WithEffectError<E> {
 
     #[error("effect timed out after {0:?}")]
     EffectTimedOut(Duration),
+
+    #[error(
+        "effect failed ({effect_error}) and restoring local resources failed: {recovery_error}"
+    )]
+    EffectRecovery { effect_error: E, recovery_error: E },
+
+    /// The commit was refused after the effect had already published the
+    /// candidate, and putting the committed state back failed as well. This is
+    /// never a clean rejection: something outside the store is now wrong.
+    #[error(
+        "state commit failed ({commit_error}) and restoring the committed state failed: {recovery_error}"
+    )]
+    Recovery {
+        commit_error: StateChangedError,
+        recovery_error: E,
+    },
 }

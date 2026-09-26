@@ -22,7 +22,7 @@ use nyanpasu_ipc::api::{
 
 use super::{
     CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport, STOP_WAIT,
-    ShutdownReport,
+    ShutdownReport, SubmitFailure,
     endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost},
 };
 
@@ -164,6 +164,7 @@ fn snapshot(state: CoreStateDetail) -> CoreStatusSnapshot {
         state: Some(state),
         state_changed_at: 0,
         revision: None,
+        source_hash: None,
         healthy: None,
         applied_kind: None,
     }
@@ -229,6 +230,7 @@ impl ControlEndpoint for FakeEndpoint {
 
 fn reconcile_envelope() -> CoreSubmission {
     CoreSubmission {
+        expected_owner: None,
         envelope: CoreCommandEnvelope {
             operation_id: OperationId::generate(),
             command: CoreCommand::Recover,
@@ -270,6 +272,7 @@ async fn an_alpha_core_reaches_the_service_wire_intact() {
 
     client
         .submit(CoreSubmission {
+            expected_owner: None,
             envelope: envelope.clone(),
             core_type: Some(alpha.clone()),
         })
@@ -278,6 +281,7 @@ async fn an_alpha_core_reaches_the_service_wire_intact() {
     assert_eq!(*service.last_core_type.lock().unwrap(), Some(Some(alpha)));
 
     let request = super::endpoint::wire_submit_request(&CoreSubmission {
+        expected_owner: None,
         envelope,
         core_type: None,
     })
@@ -478,6 +482,7 @@ async fn a_lost_stop_result_with_an_unknown_status_is_not_a_stop_proof() {
         state: None,
         state_changed_at: 0,
         revision: None,
+        source_hash: None,
         healthy: None,
         applied_kind: None,
     });
@@ -1379,4 +1384,19 @@ async fn a_submit_queued_behind_other_work_is_reported_retryable_not_internal() 
         error.retryable,
         "mailbox residence must not turn a submit's caller-side timeout into a non-retryable Internal"
     );
+}
+
+#[tokio::test]
+async fn a_stale_owner_precondition_is_refused_before_endpoint_submission() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+    let mut submission = reconcile_envelope();
+    submission.expected_owner = Some((ExecutionHost::Local, 99));
+    let error = client.submit(submission).await.unwrap_err();
+    assert!(matches!(error, SubmitFailure::NotSubmitted(_)));
+    assert_eq!(local.submits.load(Ordering::SeqCst), 0);
+    client.shutdown().await.unwrap();
 }

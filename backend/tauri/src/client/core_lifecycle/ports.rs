@@ -39,5 +39,10 @@ pub(in crate::client) trait RuntimePreparationPort: Send + Sync {
 
 pub(in crate::client) struct PreparedRuntime {
     pub snapshot: Arc<runtime::RuntimeSnapshot>,
-    pub local_ipc: nyanpasu_core_manager::LocalIpcSettings,
+    /// The to-be-committed bytes, serialized exactly once so the advisory
+    /// check and the reconcile cannot drift apart.
+    pub intent: Arc<crate::core::actor_v2::intent::RuntimeIntent>,
+    /// The ports this candidate would bind. Inert: only the receipt of an
+    /// apply that succeeded may confirm them.
+    pub ports: crate::client::ports::CandidatePortBindings,
 }

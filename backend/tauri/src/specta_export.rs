@@ -59,6 +59,9 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_system_accent_color,
         ],
         collect_commands![
+            ipc::get_configuration_status,
+            ipc::retry_configuration_runtime,
+            ipc::retry_configuration_effect,
             ipc::set_release_channel,
             // Side-effecting commands
             ipc::open_log_session,
@@ -130,6 +133,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         core::storage::StorageValueChangedEvent,
         ipc::SchemeRequestReceivedEvent,
         core::actor_v2::CoreStatusChangedEvent,
+        ipc::ConfigurationStatusChanged,
         core::actor_v2::ServiceStatusChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
@@ -353,7 +357,7 @@ mod tests {
             mutation_outcome,
             "MutationOutcome",
             &[
-                "status: 'applied'",
+                "status: 'committed'",
                 "status: 'committed_degraded'",
                 "value: T",
                 "degradations:",

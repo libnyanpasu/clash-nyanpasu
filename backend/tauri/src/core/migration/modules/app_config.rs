@@ -1,4 +1,5 @@
-use super::super::{Ctx, MigrationStep, ModuleMigrator};
+use super::super::{Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck};
+use anyhow::Context as _;
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml::{Mapping, Value};
@@ -78,32 +79,17 @@ impl MigrationStep for MigrateLanguageOption {
         "MigrateLanguageOption"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_config(ctx, needs_language_option_migration)
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let config_path = ctx.nyanpasu_config_path();
-        if !config_path.exists() {
-            println!("Config file not found, skipping migration");
-            return Ok(());
-        }
-        println!("parse config file...");
         let config = std::fs::read_to_string(&config_path)?;
         let mut config: Mapping = serde_yaml::from_str(&config)?;
-        let lang = config.get_mut("language");
-        match lang {
-            None => {
-                println!("language not found, skipping migration");
-                return Ok(());
-            }
-            Some(lang) => {
-                if lang == "zh" {
-                    println!("detected old language option, migrating...");
-                    *lang = Value::from("zh-CN");
-                    println!("write config file...");
-                    let config = serde_yaml::to_string(&config)?;
-                    crate::core::migration::fs::atomic_write(&config_path, config.as_bytes())?;
-                }
-                println!("Migration completed");
-            }
-        }
+        config.insert("language".into(), Value::from("zh-CN"));
+        let config = serde_yaml::to_string(&config)?;
+        crate::core::migration::fs::atomic_write(&config_path, config.as_bytes())?;
         Ok(())
     }
 }
@@ -132,11 +118,12 @@ impl MigrationStep for MigrateThemeSetting {
         "MigrateThemeSetting"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_config(ctx, needs_theme_setting_migration)
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let config_path = ctx.nyanpasu_config_path();
-        if !config_path.exists() {
-            return Ok(());
-        }
         let raw_config = std::fs::read_to_string(&config_path)?;
         let mut config: Mapping = serde_yaml::from_str(&raw_config)?;
         if let Some(theme) = config.get("theme_setting")
@@ -196,20 +183,19 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
         "MigrateNetworkStatisticWidgetFlatten"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_config(ctx, needs_network_statistic_widget_migration)
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let config_path = ctx.nyanpasu_config_path();
-        if !config_path.exists() {
-            return Ok(());
-        }
         let raw = std::fs::read_to_string(&config_path)?;
         let mut config: Mapping = serde_yaml::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("failed to parse config: {e}"))?;
-        let Some(value) = config.get(NETWORK_STATISTIC_WIDGET_KEY).cloned() else {
-            return Ok(());
-        };
-        let Some(flattened) = flatten_value(&value) else {
-            return Ok(());
-        };
+        let flattened = config
+            .get(NETWORK_STATISTIC_WIDGET_KEY)
+            .and_then(flatten_value)
+            .context("network_statistic_widget is not in the nested form")?;
         config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), flattened);
         let new_config = serde_yaml::to_string(&config)?;
         crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
@@ -261,22 +247,36 @@ impl MigrationStep for MigrateLanguageCase {
         "MigrateLanguageCase"
     }
 
+    fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
+        check_config(ctx, needs_language_case_migration)
+    }
+
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let config_path = ctx.nyanpasu_config_path();
-        if !config_path.exists() {
-            return Ok(());
-        }
         let raw = std::fs::read_to_string(&config_path)?;
         let mut config: Mapping = serde_yaml::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("failed to parse config: {e}"))?;
-        let Some(canonical) = config.get("language").and_then(canonical_language) else {
-            return Ok(());
-        };
+        let canonical = config
+            .get("language")
+            .and_then(canonical_language)
+            .context("language is already canonical")?;
         config.insert("language".into(), Value::String(canonical.to_string()));
         let new_config = serde_yaml::to_string(&config)?;
         crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
         Ok(())
     }
+}
+
+/// A missing config file has nothing to migrate.
+fn check_config(
+    ctx: &Ctx,
+    needs: fn(&Mapping) -> bool,
+) -> Result<Option<StepCheck>, MigrationCheckError> {
+    let config: Option<Mapping> =
+        crate::core::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
+    Ok(Some(StepCheck::from_needed(
+        config.as_ref().is_some_and(needs),
+    )))
 }
 
 fn current_revision() -> u64 {

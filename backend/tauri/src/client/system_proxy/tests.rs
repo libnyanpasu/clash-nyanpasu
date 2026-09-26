@@ -82,7 +82,7 @@ impl OsProxyPort for RecordingOsProxy {
 }
 
 /// Holds the mailbox inside `apply` until the shutdown token fires, the way a
-/// real PAC download does while it retries a url that will not answer.
+/// real PAC download does while it waits on a url that will not answer.
 struct BlockingPac {
     started: tokio::sync::Notify,
 }
@@ -603,9 +603,8 @@ async fn guard_tick_reapplies_last_desired() {
 }
 
 #[tokio::test]
-async fn guard_tick_retries_a_failed_enable() {
-    // The guard is the only thing that runs again on its own, so an enable the
-    // OS refused has nowhere else to be retried.
+async fn guard_tick_does_not_bypass_the_failed_target_retry_budget() {
+    // EffectsActor owns convergence; a guard tick cannot retry an unaccepted target.
     let os = RecordingOsProxy::new();
     os.fail_set(true);
     let client = spawn_with_os(os.clone()).await;
@@ -623,18 +622,12 @@ async fn guard_tick_retries_a_failed_enable() {
     os.fail_set(false);
     client.tick_guard().await;
 
-    let expected = OsProxyConfig {
-        enable: true,
-        host: "127.0.0.1".to_owned(),
-        port: 7890,
-        bypass: BYPASS.to_owned(),
-    };
-    assert_eq!(os.last_write(), expected);
-    assert_eq!(client.status().await.applied_os_proxy, Some(expected));
+    assert!(os.writes().is_empty());
+    assert_eq!(client.status().await.applied_os_proxy, None);
 }
 
 #[tokio::test]
-async fn guard_tick_uses_the_newest_desired_port() {
+async fn guard_tick_waits_for_a_changed_port_to_be_confirmed() {
     let os = RecordingOsProxy::new();
     let client = spawn_with_os(os.clone()).await;
     client
@@ -654,10 +647,11 @@ async fn guard_tick_uses_the_newest_desired_port() {
     client.tick_guard().await;
 
     assert_eq!(
-        os.last_write().port,
-        7891,
-        "a refused port change must not leave the guard re-installing the old port"
+        os.writes().len(),
+        1,
+        "guard cannot install either the rejected target or a stale port"
     );
+    assert!(!client.status().await.guard_active);
 }
 
 #[tokio::test]
@@ -846,9 +840,9 @@ async fn auto_launch_already_in_the_desired_state_is_not_rewritten() {
 
 #[tokio::test]
 async fn restore_cancels_an_in_flight_pac_download() {
-    // A PAC download owns the mailbox for as long as its retries last, which is
-    // far longer than the restore's bound: without cancellation the app exits
-    // with its proxy still installed.
+    // A PAC download owns the mailbox for as long as it lasts, which is longer
+    // than the restore's bound: without cancellation the app exits with its
+    // proxy still installed.
     let os = RecordingOsProxy::new();
     let pac = BlockingPac::new();
     let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
@@ -1117,8 +1111,8 @@ async fn failed_first_install_does_not_record_original() {
 }
 
 #[tokio::test]
-async fn guard_recovery_after_a_failed_first_install_keeps_the_original() {
-    // The first install is refused, so nothing is committed; the guard then
+async fn explicit_retry_after_a_failed_first_install_keeps_the_original() {
+    // The first install is refused, so nothing is committed; the explicit retry then
     // performs the first successful install and must capture what it replaced,
     // otherwise the exit path disables our proxy instead of restoring the
     // user's.
@@ -1142,7 +1136,9 @@ async fn guard_recovery_after_a_failed_first_install_keeps_the_original() {
     assert!(os.writes().is_empty());
 
     os.fail_set(false);
-    client.tick_guard().await;
+    client
+        .reconcile(rev(2), Some(proxy(true, Some(7890))), None, None)
+        .await;
     assert_eq!(os.last_write().port, 7890);
 
     client.restore().await;
@@ -1150,7 +1146,7 @@ async fn guard_recovery_after_a_failed_first_install_keeps_the_original() {
     assert_eq!(
         os.last_write(),
         original,
-        "restore must put back the proxy the guard's install replaced: {:?}",
+        "restore must put back the proxy the retry replaced: {:?}",
         os.writes()
     );
 }
@@ -1180,4 +1176,25 @@ async fn guard_tick_after_cancellation_does_not_write() {
         "a tick that beat the restore must not re-apply the proxy: {:?}",
         os.writes()
     );
+}
+
+#[tokio::test]
+async fn losing_confirmed_binding_stops_guard_without_reinstalling_old_port() {
+    let os = RecordingOsProxy::new();
+    let client = spawn_with_os(os.clone()).await;
+    client
+        .reconcile(
+            rev(1),
+            Some(proxy(true, Some(7890))),
+            Some(guard(true, Duration::from_secs(10))),
+            None,
+        )
+        .await;
+    let before = os.writes().len();
+    client
+        .reconcile(rev(2), Some(proxy(true, None)), None, None)
+        .await;
+    client.tick_guard().await;
+    assert_eq!(os.writes().len(), before);
+    assert!(!client.status().await.guard_active);
 }

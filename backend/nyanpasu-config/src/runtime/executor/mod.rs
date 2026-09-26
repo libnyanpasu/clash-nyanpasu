@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use indexmap::{IndexMap, IndexSet};
 
-pub use artifact::{RuntimeArtifact, StepLog, StepLogEntry, StepLogLevel};
+pub use artifact::{RuntimeArtifact, StepLog, StepLogEntry, StepLogLevel, TransformFailure};
 pub use error::RuntimePipelineError;
 pub use ports::{PortError, ProfileContentSource, ScriptRunOutcome, ScriptRunner};
 
@@ -106,18 +106,28 @@ pub(crate) fn parse_config_document(text: &str) -> Result<ConfigValue, String> {
 
 /// Accumulates step logs keyed by semantic node position (spec D8).
 #[derive(Default)]
-struct LogSink(IndexMap<SnapshotNodeKey, Vec<StepLogEntry>>);
+struct LogSink {
+    entries: IndexMap<SnapshotNodeKey, Vec<StepLogEntry>>,
+    failures: Vec<TransformFailure>,
+}
 
 impl LogSink {
     fn extend(&mut self, key: SnapshotNodeKey, entries: Vec<StepLogEntry>) {
         if entries.is_empty() {
             return;
         }
-        self.0.entry(key).or_default().extend(entries);
+        self.entries.entry(key).or_default().extend(entries);
+    }
+
+    fn failed_profile(&mut self, id: &ProfileId, failed: bool) {
+        if failed {
+            self.failures
+                .push(TransformFailure::Profile(id.to_string()));
+        }
     }
 
     fn into_step_logs(self) -> Vec<StepLog> {
-        self.0
+        self.entries
             .into_iter()
             .map(|(key, entries)| StepLog { key, entries })
             .collect()
@@ -135,20 +145,20 @@ pub(crate) fn apply_transform(
     runner: &dyn ScriptRunner,
     transform_id: &ProfileId,
     current: &Arc<ConfigValue>,
-) -> (Arc<ConfigValue>, TransformKind, Vec<StepLogEntry>) {
+) -> (Arc<ConfigValue>, TransformKind, Vec<StepLogEntry>, bool) {
     let mut entries = Vec::new();
 
     let Some(item) = profiles.items.get(transform_id) else {
         entries.push(StepLogEntry::error(format!(
             "transform {transform_id} not found, passthrough"
         )));
-        return (current.clone(), TransformKind::Overlay, entries);
+        return (current.clone(), TransformKind::Overlay, entries, true);
     };
     let ProfileDefinition::Transform { transform } = &item.definition else {
         entries.push(StepLogEntry::error(format!(
             "profile {transform_id} is not a transform, passthrough"
         )));
-        return (current.clone(), TransformKind::Overlay, entries);
+        return (current.clone(), TransformKind::Overlay, entries, true);
     };
 
     let kind = transform.kind();
@@ -159,33 +169,33 @@ pub(crate) fn apply_transform(
             entries.push(StepLogEntry::error(format!(
                 "read transform {transform_id} source at {path} failed, passthrough: {error}"
             )));
-            return (current.clone(), kind, entries);
+            return (current.clone(), kind, entries, true);
         }
     };
 
     match transform {
         TransformDefinition::Overlay(_) => match parse_config_document(&text) {
             Ok(document) => {
-                let next =
+                let (next, failed) =
                     overlay::apply_overlay(&document, (**current).clone(), runner, &mut entries);
-                (Arc::new(next), kind, entries)
+                (Arc::new(next), kind, entries, failed)
             }
             Err(message) => {
                 entries.push(StepLogEntry::error(format!(
                     "parse overlay {transform_id} failed, passthrough: {message}"
                 )));
-                (current.clone(), kind, entries)
+                (current.clone(), kind, entries, true)
             }
         },
         TransformDefinition::Script(script) => {
             let outcome = runner.run(script.runtime, &text, current);
             entries.extend(outcome.logs);
             match outcome.result {
-                Ok(next) => (Arc::new(next), kind, entries),
+                Ok(next) => (Arc::new(next), kind, entries, false),
                 Err(error) => {
                     // Parity: enhance/utils.rs:118 — error log + passthrough.
                     entries.push(StepLogEntry::error(error.to_string()));
-                    (current.clone(), kind, entries)
+                    (current.clone(), kind, entries, true)
                 }
             }
         }
@@ -249,7 +259,7 @@ pub fn execute(
     // Shared tail (spec §7.1): global → sample → whitelist → guard →
     // builtin×N → finalizing.
     for (index, transform_id) in inputs.profiles.global_transforms.iter().enumerate() {
-        let (next, kind, entries) =
+        let (next, kind, entries, failed) =
             apply_transform(inputs.profiles, content, runner, transform_id, &working);
         let tag = OperatorTag::GlobalTransform {
             selected_profile_id: selected.clone(),
@@ -257,6 +267,7 @@ pub fn execute(
             transform_kind: kind,
             step_index: index as u32,
         };
+        logs.failed_profile(transform_id, failed);
         logs.extend(tag.node_key(), entries);
         builder.push(tag, next.clone())?;
         working = next;
@@ -310,6 +321,8 @@ pub fn execute(
                 // Parity: builtin errors are swallowed with a log (mod.rs:136-141),
                 // now retained instead of discarded (spec §13 #7).
                 entries.push(StepLogEntry::error(error.to_string()));
+                logs.failures
+                    .push(TransformFailure::Builtin(builtin_transform.name.clone()));
                 working.clone()
             }
         };
@@ -336,10 +349,12 @@ pub fn execute(
     applied_fields.retain(|key| builtin::known_fields().any(|field| field == key));
 
     let graph = builder.build()?;
+    let transform_failures = logs.failures.clone();
     Ok(RuntimeArtifact {
         final_config: working,
         graph,
         step_logs: logs.into_step_logs(),
         applied_fields,
+        transform_failures,
     })
 }

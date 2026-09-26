@@ -259,7 +259,20 @@ impl State {
                 false => self.superseded(EffectKind::ProxyGuard, revision),
                 true => {
                     self.guard = Some(desired);
-                    self.healthy(EffectKind::ProxyGuard, revision)
+                    if desired.enabled
+                        && self.desired.as_ref().is_some_and(|proxy| proxy.enabled)
+                        && self.guard_interval().is_none()
+                        && !self.pac_active
+                    {
+                        self.degraded(
+                            EffectKind::ProxyGuard,
+                            revision,
+                            "proxy_guard_waiting_dependency",
+                            "the desired proxy has not been confirmed".into(),
+                        )
+                    } else {
+                        self.healthy(EffectKind::ProxyGuard, revision)
+                    }
                 }
             };
             statuses.push(status);
@@ -358,6 +371,9 @@ impl State {
         desired: SystemProxyDesired,
     ) -> EffectStatus {
         self.desired = Some(desired.clone());
+        if desired.enabled && desired.port.is_none() {
+            return self.port_unresolved(revision);
+        }
 
         if !desired.enabled {
             let stale_pac = self.disable_pac_if_active().await.err();
@@ -590,9 +606,7 @@ impl State {
     /// zero refuses every request, which is worse than reporting that the
     /// session has not resolved its ports yet.
     fn enable_config(&self, desired: &SystemProxyDesired) -> Option<OsProxyConfig> {
-        let port = desired
-            .port
-            .or_else(|| self.current.as_ref().map(|current| current.port))?;
+        let port = desired.port?;
         let bypass = if desired.bypass.trim().is_empty() {
             self.os.default_bypass().to_owned()
         } else {
@@ -629,7 +643,9 @@ impl State {
     /// it — re-applying that is the entire point of the guard.
     fn guard_interval(&self) -> Option<Duration> {
         let guard = self.guard?;
-        let proxy_on = self.desired.as_ref().is_some_and(|desired| desired.enabled);
+        let proxy_on = self.desired.as_ref().is_some_and(|desired| {
+            desired.enabled && self.enable_config(desired).as_ref() == self.current.as_ref()
+        });
         (guard.enabled && proxy_on).then(|| guard.interval.max(MIN_GUARD_INTERVAL))
     }
 
@@ -656,10 +672,8 @@ impl State {
         }
     }
 
-    /// A tick reconciles the latest *desired* proxy rather than the last value
-    /// the OS accepted. Re-applying the accepted one cannot heal anything: an
-    /// enable the OS refused was never accepted at all, and a refused port
-    /// change would have the guard re-installing the stale port forever.
+    /// Guard only the last confirmed setting. Converging a failed desired
+    /// target belongs to EffectsActor's bounded budget, never this timer.
     async fn guard_tick(&mut self) {
         // A tick queued before the restore must not re-install what it removed,
         // and the token fires before that message is even queued, so a tick can
@@ -679,11 +693,9 @@ impl State {
         let Some(config) = self.enable_config(&desired) else {
             return;
         };
-        // The same path as a reconcile, so a guard that performs the first
-        // successful install after a refused one still captures and commits the
-        // settings it replaced; a direct write here would leave `original`
-        // empty and the exit path would disable our proxy instead of restoring
-        // the user's.
+        if self.current.as_ref() != Some(&config) {
+            return;
+        }
         let revision = self.applied.max();
         let status = self.write_os_proxy(revision, config).await;
         if let EffectHealth::Degraded { message, .. } = &status.health {

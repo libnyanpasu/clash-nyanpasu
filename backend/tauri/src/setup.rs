@@ -59,7 +59,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     migrations
         .run_pending()
         .context("Failed to run config migrations before client setup")?;
-    let legacy_verge_path = utf8_path(paths.nyanpasu_config_path())?;
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
@@ -112,11 +111,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     })
     .context("Failed to setup nyanpasu client")?;
     forward_actor_events(app_handle, client.clone());
-    app.manage(LegacyVergeBridge::new(
-        client.clone(),
-        legacy_verge_path,
-        legacy_verge_store,
-    ));
+    app.manage(LegacyVergeBridge::new(client.clone(), legacy_verge_store));
     tauri::async_runtime::spawn(hotkey_action_pump(hotkey_rx, client.clone()));
     // The widget needs the client's connection stream and the client needs the
     // widget controller, so the controller is built empty and filled here, in
@@ -207,6 +202,20 @@ fn build_application_effects(
 }
 
 fn forward_actor_events(app_handle: tauri::AppHandle, client: NyanpasuClient) {
+    let (mut mutations, mut effects) = client.subscribe_configuration_changes();
+    let configuration_client = client.clone();
+    let configuration_handle = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let changed = tokio::select! { result = mutations.changed() => result, result = effects.changed() => result };
+            if changed.is_err() {
+                break;
+            }
+            let _ =
+                crate::ipc::ConfigurationStatusChanged(configuration_client.configuration_status())
+                    .emit(&configuration_handle);
+        }
+    });
     let mut core_events = client.subscribe_core_events();
     let core_handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {

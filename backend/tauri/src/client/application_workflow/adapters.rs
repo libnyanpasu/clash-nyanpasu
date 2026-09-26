@@ -1,22 +1,39 @@
-use super::{
-    super::{SessionPortResolver, runtime},
-    ports::RuntimeBuildPort,
-};
+use super::{super::runtime, ports::RuntimeBuildPort};
 use crate::enhance::{
     EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
     runtime_snapshot_data_from_artifact,
 };
 use async_trait::async_trait;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 pub(in crate::client) struct FsRuntimeBuildAdapter {
     pub profiles_dir: PathBuf,
     pub paths: runtime::RuntimePaths,
-    pub ports: Arc<SessionPortResolver>,
 }
 
 #[async_trait]
 impl RuntimeBuildPort for FsRuntimeBuildAdapter {
+    async fn capture_content(
+        &self,
+        profiles: &nyanpasu_config::profile::Profiles,
+    ) -> anyhow::Result<super::inputs::FrozenProfileContent> {
+        use nyanpasu_config::runtime::executor::ProfileContentSource;
+        let mut content = super::inputs::FrozenProfileContent::default();
+        let source = FsProfileContentSource::new(self.profiles_dir.clone());
+        for uid in crate::state::profiles::ProfilesActor::current_closure(profiles) {
+            if let Some(source_path) = profiles
+                .items
+                .get(&uid)
+                .and_then(|item| item.definition.source())
+            {
+                let path = &source_path.materialized().file;
+                let text = source.read(path).map_err(|error| error.to_string());
+                content.0.insert(path.to_string(), text);
+            }
+        }
+        Ok(content)
+    }
+
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
@@ -27,16 +44,19 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
     async fn build(
         &self,
         revision: runtime::RuntimeRevision,
-        profiles: Arc<nyanpasu_config::profile::Profiles>,
-        clash: nyanpasu_config::clash::config::ClashConfig,
-        app: nyanpasu_config::application::NyanpasuAppConfig,
+        inputs: super::inputs::RuntimeInputs,
+        resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
+        strict_transforms: bool,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
-        let resolved_ports = self.ports.resolve(&clash)?;
-        let profiles_dir = self.profiles_dir.clone();
         tokio::task::spawn_blocking(move || {
+            let super::inputs::RuntimeInputs {
+                app,
+                clash,
+                profiles,
+                content,
+            } = inputs;
             let core = app.core;
             let builtin_enabled = app.enable_builtin_enhanced;
-            let content = FsProfileContentSource::new(profiles_dir);
             let scripts = EnhanceScriptRunner::new()?;
             let input = RuntimeBuildInput {
                 profiles: profiles.clone(),
@@ -45,6 +65,12 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
                 resolved_ports,
             };
             let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
+            if strict_transforms && !artifact.transform_failures.is_empty() {
+                anyhow::bail!(
+                    "runtime candidate contains failed transforms: {:?}",
+                    artifact.transform_failures
+                );
+            }
             let data =
                 runtime_snapshot_data_from_artifact(artifact, &profiles, core, builtin_enabled)?;
             let yaml = format!(
@@ -63,5 +89,175 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
 
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
         runtime::write_product(self.paths.product().as_std_path(), snapshot.product_bytes()).await
+    }
+}
+
+/// Wires the check capability the fixed runtime baseline actually exposes.
+///
+/// There is one, and it is host-shaped. The in-process control plane has
+/// `CoreControl::check`, an advisory read-only call outside the mutating queue
+/// that takes the document inline. The daemon has the v1 `/core/check`
+/// operation, which takes a path it opens itself -- the v2 command surface has
+/// no check variant at all. So a Service-hosted check needs the candidate
+/// staged as a private file first, and the bytes written there are the ones
+/// the reconcile submits.
+///
+/// Nothing here invents a protocol: when the owning host cannot serve a check,
+/// the answer is `Unavailable` with the reason, never `Passed`.
+///
+/// The runtime reuses `ConfigCheckFailed` for its own check timeout
+/// (`nyanpasu-core-manager/src/kind.rs:96,137-139`: a 30s bound on the `-t`
+/// run, reported with the same wire kind and a message that names the bound).
+/// A wedged or merely slow core binary is not the core rejecting the document,
+/// so that case is separated out here before the kind decides anything.
+pub(in crate::client) struct CoreCheckValidator {
+    core: crate::core::actor_v2::CoreClient,
+    paths: runtime::RuntimePaths,
+    budget: Duration,
+}
+
+/// The app's own bound on one advisory check. §5.5 keeps the cancellable
+/// pre-check budget separate from every other timeout, and this is it, landed
+/// as a private constant with a test injection point.
+///
+/// It sits above the runtime's own 30s bound on the `-t` run so a check the
+/// runtime is still bounding is never cut short here; this budget exists for a
+/// host that stops answering altogether. Abandoning the wait is safe because
+/// the call is advisory and read-only: nothing downstream is waiting on it.
+const CHECK_BUDGET: Duration = Duration::from_secs(45);
+
+/// The phrase the runtime puts in the message when its own check bound
+/// elapses. The kind is `ConfigCheckFailed` either way, so the message is the
+/// only thing that tells a timeout apart from a verdict — and the runtime
+/// writes it deliberately, "so a slow core is diagnosable".
+const RUNTIME_CHECK_TIMEOUT: &str = "config check timed out after ";
+
+impl CoreCheckValidator {
+    pub(in crate::client) fn new(
+        core: crate::core::actor_v2::CoreClient,
+        paths: runtime::RuntimePaths,
+    ) -> Self {
+        Self {
+            core,
+            paths,
+            budget: CHECK_BUDGET,
+        }
+    }
+
+    /// A shorter budget, so a test can reach the elapse path without waiting
+    /// out the production one.
+    #[cfg(test)]
+    pub(in crate::client) fn with_budget(
+        core: crate::core::actor_v2::CoreClient,
+        paths: runtime::RuntimePaths,
+        budget: Duration,
+    ) -> Self {
+        Self {
+            core,
+            paths,
+            budget,
+        }
+    }
+}
+
+#[async_trait]
+impl super::ports::RuntimeValidatorPort for CoreCheckValidator {
+    async fn check(
+        &self,
+        request: super::ports::RuntimeCheckRequest<'_>,
+    ) -> super::ports::RuntimeCheckOutcome {
+        use super::ports::{RuntimeCheckOutcome, RuntimeCheckUnavailable};
+        use crate::core::actor_v2::endpoint::{CheckSubmission, CheckSupport, ExecutionHost};
+
+        let endpoint = match self.core.connected_endpoint().await {
+            Ok(endpoint) => endpoint,
+            Err(error) => {
+                return RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::NoEndpoint {
+                    reason: error.message,
+                });
+            }
+        };
+        let staged = match endpoint.host() {
+            ExecutionHost::Service => {
+                match self
+                    .paths
+                    .create_candidate(request.intent.config_text.as_bytes())
+                    .await
+                {
+                    Ok(candidate) => Some(candidate),
+                    Err(error) => {
+                        return RuntimeCheckOutcome::Unavailable(
+                            RuntimeCheckUnavailable::CandidateUnavailable {
+                                reason: error.to_string(),
+                            },
+                        );
+                    }
+                }
+            }
+            ExecutionHost::Local => None,
+        };
+        let support = tokio::time::timeout(
+            self.budget,
+            endpoint.check_config(CheckSubmission {
+                core_spec: request.core_spec,
+                core_type: request.intent.core_type.clone(),
+                config_bytes: request.intent.config_text.clone().into_bytes(),
+                digest: request.intent.digest.clone(),
+                staged_config: staged.as_ref().map(|file| file.path().to_owned()),
+            }),
+        )
+        .await;
+        if let Some(candidate) = staged
+            && let Err(error) = candidate.cleanup().await
+        {
+            tracing::warn!("failed to remove the checked runtime candidate: {error}");
+        }
+        let Ok(support) = support else {
+            return RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::Backend {
+                kind: None,
+                message: format!("the config check did not answer within {:?}", self.budget),
+                retryable: true,
+            });
+        };
+        match support {
+            CheckSupport::Ran(Ok(())) => RuntimeCheckOutcome::Passed,
+            CheckSupport::Ran(Err(error)) => {
+                // Only the core's own verdict on the document is a rejection,
+                // and its own check timeout is not one: it arrives under the
+                // same kind but says the binary never answered, which is
+                // retryable and must keep the deferral the failure matrix
+                // allows for an unreachable check.
+                if error.message.contains(RUNTIME_CHECK_TIMEOUT) {
+                    RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::Backend {
+                        kind: error.kind,
+                        message: error.message,
+                        retryable: true,
+                    })
+                } else if matches!(
+                    error.kind,
+                    Some(
+                        nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed
+                            | nyanpasu_core_manager::CoreErrorKind::InvalidConfig
+                    )
+                ) {
+                    RuntimeCheckOutcome::Rejected {
+                        kind: error.kind,
+                        message: error.message,
+                    }
+                } else {
+                    RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::Backend {
+                        kind: error.kind,
+                        message: error.message,
+                        retryable: error.retryable,
+                    })
+                }
+            }
+            CheckSupport::Unsupported { reason } => {
+                RuntimeCheckOutcome::Unavailable(RuntimeCheckUnavailable::HostUnsupported {
+                    host: endpoint.host(),
+                    reason,
+                })
+            }
+        }
     }
 }

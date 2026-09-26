@@ -160,30 +160,32 @@ pub fn resolve_setup(app: &mut App) {
         ));
     }
 
-    // FIXME(actor-migration): write the session-resolved ports back into the
-    // legacy mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
-    // observing the real ports during the BC window. The typed side is the
-    // single resolver (SessionPortResolver); prepare_external_controller_port
-    // double-resolution is removed. Remove after PR-4/PR-6 migrate those readers.
     {
         let client = app.state::<crate::client::NyanpasuClient>();
+        log::trace!("init config");
+        log_err!(tauri::async_runtime::block_on(client.reconcile_core()));
+
+        // FIXME(actor-migration): write the session ports back into the legacy
+        // mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
+        // observing the real ports during the BC window. The typed side is the
+        // single resolver (SessionPortResolver); prepare_external_controller_port
+        // double-resolution is removed. Remove after PR-4/PR-6 migrate those readers.
+        //
+        // After the reconcile, not before: the resolver only publishes a
+        // binding the core actually accepted, so mirroring earlier would
+        // either write nothing or advertise a port nothing is listening on.
         if let Some(ports) = client.session_ports() {
             Config::verge().data().patch_config(IVerge {
                 verge_mixed_port: Some(ports.mixed_port),
                 ..IVerge::default()
             });
-            let _ = Config::verge().data().save_file();
             let mut mapping = Mapping::new();
             mapping.insert("mixed-port".into(), ports.mixed_port.into());
             if let Some(external_controller) = ports.external_controller.as_deref() {
                 mapping.insert("external-controller".into(), external_controller.into());
             }
             Config::clash().data().patch_config(mapping);
-            let _ = Config::clash().data().save_config();
         }
-
-        log::trace!("init config");
-        log_err!(tauri::async_runtime::block_on(client.reconcile_core()));
     }
 
     log::trace!("init storage");
@@ -444,46 +446,27 @@ pub fn is_main_window_open(app_handle: &AppHandle) -> bool {
     MainWindow.is_open(app_handle)
 }
 
-fn save_main_window_state_snapshot(
-    app_handle: &AppHandle,
-    save_to_file: bool,
-) -> Result<Option<nyanpasu_config::state::PersistentState>> {
-    MainWindow.save_state(app_handle, save_to_file)?;
-
-    if !save_to_file {
-        return Ok(None);
-    }
-
-    let legacy = Config::verge().data().clone();
-    Ok(Some(crate::bridge::window::persistent_state_from_legacy(
-        &legacy,
-    )?))
-}
-
 pub fn save_main_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    if let Some(session_state) = save_main_window_state_snapshot(app_handle, save_to_file)? {
-        let client = app_handle
-            .state::<crate::client::NyanpasuClient>()
-            .inner()
-            .clone();
-        block_on(client.replace_session_state(session_state))?;
+    if !save_to_file {
+        // TODO(actor-migration): temporary window geometry projection for resize events.
+        // Reason: window restoration still reads IVerge until T11.
+        // Remove when: window restore reads SessionStateClient directly.
+        return MainWindow.save_state(app_handle, false);
     }
-
-    Ok(())
+    block_on(save_main_window_state_async(app_handle, true))
 }
 
 pub async fn save_main_window_state_async(
     app_handle: &AppHandle,
-    save_to_file: bool,
+    _save_to_file: bool,
 ) -> Result<()> {
-    if let Some(session_state) = save_main_window_state_snapshot(app_handle, save_to_file)? {
-        let client = app_handle
+    if let Some(geometry) = MainWindow.capture_state(app_handle)? {
+        let geometry = serde_json::from_value(serde_json::to_value(geometry)?)?;
+        app_handle
             .state::<crate::client::NyanpasuClient>()
-            .inner()
-            .clone();
-        client.replace_session_state(session_state).await?;
+            .save_main_window_geometry(geometry)
+            .await?;
     }
-
     Ok(())
 }
 

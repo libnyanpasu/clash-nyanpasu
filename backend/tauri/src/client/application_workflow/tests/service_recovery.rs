@@ -147,10 +147,10 @@ impl RecoveryGraph {
         let service = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
         let (client, _, builder, _, _) = dirty_graph_with_clients(
             &dir,
-            runtime::RuntimeSnapshotStore::default(),
             core.clone(),
             service,
             schedule_ticks,
+            Arc::new(crate::client::SessionPortResolver::default()),
         )
         .await;
         builder.release.notify_one();

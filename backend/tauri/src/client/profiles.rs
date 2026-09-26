@@ -1,4 +1,7 @@
-//! Typed client for the ProfilesActor. Read Some(5s) / write None.
+//! Typed client for the ProfilesActor. Committed reads come from the state
+//! snapshot handle; writes go through the actor with no RPC timeout.
+
+use crate::state::mutation::MutationCoordinator;
 
 use std::{sync::Arc, time::Duration};
 
@@ -8,16 +11,17 @@ use nyanpasu_config::profile::{
     ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
     RemoteProfileOptions, RemoteProfileOptionsPatch,
 };
-use nyanpasu_core::state::PersistentStateManagerSetup;
+use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
-use crate::state::profiles::{
-    CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-    ProfilesError, RefreshOrigin, ReorderOp,
-    ports::{ProfileFsPort, ProfileMaterializationPort, RebuildNotifier, SubscriptionFetcher},
+use crate::{
+    core::migration::modules::profiles::ProfilesFormat,
+    state::profiles::{
+        CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
+        ProfilesError, RefreshOrigin, ReorderOp,
+        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+    },
 };
-
-pub const PROFILES_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct ProfilesClient {
@@ -26,18 +30,21 @@ pub struct ProfilesClient {
 
 struct ProfilesClientInner {
     actor_ref: ActorRef<ProfilesActorMessage>,
+    /// Committed state, read straight from the coordinator's store so a reader
+    /// never queues behind a mutation the actor is still holding open.
+    snapshot: StateSnapshot<Profiles>,
 }
 
 impl ProfilesClient {
     pub(crate) async fn new(
+        mutations: MutationCoordinator,
         profiles_path: Utf8PathBuf,
         fs: Arc<dyn ProfileFsPort>,
         fetcher: Arc<dyn SubscriptionFetcher>,
         materialization: Arc<dyn ProfileMaterializationPort>,
-        notifier: Arc<dyn RebuildNotifier>,
     ) -> anyhow::Result<Self> {
         let should_load = profiles_path.exists();
-        let setup = PersistentStateManagerSetup::<Profiles>::builder()
+        let setup = PersistentStateManagerSetup::<Profiles, ProfilesFormat>::builder()
             .config_path(profiles_path)
             .assemble();
         let manager = if should_load {
@@ -52,8 +59,8 @@ impl ProfilesClient {
                 .context("failed to initialize profiles persistent state manager")?
         };
 
-        manager
-            .snapshot_handle()
+        let snapshot = manager.snapshot_handle();
+        snapshot
             .load()
             .state
             .validate()
@@ -63,11 +70,11 @@ impl ProfilesClient {
             None,
             ProfilesActor,
             ProfilesActorArgs {
+                mutations,
                 manager,
                 fs,
                 fetcher,
                 materialization,
-                notifier,
             },
         )
         .await
@@ -75,13 +82,39 @@ impl ProfilesClient {
         .0;
 
         Ok(Self {
-            inner: Arc::new(ProfilesClientInner { actor_ref }),
+            inner: Arc::new(ProfilesClientInner {
+                actor_ref,
+                snapshot,
+            }),
         })
     }
 
-    pub async fn get(&self) -> Result<Arc<Profiles>, ProfilesError> {
-        self.call(ProfilesActorMessage::Get, Some(PROFILES_READ_TIMEOUT))
-            .await
+    /// The last committed profiles document. Reads bypass the mailbox, so an
+    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    pub fn snapshot(&self) -> Arc<Profiles> {
+        Arc::new(self.inner.snapshot.load().state.clone())
+    }
+
+    /// Read-only handle for collaborators that must observe committed state
+    /// without holding a client that could write it.
+    pub(crate) fn snapshot_handle(&self) -> StateSnapshot<Profiles> {
+        self.inner.snapshot.clone()
+    }
+
+    pub async fn save_file(
+        &self,
+        uid: ProfileId,
+        content: String,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::SaveFile {
+                uid,
+                content,
+                reply,
+            },
+            None,
+        )
+        .await
     }
 
     pub async fn set_current(
@@ -272,9 +305,9 @@ mod tests {
         service::profile_file::{ProfileFileService, SelfProxyPortSource},
         state::profiles::ports::{
             CleanupOutcome, FetchedSubscription, MaterializationReconcileReport, MockProfileFsPort,
-            MockProfileMaterializationPort, MockRebuildNotifier, MockSubscriptionFetcher,
-            PreparedCleanup, PreparedMaterialization, ProfileDegradationCode,
-            ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
+            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
+            PreparedMaterialization, ProfileDegradationCode, ProfileDegradationPhase,
+            ProfileFsPort, ProfileMaterializationPort,
         },
         utils::path::PathResolver,
     };
@@ -308,9 +341,6 @@ mod tests {
             Ok(MaterializationReconcileReport::default())
         });
         materialization
-            .expect_prepare_state_first()
-            .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
-        materialization
             .expect_prepare_file_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
         materialization.expect_promote().returning(|_| Ok(()));
@@ -337,7 +367,7 @@ mod tests {
             .expect_reconcile()
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         materialization
-            .expect_prepare_state_first()
+            .expect_prepare_file_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
         materialization
             .expect_promote()
@@ -420,11 +450,11 @@ mod tests {
     pub(crate) async fn test_client_with(fs: MockProfileFsPort) -> (ProfilesClient, TempDir) {
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             std::sync::Arc::new(fs),
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
             test_materialization_port(),
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .expect("profiles client should spawn");
@@ -434,10 +464,40 @@ mod tests {
     #[tokio::test]
     async fn fresh_store_starts_with_default_profiles() {
         let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
-        let snapshot = client.get().await.expect("get should succeed");
+        let snapshot = client.snapshot();
         assert!(snapshot.current.is_none());
         assert!(snapshot.items.is_empty());
         assert_eq!(snapshot.valid.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn writes_keep_the_schema_stamp_and_reload() {
+        let (client, dir) = test_client_with(MockProfileFsPort::new()).await;
+        client
+            .set_valid_fields(vec!["dns".to_string()])
+            .await
+            .expect("set_valid_fields should commit");
+
+        let raw = std::fs::read_to_string(temp_profiles_path(&dir)).unwrap();
+        let inspected = nyanpasu_core::format::inspect(&raw).unwrap();
+        assert_eq!(
+            inspected.stamp().map(|stamp| stamp.schema_revision),
+            Some(4),
+            "{raw}"
+        );
+        let revision = inspected.into_payload().get("revision").cloned();
+        assert_eq!(revision, Some(serde_yaml::Value::from(1)), "{raw}");
+
+        let reloaded = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            test_materialization_port(),
+        )
+        .await
+        .expect("a stamped profiles.yaml should load");
+        assert_eq!(reloaded.snapshot().valid, vec!["dns".to_string()]);
     }
 
     #[tokio::test]
@@ -445,11 +505,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let _client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             counted_materialization_port(Arc::clone(&calls)),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .expect("profiles client should spawn");
@@ -583,7 +643,7 @@ mod tests {
     async fn wait_for_updated_at(client: &ProfilesClient, uid: &str) -> Arc<Profiles> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
-            let snapshot = client.get().await.unwrap();
+            let snapshot = client.snapshot();
             let updated = snapshot
                 .items
                 .get(&ProfileId(uid.into()))
@@ -626,23 +686,21 @@ mod tests {
     async fn remote_seeded_client(
         fs: MockProfileFsPort,
         fetcher: MockSubscriptionFetcher,
-        notifier: MockRebuildNotifier,
     ) -> (ProfilesClient, TempDir) {
-        remote_seeded_client_with_fetcher(fs, std::sync::Arc::new(fetcher), notifier).await
+        remote_seeded_client_with_fetcher(fs, std::sync::Arc::new(fetcher)).await
     }
 
     async fn remote_seeded_client_with_fetcher(
         fs: MockProfileFsPort,
         fetcher: std::sync::Arc<dyn SubscriptionFetcher>,
-        notifier: MockRebuildNotifier,
     ) -> (ProfilesClient, TempDir) {
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             std::sync::Arc::new(fs),
             fetcher,
             test_materialization_port(),
-            std::sync::Arc::new(notifier),
         )
         .await
         .unwrap();
@@ -687,11 +745,11 @@ mod tests {
         );
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             Arc::new(ok_fetch("proxies: []\n")),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -742,11 +800,11 @@ mod tests {
         let fs = MockProfileFsPort::new();
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             std::sync::Arc::new(fs),
             std::sync::Arc::new(fetcher),
             test_materialization_port(),
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -820,12 +878,8 @@ mod tests {
     #[tokio::test]
     async fn manual_refresh_ignores_server_interval_suggestions() {
         let fs = MockProfileFsPort::new();
-        let (client, _dir) = remote_seeded_client(
-            fs,
-            suggested_fetch("proxies: []\n", Some(360)),
-            MockRebuildNotifier::new(),
-        )
-        .await;
+        let (client, _dir) =
+            remote_seeded_client(fs, suggested_fetch("proxies: []\n", Some(360))).await;
 
         let report = client.refresh(ProfileId("r1".into()), None).await.unwrap();
         let source = report.snapshot.items[&ProfileId("r1".into())]
@@ -857,11 +911,11 @@ mod tests {
         });
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(fetcher),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -889,7 +943,7 @@ mod tests {
 
         tokio::time::advance(std::time::Duration::from_secs(60 * 60 + 1)).await;
         for _ in 0..200 {
-            let snapshot = client.get().await.unwrap();
+            let snapshot = client.snapshot();
             let source = snapshot.items[&uid].definition.source().unwrap();
             if matches!(
                 source,
@@ -901,7 +955,7 @@ mod tests {
             tokio::task::yield_now().await;
         }
         assert!(fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 2);
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let source = snapshot.items[&uid].definition.source().unwrap();
         let ProfileSource::Remote {
             option,
@@ -924,18 +978,13 @@ mod tests {
         fetcher
             .expect_fetch()
             .returning(|_, _| anyhow::bail!("dns exploded"));
-        let (client, _dir) = remote_seeded_client(
-            MockProfileFsPort::new(),
-            fetcher,
-            MockRebuildNotifier::new(),
-        )
-        .await;
+        let (client, _dir) = remote_seeded_client(MockProfileFsPort::new(), fetcher).await;
         let err = client
             .refresh(ProfileId("r1".into()), None)
             .await
             .unwrap_err();
         assert!(matches!(err, ProfilesError::RefreshFailed { .. }));
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let source = snapshot.items[&ProfileId("r1".into())]
             .definition
             .source()
@@ -951,11 +1000,11 @@ mod tests {
     async fn import_is_not_committed_when_materialization_promote_fails() {
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(suggested_fetch("proxies: []\n", Some(360))),
             failing_state_promote_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -976,7 +1025,7 @@ mod tests {
                 .is_err()
         );
         assert!(
-            client.get().await.unwrap().items.is_empty(),
+            client.snapshot().items.is_empty(),
             "state-first promote failure with full rollback must leave zero items"
         );
     }
@@ -1002,12 +1051,8 @@ mod tests {
             release: std::sync::Arc::clone(&release_fetch),
         };
         let fs = MockProfileFsPort::new();
-        let (client, _dir) = remote_seeded_client_with_fetcher(
-            fs,
-            std::sync::Arc::new(fetcher),
-            MockRebuildNotifier::new(),
-        )
-        .await;
+        let (client, _dir) =
+            remote_seeded_client_with_fetcher(fs, std::sync::Arc::new(fetcher)).await;
         let c2 = client.clone();
         let first = tokio::spawn(async move { c2.refresh(ProfileId("r1".into()), None).await });
         started_rx.await.unwrap();
@@ -1040,7 +1085,6 @@ mod tests {
         let (client, _dir) = remote_seeded_client_with_fetcher(
             MockProfileFsPort::new(),
             std::sync::Arc::new(fetcher),
-            MockRebuildNotifier::new(),
         )
         .await;
 
@@ -1056,9 +1100,7 @@ mod tests {
         );
         assert!(
             client
-                .get()
-                .await
-                .unwrap()
+                .snapshot()
                 .items
                 .get(&ProfileId("r1".into()))
                 .is_none()
@@ -1078,12 +1120,8 @@ mod tests {
             started: std::sync::Mutex::new(Some(started)),
             release: std::sync::Arc::clone(&release_fetch),
         };
-        let (client, _dir) = remote_seeded_client_with_fetcher(
-            fs,
-            std::sync::Arc::new(fetcher),
-            MockRebuildNotifier::new(),
-        )
-        .await;
+        let (client, _dir) =
+            remote_seeded_client_with_fetcher(fs, std::sync::Arc::new(fetcher)).await;
 
         let c = client.clone();
         let pending = tokio::spawn(async move { c.refresh(ProfileId("r1".into()), None).await });
@@ -1103,7 +1141,7 @@ mod tests {
         assert!(
             matches!(err, ProfilesError::RefreshFailed { message } if message.contains("changed"))
         );
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let item = snapshot.items.get(&ProfileId("r1".into())).unwrap();
         let Some(nyanpasu_config::profile::ProfileSource::Remote { materialized, .. }) =
             item.definition.source()
@@ -1124,12 +1162,8 @@ mod tests {
             started: std::sync::Mutex::new(Some(started)),
             release: Arc::clone(&release_fetch),
         };
-        let (client, _dir) = remote_seeded_client_with_fetcher(
-            MockProfileFsPort::new(),
-            Arc::new(fetcher),
-            MockRebuildNotifier::new(),
-        )
-        .await;
+        let (client, _dir) =
+            remote_seeded_client_with_fetcher(MockProfileFsPort::new(), Arc::new(fetcher)).await;
 
         let refresh_client = client.clone();
         let pending =
@@ -1148,7 +1182,7 @@ mod tests {
             matches!(err, ProfilesError::RefreshFailed { message } if message.contains("changed"))
         );
         assert!(
-            client.get().await.unwrap().items[&ProfileId("r1".into())]
+            client.snapshot().items[&ProfileId("r1".into())]
                 .definition
                 .source()
                 .unwrap()
@@ -1178,11 +1212,11 @@ mod tests {
         });
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             std::sync::Arc::new(fs),
             std::sync::Arc::new(fetcher),
             test_materialization_port(),
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1212,12 +1246,7 @@ mod tests {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             anyhow::bail!("count only")
         });
-        let (client, _dir) = remote_seeded_client(
-            MockProfileFsPort::new(),
-            fetcher,
-            MockRebuildNotifier::new(),
-        )
-        .await;
+        let (client, _dir) = remote_seeded_client(MockProfileFsPort::new(), fetcher).await;
 
         client
             .replace_definition(ProfileId("r1".into()), file_config_item("r1").definition)
@@ -1252,11 +1281,11 @@ mod tests {
         let dir = tempdir().unwrap();
         {
             let client = ProfilesClient::new(
+                crate::state::mutation::MutationCoordinator::isolated(),
                 temp_profiles_path(&dir),
                 std::sync::Arc::new(MockProfileFsPort::new()),
                 std::sync::Arc::new(MockSubscriptionFetcher::new()),
                 test_materialization_port(),
-                std::sync::Arc::new(MockRebuildNotifier::new()),
             )
             .await
             .unwrap();
@@ -1270,11 +1299,11 @@ mod tests {
             client.replace(profiles).await.unwrap();
         }
         let _client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             std::sync::Arc::new(MockProfileFsPort::new()),
             std::sync::Arc::new(fetcher),
             test_materialization_port(),
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1303,11 +1332,11 @@ mod tests {
             std::sync::Arc::new(NoProxyPort),
         ));
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1354,11 +1383,11 @@ mod tests {
             std::sync::Arc::new(NoProxyPort),
         ));
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1375,7 +1404,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn external_background_commit_requests_rebuild_once_for_current() {
+    async fn external_background_commit_does_not_bypass_the_mutation_participant() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
         let target_dir = tempdir().unwrap();
@@ -1389,18 +1418,12 @@ mod tests {
             paths,
             std::sync::Arc::new(NoProxyPort),
         ));
-        let rebuilds = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let mut notifier = MockRebuildNotifier::new();
-        let counter = std::sync::Arc::clone(&rebuilds);
-        notifier.expect_request_rebuild().returning(move || {
-            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        });
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            std::sync::Arc::new(notifier),
         )
         .await
         .unwrap();
@@ -1415,7 +1438,6 @@ mod tests {
 
         std::fs::write(&target_path, "proxies: []\n# touched\n").unwrap();
         wait_for_updated_at(&client, "ext1").await;
-        assert_eq!(rebuilds.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -1436,11 +1458,11 @@ mod tests {
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             profiles_path,
             fs.clone() as Arc<dyn ProfileFsPort>,
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1493,20 +1515,17 @@ mod tests {
         let (client, _dir2) = {
             let path = temp_profiles_path(&dir);
             let client = ProfilesClient::new(
+                crate::state::mutation::MutationCoordinator::isolated(),
                 path,
                 std::sync::Arc::new(MockProfileFsPort::new()),
                 std::sync::Arc::new(MockSubscriptionFetcher::new()),
                 test_materialization_port(),
-                std::sync::Arc::new(MockRebuildNotifier::new()),
             )
             .await
             .unwrap();
             (client, dir)
         };
-        assert_eq!(
-            client.get().await.unwrap().current,
-            Some(ProfileId("cfg1".into()))
-        );
+        assert_eq!(client.snapshot().current, Some(ProfileId("cfg1".into())));
     }
 
     #[tokio::test]
@@ -1529,10 +1548,7 @@ mod tests {
             .await
             .expect("call ok");
         assert!(skipped.is_none(), "must not overwrite an existing current");
-        assert_eq!(
-            client.get().await.unwrap().current,
-            Some(ProfileId("cfg1".into()))
-        );
+        assert_eq!(client.snapshot().current, Some(ProfileId("cfg1".into())));
     }
 
     #[tokio::test]
@@ -1548,7 +1564,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ProfilesError::ValidationFailed(_)));
-        assert!(client.get().await.unwrap().current.is_none());
+        assert!(client.snapshot().current.is_none());
     }
 
     #[tokio::test]
@@ -1594,11 +1610,11 @@ mod tests {
         );
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             Arc::new(MockSubscriptionFetcher::new()),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1647,11 +1663,11 @@ mod tests {
     async fn add_promotion_failure_rolls_back_before_reporting_created() {
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             failing_state_promote_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1666,14 +1682,14 @@ mod tests {
             )
             .await
             .expect_err("promote failure must fail Add");
-        assert!(matches!(err, ProfilesError::Materialization(_)));
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(matches!(err, ProfilesError::SourceTransaction { .. }));
+        assert!(client.snapshot().items.is_empty());
     }
 
-    /// H1: promote fails after durable forward CAS, then compensating state commit
-    /// also fails → mutation stays Ok(degraded) with forward head recoverable.
+    /// Promotion is before the source CAS: losing the config directory while
+    /// promoting must not make a forward source snapshot visible.
     #[tokio::test]
-    async fn add_promote_failure_with_failed_compensating_state_returns_degraded_commit() {
+    async fn add_promote_failure_never_publishes_source_when_config_directory_disappears() {
         let root = tempdir().unwrap();
         let live = root.path().join("live");
         std::fs::create_dir(&live).unwrap();
@@ -1687,19 +1703,16 @@ mod tests {
             .expect_reconcile()
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         materialization
-            .expect_prepare_state_first()
+            .expect_prepare_file_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
         let live_for_promote = live.clone();
         let dead_for_promote = dead.clone();
         materialization.expect_promote().returning(move |_| {
-            // Move the profiles parent aside so compensating AtomicFile CAS cannot
-            // rewrite profiles.yaml, while the durable forward head remains at the
-            // renamed path (cross-platform; no Unix chmod).
+            // Simulate losing the config directory before the source CAS.
             std::fs::rename(&live_for_promote, &dead_for_promote)
-                .expect("move profiles parent aside after forward CAS");
+                .expect("move profiles parent aside before source CAS");
             Err(anyhow::anyhow!("disk full"))
         });
-        // Compensating state fails before materialization.compensate is reached.
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let compensate_calls = Arc::clone(&compensate_calls);
@@ -1710,53 +1723,28 @@ mod tests {
         }
 
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             profiles_path,
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
 
-        let report = client
+        let error = client
             .add(add_placeholder_request(), Some("proxies: []\n".into()))
             .await
-            .expect("failed compensating state keeps forward committed as degraded Ok");
-
-        assert!(report.created.is_some(), "create must surface real uid");
-        assert_eq!(report.snapshot.items.len(), 1);
-        let created = report.created.clone().unwrap();
+            .expect_err("promotion failure must reject before the source CAS");
+        assert!(matches!(error, ProfilesError::SourceTransaction { .. }));
+        assert!(client.snapshot().items.is_empty());
         assert!(
-            client.get().await.unwrap().items.contains_key(&created),
-            "forward state must remain visible/recoverable after failed compensating CAS"
-        );
-        assert!(
-            durable_forward.is_file(),
-            "durable forward profiles.yaml must remain at the renamed parent path"
-        );
-        assert_eq!(report.degradations.len(), 1);
-        assert_eq!(
-            report.degradations[0].phase,
-            ProfileDegradationPhase::Reconcile
-        );
-        assert_eq!(
-            report.degradations[0].code,
-            ProfileDegradationCode::MaterializationDeferred
-        );
-        assert!(report.degradations[0].code.retryable());
-        assert!(
-            report.degradations[0].message.contains("promotion failed")
-                && report.degradations[0]
-                    .message
-                    .contains("compensating state commit failed"),
-            "degradation must carry the compound promote+compensate-state error: {}",
-            report.degradations[0].message
+            !durable_forward.exists(),
+            "no source was persisted before promotion"
         );
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
-            0,
-            "materialization compensate runs only after compensating state succeeds"
+            1
         );
     }
 
@@ -1769,7 +1757,7 @@ mod tests {
         let promote_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         materialization
-            .expect_prepare_state_first()
+            .expect_prepare_file_first()
             .returning(|_, _, _| Err(anyhow::anyhow!("staging refused")));
         {
             let promote_calls = Arc::clone(&promote_calls);
@@ -1788,11 +1776,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1807,7 +1795,7 @@ mod tests {
                 && message.contains("prepare materialization"),
             "prepare-phase failure expected, got: {message}"
         );
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
         assert_eq!(promote_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
@@ -1822,7 +1810,7 @@ mod tests {
             .expect_reconcile()
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         materialization
-            .expect_prepare_state_first()
+            .expect_prepare_file_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
         materialization
             .expect_promote()
@@ -1838,11 +1826,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1853,14 +1841,14 @@ mod tests {
             .expect_err("compound materialization failure");
         let message = err.to_string();
         assert!(
-            message.contains("promotion failed") && message.contains("compensate"),
+            message.contains("disk full") && message.contains("cannot restore"),
             "compound error must mention promotion and compensate failures: {message}"
         );
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
         );
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 
     #[tokio::test]
@@ -1870,7 +1858,7 @@ mod tests {
             .expect_reconcile()
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         materialization
-            .expect_prepare_state_first()
+            .expect_prepare_file_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
         materialization.expect_promote().returning(|_| Ok(()));
         materialization
@@ -1879,11 +1867,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1896,7 +1884,7 @@ mod tests {
         assert_eq!(report.snapshot.items.len(), 1);
         let created = report.created.clone().unwrap();
         assert!(
-            client.get().await.unwrap().items.contains_key(&created),
+            client.snapshot().items.contains_key(&created),
             "complete degradation must leave the committed item durable"
         );
         assert_eq!(report.degradations.len(), 1);
@@ -1918,7 +1906,7 @@ mod tests {
             .expect_reconcile()
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         materialization
-            .expect_prepare_state_first()
+            .expect_prepare_file_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("new".into())));
         materialization
             .expect_prepare_cleanup()
@@ -1934,11 +1922,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -1955,7 +1943,7 @@ mod tests {
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
         );
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let item = &snapshot.items[&ProfileId("cfg2".into())];
         match &item.definition {
             ProfileDefinition::Config { config } => {
@@ -1975,7 +1963,7 @@ mod tests {
             .expect_reconcile()
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         materialization
-            .expect_prepare_state_first()
+            .expect_prepare_file_first()
             .returning(|_, _, _| Ok(PreparedMaterialization::new("new".into())));
         materialization
             .expect_prepare_cleanup()
@@ -2002,11 +1990,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2018,13 +2006,13 @@ mod tests {
             .replace_definition(ProfileId("cfg2".into()), kind_switch_script_definition())
             .await
             .expect_err("promote failure must roll back ReplaceDefinition");
-        assert!(matches!(err, ProfilesError::Materialization(_)));
+        assert!(matches!(err, ProfilesError::SourceTransaction { .. }));
         assert_eq!(cancel_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
         );
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let item = &snapshot.items[&ProfileId("cfg2".into())];
         match &item.definition {
             ProfileDefinition::Config { config } => {
@@ -2060,11 +2048,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(ok_fetch("proxies: []\n")),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2076,12 +2064,12 @@ mod tests {
             .refresh(ProfileId("r1".into()), None)
             .await
             .expect_err("refresh promote failure");
-        assert!(matches!(err, ProfilesError::Materialization(_)));
+        assert!(matches!(err, ProfilesError::SourceTransaction { .. }));
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
         );
-        let snapshot = client.get().await.unwrap();
+        let snapshot = client.snapshot();
         let source = snapshot.items[&ProfileId("r1".into())]
             .definition
             .source()
@@ -2105,11 +2093,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(ok_fetch("proxies: []\n")),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2154,11 +2142,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2171,9 +2159,7 @@ mod tests {
         assert!(matches!(err, ProfilesError::Materialization(_)));
         assert!(
             client
-                .get()
-                .await
-                .unwrap()
+                .snapshot()
                 .items
                 .contains_key(&ProfileId("cfg2".into()))
         );
@@ -2204,11 +2190,11 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2285,12 +2271,8 @@ mod tests {
             release: Arc::clone(&release_fetch),
             holds_remaining,
         };
-        let (client, _dir) = remote_seeded_client_with_fetcher(
-            MockProfileFsPort::new(),
-            Arc::new(fetcher),
-            MockRebuildNotifier::new(),
-        )
-        .await;
+        let (client, _dir) =
+            remote_seeded_client_with_fetcher(MockProfileFsPort::new(), Arc::new(fetcher)).await;
 
         let refresh_client = client.clone();
         let pending =
@@ -2345,11 +2327,11 @@ mod tests {
         );
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             Arc::new(MockSubscriptionFetcher::new()),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2386,11 +2368,11 @@ mod tests {
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             profiles_path.clone(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             Arc::new(ok_fetch("proxies:\n  - name: new\n")),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2404,7 +2386,7 @@ mod tests {
         std::fs::create_dir(&profiles_path).unwrap();
         assert!(matches!(
             client.refresh(ProfileId("r1".into()), None).await,
-            Err(ProfilesError::Persist(_))
+            Err(ProfilesError::SourceTransaction { .. })
         ));
         assert_eq!(
             fs.read(&path).unwrap(),
@@ -2468,11 +2450,11 @@ mod tests {
         );
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             Arc::new(MockSubscriptionFetcher::new()),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2504,11 +2486,11 @@ mod tests {
     async fn delete_cleanup_failure_degrades_to_warning() {
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             failing_cleanup_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2652,15 +2634,15 @@ mod tests {
         drop(client);
 
         let reopened = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             std::sync::Arc::new(MockProfileFsPort::new()),
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
             test_materialization_port(),
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .expect("reopen after failed mutation");
-        let snapshot = reopened.get().await.unwrap();
+        let snapshot = reopened.snapshot();
         assert!(snapshot.current.is_none());
         assert_eq!(snapshot.items.len(), 3);
     }
@@ -2798,15 +2780,15 @@ mod tests {
         let path = temp_profiles_path(&dir);
         std::fs::write(
             &path,
-            "current: ghost\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
+            "_nyanpasu:\n  document: profiles\n  schema_revision: 4\ncurrent: ghost\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
         )
         .unwrap();
         let result = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             path,
             std::sync::Arc::new(MockProfileFsPort::new()),
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
             test_materialization_port(),
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await;
         assert!(result.is_err(), "invalid persisted document must fail fast");
@@ -2862,15 +2844,15 @@ mod tests {
         drop(client);
 
         let reopened = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             std::sync::Arc::new(MockProfileFsPort::new()),
             std::sync::Arc::new(MockSubscriptionFetcher::new()),
             test_materialization_port(),
-            std::sync::Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
-        let snapshot = reopened.get().await.unwrap();
+        let snapshot = reopened.snapshot();
         let item = &snapshot.items[&ProfileId("cfg1".into())];
         match &item.definition {
             ProfileDefinition::Config { config } => assert!(config.transforms().is_empty()),
@@ -2888,11 +2870,11 @@ mod tests {
         );
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap(),
             fs.clone() as Arc<dyn ProfileFsPort>,
             Arc::new(MockSubscriptionFetcher::new()),
             fs.clone() as Arc<dyn ProfileMaterializationPort>,
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -2945,7 +2927,7 @@ mod tests {
     async fn wait_until_empty(client: &ProfilesClient) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         loop {
-            if client.get().await.unwrap().items.is_empty() {
+            if client.snapshot().items.is_empty() {
                 return;
             }
             assert!(
@@ -2974,11 +2956,11 @@ mod tests {
             })
         });
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(fetcher),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3027,11 +3009,11 @@ mod tests {
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         // No prepare/promote/cleanup expectations: failure must not touch journals.
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(fetcher),
             Arc::new(materialization),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3046,7 +3028,7 @@ mod tests {
             .await
             .expect_err("fetch failure");
         assert!(matches!(err, ProfilesError::ImportFailed { .. }));
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 
     #[tokio::test]
@@ -3078,13 +3060,13 @@ mod tests {
         }
 
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(PanicOnceThenSucceedFetcher {
                 calls: std::sync::Arc::clone(&calls),
             }),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3105,7 +3087,7 @@ mod tests {
             err,
             ProfilesError::ImportFailed { message } if message == "subscription fetch task panicked"
         ));
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
 
         // Pending import must be cleared: a subsequent valid import proceeds.
         client
@@ -3117,7 +3099,7 @@ mod tests {
             )
             .await
             .expect("second import after fetch panic");
-        assert_eq!(client.get().await.unwrap().items.len(), 1);
+        assert_eq!(client.snapshot().items.len(), 1);
         assert!(calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
     }
 
@@ -3157,6 +3139,7 @@ mod tests {
         }
 
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(AbortThenSucceedFetcher {
@@ -3165,7 +3148,6 @@ mod tests {
                 calls: std::sync::Arc::clone(&calls),
             }),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3195,7 +3177,7 @@ mod tests {
             )
             .await
             .expect("second import after abort");
-        assert_eq!(client.get().await.unwrap().items.len(), 1);
+        assert_eq!(client.snapshot().items.len(), 1);
         assert!(calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
     }
 
@@ -3225,6 +3207,7 @@ mod tests {
         }
 
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(FailingHoldingFetcher {
@@ -3232,7 +3215,6 @@ mod tests {
                 release: std::sync::Arc::clone(&release),
             }),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3265,11 +3247,11 @@ mod tests {
             release: std::sync::Arc::clone(&release),
         };
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             path.clone(),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(fetcher),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3294,15 +3276,15 @@ mod tests {
             tokio::task::yield_now().await;
         }
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             path,
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 
     #[tokio::test]
@@ -3318,11 +3300,11 @@ mod tests {
             })
         });
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(fetcher),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3362,11 +3344,11 @@ mod tests {
             })
         });
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(fetcher),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3394,11 +3376,11 @@ mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(0);
         let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_profiles_path(&dir),
             Arc::new(MockProfileFsPort::new()),
             Arc::new(fetcher),
             test_materialization_port(),
-            Arc::new(MockRebuildNotifier::new()),
         )
         .await
         .unwrap();
@@ -3416,6 +3398,6 @@ mod tests {
             .await
             .expect_err("zero interval");
         assert!(matches!(err, ProfilesError::ValidationFailed(_)));
-        assert!(client.get().await.unwrap().items.is_empty());
+        assert!(client.snapshot().items.is_empty());
     }
 }

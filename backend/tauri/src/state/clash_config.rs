@@ -1,10 +1,20 @@
+use crate::{
+    client::application_workflow::{
+        impact::{MutationHints, RequestedRuntimeFields},
+        policy::CommandClass,
+    },
+    state::mutation::MutationCoordinator,
+};
+use nyanpasu_core_manager::OperationId;
 use std::sync::Arc;
 
 use anyhow::Context as _;
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
-use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
+use nyanpasu_core::state::{
+    PersistentStateManager, ReplaceIfVersionResult, Version, VersionedState,
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 
@@ -18,14 +28,37 @@ use super::{
 pub struct ClashConfigSnapshot {
     pub state: ClashConfig,
     pub version: u64,
+    pub(crate) receipt: Option<crate::client::runtime::CommitReceipt>,
+    pub(crate) degradations: Vec<crate::client::runtime::Degradation>,
+}
+
+impl ClashConfigSnapshot {
+    pub(crate) fn outcome(self) -> crate::client::runtime::MutationOutcome<()> {
+        let outcome = crate::client::runtime::MutationOutcome::from_parts((), self.degradations);
+        match self.receipt {
+            Some(receipt) => outcome.with_commit(receipt),
+            None => outcome,
+        }
+    }
+
+    pub(crate) fn from_versioned(versioned: &VersionedState<ClashConfig>) -> Self {
+        Self {
+            receipt: None,
+            degradations: Vec::new(),
+            state: versioned.state.clone(),
+            version: *versioned.version.as_ref(),
+        }
+    }
 }
 
 pub struct ClashConfigActorArgs {
+    pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<ClashConfig>,
     pub bridge: Arc<dyn ClashLegacyBridge>,
 }
 
 pub struct ClashConfigActorState {
+    mutations: MutationCoordinator,
     manager: PersistentStateManager<ClashConfig>,
     bridge: Arc<dyn ClashLegacyBridge>,
 }
@@ -33,7 +66,6 @@ pub struct ClashConfigActorState {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum ClashConfigActorMessage {
-    Get(RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>),
     Patch {
         patch: ClashConfigPatch,
         reply: RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>,
@@ -61,12 +93,22 @@ pub enum ClashConfigActorMessage {
 pub struct ClashConfigActor;
 
 impl ClashConfigActor {
+    async fn patch(
+        state: &mut ClashConfigActorState,
+        patch: ClashConfigPatch,
+    ) -> anyhow::Result<ClashConfigSnapshot> {
+        let mut next = state.manager.snapshot_handle().load().state.clone();
+        let hints = MutationHints {
+            requested: RequestedRuntimeFields::of_clash(&patch),
+            ..Default::default()
+        };
+        let class = CommandClass::Save;
+        next.apply(patch);
+        Self::commit(state, next, hints, class).await
+    }
+
     fn snapshot(state: &ClashConfigActorState) -> ClashConfigSnapshot {
-        let snapshot = state.manager.snapshot_handle().load();
-        ClashConfigSnapshot {
-            state: snapshot.state.clone(),
-            version: *snapshot.version.as_ref(),
-        }
+        ClashConfigSnapshot::from_versioned(&state.manager.snapshot_handle().load())
     }
 
     fn prepare_replace(
@@ -83,15 +125,33 @@ impl ClashConfigActor {
     async fn commit(
         state: &mut ClashConfigActorState,
         next: ClashConfig,
+        hints: MutationHints,
+        class: CommandClass,
     ) -> anyhow::Result<ClashConfigSnapshot> {
         let (next, mirror) = Self::prepare_replace(state, next)?.into_parts();
+        let version = state.manager.snapshot_handle().load().version;
+        let operation = OperationId::generate();
+        let participant = state.mutations.participant(operation, hints, class)?;
         state
             .manager
-            .upsert(next)
+            .replace_if_version_with_participant(
+                version,
+                next,
+                participant,
+                || async { Ok(()) },
+                || async { Ok(()) },
+            )
             .await
             .context("failed to persist clash config")?;
         mirror.apply();
-        Ok(Self::snapshot(state))
+        let mut snapshot = Self::snapshot(state);
+        let (receipt, degradations) = state
+            .mutations
+            .finish(operation, "clash", snapshot.version)
+            .await;
+        snapshot.receipt = Some(receipt);
+        snapshot.degradations = degradations;
+        Ok(snapshot)
     }
 
     async fn replace_prepared_if_version(
@@ -100,15 +160,37 @@ impl ClashConfigActor {
         prepared: PreparedTypedReplace<ClashConfig>,
     ) -> anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>> {
         let (next, mirror) = prepared.into_parts();
+        let operation = OperationId::generate();
+        let participant = state.mutations.participant(
+            operation,
+            MutationHints {
+                requested: RequestedRuntimeFields::whole_document(),
+                ..Default::default()
+            },
+            CommandClass::Save,
+        )?;
         match state
             .manager
-            .replace_if_version(Version::new(expected_version), next)
+            .replace_if_version_with_participant(
+                Version::new(expected_version),
+                next,
+                participant,
+                || async { Ok(()) },
+                || async { Ok(()) },
+            )
             .await
             .context("failed to conditionally persist clash config")?
         {
             ReplaceIfVersionResult::Replaced => {
                 mirror.apply();
-                Ok(ConditionalReplaceResult::Replaced(Self::snapshot(state)))
+                let mut snapshot = Self::snapshot(state);
+                let (receipt, degradations) = state
+                    .mutations
+                    .finish(operation, "clash", snapshot.version)
+                    .await;
+                snapshot.receipt = Some(receipt);
+                snapshot.degradations = degradations;
+                Ok(ConditionalReplaceResult::Replaced(snapshot))
             }
             ReplaceIfVersionResult::Conflict { actual_version } => {
                 Ok(ConditionalReplaceResult::Conflict {
@@ -130,6 +212,7 @@ impl Actor for ClashConfigActor {
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(ClashConfigActorState {
+            mutations: args.mutations,
             manager: args.manager,
             bridge: args.bridge,
         })
@@ -142,25 +225,32 @@ impl Actor for ClashConfigActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            ClashConfigActorMessage::Get(reply) => {
-                let _ = reply.send(Ok(Self::snapshot(state)));
-            }
             ClashConfigActorMessage::Patch { patch, reply } => {
-                let result = async {
-                    let mut next = state.manager.snapshot_handle().load().state.clone();
-                    next.apply(patch);
-                    Self::commit(state, next).await
-                }
-                .await;
-                let _ = reply.send(result);
+                let _ = reply.send(Self::patch(state, patch).await);
             }
             ClashConfigActorMessage::PatchOverrides { patch, reply } => {
                 let mut next = state.manager.snapshot_handle().load().state.clone();
+                let hints = MutationHints {
+                    mode_requested: patch.mode.is_some(),
+                    requested: RequestedRuntimeFields::of_clash_overrides(&patch),
+                    ..Default::default()
+                };
                 next.overrides.apply(patch);
-                let _ = reply.send(Self::commit(state, next).await);
+                let _ = reply.send(Self::commit(state, next, hints, CommandClass::Save).await);
             }
             ClashConfigActorMessage::Replace { state: next, reply } => {
-                let _ = reply.send(Self::commit(state, next).await);
+                let _ = reply.send(
+                    Self::commit(
+                        state,
+                        next,
+                        MutationHints {
+                            requested: RequestedRuntimeFields::whole_document(),
+                            ..Default::default()
+                        },
+                        CommandClass::Save,
+                    )
+                    .await,
+                );
             }
             ClashConfigActorMessage::PrepareReplace { state: next, reply } => {
                 let _ = reply.send(Self::prepare_replace(state, next));
@@ -183,7 +273,7 @@ impl Actor for ClashConfigActor {
 mod tests {
     use super::*;
     use crate::state::mirror::PreparedLegacyMirror;
-    use nyanpasu_core::state::PersistentStateManagerSetup;
+    use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
     use ractor::rpc::CallResult;
     use struct_patch::Patch;
     use tempfile::tempdir;
@@ -203,7 +293,11 @@ mod tests {
 
     async fn spawn_actor(
         bridge: Arc<dyn ClashLegacyBridge>,
-    ) -> (ActorRef<ClashConfigActorMessage>, tempfile::TempDir) {
+    ) -> (
+        ActorRef<ClashConfigActorMessage>,
+        StateSnapshot<ClashConfig>,
+        tempfile::TempDir,
+    ) {
         let dir = tempdir().expect("tempdir should be created");
         let path = camino::Utf8PathBuf::from_path_buf(dir.path().join("clash-config.yaml"))
             .expect("temp path should be UTF-8");
@@ -213,33 +307,26 @@ mod tests {
             .from_state(ClashConfig::default())
             .await
             .expect("clash config manager should initialize");
+        let snapshot = manager.snapshot_handle();
         let (actor_ref, _handle) = Actor::spawn(
             None,
             ClashConfigActor,
-            ClashConfigActorArgs { manager, bridge },
+            ClashConfigActorArgs {
+                manager,
+                bridge,
+                mutations: MutationCoordinator::isolated(),
+            },
         )
         .await
         .expect("clash config actor should spawn");
-        (actor_ref, dir)
-    }
-
-    async fn get_snapshot(
-        actor: &ActorRef<ClashConfigActorMessage>,
-    ) -> anyhow::Result<ClashConfigSnapshot> {
-        match actor.call(ClashConfigActorMessage::Get, None).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash config actor call timed out"),
-        }
+        (actor_ref, snapshot, dir)
     }
 
     #[tokio::test]
     async fn mirror_prepare_failure_returns_error_without_commit() {
-        let (actor, _dir) = spawn_actor(Arc::new(FailingClashMirror)).await;
+        let (actor, snapshot, _dir) = spawn_actor(Arc::new(FailingClashMirror)).await;
 
-        let before = get_snapshot(&actor)
-            .await
-            .expect("initial get should succeed");
+        let before = ClashConfigSnapshot::from_versioned(&snapshot.load());
         assert!(!before.state.enable_tun_mode);
         let before_version = before.version;
 
@@ -264,20 +351,16 @@ mod tests {
             "unexpected error: {err:#}"
         );
 
-        let after = get_snapshot(&actor)
-            .await
-            .expect("post-failure get should succeed");
+        let after = ClashConfigSnapshot::from_versioned(&snapshot.load());
         assert_eq!(after.state.enable_tun_mode, before.state.enable_tun_mode);
         assert_eq!(after.version, before_version);
     }
 
     #[tokio::test]
     async fn mirror_prepare_failure_leaves_state_and_version_unchanged() {
-        let (actor, _dir) = spawn_actor(Arc::new(FailingClashMirror)).await;
+        let (actor, snapshot, _dir) = spawn_actor(Arc::new(FailingClashMirror)).await;
 
-        let before = get_snapshot(&actor)
-            .await
-            .expect("initial get should succeed");
+        let before = ClashConfigSnapshot::from_versioned(&snapshot.load());
 
         let mut patch = ClashConfig::new_empty_patch();
         patch.enable_tun_mode = Some(true);
@@ -288,9 +371,7 @@ mod tests {
             )
             .await;
 
-        let after = get_snapshot(&actor)
-            .await
-            .expect("post-failure get should succeed");
+        let after = ClashConfigSnapshot::from_versioned(&snapshot.load());
         assert_eq!(after.version, before.version);
         assert_eq!(after.state.enable_tun_mode, before.state.enable_tun_mode);
     }

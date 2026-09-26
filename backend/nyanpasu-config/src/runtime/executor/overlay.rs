@@ -17,12 +17,13 @@ pub(super) fn apply_overlay(
     mut config: ConfigValue,
     runner: &dyn ScriptRunner,
     logs: &mut Vec<StepLogEntry>,
-) -> ConfigValue {
+) -> (ConfigValue, bool) {
+    let mut failed = false;
     let Some(entries) = overlay.as_object_arc() else {
         logs.push(StepLogEntry::warn(
             "overlay document is not a mapping, skipped",
         ));
-        return config;
+        return (config, true);
     };
 
     // IndexMap iteration = document order (parity with Mapping iteration).
@@ -37,12 +38,12 @@ pub(super) fn apply_overlay(
         } else if let Some(field) = lowered.strip_prefix("override__") {
             config = override_path(config, field, value, logs);
         } else if let Some(field) = lowered.strip_prefix("filter__") {
-            config = filter_path(config, field, value, runner, logs);
+            config = filter_path(config, field, value, runner, logs, &mut failed);
         } else {
             config = bare_key_merge(config, key, value);
         }
     }
-    config
+    (config, failed)
 }
 
 fn strip_any<'a>(key: &'a str, prefixes: &[&str]) -> Option<&'a str> {
@@ -128,6 +129,7 @@ fn filter_path(
     filter: &ConfigValue,
     runner: &dyn ScriptRunner,
     logs: &mut Vec<StepLogEntry>,
+    failed: &mut bool,
 ) -> ConfigValue {
     let segments = parse_dotted_path(field);
     let Some(target) = get_at(&config, &segments) else {
@@ -143,7 +145,7 @@ fn filter_path(
         return config;
     };
 
-    let filtered = apply_filter(existing.to_vec(), filter, runner, logs);
+    let filtered = apply_filter(existing.to_vec(), filter, runner, logs, failed);
     replace_at(&config, &segments, ConfigValue::Array(Arc::from(filtered))).unwrap_or(config)
 }
 
@@ -152,18 +154,20 @@ fn apply_filter(
     filter: &ConfigValue,
     runner: &dyn ScriptRunner,
     logs: &mut Vec<StepLogEntry>,
+    failed: &mut bool,
 ) -> Vec<ConfigValue> {
     match filter {
         // Sequence of filters: composable multi-pass (merge.rs do_filter).
-        ConfigValue::Array(filters) => filters
-            .iter()
-            .fold(items, |acc, sub| apply_filter(acc, sub, runner, logs)),
+        ConfigValue::Array(filters) => filters.iter().fold(items, |acc, sub| {
+            apply_filter(acc, sub, runner, logs, failed)
+        }),
         // String: Lua boolean predicate; eval error removes the item (parity).
         ConfigValue::String(expr) => items
             .into_iter()
             .filter(|item| match runner.eval_item_predicate(expr, item) {
                 Ok(keep) => keep,
                 Err(error) => {
+                    *failed = true;
                     logs.push(StepLogEntry::warn(format!(
                         "filter expr failed, item removed: {error}"
                     )));
@@ -207,6 +211,7 @@ fn apply_filter(
                     let hit = match runner.eval_item_predicate(when, &item) {
                         Ok(hit) => hit,
                         Err(error) => {
+                            *failed = true;
                             logs.push(StepLogEntry::warn(format!(
                                 "filter `when` failed, treated as false: {error}"
                             )));
@@ -220,6 +225,7 @@ fn apply_filter(
                         FilterAction::Expr(expr) => match runner.eval_item_expr(expr, &item) {
                             Ok(next) => next,
                             Err(error) => {
+                                *failed = true;
                                 logs.push(StepLogEntry::warn(format!(
                                     "filter `expr` failed, item kept: {error}"
                                 )));

@@ -111,7 +111,11 @@ async fn test_snapshot_not_updated_on_effect_failure() {
     assert_eq!(*handle.load(), 1);
 
     let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coord
-        .with_pending_state(&2, |_s| async { Err(anyhow::anyhow!("effect failed")) })
+        .with_pending_state(
+            &2,
+            |_s| async { Err(anyhow::anyhow!("effect failed")) },
+            |_committed: i32| async { Ok(()) },
+        )
         .await;
     assert!(result.is_err());
     assert_eq!(*handle.load(), 1);
@@ -124,8 +128,13 @@ async fn test_snapshot_updated_on_effect_success() {
     let mut coord = StateCoordinator::<i32>::builder().build(0);
     let handle = coord.snapshot_handle();
 
-    let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> =
-        coord.with_pending_state(&42, |_s| async { Ok(()) }).await;
+    let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coord
+        .with_pending_state(
+            &42,
+            |_s| async { Ok(()) },
+            |_committed: i32| async { Ok(()) },
+        )
+        .await;
     assert!(result.is_ok());
     assert_eq!(*handle.load(), 42);
 }

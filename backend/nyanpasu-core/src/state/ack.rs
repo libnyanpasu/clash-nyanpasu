@@ -138,6 +138,30 @@ pub enum RollbackReason {
 ///
 /// Unsafe patterns:
 /// - Cycle: A->B->A (mutual subscription)
+///
+/// # Rules for Required participants
+///
+/// A subscriber whose [`AckOptions::policy`] is [`AckPolicy::Required`] can veto
+/// the commit, so it runs inside the writer permit of the source state. Three
+/// rules keep that safe:
+///
+/// 1. **No RPC back to the source actor.** `on_prepare` runs while the source
+///    state's writer permit is held, so any call that has to reach that actor
+///    (a read, a patch, a status query) cannot make progress and will deadlock
+///    or time out. Everything the participant needs must be captured before the
+///    transaction starts or carried in the [`StateChange`].
+/// 2. **Try must be cancel-safe.** The whole prepare fan-out is dropped when the
+///    caller goes away or the ACK times out, so `on_prepare` may be cancelled at
+///    any await point. It must leave no half-applied effect that only its own
+///    return path would have cleaned up.
+/// 3. **Cancel must wait for the in-flight Try.** `on_rolled_back` for an
+///    attempt must not start undoing while that attempt's `on_prepare` is still
+///    running, or the undo races the effect it is undoing. The participant
+///    settles the in-flight attempt first, then compensates.
+///
+/// The commit decision itself is never carried by these notifications alone: a
+/// single-shot participant also holds a [`crate::state::DecisionHandle`], which
+/// stays readable when `on_committed` is dropped or times out.
 #[async_trait::async_trait]
 pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
     /// A unique name for this subscriber, used in logging and reporting.
@@ -198,6 +222,12 @@ where
         (**self).on_rolled_back(change, reason).await
     }
 }
+
+/// A participant taking part in state transactions.
+///
+/// Permanently registered subscribers and the single-shot participant of one
+/// transaction have the same shape; only their lifetime differs.
+pub type StateParticipant<T> = Arc<dyn StateAckSubscriber<T> + Send + Sync>;
 
 #[derive(Debug)]
 pub enum AckStatus {

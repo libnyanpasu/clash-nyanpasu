@@ -1,7 +1,7 @@
 # ApplicationWorkflow 选择性 TCC、降级收敛与通知隔离：完整设计实施计划 v2
 
 日期：2026-09-14  
-状态：设计稿，未实施；代码片段是目标接口草图，不表示当前仓库已经存在这些 API。  
+状态：分阶段实施；2026-09-19 的 T2–T5 接口修整见 [审计修整记录](2026-09-19-tcc-contract-audit.md)。下文原执行记录仍是对应日期的历史基线。
 依据：用户提供的 Fabel 计划 [F]、DeepSeek Harness 分析 [D]，以及本轮三条指导原则。本文以附件记载的固定基线为设计起点，不声称重新验证了当前 main、远端 PR 状态或用户本地工作区。
 
 > **核心决策：复用 nyanpasu-state 的状态事务；只让关键运行态参与应用侧 TCC；确定性且不可自动恢复的关键失败优先拒绝/回退；已知安全、允许延后、可重试的失败可以保留 desired 并降级；大多数副作用在提交后通知或协调，GUI、托盘永不决定源配置提交。**
@@ -185,9 +185,9 @@ Workflow 对 state 是一个必要参与者，对内部 runtime 是执行协调�
 
 ### 3.3 结算不是普通通知
 
-`on_committed/on_rolled_back` 向 workflow 投递结算信号；GUI、托盘不注册进这两个钩子的阻塞链。必要的源状态决定另有只读 DecisionHandle（§4.2），避免一次通知取消/丢失使 AwaitDecision 永久挂起或错误选择 Cancel。
+state 通过可等待的只读 `DecisionHandle` 一次发布完整终态，workflow 直接等待它。`on_committed/on_rolled_back` 仅服务普通订阅者，不再携带第二份应用事务决定。
 
-Confirm/Cancel 是当前事务的控制消息，绕过普通工作 FIFO，按 OperationId 匹配。它们是幂等的：同决定重复投递返回已有结算；不同决定冲突要查权威决定，不能“最后到达者获胜”。结算记录有界，但进行中的上下文不能被环形历史淘汰。
+排队项可收到 `WakeMutation(OperationId)` 后重读权威 handle；迟到或重复唤醒不改变决定。活动事务持续持有执行域，直至源资源及必要 runtime 恢复完成，或进入明确的 RecoveryRequired。历史只保存诊断，不承担决定冲突校验。
 
 ### 3.4 外围通知不互相阻塞
 
@@ -213,9 +213,9 @@ UI 重连/应用重启时同时携带 session identity 与序号，先建立新�
 
 **单次参与者入口。** 将当前 candidate、其参与者和原有 state 事务绑定，不复制 prepare/commit/rollback 算法。
 
-**权威决定句柄。** 每次 state transaction 分配只读 `DecisionHandle` 给本次参与者；coordinator/transaction 独占写端。状态可为 `Undecided / Committed { version } / Aborted`。CAS 成功与写 Committed 之间不能插入 await；Abort 在回滚通知前记录。该句柄只证明源状态提交决定，不证明外部资源已经恢复，也不证明多文件耐久性。
+**权威决定句柄。** 每次 state transaction 分配只读 `DecisionHandle`；源事务所有者独占写端。终态为 `Committed { version }` 或 `Aborted { resources: Restored | NeedsRecovery(PersistenceIncident) }`，未决定表现为等待未完成。完整结果只写一次并唤醒等待者，不分开读取决定 tag 与恢复 flag。CAS 成功与发布 Committed 之间不能插入 await；必要本地资源恢复先于发布干净 Abort。
 
-**结构化持久化/恢复结果。** 不能把文件恢复失败压成普通验证失败。继续复用条件替换路径的 recovery 机制；普通 upsert 的持久化一致性也统一到带条件与恢复的路径。若文件 promotion/YAML 需要同一局部提交步骤，在现有 prepare 与 CAS 之间组合这些持久化操作，失败通过原 journal 补偿，而不是另建状态事务。
+**结构化持久化/恢复结果。** 不能把文件恢复失败压成普通验证失败。继续复用条件替换路径的 recovery 机制；普通 upsert 的持久化一致性也统一到带条件与恢复的路径。若文件 promotion/YAML 需要同一局部提交步骤，在现有 prepare 与 CAS 之间组合这些持久化操作，失败由同一源事务等待原 journal 补偿；写入错误、YAML 错误和 CAS 冲突均覆盖。调用者取消后，源任务继续持有写许可，等待在途写入结束再补偿，不让迟到写入覆盖恢复结果。
 
 **关键清理不能依赖同步 Drop。** Drop 只触发取消/告警，不同步 block_on 等待 core/OS；state 的 mutation task 和 workflow 的 application task 在正常关闭时显式等待。未知持久化结果记录为需恢复，不能因为内存未 CAS 就断言磁盘没变。
 
@@ -913,7 +913,7 @@ flowchart TB
 
 **依赖：** T1。  
 **主要文件：** `nyanpasu-core/src/state/{ack,coordinator,transaction,manager/*}.rs`。  
-**工作：** 单次 participant overload；DecisionHandle 在 CAS/Abort 原子阶段写入；传播结构化持久化/恢复错误；将单域必要资源写入放在现有 prepare→CAS 边界；避免关键回滚依赖同步 Drop。manager 常规写入统一条件替换与恢复语义。  
+**工作：** 单次 participant overload；DecisionHandle 可等待且一次发布源决定与资源结算；传播结构化持久化/恢复错误；将单域必要资源写入放在现有 prepare→CAS 边界；避免关键回滚依赖同步 Drop。manager 常规写入统一条件替换与恢复语义。
 **完成条件：** 同一 state 版本上的两个失败尝试回调仍属于不同 OperationId；CAS 成功后通知丢失仍能判定 Committed；存储恢复失败不会返回“干净拒绝”；不新增第二套 prepare/commit 算法。
 
 ### T3 · 纯影响分类与 FailureDisposition
@@ -927,15 +927,15 @@ flowchart TB
 
 **依赖：** T3。  
 **主要文件：** `client/ports.rs`、`runtime.rs`、`application_workflow/{ports,adapters,preparation}.rs`、`core/actor_v2/facade.rs`。  
-**工作：** 接线固定基线中实际可用的 check 能力，不猜测 `/core/check` 版本；check 缺失/不可用给出明确结果。build 接收显式候选端口/内容；保留结构化 Reconciled/RolledBack/Unknown；提取与 inspection 解耦的 RuntimeApplyReceipt；实现恢复目标校验。  
+**工作：** 接线固定基线中实际可用的 check 能力，不猜测 `/core/check` 版本；check 缺失/不可用给出明确结果。build 接收显式候选端口/内容；保留 NotSubmitted、确认未改变、Reconciled、RolledBack、Unknown 的执行证据；提交携带固定 revision 与宿主 generation 前置条件。ConfirmedRuntime 在现有 store 中关联回执、artifact、inspection 与可用性，端口从中派生；恢复观察必须匹配本次恢复的新 binding。
 **完成条件：** check 与 apply 使用同一待提交字节；候选端口从不污染 active；pending inspection 场景恢复到最近真实成功目标；恢复 RolledBack 留在错误目标时必不报成功。
 
 ### T5 · Workflow 选择性 TCC 骨架
 
 **依赖：** T2、T4。  
 **主要文件：** `application_workflow/{mod,workflow,tests}/...` 与薄 participant。  
-**工作：** Preparing/TryingCritical/AwaitDecision/Confirming/Cancelling/RecoveryRequired；复用 tracked task 与 OperationId；结算消息不走普通 FIFO；DecisionHandle 兜住通知丢失；Closing 不覆盖活动事务；取消等真实完成再恢复。  
-**完成条件：** 两域并发、迟到 Cancel、通知丢失、prepare 超时、保存失败等在 fake ports 下确定性测试通过；此时先不改变外围效果语义。
+**工作：** Preparing/TryingCritical/AwaitDecision/Confirming/Cancelling/RecoveryRequired；复用 tracked task 与 OperationId；只等待权威 DecisionHandle，排队唤醒不携带决定；Closing 不覆盖活动事务；取消等真实完成再恢复。准入后固定三域 RuntimeInputs 与内容，构建和完整目标身份使用同一输入；按 desired/actual 宿主执行，同值请求仍兑现命令语义，GUI-only 保存不查询 core。
+**完成条件：** 两域并发、迟到唤醒、通知丢失、prepare 超时、保存失败等在 fake ports 下确定性测试通过；此时先不改变外围效果语义。
 
 ### T6 · 三个域与受管文件接入
 

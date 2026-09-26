@@ -5,13 +5,9 @@
 //! so the facade keeps one dependency and this stays a dispatcher rather than a
 //! service locator.
 
-use std::{
-    collections::BTreeMap,
-    future::Future,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use super::{
@@ -42,53 +38,13 @@ pub struct ApplicationEffectExecutor {
     logger: Arc<dyn LoggerRefresher>,
     widget: Arc<dyn WidgetController>,
     tray: Arc<dyn TrayRefresher>,
-    /// What revision each stateless UI adapter last had applied to it.
-    ///
-    /// Narrowly scoped bookkeeping rather than shared actor state: the
-    /// actor-backed effects keep their applied revision inside the actor that
-    /// owns them, but an adapter that just forwards a value has nowhere to put
-    /// one. Without it an older plan — one that waited out a slow system proxy
-    /// reconcile before reaching the widget — can re-enable what a newer,
-    /// already finished plan disabled, because the facade releases its gate
-    /// before dispatch.
-    ///
-    /// The check and the apply have to be one atomic step per kind, so the lock
-    /// is held across the adapter call. Every one of those calls is short
-    /// except starting the widget, which is acceptable for the same reason the
-    /// plan is ordered: these four effects are a single visual state.
-    ui_applied: tokio::sync::Mutex<UiApplied>,
-    /// Set by [`Self::shutdown`] before it restores anything.
-    ///
-    /// A plan admitted before the exit path began can still be mid-flight,
-    /// parked in the system proxy or hotkey step. Without this it resumes
-    /// afterwards and re-installs exactly what the shutdown just removed —
-    /// starting the widget again is the visible one. Written under
-    /// `ui_applied`, so a UI adapter call that has not started by then never
-    /// starts at all.
-    closed: AtomicBool,
-}
-
-/// What the stateless UI adapters have been told, guarded as one unit.
-#[derive(Default)]
-struct UiApplied {
-    /// The newest revision each kind has had applied to it.
-    revisions: BTreeMap<EffectKind, EffectRevision>,
     /// A full tray rebuild failed and nothing has rebuilt the menu since.
     ///
     /// The tray is the one effect with no desired value to re-send, so a
     /// failed rebuild has nowhere else to be remembered. Without this, a
     /// partial refresh arriving afterwards would report the menu healthy while
     /// it is still built from the values the failed rebuild was replacing.
-    tray_full_pending: bool,
-    /// How many tray refreshes have been attempted.
-    ///
-    /// Numbered under this lock, which is held across the adapter call, so the
-    /// number is the order the refreshes actually ran in. It is reported as
-    /// the tray status's `applied_revision`, because the facade has no other
-    /// way to tell which of two tray reports describes the menu as it is now:
-    /// a refresh carries no value, so its plan revision says nothing about
-    /// which of them reached the menu last.
-    tray_attempts: u64,
+    tray_full_pending: AtomicBool,
 }
 
 impl ApplicationEffectExecutor {
@@ -109,46 +65,8 @@ impl ApplicationEffectExecutor {
             logger,
             widget,
             tray,
-            ui_applied: tokio::sync::Mutex::new(UiApplied::default()),
-            closed: AtomicBool::new(false),
+            tray_full_pending: AtomicBool::new(false),
         }
-    }
-
-    /// Hands a desired value to a stateless UI adapter unless a newer revision
-    /// already had its say on that kind.
-    ///
-    /// The revision is recorded even when the adapter fails: the desired value
-    /// was consumed, and a retryable failure comes back through the facade's
-    /// retry set with a fresh, higher revision. Recording only on success would
-    /// instead let the next stale plan through.
-    async fn apply_ui(
-        &self,
-        kind: EffectKind,
-        revision: EffectRevision,
-        apply: impl Future<Output = EffectStatus>,
-    ) -> EffectStatus {
-        let mut ui_applied = self.ui_applied.lock().await;
-        if self.is_closed() {
-            return shut_down(kind, revision);
-        }
-        let applied = ui_applied.revisions.get(&kind).copied().unwrap_or_default();
-        if revision <= applied {
-            tracing::debug!(
-                ?kind,
-                requested = revision.get(),
-                applied = applied.get(),
-                "dropping a superseded UI effect"
-            );
-            return EffectStatus {
-                kind,
-                desired_revision: revision,
-                applied_revision: applied,
-                health: EffectHealth::Superseded,
-            };
-        }
-        let status = apply.await;
-        ui_applied.revisions.insert(kind, revision);
-        status
     }
 
     /// The facade rejects an unparsable list before it is committed, so getting
@@ -212,51 +130,24 @@ impl ApplicationEffectExecutor {
         }
     }
 
-    /// The one UI effect that is never superseded.
-    ///
-    /// Every other effect carries a value, so an older one arriving late would
-    /// overwrite what a newer one installed. A refresh carries none: it
-    /// re-reads whatever the state now is, which makes a late one harmless and
-    /// a dropped one lossy. Dropping it is what left the menu in the old
-    /// language when a language change was overtaken by a partial refresh,
-    /// with nothing to rebuild it until the next menu-shaped change. Order
-    /// inside a plan still holds, because the dispatch loop runs the plan in
-    /// `EffectKind` order and the tray is last.
     async fn apply_tray(&self, revision: EffectRevision, refresh: TrayRefresh) -> EffectStatus {
-        // Not for staleness, only for the shutdown gate and to keep the
-        // refresh from interleaving with another plan's UI effects.
-        let mut ui_applied = self.ui_applied.lock().await;
-        if self.is_closed() {
-            return shut_down(EffectKind::Tray, revision);
-        }
         // Full dominates part. A partial refresh re-reads the values of a menu
         // that is already built; it cannot finish a rebuild an earlier full
         // refresh started and failed, so while one is outstanding every
         // request is widened to a full one.
-        let refresh = match ui_applied.tray_full_pending {
+        let refresh = match self.tray_full_pending.load(Ordering::SeqCst) {
             true => TrayRefresh::Full,
             false => refresh,
         };
-        ui_applied.tray_attempts += 1;
-        let attempt = EffectRevision::new(ui_applied.tray_attempts);
         let result = match refresh {
             TrayRefresh::Full => self.tray.refresh_full().await,
             TrayRefresh::Part => self.tray.refresh_part().await,
         };
         if refresh == TrayRefresh::Full {
-            ui_applied.tray_full_pending = result.is_err();
+            self.tray_full_pending
+                .store(result.is_err(), Ordering::SeqCst);
         }
-        let mut status = report(EffectKind::Tray, revision, "tray_refresh_failed", result);
-        // The plan revision cannot order two tray reports, so the attempt
-        // number is reported in its place. Without it the facade has to take
-        // the newest *completion* as the truth, and a success whose bookkeeping
-        // is delayed past a later failure then clears a retry the menu needs.
-        status.applied_revision = attempt;
-        status
-    }
-
-    fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::SeqCst)
+        report(EffectKind::Tray, revision, "tray_refresh_failed", result)
     }
 }
 
@@ -278,25 +169,9 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
         // the settled value of everything before it.
         let mut statuses = Vec::with_capacity(plan.effects().len());
         for effect in plan.effects() {
-            // Re-read per effect, not once: the shutdown can begin while this
-            // plan is parked in an effect owner.
-            if self.is_closed() {
-                statuses.push(shut_down(effect.kind(), revision));
-                continue;
-            }
             let status = match effect {
-                ApplicationEffect::Locale(language) => {
-                    self.apply_ui(EffectKind::Locale, revision, async {
-                        self.apply_locale(revision, *language)
-                    })
-                    .await
-                }
-                ApplicationEffect::Logger(desired) => {
-                    self.apply_ui(EffectKind::Logger, revision, async {
-                        self.apply_logger(revision, desired)
-                    })
-                    .await
-                }
+                ApplicationEffect::Locale(language) => self.apply_locale(revision, *language),
+                ApplicationEffect::Logger(desired) => self.apply_logger(revision, desired),
                 ApplicationEffect::AutoLaunch(_)
                 | ApplicationEffect::SystemProxy(_)
                 | ApplicationEffect::ProxyGuard(_) => {
@@ -324,15 +199,7 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                         })
                 }
                 ApplicationEffect::Hotkeys(desired) => self.apply_hotkeys(revision, desired).await,
-                ApplicationEffect::Widget(config) => {
-                    self.apply_ui(
-                        EffectKind::Widget,
-                        revision,
-                        self.apply_widget(revision, *config),
-                    )
-                    .await
-                }
-                // Deliberately not through `apply_ui`: see `apply_tray`.
+                ApplicationEffect::Widget(config) => self.apply_widget(revision, *config).await,
                 ApplicationEffect::Tray(refresh) => self.apply_tray(revision, *refresh).await,
             };
             statuses.push(status);
@@ -341,13 +208,6 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
     }
 
     async fn shutdown(&self) -> Vec<EffectStatus> {
-        {
-            // Under the UI lock: a plan already inside an adapter call runs to
-            // the end, but nothing new starts, so the widget cannot be started
-            // again after the stop below.
-            let _ui_applied = self.ui_applied.lock().await;
-            self.closed.store(true, Ordering::SeqCst);
-        }
         let revision = EffectRevision::default();
         let widget = match self.widget.stop().await {
             Ok(()) => healthy(EffectKind::Widget, revision),
@@ -403,18 +263,6 @@ fn report(
         // hands the same desired value to the same adapter again.
         Err(error) => degraded(kind, revision, code, format!("{error:#}"), true),
     }
-}
-
-/// Not retryable: the app is leaving, and a retry would re-install what the
-/// shutdown removed.
-fn shut_down(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
-    degraded(
-        kind,
-        revision,
-        "effects_shut_down",
-        "the application effects were shut down and stopped accepting plans".to_owned(),
-        false,
-    )
 }
 
 fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {

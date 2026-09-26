@@ -158,8 +158,6 @@ impl AutoLaunchPort for AutoLaunchBackend {
 }
 
 const PAC_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
-const PAC_MAX_RETRIES: u32 = 3;
-const PAC_RETRY_DELAY: Duration = Duration::from_secs(5);
 /// A PAC script is a small JavaScript file. The cap is what stops a hostile or
 /// misconfigured url from streaming an unbounded body into this process.
 const PAC_MAX_BODY: usize = 8 * 1024 * 1024;
@@ -181,31 +179,14 @@ impl HttpPacBackend {
         Ok(Self { client, cache_path })
     }
 
-    /// Every wait is raced against the token. Three attempts and their delays
-    /// add up to nearly two minutes, and this runs on the actor's mailbox: a
-    /// shutdown that had to wait it out would exit with the proxy still on.
+    /// One bounded attempt, raced against the token: it runs on the actor's
+    /// mailbox, and a shutdown that had to wait it out would exit with the
+    /// proxy still on. Retrying a failed download is the effects actor's job.
     async fn download(&self, url: &url::Url, cancel: &CancellationToken) -> anyhow::Result<String> {
-        let mut last_error = None;
-        for attempt in 1..=PAC_MAX_RETRIES {
-            match cancel.run_until_cancelled(self.fetch(url)).await {
-                None => return Err(cancelled()),
-                Some(Ok(script)) => return Ok(script),
-                Some(Err(error)) => {
-                    tracing::warn!(%error, attempt, "PAC download attempt failed");
-                    last_error = Some(error);
-                }
-            }
-            if attempt < PAC_MAX_RETRIES
-                && cancel
-                    .run_until_cancelled(tokio::time::sleep(PAC_RETRY_DELAY))
-                    .await
-                    .is_none()
-            {
-                return Err(cancelled());
-            }
-        }
-        Err(last_error
-            .unwrap_or_else(|| anyhow!("failed to download the PAC script after every attempt")))
+        cancel
+            .run_until_cancelled(self.fetch(url))
+            .await
+            .unwrap_or_else(|| Err(cancelled()))
     }
 
     async fn fetch(&self, url: &url::Url) -> anyhow::Result<String> {

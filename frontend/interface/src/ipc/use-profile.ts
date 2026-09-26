@@ -121,6 +121,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   // observe `committed_degraded`. Do not collapse to bare values or legacy
   // `{ uid, rebuild }` shapes before React Query onSuccess.
   const create = useMutation({
+    mutationKey: createProfile.mutationKey,
     mutationFn: async (
       params: CreateParams,
     ): Promise<MutationOutcome<ProfileId>> => {

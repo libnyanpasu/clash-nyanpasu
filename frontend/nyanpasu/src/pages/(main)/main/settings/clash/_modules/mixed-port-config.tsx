@@ -51,8 +51,8 @@ export default function MixedPortConfig() {
   // get current mixed port from clash config or verge setting
   const currentMixedPort = useMemo(() => {
     return (
-      clashConfig.query.data?.['mixed-port'] ||
       mixedPort.value ||
+      clashConfig.query.data?.['mixed-port'] ||
       DEFAULT_MIXED_PORT
     )
   }, [clashConfig.query.data, mixedPort.value])
@@ -64,9 +64,6 @@ export default function MixedPortConfig() {
 
   const handleSubmit = form.handleSubmit(async (data) => {
     try {
-      await clashConfig.upsert.mutateAsync({
-        'mixed-port': data.mixedPort,
-      })
       await mixedPort.upsert(data.mixedPort)
 
       form.reset({

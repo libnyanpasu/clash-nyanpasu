@@ -282,29 +282,6 @@ pub fn run() -> std::io::Result<()> {
 
             resolve::resolve_setup(app);
 
-            // The typed config actors are seeded before resolve_setup, while resolve_setup always
-            // patches and saves verge_mixed_port. Sync typed actors with the post-resolve
-            // legacy state before any later typed actor upsert can persist a stale port.
-            // TODO(actor-migration): compatibility bridge for mixed_port startup reseed.
-            // Reason: resolve_setup still writes startup port state through Config::verge().
-            // Remove when: startup port resolution writes through ClashConfigClient before actors are exposed.
-            {
-                let legacy = app
-                    .state::<crate::bridge::verge::LegacyVergeBridge>()
-                    .inner()
-                    .clone();
-                let verge = Config::verge().data().clone();
-                let outcome = tauri::async_runtime::block_on(legacy.replace_verge_config(verge))
-                    .context("Failed to sync verge state after resolve setup")?;
-                for degradation in outcome.degradations() {
-                    tracing::warn!(
-                        code = %degradation.code,
-                        message = %degradation.message,
-                        "startup verge sync completed with a degraded side effect"
-                    );
-                }
-            }
-
             // setup custom scheme
             let handle = app.handle().clone();
             // Pending deep-link store, drained once by the frontend on startup.

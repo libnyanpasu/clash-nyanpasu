@@ -13,6 +13,7 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy, useEffect, useRef } from 'react'
+import { ConfigurationStatusPanel } from '@/components/configuration-status'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
@@ -221,6 +222,7 @@ export default function App() {
               <TooltipProvider>
                 <WindowReveal />
                 <MutationDegradationNotifier />
+                {appWindow.label === 'main' && <ConfigurationStatusPanel />}
                 <DeepLinkImport />
                 <Outlet />
               </TooltipProvider>

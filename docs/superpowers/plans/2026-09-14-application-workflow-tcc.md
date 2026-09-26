@@ -1,5 +1,7 @@
 # ApplicationWorkflowActor 事务化（TCC 参与者）实施计划
 
+> T2–T5 的决定等待、运行证据和目标身份契约以 [v2 计划](../../plan/2026-09-14-application-workflow-selective-tcc-v2.md) 及 [2026-09-19 审计修整](../../plan/2026-09-19-tcc-contract-audit.md) 为准。本文任务编号与 v2 不同，保留作历史方案记录。
+
 日期：2026-09-14
 状态：规划（未实施）
 工作区：`G:/Programs/Rust/clash-nyanpasu`（直接在当前工作区实施，不另开 worktree）

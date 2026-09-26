@@ -40,7 +40,7 @@
     "motion": "13.4.4",
     "less": "4.9.1",
     "lodash-es": "4.18.1",
-    "monaco-editor": "0.56.0",
+    "monaco-editor": "0.57.0",
     "radix-ui": "1.6.7",
     "react": "19.3.0",
     "react-aria-components": "1.21.1",

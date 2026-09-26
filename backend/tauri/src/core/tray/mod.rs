@@ -2,9 +2,12 @@ use std::{borrow::Cow, ops::ControlFlow};
 
 use crate::{
     client::{NyanpasuClient, effects::plan::TrayView, hotkey::ports::HotkeyAction},
-    feat::{self, CopyEnvOption},
     ipc, log_err,
-    utils::{help, resolve},
+    utils::{
+        help,
+        proxy_env::{self, CopyEnvOption},
+        resolve,
+    },
 };
 use anyhow::Result;
 use nyanpasu_config::{
@@ -531,7 +534,7 @@ impl Tray {
             "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
             "open_logs_dir" => crate::log_err!(ipc::open_logs_dir()),
-            "restart_core" => feat::restart_clash_core(app_handle),
+            "restart_core" => restart_core(app_handle),
             "restart_app" => help::restart_application(app_handle),
             "quit" => {
                 help::quit_application(app_handle);
@@ -631,7 +634,24 @@ fn copy_clash_env(app_handle: &AppHandle, option: CopyEnvOption) {
         tracing::warn!("the tray copied the proxy env before the client was ready");
         return;
     };
-    feat::copy_clash_env(app_handle, client.clash_info().port, &option);
+    proxy_env::copy_clash_env(app_handle, client.clash_info().port, &option);
+}
+
+/// Restarts the core from the tray menu.
+fn restart_core(app_handle: &AppHandle) {
+    let Some(client) = app_handle
+        .try_state::<NyanpasuClient>()
+        .map(|state| state.inner().clone())
+    else {
+        log::warn!(target: "app", "the core restart fired before the client was ready");
+        return;
+    };
+    // The facade rebuilds and then refreshes the clash view itself.
+    tauri::async_runtime::spawn(async move {
+        if let Err(err) = client.rebuild_running_config().await {
+            log::error!(target:"app", "{err:?}");
+        }
+    });
 }
 
 /// Runs a tray item through the facade, the same path a global shortcut takes.

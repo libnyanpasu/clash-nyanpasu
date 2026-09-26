@@ -21,8 +21,6 @@ export const commands = {
     typedError<GetSysProxyResponse, string>(__TAURI_INVOKE('get_sys_proxy')),
   getClashInfo: () =>
     typedError<ClashInfo, string>(__TAURI_INVOKE('get_clash_info')),
-  getClashLogs: () =>
-    typedError<string[], string>(__TAURI_INVOKE('get_clash_logs')),
   /**  get the runtime config */
   getRuntimeConfig: () =>
     typedError<any | null, string>(__TAURI_INVOKE('get_runtime_config')),
@@ -3014,11 +3012,6 @@ export const queries = {
     queryOptions({
       queryKey: ['getClashInfo', ...args],
       queryFn: () => commands.getClashInfo(...args),
-    }),
-  getClashLogs: (...args: Parameters<typeof commands.getClashLogs>) =>
-    queryOptions({
-      queryKey: ['getClashLogs', ...args],
-      queryFn: () => commands.getClashLogs(...args),
     }),
   getRuntimeConfig: (...args: Parameters<typeof commands.getRuntimeConfig>) =>
     queryOptions({

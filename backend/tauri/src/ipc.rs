@@ -1,6 +1,6 @@
 use crate::{
     client::{ClientError, NyanpasuClient},
-    core::{logger::Logger, storage::Storage, updater::ManifestVersionLatest, *},
+    core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat::{self, CopyEnvOption},
     utils::{candy, collect::EnvInfo, dirs, help, resolve},
@@ -10,7 +10,7 @@ use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, path::PathBuf, result::Result as StdResult};
+use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
 use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
@@ -547,12 +547,6 @@ pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
 pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result {
     client.flush_system_dns_cache().await?;
     Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn get_clash_logs() -> Result<VecDeque<String>> {
-    Ok(Logger::global().get_log())
 }
 
 #[tauri::command]

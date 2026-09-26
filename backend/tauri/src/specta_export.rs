@@ -14,7 +14,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::list_log_files,
             ipc::get_sys_proxy,
             ipc::get_clash_info,
-            ipc::get_clash_logs,
             ipc::get_runtime_config,
             ipc::get_runtime_yaml,
             ipc::get_runtime_exists,

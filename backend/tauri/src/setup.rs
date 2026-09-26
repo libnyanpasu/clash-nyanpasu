@@ -71,6 +71,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // For commands that need a path, such as the Windows UWP loopback tool.
     app.manage(paths.clone());
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
+    let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
+        .context("Failed to build the service IPC client")?;
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
@@ -78,7 +80,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         let core = crate::core::actor_v2::CoreClient::spawn(local)
             .await
             .context("Failed to spawn core actor")?;
-        let adapter = Arc::new(crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter);
+        let adapter = Arc::new(
+            crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
+                service_ipc.clone(),
+            ),
+        );
         let service =
             crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
                 .await
@@ -99,9 +105,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 "clash-nyanpasu".into(),
             )),
             clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
-            service: Arc::new(crate::client::logs::IpcServiceLogs::new(
-                nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)?,
-            )),
+            service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
         },
         paths,
         runtime_paths: runtime_paths.clone(),

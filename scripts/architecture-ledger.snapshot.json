@@ -12,10 +12,8 @@
       "byKey": {}
     },
     "migration_markers": {
-      "total": 1,
-      "byKey": {
-        "TODO(actor-migration)": 1
-      }
+      "total": 0,
+      "byKey": {}
     },
     "legacy_dto_refs": {
       "total": 22,

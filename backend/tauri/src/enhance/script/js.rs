@@ -23,20 +23,38 @@ use std::{
     sync::Mutex,
     time::Duration,
 };
-use tracing_attributes::instrument;
 use utils::wrap_script_if_not_esm;
 
 use std::result::Result as StdResult;
 
 type Result<T, E = JsRunnerError> = StdResult<T, E>;
 
-static CUSTOM_SCRIPTS_DIR: Lazy<PathBuf> = Lazy::new(|| {
-    let path = crate::utils::dirs::app_data_dir().unwrap().join("scripts");
-    if !path.exists() {
-        std::fs::create_dir_all(&path).unwrap();
+/// Where the JavaScript runner keeps the modules it runs and the modules it
+/// downloads.
+#[derive(Debug, Clone)]
+pub struct ScriptDirs {
+    /// Each script is written here as a module file while it runs.
+    pub scripts: PathBuf,
+    /// Cache of the modules scripts import over HTTP.
+    pub cache: PathBuf,
+}
+
+impl ScriptDirs {
+    pub fn from_resolver(paths: &crate::utils::path::PathResolver) -> Self {
+        Self {
+            scripts: paths.scripts_dir(),
+            cache: paths.cache_dir(),
+        }
     }
-    dunce::canonicalize(path).unwrap()
-});
+
+    #[cfg(test)]
+    pub(crate) fn under(root: &Path) -> Self {
+        Self {
+            scripts: root.join("scripts"),
+            cache: root.join("cache"),
+        }
+    }
+}
 
 // boa_utils stores the console logger in a process-global slot (see
 // setup_console below); serialize whole runs so parallel executions
@@ -103,19 +121,38 @@ fn take_console_logs() -> Logs {
         .collect()
 }
 
-pub struct JSRunner;
+pub struct JSRunner {
+    /// Canonical, like the root the module loader resolves imports against.
+    scripts_dir: PathBuf,
+    cache_dir: PathBuf,
+}
+
+impl JSRunner {
+    pub fn new(dirs: &ScriptDirs) -> anyhow::Result<Self> {
+        std::fs::create_dir_all(&dirs.scripts).with_context(|| {
+            format!(
+                "failed to create the scripts dir {}",
+                dirs.scripts.display()
+            )
+        })?;
+        Ok(Self {
+            scripts_dir: dunce::canonicalize(&dirs.scripts)?,
+            cache_dir: dirs.cache.clone(),
+        })
+    }
+}
 
 // boa engine is single-thread runner so that we can not define it in runner trait directly
 pub struct BoaRunner {
     ctx: Rc<RefCell<Context>>,
     simple_loader: Rc<SimpleModuleLoader>,
+    scripts_dir: PathBuf,
 }
 
 impl BoaRunner {
-    pub fn try_new() -> Result<Self> {
-        let cache_dir = crate::utils::dirs::cache_dir().unwrap();
+    pub fn try_new(scripts_dir: PathBuf, cache_dir: PathBuf) -> Result<Self> {
         let loader = Rc::new(CombineModuleLoader::new(
-            SimpleModuleLoader::new(CUSTOM_SCRIPTS_DIR.as_path())?,
+            SimpleModuleLoader::new(&scripts_dir)?,
             HttpModuleLoader::new(cache_dir, Duration::from_secs(60 * 60 * 24 * 30)),
         ));
         let simple_loader = loader.clone_simple();
@@ -127,6 +164,7 @@ impl BoaRunner {
         Ok(Self {
             ctx: Rc::new(RefCell::new(context)),
             simple_loader,
+            scripts_dir,
         })
     }
 
@@ -156,7 +194,7 @@ impl BoaRunner {
         // Simulate as if the "fake" module is located in the modules root, just to ensure that
         // the loader won't double load in case someone tries to import "./main.mjs".
         self.simple_loader
-            .insert(CUSTOM_SCRIPTS_DIR.join(&path_name), module.clone());
+            .insert(self.scripts_dir.join(&path_name), module.clone());
         Ok(module)
     }
 
@@ -191,11 +229,6 @@ impl BoaRunner {
 
 #[async_trait]
 impl Runner for JSRunner {
-    #[instrument]
-    fn try_new() -> Result<JSRunner, anyhow::Error> {
-        Ok(JSRunner)
-    }
-
     async fn process(&self, mapping: Mapping, path: &str) -> ProcessOutput {
         let content = wrap_result!(
             tokio::fs::read_to_string(path)
@@ -208,20 +241,22 @@ impl Runner for JSRunner {
     async fn process_honey(&self, mapping: Mapping, script: &str) -> ProcessOutput {
         let script = wrap_result!(wrap_script_if_not_esm(script));
         let hash = crate::utils::help::get_uid("script");
-        let path = CUSTOM_SCRIPTS_DIR.join(format!("{hash}.mjs"));
+        let path = self.scripts_dir.join(format!("{hash}.mjs"));
         wrap_result!(
             tokio::fs::write(&path, script.as_bytes())
                 .await
                 .context("failed to write the script file")
         );
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
+        let (scripts_dir, cache_dir) = (self.scripts_dir.clone(), self.cache_dir.clone());
         let res = tokio::task::spawn_blocking(move || {
             let _logger_guard = BOA_LOGGER_LOCK
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let wrapped_fn = move || {
                 let mut logger = BoaConsoleLogger(Logs::new());
-                let boa_runner = wrap_result!(BoaRunner::try_new(), logger.take());
+                let boa_runner =
+                    wrap_result!(BoaRunner::try_new(scripts_dir, cache_dir), logger.take());
                 wrap_result!(boa_runner.setup_console(logger), take_console_logs());
                 let config = wrap_result!(
                     serde_json::to_string(&mapping)
@@ -400,11 +435,34 @@ mod utils {
 
 #[cfg(test)]
 mod test {
+    /// The runner creates its scripts dir where it is told, runs the script
+    /// from there and leaves nothing behind.
+    #[tokio::test]
+    async fn scripts_run_from_the_injected_dir() {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let dirs = ScriptDirs::under(dir.path());
+        let runner = JSRunner::new(&dirs).unwrap();
+        assert!(dirs.scripts.is_dir());
+
+        let (result, _) = runner
+            .process_honey(
+                serde_yaml::from_str("a: 1").unwrap(),
+                "export default function main(config) { return config; }",
+            )
+            .await;
+        let expected: serde_yaml::Mapping = serde_yaml::from_str("a: 1").unwrap();
+        assert_eq!(result.unwrap(), expected);
+        assert_eq!(std::fs::read_dir(&dirs.scripts).unwrap().count(), 0);
+    }
+
     #[tokio::test]
     async fn yaml_template_preserves_nested_config_through_runner() {
-        use super::{super::runner::Runner, JSRunner};
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
 
-        let runner = JSRunner::try_new().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
         let input = serde_yaml::from_str("existing: true").unwrap();
         let script = r#"
             import { yaml } from 'nyan:utils';
@@ -493,8 +551,9 @@ const foreignNameservers = [
 
     #[test]
     fn test_process_honey() {
-        use super::{super::runner::Runner, JSRunner};
-        let runner = JSRunner::try_new().unwrap();
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
         let mapping = serde_yaml::from_str(
             r#"
         rules:
@@ -553,8 +612,9 @@ const foreignNameservers = [
 
     #[test_log::test]
     fn test_process_honey_with_fetch() {
-        use super::{super::runner::Runner, JSRunner};
-        let runner = JSRunner::try_new().unwrap();
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
         let mapping = serde_yaml::from_str(
             r#"
         rules:
@@ -617,8 +677,9 @@ const foreignNameservers = [
 
     #[test_log::test]
     fn test_process_honey_with_builtin_modules() {
-        use super::{super::runner::Runner, JSRunner};
-        let runner = JSRunner::try_new().unwrap();
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
         let mapping = serde_yaml::from_str(
             r#"
         rules:

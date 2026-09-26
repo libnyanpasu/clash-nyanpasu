@@ -16,7 +16,7 @@ use nyanpasu_config::{
 };
 
 use super::{
-    EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
+    EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, ScriptDirs,
     golden_support::{composition, file_config, overlay},
 };
 
@@ -59,7 +59,7 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
 
 fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml::Value {
     let content = FsProfileContentSource::new(dir.to_path_buf());
-    let scripts = EnhanceScriptRunner::new().unwrap();
+    let scripts = EnhanceScriptRunner::new(ScriptDirs::under(dir)).unwrap();
     let artifact = RuntimeBuilder::build(input, &content, &scripts).expect("golden build");
     serde_yaml::to_value(&*artifact.final_config).unwrap()
 }

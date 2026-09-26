@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Error;
 use mlua::prelude::*;
 use parking_lot::Mutex;
 use serde_yaml::{Mapping, Value};
@@ -94,10 +93,6 @@ pub struct LuaRunner;
 
 #[async_trait::async_trait]
 impl Runner for LuaRunner {
-    fn try_new() -> Result<Self, Error> {
-        Ok(Self)
-    }
-
     async fn process(&self, mapping: Mapping, path: &str) -> ProcessOutput {
         let file = wrap_result!(tokio::fs::read_to_string(path).await);
         self.process_honey(mapping, &file).await

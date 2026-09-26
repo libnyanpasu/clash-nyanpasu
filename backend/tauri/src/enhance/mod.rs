@@ -13,7 +13,7 @@ pub(crate) mod golden_support;
 pub use artifact_snapshot::runtime_snapshot_data_from_artifact;
 pub use content_source::FsProfileContentSource;
 pub use runtime_builder::{RuntimeBuildInput, RuntimeBuilder, builtin_transforms_for};
-pub use script::adapter::EnhanceScriptRunner;
+pub use script::{ScriptDirs, adapter::EnhanceScriptRunner};
 
 pub use chain::{PostProcessingOutput, ScriptType, ScriptWrapper};
 pub use utils::{Logs, LogsExt};

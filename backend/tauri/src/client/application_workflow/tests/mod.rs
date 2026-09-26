@@ -313,6 +313,7 @@ async fn dirty_graph_with_clients(
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths,
+            scripts: crate::enhance::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),

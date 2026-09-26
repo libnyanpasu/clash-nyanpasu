@@ -1,9 +1,8 @@
-use anyhow::Error;
 use async_trait::async_trait;
 use serde_yaml::Mapping;
 use std::collections::HashMap;
 
-use super::{js, lua};
+use super::{ScriptDirs, js, lua};
 use crate::enhance::{Logs, ScriptType, ScriptWrapper};
 
 /// The output of the process function is a tuple of the mapping and the logs.
@@ -31,9 +30,6 @@ pub(super) use wrap_result;
 
 #[async_trait]
 pub trait Runner: Send + Sync {
-    fn try_new() -> Result<Self, Error>
-    where
-        Self: std::marker::Sized;
     #[allow(dead_code)]
     /// Process profiles by script file path
     async fn process(&self, mapping: Mapping, path: &str) -> ProcessOutput;
@@ -48,20 +44,24 @@ pub trait Runner: Send + Sync {
 
 pub struct RunnerManager {
     runners: HashMap<ScriptType, Box<dyn Runner>>,
+    script_dirs: ScriptDirs,
 }
 
 impl RunnerManager {
-    pub fn new() -> Self {
+    pub fn new(script_dirs: ScriptDirs) -> Self {
         Self {
             runners: HashMap::new(),
+            script_dirs,
         }
     }
     // If the script runner is not exist, it should be created.
     pub fn get_or_init_runner(&mut self, script_type: &ScriptType) -> anyhow::Result<&dyn Runner> {
         if !self.runners.contains_key(script_type) {
             let runner = match script_type {
-                ScriptType::JavaScript => Box::new(js::JSRunner::try_new()?) as Box<dyn Runner>,
-                ScriptType::Lua => Box::new(lua::LuaRunner::try_new()?) as Box<dyn Runner>,
+                ScriptType::JavaScript => {
+                    Box::new(js::JSRunner::new(&self.script_dirs)?) as Box<dyn Runner>
+                }
+                ScriptType::Lua => Box::new(lua::LuaRunner) as Box<dyn Runner>,
             };
             self.runners.insert(*script_type, runner);
         }

@@ -13,17 +13,11 @@
 //! and will be migrated to `PathResolver` in a follow-up change.
 //!
 //! Known remaining coupling, to be removed by the follow-up that makes
-//! `PathResolver` truly own path resolution:
-//!
-//! - [`PathResolver::from_env`] and the delegating helpers
-//!   ([`PathResolver::app_install_dir`], [`PathResolver::data_or_sidecar_path`],
-//!   [`PathResolver::single_instance_placeholder`]) still call into `dirs::*`
-//!   rather than resolving paths themselves.
-//! - The process-wide `Lazy<PathBuf>` cache `CUSTOM_SCRIPTS_DIR`
-//!   (`enhance/script/js.rs`) is resolved once at first use; after
-//!   `migrate_home_dir_handler` relocates the home directory it goes stale
-//!   until the process restarts. Folding it into an injected `PathResolver` is
-//!   tracked as follow-up cleanup.
+//! `PathResolver` truly own path resolution: [`PathResolver::from_env`] and the
+//! delegating helpers ([`PathResolver::app_install_dir`],
+//! [`PathResolver::data_or_sidecar_path`],
+//! [`PathResolver::single_instance_placeholder`]) still call into `dirs::*`
+//! rather than resolving paths themselves.
 
 use crate::utils::dirs;
 use anyhow::Result;
@@ -168,6 +162,11 @@ impl PathResolver {
         self.data_dir.join("cache")
     }
 
+    /// Where the JavaScript runner writes the modules it runs.
+    pub fn scripts_dir(&self) -> PathBuf {
+        self.data_dir.join("scripts")
+    }
+
     // -- delegating helpers -------------------------------------------------
 
     /// Resolve the data-dir or sidecar-dir path for a bundled binary.
@@ -230,6 +229,7 @@ mod tests {
         assert_eq!(r.clash_pid_path(), Path::new("/data").join("clash.pid"));
         assert_eq!(r.app_logs_dir(), Path::new("/data").join("logs"));
         assert_eq!(r.cache_dir(), Path::new("/data").join("cache"));
+        assert_eq!(r.scripts_dir(), Path::new("/data").join("scripts"));
     }
 
     #[test]

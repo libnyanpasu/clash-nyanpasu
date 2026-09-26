@@ -1,6 +1,6 @@
 use super::{super::runtime, ports::RuntimeBuildPort};
 use crate::enhance::{
-    EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
+    EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, ScriptDirs,
     runtime_snapshot_data_from_artifact,
 };
 use async_trait::async_trait;
@@ -9,6 +9,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 pub(in crate::client) struct FsRuntimeBuildAdapter {
     pub profiles_dir: PathBuf,
     pub paths: runtime::RuntimePaths,
+    pub scripts: ScriptDirs,
 }
 
 #[async_trait]
@@ -48,6 +49,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
         resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
     ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
+        let script_dirs = self.scripts.clone();
         tokio::task::spawn_blocking(move || {
             let super::inputs::RuntimeInputs {
                 app,
@@ -57,7 +59,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
             } = inputs;
             let core = app.core;
             let builtin_enabled = app.enable_builtin_enhanced;
-            let scripts = EnhanceScriptRunner::new()?;
+            let scripts = EnhanceScriptRunner::new(script_dirs)?;
             let input = RuntimeBuildInput {
                 profiles: profiles.clone(),
                 clash,

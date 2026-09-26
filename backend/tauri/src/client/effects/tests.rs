@@ -29,13 +29,6 @@ use tokio::sync::Notify;
 struct Ui;
 impl UiEventSink for Ui {
     fn state_changed(&self, _: crate::core::handle::StateChanged) {}
-    fn notice_message(&self, _: &crate::core::handle::Message) {}
-    fn update_systray(&self) -> crate::client::Result<()> {
-        Ok(())
-    }
-    fn update_systray_part(&self) -> crate::client::Result<()> {
-        Ok(())
-    }
 }
 
 #[derive(Default)]

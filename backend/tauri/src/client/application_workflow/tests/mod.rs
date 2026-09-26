@@ -1329,28 +1329,52 @@ fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
     });
 }
 
-struct FailingConfigTray {
-    refreshed: AtomicUsize,
+/// Counts the ClashConfig notifications the client sends the UI.
+struct CountingUi {
+    refreshed: tokio::sync::watch::Sender<usize>,
 }
-impl UiEventSink for FailingConfigTray {
-    fn state_changed(&self, _: crate::core::handle::StateChanged) {
-        self.refreshed.fetch_add(1, Ordering::SeqCst);
-    }
-    fn notice_message(&self, _: &crate::core::handle::Message) {}
-    fn update_systray(&self) -> crate::client::Result<()> {
-        Ok(())
-    }
-    fn update_systray_part(&self) -> crate::client::Result<()> {
-        Err(anyhow::anyhow!("tray refresh rejected").into())
+impl UiEventSink for CountingUi {
+    fn state_changed(&self, state: crate::core::handle::StateChanged) {
+        if matches!(state, crate::core::handle::StateChanged::ClashConfig) {
+            self.refreshed.send_modify(|count| *count += 1);
+        }
     }
 }
 
+/// Waits until every notification sent so far has reached the UI, so a
+/// later refresh can only come from what the test does next. An idle
+/// workflow has sent its last operation's notification, the effects barrier
+/// has queued what it carried, and no pending effect is left to refresh.
+async fn until_notified(client: &NyanpasuClient) {
+    let mut status = client.inner.application_workflow.subscribe_status();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        status.wait_for(|status| status.active.is_none()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    client.inner.effects.barrier().await;
+    let mut effects = client.inner.effects.subscribe();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        effects.wait_for(|snapshot| {
+            snapshot.effects.iter().all(|progress| {
+                progress.health != crate::client::convergence::ConvergenceHealth::Pending
+            })
+        }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+}
+
 #[test]
-fn legacy_ui_callbacks_do_not_vote_on_a_successful_reconcile() {
+fn an_override_patch_submits_once_and_notifies_the_ui() {
     let dir = tempfile::tempdir().unwrap();
     let endpoint = TestControlEndpoint::succeeding();
-    let ui = Arc::new(FailingConfigTray {
-        refreshed: AtomicUsize::new(0),
+    let ui = Arc::new(CountingUi {
+        refreshed: tokio::sync::watch::Sender::new(0),
     });
     let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
     args.ui_sink = ui.clone();
@@ -1358,6 +1382,9 @@ fn legacy_ui_callbacks_do_not_vote_on_a_successful_reconcile() {
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
+        until_notified(&client).await;
+        let mut refreshed = ui.refreshed.subscribe();
+        let before = *refreshed.borrow_and_update();
         let outcome = client
             .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
             .await
@@ -1374,6 +1401,13 @@ fn legacy_ui_callbacks_do_not_vote_on_a_successful_reconcile() {
                 .as_str(),
             Some("global")
         );
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            refreshed.wait_for(|count| *count > before),
+        )
+        .await
+        .expect("the UI hears about the ClashConfig change")
+        .unwrap();
     });
 }
 

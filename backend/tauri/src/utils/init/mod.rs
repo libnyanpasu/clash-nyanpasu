@@ -14,8 +14,7 @@ use std::{
     sync::Arc,
 };
 use tauri::utils::platform::current_exe;
-mod logging;
-pub use logging::refresh_logger;
+pub mod logging;
 
 pub fn run_pending_migrations() -> Result<()> {
     let current_exe = current_exe()?;
@@ -123,9 +122,6 @@ pub fn init_config() -> Result<()> {
     //         let _ = fs::create_dir_all(app_dir);
     //     }
     // }
-
-    // init log
-    logging::init().unwrap();
 
     crate::log_err!(dirs::app_profiles_dir().map(|profiles_dir| {
         if !profiles_dir.exists() {

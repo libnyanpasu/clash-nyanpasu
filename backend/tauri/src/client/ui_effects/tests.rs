@@ -1118,3 +1118,22 @@ async fn a_widget_whose_handshake_cannot_be_released_is_reported_blocked() {
     assert_eq!(host.events(), vec!["spawn", "kill", "release"]);
     host.unblock();
 }
+
+/// The refresher owns no logger of its own: it forwards to the reload channel
+/// it was handed, and says so once nothing is left to receive.
+#[test]
+fn the_logger_refresher_forwards_to_the_reload_channel_it_was_given() {
+    let (reload, signals) = std::sync::mpsc::channel();
+    let refresher = super::adapters::TracingLoggerRefresher::new(reload);
+
+    refresher
+        .refresh(Some(LoggingLevel::Info), Some(3))
+        .unwrap();
+    assert_eq!(
+        signals.try_recv().unwrap(),
+        (Some(LoggingLevel::Info), Some(3))
+    );
+
+    drop(signals);
+    assert!(refresher.refresh(None, Some(7)).is_err());
+}

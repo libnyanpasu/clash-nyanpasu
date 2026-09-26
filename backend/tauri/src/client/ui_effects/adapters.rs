@@ -13,6 +13,7 @@ use super::ports::{
 use crate::{
     client::effects::plan::TrayView,
     core::tray::{Tray, TrayWork},
+    utils::init::logging::ReloadSignal,
 };
 
 /// The `rust_i18n` locale.
@@ -66,13 +67,24 @@ impl TrayRefresher for TauriTrayRefresher<tauri::Wry> {
     }
 }
 
-/// The running `tracing` subscriber, through its reload channel.
-#[derive(Debug, Default)]
-pub struct TracingLoggerRefresher;
+/// The running `tracing` subscriber, through the reload channel that
+/// initializing it returned.
+#[derive(Debug)]
+pub struct TracingLoggerRefresher {
+    reload: std::sync::mpsc::Sender<ReloadSignal>,
+}
+
+impl TracingLoggerRefresher {
+    pub fn new(reload: std::sync::mpsc::Sender<ReloadSignal>) -> Self {
+        Self { reload }
+    }
+}
 
 impl LoggerRefresher for TracingLoggerRefresher {
     fn refresh(&self, level: Option<LoggingLevel>, max_files: Option<usize>) -> anyhow::Result<()> {
-        crate::utils::init::refresh_logger((level, max_files))
+        self.reload
+            .send((level, max_files))
+            .map_err(|_| anyhow::anyhow!("the logger reload thread has stopped"))
     }
 }
 

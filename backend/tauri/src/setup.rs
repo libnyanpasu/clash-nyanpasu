@@ -26,7 +26,7 @@ use crate::{
             ports::LocaleSink,
         },
     },
-    utils::path::PathResolver,
+    utils::{init::logging::ReloadSignal, path::PathResolver},
 };
 use anyhow::Context;
 use camino::Utf8PathBuf;
@@ -40,6 +40,7 @@ const RESTART_BUDGET: u8 = 3;
 pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app: &M,
     bundle_metadata: crate::bundle::BundleMetadata,
+    logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     #[cfg(target_os = "windows")]
@@ -87,7 +88,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // The sink end of the hotkey channel goes into the actor; the receiving end
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
     let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (effects, widget_controller) = build_application_effects(&app_handle, &paths, hotkey_tx)?;
+    let (effects, widget_controller) =
+        build_application_effects(&app_handle, &paths, hotkey_tx, logger_reload)?;
     let producers = ProducerTasks::default();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
@@ -168,6 +170,7 @@ fn build_application_effects(
     app_handle: &tauri::AppHandle,
     paths: &PathResolver,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
+    logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
 ) -> anyhow::Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>)> {
     // The AppImage path is read here, at the only place that legitimately has
     // the Tauri environment, and handed to the adapter as a plain value.
@@ -210,7 +213,7 @@ fn build_application_effects(
         hotkeys,
         Arc::new(PlatformAcceleratorValidator),
         Arc::new(RustI18nLocaleSink),
-        Arc::new(TracingLoggerRefresher),
+        Arc::new(TracingLoggerRefresher::new(logger_reload)),
         widget.clone(),
         Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
     ));

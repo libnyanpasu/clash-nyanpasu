@@ -126,6 +126,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         client.tray_view(),
     ));
     app.manage(crate::window::WindowRegistry::default());
+    app.manage(crate::utils::resolve::TrayMenuWindowController::default());
     forward_actor_events(app_handle, client.clone(), &producers);
     tauri::async_runtime::spawn(producers.track(hotkey_action_pump(hotkey_rx, client.clone())));
     // The widget needs the client's connection stream and the client needs the

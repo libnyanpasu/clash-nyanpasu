@@ -97,7 +97,7 @@
     "vite": "8.3.1",
     "vitest": "5.0.1"
   },
-  "packageManager": "pnpm@12.4.2",
+  "packageManager": "pnpm@12.6.0",
   "engines": {
     "node": "24.21.0"
   }

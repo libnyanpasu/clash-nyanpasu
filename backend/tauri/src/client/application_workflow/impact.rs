@@ -40,11 +40,7 @@ use crate::{
 ///
 /// A rebuild and a control-channel change share one variant on purpose. Both
 /// come out of the same candidate and go to one reconcile, which picks reload
-/// or restart below the application layer (roadmap §6.2); this is where the
-/// classification stops copying [`runtime_apply_kind`], whose split exists so
-/// the facade can call one of two legacy entry points.
-///
-/// [`runtime_apply_kind`]: crate::client::effects::plan::runtime_apply_kind
+/// or restart below the application layer (roadmap §6.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum RuntimeImpact {
     /// No build input and no control-channel input moved. There is nothing

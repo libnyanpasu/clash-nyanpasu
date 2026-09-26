@@ -169,20 +169,14 @@ pub fn app_install_dir() -> Result<PathBuf> {
 /// profiles dir
 pub fn app_profiles_dir() -> Result<PathBuf> {
     let path = app_config_dir()?.join("profiles");
-    static INIT: std::sync::Once = std::sync::Once::new();
-    INIT.call_once(|| {
-        log_err!(create_dir_all(&path));
-    });
+    log_err!(create_dir_all(&path));
     Ok(path)
 }
 
 /// logs dir
 pub fn app_logs_dir() -> Result<PathBuf> {
     let path = app_data_dir()?.join("logs");
-    static INIT: std::sync::Once = std::sync::Once::new();
-    INIT.call_once(|| {
-        log_err!(create_dir_all(&path));
-    });
+    log_err!(create_dir_all(&path));
     Ok(path)
 }
 
@@ -200,19 +194,13 @@ pub fn clash_pid_path() -> Result<PathBuf> {
 
 pub fn cache_dir() -> Result<PathBuf> {
     let path = app_data_dir()?.join("cache");
-    static INIT: std::sync::Once = std::sync::Once::new();
-    INIT.call_once(|| {
-        log_err!(create_dir_all(&path));
-    });
+    log_err!(create_dir_all(&path));
     Ok(path)
 }
 
 pub fn tray_icons_path(mode: &str) -> Result<PathBuf> {
     let icons_dir = app_config_dir()?.join("icons");
-    static INIT: std::sync::Once = std::sync::Once::new();
-    INIT.call_once(|| {
-        log_err!(create_dir_all(&icons_dir));
-    });
+    log_err!(create_dir_all(&icons_dir));
     Ok(icons_dir.join(format!("{mode}.png")))
 }
 

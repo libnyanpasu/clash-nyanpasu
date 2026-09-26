@@ -11,6 +11,7 @@
  * - TODO/FIXME(actor-migration) markers
  * - bridge files + legacy DTO references
  * - test real-dir / runtime-path denylist hits
+ * - statics in the app crate outside an explicit allowlist
  */
 import { parseArgs } from "jsr:@std/cli@1/parse-args";
 import { walk } from "jsr:@std/fs";
@@ -67,6 +68,194 @@ export const LEGACY_DTO_ALLOWLIST: ReadonlyArray<
 
 export function isLegacyDtoAllowlisted(relPath: string): boolean {
   return LEGACY_DTO_ALLOWLIST.some(({ prefix }) => relPath.startsWith(prefix));
+}
+
+/** A `static` keyword: not a `'static` lifetime, not part of an identifier. */
+const STATIC_KEYWORD_RE = /(?<![\w'#$])static(?!\w)/g;
+
+/**
+ * The rest of a `static` item from its keyword: `mut`, or `ref` as
+ * `lazy_static!` writes it, then the name up to the colon before its type.
+ */
+const STATIC_ITEM_RE =
+  /static\s+(?:(?:mut|ref)\s+)?((?:r#)?[A-Za-z_][A-Za-z0-9_]*)\s*:/y;
+
+/** Only the app crate is gated; the other backend crates are libraries. */
+export const STATIC_GATE_PREFIX = "backend/tauri/src/";
+
+/**
+ * Why a static may exist (AGENTS.md §7):
+ * - `immutable`: a constant or lookup table, initialized at most once and
+ *   never written afterwards;
+ * - `external`: a global that an OS or third-party API imposes;
+ * - `test`: compiled only into tests.
+ *
+ * Mutable service state fits none of them, so it has no way into the list.
+ */
+export type StaticCategory = "immutable" | "external" | "test";
+
+export type StaticAllowlistEntry = {
+  path: string;
+  name: string;
+  category: StaticCategory;
+  reason: string;
+};
+
+/** The statics of one config migration module; they are all stateless. */
+function migrationModuleStatics(
+  module: string,
+  steps: string[],
+): StaticAllowlistEntry[] {
+  const path = `backend/tauri/src/core/migration/modules/${module}.rs`;
+  return [
+    {
+      path,
+      name: "MIGRATOR",
+      category: "immutable",
+      reason: "stateless module migrator the registry points at",
+    },
+    {
+      path,
+      name: "VERSION_2_0_0",
+      category: "immutable",
+      reason: "constant version of the module's steps",
+    },
+    {
+      path,
+      name: "STEPS",
+      category: "immutable",
+      reason: "lookup table of the module's steps",
+    },
+    ...steps.map((name): StaticAllowlistEntry => ({
+      path,
+      name,
+      category: "immutable",
+      reason: "stateless migration step",
+    })),
+  ];
+}
+
+/**
+ * Every static the app crate may declare. The type of a static cannot show
+ * that it is immutable (an alias, a newtype or a wrapper hides it), so every
+ * non-`const` static counts against the gate until a reviewer lists it here
+ * with its category and reason.
+ */
+export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
+  // -- immutable constants and lookup tables --------------------------------
+  {
+    path: "backend/tauri/src/consts.rs",
+    name: "BUILD_INFO",
+    category: "immutable",
+    reason: "build metadata from compile-time env vars",
+  },
+  {
+    path: "backend/tauri/src/consts.rs",
+    name: "IS_APPIMAGE",
+    category: "immutable",
+    reason: "launch-environment flag read once",
+  },
+  {
+    path: "backend/tauri/src/consts.rs",
+    name: "IS_PORTABLE",
+    category: "immutable",
+    reason:
+      "install-layout flag; base-dir resolution reads it before BundleMetadata exists",
+  },
+  {
+    path: "backend/tauri/src/utils/dirs.rs",
+    name: "APP_DIR_PLACEHOLDER",
+    category: "immutable",
+    reason: "app dir name derived from constants",
+  },
+  {
+    path: "backend/tauri/src/utils/dirs.rs",
+    name: "APP_VERSION",
+    category: "immutable",
+    reason: "version string from a compile-time env var",
+  },
+  {
+    path: "backend/tauri/src/utils/winreg.rs",
+    name: "SOFTWARE_KEY",
+    category: "immutable",
+    reason: "registry key derived from constants",
+  },
+  {
+    path: "backend/tauri/src/utils/hwid.rs",
+    name: "DEVICE_INFO",
+    category: "immutable",
+    reason: "host identity computed once",
+  },
+  {
+    path: "backend/tauri/src/core/migration/registry.rs",
+    name: "MODULES",
+    category: "immutable",
+    reason: "lookup table of the migration modules",
+  },
+  ...migrationModuleStatics("app_config", [
+    "LANGUAGE_OPTION",
+    "THEME_SETTING",
+    "NET_STAT_WIDGET_FLATTEN",
+    "LANGUAGE_CASE",
+  ]),
+  ...migrationModuleStatics("profiles", [
+    "NULL_VALUE",
+    "SCRIPT_NEWTYPE",
+    "CLEAN_SCHEMA",
+    "REPAIR_SCHEMA",
+  ]),
+  ...migrationModuleStatics("storage", [
+    "HOTKEYS_TO_KV",
+    "HOTKEYS_TO_TYPED_CONFIG",
+  ]),
+  ...migrationModuleStatics("typed_config", [
+    "SPLIT_LEGACY_CONFIG",
+    "REPAIR_CLASH_CONFIG_PATH",
+  ]),
+  // -- globals an OS or third-party API imposes -----------------------------
+  {
+    path: "backend/tauri/src/utils/dock.rs",
+    name: "MARK",
+    category: "external",
+    reason: "AppKit main-thread marker, bound to the thread by the OS API",
+  },
+  {
+    path: "backend/tauri/src/enhance/script/js.rs",
+    name: "BOA_LOGGER_LOCK",
+    category: "external",
+    reason: "serializes runs over boa_utils' process-global console logger",
+  },
+  {
+    path: "backend/tauri/src/shutdown_hook.rs",
+    name: "SHUTDOWN_HOOK_INSTANCE",
+    category: "external",
+    reason:
+      "set once by setup_shutdown_hook, read by a Win32 window procedure, which has no closure state",
+  },
+  {
+    path: "backend/tauri/src/shutdown_hook.rs",
+    name: "SHUTDOWN_STATE",
+    category: "external",
+    reason:
+      "read by the Win32 window procedure; written by set_ready_for_shutdown from utils::help::cleanup_processes",
+  },
+  // -- test-only ------------------------------------------------------------
+  {
+    path: "backend/tauri/src/core/migration/runner.rs",
+    name: "TEST_VERSION",
+    category: "test",
+    reason: "constant version in a test fixture",
+  },
+];
+
+export function staticAllowlistKey(relPath: string, name: string): string {
+  return `${relPath}::${name}`;
+}
+
+export function isStaticAllowlisted(relPath: string, name: string): boolean {
+  return STATIC_ALLOWLIST.some((entry) =>
+    entry.path === relPath && entry.name === name
+  );
 }
 
 /**
@@ -134,6 +323,10 @@ export type MetricBuckets = {
   migrationMarkers: MetricBucket;
   legacyDtos: MetricBucket;
   testRealDirs: MetricBucket;
+  /** Statics no allowlist entry covers; the gate wants none. */
+  mutableStatics: MetricBucket;
+  /** Report-only: which allowlist entries the scan found. */
+  allowlistedStatics: MetricBucket;
 };
 
 export type ReportMetric = {
@@ -171,6 +364,7 @@ export type GateIssue = {
     | "metric_key"
     | "roots"
     | "bridge_files"
+    | "static_allowlist"
     | "snapshot";
   message: string;
 };
@@ -317,7 +511,10 @@ export function createLexState(): LexState {
 // literal when it is actually shaped like one; otherwise (`'a`, `'static`,
 // `'_`) it is a lifetime and leaves all state alone. Literal *contents* are
 // replaced with nothing (delimiters are kept), so the returned code never
-// carries text or braces that only exist inside a literal. Shared by
+// carries text or braces that only exist inside a literal. A comment is
+// replaced with one space where it starts, because Rust reads it as a token
+// separator: `pub/* x */static` must stay two words. Lines are lexed one at
+// a time, so a comment spanning lines keeps their boundaries too. Shared by
 // `scanFile` and by the brace/item scanning below so both agree on what
 // counts as real code.
 export function stripCommentsAndLiterals(
@@ -403,9 +600,11 @@ export function stripCommentsAndLiterals(
     }
 
     if (ch === "/" && raw[j + 1] === "/") {
+      code += " ";
       break;
     }
     if (ch === "/" && raw[j + 1] === "*") {
+      code += " ";
       state.blockDepth = 1;
       j++;
       continue;
@@ -439,6 +638,14 @@ export function createBuckets(): MetricBuckets {
     testRealDirs: emptyBucket(
       "test_real_dirs",
       "test real-dir / runtime-path hits",
+    ),
+    mutableStatics: emptyBucket(
+      "mutable_statics",
+      "statics outside the allowlist",
+    ),
+    allowlistedStatics: emptyBucket(
+      "allowlisted_statics",
+      "allowlisted statics",
     ),
   };
 }
@@ -614,6 +821,25 @@ function findItemEndLine(lines: string[], startLine: number): number {
   return lines.length - 1;
 }
 
+/**
+ * Every `static` item in a file's comment- and literal-stripped lines: any
+ * visibility, `mut`, and those declared inside `thread_local!` or
+ * `lazy_static!`, including declarations split over lines. A `static` keyword
+ * whose item cannot be read, such as a `macro_rules!` template, is still
+ * reported, as `static@<line>`, so no declaration shape escapes the gate.
+ */
+export function findStatics(
+  codeLines: string[],
+): Array<{ name: string; line: number }> {
+  const code = codeLines.join("\n");
+  return matchAll(STATIC_KEYWORD_RE, code).map((m) => {
+    const line = code.slice(0, m.index).split("\n").length;
+    STATIC_ITEM_RE.lastIndex = m.index;
+    const item = STATIC_ITEM_RE.exec(code);
+    return { name: item ? item[1] : `static@${line}`, line };
+  });
+}
+
 export function scanFile(
   relPath: string,
   source: string,
@@ -623,11 +849,13 @@ export function scanFile(
   const testMask = testLineMask(lines, isDedicatedTestPath(relPath));
   const countLegacyDtos = !isLegacyDtoAllowlisted(relPath);
   const lexState = createLexState();
+  const codeLines: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const lineNo = i + 1;
     const code = stripCommentsAndLiterals(raw, lexState);
+    codeLines.push(code);
 
     for (const m of matchAll(CONFIG_CALL_RE, code)) {
       record(buckets.configCalls, `Config::${m.groups[0]}()`, {
@@ -676,6 +904,38 @@ export function scanFile(
       }
     }
   }
+
+  if (relPath.startsWith(STATIC_GATE_PREFIX)) {
+    const statics = findStatics(codeLines);
+    const sameName = new Map<string, number>();
+    for (const { name } of statics) {
+      sameName.set(name, (sameName.get(name) ?? 0) + 1);
+    }
+    for (const { name, line } of statics) {
+      // An entry names one static. When the file declares that name twice it
+      // cannot say which one it vouches for, so it covers neither.
+      const listed = sameName.get(name) === 1 &&
+        isStaticAllowlisted(relPath, name);
+      record(
+        listed ? buckets.allowlistedStatics : buckets.mutableStatics,
+        staticAllowlistKey(relPath, name),
+        { file: relPath, line, text: lines[line - 1].trim() },
+      );
+    }
+  }
+}
+
+/**
+ * Allowlist entries that do not name exactly one static in the scan: a static
+ * that was removed or duplicated must not keep its entry.
+ */
+export function staticAllowlistIssues(buckets: MetricBuckets): string[] {
+  return STATIC_ALLOWLIST.flatMap(({ path, name }) => {
+    const key = staticAllowlistKey(path, name);
+    if (buckets.allowlistedStatics.byKey.get(key) === 1) return [];
+    const found = buckets.mutableStatics.byKey.get(key) ?? 0;
+    return [`${key} matches ${found === 0 ? "no static" : `${found} statics`}`];
+  });
 }
 
 export function sortedRecord(map: Map<string, number>): Record<string, number> {
@@ -723,6 +983,11 @@ export function metricsFromBuckets(
       total: buckets.testRealDirs.total,
       byKey: sortedRecord(buckets.testRealDirs.byKey),
       samples: buckets.testRealDirs.hits,
+    },
+    mutable_statics: {
+      total: buckets.mutableStatics.total,
+      byKey: sortedRecord(buckets.mutableStatics.byKey),
+      samples: buckets.mutableStatics.hits,
     },
   };
 }
@@ -847,10 +1112,13 @@ function formatListDiff(
 /**
  * Exact stable-snapshot compare + hard denylist on test_real_dirs.
  * Intentional residual shrink/growth requires an audited snapshot update.
+ * `staticAllowlist` lists the static allowlist entries that do not name
+ * exactly one static (see `staticAllowlistIssues`).
  */
 export function evaluateGate(
   current: StableSnapshot,
   expected: StableSnapshot,
+  staticAllowlist: string[] = [],
 ): GateResult {
   const issues: GateIssue[] = [];
 
@@ -860,6 +1128,13 @@ export function evaluateGate(
       kind: "hard_denylist",
       message:
         `hard denylist: test_real_dirs.total must be 0, got ${denylistTotal}`,
+    });
+  }
+
+  for (const issue of staticAllowlist) {
+    issues.push({
+      kind: "static_allowlist",
+      message: `static allowlist: ${issue}`,
     });
   }
 
@@ -1149,6 +1424,7 @@ Options:
     scanFile(relPath, source, buckets);
   }
 
+  const allowlistIssues = staticAllowlistIssues(buckets);
   const notes = mode === "gate"
     ? [
       "S10 gate: exact stable-snapshot compare + hard denylist on test_real_dirs.",
@@ -1158,6 +1434,20 @@ Options:
       "Report mode: metrics are informational and do not fail CI.",
       `Use --mode=gate (snapshot: ${snapshotPath}) for the S10 residual budget check.`,
     ];
+  const byCategory = new Map<StaticCategory, number>();
+  for (const { path, name, category } of STATIC_ALLOWLIST) {
+    if (buckets.allowlistedStatics.byKey.has(staticAllowlistKey(path, name))) {
+      byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
+    }
+  }
+  notes.push(
+    `allowlisted statics: ${buckets.allowlistedStatics.total} (${
+      [...byCategory].map(([category, n]) => `${category} ${n}`).join(", ")
+    }; STATIC_ALLOWLIST)`,
+  );
+  for (const issue of allowlistIssues) {
+    notes.push(`static allowlist: ${issue}`);
+  }
 
   const report: LedgerReport = {
     generatedAt: new Date().toISOString(),
@@ -1199,7 +1489,7 @@ Options:
   }
 
   const current = reportToStableSnapshot(report);
-  const result = evaluateGate(current, loaded.snapshot);
+  const result = evaluateGate(current, loaded.snapshot, allowlistIssues);
   printGateResult(result, report, snapshotPath);
   Deno.exit(result.ok ? 0 : 1);
 }

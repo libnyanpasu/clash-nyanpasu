@@ -27,10 +27,8 @@
       "byKey": {}
     },
     "mutable_statics": {
-      "total": 1,
-      "byKey": {
-        "backend/tauri/src/server/mod.rs::SERVER_PORT": 1
-      }
+      "total": 0,
+      "byKey": {}
     }
   },
   "bridgeFiles": []

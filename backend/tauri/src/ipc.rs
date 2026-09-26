@@ -862,8 +862,8 @@ pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_server_port() -> Result<u16> {
-    Ok(*crate::server::SERVER_PORT)
+pub fn get_server_port(port: State<'_, crate::server::ServerPort>) -> Result<u16> {
+    Ok(port.0)
 }
 
 #[cfg(not(windows))]

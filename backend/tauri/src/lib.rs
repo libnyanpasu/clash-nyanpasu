@@ -307,9 +307,10 @@ pub fn run() -> std::io::Result<()> {
                 }
             ));
             let client = app.state::<crate::client::NyanpasuClient>().inner().clone();
+            let server_port = app.state::<server::ServerPort>().0;
             std::thread::spawn(move || {
                 nyanpasu_utils::runtime::block_on(async move {
-                    server::run(*server::SERVER_PORT, client)
+                    server::run(server_port, client)
                         .await
                         .expect("failed to start server");
                 });

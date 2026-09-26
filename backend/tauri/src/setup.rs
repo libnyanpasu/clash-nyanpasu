@@ -149,6 +149,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
+    // Picked last, so the server binds it soon after setup returns.
+    let server_port = port_scanner::request_open_port()
+        .context("Failed to find a free port for the internal server")?;
+    app.manage(crate::server::ServerPort(server_port));
     app.manage(client);
 
     Ok(())

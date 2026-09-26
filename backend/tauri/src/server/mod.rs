@@ -8,7 +8,6 @@ use axum::{
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
@@ -19,7 +18,9 @@ use std::{borrow::Cow, path::Path, time::Duration};
 
 pub(crate) use crate::utils::candy::get_reqwest_client;
 
-pub static SERVER_PORT: Lazy<u16> = Lazy::new(|| port_scanner::request_open_port().unwrap());
+/// The internal HTTP server's port, which the composition root picks.
+#[derive(Debug, Clone, Copy)]
+pub struct ServerPort(pub u16);
 
 const CACHE_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24 * 7); // 7 days
 

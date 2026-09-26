@@ -294,6 +294,21 @@ impl IVerge {
             ..Self::default()
         }
     }
+
+    /// Carries the deprecated `auto_close_connection` of a document written
+    /// before `break_when_proxy_change` existed into the new field, as the
+    /// legacy loader did. It must run before the document is merged onto
+    /// [`Self::template`], whose `break_when_proxy_change` would shadow it.
+    #[allow(deprecated)]
+    pub fn migrate_auto_close_connection(&mut self) {
+        if let (None, Some(enabled)) = (self.break_when_proxy_change, self.auto_close_connection) {
+            self.break_when_proxy_change = Some(if enabled {
+                BreakWhenProxyChange::All
+            } else {
+                BreakWhenProxyChange::None
+            });
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

@@ -177,14 +177,14 @@ importers:
         version: 9.1.7
     devDependencies:
       '@commitlint/cli':
-        specifier: 21.2.2
-        version: 21.2.2(@types/node@24.13.6)(conventional-commits-parser@7.1.2)(typescript@7.0.2)
+        specifier: 21.2.3
+        version: 21.2.3(@types/node@24.13.6)(conventional-commits-parser@7.1.2)(typescript@7.0.2)
       '@commitlint/config-conventional':
-        specifier: 21.2.2
-        version: 21.2.2
+        specifier: 21.2.3
+        version: 21.2.3
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.7.1
-        version: 4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.8)(supports-color@10.2.2))(prettier@3.9.8)(supports-color@10.2.2)
+        version: 4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2)
       '@tauri-apps/cli':
         specifier: 2.11.4
         version: 2.11.4
@@ -222,14 +222,14 @@ importers:
         specifier: 4.0.9
         version: 4.0.9(postcss@8.5.28)
       prettier:
-        specifier: 3.9.8
-        version: 3.9.8
+        specifier: 3.9.9
+        version: 3.9.9
       prettier-plugin-tailwindcss:
         specifier: 0.8.1
-        version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.8)(supports-color@10.2.2))(prettier@3.9.8)(supports-color@10.2.2))(@prettier/plugin-oxc@0.2.3)(prettier@3.9.8)
+        version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2))(@prettier/plugin-oxc@0.2.3)(prettier@3.9.9)
       prettier-plugin-toml:
         specifier: 2.0.6
-        version: 2.0.6(prettier@3.9.8)
+        version: 2.0.6(prettier@3.9.9)
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -537,7 +537,7 @@ importers:
         version: 3.2.2(vite@8.3.1(@types/node@24.13.6)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.105.0)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0))
       vite-plugin-sass-dts:
         specifier: 1.3.39
-        version: 1.3.39(postcss@8.5.28)(prettier@3.9.8)(sass-embedded@1.105.0)(vite@8.3.1(@types/node@24.13.6)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.105.0)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0))
+        version: 1.3.39(postcss@8.5.28)(prettier@3.9.9)(sass-embedded@1.105.0)(vite@8.3.1(@types/node@24.13.6)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.105.0)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0))
       vite-plugin-svgr:
         specifier: 5.2.0
         version: 5.2.0(supports-color@10.2.2)(typescript@7.0.2)(vite@8.3.1(@types/node@24.13.6)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.105.0)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0))
@@ -1207,61 +1207,61 @@ packages:
   '@cacheable/utils@2.5.0':
     resolution: {integrity: sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==}
 
-  '@commitlint/cli@21.2.2':
-    resolution: {integrity: sha512-a+6hQxIxnpdvSvS2apvttPNbEliYsVC3PqFYDiiB2kjbwIsQsj1urvQ4Tkf70pKYozPalKAuRQmm/GHwndduqA==}
+  '@commitlint/cli@21.2.3':
+    resolution: {integrity: sha512-5yOX6IRjcrIReCxpyAd04hgI/yhUMpVBJ/ouwFV0wk9yx5+fYRDWZWJ5h55Tbedgfol+5m2mU5nqzbB8g3v0vQ==}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
-  '@commitlint/config-conventional@21.2.2':
-    resolution: {integrity: sha512-NxA37SZviusFUEYOQZ5hNnZ1h7O/KiemPkxjOlpzKJNnWxThiwc6/SaZhaPa8fyLvfRBAywhQhJJk8XESHWlpQ==}
+  '@commitlint/config-conventional@21.2.3':
+    resolution: {integrity: sha512-EP2n5DN2GwRWNVrLX0Jx3mpQlW5PfFi9HnD9OJ8hN/H0xFqpCFyHeGDhg+0P8/21iMMcdkcQgbNqmVklebqYsQ==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/config-validator@21.2.0':
-    resolution: {integrity: sha512-t7AzNHAKeIdo/3NRGwzpufKHsKkPHmFs/56N2Fnsh0/r0rGtnQzTxk6vnFgjaGr4hdSQKNB50/KAhR9Yk4LJKA==}
+  '@commitlint/config-validator@21.2.3':
+    resolution: {integrity: sha512-JQ13v0GafSM4fBYX8UowSy++07Was20auq0NcTdnzSEq6/05Cq5GBUMIfKkqjzyBwC9sJFmPpKWgLLhH7cygkw==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/ensure@21.2.0':
-    resolution: {integrity: sha512-76IF9vDNS13lAzEEik9eKwzt8f9hYhWiwVXZ2AnyLCz5/f511FsEQ3pw1X3/zSQpdRLQU7i5qDMVKyXi1GWjSg==}
+  '@commitlint/ensure@21.2.3':
+    resolution: {integrity: sha512-gEjNKgRocbODI5/sMx2Qc9XOf2/zFTNV2aEK1QZ4gKDKxDC/VR7us3QtIX1C5d5xxHxx0I/tEbYbdSP1Am2LwA==}
     engines: {node: '>=22.12.0'}
 
   '@commitlint/execute-rule@21.0.1':
     resolution: {integrity: sha512-RifH+FmImozKBE6mozhF4K3r2RRKP7SMi/Q/zLCmExtp5e05lhHOUYqGBlFBAGNHaZxU/WYw1XuugYK9jQzqnA==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/format@21.2.2':
-    resolution: {integrity: sha512-v6fvxZSc/AvVMROlr3H34+1766bZSYApRUSCAMjWamStPjKMvZ8GdvVA5YW/VQNgbFTmcMz6OYmSTJEvIjPrfA==}
+  '@commitlint/format@21.2.3':
+    resolution: {integrity: sha512-KKwCjXYqA8r295uhLnulDXL9yekdXmj2yp2Q0XsBPhxQ2iPuvRE8F43j7g7yexo69wTdmUQmFz15jpderluzUQ==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/is-ignored@21.2.2':
-    resolution: {integrity: sha512-9UoKNgfFE3LU7FrzierCvk3CdDfMDeVGC86qZiT/n0TIjfq/dmZ9MHuXd45OTNRa26ZanmJRxEtmiXk/lEJihg==}
+  '@commitlint/is-ignored@21.2.3':
+    resolution: {integrity: sha512-Ng4nRj/LBAOvc+GQu7bsFW4/fL89LvZ14OOC/ERLbUpnG6QBwWRzY/1oXGwPs3C8YHWjJObin4kLYo2YeEn70w==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/lint@21.2.2':
-    resolution: {integrity: sha512-Fy8JxEBzdmsYWFude/61GxXu5O+wEymwiRK2z9GL9R8mCsXphCoGxAFc5iHn5mjlfcSrhiiONE+ksf4KOjnaPg==}
+  '@commitlint/lint@21.2.3':
+    resolution: {integrity: sha512-lUZcSuVLLEDkhge9ERk8Rp+FXQtrUhCK+h328BFnzKXrTuXGdqiYMEpTlNWdZaOrjyMhMJaz354ZaWEGJxcLeg==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/load@21.2.2':
-    resolution: {integrity: sha512-0Tt6wDPX167cjKC5D4zhm0+20wJJG+TN/TKovMOspfSe78rOnKX+MNzlVNiu6HyQPZChPJ8QBH31MVt6Bb8fCg==}
+  '@commitlint/load@21.2.3':
+    resolution: {integrity: sha512-cDrL8lOo23Lk7knGzQdjbFcq7z2JgvjwV6PhbESVvEc+Fe21MeLjPKBJi8nKjg7j+jh79CVbVSUbZc104thXRw==}
     engines: {node: '>=22.12.0'}
 
   '@commitlint/message@21.2.0':
     resolution: {integrity: sha512-YxGoiXD/HXNXLJPrQwE5poXa+XH0CBEm+mdvbHQP0g6MV/dmJyUFCzPNzZbxL93GvZ70TmtTK0Z0/IBpAqHv8g==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/parse@21.2.2':
-    resolution: {integrity: sha512-MEkobPfvRp+z06Wro8HMG1BDGHzZmj82A1LH1nWeG3ipHpg/x4m6v3wEDvMBIKjRFUnfR3nBeFs3MVCr7UdAmg==}
+  '@commitlint/parse@21.2.3':
+    resolution: {integrity: sha512-Jt61QpF1xA88damCELe8I0FlDZPSpXNc8IhN7z5kZ0EcDYPjdZ+ZHPvsSXl69r2MIlLnNKeHhOn2cmVpziFE9w==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/read@21.2.1':
-    resolution: {integrity: sha512-hUW7EJQnNTL0vPOmVMNK4CrnrNBN0nN+JJHReFkdHO5y4iyHeEmTBwuC15OCqUTjxWo7idnH1LftfpWVIaPWIA==}
+  '@commitlint/read@21.2.3':
+    resolution: {integrity: sha512-szAepuLA1vTTr7fuudEg7jYyVHudf+FH+vptU91bhxE1WnE8TKrfTAi44HVllz8XpI8Pvp4GjR/iP5Nshgh+og==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/resolve-extends@21.2.2':
-    resolution: {integrity: sha512-RPkJ/IFi7sMUUVbZLqwWFtWw/zRDcfFsmrPSiTMrt5wb7AdxOr86EGQFvmGzef5QKV5IPBWWCujqVTw1RWX44A==}
+  '@commitlint/resolve-extends@21.2.3':
+    resolution: {integrity: sha512-bqJdmAtXgAQel+l02uIsF7rHgKgx1AGZdGBjam7uK4XW54ZAQtB6XAIUXezYprQiCcRMpBh4fHs5JodXK4mVZA==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/rules@21.2.2':
-    resolution: {integrity: sha512-eplQzyYkBjYB1HyyRj8hkcK11Y9DU9nuBz7uOKEd6NpE9NGDytLFCAnlRE+OoiK/5sHEJsaz2RGhuWBvYzIbNA==}
+  '@commitlint/rules@21.2.3':
+    resolution: {integrity: sha512-5+YnI/LuTx3JDl9GjqfP2z9x96M8KKDrd+4jOel/T0L1BB3oAmBlSN8xppf63QsudiVEgR8C0gRoAMrPVrms6g==}
     engines: {node: '>=22.12.0'}
 
   '@commitlint/to-lines@21.0.1':
@@ -1272,8 +1272,8 @@ packages:
     resolution: {integrity: sha512-Y5gmQ+KxzqCrBFJfLvFEPvvwD3LDiNZoTT2yeFBm96M8qhmqSzQc5DvX3rheAaAMjyIvMXOCLS/mWfdpONsjyQ==}
     engines: {node: '>=22.12.0'}
 
-  '@commitlint/types@21.2.0':
-    resolution: {integrity: sha512-7zVFCDB2reMvJH5dmbKnOQPjZEvjdJTH8jc0U/PIPU1r3/+vf5pD1HlfitV2MWsWXrvu7u39iY1lyLUPOaN0Gw==}
+  '@commitlint/types@21.2.3':
+    resolution: {integrity: sha512-sGEA473TlCvhCGNoTBY9OXZVWdscIXdGt0dm8EpB+2MRfmt8LNh/X56P/T3nCtEB+eH5qGEa3odphSAoUxSfSQ==}
     engines: {node: '>=22.12.0'}
 
   '@conventional-changelog/git-client@3.1.2':
@@ -6302,8 +6302,8 @@ packages:
     engines: {node: '>=14'}
     hasBin: true
 
-  prettier@3.9.8:
-    resolution: {integrity: sha512-WRFq3Wn3WId7LLROfMLdH7xaFr2jR62wU8nLO6rQUOLOxNZUviyJQs1M0iIhLexSFy+L+w0ch66wtoO2jRjG0A==}
+  prettier@3.9.9:
+    resolution: {integrity: sha512-Z/CJHIkdujO/OtN7nXUii0Rf3VT5SRuhjBA82Xvu2XhBUgX3nhP67T0LHceBdQLex7OOFGTox+Q5Yg8Jk2Qivg==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -7084,10 +7084,6 @@ packages:
   tinybench@6.1.4:
     resolution: {integrity: sha512-9APumHG7r4yOk4X4WlkmE71aZcv1gvin1czO3OQ1U9iJcFA5Ja/ygyb0vPOVHTthFozUYs8CLoLUlM8grb2lTQ==}
     engines: {node: '>=20.0.0'}
-
-  tinyexec@1.2.4:
-    resolution: {integrity: sha512-SHf/r48b7vOrjve9PxJo3MN5v5yuyjHvdUcrQffT3WXMUfnGmHDVbC4k3sHJaJTgZCwpUplIaAo5ANtMyp3YHg==}
-    engines: {node: '>=18'}
 
   tinyexec@1.3.0:
     resolution: {integrity: sha512-QKAl9m8gWWGHV8jZcPeym6j+XULi6tOf1mT83WYJ4Lk2ytW/uwAWkrP0uFsdoYMdueVJ0qs26wZ+23xeB4ibNQ==}
@@ -8422,15 +8418,15 @@ snapshots:
       hashery: 1.5.1
       keyv: 5.6.0
 
-  '@commitlint/cli@21.2.2(@types/node@24.13.6)(conventional-commits-parser@7.1.2)(typescript@7.0.2)':
+  '@commitlint/cli@21.2.3(@types/node@24.13.6)(conventional-commits-parser@7.1.2)(typescript@7.0.2)':
     dependencies:
-      '@commitlint/config-conventional': 21.2.2
-      '@commitlint/format': 21.2.2
-      '@commitlint/lint': 21.2.2
-      '@commitlint/load': 21.2.2(@types/node@24.13.6)(typescript@7.0.2)
-      '@commitlint/read': 21.2.1(conventional-commits-parser@7.1.2)
-      '@commitlint/types': 21.2.0
-      tinyexec: 1.2.4
+      '@commitlint/config-conventional': 21.2.3
+      '@commitlint/format': 21.2.3
+      '@commitlint/lint': 21.2.3
+      '@commitlint/load': 21.2.3(@types/node@24.13.6)(typescript@7.0.2)
+      '@commitlint/read': 21.2.3(conventional-commits-parser@7.1.2)
+      '@commitlint/types': 21.2.3
+      tinyexec: 1.3.1
       yargs: 18.0.0
     transitivePeerDependencies:
       - '@types/node'
@@ -8438,46 +8434,46 @@ snapshots:
       - conventional-commits-parser
       - typescript
 
-  '@commitlint/config-conventional@21.2.2':
+  '@commitlint/config-conventional@21.2.3':
     dependencies:
-      '@commitlint/types': 21.2.0
+      '@commitlint/types': 21.2.3
       conventional-changelog-conventionalcommits: 10.4.0
 
-  '@commitlint/config-validator@21.2.0':
+  '@commitlint/config-validator@21.2.3':
     dependencies:
-      '@commitlint/types': 21.2.0
+      '@commitlint/types': 21.2.3
       ajv: 8.17.1
 
-  '@commitlint/ensure@21.2.0':
+  '@commitlint/ensure@21.2.3':
     dependencies:
-      '@commitlint/types': 21.2.0
+      '@commitlint/types': 21.2.3
       es-toolkit: 1.46.1
 
   '@commitlint/execute-rule@21.0.1': {}
 
-  '@commitlint/format@21.2.2':
+  '@commitlint/format@21.2.3':
     dependencies:
-      '@commitlint/types': 21.2.0
+      '@commitlint/types': 21.2.3
       picocolors: 1.1.1
 
-  '@commitlint/is-ignored@21.2.2':
+  '@commitlint/is-ignored@21.2.3':
     dependencies:
-      '@commitlint/types': 21.2.0
+      '@commitlint/types': 21.2.3
       semver: 7.7.4
 
-  '@commitlint/lint@21.2.2':
+  '@commitlint/lint@21.2.3':
     dependencies:
-      '@commitlint/is-ignored': 21.2.2
-      '@commitlint/parse': 21.2.2
-      '@commitlint/rules': 21.2.2
-      '@commitlint/types': 21.2.0
+      '@commitlint/is-ignored': 21.2.3
+      '@commitlint/parse': 21.2.3
+      '@commitlint/rules': 21.2.3
+      '@commitlint/types': 21.2.3
 
-  '@commitlint/load@21.2.2(@types/node@24.13.6)(typescript@7.0.2)':
+  '@commitlint/load@21.2.3(@types/node@24.13.6)(typescript@7.0.2)':
     dependencies:
-      '@commitlint/config-validator': 21.2.0
+      '@commitlint/config-validator': 21.2.3
       '@commitlint/execute-rule': 21.0.1
-      '@commitlint/resolve-extends': 21.2.2
-      '@commitlint/types': 21.2.0
+      '@commitlint/resolve-extends': 21.2.3
+      '@commitlint/types': 21.2.3
       cosmiconfig: 9.0.2(typescript@7.0.2)
       cosmiconfig-typescript-loader: 6.1.0(@types/node@24.13.6)(cosmiconfig@9.0.2(typescript@7.0.2))(typescript@7.0.2)
       es-toolkit: 1.46.1
@@ -8489,36 +8485,36 @@ snapshots:
 
   '@commitlint/message@21.2.0': {}
 
-  '@commitlint/parse@21.2.2':
+  '@commitlint/parse@21.2.3':
     dependencies:
-      '@commitlint/types': 21.2.0
+      '@commitlint/types': 21.2.3
       conventional-changelog-angular: 9.4.0
       conventional-commits-parser: 7.1.2
 
-  '@commitlint/read@21.2.1(conventional-commits-parser@7.1.2)':
+  '@commitlint/read@21.2.3(conventional-commits-parser@7.1.2)':
     dependencies:
       '@commitlint/top-level': 21.2.0
-      '@commitlint/types': 21.2.0
+      '@commitlint/types': 21.2.3
       '@conventional-changelog/git-client': 3.1.2(conventional-commits-parser@7.1.2)
-      tinyexec: 1.2.4
+      tinyexec: 1.3.1
     transitivePeerDependencies:
       - conventional-commits-filter
       - conventional-commits-parser
 
-  '@commitlint/resolve-extends@21.2.2':
+  '@commitlint/resolve-extends@21.2.3':
     dependencies:
-      '@commitlint/config-validator': 21.2.0
-      '@commitlint/types': 21.2.0
+      '@commitlint/config-validator': 21.2.3
+      '@commitlint/types': 21.2.3
       es-toolkit: 1.46.1
       global-directory: 5.0.0
       resolve-from: 5.0.0
 
-  '@commitlint/rules@21.2.2':
+  '@commitlint/rules@21.2.3':
     dependencies:
-      '@commitlint/ensure': 21.2.0
+      '@commitlint/ensure': 21.2.3
       '@commitlint/message': 21.2.0
       '@commitlint/to-lines': 21.0.1
-      '@commitlint/types': 21.2.0
+      '@commitlint/types': 21.2.3
 
   '@commitlint/to-lines@21.0.1': {}
 
@@ -8526,7 +8522,7 @@ snapshots:
     dependencies:
       escalade: 3.2.0
 
-  '@commitlint/types@21.2.0':
+  '@commitlint/types@21.2.3':
     dependencies:
       conventional-commits-parser: 7.1.2
       picocolors: 1.1.1
@@ -8697,18 +8693,18 @@ snapshots:
       valibot: 1.4.2(typescript@7.0.2)
       zod: 4.6.5
 
-  '@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.8)(supports-color@10.2.2))(prettier@3.9.8)(supports-color@10.2.2)':
+  '@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2)':
     dependencies:
       '@babel/generator': 7.29.0
       '@babel/parser': 7.29.0
       '@babel/traverse': 7.29.0(supports-color@10.2.2)
       '@babel/types': 7.29.0
-      prettier: 3.9.8
+      prettier: 3.9.9
       semver: 7.7.3
     optionalDependencies:
       '@prettier/plugin-oxc': 0.2.3
       content-tag: 4.2.0
-      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.9.8)(supports-color@10.2.2)
+      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.9.9)(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -13236,30 +13232,30 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.8)(supports-color@10.2.2):
+  prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2):
     dependencies:
       '@babel/traverse': 7.29.8(supports-color@10.2.2)
       content-tag: 4.2.0
-      prettier: 3.9.8
+      prettier: 3.9.9
     transitivePeerDependencies:
       - supports-color
     optional: true
 
-  prettier-plugin-tailwindcss@0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.8)(supports-color@10.2.2))(prettier@3.9.8)(supports-color@10.2.2))(@prettier/plugin-oxc@0.2.3)(prettier@3.9.8):
+  prettier-plugin-tailwindcss@0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2))(@prettier/plugin-oxc@0.2.3)(prettier@3.9.9):
     dependencies:
-      prettier: 3.9.8
+      prettier: 3.9.9
     optionalDependencies:
-      '@ianvs/prettier-plugin-sort-imports': 4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.8)(supports-color@10.2.2))(prettier@3.9.8)(supports-color@10.2.2)
+      '@ianvs/prettier-plugin-sort-imports': 4.7.1(@prettier/plugin-oxc@0.2.3)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2)
       '@prettier/plugin-oxc': 0.2.3
 
-  prettier-plugin-toml@2.0.6(prettier@3.9.8):
+  prettier-plugin-toml@2.0.6(prettier@3.9.9):
     dependencies:
       '@taplo/lib': 0.5.0
-      prettier: 3.9.8
+      prettier: 3.9.9
 
   prettier@3.8.5: {}
 
-  prettier@3.9.8: {}
+  prettier@3.9.9: {}
 
   probe-image-size@7.3.0(supports-color@10.2.2):
     dependencies:
@@ -14119,8 +14115,6 @@ snapshots:
 
   tinybench@6.1.4: {}
 
-  tinyexec@1.2.4: {}
-
   tinyexec@1.3.0: {}
 
   tinyexec@1.3.1: {}
@@ -14415,11 +14409,11 @@ snapshots:
       pathe: 0.2.0
       vite: 8.3.1(@types/node@24.13.6)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.105.0)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0)
 
-  vite-plugin-sass-dts@1.3.39(postcss@8.5.28)(prettier@3.9.8)(sass-embedded@1.105.0)(vite@8.3.1(@types/node@24.13.6)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.105.0)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0)):
+  vite-plugin-sass-dts@1.3.39(postcss@8.5.28)(prettier@3.9.9)(sass-embedded@1.105.0)(vite@8.3.1(@types/node@24.13.6)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.105.0)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0)):
     dependencies:
       postcss: 8.5.28
       postcss-js: 4.0.1(postcss@8.5.28)
-      prettier: 3.9.8
+      prettier: 3.9.9
       sass-embedded: 1.105.0
       vite: 8.3.1(@types/node@24.13.6)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.105.0)(sass@1.103.1)(terser@5.36.0)(yaml@2.9.0)
 

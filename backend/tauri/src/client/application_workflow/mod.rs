@@ -35,11 +35,12 @@ use super::{
     runtime,
 };
 use crate::core::actor_v2::{
-    CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport,
-    endpoint::ExecutionHost,
-    facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
+    CoreClient, CoreStatusProjection, ShutdownReport,
+    facade::{CoreFacade, ReconcileReport, StopReport},
     service_actor::{ServiceClient, ServiceHostStatus},
 };
+#[cfg(test)]
+use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
 use attempt::AttemptStage;
 use mutation::{MutationBudgets, MutationCommand, MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
@@ -315,14 +316,6 @@ impl ApplicationWorkflowState {
                     Ok(Output::Shutdown(report)) => {
                         report.stop.as_ref().err().map(ToString::to_string)
                     }
-                    Ok(Output::Mutation(outcome)) if !outcome.degradations().is_empty() => Some(
-                        outcome
-                            .degradations()
-                            .iter()
-                            .map(|d| d.message.as_str())
-                            .collect::<Vec<_>>()
-                            .join("; "),
-                    ),
                     Ok(Output::Settled(receipt)) => receipt.detail.clone(),
                     _ => None,
                 },
@@ -1169,12 +1162,6 @@ impl ApplicationWorkflowClient {
             .map(|_| ())
     }
 
-    pub async fn apply_control_channel(&self) -> Result<(), CoreError> {
-        self.call(Command::Core(CoreCommand::ApplyControlChannel))
-            .await
-            .map(|_| ())
-    }
-
     pub(super) fn snapshot_store(&self) -> &runtime::RuntimeSnapshotStore {
         &self.0.runtime
     }
@@ -1208,36 +1195,19 @@ impl ApplicationWorkflowClient {
         StopReport
     );
     method!(
-        recover_core,
-        Command::Core(CoreCommand::RecoverCore),
-        Recover,
-        RecoverReport
-    );
-    method!(
         shutdown,
         Command::Core(CoreCommand::Shutdown),
         Shutdown,
         ShutdownReport
     );
 
+    #[cfg(test)]
     pub async fn change_host(&self, host: ExecutionHost) -> Result<HandoffReport, CoreError> {
         match self
             .call(Command::Core(CoreCommand::ChangeHost(host)))
             .await?
         {
             Output::Handoff(result) => Ok(result),
-            _ => unreachable!(),
-        }
-    }
-    pub async fn set_execution_host(
-        &self,
-        service: bool,
-    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self
-            .call(Command::Core(CoreCommand::SetExecutionHost(service)))
-            .await?
-        {
-            Output::Mutation(result) => Ok(result),
             _ => unreachable!(),
         }
     }

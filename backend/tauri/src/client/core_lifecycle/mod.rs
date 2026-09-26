@@ -4,11 +4,11 @@ pub(in crate::client) mod apply;
 pub mod ports;
 mod workflow;
 
-use super::runtime;
+#[cfg(test)]
+use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
 use crate::core::actor_v2::{
-    HandoffReport, ShutdownReport,
-    endpoint::ExecutionHost,
-    facade::{ReconcileReport, RecoverReport, StopReport},
+    ShutdownReport,
+    facade::{ReconcileReport, StopReport},
 };
 use ports::PreparedCoreBinary;
 use std::time::Duration;
@@ -21,12 +21,11 @@ pub(in crate::client) const RECOVERY_INTERVAL: Duration = Duration::from_secs(5)
 
 pub(in crate::client) enum Command {
     Reconcile,
-    ApplyControlChannel,
+    /// Test seam: user-initiated host changes go through the enable_service_mode mutation.
+    #[cfg(test)]
     ChangeHost(ExecutionHost),
-    SetExecutionHost(bool),
     ReplaceCoreBinary(PreparedCoreBinary),
     StopCore,
-    RecoverCore,
     InstallService,
     StartService,
     StopService,
@@ -39,10 +38,9 @@ pub(in crate::client) enum Command {
 pub(in crate::client) enum Output {
     Unit,
     Reconcile(ReconcileReport),
+    #[cfg(test)]
     Handoff(HandoffReport),
-    Mutation(runtime::MutationOutcome<()>),
     Stop(StopReport),
-    Recover(RecoverReport),
     Shutdown(ShutdownReport),
     /// The binary was installed, and the restart it owed was left to the
     /// open reestablish target: no host is proven to own the runtime

@@ -29,9 +29,8 @@ use self::{
 };
 use crate::{
     core::actor_v2::{
-        CoreClient as CoreClientV2, CoreStatusProjection, HandoffReport,
-        endpoint::ExecutionHost,
-        facade::{ReconcileReport, RecoverReport, StopReport},
+        CoreClient as CoreClientV2, CoreStatusProjection,
+        facade::{ReconcileReport, StopReport},
         service_actor::{ServiceClient, ServiceHostStatus},
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
@@ -174,7 +173,6 @@ struct NyanpasuClientInner {
     ports: Arc<SessionPortResolver>,
     profiles_dir: PathBuf,
     runtime_paths: RuntimePaths,
-    ui_sink: Arc<dyn UiEventSink>,
     application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
@@ -313,7 +311,7 @@ impl NyanpasuClient {
         let service_logs = logging.service;
         let effects = effects::actor::EffectsClient::spawn(effects::actor::EffectsArgs {
             port: effects,
-            ui: ui_sink.clone(),
+            ui: ui_sink,
             initial: effects::plan::ApplicationEffectInputs::project(
                 &application.snapshot().state,
                 &clash_config.snapshot().state,
@@ -374,7 +372,6 @@ impl NyanpasuClient {
                 ports,
                 profiles_dir,
                 runtime_paths,
-                ui_sink,
                 application_workflow,
                 core_api: core_v2,
                 proxies,
@@ -438,16 +435,13 @@ impl NyanpasuClient {
         self.inner.application_workflow.reconcile().await
     }
 
+    // No UI entry issues an explicit stop yet; this is the facade entry to the
+    // explicit stop intent the workflow honours (TCC V11, T10 S18 / §1.4).
+    #[allow(dead_code)]
     pub async fn stop_core(
         &self,
     ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
         self.inner.application_workflow.stop_core().await
-    }
-
-    pub async fn recover_core(
-        &self,
-    ) -> std::result::Result<RecoverReport, nyanpasu_core_manager::CoreError> {
-        self.inner.application_workflow.recover_core().await
     }
 
     pub async fn replace_core_binary(
@@ -468,12 +462,6 @@ impl NyanpasuClient {
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.core = Some(core);
         self.patch_app_config(patch).await
-    }
-    pub async fn change_execution_host(
-        &self,
-        host: ExecutionHost,
-    ) -> std::result::Result<HandoffReport, nyanpasu_core_manager::CoreError> {
-        self.inner.application_workflow.change_host(host).await
     }
     pub async fn set_execution_host(
         &self,
@@ -1026,49 +1014,6 @@ impl NyanpasuClient {
     pub(crate) fn runtime_product_path(&self) -> &camino::Utf8Path {
         self.inner.runtime_paths.product()
     }
-
-    pub(crate) async fn promote_existing_runtime_product(
-        &self,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
-        self.reconcile_core()
-            .await
-            .map_err(client_error_from_core)?;
-        self.promoted_runtime().await.ok_or_else(|| {
-            ClientError::Custom("reconcile completed without publishing a runtime product".into())
-        })
-    }
-
-    pub(crate) async fn start_promoted_runtime(&self) -> Result<()> {
-        self.reconcile_core()
-            .await
-            .map(|_| ())
-            .map_err(client_error_from_core)
-    }
-
-    pub async fn apply_control_channel(&self) -> Result<()> {
-        self.inner
-            .application_workflow
-            .apply_control_channel()
-            .await
-            .map_err(client_error_from_core)?;
-        self.inner.ui_sink.refresh_clash();
-        Ok(())
-    }
-
-    pub async fn rebuild_running_config(&self) -> Result<()> {
-        self.reconcile_core()
-            .await
-            .map_err(client_error_from_core)?;
-        self.inner.ui_sink.refresh_clash();
-        Ok(())
-    }
-
-    pub(crate) async fn regenerate_runtime(&self) -> Result<()> {
-        self.reconcile_core()
-            .await
-            .map(|_| ())
-            .map_err(client_error_from_core)
-    }
 }
 
 fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
@@ -1107,10 +1052,13 @@ impl crate::core::updater::ports::CoreUpdateInstaller
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::state::profiles::ports::{
-        CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
-        MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-        PreparedMaterialization, ProfileMaterializationPort,
+    use crate::{
+        core::actor_v2::endpoint::ExecutionHost,
+        state::profiles::ports::{
+            CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
+            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
+            PreparedMaterialization, ProfileMaterializationPort,
+        },
     };
     use camino::Utf8PathBuf;
     use nyanpasu_config::{
@@ -3007,25 +2955,6 @@ pub(crate) mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn promote_existing_runtime_routes_through_reconcile() {
-        let dir = tempdir().unwrap();
-        let client = test_client(&dir).await;
-        let snapshot = client.promote_existing_runtime_product().await.unwrap();
-        assert!(Arc::ptr_eq(
-            &snapshot,
-            &client.promoted_runtime().await.unwrap()
-        ));
-    }
-
-    #[tokio::test]
-    async fn start_promoted_runtime_routes_through_reconcile() {
-        let dir = tempdir().unwrap();
-        let client = test_client(&dir).await;
-        client.start_promoted_runtime().await.unwrap();
-        assert!(client.promoted_runtime().await.is_some());
-    }
-
     #[test]
     fn facade_add_activate_rebuilds_via_control_endpoint() {
         let dir = tempdir().unwrap();
@@ -3047,7 +2976,7 @@ pub(crate) mod tests {
                 .activate_profile(Some(uid.clone()))
                 .await
                 .expect("activate");
-            client.rebuild_running_config().await.expect("reconcile");
+            client.reconcile_core().await.expect("reconcile");
             let promoted = client
                 .promoted_runtime()
                 .await
@@ -3216,7 +3145,7 @@ pub(crate) mod tests {
                 .into_value();
             client.activate_profile(Some(uid)).await.unwrap();
             endpoint.effective_enabled.store(true, Ordering::SeqCst);
-            client.rebuild_running_config().await.unwrap();
+            client.reconcile_core().await.unwrap();
             let state = client.inner.application_workflow.runtime();
             assert!(state.pending.is_some());
             assert!(state.promoted.as_ref().unwrap().effective.is_none());
@@ -3264,7 +3193,7 @@ pub(crate) mod tests {
                 .expect("add")
                 .into_value();
             client.activate_profile(Some(uid)).await.expect("activate");
-            client.rebuild_running_config().await.expect("reconcile");
+            client.reconcile_core().await.expect("reconcile");
             assert!(endpoint.submissions() >= 1);
         });
     }
@@ -3391,37 +3320,12 @@ pub(crate) mod tests {
 
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
-            let first = client
-                .rebuild_running_config()
-                .await
-                .expect_err("reconcile fails");
+            let first = client.reconcile_core().await.expect_err("reconcile fails");
             assert!(first.to_string().contains("reconcile boom"));
             let before = client.promoted_runtime().await.unwrap();
-            let _ = client
-                .rebuild_running_config()
-                .await
-                .expect_err("reconcile fails");
+            let _ = client.reconcile_core().await.expect_err("reconcile fails");
             let after = client.promoted_runtime().await.unwrap();
             assert!(after.revision > before.revision);
-        });
-    }
-
-    #[test]
-    fn boot_entrypoints_reconcile_the_current_desired_state() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::succeeding();
-        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
-            &dir,
-            endpoint.clone(),
-        ))
-        .unwrap();
-
-        tauri::async_runtime::block_on(async {
-            endpoint.prime(&client).await;
-            let promoted = client.promote_existing_runtime_product().await.unwrap();
-            client.start_promoted_runtime().await.unwrap();
-            assert!(client.promoted_runtime().await.unwrap().revision > promoted.revision);
-            assert_eq!(endpoint.submissions(), 2);
         });
     }
 

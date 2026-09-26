@@ -646,9 +646,10 @@ fn restart_core(app_handle: &AppHandle) {
         log::warn!(target: "app", "the core restart fired before the client was ready");
         return;
     };
-    // The facade rebuilds and then refreshes the clash view itself.
+    // The clash view refresh follows from the effects every core lifecycle
+    // command publishes.
     tauri::async_runtime::spawn(async move {
-        if let Err(err) = client.rebuild_running_config().await {
+        if let Err(err) = client.reconcile_core().await {
             log::error!(target:"app", "{err:?}");
         }
     });

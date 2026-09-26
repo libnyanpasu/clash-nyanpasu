@@ -1343,8 +1343,76 @@ fn an_override_patch_submits_once_and_notifies_the_ui() {
     });
 }
 
+/// A core reconcile refreshes the UI's clash view, as every lifecycle command
+/// does; the removed rebuild route only repeated this refresh.
 #[test]
-fn control_channel_reconcile_reads_committed_clash_config() {
+fn a_core_reconcile_notifies_the_ui() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    let ui = Arc::new(CountingUi {
+        refreshed: tokio::sync::watch::Sender::new(0),
+    });
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    args.ui_sink = ui.clone();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    tauri::async_runtime::block_on(async {
+        endpoint.prime(&client).await;
+        until_notified(&client).await;
+        let mut refreshed = ui.refreshed.subscribe();
+        let before = *refreshed.borrow_and_update();
+        client.reconcile_core().await.unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            refreshed.wait_for(|count| *count > before),
+        )
+        .await
+        .expect("the UI hears about the reconcile")
+        .unwrap();
+    });
+}
+
+/// The explicit start a reconcile becomes while no owner is proven refreshes
+/// the clash view too.
+#[test]
+fn an_explicit_start_notifies_the_ui() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = TestControlEndpoint::succeeding();
+    // No StartupReconcile runs, so nothing proves who owns the stopped core.
+    endpoint.set_status(
+        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+        None,
+    );
+    let ui = Arc::new(CountingUi {
+        refreshed: tokio::sync::watch::Sender::new(0),
+    });
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    args.ui_sink = ui.clone();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    tauri::async_runtime::block_on(async {
+        let workflow = &client.inner.application_workflow;
+        assert_eq!(ownership(workflow).await, Ownership::Unproven);
+        until_notified(&client).await;
+        let mut refreshed = ui.refreshed.subscribe();
+        let before = *refreshed.borrow_and_update();
+        client.reconcile_core().await.unwrap();
+        assert_eq!(
+            ownership(workflow).await,
+            Ownership::Established {
+                host: ExecutionHost::Local
+            }
+        );
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            refreshed.wait_for(|count| *count > before),
+        )
+        .await
+        .expect("the UI hears about the explicit start")
+        .unwrap();
+    });
+}
+
+#[test]
+fn a_control_channel_patch_applies_the_committed_channel() {
     use nyanpasu_config::clash::config::{ClashConfig, ClashControlChannel};
     use nyanpasu_core_manager::LocalIpcPolicy;
 
@@ -1369,7 +1437,6 @@ fn control_channel_reconcile_reads_committed_clash_config() {
             patch.clash_control_channel = Some(channel);
             patch.clash_ipc_disable_http_controller = Some(disable_http);
             f.client.patch_clash_config(patch).await.unwrap();
-            f.client.apply_control_channel().await.unwrap();
             let settings = f.endpoint.local_ipc.lock().unwrap().unwrap();
             assert_eq!(settings.policy, policy);
             assert_eq!(settings.keep_http_controller, !disable_http);
@@ -1378,7 +1445,9 @@ fn control_channel_reconcile_reads_committed_clash_config() {
 }
 
 #[test]
-fn control_channel_application_does_not_start_a_stopped_core() {
+fn a_control_channel_patch_does_not_start_a_stopped_core() {
+    use nyanpasu_config::clash::config::{ClashConfig, ClashControlChannel};
+
     let f = Fixture::new(false, false, false);
     tauri::async_runtime::block_on(async {
         f.endpoint.prime(&f.client).await;
@@ -1386,13 +1455,17 @@ fn control_channel_application_does_not_start_a_stopped_core() {
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
             None,
         );
-        f.client.apply_control_channel().await.unwrap();
+        let mut patch = ClashConfig::new_empty_patch();
+        patch.clash_control_channel = Some(ClashControlChannel::HttpOnly);
+        f.client.patch_clash_config(patch).await.unwrap();
         assert_eq!(f.endpoint.submissions(), 0);
         f.endpoint.set_status(
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
             Some(nyanpasu_core_manager::CoreKind::Mihomo),
         );
-        f.client.apply_control_channel().await.unwrap();
+        let mut patch = ClashConfig::new_empty_patch();
+        patch.clash_control_channel = Some(ClashControlChannel::PreferIpc);
+        f.client.patch_clash_config(patch).await.unwrap();
         assert_eq!(f.endpoint.submissions(), 1);
     });
 }

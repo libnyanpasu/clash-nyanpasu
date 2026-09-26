@@ -866,7 +866,12 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
         .await
         .unwrap()
         .unwrap();
-        let mut host = Box::pin(f.client.change_execution_host(ExecutionHost::Local));
+        let mut host = Box::pin(
+            f.client
+                .inner
+                .application_workflow
+                .change_host(ExecutionHost::Local),
+        );
         assert!(host.as_mut().now_or_never().is_none());
         let staging = Arc::new(tempfile::tempdir().unwrap());
         let progress = Arc::new(super::Progress::default());

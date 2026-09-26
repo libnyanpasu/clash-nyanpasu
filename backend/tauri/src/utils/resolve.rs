@@ -1,6 +1,6 @@
 use crate::{
     client::{MainWindowGeometry, NyanpasuClient, application_workflow::startup::StartupOutcome},
-    core::{storage::Storage, tray::proxies, *},
+    core::{storage::Storage, tray::proxies},
     log_err,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
@@ -15,7 +15,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{App, AppHandle, Listener, Manager, async_runtime::block_on};
+use tauri::{App, AppHandle, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::Event;
 
@@ -118,20 +118,7 @@ pub fn resolve_setup(app: &mut App) {
     #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");
     #[cfg(any(windows, target_os = "linux"))]
-    tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
-    // Installed before StartupReconcile: its full publish is what builds the
-    // tray, through this listener.
-    let app_handle = app.app_handle().clone();
-    app.listen("update_systray", move |_| {
-        // Fix the GTK should run on main thread issue
-        let app_handle_clone = app_handle.clone();
-        log_err!(app_handle.run_on_main_thread(move || {
-            log_err!(
-                tray::Tray::update_systray(&app_handle_clone),
-                "failed to update systray"
-            );
-        }));
-    });
+    crate::core::tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
 
     {
         let client = app.state::<crate::client::NyanpasuClient>();

@@ -1,29 +1,36 @@
-use super::tray_view;
-use crate::{client::effects::plan::TrayView, core::clash::proxies::Proxies};
+use super::{
+    Tray, TrayState, TrayWork,
+    display::{Paint, ProxyItem, ProxySection, Shown},
+};
+use crate::{client::effects::plan::TrayView, core::clash::proxies::Proxies, log_err};
 use indexmap::IndexMap;
 use nyanpasu_config::{application::ProxiesSelectorMode, clash::config::overrides::Mode};
+use std::ops::ControlFlow;
 use tauri::{AppHandle, Emitter, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
 
 type GroupName = String;
 type ProxyName = String;
+/// Maps each proxy node to the id of its menu item.
+// TODO: use Cow<str> instead of String
+pub(super) type ProxyItemIds = bimap::BiMap<(GroupName, ProxyName), usize>;
 type FromProxy = ProxyName;
 type ToProxy = ProxyName;
 type ProxySelectAction = (GroupName, FromProxy, ToProxy);
-#[derive(PartialEq)]
-enum TrayUpdateType {
+#[derive(Debug, PartialEq)]
+pub(super) enum TrayUpdateType {
     None,
     Full,
     Part(Vec<ProxySelectAction>),
 }
 
-struct TrayProxyItem {
-    current: Option<String>,
-    all: Vec<String>,
-    r#type: String, // TODO: 转成枚举
+pub(super) struct TrayProxyItem {
+    pub(super) current: Option<String>,
+    pub(super) all: Vec<String>,
+    pub(super) r#type: String, // TODO: 转成枚举
 }
-type TrayProxies = IndexMap<String, TrayProxyItem>;
+pub(super) type TrayProxies = IndexMap<String, TrayProxyItem>;
 
 /// Convert raw proxies to tray proxies
 fn to_tray_proxies(mode: Mode, raw_proxies: &Proxies) -> TrayProxies {
@@ -54,7 +61,7 @@ fn to_tray_proxies(mode: Mode, raw_proxies: &Proxies) -> TrayProxies {
     tray_proxies
 }
 
-fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies) -> TrayUpdateType {
+pub(super) fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies) -> TrayUpdateType {
     // 1. check if the length of two map is different
     if old_proxies.len() != new_proxies.len() {
         return TrayUpdateType::Full;
@@ -93,11 +100,12 @@ fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies) -> TrayUpd
         }
         // then diff the current
         if item.current != old_item.current {
-            actions.push((
-                group.clone(),
-                old_item.current.clone().unwrap(),
-                item.current.clone().unwrap(),
-            ));
+            // A selection that appears or disappears has no pair of items to
+            // switch between, so only a rebuild shows it.
+            let (Some(from), Some(to)) = (&old_item.current, &item.current) else {
+                return TrayUpdateType::Full;
+            };
+            actions.push((group.clone(), from.clone(), to.clone()));
         }
     }
     if actions.is_empty() {
@@ -113,30 +121,49 @@ pub async fn proxies_updated_receiver(
     client: crate::client::NyanpasuClient,
 ) {
     let mut rx = client.subscribe_proxy_changes();
-    let mode = tray_view(&app_handle).map_or(Mode::default(), |view| view.part.mode);
-    let mut tray_proxies_holder = to_tray_proxies(mode, &client.proxies_snapshot());
     while rx.changed().await.is_ok() {
         let _ = app_handle.emit(
             crate::client::STATE_CHANGED_URI,
             crate::client::StateChanged::Proxies,
         );
-        let Some(view) = tray_view(&app_handle) else {
-            continue;
-        };
-        if view.menu.selector_mode == ProxiesSelectorMode::Hidden {
-            continue;
+        log_err!(Tray::request(&app_handle, TrayWork::PROXIES));
+    }
+}
+
+/// Brings the tray's proxy selection up to the latest proxy snapshot.
+///
+/// A step of the tray drain, as rebuilds are, so it never interleaves with
+/// one and diffs against the selection the published menu shows. A rebuild
+/// that read an older snapshot is corrected by the reconcile that the newer
+/// snapshot requested behind it.
+pub(super) fn repaint_proxies(
+    app_handle: &AppHandle,
+    state: &TrayState<tauri::Wry>,
+) -> anyhow::Result<ControlFlow<()>> {
+    let view = *state.view.lock();
+    if view.menu.selector_mode == ProxiesSelectorMode::Hidden {
+        return Ok(ControlFlow::Continue(()));
+    }
+    let snapshot = app_handle
+        .state::<crate::client::NyanpasuClient>()
+        .proxies_snapshot();
+    let current = to_tray_proxies(view.part.mode, &snapshot);
+    let update = state.display.lock().update_to(&current);
+    match update {
+        // The rebuild records what it publishes.
+        TrayUpdateType::Full => {
+            Tray::request(app_handle, TrayWork::REBUILD)?;
+            Ok(ControlFlow::Break(()))
         }
-        let current = to_tray_proxies(view.part.mode, &client.proxies_snapshot());
-        match diff_proxies(&tray_proxies_holder, &current) {
-            TrayUpdateType::Full => {
-                let _ = app_handle.emit("update_systray", ());
-            }
-            TrayUpdateType::Part(actions) => {
-                platform_impl::update_selected_proxies(&app_handle, &actions)
-            }
-            TrayUpdateType::None => {}
+        TrayUpdateType::Part(actions) => {
+            let shown = platform_impl::update_selected_proxies(state, &actions);
+            state.display.lock().repainted(Some(current), shown);
+            Ok(match shown {
+                Shown::Whole => ControlFlow::Continue(()),
+                Shown::Partly => ControlFlow::Break(()),
+            })
         }
-        tray_proxies_holder = current;
+        TrayUpdateType::None => Ok(ControlFlow::Continue(())),
     }
 }
 
@@ -150,14 +177,13 @@ pub fn setup_proxies(app_handle: &AppHandle) {
 }
 
 mod platform_impl {
-    use super::{GroupName, ProxyName, ProxySelectAction, TrayProxyItem};
-    use crate::client::effects::plan::TrayView;
-    use bimap::BiMap;
+    use super::{
+        GroupName, Paint, ProxyItemIds, ProxyName, ProxySection, ProxySelectAction, Shown,
+        TrayProxyItem,
+    };
+    use crate::{client::effects::plan::TrayView, core::tray::TrayState};
     use nyanpasu_config::application::ProxiesSelectorMode;
-    use once_cell::sync::Lazy;
-    use parking_lot::Mutex;
     use rust_i18n::t;
-    use std::sync::atomic::AtomicBool;
     use tauri::{
         AppHandle, Manager, Runtime,
         menu::{
@@ -167,17 +193,12 @@ mod platform_impl {
     };
     use tracing::warn;
 
-    // It store a map of proxy nodes like "GROUP_PROXY" -> ID
-    // TODO: use Cow<str> instead of String
-    pub(super) static ITEM_IDS: Lazy<Mutex<BiMap<(GroupName, ProxyName), usize>>> =
-        Lazy::new(|| Mutex::new(BiMap::new()));
-
     pub fn generate_group_selector<R: Runtime>(
         app_handle: &AppHandle<R>,
+        item_ids: &mut ProxyItemIds,
         group_name: &str,
         group: &TrayProxyItem,
     ) -> anyhow::Result<Submenu<R>> {
-        let mut item_ids = ITEM_IDS.lock();
         let mut group_menu = SubmenuBuilder::new(app_handle, group_name);
         if group.all.is_empty() {
             group_menu = group_menu.item(
@@ -209,11 +230,13 @@ mod platform_impl {
         Ok(group_menu.build()?)
     }
 
+    /// The selector items, with the node behind each of their ids.
     pub fn generate_selectors<R: Runtime>(
         app_handle: &AppHandle<R>,
         proxies: &super::TrayProxies,
-    ) -> anyhow::Result<Vec<MenuItemKind<R>>> {
+    ) -> anyhow::Result<(Vec<MenuItemKind<R>>, ProxyItemIds)> {
         let mut items = Vec::new();
+        let mut item_ids = ProxyItemIds::new();
         if proxies.is_empty() {
             items.push(MenuItemKind::MenuItem(
                 MenuItemBuilder::new(t!("tray.no_proxies"))
@@ -221,27 +244,25 @@ mod platform_impl {
                     .enabled(false)
                     .build(app_handle)?,
             ));
-            return Ok(items);
-        }
-        {
-            let mut item_ids = ITEM_IDS.lock();
-            item_ids.clear(); // clear the item ids
+            return Ok((items, item_ids));
         }
         for (group, item) in proxies.iter() {
-            let group_menu = generate_group_selector(app_handle, group, item)?;
+            let group_menu = generate_group_selector(app_handle, &mut item_ids, group, item)?;
             items.push(MenuItemKind::Submenu(group_menu));
         }
-        Ok(items)
+        Ok((items, item_ids))
     }
 
+    /// Adds the proxy section, returned apart so that it is recorded only
+    /// once the menu is published.
     pub fn setup_tray<'m, R: Runtime, M: Manager<R>>(
         app_handle: &AppHandle<R>,
         view: &TrayView,
         mut menu: MenuBuilder<'m, R, M>,
-    ) -> anyhow::Result<MenuBuilder<'m, R, M>> {
+    ) -> anyhow::Result<(MenuBuilder<'m, R, M>, ProxySection)> {
         let selector_mode = view.menu.selector_mode;
         menu = match selector_mode {
-            ProxiesSelectorMode::Hidden => return Ok(menu),
+            ProxiesSelectorMode::Hidden => return Ok((menu, ProxySection::default())),
             ProxiesSelectorMode::Normal => menu.separator(),
             ProxiesSelectorMode::Submenu => menu,
         };
@@ -249,7 +270,7 @@ mod platform_impl {
             .state::<crate::client::NyanpasuClient>()
             .proxies_snapshot();
         let tray_proxies = super::to_tray_proxies(view.part.mode, &proxies);
-        let items = generate_selectors::<R>(app_handle, &tray_proxies)?;
+        let (items, item_ids) = generate_selectors::<R>(app_handle, &tray_proxies)?;
         match selector_mode {
             ProxiesSelectorMode::Normal => {
                 for item in items {
@@ -269,27 +290,33 @@ mod platform_impl {
             }
             _ => {}
         }
-        Ok(menu)
+        // Tray steps run one at a time, so no proxy reconcile can land between
+        // this snapshot and publishing the menu built from it.
+        Ok((
+            menu,
+            ProxySection {
+                proxies: tray_proxies,
+                item_ids,
+            },
+        ))
     }
 
-    static TRAY_ITEM_UPDATE_BARRIER: AtomicBool = AtomicBool::new(false);
-
-    #[tracing_attributes::instrument(skip(app_handle))]
-    pub fn update_selected_proxies(app_handle: &AppHandle, actions: &[ProxySelectAction]) {
-        if TRAY_ITEM_UPDATE_BARRIER.load(std::sync::atomic::Ordering::Acquire) {
-            warn!("tray item update is in progress, skip this update");
-            return;
-        }
-        let tray_state = app_handle.state::<crate::core::tray::TrayState<tauri::Wry>>();
-        let menu = tray_state.menu.lock();
-        let Some(menu) = menu.as_ref() else {
-            warn!("the tray menu is not built yet, skip this update");
-            return;
+    /// Only the proxy reconcile step calls this, so no rebuild can replace
+    /// the menu while it repaints it. Returns how much of the change took.
+    #[tracing_attributes::instrument(skip(state))]
+    pub fn update_selected_proxies(
+        state: &TrayState<tauri::Wry>,
+        actions: &[ProxySelectAction],
+    ) -> Shown {
+        let Paint::Menu(attached) = state.display.lock().paint() else {
+            warn!("the tray menu is not built or not known, skip this update");
+            return Shown::Partly;
         };
-        TRAY_ITEM_UPDATE_BARRIER.store(true, std::sync::atomic::Ordering::Release);
+        let menu = attached.menu;
+        let mut shown = Shown::Whole;
         // comment it just because we could not get the access to the menu item via the id
         // If the tauri team fixes this issue, we could use the following code to update the tray item
-        // let item_ids = ITEM_IDS.lock();
+        // let item_ids = app_handle.state::<TrayState<tauri::Wry>>().item_ids.lock();
         for action in actions {
             //     #[cfg(not(target_os = "linux"))]
             //     {
@@ -381,44 +408,60 @@ mod platform_impl {
                     }).map(|item| item.as_check_menuitem_unchecked().clone())
             }
 
-            let from_item = find_check_item(menu, action.0.clone(), action.1.clone());
+            let from_item = find_check_item(&menu, action.0.clone(), action.1.clone());
             match from_item {
                 Some(item) => {
-                    let _ = item.set_checked(false);
+                    if let Err(error) = item.set_checked(false) {
+                        warn!("failed to deselect {} {}: {error}", action.0, action.1);
+                        shown = Shown::Partly;
+                    }
                 }
                 None => {
                     warn!(
                         "failed to deselect, item not found: {} {}",
                         action.0, action.1
                     );
+                    shown = Shown::Partly;
                 }
             }
 
-            let to_item = find_check_item(menu, action.0.clone(), action.2.clone());
+            let to_item = find_check_item(&menu, action.0.clone(), action.2.clone());
             match to_item {
                 Some(item) => {
-                    let _ = item.set_checked(true);
+                    if let Err(error) = item.set_checked(true) {
+                        warn!("failed to select {} {}: {error}", action.0, action.2);
+                        shown = Shown::Partly;
+                    }
                 }
                 None => {
                     warn!(
                         "failed to select, item not found: {} {}",
                         action.0, action.2
                     );
+                    shown = Shown::Partly;
                 }
             }
         }
-        TRAY_ITEM_UPDATE_BARRIER.store(false, std::sync::atomic::Ordering::Release);
+        shown
     }
 }
 
-pub trait SystemTrayMenuProxiesExt<R: Runtime> {
-    fn setup_proxies(self, app_handle: &AppHandle<R>, view: &TrayView) -> anyhow::Result<Self>
+pub(super) trait SystemTrayMenuProxiesExt<R: Runtime> {
+    fn setup_proxies(
+        self,
+        app_handle: &AppHandle<R>,
+        view: &TrayView,
+    ) -> anyhow::Result<(Self, ProxySection)>
     where
         Self: Sized;
 }
 
 impl<R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'_, R, M> {
-    fn setup_proxies(self, app_handle: &AppHandle<R>, view: &TrayView) -> anyhow::Result<Self> {
+    fn setup_proxies(
+        self,
+        app_handle: &AppHandle<R>,
+        view: &TrayView,
+    ) -> anyhow::Result<(Self, ProxySection)> {
         platform_impl::setup_tray(app_handle, view, self)
     }
 }
@@ -437,15 +480,20 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
         }
     };
 
-    let (group, name) = {
-        let map = platform_impl::ITEM_IDS.lock();
-        let item = map.get_by_right(&node_id);
-        match item {
-            Some((group, name)) => (group.clone(), name.clone()),
-            None => {
-                error!("node id not found: {}", node_id);
-                return;
-            }
+    let item = app_handle
+        .state::<TrayState<tauri::Wry>>()
+        .display
+        .lock()
+        .proxy_item(node_id);
+    let (group, name) = match item {
+        ProxyItem::Node { group, name } => (group, name),
+        ProxyItem::NotInMenu => {
+            error!("node id not found: {}", node_id);
+            return;
+        }
+        ProxyItem::Unknown => {
+            warn!("ignored proxy item {node_id}: the tray menu is unknown until it is rebuilt");
+            return;
         }
     };
 
@@ -465,4 +513,34 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
             Err(error) => error!("select proxy failed, {} {}: {:#}", group, name, error),
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn selecting(current: Option<&str>) -> TrayProxies {
+        TrayProxies::from([(
+            "Proxy".to_owned(),
+            TrayProxyItem {
+                current: current.map(str::to_owned),
+                all: vec!["a".to_owned(), "b".to_owned()],
+                r#type: "Selector".to_owned(),
+            },
+        )])
+    }
+
+    /// The diff runs inside the main-thread drain, where a panic could take
+    /// the app down.
+    #[test]
+    fn a_selection_that_appears_or_disappears_needs_a_rebuild() {
+        let (none, a, b) = (selecting(None), selecting(Some("a")), selecting(Some("b")));
+        assert_eq!(diff_proxies(&none, &a), TrayUpdateType::Full);
+        assert_eq!(diff_proxies(&a, &none), TrayUpdateType::Full);
+        assert_eq!(
+            diff_proxies(&a, &b),
+            TrayUpdateType::Part(vec![("Proxy".to_owned(), "a".to_owned(), "b".to_owned())])
+        );
+        assert_eq!(diff_proxies(&none, &none), TrayUpdateType::None);
+    }
 }

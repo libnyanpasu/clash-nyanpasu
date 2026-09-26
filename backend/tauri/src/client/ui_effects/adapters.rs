@@ -5,13 +5,15 @@ use std::sync::Arc;
 
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
 use nyanpasu_egui::widget::StatisticWidgetVariant;
-use tauri::Emitter;
 
 use super::ports::{
     LocaleSink, LoggerRefresher, TrayRefresher, WIDGET_STOP_BOUND, WidgetController, WidgetError,
     WidgetRuntime,
 };
-use crate::{client::effects::plan::TrayView, core::tray::Tray};
+use crate::{
+    client::effects::plan::TrayView,
+    core::tray::{Tray, TrayWork},
+};
 
 /// The `rust_i18n` locale.
 ///
@@ -34,7 +36,9 @@ impl LocaleSink for RustI18nLocaleSink {
 ///
 /// Each refresh first stores its view in the tray's managed state: every build
 /// and repaint renders from that cached view, including the rebuilds the tray
-/// starts on its own when the proxy list changes.
+/// starts on its own when the proxy list changes. It then requests the work,
+/// which the tray runs on the main thread (GTK) on its own; the effect
+/// executor only asked for a refresh.
 pub struct TauriTrayRefresher<R: tauri::Runtime = tauri::Wry> {
     app_handle: tauri::AppHandle<R>,
 }
@@ -45,21 +49,20 @@ impl<R: tauri::Runtime> TauriTrayRefresher<R> {
     }
 }
 
+// Wry only: the tray publishes Wry menus. A refresh only queues its work, so
+// the effect degrades only when queueing fails. A failure while the tray
+// applies the work is logged there, and a menu it left unknown heals itself:
+// the next request of any kind rebuilds it.
 #[async_trait::async_trait]
-impl<R: tauri::Runtime> TrayRefresher for TauriTrayRefresher<R> {
+impl TrayRefresher for TauriTrayRefresher<tauri::Wry> {
     async fn refresh_full(&self, view: TrayView) -> anyhow::Result<()> {
         Tray::store_view(&self.app_handle, view);
-        // Rebuilding the menu has to happen on the main thread (GTK), so it
-        // goes out as an event that the app's own listener runs there. The
-        // hop is the adapter's business; the effect executor only asked for a
-        // refresh.
-        self.app_handle.emit("update_systray", ())?;
-        Ok(())
+        Tray::request(&self.app_handle, TrayWork::REBUILD)
     }
 
     async fn refresh_part(&self, view: TrayView) -> anyhow::Result<()> {
         Tray::store_view(&self.app_handle, view);
-        Tray::update_part(&self.app_handle)
+        Tray::request(&self.app_handle, TrayWork::PART)
     }
 }
 

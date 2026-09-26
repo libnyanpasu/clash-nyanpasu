@@ -895,7 +895,10 @@ pub async fn set_tray_icon(
     path: Option<PathBuf>,
 ) -> Result {
     (crate::core::tray::icon::set_icon(mode, path))?;
-    (crate::core::tray::Tray::update_part(&app_handle))?;
+    // Checked here, so a bad icon reaches the caller; only applying it to the
+    // tray is queued.
+    (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode)))?;
+    (crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART))?;
     Ok(())
 }
 

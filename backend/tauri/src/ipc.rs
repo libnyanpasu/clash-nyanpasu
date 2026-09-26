@@ -871,12 +871,13 @@ pub async fn set_custom_app_dir(_path: String) -> Result {
 #[cfg(windows)]
 pub mod uwp {
     use super::Result;
-    use crate::core::win_uwp;
+    use crate::{core::win_uwp, utils::path::PathResolver};
+    use tauri::State;
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn invoke_uwp_tool() -> Result {
-        (win_uwp::invoke_uwptools().await)?;
+    pub async fn invoke_uwp_tool(paths: State<'_, PathResolver>) -> Result {
+        (win_uwp::invoke_uwptools(paths.app_resources_dir()?).await)?;
         Ok(())
     }
 }

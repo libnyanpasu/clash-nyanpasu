@@ -64,7 +64,7 @@ pub use clash_info::ClashInfo;
 pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
-pub use event_sink::{TauriUiEventSink, UiEventSink};
+pub use event_sink::{STATE_CHANGED_URI, StateChanged, TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 #[cfg(test)]

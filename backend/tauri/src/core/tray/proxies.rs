@@ -117,8 +117,8 @@ pub async fn proxies_updated_receiver(
     let mut tray_proxies_holder = to_tray_proxies(mode, &client.proxies_snapshot());
     while rx.changed().await.is_ok() {
         let _ = app_handle.emit(
-            crate::core::handle::STATE_CHANGED_URI,
-            crate::core::handle::StateChanged::Proxies,
+            crate::client::STATE_CHANGED_URI,
+            crate::client::StateChanged::Proxies,
         );
         let Some(view) = tray_view(&app_handle) else {
             continue;
@@ -131,7 +131,9 @@ pub async fn proxies_updated_receiver(
             TrayUpdateType::Full => {
                 let _ = app_handle.emit("update_systray", ());
             }
-            TrayUpdateType::Part(actions) => platform_impl::update_selected_proxies(&actions),
+            TrayUpdateType::Part(actions) => {
+                platform_impl::update_selected_proxies(&app_handle, &actions)
+            }
             TrayUpdateType::None => {}
         }
         tray_proxies_holder = current;
@@ -149,7 +151,7 @@ pub fn setup_proxies(app_handle: &AppHandle) {
 
 mod platform_impl {
     use super::{GroupName, ProxyName, ProxySelectAction, TrayProxyItem};
-    use crate::{client::effects::plan::TrayView, core::handle::Handle};
+    use crate::client::effects::plan::TrayView;
     use bimap::BiMap;
     use nyanpasu_config::application::ProxiesSelectorMode;
     use once_cell::sync::Lazy;
@@ -272,17 +274,13 @@ mod platform_impl {
 
     static TRAY_ITEM_UPDATE_BARRIER: AtomicBool = AtomicBool::new(false);
 
-    #[tracing_attributes::instrument]
-    pub fn update_selected_proxies(actions: &[ProxySelectAction]) {
+    #[tracing_attributes::instrument(skip(app_handle))]
+    pub fn update_selected_proxies(app_handle: &AppHandle, actions: &[ProxySelectAction]) {
         if TRAY_ITEM_UPDATE_BARRIER.load(std::sync::atomic::Ordering::Acquire) {
             warn!("tray item update is in progress, skip this update");
             return;
         }
-        let app_handle = Handle::global().app_handle.lock();
-        let tray_state = app_handle
-            .as_ref()
-            .unwrap()
-            .state::<crate::core::tray::TrayState<tauri::Wry>>();
+        let tray_state = app_handle.state::<crate::core::tray::TrayState<tauri::Wry>>();
         let menu = tray_state.menu.lock();
         let Some(menu) = menu.as_ref() else {
             warn!("the tray menu is not built yet, skip this update");

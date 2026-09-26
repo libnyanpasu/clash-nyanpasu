@@ -2,7 +2,6 @@ use crate::{
     client::{MainWindowGeometry, NyanpasuClient, application_workflow::startup::StartupOutcome},
     core::{storage::Storage, tray::proxies, *},
     log_err,
-    utils::init,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
 use anyhow::Result;
@@ -125,11 +124,6 @@ pub fn resolve_setup(app: &mut App) {
             }));
         }
     });
-
-    handle::Handle::global().init(app.app_handle().clone());
-    crate::consts::setup_app_handle(app.app_handle().clone());
-
-    log_err!(init::init_resources());
 
     #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");

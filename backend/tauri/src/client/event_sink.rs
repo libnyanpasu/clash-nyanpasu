@@ -1,5 +1,16 @@
-use crate::core::handle::StateChanged;
+use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StateChanged {
+    NyanpasuConfig,
+    ClashConfig,
+    Profiles,
+    Proxies,
+}
+
+pub const STATE_CHANGED_URI: &str = "nyanpasu://mutation";
 
 /// Abstracts the Tauri UI side-effects the client emits.
 #[allow(dead_code)]
@@ -40,7 +51,7 @@ impl<R: tauri::Runtime> UiEventSink for TauriUiEventSink<R> {
             .app_handle
             .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
         {
-            crate::log_err!(window.emit("nyanpasu://mutation", state));
+            crate::log_err!(window.emit(STATE_CHANGED_URI, state));
         }
     }
 }

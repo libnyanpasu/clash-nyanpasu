@@ -25,10 +25,7 @@ mod utils;
 mod widget;
 mod window;
 
-use crate::{
-    core::handle::Handle,
-    utils::{init, resolve},
-};
+use crate::utils::{init, resolve};
 use anyhow::Context;
 use specta_typescript::Typescript;
 use tauri::Manager;
@@ -60,6 +57,65 @@ fn deadlock_detection() {
             }
         }
     });
+}
+
+/// Shows a panic dialog and saves logs, then exits: through the app when a
+/// handle exists, so the ordered shutdown still runs, or the process otherwise.
+fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
+    std::panic::set_hook(Box::new(move |panic_info| {
+        use std::backtrace::{Backtrace, BacktraceStatus};
+        let payload = panic_info.payload();
+
+        #[allow(clippy::manual_map)]
+        let payload = if let Some(s) = payload.downcast_ref::<&str>() {
+            Some(&**s)
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            Some(s.as_str())
+        } else {
+            None
+        };
+
+        let location = panic_info.location().map(|l| l.to_string());
+        let (backtrace, note) = {
+            let backtrace = Backtrace::force_capture();
+            let note = (backtrace.status() == BacktraceStatus::Disabled)
+                .then_some("run with RUST_BACKTRACE=1 environment variable to display a backtrace");
+            (Some(backtrace), note)
+        };
+
+        tracing::error!(
+            panic.payload = payload,
+            panic.location = location,
+            panic.backtrace = backtrace.as_ref().map(tracing::field::display),
+            panic.note = note,
+            "A panic occurred",
+        );
+
+        // This is a workaround for the upstream issue: https://github.com/tauri-apps/tauri/issues/10546
+        if let Some(s) = payload.as_ref()
+            && s.contains("PostMessage failed ; is the messages queue full?")
+        {
+            return;
+        }
+
+        // FIXME: maybe move this logic to a util function?
+        let msg = format!(
+            "Oops, we encountered some issues and program will exit immediately.\n\npayload: {payload:#?}\nlocation: {location:?}\nbacktrace: {backtrace:#?}\n\n",
+        );
+        let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
+            .arg("panic-dialog")
+            .arg(msg.as_str())
+            .spawn();
+        // fallback to show a dialog directly
+        if child.is_err() {
+            utils::dialog::panic_dialog(msg.as_str());
+        }
+
+        match &app_handle {
+            Some(app_handle) => app_handle.exit(1),
+            None => std::process::exit(1),
+        }
+    }));
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -125,66 +181,8 @@ pub fn run() -> std::io::Result<()> {
 
     crate::log_err!(init::init_config());
 
-    // Panic Hook to show a panic dialog and save logs
-    std::panic::set_hook(Box::new(move |panic_info| {
-        use std::backtrace::{Backtrace, BacktraceStatus};
-        let payload = panic_info.payload();
-
-        #[allow(clippy::manual_map)]
-        let payload = if let Some(s) = payload.downcast_ref::<&str>() {
-            Some(&**s)
-        } else if let Some(s) = payload.downcast_ref::<String>() {
-            Some(s.as_str())
-        } else {
-            None
-        };
-
-        let location = panic_info.location().map(|l| l.to_string());
-        let (backtrace, note) = {
-            let backtrace = Backtrace::force_capture();
-            let note = (backtrace.status() == BacktraceStatus::Disabled)
-                .then_some("run with RUST_BACKTRACE=1 environment variable to display a backtrace");
-            (Some(backtrace), note)
-        };
-
-        tracing::error!(
-            panic.payload = payload,
-            panic.location = location,
-            panic.backtrace = backtrace.as_ref().map(tracing::field::display),
-            panic.note = note,
-            "A panic occurred",
-        );
-
-        // This is a workaround for the upstream issue: https://github.com/tauri-apps/tauri/issues/10546
-        if let Some(s) = payload.as_ref()
-            && s.contains("PostMessage failed ; is the messages queue full?")
-        {
-            return;
-        }
-
-        // FIXME: maybe move this logic to a util function?
-        let msg = format!(
-            "Oops, we encountered some issues and program will exit immediately.\n\npayload: {payload:#?}\nlocation: {location:?}\nbacktrace: {backtrace:#?}\n\n",
-        );
-        let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
-            .arg("panic-dialog")
-            .arg(msg.as_str())
-            .spawn();
-        // fallback to show a dialog directly
-        if child.is_err() {
-            utils::dialog::panic_dialog(msg.as_str());
-        }
-
-        match Handle::global().app_handle.lock().as_ref() {
-            Some(app_handle) => {
-                app_handle.exit(1);
-            }
-            None => {
-                log::error!("app handle is not initialized");
-                std::process::exit(1);
-            }
-        }
-    }));
+    // Until setup hands over an app handle, a panic can only end the process.
+    install_panic_hook(None);
 
     // setup specta
     let (query_bindings, specta_builder) = specta_export::build_specta_builder();
@@ -274,6 +272,7 @@ pub fn run() -> std::io::Result<()> {
                 app.set_menu(menu).unwrap();
             }
 
+            install_panic_hook(Some(app.handle().clone()));
             resolve::resolve_setup(app);
 
             // setup custom scheme
@@ -296,12 +295,10 @@ pub fn run() -> std::io::Result<()> {
                 let event = crate::ipc::SchemeRequestReceivedEvent {
                     url: url.to_string(),
                 };
-                if let Some(app_handle) = Handle::global().app_handle.lock().as_ref() {
-                    log_err!(
-                        event.emit(app_handle),
-                        "failed to emit scheme-request-received event"
-                    );
-                }
+                log_err!(
+                    event.emit(&handle),
+                    "failed to emit scheme-request-received event"
+                );
             }
             // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
             log_err!(tauri_plugin_deep_link::register(

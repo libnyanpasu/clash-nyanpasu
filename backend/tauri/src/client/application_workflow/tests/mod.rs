@@ -1334,8 +1334,8 @@ struct CountingUi {
     refreshed: tokio::sync::watch::Sender<usize>,
 }
 impl UiEventSink for CountingUi {
-    fn state_changed(&self, state: crate::core::handle::StateChanged) {
-        if matches!(state, crate::core::handle::StateChanged::ClashConfig) {
+    fn state_changed(&self, state: crate::client::StateChanged) {
+        if matches!(state, crate::client::StateChanged::ClashConfig) {
             self.refreshed.send_modify(|count| *count += 1);
         }
     }

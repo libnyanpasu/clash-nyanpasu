@@ -52,12 +52,23 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .context("Failed to setup the shutdown hook")?;
     }
 
-    let paths = PathResolver::from_env().context("Failed to resolve app paths")?;
+    // Only Tauri knows where the bundle is. Resources are copied best-effort,
+    // so a bundle that cannot be located does not stop the app.
+    let resources_dir = app
+        .path()
+        .resource_dir()
+        .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
+        .ok()
+        .map(|dir| dir.join("resources"));
+    let paths = PathResolver::from_env(resources_dir).context("Failed to resolve app paths")?;
     let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
         .context("Failed to setup config migrations")?;
     migrations
         .run_pending()
         .context("Failed to run config migrations before client setup")?;
+    crate::log_err!(crate::utils::init::init_resources(&paths));
+    // For commands that need a path, such as the Windows UWP loopback tool.
+    app.manage(paths.clone());
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;

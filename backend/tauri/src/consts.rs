@@ -1,5 +1,4 @@
-use once_cell::sync::{Lazy, OnceCell};
-use tauri::AppHandle;
+use once_cell::sync::Lazy;
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const EDITOR_WINDOW_LABEL: &str = "editor";
@@ -43,14 +42,3 @@ pub static IS_PORTABLE: Lazy<bool> = Lazy::new(|| {
     let dir = crate::utils::dirs::app_install_dir().unwrap();
     crate::bundle::is_portable(&dir)
 });
-
-/// A Tauri AppHandle copy for access from global context,
-/// maybe only access it from panic handler
-static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
-pub fn app_handle() -> &'static AppHandle {
-    APP_HANDLE.get().expect("app handle not initialized")
-}
-
-pub(super) fn setup_app_handle(app_handle: AppHandle) {
-    let _ = APP_HANDLE.set(app_handle);
-}

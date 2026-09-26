@@ -8,11 +8,9 @@
       "byKey": {}
     },
     "service_globals": {
-      "total": 19,
+      "total": 8,
       "byKey": {
-        "WindowManager::global()": 8,
-        "Self::global()": 6,
-        "Handle::global()": 5
+        "WindowManager::global()": 8
       }
     },
     "migration_markers": {

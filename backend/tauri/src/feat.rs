@@ -4,8 +4,6 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
-use crate::core::*;
-use handle::Message;
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use tauri::{AppHandle, Manager};
@@ -13,27 +11,17 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 
 // 重启clash
 pub fn restart_clash_core(app_handle: &AppHandle) {
-    let client = app_handle
+    let Some(client) = app_handle
         .try_state::<crate::client::NyanpasuClient>()
-        .map(|state| state.inner().clone());
+        .map(|state| state.inner().clone())
+    else {
+        log::warn!(target: "app", "the core restart fired before the client was ready");
+        return;
+    };
+    // The facade rebuilds and then refreshes the clash view itself.
     tauri::async_runtime::spawn(async move {
-        let result = match client {
-            Some(client) => client.reconcile_core().await.map(|_| ()),
-            None => Err(nyanpasu_core_manager::CoreError::new(
-                nyanpasu_core_manager::CoreErrorKind::BackendUnavailable,
-                "NyanpasuClient is not available",
-                true,
-            )),
-        };
-        match result {
-            Ok(_) => {
-                handle::Handle::refresh_clash();
-                handle::Handle::notice_message(&Message::SetConfig(Ok(())));
-            }
-            Err(err) => {
-                handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err:?}"))));
-                log::error!(target:"app", "{err:?}");
-            }
+        if let Err(err) = client.rebuild_running_config().await {
+            log::error!(target:"app", "{err:?}");
         }
     });
 }

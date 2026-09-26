@@ -19,8 +19,6 @@
 //!   ([`PathResolver::app_install_dir`], [`PathResolver::data_or_sidecar_path`],
 //!   [`PathResolver::single_instance_placeholder`]) still call into `dirs::*`
 //!   rather than resolving paths themselves.
-//! - [`PathResolver::app_resources_dir`] reaches `Handle::global()` through
-//!   `dirs::app_resources_dir`, so it still depends on the Tauri app handle.
 //! - The process-wide `Lazy<PathBuf>` caches `CUSTOM_SCRIPTS_DIR`
 //!   (`enhance/script/js.rs`) and `SERVICE_PATH` (`core/service/mod.rs`) are
 //!   resolved once at first use; after `migrate_home_dir_handler` relocates the
@@ -40,6 +38,10 @@ use std::path::{Path, PathBuf};
 pub struct PathResolver {
     config_dir: PathBuf,
     data_dir: PathBuf,
+    /// The bundle's `resources` dir. Only Tauri knows where the bundle is, so
+    /// the composition root resolves it and hands it in. `None` when that
+    /// failed, and for resolvers built from explicit roots.
+    resources_dir: Option<PathBuf>,
 }
 
 #[allow(dead_code)]
@@ -49,10 +51,11 @@ impl PathResolver {
     /// Delegates to [`dirs::app_config_dir`] / [`dirs::app_data_dir`], which
     /// ensure the directories exist and honor the portable flag and Windows
     /// registry override.
-    pub fn from_env() -> Result<Self> {
+    pub fn from_env(resources_dir: Option<PathBuf>) -> Result<Self> {
         Ok(Self {
             config_dir: dirs::app_config_dir()?,
             data_dir: dirs::app_data_dir()?,
+            resources_dir,
         })
     }
 
@@ -62,6 +65,7 @@ impl PathResolver {
         Self {
             config_dir,
             data_dir,
+            resources_dir: None,
         }
     }
 
@@ -83,10 +87,11 @@ impl PathResolver {
         dirs::app_install_dir()
     }
 
-    /// The bundled `resources` dir. Requires the Tauri app handle, so it is
-    /// resolved on demand via [`dirs`].
-    pub fn app_resources_dir(&self) -> Result<PathBuf> {
-        dirs::app_resources_dir()
+    /// The bundled `resources` dir, as the composition root resolved it.
+    pub fn app_resources_dir(&self) -> Result<&Path> {
+        self.resources_dir
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("the bundled resources dir is unknown"))
     }
 
     // -- config-derived paths ----------------------------------------------
@@ -222,5 +227,10 @@ mod tests {
         let r = resolver();
         assert_eq!(r.app_config_dir(), Path::new("/cfg"));
         assert_eq!(r.app_data_dir(), Path::new("/data"));
+    }
+
+    #[test]
+    fn explicit_roots_know_no_bundle_resources() {
+        assert!(resolver().app_resources_dir().is_err());
     }
 }

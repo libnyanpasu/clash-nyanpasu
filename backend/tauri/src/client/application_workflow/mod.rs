@@ -60,12 +60,13 @@ pub struct CoreLifecycleStatus {
     pub completed: VecDeque<CoreLifecycleOperationResult>,
 }
 
-// Diagnostic records returned by the facade for callers recovering a timed-out RPC.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct CoreLifecycleOperationResult {
     pub id: OperationId,
+    // Only tests read the failure detail so far; no status surface shows it.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub error: Option<String>,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub backend_operation_id: Option<OperationId>,
 }
 
@@ -1035,7 +1036,7 @@ impl ApplicationWorkflowClient {
         match self.0.actor.call(|reply| Message::Request(Request { command, response: Response { id, reply: Some(reply) } }), Some(timeout)).await {
             Ok(CallResult::Success(result)) => result,
             Ok(CallResult::Timeout) => Err(CoreError::new(CoreErrorKind::BackendUnavailable,
-                "core lifecycle wait timed out; the operation may still be queued or running; inspect core_lifecycle_status before retrying", false).with_operation(id)),
+                "core lifecycle wait timed out; the operation may still be queued or running; inspect Configuration status before retrying", false).with_operation(id)),
             _ => Err(CoreError::new(CoreErrorKind::Internal, "application workflow actor is unavailable; operation outcome is unknown", false).with_operation(id)),
         }
     }

@@ -10,7 +10,7 @@ mod validation;
 use super::{
     super::{
         NyanpasuClient,
-        tests::{TestControlEndpoint, test_client_args_with_endpoint},
+        tests::{TestControlEndpoint, set_service_mode, test_client_args_with_endpoint},
     },
     *,
 };
@@ -633,7 +633,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         );
         let switch = {
             let client = client.clone();
-            tokio::spawn(async move { client.set_execution_host(true).await })
+            tokio::spawn(async move { set_service_mode(&client, true).await })
         };
         tokio::time::timeout(Duration::from_secs(5), endpoint.entered.notified())
             .await
@@ -641,7 +641,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         let mut uninstall = Box::pin(client.uninstall_service());
         assert!(uninstall.as_mut().now_or_never().is_none());
         barrier(&client.inner.application_workflow).await;
-        assert_eq!(client.core_lifecycle_status().queued.len(), 1);
+        assert_eq!(client.inner.application_workflow.status().queued.len(), 1);
         assert!(!calls.lock().unwrap().contains(&"uninstall"));
         endpoint.release.notify_one();
         assert!(matches!(
@@ -652,7 +652,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
             uninstall.await.unwrap_err().kind,
             Some(CoreErrorKind::OperationConflict)
         );
-        client.set_execution_host(false).await.unwrap();
+        set_service_mode(&client, false).await.unwrap();
         client.uninstall_service().await.unwrap();
         let calls = calls.lock().unwrap();
         let reconcile = calls.iter().rposition(|c| *c == "reconcile_local").unwrap();
@@ -807,14 +807,20 @@ async fn barrier(client: &ApplicationWorkflowClient) {
 async fn start_replacement(
     f: &Fixture,
 ) -> (
-    tokio::task::JoinHandle<super::super::Result<()>>,
+    tokio::task::JoinHandle<Result<(), CoreError>>,
     std::path::PathBuf,
 ) {
     let target = f.client.get_app_config().await.unwrap().core;
     let (artifact, _) = f.artifact(target);
     let staging_path = artifact.staging.path().to_owned();
     let client = f.client.clone();
-    let task = tokio::spawn(async move { client.replace_core_binary(artifact).await });
+    let task = tokio::spawn(async move {
+        client
+            .inner
+            .application_workflow
+            .replace_binary(artifact)
+            .await
+    });
     f.installer.entered.notified().await;
     (task, staging_path)
 }
@@ -830,15 +836,18 @@ fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation(
             2,
             "stop and death proof precede installation"
         );
-        let active = f.client.core_lifecycle_status().active.unwrap();
+        let active = f.client.inner.application_workflow.status().active.unwrap();
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
         assert!(staging.exists());
         let mut reconcile = Box::pin(f.client.reconcile_core());
         assert!(reconcile.as_mut().now_or_never().is_none());
         barrier(&f.client.inner.application_workflow).await;
-        assert_eq!(f.client.core_lifecycle_status().active, Some(active));
-        assert_eq!(f.client.core_lifecycle_status().queued.len(), 1);
+        assert_eq!(
+            f.client.inner.application_workflow.status().active,
+            Some(active)
+        );
+        assert_eq!(f.client.inner.application_workflow.status().queued.len(), 1);
         assert_eq!(f.endpoint.submissions(), 2);
         // Status reads stay responsive while the installer is parked.
         let _ = f.client.core_status();
@@ -853,7 +862,9 @@ fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation(
         assert!(!staging.exists());
         assert!(
             f.client
-                .core_lifecycle_status()
+                .inner
+                .application_workflow
+                .status()
                 .completed
                 .iter()
                 .any(|r| r.id == active && r.error.is_none())
@@ -905,7 +916,12 @@ fn replacement_decisions_use_applied_identity_and_always_recover() {
                 kind,
             );
             let (artifact, progress) = f.artifact(target);
-            f.client.replace_core_binary(artifact).await.unwrap();
+            f.client
+                .inner
+                .application_workflow
+                .replace_binary(artifact)
+                .await
+                .unwrap();
             assert_eq!(
                 f.installer.submissions_at_copy.load(Ordering::SeqCst),
                 before_copy
@@ -932,7 +948,14 @@ fn failed_death_proof_never_installs_even_when_status_says_stopped() {
         );
         f.endpoint.set_recover_should_fail(true);
         let (artifact, progress) = f.artifact(ClashCore::ClashRs);
-        assert!(f.client.replace_core_binary(artifact).await.is_err());
+        assert!(
+            f.client
+                .inner
+                .application_workflow
+                .replace_binary(artifact)
+                .await
+                .is_err()
+        );
         assert_eq!(f.installer.calls.load(Ordering::SeqCst), 0);
         assert!(!progress.0.load(Ordering::SeqCst));
     });
@@ -948,7 +971,7 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         let mut shutdown = Box::pin(workflow_shutdown(&f.client));
         assert!(shutdown.as_mut().now_or_never().is_none());
         barrier(&f.client.inner.application_workflow).await;
-        assert!(f.client.core_lifecycle_status().shutting_down);
+        assert!(f.client.inner.application_workflow.status().shutting_down);
         assert_eq!(
             reconcile.await.unwrap_err().kind,
             Some(CoreErrorKind::OperationConflict)
@@ -980,7 +1003,10 @@ fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
             Err(error) => error,
             Ok(_) => panic!("parked installation must time out"),
         };
-        assert_eq!(error.operation_id, f.client.core_lifecycle_status().active);
+        assert_eq!(
+            error.operation_id,
+            f.client.inner.application_workflow.status().active
+        );
         let mut pending = Vec::new();
         for _ in 0..MAX_PENDING {
             let mut call = Box::pin(core_lifecycle.reconcile());
@@ -1022,10 +1048,20 @@ fn failed_installation_does_not_restart_and_a_panic_fails_admission_closed() {
         let f = Fixture::new(false, !panic, panic);
         tauri::async_runtime::block_on(async {
             let (artifact, progress) = f.artifact(ClashCore::Mihomo);
-            assert!(f.client.replace_core_binary(artifact).await.is_err());
+            assert!(
+                f.client
+                    .inner
+                    .application_workflow
+                    .replace_binary(artifact)
+                    .await
+                    .is_err()
+            );
             assert!(!progress.0.load(Ordering::SeqCst));
             assert_eq!(f.endpoint.submissions(), 2);
-            assert_eq!(f.client.core_lifecycle_status().uncertain, panic);
+            assert_eq!(
+                f.client.inner.application_workflow.status().uncertain,
+                panic
+            );
             if panic {
                 assert_eq!(
                     f.client.reconcile_core().await.unwrap_err().kind,
@@ -1047,9 +1083,9 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
         f.endpoint.set_result_missing(true);
         let error = f.client.reconcile_core().await.unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
-        assert!(f.client.core_lifecycle_status().uncertain);
+        assert!(f.client.inner.application_workflow.status().uncertain);
         assert!(f.client.promoted_runtime().await.is_some());
-        let status = f.client.core_lifecycle_status();
+        let status = f.client.inner.application_workflow.status();
         let result = status
             .completed
             .iter()
@@ -1131,7 +1167,12 @@ fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
             serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap();
         assert_eq!(saved["mode"], "global");
         assert_eq!(saved["ipv6"], true);
-        let applied = client.runtime_lifecycle_state().await.promoted.unwrap();
+        let applied = client
+            .inner
+            .application_workflow
+            .runtime()
+            .promoted
+            .unwrap();
         assert_eq!(applied.config["mode"].as_str(), Some("global"));
         assert_eq!(applied.config["ipv6"].as_bool(), Some(true));
         assert_eq!(applied.revision.get(), 3);
@@ -1205,8 +1246,9 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
         assert_eq!(endpoint.submissions(), 0);
         assert_eq!(
             client
-                .runtime_lifecycle_state()
-                .await
+                .inner
+                .application_workflow
+                .runtime()
                 .promoted
                 .unwrap()
                 .revision
@@ -1257,7 +1299,7 @@ fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
             2,
             "Try applied and Cancel restored the baseline"
         );
-        assert!(!client.core_lifecycle_status().uncertain);
+        assert!(!client.inner.application_workflow.status().uncertain);
     });
 }
 
@@ -1325,8 +1367,9 @@ fn an_override_patch_submits_once_and_notifies_the_ui() {
         assert!(outcome.degradations().is_empty());
         assert_eq!(
             client
-                .runtime_lifecycle_state()
-                .await
+                .inner
+                .application_workflow
+                .runtime()
                 .promoted
                 .unwrap()
                 .config["mode"]

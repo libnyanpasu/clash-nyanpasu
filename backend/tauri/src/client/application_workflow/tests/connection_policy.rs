@@ -882,7 +882,7 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
             staging,
             progress: progress.clone(),
         };
-        let mut install = Box::pin(f.client.replace_core_binary(artifact));
+        let mut install = Box::pin(f.client.inner.application_workflow.replace_binary(artifact));
         assert!(install.as_mut().now_or_never().is_none());
         super::barrier(&f.client.inner.application_workflow).await;
         assert_eq!(f.client.inner.application_workflow.status().queued.len(), 3);
@@ -965,7 +965,7 @@ impl RecordingBuilder {
         Arc::new(Self {
             delegate: super::adapters::FsRuntimeBuildAdapter {
                 profiles_dir: f.client.inner.profiles_dir.clone(),
-                paths: f.client.inner.runtime_paths.clone(),
+                paths: crate::client::tests::test_runtime_paths(&f._dir),
                 scripts: crate::enhance::ScriptDirs::under(f._dir.path()),
             },
             inputs: Mutex::new(Vec::new()),
@@ -999,10 +999,10 @@ fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         let mut original = f.client.get_clash_config().await.unwrap();
         original.clash_control_channel = ClashControlChannel::HttpOnly;
         original.clash_ipc_disable_http_controller = false;
-        let mut newer = original.clone();
-        newer.clash_control_channel = ClashControlChannel::PreferIpc;
-        newer.clash_ipc_disable_http_controller = true;
-        f.client.replace_clash_config(newer).await.unwrap();
+        let mut newer = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+        newer.clash_control_channel = Some(ClashControlChannel::PreferIpc);
+        newer.clash_ipc_disable_http_controller = Some(true);
+        f.client.patch_clash_config(newer).await.unwrap();
         let builder = RecordingBuilder::new(&f, false, false);
         let mut preparation = super::RuntimePreparation::new(
             f.client.inner.application.snapshot_handle(),

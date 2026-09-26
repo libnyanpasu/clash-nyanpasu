@@ -648,10 +648,10 @@ fn app_core_kind_to_type(
 /// stays `None` -- the same "unmapped variant stays unknown" rule
 /// `map_local_status` applies to a future `CoreState`.
 ///
-/// Used to derive the *target*'s kind inside `replace_core_binary`
-/// (`client::NyanpasuClient`), not the service host's *applied* kind --
-/// `map_service_status` no longer feeds its `applied_kind` through this
-/// function; see that field's comment (R6b).
+/// Used to derive the *target*'s kind inside the binary replacement
+/// (`CoreLifecycleWorkflow::replace_binary`), not the service host's
+/// *applied* kind -- `map_service_status` no longer feeds its `applied_kind`
+/// through this function; see that field's comment (R6b).
 pub(crate) fn wire_core_type_to_kind(
     core_type: &nyanpasu_utils::core::CoreType,
 ) -> Option<CoreKind> {
@@ -696,7 +696,7 @@ fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
         // Immediately after a service-side switch, the app can therefore
         // observe the new state with the old `type` still echoed, which
         // would read as "a different kind is applied" and wrongly skip a
-        // stop `replace_core_binary` needs. The durable fix is a daemon
+        // stop the binary replacement needs. The durable fix is a daemon
         // projection derived from the same manager snapshot the status
         // itself comes from (a runtime follow-up, out of scope here); until
         // then, the service host's applied identity is always unknown, so

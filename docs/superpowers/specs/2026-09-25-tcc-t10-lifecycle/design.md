@@ -407,6 +407,8 @@ pub struct SourcesSnapshot { pub event_seq: u64, pub entries: Vec<SourceStatus> 
 | 外部文件    | 内容校验失败，或提交 / Try 被拒              | Rejected(`external_source_rejected`) |
 | 外部文件    | 提交成功                                     | Committed                            |
 
+补记（2026-09-26，按 Task 6b 实现）：`commit_file_first` 的任何错误都归入 Rejected，订阅刷新为 `subscription_rejected`，外部 Mirror（含 Symlink 的状态写入）为 `external_source_rejected`。这包括 materialization prepare / promote 失败、participant 或 Try 拒绝、persist IO 错误和版本冲突，不只上表的“源事务或 Try 拒绝”。分类依据是失败的步骤，不解析错误文本。
+
 **为什么不只记日志**：V33 要求状态如实，而 T9 的状态区是用户能看到的事实来源。
 
 **决定（§3）**：ProfilesActor 独占的每个 profile 最新一条 `SourceStatus` 就是回执，经 `ConfigurationStatus.sources` 暴露。

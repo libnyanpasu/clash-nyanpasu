@@ -27,10 +27,9 @@
       "byKey": {}
     },
     "mutable_statics": {
-      "total": 7,
+      "total": 6,
       "byKey": {
         "backend/tauri/src/utils/dirs.rs::INIT": 4,
-        "backend/tauri/src/core/service/mod.rs::SERVICE_PATH": 1,
         "backend/tauri/src/enhance/script/js.rs::CUSTOM_SCRIPTS_DIR": 1,
         "backend/tauri/src/server/mod.rs::SERVER_PORT": 1
       }

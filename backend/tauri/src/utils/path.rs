@@ -19,15 +19,18 @@
 //!   ([`PathResolver::app_install_dir`], [`PathResolver::data_or_sidecar_path`],
 //!   [`PathResolver::single_instance_placeholder`]) still call into `dirs::*`
 //!   rather than resolving paths themselves.
-//! - The process-wide `Lazy<PathBuf>` caches `CUSTOM_SCRIPTS_DIR`
-//!   (`enhance/script/js.rs`) and `SERVICE_PATH` (`core/service/mod.rs`) are
-//!   resolved once at first use; after `migrate_home_dir_handler` relocates the
-//!   home directory they go stale until the process restarts. Folding these into
-//!   an injected `PathResolver` is tracked as follow-up cleanup.
+//! - The process-wide `Lazy<PathBuf>` cache `CUSTOM_SCRIPTS_DIR`
+//!   (`enhance/script/js.rs`) is resolved once at first use; after
+//!   `migrate_home_dir_handler` relocates the home directory it goes stale
+//!   until the process restarts. Folding it into an injected `PathResolver` is
+//!   tracked as follow-up cleanup.
 
 use crate::utils::dirs;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+
+/// The service binary's name, without the platform's executable suffix.
+const SERVICE_BINARY: &str = "nyanpasu-service";
 
 /// Resolves application paths from a fixed pair of base directories.
 ///
@@ -85,6 +88,13 @@ impl PathResolver {
     /// current executable, independent of the base dirs.
     pub fn app_install_dir(&self) -> Result<PathBuf> {
         dirs::app_install_dir()
+    }
+
+    /// The `nyanpasu-service` binary, shipped next to the executable.
+    pub fn service_binary_path(&self) -> Result<PathBuf> {
+        Ok(self
+            .app_install_dir()?
+            .join(format!("{SERVICE_BINARY}{}", std::env::consts::EXE_SUFFIX)))
     }
 
     /// The bundled `resources` dir, as the composition root resolved it.
@@ -232,5 +242,19 @@ mod tests {
     #[test]
     fn explicit_roots_know_no_bundle_resources() {
         assert!(resolver().app_resources_dir().is_err());
+    }
+
+    #[test]
+    fn the_service_binary_sits_next_to_the_executable() {
+        let r = resolver();
+        let binary = r.service_binary_path().unwrap();
+        assert_eq!(
+            binary.parent(),
+            Some(r.app_install_dir().unwrap().as_path())
+        );
+        assert_eq!(
+            binary.file_name().unwrap().to_str(),
+            Some(format!("nyanpasu-service{}", std::env::consts::EXE_SUFFIX).as_str())
+        );
     }
 }

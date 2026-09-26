@@ -73,6 +73,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context("Failed to build the service IPC client")?;
+    let service_binary = paths
+        .service_binary_path()
+        .context("Failed to locate the service binary")?;
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
@@ -83,6 +86,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         let adapter = Arc::new(
             crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
                 service_ipc.clone(),
+                service_binary,
             ),
         );
         let service =

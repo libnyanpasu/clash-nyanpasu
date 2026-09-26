@@ -842,8 +842,7 @@ pub trait AppWindow {
 #[cfg(target_os = "macos")]
 pub mod macos {
     #![allow(non_snake_case)]
-    use std::cell::RefCell;
-
+    use dispatch2::MainThreadBound;
     use objc2::{
         DeclaredClass, MainThreadOnly, define_class, msg_send, rc::Retained,
         runtime::ProtocolObject,
@@ -1079,36 +1078,27 @@ pub mod macos {
         }
     }
 
-    pub struct TrafficLightsWindowDelegateGuard {
-        _delegate: Retained<WindowDelegate>,
-    }
-
-    thread_local! {
-        /// This is used to keep the delegate alive until the window is destroyed
-        static TRAFFIC_LIGHTS_WINDOW_DELEGATE_GUARD: RefCell<Option<TrafficLightsWindowDelegateGuard>> = const { RefCell::new(None) };
-    }
-
     pub fn setup_traffic_lights_pos(window: WebviewWindow, pos: (f64, f64), mtm: MainThreadMarker) {
         let window_state = WindowState::new(window.clone(), pos.into());
         let ns_window = window_state.with_ns_window(|win| win);
-        let window_state_clone = window_state.clone();
+        // first apply the traffic lights pos
+        window_state.apply_traffic_lights_pos();
+        let delegate = WindowDelegate::new(window_state.clone(), mtm);
+        let object: &ProtocolObject<dyn NSWindowDelegate> = ProtocolObject::from_ref(&*delegate);
+        ns_window.setDelegate(Some(object));
+        // The window only holds its delegate weakly, so the window's own event
+        // handler keeps it alive until the window is destroyed. Window events
+        // arrive on the main thread, where the delegate is released.
+        let delegate = parking_lot::Mutex::new(Some(MainThreadBound::new(delegate, mtm)));
         window.on_window_event(move |event| match event {
             WindowEvent::ThemeChanged(_) => {
-                window_state_clone.apply_traffic_lights_pos();
+                window_state.apply_traffic_lights_pos();
             }
             WindowEvent::Destroyed => {
-                let _ = TRAFFIC_LIGHTS_WINDOW_DELEGATE_GUARD.take();
+                drop(delegate.lock().take());
             }
             _ => {}
         });
-        // first apply the traffic lights pos
-        window_state.apply_traffic_lights_pos();
-        let delegate = WindowDelegate::new(window_state, mtm);
-        let object: &ProtocolObject<dyn NSWindowDelegate> = ProtocolObject::from_ref(&*delegate);
-        ns_window.setDelegate(Some(object));
-        TRAFFIC_LIGHTS_WINDOW_DELEGATE_GUARD.replace(Some(TrafficLightsWindowDelegateGuard {
-            _delegate: delegate,
-        }));
     }
 }
 

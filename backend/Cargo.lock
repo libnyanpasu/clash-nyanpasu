@@ -1925,6 +1925,7 @@ dependencies = [
  "deelevate",
  "delay_timer",
  "dirs 7.0.0",
+ "dispatch2",
  "display-info",
  "dunce",
  "dyn-clone",

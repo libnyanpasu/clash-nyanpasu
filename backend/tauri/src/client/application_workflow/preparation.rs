@@ -166,7 +166,7 @@ impl RuntimePreparation {
 #[async_trait::async_trait]
 impl RuntimePreparationPort for RuntimePreparation {
     async fn prepare_latest(&mut self) -> Result<PreparedRuntime, CoreError> {
-        // Independent committed snapshots; changes during a build retain a dirty pass.
+        // Independent committed snapshots, sampled when the build starts.
         let profiles = Arc::new(self.profiles.load().state.clone());
         let clash = self.clash.load().state.clone();
         self.prepare_committed(profiles, clash).await

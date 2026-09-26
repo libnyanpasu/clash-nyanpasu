@@ -662,7 +662,7 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
 }
 
 #[test]
-fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interruption() {
+fn cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_interruption() {
     let f = Fixture::new(false);
     tauri::async_runtime::block_on(async {
         let uid = add_profile(&f).await;
@@ -681,9 +681,8 @@ fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interrupti
         let active = workflow.status().active.unwrap();
         first.abort();
         assert!(first.await.unwrap_err().is_cancelled());
-        let mut dirty =
-            Box::pin(workflow.call(super::Command::Core(super::CoreCommand::RuntimeDirty)));
-        assert!(dirty.as_mut().now_or_never().is_none());
+        let mut reconcile = Box::pin(workflow.reconcile());
+        assert!(reconcile.as_mut().now_or_never().is_none());
         let next = {
             let client = f.client.clone();
             tokio::spawn(async move { client.activate_profile(None).await })
@@ -701,7 +700,7 @@ fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interrupti
         assert!(f.client.get_profiles().await.unwrap().current.is_some());
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
-        dirty.await.unwrap();
+        reconcile.await.unwrap();
         assert!(next.await.unwrap().unwrap().degradations().is_empty());
         assert!(
             workflow

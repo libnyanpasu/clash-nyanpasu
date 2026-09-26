@@ -32,7 +32,6 @@ pub(in crate::client) enum Command {
     StopService,
     RestartService,
     UninstallService,
-    RuntimeDirty,
     RecoverServiceEndpoint,
     Shutdown,
 }

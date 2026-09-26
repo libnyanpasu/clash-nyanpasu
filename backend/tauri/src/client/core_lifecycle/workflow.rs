@@ -171,11 +171,6 @@ impl CoreLifecycleWorkflow {
                 Ok(Output::Unit)
             }
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
-            Command::RuntimeDirty => {
-                self.permit_start()?;
-                self.reconcile(preparation).await?;
-                Ok(Output::Unit)
-            }
             Command::ChangeHost(host) => Ok(Output::Handoff(
                 self.move_execution_host(host)
                     .await

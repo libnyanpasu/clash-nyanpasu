@@ -146,7 +146,6 @@ pub(crate) enum LifecycleCommand {
     StopService,
     RestartService,
     UninstallService,
-    RuntimeDirty,
     RecoverServiceEndpoint,
 }
 
@@ -167,7 +166,6 @@ impl LifecycleCommand {
             CoreCommand::StopService => Self::StopService,
             CoreCommand::RestartService => Self::RestartService,
             CoreCommand::UninstallService => Self::UninstallService,
-            CoreCommand::RuntimeDirty => Self::RuntimeDirty,
             CoreCommand::RecoverServiceEndpoint => Self::RecoverServiceEndpoint,
             CoreCommand::Shutdown => return None,
         })

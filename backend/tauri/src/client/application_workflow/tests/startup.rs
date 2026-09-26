@@ -38,7 +38,7 @@ use tokio::{sync::Notify, time::Instant};
 
 use super::{
     super::{
-        ApplicationWorkflowArgs, ApplicationWorkflowClient, Command, DirtyNotifier, adapters,
+        ApplicationWorkflowArgs, ApplicationWorkflowClient, Command, adapters,
         attempt::{ActionView, AttemptOriginKind},
         mutation::{
             DEFERRED_RETRY_BUDGET, DeferredTarget, MutationOutcomeKind, ReestablishCause,
@@ -424,7 +424,6 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         },
         panic: AtomicBool::new(false),
     });
-    let (_notifier, dirty) = DirtyNotifier::channel();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
             notifications: notifications.clone(),
@@ -440,7 +439,6 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-            dirty,
             budgets: test_budgets(),
             ownership: Ownership::Unproven,
         },

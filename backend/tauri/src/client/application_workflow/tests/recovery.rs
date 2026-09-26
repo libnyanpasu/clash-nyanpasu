@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use super::dirty_graph_with_clients;
+use super::workflow_graph_with_clients;
 use crate::{
     client::{
         runtime,
@@ -36,7 +36,7 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
     let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
         .await
         .unwrap();
-    let (client, _notifier, builder, _, _) = dirty_graph_with_clients(
+    let (client, builder, _, _) = workflow_graph_with_clients(
         &dir,
         core.clone(),
         service,
@@ -1372,7 +1372,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
         ServiceClient::spawn_bounded(daemon.clone(), 0, std::time::Duration::from_millis(50))
             .await
             .unwrap();
-    let (client, _notifier, builder, _, _) = dirty_graph_with_clients(
+    let (client, builder, _, _) = workflow_graph_with_clients(
         &dir,
         core,
         service.clone(),

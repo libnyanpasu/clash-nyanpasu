@@ -219,7 +219,7 @@ impl NyanpasuClient {
         let runtime_paths_for_setup = runtime_paths.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
         let wiring = mutations.clone();
-        let (application, session_state, clash_config, profiles, ports, fs, dirty_rx) =
+        let (application, session_state, clash_config, profiles, ports, fs) =
             tauri::async_runtime::block_on(async move {
                 runtime_paths_for_setup
                     .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
@@ -241,7 +241,6 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                 ));
-                let (_notifier, dirty_rx) = application_workflow::DirtyNotifier::channel();
                 let profiles = profiles::ProfilesClient::new(
                     mutations.clone(),
                     profiles_path,
@@ -257,7 +256,6 @@ impl NyanpasuClient {
                     profiles,
                     ports,
                     file_service as Arc<dyn ProfileFsPort>,
-                    dirty_rx,
                 ))
             })?;
         tauri::async_runtime::block_on(Self::with_parts(
@@ -277,7 +275,6 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
-            dirty_rx,
             binary_installer,
             effects,
             window,
@@ -305,7 +302,6 @@ impl NyanpasuClient {
         core_v2: CoreClientV2,
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
-        dirty_rx: tokio::sync::watch::Receiver<()>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
@@ -344,7 +340,6 @@ impl NyanpasuClient {
                 )),
                 ports: ports.clone(),
                 installer: binary_installer,
-                dirty: dirty_rx,
                 budgets: application_workflow::mutation::MutationBudgets::default(),
                 ownership: core_lifecycle::Ownership::Unproven,
             },
@@ -2150,7 +2145,6 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns,
-            application_workflow::DirtyNotifier::channel().1,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -2645,7 +2639,6 @@ pub(crate) mod tests {
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
         ));
-        let (_notifier, dirty_rx) = application_workflow::DirtyNotifier::channel();
         let profiles = profiles::ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(dir, "profiles.yaml"),
@@ -2680,7 +2673,6 @@ pub(crate) mod tests {
             core_v2,
             service,
             Arc::new(NoopSystemDnsCache),
-            dirty_rx,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -3808,7 +3800,6 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
-                application_workflow::DirtyNotifier::channel().1,
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),

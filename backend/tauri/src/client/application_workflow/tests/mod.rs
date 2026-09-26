@@ -78,35 +78,29 @@ async fn workflow_shutdown(client: &NyanpasuClient) -> ShutdownReport {
         })
 }
 
-async fn dirty_graph(
+async fn workflow_graph(
     dir: &tempfile::TempDir,
 ) -> (
     ApplicationWorkflowClient,
-    DirtyNotifier,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
 ) {
-    dirty_graph_with_store(dir, runtime::RuntimeSnapshotStore::default()).await
+    workflow_graph_with_store(dir, runtime::RuntimeSnapshotStore::default()).await
 }
 
 #[tokio::test]
 async fn injected_snapshot_store_is_shared_by_workflow_and_reader() {
     let dir = tempfile::tempdir().unwrap();
     let store = runtime::RuntimeSnapshotStore::default();
-    let (client, notifier, builder, _, _) = dirty_graph_with_store(&dir, store.clone()).await;
-    notifier.request_rebuild();
-    tick(&client).await;
+    let (client, builder, _, _) = workflow_graph_with_store(&dir, store.clone()).await;
+    let reconcile = {
+        let client = client.clone();
+        tokio::spawn(async move { client.reconcile().await })
+    };
     builder.entered.notified().await;
     builder.release.notify_one();
-    let mut status = client.0.status.clone();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        status.wait_for(|s| !s.completed.is_empty() && s.active.is_none()),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    reconcile.await.unwrap().unwrap();
     let written = store.read().promoted.unwrap();
     let observed = client.runtime().promoted.unwrap();
     assert!(Arc::ptr_eq(&written, &observed));
@@ -122,7 +116,7 @@ async fn injected_snapshot_store_is_shared_by_workflow_and_reader() {
 async fn a_confirmed_apply_is_the_recovery_baseline_without_an_inspection() {
     let dir = tempfile::tempdir().unwrap();
     let store = runtime::RuntimeSnapshotStore::default();
-    let (client, _notifier, builder, _, _) = dirty_graph_with_store(&dir, store.clone()).await;
+    let (client, builder, _, _) = workflow_graph_with_store(&dir, store.clone()).await;
     builder.release.notify_one();
 
     client.reconcile().await.unwrap();
@@ -169,8 +163,8 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
         .await
         .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
-    let (client, _notifier, builder, _, clash) =
-        dirty_graph_with_clients(&dir, core, service, false, ports.clone()).await;
+    let (client, builder, _, clash) =
+        workflow_graph_with_clients(&dir, core, service, false, ports.clone()).await;
     builder.release.notify_one();
 
     // Two ports that are distinct by construction. Nothing binds them here, and
@@ -217,8 +211,8 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
         .await
         .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
-    let (client, _notifier, builder, _, _) =
-        dirty_graph_with_clients(&dir, core, service, false, ports.clone()).await;
+    let (client, builder, _, _) =
+        workflow_graph_with_clients(&dir, core, service, false, ports.clone()).await;
     builder.release.notify_one();
 
     assert_eq!(
@@ -242,12 +236,11 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
     client.shutdown().await.unwrap();
 }
 
-async fn dirty_graph_with_store(
+async fn workflow_graph_with_store(
     dir: &tempfile::TempDir,
     snapshots: runtime::RuntimeSnapshotStore,
 ) -> (
     ApplicationWorkflowClient,
-    DirtyNotifier,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
@@ -258,7 +251,7 @@ async fn dirty_graph_with_store(
     let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
         .await
         .unwrap();
-    dirty_graph_with_clients(
+    workflow_graph_with_clients(
         dir,
         core,
         service,
@@ -268,7 +261,7 @@ async fn dirty_graph_with_store(
     .await
 }
 
-async fn dirty_graph_with_clients(
+async fn workflow_graph_with_clients(
     dir: &tempfile::TempDir,
     core: CoreClient,
     service: ServiceClient,
@@ -278,7 +271,6 @@ async fn dirty_graph_with_clients(
     ports: Arc<super::super::SessionPortResolver>,
 ) -> (
     ApplicationWorkflowClient,
-    DirtyNotifier,
     Arc<BlockingBuilder>,
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
@@ -286,7 +278,6 @@ async fn dirty_graph_with_clients(
     use super::super::tests::{test_materialization_port, test_typed_config_clients};
     use crate::state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
     let (application, _, clash) = test_typed_config_clients(dir).await;
-    let (notifier, dirty) = DirtyNotifier::channel();
     let profiles = super::super::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),
@@ -335,8 +326,6 @@ async fn dirty_graph_with_clients(
             )),
             ports,
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-
-            dirty,
             budgets: mutation::MutationBudgets::default(),
             ownership,
         },
@@ -344,7 +333,7 @@ async fn dirty_graph_with_clients(
     )
     .await
     .unwrap();
-    (client, notifier, builder, application, clash)
+    (client, builder, application, clash)
 }
 
 fn fixed_port(port: u16) -> nyanpasu_config::clash::config::clash_strategy::port::PortStrategy {
@@ -354,86 +343,20 @@ fn fixed_port(port: u16) -> nyanpasu_config::clash::config::clash_strategy::port
     }
 }
 
-async fn tick(client: &ApplicationWorkflowClient) {
-    client.0.actor.cast(Message::DirtyTick).unwrap();
-    barrier(client).await;
-}
-
 #[tokio::test]
 async fn idle_ticks_do_not_advance_the_journal() {
     let dir = tempfile::tempdir().unwrap();
-    let (client, ..) = dirty_graph(&dir).await;
+    let (client, ..) = workflow_graph(&dir).await;
     barrier(&client).await;
     let mut journal = client.subscribe_mutations();
     journal.borrow_and_update();
     let before = client.mutation_journal().event_seq;
-    for message in [
-        Message::DirtyTick,
-        Message::ConvergenceTick,
-        Message::RecoveryTick,
-    ] {
+    for message in [Message::ConvergenceTick, Message::RecoveryTick] {
         client.0.actor.cast(message).unwrap();
     }
     barrier(&client).await;
     assert_eq!(client.mutation_journal().event_seq, before);
     assert!(!journal.has_changed().unwrap());
-}
-
-#[tokio::test]
-async fn dirty_during_build_coalesces_and_eventually_applies_the_new_snapshot() {
-    let dir = tempfile::tempdir().unwrap();
-    let (client, notifier, builder, application, _) = dirty_graph(&dir).await;
-    for _ in 0..8 {
-        notifier.request_rebuild();
-    }
-    tick(&client).await;
-    builder.entered.notified().await;
-    let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
-    patch.core = Some(ClashCore::ClashRs);
-    application.patch(patch).await.unwrap();
-    for _ in 0..8 {
-        notifier.request_rebuild();
-    }
-    tick(&client).await;
-    assert_eq!(builder.calls.load(Ordering::SeqCst), 1);
-    builder.release.notify_one();
-    let mut status = client.0.status.clone();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        status.wait_for(|s| s.completed.len() >= 2 && s.active.is_none()),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    assert_eq!(builder.calls.load(Ordering::SeqCst), 2);
-    let snapshot = client.runtime().promoted.unwrap();
-    assert_eq!(snapshot.revision.get(), 2);
-    assert_eq!(snapshot.target_core, ClashCore::ClashRs);
-    client.shutdown().await.unwrap();
-}
-
-#[tokio::test]
-async fn shutdown_discards_dirty_before_start_and_after_an_active_build() {
-    for active in [false, true] {
-        let dir = tempfile::tempdir().unwrap();
-        let (client, notifier, builder, _, _) = dirty_graph(&dir).await;
-        if active {
-            notifier.request_rebuild();
-            tick(&client).await;
-            builder.entered.notified().await;
-        }
-        notifier.request_rebuild();
-        let mut shutdown = Box::pin(client.shutdown());
-        assert!(shutdown.as_mut().now_or_never().is_none());
-        barrier(&client).await;
-        notifier.request_rebuild();
-        tick(&client).await;
-        builder.release.notify_one();
-        assert!(shutdown.await.unwrap().stop.is_ok());
-        notifier.request_rebuild();
-        tick(&client).await;
-        assert_eq!(builder.calls.load(Ordering::SeqCst), usize::from(active));
-    }
 }
 
 struct ParkedEndpoint {
@@ -1144,23 +1067,31 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
     });
 }
 
+/// Two graphs share no workflow state: a reconcile in one builds nothing in
+/// the other, and shutting one down leaves the other able to reconcile.
 #[tokio::test]
-async fn dirty_notifications_and_shutdown_are_isolated_between_graphs() {
+async fn a_reconcile_and_a_shutdown_stay_within_their_graph() {
     let dir_a = tempfile::tempdir().unwrap();
     let dir_b = tempfile::tempdir().unwrap();
-    let (a, notify_a, build_a, _, _) = dirty_graph(&dir_a).await;
-    let (b, notify_b, build_b, _, _) = dirty_graph(&dir_b).await;
-    notify_a.request_rebuild();
-    tick(&a).await;
-    tick(&b).await;
+    let (a, build_a, _, _) = workflow_graph(&dir_a).await;
+    let (b, build_b, _, _) = workflow_graph(&dir_b).await;
+    let reconcile_a = {
+        let a = a.clone();
+        tokio::spawn(async move { a.reconcile().await })
+    };
     build_a.entered.notified().await;
+    barrier(&b).await;
     assert_eq!(build_b.calls.load(Ordering::SeqCst), 0);
     build_a.release.notify_one();
+    reconcile_a.await.unwrap().unwrap();
     a.shutdown().await.unwrap();
-    notify_b.request_rebuild();
-    tick(&b).await;
+    let reconcile_b = {
+        let b = b.clone();
+        tokio::spawn(async move { b.reconcile().await })
+    };
     build_b.entered.notified().await;
     build_b.release.notify_one();
+    reconcile_b.await.unwrap().unwrap();
     b.shutdown().await.unwrap();
     assert_eq!(build_a.calls.load(Ordering::SeqCst), 1);
     assert_eq!(build_b.calls.load(Ordering::SeqCst), 1);

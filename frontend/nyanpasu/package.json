@@ -45,7 +45,7 @@
     "react": "19.3.0",
     "react-aria-components": "1.21.1",
     "react-dom": "19.3.0",
-    "react-error-boundary": "6.1.5",
+    "react-error-boundary": "6.1.6",
     "react-hook-form": "7.89.0",
     "react-markdown": "10.1.0",
     "react-use": "17.6.1",

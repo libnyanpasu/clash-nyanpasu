@@ -9,6 +9,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use tokio_util::sync::CancellationToken;
 
 use super::{
     HotkeyStatus,
@@ -27,13 +28,14 @@ pub(super) enum Message {
     },
     #[cfg_attr(not(test), allow(dead_code))]
     Status(RpcReplyPort<HotkeyStatus>),
-    /// Exit path: hand every accelerator back to the OS.
-    UnregisterAll(RpcReplyPort<EffectStatus>),
 }
 
 pub struct Args {
     pub registrar: Arc<dyn ShortcutRegistrar>,
     pub sink: Arc<dyn HotkeyActionSink>,
+    /// Once cancelled, no grab is taken again; `post_stop` hands every
+    /// accelerator back to the OS.
+    pub shutdown: CancellationToken,
 }
 
 pub(super) struct State {
@@ -46,10 +48,7 @@ pub(super) struct State {
     /// Only accelerators the OS confirmed. A failed grab stays out, so the next
     /// reconcile retries it instead of believing it is in place.
     registered: BTreeMap<String, HotkeyAction>,
-    /// Set by the shutdown unregister. Every grab is back with the OS by then,
-    /// so anything that would take one again is refused rather than leaving
-    /// the accelerators held by a process that is gone.
-    closed: bool,
+    shutdown: CancellationToken,
 }
 
 pub(super) struct HotkeyActor;
@@ -70,7 +69,7 @@ impl Actor for HotkeyActor {
             applied_revision: EffectRevision::default(),
             health: EffectHealth::Healthy,
             registered: BTreeMap::new(),
-            closed: false,
+            shutdown: args.shutdown,
         })
     }
 
@@ -92,10 +91,6 @@ impl Actor for HotkeyActor {
             Message::Status(reply) => {
                 let _ = reply.send(state.status());
             }
-            Message::UnregisterAll(reply) => {
-                let status = state.unregister_all().await;
-                let _ = reply.send(status);
-            }
         }
         Ok(())
     }
@@ -107,7 +102,9 @@ impl Actor for HotkeyActor {
     ) -> Result<(), ActorProcessingErr> {
         // A process that exits without giving the grabs back leaves the
         // accelerators dead for every other application.
-        state.unregister_all().await;
+        if let Err(error) = state.registrar.unregister_all().await {
+            tracing::warn!(%error, "failed to hand the global shortcuts back to the OS");
+        }
         Ok(())
     }
 }
@@ -118,7 +115,7 @@ impl State {
         revision: EffectRevision,
         desired: HotkeyBindings,
     ) -> EffectStatus {
-        if self.closed {
+        if self.shutdown.is_cancelled() {
             // A plan admitted before the shutdown can still be in flight. Its
             // hotkeys would be grabbed on the way out and never given back.
             tracing::debug!(
@@ -243,21 +240,6 @@ impl State {
         status
     }
 
-    async fn unregister_all(&mut self) -> EffectStatus {
-        self.closed = true;
-        self.registered.clear();
-        let revision = self.applied_revision;
-        match self.registrar.unregister_all().await {
-            Ok(()) => self.healthy(revision),
-            Err(error) => self.degraded(
-                revision,
-                "hotkey_unregister_all_failed",
-                error.to_string(),
-                true,
-            ),
-        }
-    }
-
     async fn register(&self, accelerator: &str, action: HotkeyAction) -> anyhow::Result<()> {
         // No validation here: `reconcile` cleared the whole desired set before
         // it released anything.
@@ -296,7 +278,7 @@ impl State {
             applied_revision: self.applied_revision,
             health: EffectHealth::Degraded {
                 code: "hotkey_shut_down",
-                message: "the hotkey owner released its shortcuts and stopped accepting changes"
+                message: "the hotkey owner is shutting down and stopped accepting changes"
                     .to_owned(),
                 retryable: false,
             },

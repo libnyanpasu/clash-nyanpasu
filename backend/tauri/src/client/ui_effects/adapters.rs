@@ -99,8 +99,8 @@ impl LoggerRefresher for TracingLoggerRefresher {
 pub struct TauriWidgetController {
     runtime: tokio::sync::OnceCell<Arc<dyn WidgetRuntime>>,
     /// The variant this controller last started. Narrow implementation detail,
-    /// not shared state: only `apply` and `stop` touch it, and it exists so a
-    /// repeated configuration does not tear the widget down and build it again.
+    /// not shared state: only `apply` touches it, and it exists so a repeated
+    /// configuration does not tear the widget down and build it again.
     started: tokio::sync::Mutex<Option<StatisticWidgetVariant>>,
 }
 
@@ -124,9 +124,9 @@ impl WidgetController for TauriWidgetController {
         let mut started = self.started.lock().await;
         match config {
             NetworkStatisticWidgetConfig::Disabled => {
-                // Unconditional, as in `stop`: a start that failed and could
-                // not clean up keeps its widget owned without running. With
-                // nothing owned the stop is a no-op.
+                // Unconditional: a start that failed and could not clean up
+                // keeps its widget owned without running. With nothing owned
+                // the stop is a no-op.
                 runtime
                     .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
                     .await?;
@@ -144,16 +144,6 @@ impl WidgetController for TauriWidgetController {
                 *started = Some(variant);
             }
         }
-        Ok(())
-    }
-
-    async fn stop(&self, deadline: tokio::time::Instant) -> Result<(), WidgetError> {
-        let runtime = self.runtime()?;
-        let mut started = self.started.lock().await;
-        // Unconditional: a widget whose start was cancelled mid-handshake is
-        // owned without running, and the shutdown still has to reap it.
-        runtime.stop(deadline).await?;
-        *started = None;
         Ok(())
     }
 }

@@ -441,6 +441,8 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             budgets: test_budgets(),
             ownership: Ownership::Unproven,
+            shutdown: tokio_util::sync::CancellationToken::new(),
+            tasks: tokio_util::task::TaskTracker::new(),
         },
         false,
     )

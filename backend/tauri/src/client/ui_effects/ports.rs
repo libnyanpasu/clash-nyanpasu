@@ -39,8 +39,8 @@ pub trait LoggerRefresher: Send + Sync + 'static {
     fn refresh(&self, level: Option<LoggingLevel>, max_files: Option<usize>) -> anyhow::Result<()>;
 }
 
-/// How long a widget stop may take before the shutdown reports it
-/// unconfirmed (T10 §5.5).
+/// How long a widget stop waits for the widget to leave before it reports the
+/// widget still owned (T10 §5.5).
 pub const WIDGET_STOP_BOUND: Duration = Duration::from_secs(3);
 
 /// Why a widget effect could not be applied.
@@ -66,8 +66,6 @@ pub enum WidgetError {
 #[cfg_attr(test, mockall::automock)]
 pub trait WidgetController: Send + Sync + 'static {
     async fn apply(&self, config: NetworkStatisticWidgetConfig) -> Result<(), WidgetError>;
-    /// Stops whatever widget is owned, spawned or running, by `deadline`.
-    async fn stop(&self, deadline: Instant) -> Result<(), WidgetError>;
 }
 
 /// The widget process itself, as the controller uses it.

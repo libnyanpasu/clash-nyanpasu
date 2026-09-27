@@ -14,6 +14,7 @@ use nyanpasu_config::clash::config::{
 use nyanpasu_core::state::{PersistentStateManager, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
+use tokio_util::sync::CancellationToken;
 
 /// Snapshot of the saved Clash configuration domain, not live Clash runtime API state.
 #[derive(Debug, Clone)]
@@ -46,11 +47,14 @@ impl ClashConfigSnapshot {
 pub struct ClashConfigActorArgs {
     pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<ClashConfig>,
+    /// Once cancelled, every write is refused.
+    pub shutdown: CancellationToken,
 }
 
 pub struct ClashConfigActorState {
     mutations: MutationCoordinator,
     manager: PersistentStateManager<ClashConfig>,
+    shutdown: CancellationToken,
 }
 
 #[derive(Debug)]
@@ -136,6 +140,7 @@ impl Actor for ClashConfigActor {
         Ok(ClashConfigActorState {
             mutations: args.mutations,
             manager: args.manager,
+            shutdown: args.shutdown,
         })
     }
 
@@ -146,6 +151,15 @@ impl Actor for ClashConfigActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            ClashConfigActorMessage::Patch { reply, .. }
+            | ClashConfigActorMessage::PatchOverrides { reply, .. }
+            | ClashConfigActorMessage::Replace { reply, .. }
+                if state.shutdown.is_cancelled() =>
+            {
+                let _ = reply.send(Err(anyhow::anyhow!(
+                    "the clash config is closed: the app is shutting down"
+                )));
+            }
             ClashConfigActorMessage::Patch { patch, reply } => {
                 let _ = reply.send(Self::patch(state, patch).await);
             }

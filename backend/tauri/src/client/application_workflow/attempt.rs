@@ -311,7 +311,6 @@ impl ApplicationWorkflow {
     pub(super) fn advance(&mut self, stage: AttemptStage) {
         if let Some(live) = &mut self.live {
             live.stage = stage;
-            self.stage.send_replace(Some((live.operation_id, stage)));
         }
     }
 

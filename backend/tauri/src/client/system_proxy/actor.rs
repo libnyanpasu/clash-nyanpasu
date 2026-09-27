@@ -41,8 +41,6 @@ pub(super) enum Message {
     },
     #[cfg_attr(not(test), allow(dead_code))]
     Status(RpcReplyPort<SystemProxyStatus>),
-    /// Exit path: put back the proxy settings this process found.
-    Restore(RpcReplyPort<EffectStatus>),
     /// Delivered by the guard timer, or by a test in place of one.
     GuardTick,
 }
@@ -54,22 +52,17 @@ pub struct Args {
     /// Production builds a real interval timer. Tests pass `false` and deliver
     /// `GuardTick` themselves, so a guard assertion never waits on a clock.
     pub schedule_guard_ticks: bool,
-}
-
-/// What the typed client hands the actor on top of the injected ports.
-pub(super) struct ActorArgs {
-    pub args: Args,
-    /// Fired by [`super::SystemProxyClient::restore`] before the restore
-    /// message is sent, so an in-flight PAC download stops occupying the
-    /// mailbox instead of outlasting the exit path.
-    pub cancel: CancellationToken,
+    /// Once cancelled, nothing writes the OS settings but the restore in
+    /// `post_stop`. It also reaches work already running on the mailbox, such
+    /// as a PAC download, so the restore behind it is not held back.
+    pub shutdown: CancellationToken,
 }
 
 pub(super) struct State {
     os: Arc<dyn OsProxyPort>,
     auto_launch: Arc<dyn AutoLaunchPort>,
     pac: Arc<dyn PacPort>,
-    cancel: CancellationToken,
+    shutdown: CancellationToken,
     schedule_guard_ticks: bool,
     /// Highest revision acted on, per capability. The facade's gate orders
     /// revisions; this is what protects the reconcile entry points that do not
@@ -131,19 +124,18 @@ pub(super) struct SystemProxyActor;
 impl Actor for SystemProxyActor {
     type Msg = Message;
     type State = State;
-    type Arguments = ActorArgs;
+    type Arguments = Args;
 
     async fn pre_start(
         &self,
         _myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let ActorArgs { args, cancel } = args;
         Ok(State {
             os: args.os,
             auto_launch: args.auto_launch,
             pac: args.pac,
-            cancel,
+            shutdown: args.shutdown,
             schedule_guard_ticks: args.schedule_guard_ticks,
             applied: AppliedRevisions::default(),
             health: EffectHealth::Healthy,
@@ -180,21 +172,19 @@ impl Actor for SystemProxyActor {
             Message::Status(reply) => {
                 let _ = reply.send(state.status());
             }
-            Message::Restore(reply) => {
-                let status = state.restore().await;
-                let _ = reply.send(status);
-            }
             Message::GuardTick => state.guard_tick().await,
         }
         Ok(())
     }
 
+    /// Exit path: puts back the proxy settings this process found. It runs
+    /// after the reconcile in flight, whose writes stop at the shutdown token.
     async fn post_stop(
         &self,
         _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        state.stop_guard();
+        state.restore().await;
         Ok(())
     }
 }
@@ -209,10 +199,9 @@ impl State {
         auto_launch: Option<bool>,
     ) -> Vec<EffectStatus> {
         let kinds = requested_kinds(proxy.is_some(), guard.is_some(), auto_launch.is_some());
-        // The token fires on the way into the restore, before its message is
-        // even queued, so a reconcile can arrive between the two. Either way
-        // the app is leaving and the restore owns the OS from here: applying a
-        // plan now would re-install the proxy that is about to be removed.
+        // A reconcile queued before the shutdown still reaches the mailbox.
+        // The app is leaving and the restore owns the OS from here: applying
+        // a plan now would re-install the proxy that is about to be removed.
         if self.shutting_down() {
             self.close_for_shutdown();
             tracing::debug!(
@@ -283,12 +272,11 @@ impl State {
         statuses
     }
 
-    /// Whether the exit path owns the OS settings from here. Every blocking
-    /// call this actor makes can return after the restore has already run or
-    /// given up waiting for the mailbox, so this is rechecked immediately
-    /// before each OS write rather than once per message.
+    /// Whether the exit path owns the OS settings from here. The shutdown can
+    /// begin during any blocking call this actor makes, so this is rechecked
+    /// immediately before each OS write rather than once per message.
     fn shutting_down(&self) -> bool {
-        self.closed || self.cancel.is_cancelled()
+        self.closed || self.shutdown.is_cancelled()
     }
 
     /// Every effect the plan asked for, refused because the app is exiting.
@@ -346,7 +334,7 @@ impl State {
         }
 
         // The read above blocks on the platform registration and can hand the
-        // turn back long after the restore ran; registering a login item then
+        // turn back after the shutdown began; registering a login item then
         // writes OS state on behalf of a plan the exit path already refused.
         if self.shutting_down() {
             self.close_for_shutdown();
@@ -458,7 +446,7 @@ impl State {
             };
         }
 
-        let applied = self.pac.apply(url, self.cancel.clone()).await;
+        let applied = self.pac.apply(url, self.shutdown.clone()).await;
         if applied.is_ok() {
             // Recorded before the shutdown check below: the url is installed
             // either way, and only this flag makes the restore clear it.
@@ -468,7 +456,7 @@ impl State {
         // PAC refusing the url. Told apart by the token rather than by the
         // error text, which the port is free to word however it likes. Writing
         // the plain fallback now would install a proxy during teardown, and the
-        // blocking OS write can push the restore past its own bound.
+        // blocking OS write would hold the restore back.
         if self.shutting_down() {
             self.close_for_shutdown();
             return self.shut_down(EffectKind::SystemProxy, revision);
@@ -528,10 +516,9 @@ impl State {
         config: OsProxyConfig,
     ) -> EffectStatus {
         let captured = self.capture_original(config.enable).await;
-        // The capture reads the OS, and that read can outlast the restore's own
-        // bound: the exit path gives up waiting, the process finishes tearing
-        // down, and only then does this turn resume. Writing here would install
-        // a proxy after the settings the user had were already put back.
+        // The capture reads the OS, and the shutdown can begin while it blocks.
+        // The restore owns the settings from then on: writing here would only
+        // install a proxy for the restore to take back.
         if self.shutting_down() {
             self.close_for_shutdown();
             return self.shut_down(EffectKind::SystemProxy, revision);
@@ -675,9 +662,8 @@ impl State {
     /// Guard only the last confirmed setting. Converging a failed desired
     /// target belongs to EffectsActor's bounded budget, never this timer.
     async fn guard_tick(&mut self) {
-        // A tick queued before the restore must not re-install what it removed,
-        // and the token fires before that message is even queued, so a tick can
-        // sit ahead of the restore with `closed` still unset.
+        // A tick queued before the shutdown still reaches the mailbox, ahead
+        // of the restore, and must not re-install what the restore removes.
         if self.shutting_down() {
             self.close_for_shutdown();
             return;

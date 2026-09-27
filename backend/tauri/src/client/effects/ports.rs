@@ -4,34 +4,12 @@
 //! fan-out to actor clients and adapters stays inside the executor. There is no
 //! lookup API here, so this is not a service locator.
 
-use std::time::Duration;
-
 #[cfg(test)]
 use super::status::EffectHealth;
 use super::{
     plan::ApplicationEffectPlan,
     status::{EffectRevision, EffectStatus},
 };
-use crate::client::StepOutcome;
-
-/// What the shutdown's independent cleanups confirmed, one outcome per owner
-/// (T10 §5.5).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EffectsShutdown {
-    pub system_proxy: StepOutcome,
-    pub hotkeys: StepOutcome,
-    pub widget: StepOutcome,
-}
-
-impl EffectsShutdown {
-    pub fn children(&self) -> Vec<(&'static str, StepOutcome)> {
-        vec![
-            ("SystemProxy", self.system_proxy.clone()),
-            ("Hotkeys", self.hotkeys.clone()),
-            ("Widget", self.widget.clone()),
-        ]
-    }
-}
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
@@ -47,16 +25,6 @@ pub trait ApplicationEffectsPort: Send + Sync + 'static {
         revision: EffectRevision,
         plan: ApplicationEffectPlan,
     ) -> Vec<EffectStatus>;
-
-    /// Tells every owner the shutdown began, without waiting for anything
-    /// (T10 §5.5 step 2): work already running abandons what it waits on.
-    fn begin_shutdown(&self);
-
-    /// Shutdown path: restores the system state the app found, drops its OS
-    /// registrations and stops the widget. The three are started together and
-    /// each is bounded on its own within `budget`, so one that hangs keeps
-    /// neither of the others from finishing. Never fails.
-    async fn shutdown(&self, budget: Duration) -> EffectsShutdown;
 }
 
 /// Accepts every plan and changes nothing. The composition root now assembles
@@ -83,17 +51,6 @@ impl ApplicationEffectsPort for NoopApplicationEffects {
                 health: EffectHealth::Healthy,
             })
             .collect()
-    }
-
-    fn begin_shutdown(&self) {}
-
-    async fn shutdown(&self, _: Duration) -> EffectsShutdown {
-        let nothing = || StepOutcome::skipped("no effect owners");
-        EffectsShutdown {
-            system_proxy: nothing(),
-            hotkeys: nothing(),
-            widget: nothing(),
-        }
     }
 }
 
@@ -122,14 +79,6 @@ mod tests {
             assert_eq!(status.applied_revision, revision);
             assert_eq!(status.health, EffectHealth::Healthy);
         }
-        assert!(
-            NoopApplicationEffects
-                .shutdown(Duration::ZERO)
-                .await
-                .children()
-                .iter()
-                .all(|(_, outcome)| matches!(outcome, StepOutcome::Skipped { .. }))
-        );
     }
 }
 

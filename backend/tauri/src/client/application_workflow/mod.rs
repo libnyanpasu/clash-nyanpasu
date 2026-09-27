@@ -17,16 +17,16 @@ mod workflow;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::VecDeque, fmt, panic::AssertUnwindSafe, sync::Arc, time::Duration};
+use std::{collections::VecDeque, panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
 use futures_util::FutureExt;
 use nyanpasu_core::state::{DecisionHandle, StateDecision, StateSnapshot};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
-    app_lifecycle::Reply,
     core_lifecycle::{
         Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
         ServiceRecovery, domain_error,
@@ -41,7 +41,6 @@ use crate::core::actor_v2::{
 };
 #[cfg(test)]
 use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
-use attempt::AttemptStage;
 use mutation::{MutationBudgets, MutationCommand, MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
@@ -68,67 +67,6 @@ pub struct CoreLifecycleOperationResult {
     pub error: Option<String>,
     #[cfg_attr(not(test), allow(dead_code))]
     pub backend_operation_id: Option<OperationId>,
-}
-
-/// What closing admission found (T10 §5.4 step 1).
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ClosingAck {
-    /// Queued requests refused by this close.
-    pub rejected: usize,
-    /// The operation left running: closing never touches it.
-    pub active: Option<OperationId>,
-}
-
-impl fmt::Display for ClosingAck {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "queued requests refused: {}", self.rejected)?;
-        match self.active {
-            Some(active) => write!(f, "; operation {active} left running"),
-            None => f.write_str("; nothing running"),
-        }
-    }
-}
-
-/// Whether a closing workflow's running work reached its own end.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Settlement {
-    /// Closed, with nothing running. `isolated` says an attempt was left
-    /// unresolved for a later recovery, which shutdown does not run.
-    Settled { isolated: bool },
-    /// Still running when the wait ran out. `attempt` is the last stage the
-    /// running attempt reported, with the attempt it belongs to.
-    Unsettled {
-        operation: Option<OperationId>,
-        attempt: Option<(OperationId, AttemptStage)>,
-    },
-    /// The workflow actor stopped before anything settled.
-    Gone,
-}
-
-impl fmt::Display for Settlement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Settled { isolated: false } => f.write_str("nothing running"),
-            Self::Settled { isolated: true } => {
-                f.write_str("nothing running; an unresolved attempt keeps the domain isolated")
-            }
-            Self::Unsettled {
-                operation: None, ..
-            } => f.write_str("closing was not confirmed"),
-            Self::Unsettled {
-                operation: Some(operation),
-                attempt: None,
-            } => write!(f, "operation {operation} still running"),
-            Self::Unsettled {
-                operation: Some(operation),
-                attempt: Some((attempt, stage)),
-            } => write!(
-                f,
-                "operation {operation} still running; attempt {attempt} at {stage:?}"
-            ),
-            Self::Gone => f.write_str("the application workflow stopped before settling"),
-        }
-    }
 }
 
 /// Work serialized by the execution domain. A source mutation runs as a
@@ -175,10 +113,8 @@ enum Message {
     AdmissionExpired(OperationId),
     RecoveryTick,
     ConvergenceTick,
-    /// Closes admission for the ordered shutdown: refuses what is queued and
-    /// leaves the running operation alone. Unlike a shutdown request, it stops
-    /// nothing by itself (T10 §5.4 step 1).
-    BeginClosing(RpcReplyPort<ClosingAck>),
+    /// Refuses what is queued, lets the running operation settle, then stops
+    /// the core and the actor.
     Close,
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
@@ -223,10 +159,11 @@ struct ApplicationWorkflowState {
     recovery_timer: Option<tokio::task::JoinHandle<()>>,
     convergence_timer: Option<tokio::task::JoinHandle<()>>,
     recovery_due: bool,
-    closing_token: tokio_util::sync::CancellationToken,
+    /// A child of the root shutdown token. Once cancelled, admission is
+    /// closed; `Close` then refuses what is queued.
+    closing_token: CancellationToken,
     status: watch::Sender<CoreLifecycleStatus>,
     shutdown: Option<ShutdownReport>,
-    closing: bool,
     shutdown_waiters: Vec<Response>,
     abandoned: bool,
     /// Queued and in-flight mutation contexts.
@@ -276,6 +213,10 @@ pub(super) struct ApplicationWorkflowArgs {
     /// Who owns the runtime when the workflow starts. Production starts
     /// `Unproven` and lets StartupReconcile prove it (T10 §1.2).
     pub ownership: Ownership,
+    /// Once cancelled, no new command is admitted; the tracked task then
+    /// closes the workflow and waits for it to stop the core and itself.
+    pub shutdown: CancellationToken,
+    pub tasks: TaskTracker,
 }
 
 struct ActorArgs {
@@ -291,6 +232,12 @@ fn conflict(message: &str) -> CoreError {
 }
 
 impl ApplicationWorkflowState {
+    /// Admission is closed once the shutdown token is cancelled, before the
+    /// `Close` that follows it arrives.
+    fn closing(&self) -> bool {
+        self.closing_token.is_cancelled()
+    }
+
     fn publish(&mut self) {
         self.status.send_modify(|status| {
             status.active = self.active.as_ref().map(|op| op.response.id);
@@ -300,7 +247,7 @@ impl ApplicationWorkflowState {
                 .map(|r| r.response.id)
                 .chain(self.shutdown_waiters.iter().map(|r| r.id))
                 .collect();
-            status.shutting_down = self.closing;
+            status.shutting_down = self.closing();
         });
         self.publish_journal(None);
     }
@@ -356,7 +303,6 @@ impl ApplicationWorkflowState {
     }
 
     fn close(&mut self) {
-        self.closing = true;
         self.closing_token.cancel();
         self.recovery_due = false;
         if let Some(timer) = self.convergence_timer.take() {
@@ -418,7 +364,7 @@ impl ApplicationWorkflowState {
             }
             self.pending = probes;
         }
-        let request = if self.closing {
+        let request = if self.closing() {
             // Closing admission alone stops nothing: the core stops when a
             // shutdown is asked for, or when every client is gone.
             if self.shutdown.is_some() || (self.shutdown_waiters.is_empty() && !self.abandoned) {
@@ -495,8 +441,6 @@ impl ApplicationWorkflowState {
                 // only withdraw attempts that have not entered this domain.
                 context.admitted = true;
             }
-            // Whatever stage the task reports from here on is its own.
-            workflow.stage.send_replace(None);
             let actor = myself.clone();
             let shutdown = matches!(command, Command::Core(CoreCommand::Shutdown));
             // Ownership moves into exactly one tracked task, never a shared lock.
@@ -591,7 +535,7 @@ impl ApplicationWorkflowState {
         // The execution domain is free and nothing is ahead of this request, so
         // `drive` admits it as soon as this handler returns.
         let admittable = self.active.is_none() && self.pending.is_empty();
-        let refusal = if self.closing {
+        let refusal = if self.closing() {
             Some("the application workflow is shutting down")
         } else if self.recovery_required() {
             Some("a previous operation left the execution domain isolated; recover first")
@@ -745,7 +689,6 @@ impl Actor for ApplicationWorkflowActor {
             recovery_due: false,
             status: args.status,
             shutdown: None,
-            closing: false,
             shutdown_waiters: Vec::new(),
             abandoned: false,
             mutations: Vec::new(),
@@ -772,7 +715,7 @@ impl Actor for ApplicationWorkflowActor {
                     } else {
                         state.settle(request.response, Err(conflict("too many shutdown waiters")));
                     }
-                } else if state.closing {
+                } else if state.closing() {
                     state.reject(request, conflict("core lifecycle is shutting down"));
                 } else if state.pending.len() >= MAX_PENDING {
                     state.reject(request, conflict("core lifecycle queue is full"));
@@ -847,20 +790,9 @@ impl Actor for ApplicationWorkflowActor {
             }
             Message::ConvergenceTick => {}
             Message::RecoveryTick => {
-                if !state.closing {
+                if !state.closing() {
                     state.recovery_due = true;
                 }
-            }
-            Message::BeginClosing(reply) => {
-                let rejected = state.pending.len();
-                state.close();
-                // Published before the reply: whoever sees the acknowledgement
-                // must already read the workflow as closing.
-                state.publish();
-                let _ = reply.send(ClosingAck {
-                    rejected,
-                    active: state.active.as_ref().map(|op| op.response.id),
-                });
             }
             Message::Close => {
                 state.abandoned = true;
@@ -928,7 +860,6 @@ struct ClientInner {
     mutations: watch::Receiver<MutationJournal>,
     core: crate::core::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
-    stage: watch::Receiver<Option<(OperationId, AttemptStage)>>,
 }
 
 impl Drop for ClientInner {
@@ -966,7 +897,6 @@ impl ApplicationWorkflowClient {
         let (journal_tx, mutations) = watch::channel(MutationJournal::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
-        let (stage_tx, stage) = watch::channel(None);
         let preparation = RuntimePreparation::new(
             args.application.clone(),
             args.clash.clone(),
@@ -986,7 +916,6 @@ impl ApplicationWorkflowClient {
             pending_release: None,
             live: None,
             startup: None,
-            stage: stage_tx,
             #[cfg(test)]
             panic_at_confirm: false,
             lifecycle: CoreLifecycleWorkflow {
@@ -996,7 +925,9 @@ impl ApplicationWorkflowClient {
                 runtime: runtime.clone(),
                 ports: args.ports,
                 recovery: ServiceRecovery::default(),
-                closing: tokio_util::sync::CancellationToken::new(),
+                // A child, so the workflow's own close cancels only it and
+                // never reads as the shutdown the task below waits for.
+                closing: args.shutdown.child_token(),
                 ownership: args.ownership,
             },
         };
@@ -1012,6 +943,17 @@ impl ApplicationWorkflowClient {
             },
         )
         .await?;
+        // The scheduler settles each command through a self-cast `Completed`,
+        // which a drain would refuse, so the shutdown closes the workflow and
+        // waits for it to stop the core and then itself. This goes once the
+        // handler runs each command itself (plan L3-2).
+        let (shutdown, closing) = (args.shutdown, actor.clone());
+        args.tasks.spawn(async move {
+            shutdown.cancelled().await;
+            if closing.cast(Message::Close).is_ok() {
+                let _ = closing.get_cell().wait(None).await;
+            }
+        });
         Ok(Self(Arc::new(ClientInner {
             actor,
             runtime,
@@ -1019,7 +961,6 @@ impl ApplicationWorkflowClient {
             mutations,
             core,
             service_status,
-            stage,
         })))
     }
 
@@ -1043,44 +984,6 @@ impl ApplicationWorkflowClient {
 
     pub fn status(&self) -> CoreLifecycleStatus {
         self.0.status.borrow().clone()
-    }
-
-    /// Closes admission (T10 §5.4 step 1). The request is in the mailbox
-    /// once the returned future has been polled once.
-    pub(crate) async fn begin_closing(&self) -> Reply<ClosingAck> {
-        Reply::of(self.0.actor.call(Message::BeginClosing, None).await)
-    }
-
-    /// Waits up to `budget` for a closing workflow to have nothing running
-    /// (T10 §5.4 step 3). It only watches: the running operation keeps its
-    /// decision wait, and a Cancel runs to its real end.
-    pub(crate) async fn wait_settled(&self, budget: Duration) -> Settlement {
-        let mut status = self.0.status.clone();
-        let settled = tokio::time::timeout(
-            budget,
-            status.wait_for(|status| status.shutting_down && status.active.is_none()),
-        )
-        .await
-        .map(|settled| settled.map(|status| status.uncertain));
-        match settled {
-            Ok(Ok(isolated)) => Settlement::Settled { isolated },
-            Ok(Err(_)) => Settlement::Gone,
-            Err(_) => {
-                let operation = status.borrow().active;
-                Settlement::Unsettled {
-                    operation,
-                    // Cleared whenever a task starts, so only the running
-                    // operation's attempt can be here.
-                    attempt: operation.and(*self.0.stage.borrow()),
-                }
-            }
-        }
-    }
-
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.0.actor.get_cell())
     }
 
     /// Hands the workflow one mutation's Try. The verdict comes back on the
@@ -1195,6 +1098,9 @@ impl ApplicationWorkflowClient {
         Stop,
         StopReport
     );
+    // Production stops the core through `Close` on the shutdown token; the
+    // tests still ask for the stop directly until the scheduler goes (L3-2).
+    #[cfg(test)]
     method!(
         shutdown,
         Command::Core(CoreCommand::Shutdown),

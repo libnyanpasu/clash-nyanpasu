@@ -12,6 +12,7 @@ use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_core::state::{PersistentStateManager, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone)]
 pub struct ApplicationSnapshot {
@@ -43,11 +44,14 @@ impl ApplicationSnapshot {
 pub struct ApplicationActorArgs {
     pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<NyanpasuAppConfig>,
+    /// Once cancelled, every write is refused.
+    pub shutdown: CancellationToken,
 }
 
 pub struct ApplicationActorState {
     mutations: MutationCoordinator,
     manager: PersistentStateManager<NyanpasuAppConfig>,
+    shutdown: CancellationToken,
 }
 
 #[derive(Debug)]
@@ -149,6 +153,7 @@ impl Actor for ApplicationActor {
         Ok(ApplicationActorState {
             mutations: args.mutations,
             manager: args.manager,
+            shutdown: args.shutdown,
         })
     }
 
@@ -159,6 +164,14 @@ impl Actor for ApplicationActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            ApplicationActorMessage::Patch { reply, .. }
+            | ApplicationActorMessage::Replace { reply, .. }
+                if state.shutdown.is_cancelled() =>
+            {
+                let _ = reply.send(Err(anyhow::anyhow!(
+                    "the application config is closed: the app is shutting down"
+                )));
+            }
             ApplicationActorMessage::Patch { patch, reply } => {
                 let _ = reply.send(Self::patch(state, patch).await);
             }

@@ -8,6 +8,7 @@ use nyanpasu_config::clash::config::{
 };
 use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::clash_config::{
     ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
@@ -27,15 +28,11 @@ struct ClashConfigClientInner {
 
 #[allow(dead_code)]
 impl ClashConfigClient {
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.inner.actor_ref.get_cell())
-    }
-
     pub(crate) async fn new(
         mutations: MutationCoordinator,
         config_path: Utf8PathBuf,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<ClashConfig>::builder()
@@ -57,11 +54,16 @@ impl ClashConfigClient {
         let actor_ref = Actor::spawn(
             None,
             ClashConfigActor,
-            ClashConfigActorArgs { manager, mutations },
+            ClashConfigActorArgs {
+                manager,
+                mutations,
+                shutdown: shutdown.clone(),
+            },
         )
         .await
         .context("failed to spawn clash config actor")?
         .0;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(ClashConfigClientInner {
@@ -148,6 +150,8 @@ mod tests {
         let client = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("clash config client should be created");

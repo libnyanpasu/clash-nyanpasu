@@ -6,6 +6,7 @@ use camino::Utf8PathBuf;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_core::state::{PersistentStateManager, PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::application::{
     ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
@@ -25,16 +26,12 @@ struct ApplicationClientInner {
 
 #[allow(dead_code)]
 impl ApplicationClient {
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.inner.actor_ref.get_cell())
-    }
-
     pub(crate) async fn new(
         mutations: MutationCoordinator,
         build_channel: crate::bundle::Channel,
         config_path: Utf8PathBuf,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
         let mut seed = NyanpasuAppConfig::default();
         seed.release_channel = Some(build_channel.resolve(seed.release_channel));
@@ -64,7 +61,7 @@ impl ApplicationClient {
                 .context("failed to persist release channel")?;
         }
 
-        Self::from_manager(mutations, manager).await
+        Self::from_manager(mutations, manager, shutdown, tasks).await
     }
 
     /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
@@ -72,16 +69,23 @@ impl ApplicationClient {
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
             ApplicationActor,
-            ApplicationActorArgs { manager, mutations },
+            ApplicationActorArgs {
+                manager,
+                mutations,
+                shutdown: shutdown.clone(),
+            },
         )
         .await
         .context("failed to spawn application actor")?
         .0;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(ApplicationClientInner {
@@ -161,6 +165,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             crate::bundle::Channel::Stable,
             temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("application client should be created");
@@ -206,6 +212,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Stable,
             temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
@@ -237,6 +245,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Nightly,
             temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
@@ -260,6 +270,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Beta,
             temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
@@ -272,6 +284,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Beta,
             temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();

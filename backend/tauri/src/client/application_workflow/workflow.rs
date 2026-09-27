@@ -6,7 +6,7 @@ use nyanpasu_core_manager::{CoreError, OperationId};
 
 use super::{
     Command, Output,
-    attempt::{AttemptStage, LifecycleCommand, LiveAttempt},
+    attempt::{LifecycleCommand, LiveAttempt},
     mutation::{DeferredTarget, MutationBudgets, MutationCommand, ReestablishCause, TargetOrigin},
     preparation::RuntimePreparation,
     startup::StartupReport,
@@ -45,9 +45,6 @@ pub(super) struct ApplicationWorkflow {
     /// StartupReconcile's first report. It runs once; asking again returns
     /// this and touches nothing (T10 §1.2).
     pub startup: Option<StartupReport>,
-    /// The stage the running attempt last reached, for a shutdown that has
-    /// to say what it is still waiting for (T10 §5.4 step 3).
-    pub stage: tokio::sync::watch::Sender<Option<(OperationId, AttemptStage)>>,
     /// One-shot test fault: the next Confirm panics before it changes anything.
     #[cfg(test)]
     pub panic_at_confirm: bool,

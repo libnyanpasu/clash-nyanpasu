@@ -26,6 +26,7 @@ use crate::{
 };
 use nyanpasu_core_manager::OperationId;
 use tokio::{sync::watch, task::JoinHandle};
+use tokio_util::sync::CancellationToken;
 
 use super::{
     ports::{
@@ -41,9 +42,6 @@ use super::{
 /// Background work only casts [`ProfilesActorMessage::ReconcileMaterializations`];
 /// the actor performs the blocking reconcile under message serialization.
 const MATERIALIZATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5 * 60);
-
-/// How long `StopProducers` waits for aborted downloads to finish (T10 §2.2).
-const DOWNLOAD_STOP_BOUND: Duration = Duration::from_secs(1);
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProfilesError {
@@ -136,6 +134,8 @@ pub struct ProfilesActorArgs {
     pub fetcher: Arc<dyn SubscriptionFetcher>,
     pub(crate) materialization: Arc<dyn ProfileMaterializationPort>,
     pub(crate) sources: watch::Sender<SourcesSnapshot>,
+    /// Once cancelled, every write and every producer is refused.
+    pub shutdown: CancellationToken,
 }
 
 pub struct ProfilesActorState {
@@ -155,15 +155,15 @@ pub struct ProfilesActorState {
     /// Periodic journal recovery. Background task only casts; actor owns work.
     reconcile_task: Option<JoinHandle<()>>,
     sources: SourceLedger,
+    shutdown: CancellationToken,
 }
 
 /// Whether background producers may run (T10 §2.2). Setup holds them until
-/// StartupReconcile has proven the runtime; shutdown stops them for good.
+/// StartupReconcile has proven the runtime; the shutdown token stops them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProducerGate {
     Held,
     Running,
-    Stopped,
 }
 
 /// Names one refresh download, so a completion can only settle the attempt
@@ -212,15 +212,6 @@ impl RefreshOrigin {
             Self::Scheduled => SourceOrigin::ScheduledRefresh,
         }
     }
-}
-
-/// What `StopProducers` cut short.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct ProducersStopped {
-    pub refreshes: usize,
-    pub imports: usize,
-    /// Aborted downloads that had not finished within the bound.
-    pub unfinished: usize,
 }
 
 /// How a refresh attempt that reached its commit handler ended.
@@ -359,11 +350,43 @@ pub enum ProfilesActorMessage {
     /// Arms the refresh scheduler (with catch-up), the external watchers and
     /// the materialization ticker. Only the first one after Held counts.
     StartProducers,
-    /// Stops every producer, aborts pending downloads and refuses new
-    /// refreshes and imports from then on.
-    StopProducers {
-        reply: RpcReplyPort<ProducersStopped>,
-    },
+}
+
+impl ProfilesActorMessage {
+    /// Answers a message that reached the actor once the shutdown began: a
+    /// write is refused, and producer input is dropped. A completion's caller
+    /// is answered by `post_stop` with its pending entry.
+    fn refuse(self) {
+        match self {
+            Self::SaveFile { reply, .. }
+            | Self::SetCurrent { reply, .. }
+            | Self::SetGlobalTransforms { reply, .. }
+            | Self::SetValidFields { reply, .. }
+            | Self::Replace { reply, .. }
+            | Self::Add { reply, .. }
+            | Self::Delete { reply, .. }
+            | Self::Reorder { reply, .. }
+            | Self::PatchMetadata { reply, .. }
+            | Self::PatchRemoteOptions { reply, .. }
+            | Self::ImportRemote { reply, .. }
+            | Self::ReplaceDefinition { reply, .. } => {
+                let _ = reply.send(Err(ProfilesError::ShuttingDown));
+            }
+            Self::SetCurrentIfNone { reply, .. } => {
+                let _ = reply.send(Err(ProfilesError::ShuttingDown));
+            }
+            Self::RefreshRemote { reply, .. } => {
+                if let Some(reply) = reply {
+                    let _ = reply.send(Err(ProfilesError::ShuttingDown));
+                }
+            }
+            Self::CommitRefreshed { .. }
+            | Self::CommitImported { .. }
+            | Self::ExternalFileChanged { .. }
+            | Self::ReconcileMaterializations
+            | Self::StartProducers => {}
+        }
+    }
 }
 
 pub struct ProfilesActor;
@@ -534,55 +557,6 @@ impl ProfilesActor {
                 }
             }
         }));
-    }
-
-    async fn stop_producers(state: &mut ProfilesActorState) -> ProducersStopped {
-        if state.gate == ProducerGate::Stopped {
-            return ProducersStopped::default();
-        }
-        state.gate = ProducerGate::Stopped;
-        state.scheduler.shutdown();
-        state.external_watchers.shutdown();
-        if let Some(handle) = state.reconcile_task.take() {
-            handle.abort();
-        }
-
-        // Held admits manual refreshes and imports too, so their downloads
-        // are cut short whichever state the gate left. Removing the entries
-        // first means a completion already queued finds nothing to settle.
-        let refreshes: Vec<_> = state.pending_refresh.drain().map(|(_, p)| p).collect();
-        let imports: Vec<_> = state.pending_imports.drain().map(|(_, p)| p).collect();
-        let mut tasks = Vec::with_capacity(refreshes.len() + imports.len());
-        let mut replies = Vec::with_capacity(tasks.capacity());
-        let stopped = ProducersStopped {
-            refreshes: refreshes.len(),
-            imports: imports.len(),
-            unfinished: 0,
-        };
-        for pending in refreshes {
-            pending.task.abort();
-            tasks.push(pending.task);
-            replies.extend(pending.reply);
-        }
-        for pending in imports {
-            pending.task.abort();
-            tasks.push(pending.task);
-            replies.push(pending.reply);
-        }
-        let deadline = tokio::time::Instant::now() + DOWNLOAD_STOP_BOUND;
-        let mut unfinished = 0;
-        for task in tasks {
-            if tokio::time::timeout_at(deadline, task).await.is_err() {
-                unfinished += 1;
-            }
-        }
-        for reply in replies {
-            let _ = reply.send(Err(ProfilesError::ShuttingDown));
-        }
-        ProducersStopped {
-            unfinished,
-            ..stopped
-        }
     }
 
     /// Downloads and validates on a task the pending entry owns; the file is
@@ -1516,6 +1490,7 @@ impl Actor for ProfilesActor {
             external_watchers: ExternalWatchers::default(),
             reconcile_task: None,
             sources: SourceLedger::new(args.sources),
+            shutdown: args.shutdown,
         })
     }
 
@@ -1525,6 +1500,10 @@ impl Actor for ProfilesActor {
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        if state.shutdown.is_cancelled() {
+            message.refuse();
+            return Ok(());
+        }
         match message {
             ProfilesActorMessage::SaveFile {
                 uid,
@@ -1798,17 +1777,8 @@ impl Actor for ProfilesActor {
                 origin,
                 reply,
             } => {
-                match (origin, state.gate) {
-                    (RefreshOrigin::Manual, ProducerGate::Stopped) => {
-                        if let Some(reply) = reply {
-                            let _ = reply.send(Err(ProfilesError::ShuttingDown));
-                        }
-                        return Ok(());
-                    }
-                    (RefreshOrigin::Scheduled, ProducerGate::Held | ProducerGate::Stopped) => {
-                        return Ok(());
-                    }
-                    _ => {}
+                if origin == RefreshOrigin::Scheduled && state.gate == ProducerGate::Held {
+                    return Ok(());
                 }
                 if state.pending_refresh.contains_key(&uid) {
                     // A tick folds into the download in flight without a receipt
@@ -1980,10 +1950,6 @@ impl Actor for ProfilesActor {
                 update_interval_explicit,
                 reply,
             } => {
-                if state.gate == ProducerGate::Stopped {
-                    let _ = reply.send(Err(ProfilesError::ShuttingDown));
-                    return Ok(());
-                }
                 let before = Self::current_state(state);
                 if let Err(error) =
                     Self::validate_import_request(&before, &metadata, url.clone(), option.clone())
@@ -2283,10 +2249,6 @@ impl Actor for ProfilesActor {
                 }
             }
             ProfilesActorMessage::StartProducers => Self::start_producers(&myself, state),
-            ProfilesActorMessage::StopProducers { reply } => {
-                let stopped = Self::stop_producers(state).await;
-                let _ = reply.send(stopped);
-            }
         }
         Ok(())
     }
@@ -2301,11 +2263,26 @@ impl Actor for ProfilesActor {
         }
         state.scheduler.shutdown();
         state.external_watchers.shutdown();
+        // The downloads are cut short and awaited, so none outlives the actor;
+        // their callers learn that the application is shutting down.
+        let mut downloads = Vec::new();
         for (_, pending) in state.pending_refresh.drain() {
             pending.task.abort();
+            downloads.push((pending.task, pending.reply));
         }
         for (_, pending) in state.pending_imports.drain() {
             pending.task.abort();
+            downloads.push((pending.task, Some(pending.reply)));
+        }
+        for (task, reply) in downloads {
+            if let Err(error) = task.await
+                && let Ok(panic) = error.try_into_panic()
+            {
+                std::panic::resume_unwind(panic);
+            }
+            if let Some(reply) = reply {
+                let _ = reply.send(Err(ProfilesError::ShuttingDown));
+            }
         }
         Ok(())
     }

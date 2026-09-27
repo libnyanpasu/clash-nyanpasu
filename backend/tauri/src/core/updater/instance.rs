@@ -10,6 +10,7 @@ use specta::Type;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
+use tokio_util::sync::CancellationToken;
 
 use super::{
     ManifestVersion,
@@ -125,14 +126,18 @@ impl UpdaterBackend for HttpUpdaterBackend {
         artifact: String,
         tag: CoreTypeMeta,
         progress: UpdaterProgress,
+        shutdown: &CancellationToken,
     ) -> anyhow::Result<PreparedCoreBinary> {
         let staging = Arc::new(TempDir::new()?);
         let mut url = url::Url::parse("https://github.com")?;
         url.set_path(&shared::get_download_path(tag, &artifact));
         let url = parse_gh_url(&mirror, url.as_str())?;
-        let downloader = OwnedDownload(
-            DownloadSession::new(self.http_client()?, url, staging.path().join(&artifact)).await?,
-        );
+        let session =
+            DownloadSession::new(self.http_client()?, url, staging.path().join(&artifact));
+        let downloader = OwnedDownload(tokio::select! {
+            session = session => session?,
+            () = shutdown.cancelled() => anyhow::bail!("updater shut down"),
+        });
         let download = downloader.0.start();
         tokio::pin!(download);
         let mut interval = tokio::time::interval(Duration::from_millis(250));
@@ -146,6 +151,7 @@ impl UpdaterBackend for HttpUpdaterBackend {
                 _ = interval.tick() => {
                     progress.report(UpdaterState::Downloading, Some(downloader.0.status()));
                 }
+                () = shutdown.cancelled() => anyhow::bail!("updater shut down"),
             }
         }
         progress.report(UpdaterState::Decompressing, None);
@@ -160,7 +166,7 @@ impl UpdaterBackend for HttpUpdaterBackend {
         let extraction_staging = staging.clone();
         let extraction_source = source.clone();
         // A blocking extraction cannot be aborted midway. It owns staging until
-        // completion, including when its async worker is cancelled during shutdown.
+        // completion, and the shutdown waits for it.
         tokio::task::spawn_blocking(move || {
             extract_core(
                 extraction_staging.path().join(&artifact),
@@ -291,6 +297,101 @@ mod tests {
             .unwrap();
             assert_eq!(response, expected);
         }
+    }
+
+    /// A mirror that answers the download's HEAD probes, unless `stall_probe`,
+    /// and then stalls: it reports the stalled request and never finishes it.
+    async fn stalling_mirror(
+        listener: tokio::net::TcpListener,
+        stall_probe: bool,
+        stalled: tokio::sync::mpsc::UnboundedSender<()>,
+    ) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let stalled = stalled.clone();
+            tokio::spawn(async move {
+                loop {
+                    let mut request = Vec::new();
+                    while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                        let mut buffer = [0; 1024];
+                        match socket.read(&mut buffer).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(read) => request.extend_from_slice(&buffer[..read]),
+                        }
+                    }
+                    let head = b"HTTP/1.1 200 OK\r\nContent-Length: 1024\r\n\r\n";
+                    let probe = request.starts_with(b"HEAD ");
+                    if probe && !stall_probe {
+                        if socket.write_all(head).await.is_err() {
+                            return;
+                        }
+                        continue;
+                    }
+                    if !probe {
+                        let _ = socket.write_all(head).await;
+                        let _ = socket.write_all(b"partial").await;
+                    }
+                    let _ = stalled.send(());
+                    std::future::pending::<()>().await;
+                }
+            });
+        }
+    }
+
+    /// Prepares against a mirror that stalls, cancels the token once it has
+    /// stalled, and returns the preparation's error.
+    async fn prepare_cancelled_at_the_stall(stall_probe: bool) -> anyhow::Error {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = Arc::new(ProxyPort(std::sync::atomic::AtomicU16::new(
+            listener.local_addr().unwrap().port(),
+        )));
+        let (stalled, mut stall) = tokio::sync::mpsc::unbounded_channel();
+        let mirror = tokio::spawn(stalling_mirror(listener, stall_probe, stalled));
+        let dir = TempDir::new().unwrap();
+        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), port);
+        let token = CancellationToken::new();
+        let prepare = tokio::spawn({
+            let token = token.clone();
+            async move {
+                backend
+                    .prepare(
+                        ClashCore::Mihomo,
+                        "http://updater.invalid".into(),
+                        "mihomo.gz".into(),
+                        CoreTypeMeta::Mihomo("v1".into()),
+                        UpdaterProgress::new(|_, _| {}),
+                        &token,
+                    )
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(5), stall.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        token.cancel();
+        let error = tokio::time::timeout(Duration::from_secs(5), prepare)
+            .await
+            .expect("the token ends the download")
+            .unwrap()
+            .err()
+            .unwrap();
+        mirror.abort();
+        error
+    }
+
+    #[tokio::test]
+    async fn the_shutdown_ends_a_download_whose_body_never_finishes() {
+        let error = prepare_cancelled_at_the_stall(false).await;
+        assert_eq!(error.to_string(), "updater shut down");
+    }
+
+    #[tokio::test]
+    async fn the_shutdown_ends_a_download_whose_probe_never_returns() {
+        let error = prepare_cancelled_at_the_stall(true).await;
+        assert_eq!(error.to_string(), "updater shut down");
     }
 
     #[test]

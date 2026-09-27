@@ -152,6 +152,10 @@ pub(super) struct Fixture {
     /// operation waits answer.
     pub(super) scripted: Option<Arc<ScriptedWaitEndpoint>>,
     pub(super) notifications: Arc<RecordingNotifications>,
+    /// The workflow's shutdown token, and the task that waits for it to stop
+    /// once the token is cancelled.
+    pub(super) shutdown: tokio_util::sync::CancellationToken,
+    pub(super) tasks: tokio_util::task::TaskTracker,
     _dir: tempfile::TempDir,
 }
 
@@ -356,6 +360,10 @@ pub(super) async fn fixture_from(
         store.confirm_applied(Arc::new(adopted_baseline()));
     }
     let notifications = Arc::new(RecordingNotifications::default());
+    let (shutdown, tasks) = (
+        tokio_util::sync::CancellationToken::new(),
+        tokio_util::task::TaskTracker::new(),
+    );
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
             notifications: notifications.clone(),
@@ -370,6 +378,8 @@ pub(super) async fn fixture_from(
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             budgets,
             ownership,
+            shutdown: shutdown.clone(),
+            tasks: tasks.clone(),
         },
         false,
     )
@@ -390,6 +400,8 @@ pub(super) async fn fixture_from(
         ports,
         scripted,
         notifications,
+        shutdown,
+        tasks,
         _dir: dir,
     }
 }
@@ -3598,10 +3610,14 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     let snapshot = f.application.snapshot_handle();
     let before = snapshot.load();
     let bytes = std::fs::read(&f.app_path).ok();
-    let application =
-        crate::client::application::ApplicationClient::from_manager(mutations, f.application)
-            .await
-            .unwrap();
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        tokio_util::sync::CancellationToken::new(),
+        &tokio_util::task::TaskTracker::new(),
+    )
+    .await
+    .unwrap();
     f.endpoint.set_check_answer(TestCheckAnswer::Reject(
         nyanpasu_core_manager::CoreError::new(
             CoreErrorKind::InvalidConfig,
@@ -3624,10 +3640,14 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     let f = fixture(test_budgets()).await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(f.client.clone());
-    let application =
-        crate::client::application::ApplicationClient::from_manager(mutations, f.application)
-            .await
-            .unwrap();
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        tokio_util::sync::CancellationToken::new(),
+        &tokio_util::task::TaskTracker::new(),
+    )
+    .await
+    .unwrap();
     let before = application.snapshot();
     f.builder.park.store(true, Ordering::SeqCst);
     let writer = application.clone();
@@ -3658,6 +3678,8 @@ async fn domain_actor_refuses_writes_before_composition_is_ready() {
     let application = crate::client::application::ApplicationClient::from_manager(
         crate::state::mutation::MutationCoordinator::pending(),
         manager,
+        tokio_util::sync::CancellationToken::new(),
+        &tokio_util::task::TaskTracker::new(),
     )
     .await
     .unwrap();

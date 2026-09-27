@@ -8,6 +8,7 @@ use nyanpasu_config::state::{
 };
 use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::session_state::{
     SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
@@ -27,13 +28,14 @@ struct SessionStateClientInner {
 
 #[allow(dead_code)]
 impl SessionStateClient {
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.inner.actor_ref.get_cell())
-    }
-
-    pub(crate) async fn new(config_path: Utf8PathBuf) -> anyhow::Result<Self> {
+    /// The actor admits every request, the shutdown's final geometry save
+    /// included: `shutdown` only drains it, so whatever was queued before the
+    /// cancel is written before it stops.
+    pub(crate) async fn new(
+        config_path: Utf8PathBuf,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> anyhow::Result<Self> {
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<PersistentState>::builder()
             .config_path(config_path)
@@ -55,6 +57,7 @@ impl SessionStateClient {
             .await
             .context("failed to spawn session state actor")?
             .0;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(SessionStateClientInner {
@@ -150,9 +153,13 @@ mod tests {
 
     async fn test_client() -> (SessionStateClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
-        let client = SessionStateClient::new(temp_config_path(&dir))
-            .await
-            .expect("session state client should be created");
+        let client = SessionStateClient::new(
+            temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("session state client should be created");
         (client, dir)
     }
 

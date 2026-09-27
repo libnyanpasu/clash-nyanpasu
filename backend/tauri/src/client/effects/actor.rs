@@ -1,25 +1,23 @@
 //! Owns peripheral desired state and independent, coalesced execution groups.
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
-use tokio::{sync::watch, time::Instant};
+#[cfg(test)]
+use ractor::RpcReplyPort;
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use tokio::sync::watch;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     plan::{
         ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind, TrayRefresh,
     },
-    ports::{ApplicationEffectsPort, CommitNotifications, EffectsShutdown},
+    ports::{ApplicationEffectsPort, CommitNotifications},
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
     UiEventSink,
-    app_lifecycle::Reply,
     convergence::{ConvergenceHealth, RetryBudget},
 };
-
-/// How long the aborted group wrappers get to end before the cleanups start
-/// anyway (T10 §5.5 step 3).
-const GROUP_REAP_BOUND: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Debug, Default)]
 pub struct EffectsSnapshot {
@@ -71,6 +69,9 @@ pub(crate) struct EffectsArgs {
     pub port: Arc<dyn ApplicationEffectsPort>,
     pub ui: Arc<dyn UiEventSink>,
     pub initial: ApplicationEffectInputs,
+    /// Once cancelled, nothing new is queued, retried or started; the groups
+    /// already running are awaited before the actor stops.
+    pub shutdown: CancellationToken,
 }
 
 struct EffectsActor;
@@ -87,12 +88,7 @@ struct State {
     entries: BTreeMap<EffectKind, Entry>,
     active: [Option<tokio::task::JoinHandle<()>>; 3],
     status: watch::Sender<EffectsSnapshot>,
-    closed: bool,
-    /// Automatic retries are held for the shutdown; committed changes still
-    /// apply until the effects are sealed.
-    retries_held: bool,
-    /// The first shutdown's result, which every later one returns.
-    shutdown: Option<EffectsShutdown>,
+    shutdown: CancellationToken,
     timer: tokio::task::JoinHandle<()>,
 }
 
@@ -111,11 +107,6 @@ enum Message {
     },
     Tick,
     RetryNow(EffectKind),
-    HoldRetries(RpcReplyPort<()>),
-    Shutdown {
-        deadline: Instant,
-        reply: RpcReplyPort<EffectsShutdown>,
-    },
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
 }
@@ -234,6 +225,12 @@ impl State {
     }
 
     fn drive(&mut self, myself: &ActorRef<Message>) {
+        // A group that completes during the shutdown starts nothing new: what
+        // is still pending belongs to an app that is leaving.
+        if self.shutdown.is_cancelled() {
+            self.publish();
+            return;
+        }
         for index in 0..3 {
             if self.active[index].is_some() {
                 continue;
@@ -302,9 +299,7 @@ impl Actor for EffectsActor {
             entries: BTreeMap::new(),
             active: [None, None, None],
             status: args.status,
-            closed: false,
-            retries_held: false,
-            shutdown: None,
+            shutdown: args.dependencies.shutdown,
             timer: myself.send_interval(Duration::from_millis(250), || Message::Tick),
         })
     }
@@ -321,7 +316,7 @@ impl Actor for EffectsActor {
                 refresh,
                 full,
                 requested,
-            } if !state.closed => {
+            } if !state.shutdown.is_cancelled() => {
                 let changed: Vec<_> = ApplicationEffectPlan::diff(&state.desired, &inputs)
                     .effects()
                     .iter()
@@ -341,7 +336,7 @@ impl Actor for EffectsActor {
                 revision,
                 kinds,
                 statuses,
-            } if !state.closed => {
+            } => {
                 state.active[completed_group] = None;
                 for kind in kinds {
                     let entry = state.entries.get_mut(&kind).unwrap();
@@ -401,8 +396,7 @@ impl Actor for EffectsActor {
                 }
                 state.drive(&myself);
             }
-            Message::Completed { .. } => {}
-            Message::Tick if !state.closed && !state.retries_held => {
+            Message::Tick if !state.shutdown.is_cancelled() => {
                 let ready: Vec<_> = state
                     .entries
                     .iter()
@@ -416,50 +410,11 @@ impl Actor for EffectsActor {
                     state.drive(&myself);
                 }
             }
-            Message::RetryNow(kind) if !state.closed => {
+            Message::RetryNow(kind) if !state.shutdown.is_cancelled() => {
                 state.retry(kind, false);
                 state.drive(&myself);
             }
             Message::Tick | Message::RetryNow(_) => {}
-            Message::HoldRetries(reply) => {
-                state.retries_held = true;
-                state.timer.abort();
-                let _ = reply.send(());
-            }
-            Message::Shutdown { deadline, reply } => {
-                if let Some(shutdown) = &state.shutdown {
-                    let _ = reply.send(shutdown.clone());
-                    return Ok(());
-                }
-                // Sealed first: nothing is queued, retried or started again.
-                state.closed = true;
-                state.timer.abort();
-                state.pending.clear();
-                // Then the owners learn the shutdown began, before anything
-                // waits on the work they are running.
-                state.port.begin_shutdown();
-                // Only waiters are dropped: every group hands what it owns to
-                // its owner before its first await, so the resources stay
-                // owned and the cleanups below reach them.
-                let groups: Vec<_> = state.active.iter_mut().filter_map(Option::take).collect();
-                for group in &groups {
-                    group.abort();
-                }
-                let reaped = deadline.min(Instant::now() + GROUP_REAP_BOUND);
-                if tokio::time::timeout_at(reaped, futures_util::future::join_all(groups))
-                    .await
-                    .is_err()
-                {
-                    tracing::warn!("an aborted effects group did not end within its bound");
-                }
-                state.publish();
-                let shutdown = state
-                    .port
-                    .shutdown(deadline.saturating_duration_since(Instant::now()))
-                    .await;
-                state.shutdown = Some(shutdown.clone());
-                let _ = reply.send(shutdown);
-            }
             #[cfg(test)]
             Message::Barrier(reply) => {
                 let _ = reply.send(());
@@ -474,9 +429,13 @@ impl Actor for EffectsActor {
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
         state.timer.abort();
-        for task in &mut state.active {
-            if let Some(task) = task.take() {
-                task.abort();
+        // Awaited, never aborted: a group's owner is part way through work it
+        // has to finish, and the drain refuses the `Completed` it would send.
+        for task in state.active.iter_mut().filter_map(Option::take) {
+            if let Err(error) = task.await
+                && let Ok(panic) = error.try_into_panic()
+            {
+                std::panic::resume_unwind(panic);
             }
         }
         Ok(())
@@ -484,7 +443,8 @@ impl Actor for EffectsActor {
 }
 
 impl EffectsClient {
-    pub async fn spawn(args: EffectsArgs) -> anyhow::Result<Self> {
+    pub async fn spawn(args: EffectsArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
+        let shutdown = args.shutdown.clone();
         let (status, receiver) = watch::channel(EffectsSnapshot::default());
         let (actor, _) = Actor::spawn(
             None,
@@ -495,6 +455,7 @@ impl EffectsClient {
             },
         )
         .await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self {
             actor,
             status: receiver,
@@ -511,28 +472,6 @@ impl EffectsClient {
     }
     pub fn subscribe(&self) -> watch::Receiver<EffectsSnapshot> {
         self.status.clone()
-    }
-    /// Holds the automatic retries (T10 §5.4 step 2).
-    pub async fn hold_retries(&self) -> Reply<()> {
-        Reply::of(self.actor.call(Message::HoldRetries, None).await)
-    }
-
-    /// Seals the effects and cleans them up by `deadline` (T10 §5.5). An
-    /// absolute deadline, so time the request spends queued is not granted
-    /// again on receipt. Only the first call does the work; later ones get
-    /// its result.
-    pub async fn shutdown(&self, deadline: Instant) -> Reply<EffectsShutdown> {
-        Reply::of(
-            self.actor
-                .call(|reply| Message::Shutdown { deadline, reply }, None)
-                .await,
-        )
-    }
-
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.actor.get_cell())
     }
     #[cfg(test)]
     pub async fn barrier(&self) {

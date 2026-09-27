@@ -3,7 +3,7 @@
 //! and asks Tauri to exit again once every owner has finished.
 use tauri::{AppHandle, ExitRequestApi, Manager, RESTART_EXIT_CODE, process::current_binary};
 
-use crate::client::{NyanpasuClient, ShutdownRequest};
+use crate::client::NyanpasuClient;
 
 /// What the app does once its owners have shut down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,10 +148,12 @@ pub fn on_exit_requested(app_handle: &AppHandle, code: Option<i32>, api: &ExitRe
 /// Starts the one wait that ends the app: once every owner has shut down it
 /// exits again, and that exit goes through.
 fn start_shutdown(app_handle: &AppHandle) {
-    let request = shutdown_request(app_handle);
+    let client = request_shutdown(app_handle);
     let app_handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {
-        shut_down(&app_handle, request).await;
+        if let Some(client) = client {
+            client.wait_shutdown().await;
+        }
         let intent = app_handle.state::<ExitBoundary>().gate.lock().finish();
         #[cfg(windows)]
         crate::shutdown_hook::set_ready_for_shutdown();
@@ -165,23 +167,27 @@ fn start_shutdown(app_handle: &AppHandle) {
 /// Shuts every owner down and leaves the app running, for a caller that ends
 /// the process itself: the updater's installer, or a relaunch.
 pub async fn clean_up(app_handle: &AppHandle) {
-    shut_down(app_handle, shutdown_request(app_handle)).await;
+    if let Some(client) = request_shutdown(app_handle) {
+        client.wait_shutdown().await;
+    }
     app_handle.state::<ExitBoundary>().gate.lock().cleaned_up();
 }
 
-fn shutdown_request(app_handle: &AppHandle) -> ShutdownRequest {
-    ShutdownRequest {
-        main_window: super::resolve::capture_main_window_geometry(app_handle),
-    }
-}
-
-async fn shut_down(app_handle: &AppHandle, request: ShutdownRequest) {
+/// Queues the main window's final geometry, then cancels the root token. The
+/// order matters: the session state owner drains what was queued before the
+/// cancel, so the save is written before it stops.
+fn request_shutdown(app_handle: &AppHandle) -> Option<NyanpasuClient> {
     let client = app_handle
         .try_state::<NyanpasuClient>()
-        .map(|state| state.inner().clone());
-    if let Some(client) = client {
-        client.shutdown(request).await;
+        .map(|state| state.inner().clone())?;
+    if super::resolve::is_window_open(app_handle) {
+        crate::log_err!(
+            super::resolve::save_window_state(app_handle),
+            "failed to queue the final main window geometry"
+        );
     }
+    client.request_shutdown();
+    Some(client)
 }
 
 /// The relauncher waits for this process to release the single-instance

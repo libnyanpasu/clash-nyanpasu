@@ -20,6 +20,7 @@ use tokio::{
     task::JoinHandle,
     time::Instant,
 };
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 /// How long a running widget gets to leave on its own after `Stop`.
 const STOP_GRACE: Duration = Duration::from_millis(500);
@@ -68,6 +69,9 @@ pub struct WidgetManager {
     host: Arc<dyn WidgetHost>,
     instance: Arc<Mutex<Option<WidgetInstance>>>,
     listener_initd: Arc<AtomicBool>,
+    /// Once cancelled, no widget starts, a handshake in progress ends, and
+    /// the tracked stop reaps whatever is owned.
+    shutdown: CancellationToken,
 }
 
 /// The widget this manager owns (T10 §5.6). It is recorded the moment its
@@ -88,12 +92,27 @@ enum WidgetInstance {
 }
 
 impl WidgetManager {
-    pub(crate) fn new(host: Arc<dyn WidgetHost>) -> Self {
-        Self {
+    /// `tasks` tracks the stop that runs once `shutdown` is cancelled, so the
+    /// shutdown waits until the owned widget is gone or its bound ran out.
+    pub(crate) fn new(
+        host: Arc<dyn WidgetHost>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Self {
+        let manager = Self {
             host,
             instance: Arc::new(Mutex::new(None)),
             listener_initd: Arc::new(AtomicBool::new(false)),
-        }
+            shutdown,
+        };
+        let stopping = manager.clone();
+        tasks.spawn(async move {
+            stopping.shutdown.cancelled().await;
+            if let Err(error) = stopping.stop(Instant::now() + WIDGET_STOP_BOUND).await {
+                tracing::warn!("the widget was not stopped on the way out: {error}");
+            }
+        });
+        manager
     }
 
     fn register_listener(&self, mut receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>) {
@@ -107,7 +126,11 @@ impl WidgetManager {
         let this = self.clone();
         tokio::spawn(async move {
             loop {
-                match receiver.recv().await {
+                let received = tokio::select! {
+                    received = receiver.recv() => received,
+                    () = this.shutdown.cancelled() => break,
+                };
+                match received {
                     Ok(event) => {
                         if let Err(e) = this.handle_event(event).await {
                             log::error!("Failed to handle event: {e}");
@@ -164,6 +187,10 @@ impl WidgetManager {
         // Held for the whole start, so a stop never finds the slot about to
         // fill behind its back.
         let mut instance = self.instance.lock().await;
+        anyhow::ensure!(
+            !self.shutdown.is_cancelled(),
+            "the app is shutting down; no widget starts"
+        );
         if instance.is_some() {
             log::info!("Widget already running, stopping it first...");
             self.stop_owned(&mut instance, Instant::now() + WIDGET_STOP_BOUND)
@@ -195,6 +222,11 @@ impl WidgetManager {
                 Ok(status) => anyhow::anyhow!("Widget process exited: {status}"),
                 Err(e) => anyhow::anyhow!("Failed to wait for widget process: {e}"),
             }),
+            // The handshake has no bound of its own; the stop below reaps
+            // the child and releases the worker.
+            () = self.shutdown.cancelled() => Err(anyhow::anyhow!(
+                "the app is shutting down before the widget connected"
+            )),
         };
         match linked {
             Ok(link) => {
@@ -429,12 +461,14 @@ impl WidgetLink for IpcSender<Message> {
 /// It no longer reads the configuration or starts the widget: which variant
 /// should run is an application effect now, so the composition root installs
 /// this into the widget controller and the startup reconcile hands it the
-/// desired value. The ordered shutdown stops the widget through that
-/// controller; nothing stops it on drop.
+/// desired value. The manager stops the widget itself once `shutdown` is
+/// cancelled; nothing stops it on drop.
 pub async fn setup(
     ws_connections_receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>,
+    shutdown: CancellationToken,
+    tasks: &TaskTracker,
 ) -> anyhow::Result<WidgetManager> {
-    let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost));
+    let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost), shutdown, tasks);
     widget_manager.register_listener(ws_connections_receiver);
     Ok(widget_manager)
 }
@@ -649,7 +683,7 @@ pub(crate) mod tests {
     }
 
     fn manager(host: &Arc<FakeWidgetHost>) -> WidgetManager {
-        WidgetManager::new(host.clone())
+        WidgetManager::new(host.clone(), CancellationToken::new(), &TaskTracker::new())
     }
 
     fn within(duration: Duration) -> Instant {

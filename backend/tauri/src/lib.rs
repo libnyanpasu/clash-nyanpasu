@@ -58,7 +58,7 @@ fn deadlock_detection() {
 }
 
 /// Shows a panic dialog and saves logs, then exits: through the app when a
-/// handle exists, so the ordered shutdown still runs, or the process otherwise.
+/// handle exists, so the shutdown still runs, or the process otherwise.
 fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
     std::panic::set_hook(Box::new(move |panic_info| {
         use std::backtrace::{Backtrace, BacktraceStatus};

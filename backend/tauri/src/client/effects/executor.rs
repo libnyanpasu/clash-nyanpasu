@@ -5,35 +5,27 @@
 //! so the facade keeps one dependency and this stays a dispatcher rather than a
 //! service locator.
 
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
-
-use tokio::time::Instant;
 
 use super::{
     plan::{
         ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
         SystemProxyDesired, TrayRefresh, TrayView,
     },
-    ports::{ApplicationEffectsPort, EffectsShutdown},
+    ports::ApplicationEffectsPort,
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
-    StepOutcome,
-    app_lifecycle::deadline_after,
     hotkey::{
         HotkeyClient,
         ports::{AcceleratorValidator, HotkeyBindings},
     },
     system_proxy::SystemProxyClient,
     ui_effects::ports::{
-        LocaleSink, LoggerRefresher, TrayRefresher, WIDGET_STOP_BOUND, WidgetController,
-        WidgetError,
+        LocaleSink, LoggerRefresher, TrayRefresher, WidgetController, WidgetError,
     },
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
@@ -229,64 +221,6 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
             statuses.push(status);
         }
         statuses
-    }
-
-    fn begin_shutdown(&self) {
-        self.system_proxy.signal_shutdown();
-    }
-
-    async fn shutdown(&self, budget: Duration) -> EffectsShutdown {
-        let deadline = deadline_after(Instant::now(), budget);
-        let widget_deadline = deadline.min(Instant::now() + WIDGET_STOP_BOUND);
-        // All three go out on the first poll of the join; each then waits
-        // under its own bound. The restore queues behind the proxy owner's
-        // in-flight OS writes, and the closed owner never re-installs.
-        let (system_proxy, hotkeys, widget) = tokio::join!(
-            tokio::time::timeout_at(deadline, self.system_proxy.restore()),
-            tokio::time::timeout_at(deadline, self.hotkeys.unregister_all()),
-            tokio::time::timeout_at(widget_deadline, self.widget.stop(widget_deadline)),
-        );
-        EffectsShutdown {
-            system_proxy: system_proxy.map_or_else(
-                |_| StepOutcome::incomplete(RESTORE_UNCONFIRMED),
-                |status| owner_outcome(&status, RESTORE_UNCONFIRMED),
-            ),
-            hotkeys: hotkeys.map_or_else(
-                |_| StepOutcome::incomplete(UNREGISTER_UNCONFIRMED),
-                |status| owner_outcome(&status, UNREGISTER_UNCONFIRMED),
-            ),
-            widget: match widget {
-                Ok(Ok(())) => StepOutcome::Done { detail: None },
-                // Never installed means nothing was ever spawned to tear down.
-                Ok(Err(WidgetError::Unavailable)) => {
-                    StepOutcome::skipped("the widget runtime was never installed")
-                }
-                Ok(Err(error)) => StepOutcome::incomplete(format!("{error:#}")),
-                Err(_) => StepOutcome::incomplete(WidgetError::StillOwned.to_string()),
-            },
-        }
-    }
-}
-
-const RESTORE_UNCONFIRMED: &str = "restore queued but not confirmed";
-const UNREGISTER_UNCONFIRMED: &str = "unregister queued but not confirmed";
-
-/// What an owner's shutdown status proves. Only a healthy status is a
-/// confirmation; an owner that timed out may still get to the request.
-fn owner_outcome(status: &EffectStatus, unconfirmed: &str) -> StepOutcome {
-    match &status.health {
-        EffectHealth::Healthy => StepOutcome::Done { detail: None },
-        EffectHealth::Degraded {
-            code: "system_proxy_unreachable" | "hotkey_unreachable",
-            message,
-            ..
-        } => StepOutcome::not_attempted(message.clone()),
-        EffectHealth::Degraded {
-            code: "system_proxy_timeout" | "hotkey_timeout",
-            ..
-        } => StepOutcome::incomplete(unconfirmed),
-        EffectHealth::Degraded { message, .. } => StepOutcome::incomplete(message.clone()),
-        other => StepOutcome::incomplete(format!("{other:?}")),
     }
 }
 

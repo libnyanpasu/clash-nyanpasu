@@ -48,6 +48,8 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         Arc::new(MockProfileFsPort::new()),
         Arc::new(MockSubscriptionFetcher::new()),
         test_materialization_port(),
+        tokio_util::sync::CancellationToken::new(),
+        &tokio_util::task::TaskTracker::new(),
     )
     .await
     .unwrap();

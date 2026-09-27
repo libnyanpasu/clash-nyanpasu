@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::{
     client::{
-        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, ProducerTasks,
-        RuntimePaths, ShutdownBudgets, TauriMainThread, TauriUiEventSink,
+        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
+        TauriMainThread, TauriUiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -18,6 +18,7 @@ use crate::{
             SystemProxyArgs, SystemProxyClient,
             adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
         },
+        track_until_shutdown,
         ui_effects::{
             adapters::{
                 RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController,
@@ -31,6 +32,7 @@ use crate::{
 use anyhow::Context;
 use camino::Utf8PathBuf;
 use tauri_specta::Event;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 const RESTART_BUDGET: u8 = 3;
 
@@ -45,6 +47,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let app_handle = app.app_handle().clone();
     let main_thread: Arc<dyn MainThreadExecutor> =
         Arc::new(TauriMainThread::new(app_handle.clone()));
+    // The root of the shutdown. Created here rather than in the client: the
+    // system proxy, hotkey and widget owners are built outside it.
+    let shutdown = CancellationToken::new();
+    let tasks = TaskTracker::new();
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
@@ -108,8 +114,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &paths,
         hotkey_tx,
         logger_reload,
+        &shutdown,
+        &tasks,
     )?;
-    let producers = ProducerTasks::default();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         logging: crate::client::logs::LoggingSetup {
@@ -130,8 +137,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone(), main_thread)),
         accelerators: Arc::new(PlatformAcceleratorValidator),
-        producers: producers.clone(),
-        shutdown_budgets: ShutdownBudgets::default(),
+        shutdown: shutdown.clone(),
+        tasks: tasks.clone(),
     })
     .context("Failed to setup nyanpasu client")?;
     // The tray menu and the first window render with the process locale, so
@@ -146,15 +153,22 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     app.manage(crate::window::WindowRegistry::default());
     app.manage(crate::utils::resolve::TrayMenuWindowController::default());
-    forward_actor_events(app_handle, client.clone(), &producers);
-    tauri::async_runtime::spawn(producers.track(hotkey_action_pump(hotkey_rx, client.clone())));
+    forward_actor_events(app_handle, client.clone(), &shutdown, &tasks);
+    tauri::async_runtime::spawn(track_until_shutdown(
+        &tasks,
+        &shutdown,
+        hotkey_action_pump(hotkey_rx, client.clone()),
+    ));
     // The widget needs the client's connection stream and the client needs the
     // widget controller, so the controller is built empty and filled here, in
     // the one place that has both. Its desired configuration arrives with the
     // startup effect reconcile like every other effect.
-    let widget_manager =
-        tauri::async_runtime::block_on(crate::widget::setup(client.subscribe_clash_connections()))
-            .context("Failed to setup the network statistic widget")?;
+    let widget_manager = tauri::async_runtime::block_on(crate::widget::setup(
+        client.subscribe_clash_connections(),
+        shutdown.child_token(),
+        &tasks,
+    ))
+    .context("Failed to setup the network statistic widget")?;
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
@@ -193,6 +207,8 @@ fn build_application_effects(
     paths: &PathResolver,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
+    shutdown: &CancellationToken,
+    tasks: &TaskTracker,
 ) -> anyhow::Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>)> {
     // The AppImage path is read here, at the only place that legitimately has
     // the Tauri environment, and handed to the adapter as a plain value.
@@ -216,17 +232,25 @@ fn build_application_effects(
     let pac = HttpPacBackend::new(utf8_path(paths.cache_dir().join("pac.js"))?)
         .context("Failed to build the PAC backend")?;
 
-    let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(SystemProxyArgs {
-        os: Arc::new(SysproxyOsProxy),
-        auto_launch: Arc::new(auto_launch),
-        pac: Arc::new(pac),
-        schedule_guard_ticks: true,
-    }))
+    let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(
+        SystemProxyArgs {
+            os: Arc::new(SysproxyOsProxy),
+            auto_launch: Arc::new(auto_launch),
+            pac: Arc::new(pac),
+            schedule_guard_ticks: true,
+            shutdown: shutdown.child_token(),
+        },
+        tasks,
+    ))
     .context("Failed to spawn the system proxy actor")?;
-    let hotkeys = tauri::async_runtime::block_on(HotkeyClient::spawn(HotkeyArgs {
-        registrar: Arc::new(TauriShortcutRegistrar::new(app_handle.clone(), main_thread)),
-        sink: Arc::new(ChannelActionSink::new(hotkey_tx)),
-    }))
+    let hotkeys = tauri::async_runtime::block_on(HotkeyClient::spawn(
+        HotkeyArgs {
+            registrar: Arc::new(TauriShortcutRegistrar::new(app_handle.clone(), main_thread)),
+            sink: Arc::new(ChannelActionSink::new(hotkey_tx)),
+            shutdown: shutdown.child_token(),
+        },
+        tasks,
+    ))
     .context("Failed to spawn the hotkey actor")?;
 
     let widget = Arc::new(TauriWidgetController::default());
@@ -245,12 +269,13 @@ fn build_application_effects(
 fn forward_actor_events(
     app_handle: tauri::AppHandle,
     client: NyanpasuClient,
-    producers: &ProducerTasks,
+    shutdown: &CancellationToken,
+    tasks: &TaskTracker,
 ) {
     let (mut mutations, mut effects, mut sources) = client.subscribe_configuration_changes();
     let configuration_client = client.clone();
     let configuration_handle = app_handle.clone();
-    tauri::async_runtime::spawn(producers.track(async move {
+    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         loop {
             let changed = tokio::select! {
                 result = mutations.changed() => result,
@@ -267,7 +292,7 @@ fn forward_actor_events(
     }));
     let mut core_events = client.subscribe_core_events();
     let core_handle = app_handle.clone();
-    tauri::async_runtime::spawn(producers.track(async move {
+    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         loop {
             match core_events.recv().await {
                 Ok(status) => {
@@ -281,7 +306,7 @@ fn forward_actor_events(
     }));
 
     let mut service_events = client.subscribe_service_events();
-    tauri::async_runtime::spawn(producers.track(async move {
+    tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         while service_events.changed().await.is_ok() {
             let status = service_events.borrow_and_update().clone();
             let _ = crate::core::actor_v2::ServiceStatusChangedEvent(status).emit(&app_handle);

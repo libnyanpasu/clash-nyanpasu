@@ -1,5 +1,5 @@
 use crate::{
-    client::{MainWindowGeometry, NyanpasuClient, application_workflow::startup::StartupOutcome},
+    client::{NyanpasuClient, application_workflow::startup::StartupOutcome},
     core::{storage::Storage, tray::proxies},
     log_err,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
@@ -449,16 +449,6 @@ pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
             .queue_main_window_geometry_save(geometry)?;
     }
     Ok(())
-}
-
-/// The main window's geometry as it is now, for the ordered shutdown to save
-/// last. Only a missing main window is a skip; a capture that fails is
-/// reported as such.
-pub fn capture_main_window_geometry(app_handle: &AppHandle) -> MainWindowGeometry {
-    if app_handle.get_webview_window(MainWindow.label()).is_none() {
-        return MainWindowGeometry::default();
-    }
-    MainWindowGeometry::from_capture(MainWindow.capture_state(app_handle))
 }
 
 /// Webview tray menu window

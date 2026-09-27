@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use tokio_util::sync::CancellationToken;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     SystemProxyArgs, SystemProxyClient,
@@ -119,8 +119,8 @@ impl PacPort for BlockingPac {
 }
 
 /// Parks inside `get` until the test releases it, the way a platform read can
-/// outlast the restore's bound while the reconcile behind it is still holding
-/// a value it is about to write.
+/// still be running when the shutdown begins, while the reconcile behind it is
+/// holding a value it is about to write.
 struct GatedOsProxy {
     os: Arc<RecordingOsProxy>,
     reading: tokio::sync::Notify,
@@ -179,23 +179,69 @@ fn unsupported_pac() -> Arc<dyn PacPort> {
     Arc::new(pac)
 }
 
+/// The root shutdown the actor's token hangs off.
+struct Shutdown {
+    token: CancellationToken,
+    tasks: TaskTracker,
+}
+
+impl Shutdown {
+    fn new() -> Self {
+        Self {
+            token: CancellationToken::new(),
+            tasks: TaskTracker::new(),
+        }
+    }
+
+    /// Cancels the token without waiting. A message sent before the test
+    /// next yields is still queued ahead of the drain, so it meets the
+    /// cancelled token rather than a closed mailbox.
+    fn cancel(&self) {
+        self.token.cancel();
+        self.tasks.close();
+    }
+
+    /// The exit path: cancels the token and waits for the restore to finish.
+    async fn exit(&self) {
+        self.cancel();
+        self.tasks.wait().await;
+    }
+}
+
 async fn spawn(
     os: Arc<dyn OsProxyPort>,
     auto_launch: Arc<dyn AutoLaunchPort>,
     pac: Arc<dyn PacPort>,
 ) -> SystemProxyClient {
-    SystemProxyClient::spawn(SystemProxyArgs {
-        os,
-        auto_launch,
-        pac,
-        schedule_guard_ticks: false,
-    })
+    spawn_owned(os, auto_launch, pac, &Shutdown::new()).await
+}
+
+async fn spawn_owned(
+    os: Arc<dyn OsProxyPort>,
+    auto_launch: Arc<dyn AutoLaunchPort>,
+    pac: Arc<dyn PacPort>,
+    shutdown: &Shutdown,
+) -> SystemProxyClient {
+    SystemProxyClient::spawn(
+        SystemProxyArgs {
+            os,
+            auto_launch,
+            pac,
+            schedule_guard_ticks: false,
+            shutdown: shutdown.token.child_token(),
+        },
+        &shutdown.tasks,
+    )
     .await
     .expect("the system proxy actor should spawn")
 }
 
 async fn spawn_with_os(os: Arc<dyn OsProxyPort>) -> SystemProxyClient {
     spawn(os, silent_auto_launch(), unsupported_pac()).await
+}
+
+async fn spawn_owned_with_os(os: Arc<dyn OsProxyPort>, shutdown: &Shutdown) -> SystemProxyClient {
+    spawn_owned(os, silent_auto_launch(), unsupported_pac(), shutdown).await
 }
 
 fn proxy(enabled: bool, port: Option<u16>) -> SystemProxyDesired {
@@ -486,7 +532,8 @@ async fn pac_disable_failure_keeps_pac_active_and_degrades() {
         .times(1)
         .returning(|| Err(anyhow::anyhow!("the os kept the auto-config url")));
     pac.expect_disable().times(1).returning(|| Ok(()));
-    let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned(os.clone(), silent_auto_launch(), Arc::new(pac), &shutdown).await;
 
     client
         .reconcile(
@@ -519,10 +566,10 @@ async fn pac_disable_failure_keeps_pac_active_and_degrades() {
     );
 
     // Still active means the exit path still has PAC to clean up, which is the
-    // whole point of not clearing the flag.
-    let status = client.restore().await;
-    assert_eq!(status.health, EffectHealth::Healthy);
-    assert!(!client.status().await.pac_active);
+    // whole point of not clearing the flag: the second disable is the exit's,
+    // and the fallback it wrote is turned off after it.
+    shutdown.exit().await;
+    assert!(!os.last_write().enable);
 }
 
 #[tokio::test]
@@ -680,26 +727,27 @@ async fn exit_restores_captured_original() {
         bypass: "corp".to_owned(),
     };
     let os = RecordingOsProxy::with_original(original.clone());
-    let client = spawn_with_os(os.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned_with_os(os.clone(), &shutdown).await;
     client
         .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
         .await;
 
-    let status = client.restore().await;
+    shutdown.exit().await;
 
-    assert_eq!(status.health, EffectHealth::Healthy);
     assert_eq!(os.last_write(), original);
 }
 
 #[tokio::test]
 async fn exit_disables_when_nothing_was_captured() {
     let os = RecordingOsProxy::new();
-    let client = spawn_with_os(os.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned_with_os(os.clone(), &shutdown).await;
     client
         .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
         .await;
 
-    client.restore().await;
+    shutdown.exit().await;
 
     let last = os.last_write();
     assert!(!last.enable);
@@ -835,13 +883,13 @@ async fn auto_launch_already_in_the_desired_state_is_not_rewritten() {
 }
 
 #[tokio::test]
-async fn restore_cancels_an_in_flight_pac_download() {
-    // A PAC download owns the mailbox for as long as it lasts, which is longer
-    // than the restore's bound: without cancellation the app exits with its
-    // proxy still installed.
+async fn the_exit_cancels_an_in_flight_pac_download() {
+    // A PAC download owns the mailbox for as long as it lasts: without
+    // cancellation the restore behind it waits on a url that never answers.
     let os = RecordingOsProxy::new();
     let pac = BlockingPac::new();
-    let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned(os.clone(), silent_auto_launch(), pac.clone(), &shutdown).await;
     let reconciling = {
         let client = client.clone();
         tokio::spawn(async move {
@@ -857,9 +905,8 @@ async fn restore_cancels_an_in_flight_pac_download() {
     };
     pac.started().await;
 
-    let status = client.restore().await;
+    shutdown.exit().await;
 
-    assert_eq!(status.health, EffectHealth::Healthy);
     let statuses = reconciling.await.expect("the reconcile task should finish");
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
@@ -873,14 +920,14 @@ async fn restore_cancels_an_in_flight_pac_download() {
     );
 }
 
-/// T10 §5.5 step 2: the shutdown signal alone releases a download in flight,
-/// before any restore is queued, and the reconcile it cut short writes
-/// nothing.
+/// The token alone releases a download in flight, before the restore runs,
+/// and the reconcile it cut short writes nothing.
 #[tokio::test]
-async fn the_shutdown_signal_releases_a_pac_download_before_any_restore() {
+async fn the_token_releases_a_pac_download_before_the_restore() {
     let os = RecordingOsProxy::new();
     let pac = BlockingPac::new();
-    let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned(os.clone(), silent_auto_launch(), pac.clone(), &shutdown).await;
     let reconciling = {
         let client = client.clone();
         tokio::spawn(async move {
@@ -896,7 +943,7 @@ async fn the_shutdown_signal_releases_a_pac_download_before_any_restore() {
     };
     pac.started().await;
 
-    client.signal_shutdown();
+    shutdown.cancel();
 
     let statuses = reconciling.await.expect("the reconcile task should finish");
     assert_eq!(
@@ -904,33 +951,8 @@ async fn the_shutdown_signal_releases_a_pac_download_before_any_restore() {
         "system_proxy_shut_down"
     );
     assert!(os.writes().is_empty(), "{:?}", os.writes());
-    assert_eq!(client.restore().await.health, EffectHealth::Healthy);
+    shutdown.exit().await;
     assert!(os.writes().is_empty(), "{:?}", os.writes());
-}
-
-/// A restore that could not be sent says so, so the shutdown can tell it
-/// from one that was sent and not answered.
-#[tokio::test]
-async fn a_restore_the_gone_actor_never_saw_is_reported_unreachable() {
-    let client = spawn_with_os(RecordingOsProxy::new()).await;
-    client
-        .actor
-        .stop_and_wait(None, Some(Duration::from_secs(5)))
-        .await
-        .expect("the actor stops");
-
-    let status = client.restore().await;
-
-    assert!(
-        matches!(
-            status.health,
-            EffectHealth::Degraded {
-                code: "system_proxy_unreachable",
-                ..
-            }
-        ),
-        "{status:?}"
-    );
 }
 
 #[tokio::test]
@@ -940,7 +962,8 @@ async fn cancelled_pac_apply_does_not_write_a_fallback_proxy() {
     // OS work that can also push the restore past its own bound.
     let os = RecordingOsProxy::new();
     let pac = BlockingPac::new();
-    let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned(os.clone(), silent_auto_launch(), pac.clone(), &shutdown).await;
     client
         .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
         .await;
@@ -961,14 +984,13 @@ async fn cancelled_pac_apply_does_not_write_a_fallback_proxy() {
     };
     pac.started().await;
 
-    let restored = client.restore().await;
+    shutdown.exit().await;
 
     let statuses = reconciling.await.expect("the reconcile task should finish");
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
         "system_proxy_shut_down"
     );
-    assert_eq!(restored.health, EffectHealth::Healthy);
     assert_eq!(
         os.writes().len(),
         enabled + 1,
@@ -982,13 +1004,14 @@ async fn cancelled_pac_apply_does_not_write_a_fallback_proxy() {
 }
 
 #[tokio::test]
-async fn reconcile_queued_behind_restore_is_rejected() {
-    // `restore` fires the token before queueing its message, so a reconcile can
-    // reach the actor while the interrupted PAC apply is still unwinding and
-    // before the restore itself runs. It must write nothing either.
+async fn a_reconcile_queued_behind_the_cancel_is_rejected() {
+    // A reconcile can reach the actor after the token fired, while the
+    // interrupted PAC apply is still unwinding and before the restore runs.
+    // It must write nothing either.
     let os = RecordingOsProxy::new();
     let pac = BlockingPac::new();
-    let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned(os.clone(), silent_auto_launch(), pac.clone(), &shutdown).await;
     let reconciling = {
         let client = client.clone();
         tokio::spawn(async move {
@@ -1004,9 +1027,7 @@ async fn reconcile_queued_behind_restore_is_rejected() {
     };
     pac.started().await;
 
-    // The first half of `restore`, on its own: the token is what a reconcile
-    // arriving before the restore message has to notice.
-    client.cancel.cancel();
+    shutdown.cancel();
     let statuses = client
         .reconcile(
             rev(2),
@@ -1033,18 +1054,19 @@ async fn reconcile_queued_behind_restore_is_rejected() {
         os.writes()
     );
     let _ = reconciling.await.expect("the reconcile task should finish");
-    client.restore().await;
+    shutdown.exit().await;
 }
 
 #[tokio::test]
-async fn reconcile_after_restore_is_rejected() {
+async fn a_reconcile_after_the_cancel_is_rejected() {
     let os = RecordingOsProxy::new();
-    let client = spawn_with_os(os.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned_with_os(os.clone(), &shutdown).await;
     client
         .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
         .await;
-    client.restore().await;
     let written = os.writes().len();
+    shutdown.cancel();
 
     let statuses = client
         .reconcile(
@@ -1071,15 +1093,12 @@ async fn reconcile_after_restore_is_rejected() {
             "{kind:?}"
         );
     }
-    assert_eq!(
-        os.writes().len(),
-        written,
-        "nothing may re-install the proxy the restore removed"
-    );
 
-    // Including a guard tick that was already queued when the restore ran.
-    client.tick_guard().await;
-    assert_eq!(os.writes().len(), written);
+    // Nothing re-installed the proxy the restore then removed: its disable is
+    // the only write after the cancel.
+    shutdown.exit().await;
+    assert_eq!(os.writes().len(), written + 1, "{:?}", os.writes());
+    assert!(!os.last_write().enable);
 }
 
 #[tokio::test]
@@ -1094,7 +1113,8 @@ async fn write_after_cancellation_during_original_capture_is_skipped() {
         bypass: BYPASS.to_owned(),
     });
     let (gate, release) = GatedOsProxy::new(os.clone());
-    let client = spawn_with_os(gate.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned_with_os(gate.clone(), &shutdown).await;
     let reconciling = {
         let client = client.clone();
         tokio::spawn(async move {
@@ -1105,8 +1125,7 @@ async fn write_after_cancellation_during_original_capture_is_skipped() {
     };
     gate.reading().await;
 
-    // The first half of `restore`: the token fires, the exit path stops waiting.
-    client.cancel.cancel();
+    shutdown.cancel();
     release
         .send(())
         .expect("the capture should still be parked");
@@ -1125,7 +1144,7 @@ async fn write_after_cancellation_during_original_capture_is_skipped() {
 
     // The enabled proxy the capture read belongs to whoever set it, and this
     // process never replaced it. The restore has nothing of its own to undo.
-    client.restore().await;
+    shutdown.exit().await;
     assert!(
         os.writes().is_empty(),
         "a proxy this process never installed must survive the exit: {:?}",
@@ -1145,7 +1164,8 @@ async fn failed_first_install_does_not_record_original() {
         bypass: BYPASS.to_owned(),
     });
     os.fail_set(true);
-    let client = spawn_with_os(os.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned_with_os(os.clone(), &shutdown).await;
 
     let statuses = client
         .reconcile(rev(1), Some(proxy(true, Some(7890))), None, None)
@@ -1157,7 +1177,7 @@ async fn failed_first_install_does_not_record_original() {
 
     // Lifted so the restore would record a write if it attempted one.
     os.fail_set(false);
-    client.restore().await;
+    shutdown.exit().await;
 
     assert!(
         os.writes().is_empty(),
@@ -1180,7 +1200,8 @@ async fn explicit_retry_after_a_failed_first_install_keeps_the_original() {
     };
     let os = RecordingOsProxy::with_original(original.clone());
     os.fail_set(true);
-    let client = spawn_with_os(os.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned_with_os(os.clone(), &shutdown).await;
     client
         .reconcile(
             rev(1),
@@ -1197,7 +1218,7 @@ async fn explicit_retry_after_a_failed_first_install_keeps_the_original() {
         .await;
     assert_eq!(os.last_write().port, 7890);
 
-    client.restore().await;
+    shutdown.exit().await;
 
     assert_eq!(
         os.last_write(),
@@ -1209,10 +1230,11 @@ async fn explicit_retry_after_a_failed_first_install_keeps_the_original() {
 
 #[tokio::test]
 async fn guard_tick_after_cancellation_does_not_write() {
-    // `restore` fires the token before queueing its message, so a tick already
-    // in the mailbox runs ahead of the restore with `closed` still unset.
+    // A tick queued behind the cancel runs ahead of the restore, with
+    // `closed` still unset.
     let os = RecordingOsProxy::new();
-    let client = spawn_with_os(os.clone()).await;
+    let shutdown = Shutdown::new();
+    let client = spawn_owned_with_os(os.clone(), &shutdown).await;
     client
         .reconcile(
             rev(1),
@@ -1223,15 +1245,18 @@ async fn guard_tick_after_cancellation_does_not_write() {
         .await;
     let written = os.writes().len();
 
-    client.cancel.cancel();
+    shutdown.cancel();
     client.tick_guard().await;
+    shutdown.exit().await;
 
+    // The restore's disable is the only write after the cancel.
     assert_eq!(
         os.writes().len(),
-        written,
+        written + 1,
         "a tick that beat the restore must not re-apply the proxy: {:?}",
         os.writes()
     );
+    assert!(!os.last_write().enable);
 }
 
 #[tokio::test]

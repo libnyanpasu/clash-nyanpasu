@@ -63,9 +63,9 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     }
 }
 
-/// The workflow's own shutdown request: what the ordered shutdown's StopCore
-/// step sends once the transactions settled. A reply that never came is
-/// reported the way the core stop reports it, never as a stop.
+/// The workflow's own shutdown request, which stops the core once the running
+/// operation settled. A reply that never came is reported the way the core
+/// stop reports it, never as a stop.
 async fn workflow_shutdown(client: &NyanpasuClient) -> ShutdownReport {
     client
         .inner
@@ -284,6 +284,8 @@ async fn workflow_graph_with_clients(
         Arc::new(MockProfileFsPort::new()),
         Arc::new(MockSubscriptionFetcher::new()),
         test_materialization_port(),
+        tokio_util::sync::CancellationToken::new(),
+        &tokio_util::task::TaskTracker::new(),
     )
     .await
     .unwrap();
@@ -328,6 +330,8 @@ async fn workflow_graph_with_clients(
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             budgets: mutation::MutationBudgets::default(),
             ownership,
+            shutdown: tokio_util::sync::CancellationToken::new(),
+            tasks: tokio_util::task::TaskTracker::new(),
         },
         schedule_ticks,
     )

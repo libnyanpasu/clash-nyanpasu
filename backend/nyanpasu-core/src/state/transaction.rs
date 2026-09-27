@@ -419,14 +419,10 @@ where
                 let guard = self.store.compare_and_swap(&prev, new_state);
 
                 if !Arc::ptr_eq(&guard, &prev) {
-                    // Deliberately *not* decided here. The candidate will never
-                    // commit, but what it already persisted outside the store is
-                    // still being put back, and a participant that reads
-                    // `Aborted` while that recovery runs would settle on an
-                    // outcome the recovery may still qualify (v2 §4.2). The
-                    // decision is recorded by `_rollback`, after the caller's
-                    // recovery has finished; a caller dropped in between leaves
-                    // it to the rollback guard, which flags the unknown
+                    // Deliberately *not* decided here: the caller first records
+                    // what the candidate left outside the store, and `_rollback`
+                    // publishes that with the abort. A caller dropped in between
+                    // leaves it to the rollback guard, which flags the unknown
                     // persistence outcome as well.
                     return Err(Box::new(CommitCasMismatch {
                         tx: Box::new(self),

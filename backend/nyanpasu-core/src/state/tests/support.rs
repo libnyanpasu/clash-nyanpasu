@@ -1,9 +1,9 @@
 //! Shared scaffolding for the persistence-settlement tests.
 
-use std::{io::Write, sync::Arc};
+use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
 use crate::{
@@ -26,38 +26,6 @@ impl TestState {
             name: name.to_string(),
             value,
         }
-    }
-}
-
-pub(super) const REFUSED_NAME: &str = "refused";
-
-/// YAML, except that it refuses to write the state named `refused`.
-///
-/// Fails one specific write (the recovery) while letting the other (the
-/// candidate) through, without touching the filesystem in between.
-#[derive(Debug, Clone, Copy, Default)]
-pub(super) struct RefuseNamedFormat;
-
-impl Format for RefuseNamedFormat {
-    fn serialize<W: Write, T: Serialize>(
-        &self,
-        mut writer: W,
-        value: &T,
-        prefix: Option<&str>,
-    ) -> anyhow::Result<()> {
-        let body = serde_yaml_ng::to_string(value)?;
-        if body.contains(REFUSED_NAME) {
-            anyhow::bail!("refusing to serialize the `{REFUSED_NAME}` state");
-        }
-        if let Some(prefix) = prefix {
-            writeln!(writer, "{prefix}")?;
-        }
-        writer.write_all(body.as_bytes())?;
-        Ok(())
-    }
-
-    fn deserialize<R: std::io::Read, T: DeserializeOwned>(&self, reader: R) -> anyhow::Result<T> {
-        Ok(serde_yaml_ng::from_reader(reader)?)
     }
 }
 

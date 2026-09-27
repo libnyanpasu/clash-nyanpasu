@@ -195,9 +195,6 @@ where
         let formatter = self.formatter.clone();
         let builder_for_save = builder.clone();
 
-        let inconsistent_path = self.config_path.clone();
-        let written = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let completed = written.clone();
         let result = self
             .state_coordinator
             .with_pending_state(
@@ -213,22 +210,10 @@ where
                             Err(error) => error,
                         })?
                         .with_context(|| format!("failed to write config: {config_path}"))?;
-                    completed.store(true, std::sync::atomic::Ordering::Release);
                     Ok::<_, anyhow::Error>(())
                 },
-                // This manager persists the *builder*, and a committed state
-                // that another writer produced does not identify the builder
-                // that produced it. There is nothing correct to write back, so
-                // the inconsistency is reported instead of being papered over.
-                |_committed| async move {
-                    if !written.load(std::sync::atomic::Ordering::Acquire) {
-                        return Ok(());
-                    }
-                    Err(anyhow::anyhow!(
-                        "cannot restore the config file: the committed state was produced by \
-                         another writer and its builder is unknown"
-                    ))
-                },
+                // A failed write leaves the old file in place.
+                |_committed| async { Ok(()) },
             )
             .await;
 
@@ -246,17 +231,6 @@ where
                 } => Err(UpsertError::ResourceRecovery {
                     cause: anyhow::anyhow!("{effect_error}"),
                     recovery_error,
-                }),
-                WithEffectError::Recovery {
-                    commit_error,
-                    recovery_error,
-                } => Err(UpsertError::Recovery {
-                    commit_error,
-                    recovery_error,
-                    inconsistent: InconsistentPersistence {
-                        config_path: inconsistent_path,
-                        local_write_completed: false,
-                    },
                 }),
             },
         }

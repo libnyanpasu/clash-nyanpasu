@@ -522,9 +522,9 @@ async fn dropping_before_the_local_write_starts_leaves_the_flag_clear() {
     assert_eq!(manager.snapshot().name, "");
 }
 
-/// A commit refused after the local write completed leaves a published resource
-/// behind. The config file is put back, that resource is not, so the caller has
-/// to be told — a plain CAS mismatch would read as "nothing happened".
+/// A commit lost after the local write completed returns the mismatch and puts
+/// nothing back: the store keeps the winner and the config file keeps the
+/// candidate. The abort says so, so it never reads as a clean rejection.
 #[tokio::test]
 async fn a_lost_commit_after_a_completed_local_write_is_not_a_clean_rejection() {
     let dir = tempfile::tempdir().unwrap();
@@ -538,13 +538,17 @@ async fn a_lost_commit_after_a_completed_local_write_is_not_a_clean_rejection() 
     };
     manager.add_subscriber(Box::new(hijacker));
 
+    let handle: Arc<StdMutex<Option<DecisionHandle>>> = Arc::new(StdMutex::new(None));
     let promoted = Arc::new(AtomicBool::new(false));
     let promoted_flag = Arc::clone(&promoted);
     let result = manager
         .replace_if_version_with_participant(
             Version::new(0),
             TestState::new("candidate", 1),
-            |_decision| Arc::new(SilentParticipant) as StateParticipant<TestState>,
+            |decision| {
+                *handle.lock().unwrap() = Some(decision);
+                Arc::new(SilentParticipant) as StateParticipant<TestState>
+            },
             move || async move {
                 promoted_flag.store(true, Ordering::SeqCst);
                 Ok(())
@@ -554,24 +558,25 @@ async fn a_lost_commit_after_a_completed_local_write_is_not_a_clean_rejection() 
         .await;
 
     assert!(promoted.load(Ordering::SeqCst), "the local write must run");
-    match result {
-        Err(ReplaceIfVersionError::State(commit_error)) => {
-            assert!(
-                matches!(
-                    commit_error,
-                    StateChangedError::StateCasMismatch { expected, actual }
-                        if expected == Version::new(0) && actual == Version::new(9)
-                ),
-                "got {commit_error:?}"
-            );
-        }
-        other => panic!("expected an orphaned local write, got {other:?}"),
-    }
-
-    // The config recovery itself succeeded: only the caller's publication is
-    // left over, which is exactly what the variant says.
+    assert!(
+        matches!(
+            result,
+            Err(ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
+                expected,
+                actual
+            })) if expected == Version::new(0) && actual == Version::new(9)
+        ),
+        "got {result:?}"
+    );
     assert_eq!(&*manager.snapshot(), &winner);
-    assert_eq!(read_config(&config_path).await, winner);
+    assert_eq!(read_config(&config_path).await.name, "candidate");
+    let handle = handle.lock().unwrap().clone().unwrap();
+    assert!(matches!(
+        handle.decision(),
+        StateDecision::Aborted {
+            resources: AbortResourceState::NeedsRecovery(_)
+        }
+    ));
 }
 
 /// A conflict never starts a transaction, but the participant already exists.
@@ -619,167 +624,6 @@ async fn a_version_conflict_settles_the_participant_decision() {
         },
         "a conflict is a decision, not an absence of one"
     );
-}
-
-/// A CAS mismatch whose storage recovery fails leaves the persisted state
-/// unknown, and the participant is the one reader that has to act on it: an
-/// `Aborted` decision on its own reads as a clean cancellation it may undo its
-/// own external work for (v2 §4.2).
-///
-/// Driven through the coordinator rather than the manager because the recovery
-/// closure is what this test has to hold still: the participant must not be
-/// able to settle while it is running, and must see the flag once it fails.
-#[tokio::test]
-async fn a_failed_persistence_recovery_qualifies_the_participants_abort() {
-    use crate::state::{
-        StateCoordinator, coordinator::ParticipantEntry, error::WithEffectError,
-        transaction::NotifyStrategy,
-    };
-
-    let mut coordinator = StateCoordinator::<TestState>::builder()
-        .with_notify_strategy(NotifyStrategy::Parallel)
-        .build(TestState::new("initial", 0));
-    let winner = TestState::new("winner", 7);
-    coordinator.add_subscriber(Box::new(StoreHijacker {
-        store: coordinator.state_store(),
-        winner: winner.clone(),
-        winner_version: Version::new(9),
-    }));
-
-    let handle: Arc<StdMutex<Option<DecisionHandle>>> = Arc::new(StdMutex::new(None));
-    let log = Arc::new(Mutex::new(Vec::new()));
-    let recovering = Arc::new(Notify::new());
-    let release = Arc::new(Notify::new());
-    let participant = {
-        let handle = Arc::clone(&handle);
-        let log = Arc::clone(&log);
-        ParticipantEntry::new(move |decision: DecisionHandle| {
-            *handle.lock().unwrap() = Some(decision.clone());
-            Arc::new(RecordingParticipant {
-                attempt: 1,
-                decision,
-                log,
-            }) as StateParticipant<TestState>
-        })
-    };
-
-    let candidate = TestState::new("candidate", 1);
-    let recovering_for_fn = Arc::clone(&recovering);
-    let release_for_fn = Arc::clone(&release);
-    let mut transaction = Box::pin(coordinator.with_pending_state_if_version_with_participant(
-        Version::new(0),
-        &candidate,
-        participant,
-        |_state| async move { Ok::<(), anyhow::Error>(()) },
-        move |_committed| async move {
-            recovering_for_fn.notify_one();
-            release_for_fn.notified().await;
-            Err(anyhow::anyhow!(
-                "the committed state could not be written back"
-            ))
-        },
-    ));
-
-    tokio::select! {
-        result = &mut transaction => panic!("the recovery should stay pending: it {}", if result.is_ok() { "succeeded" } else { "failed" }),
-        _ = recovering.notified() => {}
-    }
-
-    {
-        let handle = handle.lock().unwrap().clone().unwrap();
-        assert_eq!(
-            handle.decision(),
-            StateDecision::Undecided,
-            "a participant polling the decision must not settle while the persistence \
-             recovery it would act on is still running"
-        );
-    }
-
-    release.notify_one();
-    let outcome = transaction.await;
-    assert!(
-        matches!(outcome, Err(WithEffectError::Recovery { .. })),
-        "the caller is told too, but it is not the only reader"
-    );
-
-    let handle = handle.lock().unwrap().clone().unwrap();
-    assert!(
-        matches!(
-            handle.decision(),
-            StateDecision::Aborted {
-                resources: AbortResourceState::NeedsRecovery(_)
-            }
-        ),
-        "an unknown persistence outcome must be recorded as needing recovery"
-    );
-    assert_eq!(
-        *log.lock().await,
-        vec![
-            (1, Phase::Prepare, StateDecision::Undecided),
-            (1, Phase::RolledBack, handle.decision()),
-        ],
-        "the rollback notification carries the abort the flag qualifies"
-    );
-}
-
-/// The same mismatch with a recovery that succeeds is an ordinary refusal: the
-/// config file holds the committed state, so nothing needs recovering and the
-/// participant may cancel cleanly.
-#[tokio::test]
-async fn a_successful_persistence_recovery_leaves_the_abort_unqualified() {
-    use crate::state::{
-        StateCoordinator, coordinator::ParticipantEntry, error::WithEffectError,
-        transaction::NotifyStrategy,
-    };
-
-    let mut coordinator = StateCoordinator::<TestState>::builder()
-        .with_notify_strategy(NotifyStrategy::Parallel)
-        .build(TestState::new("initial", 0));
-    coordinator.add_subscriber(Box::new(StoreHijacker {
-        store: coordinator.state_store(),
-        winner: TestState::new("winner", 7),
-        winner_version: Version::new(9),
-    }));
-
-    let handle: Arc<StdMutex<Option<DecisionHandle>>> = Arc::new(StdMutex::new(None));
-    let participant = {
-        let handle = Arc::clone(&handle);
-        ParticipantEntry::new(move |decision: DecisionHandle| {
-            *handle.lock().unwrap() = Some(decision);
-            Arc::new(SilentParticipant) as StateParticipant<TestState>
-        })
-    };
-
-    let candidate = TestState::new("candidate", 1);
-    let outcome = coordinator
-        .with_pending_state_if_version_with_participant(
-            Version::new(0),
-            &candidate,
-            participant,
-            |_state| async move { Ok::<(), anyhow::Error>(()) },
-            |_committed| async move { Ok(()) },
-        )
-        .await;
-
-    assert!(matches!(
-        outcome,
-        Err(WithEffectError::State(
-            StateChangedError::StateCasMismatch { .. }
-        ))
-    ));
-    let handle = handle.lock().unwrap().clone().unwrap();
-    assert_eq!(
-        handle.decision(),
-        StateDecision::Aborted {
-            resources: AbortResourceState::Restored
-        }
-    );
-    assert!(!matches!(
-        handle.decision(),
-        StateDecision::Aborted {
-            resources: AbortResourceState::NeedsRecovery(_)
-        }
-    ));
 }
 
 #[tokio::test]

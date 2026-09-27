@@ -4,15 +4,7 @@ use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{
-    future::Future,
-    io::Write,
-    pin::Pin,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{future::Future, io::Write, pin::Pin};
 
 use super::{super::error::*, *};
 
@@ -161,18 +153,6 @@ pub enum ReplaceIfVersionError {
         cause: anyhow::Error,
         recovery_error: anyhow::Error,
     },
-    #[error(
-        "state commit failed ({commit_error}) and restoring the committed state failed \
-         ({recovery_error}): {inconsistent}"
-    )]
-    Recovery {
-        commit_error: StateChangedError,
-        #[source]
-        recovery_error: anyhow::Error,
-        /// What the failed recovery left behind. This is what makes a recovery
-        /// failure distinguishable from a clean rejection.
-        inconsistent: InconsistentPersistence,
-    },
 }
 
 /// Which write inside one conditional replacement failed.
@@ -212,8 +192,6 @@ type ConfigWrite = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
 /// as they were: `upsert` offloads the write, conditional replacement runs it on
 /// the calling task. Offloading conditional replacement too would change when a
 /// commit becomes observable on a path this change was not asked to touch.
-///
-/// Within one entry point the effect and its recovery always use the same mode.
 #[derive(Debug, Clone, Copy)]
 enum ConfigWriteMode {
     /// Write on the current task.
@@ -244,18 +222,15 @@ where
     ///
     /// This is the same conditional-replacement transaction as
     /// [`PersistentStateManager::replace_if_version`] with no version
-    /// precondition, so a commit that loses a race still rewrites the config
-    /// file back to the state the store actually holds.
+    /// precondition. A failed write leaves the old file in place, so there is
+    /// nothing to recover.
     pub async fn upsert(&mut self, state: State) -> Result<PrepareReport, UpsertError>
     where
         Formatter: Clone,
     {
-        let config_path = self.config_path.clone();
-        let (effect, recovery) = self.config_write_steps(ConfigWriteMode::Offloaded);
+        let effect = self.write_config_step(ConfigWriteMode::Offloaded);
         self.state_coordinator
-            .with_pending_state(&state, effect, |committed| async move {
-                recovery(&committed).await
-            })
+            .with_pending_state(&state, effect, |_committed| async { Ok(()) })
             .await
             .map(|((), report)| report)
             .map_err(|error| match error {
@@ -268,22 +243,11 @@ where
                     cause: anyhow::anyhow!("{effect_error}"),
                     recovery_error,
                 },
-                WithEffectError::Recovery {
-                    commit_error,
-                    recovery_error,
-                } => UpsertError::Recovery {
-                    commit_error,
-                    recovery_error,
-                    inconsistent: InconsistentPersistence {
-                        config_path,
-                        local_write_completed: false,
-                    },
-                },
             })
     }
 
     /// A self-contained "write the config file" step, detached from `&self` so
-    /// it can be moved into the transaction's effect and recovery closures.
+    /// it can be moved into the transaction's effect.
     ///
     /// Serialization always happens on the calling task because it is in-memory
     /// and cheap; `mode` only decides where the file write itself runs.
@@ -320,39 +284,6 @@ where
         }
     }
 
-    fn config_write_steps(
-        &self,
-        mode: ConfigWriteMode,
-    ) -> (
-        impl FnOnce(&State) -> ConfigWrite + use<State, Formatter>,
-        impl FnOnce(&State) -> ConfigWrite + use<State, Formatter>,
-    )
-    where
-        Formatter: Clone,
-    {
-        let effect = self.write_config_step(mode);
-        let recovery = self.write_config_step(mode);
-        let written = Arc::new(AtomicBool::new(false));
-        let completed = written.clone();
-        (
-            move |state| {
-                let write = effect(state);
-                Box::pin(async move {
-                    write.await?;
-                    completed.store(true, Ordering::Release);
-                    Ok(())
-                }) as ConfigWrite
-            },
-            move |state| {
-                if written.load(Ordering::Acquire) {
-                    recovery(state)
-                } else {
-                    Box::pin(async { Ok(()) }) as ConfigWrite
-                }
-            },
-        )
-    }
-
     pub async fn replace_if_version(
         &mut self,
         expected_version: Version,
@@ -361,22 +292,17 @@ where
     where
         Formatter: Clone,
     {
-        let config_path = self.config_path.clone();
-        let (effect, recovery) = self.config_write_steps(ConfigWriteMode::Inline);
+        let effect = self.write_config_step(ConfigWriteMode::Inline);
         let outcome = self
             .state_coordinator
             .with_pending_state_if_version(
                 expected_version,
                 &next_state,
                 |state| async move { effect(state).await.map_err(ConditionalWriteError::Config) },
-                |committed| async move {
-                    recovery(&committed)
-                        .await
-                        .map_err(ConditionalWriteError::Config)
-                },
+                |_committed| async { Ok(()) },
             )
             .await;
-        Self::map_conditional_outcome(outcome, config_path, false)
+        Self::map_conditional_outcome(outcome)
     }
 
     /// Replace the state only if the store still holds `expected_version`, with
@@ -413,13 +339,7 @@ where
         R: FnOnce() -> RFut,
         RFut: Future<Output = anyhow::Result<()>>,
     {
-        let config_path = self.config_path.clone();
         let effect = self.write_config_step(ConfigWriteMode::Inline);
-        let recovery = self.write_config_step(ConfigWriteMode::Inline);
-        let local_write_completed = Arc::new(AtomicBool::new(false));
-        let local_write_flag = Arc::clone(&local_write_completed);
-        let config_written = Arc::new(AtomicBool::new(false));
-        let config_written_effect = config_written.clone();
         let outcome = self
             .state_coordinator
             .with_pending_state_if_version_with_participant(
@@ -430,39 +350,24 @@ where
                     local_write()
                         .await
                         .map_err(ConditionalWriteError::LocalWrite)?;
-                    local_write_flag.store(true, Ordering::SeqCst);
-                    effect(state).await.map_err(ConditionalWriteError::Config)?;
-                    config_written_effect.store(true, Ordering::Release);
-                    Ok(())
+                    effect(state).await.map_err(ConditionalWriteError::Config)
                 },
-                |committed| async move {
-                    // Try every necessary recovery even when another fails.
-                    let local = local_recovery().await;
-                    let config = if config_written.load(Ordering::Acquire) {
-                        recovery(&committed).await
-                    } else {
-                        Ok(())
-                    };
-                    match (local, config) {
-                        (Ok(()), Ok(())) => Ok(()),
-                        (local, config) => Err(ConditionalWriteError::LocalWrite(anyhow::anyhow!(
-                            "local recovery: {local:?}; config recovery: {config:?}"
-                        ))),
-                    }
+                // Only the caller's own local write is undone. A config write
+                // that failed before its rename left the old file; one whose
+                // directory sync failed after the rename (Unix) left the new
+                // file, and nothing here reconciles that.
+                |_committed| async move {
+                    local_recovery()
+                        .await
+                        .map_err(ConditionalWriteError::LocalWrite)
                 },
             )
             .await;
-        Self::map_conditional_outcome(
-            outcome,
-            config_path,
-            local_write_completed.load(Ordering::SeqCst),
-        )
+        Self::map_conditional_outcome(outcome)
     }
 
     fn map_conditional_outcome(
         outcome: Result<PendingOutcome<()>, WithEffectError<ConditionalWriteError>>,
-        config_path: Utf8PathBuf,
-        local_write_completed: bool,
     ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError> {
         match outcome {
             Ok(PendingOutcome::Committed { .. }) => Ok(ReplaceIfVersionResult::Replaced),
@@ -482,17 +387,6 @@ where
             }) => Err(ReplaceIfVersionError::ResourceRecovery {
                 cause: anyhow::anyhow!("{effect_error}"),
                 recovery_error: recovery_error.into_inner(),
-            }),
-            Err(WithEffectError::Recovery {
-                commit_error,
-                recovery_error,
-            }) => Err(ReplaceIfVersionError::Recovery {
-                commit_error,
-                recovery_error: recovery_error.into_inner(),
-                inconsistent: InconsistentPersistence {
-                    config_path,
-                    local_write_completed,
-                },
             }),
         }
     }

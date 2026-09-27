@@ -1,6 +1,6 @@
 use crate::{
     client::application_workflow::{
-        impact::{MutationHints, RequestedRuntimeFields},
+        impact::{self, MutationHints, RequestedRuntimeFields},
         policy::CommandClass,
     },
     state::mutation::{self, MutationCoordinator},
@@ -113,22 +113,40 @@ impl ApplicationActor {
         hints: MutationHints,
         class: CommandClass,
     ) -> anyhow::Result<ApplicationSnapshot> {
+        state.mutations.ensure_ready()?;
         Self::validate_channel(state, &mut next)?;
-        let version = state.manager.snapshot_handle().load().version;
-        let operation = OperationId::generate();
+        let (version, impact) = {
+            let current = state.manager.snapshot_handle().load();
+            let impact = impact::runtime_impact(&current.state, &next, &hints, class);
+            (current.version, impact)
+        };
         let requested = hints.requested_owners.clone();
-        let (participant, settlement) = state.mutations.participant(operation, hints, class)?;
-        let result = state
-            .manager
-            .replace_if_version_with_participant(
-                version,
-                next,
-                participant,
-                || async { Ok(()) },
-                || async { Ok(()) },
-            )
-            .await;
-        let settlement = settlement.await.ok();
+        // Only a mutation that reaches the runtime takes the Runtime into its
+        // transaction; any other save commits on its own.
+        let (operation, result, settlement) = match impact {
+            Some(impact) => {
+                let operation = OperationId::generate();
+                let (participant, settlement) = state
+                    .mutations
+                    .participant(operation, hints, class, impact)?;
+                let result = state
+                    .manager
+                    .replace_if_version_with_participant(
+                        version,
+                        next,
+                        participant,
+                        || async { Ok(()) },
+                        || async { Ok(()) },
+                    )
+                    .await;
+                (Some(operation), result, settlement.await.ok())
+            }
+            None => (
+                None,
+                state.manager.replace_if_version(version, next).await,
+                None,
+            ),
+        };
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
                 let mut snapshot = Self::snapshot(state);

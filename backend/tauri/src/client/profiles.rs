@@ -808,7 +808,6 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        assert!(!report.affects_current);
         assert_eq!(
             fs.read(&ManagedProfilePath::new("r1.yaml").unwrap())
                 .unwrap(),
@@ -1574,14 +1573,16 @@ mod tests {
         assert!(content.contains("mode: rule"));
     }
 
+    /// An operation id on the receipt is the source having classified the
+    /// write as reaching the runtime and taken the Runtime into it.
     #[tokio::test]
-    async fn set_current_commits_and_reports_affects_current() {
+    async fn set_current_commits_and_reaches_the_runtime_even_when_reselected() {
         let (client, dir) = seeded_client().await;
         let report = client
             .set_current(Some(ProfileId("cfg1".into())))
             .await
             .expect("activate cfg1");
-        assert!(report.affects_current);
+        assert!(report.receipt.operation_id.is_some());
         assert_eq!(report.snapshot.current, Some(ProfileId("cfg1".into())));
         assert_eq!(report.snapshot.revision(), 2);
 
@@ -1589,7 +1590,10 @@ mod tests {
             .set_current(Some(ProfileId("cfg1".into())))
             .await
             .unwrap();
-        assert!(!report.affects_current);
+        assert!(
+            report.receipt.operation_id.is_some(),
+            "re-selecting the current profile still asks for the runtime"
+        );
         assert_eq!(report.snapshot.revision(), 3);
 
         drop(client);
@@ -1615,13 +1619,12 @@ mod tests {
     async fn set_current_if_none_only_activates_when_empty() {
         let (client, _dir) = seeded_client().await;
 
-        // Empty current -> activates and reports the change.
+        // Empty current -> activates.
         let report = client
             .set_current_if_none(ProfileId("cfg1".into()))
             .await
             .expect("call ok")
             .expect("activated when current was empty");
-        assert!(report.affects_current);
         assert_eq!(report.snapshot.current, Some(ProfileId("cfg1".into())));
 
         // A current already exists -> does NOT activate (returns None) and
@@ -1653,11 +1656,10 @@ mod tests {
     #[tokio::test]
     async fn set_global_transforms_validates_kind_and_reports_change() {
         let (client, _dir) = seeded_client().await;
-        let report = client
+        client
             .set_global_transforms(vec![ProfileId("ovl1".into())])
             .await
             .expect("set transforms");
-        assert!(report.affects_current);
 
         let err = client
             .set_global_transforms(vec![ProfileId("cfg1".into())])
@@ -1667,14 +1669,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_valid_fields_commits_and_always_affects_current() {
+    async fn set_valid_fields_commits_and_always_reaches_the_runtime() {
         let (client, _dir) = seeded_client().await;
         let report = client
             .set_valid_fields(vec!["dns".into(), "tun".into()])
             .await
             .expect("set valid fields");
         assert!(
-            report.affects_current,
+            report.receipt.operation_id.is_some(),
             "whitelist change must trigger rebuild"
         );
         assert_eq!(
@@ -1719,7 +1721,6 @@ mod tests {
             .await
             .expect("add should succeed");
 
-        assert!(!report.affects_current);
         assert!(report.degradations.is_empty());
         let created = report
             .created
@@ -2581,7 +2582,6 @@ mod tests {
             .delete(ProfileId("cfg2".into()))
             .await
             .expect("delete cfg2");
-        assert!(!report.affects_current);
         assert!(
             report
                 .snapshot
@@ -2634,7 +2634,6 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(!report.affects_current);
         let uids: Vec<_> = report.snapshot.items.keys().map(|u| u.0.clone()).collect();
         assert_eq!(uids, vec!["cfg2", "cfg1", "ovl1"]);
 
@@ -2675,7 +2674,6 @@ mod tests {
             .patch_metadata(ProfileId("cfg1".into()), patch)
             .await
             .unwrap();
-        assert!(!report.affects_current);
         assert_eq!(
             report.snapshot.items[&ProfileId("cfg1".into())]
                 .metadata
@@ -2708,20 +2706,18 @@ mod tests {
         {
             file.transforms = vec![ProfileId("ovl1".into())];
         }
-        let report = client
+        client
             .replace_definition(ProfileId("cfg1".into()), definition)
             .await
             .unwrap();
-        assert!(report.affects_current);
 
         let definition = seeded_profiles().items[&ProfileId("cfg2".into())]
             .definition
             .clone();
-        let report = client
+        client
             .replace_definition(ProfileId("cfg2".into()), definition)
             .await
             .unwrap();
-        assert!(!report.affects_current);
 
         let err = client.delete(ProfileId("ovl1".into())).await.unwrap_err();
         match err {
@@ -4039,11 +4035,10 @@ mod tests {
         client.refresh(ProfileId("r1".into()), None).await.unwrap();
         let committed = client.sources().entries[0].clone();
         assert_eq!(committed.origin, SourceOrigin::ManualRefresh);
+        // Nothing runs `r1`, so its refresh is a plain save with no operation.
         assert!(matches!(
             committed.outcome,
-            SourceOutcome::Committed {
-                operation_id: Some(_)
-            }
+            SourceOutcome::Committed { operation_id: None }
         ));
         assert_eq!(committed.health, ConvergenceHealth::Healthy);
 

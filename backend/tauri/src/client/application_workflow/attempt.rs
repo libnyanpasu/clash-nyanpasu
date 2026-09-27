@@ -80,7 +80,6 @@ pub(super) enum TryVerdict {
     Applied(AppliedVerdict),
     Deferred { identity: String },
     SavedInactive { identity: String },
-    Saved,
     Rejected,
 }
 
@@ -120,7 +119,6 @@ impl TryVerdict {
             RuntimePrepareOutcome::SavedInactive { identity } => Some(Self::SavedInactive {
                 identity: identity.clone(),
             }),
-            RuntimePrepareOutcome::Saved => Some(Self::Saved),
             RuntimePrepareOutcome::Rejected { .. } => Some(Self::Rejected),
             RuntimePrepareOutcome::RecoveryRequired(_) => None,
         }
@@ -494,7 +492,7 @@ impl ApplicationWorkflow {
                     self.confirm_saved_inactive(identity);
                     Ok(())
                 }
-                (Some(TryVerdict::Saved), _) | (_, None) => Ok(()),
+                (_, None) => Ok(()),
                 (None | Some(TryVerdict::Rejected), Some(_)) => Err(format!(
                     "operation {operation_id} was committed without a verdict that accepted it; \
                      the source and this workflow disagree about what was decided"

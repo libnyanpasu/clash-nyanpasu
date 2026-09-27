@@ -741,12 +741,11 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
         wire["commits"][0]["source_version"],
         before.source_versions.application + 1
     );
+    // A language is no runtime input, so the save ran no operation.
+    assert!(wire["commits"][0]["operation_id"].is_null());
+    assert_eq!(wire["commits"][0]["runtime"], "unchanged");
     let pending = client.configuration_status();
     assert!(pending.event_seq > before.event_seq);
-    assert_eq!(
-        wire["commits"][0]["operation_id"],
-        pending.recent_operations[0].operation_id
-    );
     assert!(pending.effects.iter().any(|e| e.kind == EffectKind::Locale
         && e.health == crate::client::convergence::ConvergenceHealth::Pending));
     port.release.notify_one();

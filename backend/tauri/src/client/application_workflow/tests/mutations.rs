@@ -40,7 +40,8 @@ use super::{
     super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters,
         impact::{
-            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, TouchedContent,
+            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, RuntimeImpact,
+            TouchedContent, runtime_impact,
         },
         mutation::{
             CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationConclusion,
@@ -394,7 +395,9 @@ pub(super) fn plain<T: Clone + Send + Sync + 'static>() -> Decorate<T> {
     Box::new(|participant| participant)
 }
 
-/// Runs one mutation of `manager` as the workflow's Required participant.
+/// Runs one mutation of `manager` the way a source does: with the workflow as
+/// its Required participant when it reaches the runtime, and as a plain save
+/// when it does not.
 ///
 /// The attempt identity is the caller's so a test can address a settlement
 /// before the attempt has finished, exactly as the domain actor will.
@@ -427,7 +430,7 @@ where
 
 /// The same mutation, with the settlement the Runtime sends its source. It
 /// arrives once Confirm or Cancel is over, which a test may be holding still,
-/// so awaiting it is the caller's choice.
+/// so awaiting it is the caller's choice. A plain save has none.
 pub(super) async fn mutate_settling<T>(
     manager: &mut PersistentStateManager<T>,
     client: &ApplicationWorkflowClient,
@@ -445,9 +448,20 @@ pub(super) async fn mutate_settling<T>(
 where
     T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
 {
-    let version = manager.snapshot_handle().load().version;
+    let hints = MutationHints::default();
+    let (version, impact) = {
+        let current = manager.snapshot_handle().load();
+        let impact = runtime_impact(&current.state, &next, &hints, class);
+        (current.version, impact)
+    };
     let client = client.clone();
     let (settle, settlement) = tokio::sync::oneshot::channel();
+    let Some(impact) = impact else {
+        let result = manager
+            .replace_if_version_with_local_write(version, next, local_write, || async { Ok(()) })
+            .await;
+        return (result, settlement);
+    };
     let result = manager
         .replace_if_version_with_participant(
             version,
@@ -455,8 +469,9 @@ where
             move |decision| {
                 decorate(ApplicationMutationParticipant::<T>::new(
                     operation_id,
-                    MutationHints::default(),
+                    hints,
                     class,
+                    impact,
                     decision,
                     client,
                     settle,
@@ -486,7 +501,17 @@ where
     T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
 {
     let operation_id = OperationId::generate();
-    let version = manager.snapshot_handle().load().version;
+    let (version, impact) = {
+        let current = manager.snapshot_handle().load();
+        let impact = runtime_impact(&current.state, &next, &hints, class);
+        (current.version, impact)
+    };
+    let Some(impact) = impact else {
+        return (
+            operation_id,
+            manager.replace_if_version(version, next).await,
+        );
+    };
     let client = client.clone();
     let (settle, _settlement) = tokio::sync::oneshot::channel();
     let result = manager
@@ -498,6 +523,7 @@ where
                     operation_id,
                     hints,
                     class,
+                    impact,
                     decision,
                     client,
                     settle,
@@ -1463,6 +1489,7 @@ async fn an_abort_that_owes_a_resource_recovery_still_rolls_the_runtime_back() {
                     operation_id,
                     MutationHints::default(),
                     CommandClass::Save,
+                    RuntimeImpact::Reconcile,
                     decision,
                     workflow,
                     settle,
@@ -2050,7 +2077,6 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
         policy::TryCauseKind,
     };
 
-    assert_eq!(RuntimePrepareOutcome::Saved.ack(), TryAck::Ok);
     assert_eq!(
         RuntimePrepareOutcome::SavedInactive {
             identity: String::new()
@@ -2144,6 +2170,7 @@ async fn a_host_switch_moves_the_runtime_inside_the_try_and_back_on_cancel() {
                             operation_id,
                             MutationHints::default(),
                             CommandClass::ExplicitSwitch,
+                            RuntimeImpact::HostSwitch,
                             decision,
                             client,
                             settle,
@@ -2966,8 +2993,8 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
 ///
 /// A save that moved a field no build stage reads carries the same runtime
 /// target as the one that is still outstanding, but it did not ask for it: it
-/// preserves the target and its budget, drives nothing, and commits as the
-/// plain save it is. Saving that document back unchanged does not ask for it
+/// never reaches the runtime, so it preserves the target and its budget,
+/// drives nothing, and commits as the plain save it is. Saving that document back unchanged does not ask for it
 /// either — an empty diff proves nothing about what the request wanted. What
 /// does ask for it again is a request that named a runtime field, and that one
 /// is re-evaluated, empty diff and all, without spending automatic budget.
@@ -3017,16 +3044,27 @@ async fn an_unrelated_save_keeps_the_outstanding_targets_identity_and_budget() {
     unrelated
         .web_ui_list
         .push("http://127.0.0.1:9090/ui".into());
+    assert_eq!(
+        runtime_impact(
+            &target,
+            &unrelated,
+            &MutationHints::default(),
+            CommandClass::Save
+        ),
+        None,
+        "a save that moved no build input does not reach the runtime"
+    );
     let (second, result) =
         simple_mutate(&mut clash, &client, unrelated.clone(), CommandClass::Save).await;
     assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    let receipt = settled(&client, second).await;
-    assert_eq!(
-        receipt.outcome,
-        MutationOutcomeKind::Saved,
-        "a save that moved no build input has nothing critical to try"
+    assert!(
+        !client
+            .mutation_journal()
+            .completed
+            .iter()
+            .any(|receipt| receipt.operation_id == second),
+        "so it runs no operation"
     );
-    assert_eq!(receipt.policy, CommandPolicy::SaveOnly);
     assert_eq!(
         endpoint.checked().len(),
         checked,
@@ -3052,16 +3090,26 @@ async fn an_unrelated_save_keeps_the_outstanding_targets_identity_and_budget() {
     // byte-identical candidate, and it is still not a resubmission: nothing in
     // it asked the runtime for anything, so reading it out of document
     // equality would spend an outstanding budget on a no-op save (C1/R15).
+    assert_eq!(
+        runtime_impact(
+            &unrelated,
+            &unrelated,
+            &MutationHints::default(),
+            CommandClass::Save
+        ),
+        None,
+        "an empty diff is not evidence that the runtime was asked for anything"
+    );
     let (no_op, result) =
         simple_mutate(&mut clash, &client, unrelated.clone(), CommandClass::Save).await;
     assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    let receipt = settled(&client, no_op).await;
-    assert_eq!(
-        receipt.outcome,
-        MutationOutcomeKind::Saved,
-        "an empty diff is not evidence that the runtime was asked for anything"
+    assert!(
+        !client
+            .mutation_journal()
+            .completed
+            .iter()
+            .any(|receipt| receipt.operation_id == no_op)
     );
-    assert_eq!(receipt.policy, CommandPolicy::SaveOnly);
     assert_eq!(endpoint.checked().len(), checked);
     assert_eq!(endpoint.reconciled_bytes().len(), submitted);
     let deferred = client.mutation_journal().deferred.unwrap();
@@ -3231,21 +3279,141 @@ async fn a_preflight_failure_or_changed_revision_never_submits_or_isolates() {
     }
 }
 
+/// V12: a pure UI save never reaches the Runtime. With a Runtime owner that
+/// fails as soon as it is called, the save still commits, runs no operation
+/// and reads nothing from the core; a save that does need the Runtime is
+/// refused by the same owner.
 #[tokio::test]
-async fn a_gui_save_does_not_query_core_status() {
-    let mut f = fixture().await;
-    f.core.refresh_status().await.unwrap();
-    let before = f.endpoint.status_reads();
-    f.endpoint.set_status_fails(true);
-    let mut app = f.application.snapshot().as_ref().clone();
-    app.language = nyanpasu_config::application::I18nLanguage::English;
-    let (id, result) = simple_mutate(&mut f.application, &f.client, app, CommandClass::Save).await;
-    assert!(result.is_ok());
-    assert_eq!(
-        settled(&f.client, id).await.conclusion,
-        MutationConclusion::Confirmed
+async fn a_gui_save_never_reaches_the_runtime() {
+    use nyanpasu_config::application::ThemeMode;
+    use struct_patch::Patch;
+    let f = fixture().await;
+    let mutations = crate::state::mutation::MutationCoordinator::pending();
+    mutations.connect(
+        f.client.clone(),
+        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
     );
-    assert_eq!(f.endpoint.status_reads(), before);
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        tokio_util::sync::CancellationToken::new(),
+        &tokio_util::task::TaskTracker::new(),
+    )
+    .await
+    .unwrap();
+    f.client.0.actor.kill_and_wait(None).await.unwrap();
+    let status_reads = f.endpoint.status_reads();
+    let before = application.snapshot();
+
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.theme_mode = Some(ThemeMode::Dark);
+    let saved = application.patch(patch).await.unwrap();
+    assert!(saved.version > before.version);
+    assert_eq!(saved.state.theme_mode, ThemeMode::Dark);
+    let receipt = saved.receipt.expect("a commit has a receipt");
+    assert_eq!(receipt.operation_id, None);
+    assert_eq!(
+        receipt.runtime,
+        crate::client::runtime::RuntimeCommitStatus::Unchanged
+    );
+    assert!(saved.degradations.is_empty());
+    assert_eq!(f.endpoint.status_reads(), status_reads);
+
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.enable_builtin_enhanced = Some(!before.state.enable_builtin_enhanced);
+    assert!(application.patch(patch).await.is_err());
+    assert_eq!(application.snapshot().version, saved.version);
+}
+
+/// V13, through the owner that decides it: a request reaches the runtime when
+/// its diff or its intent does, and one that does keeps every promise it had.
+/// Re-selecting the running core or the current host still owes a Try, a
+/// patch that spans a UI field and a build input commits or fails as one, and
+/// a core the user stopped is never started by either kind of save.
+#[tokio::test]
+async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
+    use crate::client::runtime::RuntimeCommitStatus;
+    use nyanpasu_config::application::ThemeMode;
+    use struct_patch::Patch;
+    let f = fixture().await;
+    let mutations = crate::state::mutation::MutationCoordinator::pending();
+    mutations.connect(
+        f.client.clone(),
+        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+    );
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        tokio_util::sync::CancellationToken::new(),
+        &tokio_util::task::TaskTracker::new(),
+    )
+    .await
+    .unwrap();
+    let current = application.snapshot().state;
+
+    // Irrelevant: committed on its own, and the core is not asked anything.
+    let checked = f.endpoint.checked().len();
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.theme_mode = Some(ThemeMode::Dark);
+    let receipt = application.patch(patch).await.unwrap().receipt.unwrap();
+    assert_eq!(receipt.operation_id, None);
+    assert_eq!(receipt.runtime, RuntimeCommitStatus::Unchanged);
+    assert_eq!(f.endpoint.checked().len(), checked);
+
+    // Relevant, and the same value re-selected for the core and for the host.
+    let mut relevant = NyanpasuAppConfig::new_empty_patch();
+    relevant.enable_builtin_enhanced = Some(!current.enable_builtin_enhanced);
+    let mut core = NyanpasuAppConfig::new_empty_patch();
+    core.core = Some(current.core);
+    let mut host = NyanpasuAppConfig::new_empty_patch();
+    host.enable_service_mode = Some(current.enable_service_mode);
+    for (case, patch) in [("relevant", relevant), ("core", core), ("host", host)] {
+        let checked = f.endpoint.checked().len();
+        let receipt = application.patch(patch).await.unwrap().receipt.unwrap();
+        assert!(receipt.operation_id.is_some(), "{case}");
+        assert_eq!(receipt.runtime, RuntimeCommitStatus::Applied, "{case}");
+        assert_eq!(f.endpoint.checked().len(), checked + 1, "{case}");
+    }
+
+    // Mixed: the core refuses the build input, so the UI field is not
+    // committed either.
+    f.endpoint.set_check_answer(TestCheckAnswer::Reject(
+        nyanpasu_core_manager::CoreError::new(
+            CoreErrorKind::InvalidConfig,
+            "invalid candidate",
+            false,
+        ),
+    ));
+    let before = application.snapshot();
+    let mut mixed = NyanpasuAppConfig::new_empty_patch();
+    mixed.theme_mode = Some(ThemeMode::Light);
+    mixed.enable_builtin_enhanced = Some(!before.state.enable_builtin_enhanced);
+    assert!(application.patch(mixed).await.is_err());
+    let after = application.snapshot();
+    assert_eq!(after.version, before.version);
+    assert_eq!(after.state.theme_mode, ThemeMode::Dark);
+    f.endpoint.set_check_answer(TestCheckAnswer::Pass);
+
+    // Stopped by the user: a relevant save is checked and saved inactive, an
+    // irrelevant one is a plain save, and neither starts the core.
+    f.client.stop_core().await.unwrap();
+    let submitted = f.endpoint.reconciled_bytes().len();
+    let mut relevant = NyanpasuAppConfig::new_empty_patch();
+    relevant.enable_builtin_enhanced = Some(!after.state.enable_builtin_enhanced);
+    let receipt = application.patch(relevant).await.unwrap().receipt.unwrap();
+    assert!(receipt.operation_id.is_some());
+    assert_eq!(receipt.runtime, RuntimeCommitStatus::SavedInactive);
+    let mut irrelevant = NyanpasuAppConfig::new_empty_patch();
+    irrelevant.theme_mode = Some(ThemeMode::System);
+    let receipt = application
+        .patch(irrelevant)
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    assert_eq!(receipt.operation_id, None);
+    assert_eq!(receipt.runtime, RuntimeCommitStatus::Unchanged);
+    assert_eq!(f.endpoint.reconciled_bytes().len(), submitted);
 }
 
 #[tokio::test]
@@ -3945,6 +4113,7 @@ async fn a_conflicting_version_never_waits_for_a_settlement() {
                     operation_id,
                     MutationHints::default(),
                     CommandClass::Save,
+                    RuntimeImpact::Reconcile,
                     decision,
                     client,
                     settle,
@@ -4128,7 +4297,7 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
     );
     let (commit, degradations) = coordinator.committed(
-        operation_id,
+        Some(operation_id),
         "clash",
         *clash.snapshot_handle().load().version.as_ref(),
         settlement,

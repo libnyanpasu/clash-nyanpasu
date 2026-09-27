@@ -835,7 +835,7 @@ impl ApplicationWorkflow {
                 cause: ApplyFailure { message, .. },
                 ..
             } => self.block_applied(message),
-            RuntimePrepareOutcome::Saved | RuntimePrepareOutcome::SavedInactive { .. } => {
+            RuntimePrepareOutcome::SavedInactive { .. } => {
                 unreachable!("a reestablish attempt owes a Try")
             }
         }

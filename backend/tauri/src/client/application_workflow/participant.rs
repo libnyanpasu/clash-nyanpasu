@@ -25,7 +25,7 @@ use tokio::sync::oneshot;
 
 use super::{
     ApplicationWorkflowClient,
-    impact::MutationHints,
+    impact::{MutationHints, RuntimeImpact},
     mutation::{MutationDomain, MutationReceipt, MutationRequest},
     policy::CommandClass,
 };
@@ -34,6 +34,7 @@ pub(crate) struct ApplicationMutationParticipant<T: MutationDomain> {
     operation_id: OperationId,
     hints: MutationHints,
     class: CommandClass,
+    impact: RuntimeImpact,
     decision: DecisionHandle,
     workflow: ApplicationWorkflowClient,
     /// Taken by the one prepare that sends the Try: `on_prepare` has only
@@ -51,6 +52,7 @@ impl<T: MutationDomain> ApplicationMutationParticipant<T> {
         operation_id: OperationId,
         hints: MutationHints,
         class: CommandClass,
+        impact: RuntimeImpact,
         decision: DecisionHandle,
         workflow: ApplicationWorkflowClient,
         settle: oneshot::Sender<MutationReceipt>,
@@ -60,6 +62,7 @@ impl<T: MutationDomain> ApplicationMutationParticipant<T> {
             operation_id,
             hints,
             class,
+            impact,
             decision,
             workflow,
             settle: Mutex::new(Some(settle)),
@@ -88,6 +91,7 @@ impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant
             change: T::domain_change(change),
             hints: self.hints.clone(),
             class: self.class,
+            impact: self.impact,
             decision: self.decision.clone(),
             ack: Some(ack),
             settle: self.settle.lock().unwrap().take(),

@@ -12,7 +12,7 @@ use tokio::sync::{oneshot, watch};
 use crate::client::{
     application_workflow::{
         ApplicationWorkflowClient,
-        impact::MutationHints,
+        impact::{MutationHints, RuntimeImpact},
         mutation::{MutationConclusion, MutationDomain, MutationOutcomeKind, MutationReceipt},
         participant::ApplicationMutationParticipant,
         policy::CommandClass,
@@ -67,20 +67,25 @@ impl MutationCoordinator {
     }
 
     /// What the caller of a committed mutation is told about the runtime. No
-    /// receipt means the Runtime owner stopped after it accepted the Try: the
-    /// source is committed, and the runtime is left to be recovered.
+    /// operation means the runtime took no part in it, so it is unchanged. No
+    /// receipt for an operation means the Runtime owner stopped after it
+    /// accepted the Try: the source is committed, and the runtime is left to be
+    /// recovered.
     pub fn committed(
         &self,
-        operation_id: OperationId,
+        operation: Option<OperationId>,
         domain: &str,
         source_version: u64,
         settlement: Option<MutationReceipt>,
     ) -> (CommitReceipt, Vec<Degradation>) {
         let mut commit = CommitReceipt {
-            operation_id: Some(operation_id.to_string()),
+            operation_id: operation.map(|operation| operation.to_string()),
             domain: domain.into(),
             source_version,
             runtime: RuntimeCommitStatus::Unchanged,
+        };
+        let Some(operation_id) = operation else {
+            return (commit, Vec::new());
         };
         if !matches!(*self.0.borrow(), Connection::Ready { .. }) {
             return (commit, Vec::new());
@@ -107,7 +112,6 @@ impl MutationCoordinator {
                 MutationOutcomeKind::Applied => RuntimeCommitStatus::Applied,
                 MutationOutcomeKind::Deferred => RuntimeCommitStatus::Deferred,
                 MutationOutcomeKind::SavedInactive => RuntimeCommitStatus::SavedInactive,
-                MutationOutcomeKind::Saved => RuntimeCommitStatus::Unchanged,
                 // A refused Try aborts its transaction, and an unknown one
                 // concludes RecoveryRequired.
                 MutationOutcomeKind::Rejected | MutationOutcomeKind::RecoveryRequired => {
@@ -141,9 +145,9 @@ impl MutationCoordinator {
         )
     }
 
-    /// The effects owner a source hands its own slice to once it committed. A
-    /// source commits only through a participant, which it gets only once
-    /// connected.
+    /// The effects owner a source hands its own slice to once it committed.
+    /// Every write passes [`MutationCoordinator::ensure_ready`] first, so the
+    /// connection is complete by then.
     pub fn effects(&self) -> Arc<dyn CommitNotifications> {
         match &*self.0.borrow() {
             Connection::Ready { effects, .. } => effects.clone(),
@@ -163,13 +167,15 @@ impl MutationCoordinator {
         Ok(())
     }
 
-    /// The Runtime's participant for one mutation, and the settlement it will
-    /// send back.
+    /// The Runtime's participant for one mutation that reaches the runtime,
+    /// with the impact its source classified, and the settlement it will send
+    /// back.
     pub fn participant<T: MutationDomain>(
         &self,
         operation_id: OperationId,
         hints: MutationHints,
         class: CommandClass,
+        impact: RuntimeImpact,
     ) -> anyhow::Result<(
         impl FnOnce(DecisionHandle) -> StateParticipant<T> + use<T>,
         Settlement,
@@ -186,6 +192,7 @@ impl MutationCoordinator {
                     operation_id,
                     hints,
                     class,
+                    impact,
                     decision,
                     workflow,
                     settle,
@@ -199,10 +206,10 @@ impl MutationCoordinator {
     }
 }
 
-/// Why a source transaction that installed the Runtime participant did not
-/// commit, in the words its caller reads: the persistence cause chain, the
-/// reasons a refused prepare gave, and what became of a Try the Runtime had
-/// already applied (U7). The caller only ever sees text, so all of it is here.
+/// Why a source transaction did not commit, in the words its caller reads:
+/// the persistence cause chain, the reasons a refused prepare gave, and, when
+/// the Runtime took part, what became of a Try it had already applied (U7).
+/// The caller only ever sees text, so all of it is here.
 pub(crate) fn uncommitted(
     error: &ReplaceIfVersionError,
     settlement: Option<&MutationReceipt>,

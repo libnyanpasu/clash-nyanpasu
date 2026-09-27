@@ -16,7 +16,7 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use crate::{
     client::application_workflow::{
         impact::{
-            ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
+            self, ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields,
             StagedResourceToken, TouchedContent,
         },
         policy::CommandClass,
@@ -105,8 +105,6 @@ pub enum ProfilesError {
 #[allow(dead_code)]
 pub struct CommitReport {
     pub snapshot: Arc<Profiles>,
-    /// Dependency-closure judgement per the T04 affects_current rule table.
-    pub affects_current: bool,
     /// Crate-internal detail for committed mutations that left maintenance work.
     pub(crate) degradations: Vec<ProfileDegradation>,
     pub(crate) receipt: crate::client::runtime::CommitReceipt,
@@ -443,22 +441,6 @@ impl ProfilesActor {
         closure
     }
 
-    fn evaluate_affects(rule: &AffectsRule, before: &Profiles, after: &Profiles) -> bool {
-        match rule {
-            AffectsRule::Never => false,
-            AffectsRule::Always => true,
-            AffectsRule::CurrentChanged => before.current != after.current,
-            AffectsRule::GlobalChanged => before.global_transforms != after.global_transforms,
-            AffectsRule::Touched(uid) => {
-                let closure_before = Self::current_closure(before);
-                let closure_after = Self::current_closure(after);
-                closure_before != closure_after
-                    || closure_before.contains(uid)
-                    || closure_after.contains(uid)
-            }
-        }
-    }
-
     fn prepare_candidate(mut next: Profiles) -> Result<Profiles, ProfilesError> {
         next.validate().map_err(ProfilesError::ValidationFailed)?;
         next.bump_revision()?;
@@ -469,6 +451,7 @@ impl ProfilesActor {
     async fn persist_candidate(
         state: &mut ProfilesActorState,
         expected_version: Version,
+        before: &Profiles,
         next: Profiles,
         hints: MutationHints,
         class: CommandClass,
@@ -482,22 +465,41 @@ impl ProfilesActor {
         ),
         ProfilesError,
     > {
-        let operation = OperationId::generate();
-        let (participant, settlement) = state
+        state
             .mutations
-            .participant(operation, hints, class)
+            .ensure_ready()
             .map_err(|error| ProfilesError::Persist(error.to_string()))?;
-        let result = state
-            .manager
-            .replace_if_version_with_participant(
-                expected_version,
-                next.clone(),
-                participant,
-                || async { Ok(()) },
-                || async { Ok(()) },
-            )
-            .await;
-        let settlement = settlement.await.ok();
+        // Only a mutation that reaches the runtime takes the Runtime into its
+        // transaction; any other save commits on its own.
+        let (operation, result, settlement) =
+            match impact::runtime_impact(before, &next, &hints, class) {
+                Some(impact) => {
+                    let operation = OperationId::generate();
+                    let (participant, settlement) = state
+                        .mutations
+                        .participant(operation, hints, class, impact)
+                        .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+                    let result = state
+                        .manager
+                        .replace_if_version_with_participant(
+                            expected_version,
+                            next.clone(),
+                            participant,
+                            || async { Ok(()) },
+                            || async { Ok(()) },
+                        )
+                        .await;
+                    (Some(operation), result, settlement.await.ok())
+                }
+                None => (
+                    None,
+                    state
+                        .manager
+                        .replace_if_version(expected_version, next.clone())
+                        .await,
+                    None,
+                ),
+            };
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
                 state.mutations.effects().profiles_committed();
@@ -805,10 +807,10 @@ impl ProfilesActor {
         let candidate = Self::prepare_candidate(next)?;
         let (hints, class) = Self::mutation_hints(&affects, &candidate);
         let (snapshot, (receipt, runtime_degradations)) =
-            Self::persist_candidate(state, expected_version, candidate, hints, class).await?;
+            Self::persist_candidate(state, expected_version, &before, candidate, hints, class)
+                .await?;
         Self::reconcile_committed(myself, state, &snapshot);
         Ok(CommitReport {
-            affects_current: Self::evaluate_affects(&affects, &before, &snapshot),
             snapshot,
             degradations: Vec::new(),
             receipt,
@@ -1033,7 +1035,6 @@ impl ProfilesActor {
             .mutations
             .ensure_ready()
             .map_err(|error| ProfilesError::Persist(error.to_string()))?;
-        let operation = OperationId::generate();
         let (mut hints, class) = Self::mutation_hints(&affects, &candidate);
         let prepared = if let Some((path, resource)) = resource {
             let content = match &resource {
@@ -1070,7 +1071,7 @@ impl ProfilesActor {
                 content_digest: content.as_ref().map(|content| {
                     ContentDigest::new(nyanpasu_core_manager::payload_digest(content.as_bytes()))
                 }),
-                resource: Some(StagedResourceToken::new(operation.to_string())),
+                resource: None,
             });
             if let Some(content) = content {
                 hints.staged_content.insert(path.to_string(), content);
@@ -1106,60 +1107,88 @@ impl ProfilesActor {
         } else {
             None
         };
-        let (participant, settlement) = state
-            .mutations
-            .participant(operation, hints, class)
-            .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+        // Only a mutation that reaches the runtime takes the Runtime into its
+        // transaction, under an operation that also addresses what it staged;
+        // any other save commits on its own.
+        let admission = impact::runtime_impact(&before, &candidate, &hints, class)
+            .map(|impact| (OperationId::generate(), impact));
+        if let Some((operation, _)) = admission {
+            for touched in &mut hints.touched {
+                touched.resource = Some(StagedResourceToken::new(operation.to_string()));
+            }
+        }
         let write_port = state.materialization.clone();
         let write_resource = prepared.clone();
         let recover_port = state.materialization.clone();
         let recover_resource = prepared.clone();
         let recover_cleanup = cleanup.clone();
-        let result = state
-            .manager
-            .replace_if_version_with_participant(
-                expected_version,
-                candidate.clone(),
-                participant,
-                move || async move {
-                    tokio::task::spawn_blocking(move || {
-                        if let Some(prepared) = write_resource {
-                            write_port.promote(&prepared)?;
-                        }
-                        anyhow::Ok(())
-                    })
-                    .await
-                    .map_err(|error| match error.try_into_panic() {
-                        Ok(panic) => std::panic::resume_unwind(panic),
-                        Err(error) => error,
-                    })?
-                },
-                move || async move {
-                    tokio::task::spawn_blocking(move || {
-                        let resource = recover_resource
-                            .as_ref()
-                            .map(|p| recover_port.compensate(p))
-                            .transpose();
-                        let cleanup = recover_cleanup
-                            .as_ref()
-                            .map(|c| recover_port.cancel_cleanup(c))
-                            .transpose();
-                        match (resource, cleanup) {
-                            (Ok(_), Ok(_)) => Ok(()),
-                            (resource, cleanup) => anyhow::bail!(
-                                "resource recovery: {resource:?}; cleanup recovery: {cleanup:?}"
-                            ),
-                        }
-                    })
-                    .await
-                    .map_err(|error| match error.try_into_panic() {
-                        Ok(panic) => std::panic::resume_unwind(panic),
-                        Err(error) => error,
-                    })?
-                },
-            )
-            .await;
-        let settlement = settlement.await.ok();
+        let write = move || async move {
+            tokio::task::spawn_blocking(move || {
+                if let Some(prepared) = write_resource {
+                    write_port.promote(&prepared)?;
+                }
+                anyhow::Ok(())
+            })
+            .await
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => error,
+            })?
+        };
+        let recover = move || async move {
+            tokio::task::spawn_blocking(move || {
+                let resource = recover_resource
+                    .as_ref()
+                    .map(|p| recover_port.compensate(p))
+                    .transpose();
+                let cleanup = recover_cleanup
+                    .as_ref()
+                    .map(|c| recover_port.cancel_cleanup(c))
+                    .transpose();
+                match (resource, cleanup) {
+                    (Ok(_), Ok(_)) => Ok(()),
+                    (resource, cleanup) => anyhow::bail!(
+                        "resource recovery: {resource:?}; cleanup recovery: {cleanup:?}"
+                    ),
+                }
+            })
+            .await
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => error,
+            })?
+        };
+        let (result, settlement) = match admission {
+            Some((operation, impact)) => {
+                let (participant, settlement) = state
+                    .mutations
+                    .participant(operation, hints, class, impact)
+                    .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+                let result = state
+                    .manager
+                    .replace_if_version_with_participant(
+                        expected_version,
+                        candidate.clone(),
+                        participant,
+                        write,
+                        recover,
+                    )
+                    .await;
+                (result, settlement.await.ok())
+            }
+            None => (
+                state
+                    .manager
+                    .replace_if_version_with_local_write(
+                        expected_version,
+                        candidate.clone(),
+                        write,
+                        recover,
+                    )
+                    .await,
+                None,
+            ),
+        };
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {}
             result => {
@@ -1220,7 +1249,7 @@ impl ProfilesActor {
         }
         state.mutations.effects().profiles_committed();
         let (receipt, runtime_degradations) = state.mutations.committed(
-            operation,
+            admission.map(|(operation, _)| operation),
             "profiles",
             *state.manager.snapshot_handle().load().version.as_ref(),
             settlement,
@@ -1243,7 +1272,6 @@ impl ProfilesActor {
             degradations.extend(Self::finish_cleanup(state, cleanup, &snapshot).await);
         }
         Ok(CommitReport {
-            affects_current: Self::evaluate_affects(&affects, &before, &snapshot),
             snapshot,
             degradations,
             receipt,
@@ -2296,6 +2324,172 @@ impl Actor for ProfilesActor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// V13, profiles: whether an operation reaches the runtime, for the hints
+    /// and class this actor derives from the operation's rule. Selecting the
+    /// current profile again and re-setting the same global transforms still
+    /// ask for the runtime, and so does a definition change of the running
+    /// profile, whatever produced it.
+    #[test]
+    fn profiles_operations_reach_the_runtime_by_request_and_diff() {
+        use crate::{
+            client::application_workflow::impact::{RuntimeImpact, runtime_impact},
+            enhance::golden_support::{file_config, metadata, overlay},
+        };
+
+        // current -> `sel` with its scoped transform `scoped`; `global` is a
+        // document-level transform; `spare` is reachable from neither.
+        let mut base = Profiles::default();
+        base.append_item(file_config("sel", "sel.yaml", &["scoped"]));
+        base.append_item(overlay("scoped", "scoped.yaml"));
+        base.append_item(overlay("global", "global.yaml"));
+        base.append_item(file_config("spare", "spare.yaml", &[]));
+        base.current = Some(ProfileId("sel".into()));
+        base.global_transforms = vec![ProfileId("global".into())];
+
+        // The same document with a remote profile as the current one.
+        let mut remote = base.clone();
+        remote.append_item(ProfileItem {
+            uid: ProfileId("remote".into()),
+            metadata: metadata("remote"),
+            definition: ProfilesActor::remote_import_definition(
+                "https://example.com/sub".parse().unwrap(),
+                RemoteProfileOptions::default(),
+                ManagedProfilePath::new("remote.yaml").unwrap(),
+                SubscriptionInfo::default(),
+                None,
+            ),
+        });
+        remote.current = Some(ProfileId("remote".into()));
+
+        let id = |uid: &str| ProfileId(uid.into());
+        let with = |from: &Profiles, change: &dyn Fn(&mut Profiles)| {
+            let mut next = from.clone();
+            change(&mut next);
+            next
+        };
+        let reconcile = Some(RuntimeImpact::Reconcile);
+        let cases: Vec<(&str, AffectsRule, Profiles, Profiles, Option<RuntimeImpact>)> = vec![
+            (
+                "select another profile",
+                AffectsRule::CurrentChanged,
+                base.clone(),
+                with(&base, &|p| p.current = Some(id("spare"))),
+                reconcile,
+            ),
+            (
+                "select the current profile again",
+                AffectsRule::CurrentChanged,
+                base.clone(),
+                base.clone(),
+                reconcile,
+            ),
+            (
+                "change the global transforms",
+                AffectsRule::GlobalChanged,
+                base.clone(),
+                with(&base, &|p| p.global_transforms.clear()),
+                reconcile,
+            ),
+            (
+                "set the same global transforms",
+                AffectsRule::GlobalChanged,
+                base.clone(),
+                base.clone(),
+                reconcile,
+            ),
+            (
+                "change the valid fields",
+                AffectsRule::Always,
+                base.clone(),
+                with(&base, &|p| p.valid = vec!["dns".into()]),
+                reconcile,
+            ),
+            (
+                "set the same valid fields",
+                AffectsRule::Always,
+                base.clone(),
+                base.clone(),
+                reconcile,
+            ),
+            (
+                "save the current profile's file",
+                AffectsRule::Touched(id("sel")),
+                base.clone(),
+                base.clone(),
+                reconcile,
+            ),
+            (
+                "save a scoped transform's file",
+                AffectsRule::Touched(id("scoped")),
+                base.clone(),
+                base.clone(),
+                reconcile,
+            ),
+            (
+                "save an unrelated profile's file",
+                AffectsRule::Touched(id("spare")),
+                base.clone(),
+                base.clone(),
+                None,
+            ),
+            (
+                "patch the options of the current remote profile",
+                AffectsRule::Never,
+                remote.clone(),
+                with(&remote, &|p| {
+                    let item = p.items.get_mut(&id("remote")).unwrap();
+                    let Some(ProfileSource::Remote { option, .. }) = item.definition.source_mut()
+                    else {
+                        unreachable!("the fixture is remote")
+                    };
+                    option.update_interval_minutes += 1;
+                }),
+                reconcile,
+            ),
+            (
+                "patch the options of an unrelated remote profile",
+                AffectsRule::Never,
+                with(&remote, &|p| p.current = Some(id("sel"))),
+                with(&remote, &|p| {
+                    p.current = Some(id("sel"));
+                    let item = p.items.get_mut(&id("remote")).unwrap();
+                    let Some(ProfileSource::Remote { option, .. }) = item.definition.source_mut()
+                    else {
+                        unreachable!("the fixture is remote")
+                    };
+                    option.update_interval_minutes += 1;
+                }),
+                None,
+            ),
+            (
+                "rename the current profile",
+                AffectsRule::Never,
+                base.clone(),
+                with(&base, &|p| {
+                    p.items.get_mut(&id("sel")).unwrap().metadata.name = "renamed".into()
+                }),
+                None,
+            ),
+            (
+                "add a profile",
+                AffectsRule::Never,
+                base.clone(),
+                with(&base, &|p| {
+                    p.append_item(file_config("added", "added.yaml", &[]));
+                }),
+                None,
+            ),
+        ];
+        for (case, rule, before, after, expected) in cases {
+            let (hints, class) = ProfilesActor::mutation_hints(&rule, &after);
+            assert_eq!(
+                runtime_impact(&before, &after, &hints, class),
+                expected,
+                "{case}"
+            );
+        }
+    }
 
     /// Round-2 review fix regression pins: Config subscriptions must carry
     /// proxies (legacy remote.rs semantics); overlays only need a mapping.

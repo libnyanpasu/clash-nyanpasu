@@ -9,7 +9,7 @@ use super::{
 use anyhow::anyhow;
 use arc_swap::ArcSwap;
 use indexmap::IndexMap;
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc};
 use tokio::sync::Semaphore;
 
 pub(super) type ArcStateSubscriber<T> = StateParticipant<T>;
@@ -263,40 +263,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         E: std::fmt::Debug,
     {
         Self::expect_no_conflict(
-            self.run_pending_state(new_state, None, None, None, effect_fn, recovery_fn)
+            self.run_pending_state(new_state, None, None, effect_fn, recovery_fn)
                 .await?,
-        )
-    }
-
-    /// Run an external effect between prepare and commit, rolling back if the
-    /// effect does not complete before `effect_timeout`.
-    ///
-    /// The effect is still executed while the coordinator holds the writer
-    /// permit, so callers should keep it short and cancellation-safe.
-    pub async fn with_pending_state_timeout<'s, F, Fut, R, RF, RFut, E>(
-        &mut self,
-        new_state: &'s T,
-        effect_timeout: Duration,
-        effect_fn: F,
-        recovery_fn: RF,
-    ) -> Result<(R, PrepareReport), WithEffectError<E>>
-    where
-        F: FnOnce(&'s T) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 's,
-        RF: FnOnce(T) -> RFut,
-        RFut: Future<Output = Result<(), E>>,
-        E: std::fmt::Debug,
-    {
-        Self::expect_no_conflict(
-            self.run_pending_state(
-                new_state,
-                None,
-                Some(effect_timeout),
-                None,
-                effect_fn,
-                recovery_fn,
-            )
-            .await?,
         )
     }
 
@@ -318,7 +286,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         self.run_pending_state(
             new_state,
             Some(expected_version),
-            None,
             None,
             effect_fn,
             recovery_fn,
@@ -346,7 +313,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         self.run_pending_state(
             new_state,
             Some(expected_version),
-            None,
             Some(participant),
             effect_fn,
             recovery_fn,
@@ -370,14 +336,13 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     /// The one prepare / persist / commit / rollback path.
     ///
     /// Every entry point above funnels into this function; the optional
-    /// expected version, effect timeout and single-shot participant are the only
-    /// things that vary. There is deliberately no second implementation of the
-    /// transaction algorithm for participants to use.
+    /// expected version and single-shot participant are the only things that
+    /// vary. There is deliberately no second implementation of the transaction
+    /// algorithm for participants to use.
     async fn run_pending_state<'s, F, Fut, R, RF, RFut, E>(
         &mut self,
         new_state: &'s T,
         expected_version: Option<Version>,
-        effect_timeout: Option<Duration>,
         participant: Option<ParticipantEntry<T>>,
         effect_fn: F,
         recovery_fn: RF,
@@ -452,49 +417,34 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         // Everything the caller has to persist for this candidate happens here,
         // between prepare and the compare-and-swap.
         tx.mark_local_persistence_started();
-        let effect_result = match effect_timeout {
-            Some(timeout) => match tokio::time::timeout(timeout, effect_fn(new_state)).await {
-                Ok(result) => result.map_err(WithEffectError::Effect),
-                Err(_) => Err(WithEffectError::EffectTimedOut(timeout)),
-            },
-            None => effect_fn(new_state).await.map_err(WithEffectError::Effect),
-        };
-        let result = match effect_result {
+        let result = match effect_fn(new_state).await {
             Ok(result) => result,
             Err(error) => {
-                if matches!(error, WithEffectError::EffectTimedOut(_)) {
-                    // Dropping an effect future cannot stop an offloaded write.
-                    tx.set_abort_resources(AbortResourceState::NeedsRecovery(
-                        PersistenceIncident {
-                            message: format!("persistence timed out: {error:?}"),
-                        },
-                    ));
-                } else {
-                    match recovery_fn(self.snapshot_versioned().state.clone()).await {
-                        Ok(()) => tx.set_abort_resources(AbortResourceState::Restored),
-                        Err(recovery_error) => {
-                            tx.set_abort_resources(AbortResourceState::NeedsRecovery(PersistenceIncident {
-                                message: format!("effect failed: {error:?}; recovery failed: {recovery_error:?}"),
-                            }));
-                            tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
-                                "local resources could not be restored"
-                            ))))
-                            .await;
-                            let WithEffectError::Effect(effect_error) = error else {
-                                unreachable!()
-                            };
-                            return Err(WithEffectError::EffectRecovery {
-                                effect_error,
-                                recovery_error,
-                            });
-                        }
+                match recovery_fn(self.snapshot_versioned().state.clone()).await {
+                    Ok(()) => tx.set_abort_resources(AbortResourceState::Restored),
+                    Err(recovery_error) => {
+                        tx.set_abort_resources(AbortResourceState::NeedsRecovery(
+                            PersistenceIncident {
+                                message: format!(
+                                    "effect failed: {error:?}; recovery failed: {recovery_error:?}"
+                                ),
+                            },
+                        ));
+                        tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
+                            "local resources could not be restored"
+                        ))))
+                        .await;
+                        return Err(WithEffectError::EffectRecovery {
+                            effect_error: error,
+                            recovery_error,
+                        });
                     }
                 }
                 tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
                     "effect function failed: {error:#?}"
                 ))))
                 .await;
-                return Err(error);
+                return Err(WithEffectError::Effect(error));
             }
         };
 
@@ -653,9 +603,12 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
 mod test {
     use super::*;
     use crate::state::Version;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        },
+        time::Duration,
     };
     use tokio::sync::{Mutex, Notify};
 
@@ -1448,46 +1401,6 @@ mod test {
             coordinator.snapshot_versioned().version,
             StateChangeId::new(0).0
         );
-
-        coordinator
-            .upsert_state(TestState {
-                value: 1,
-                name: "accepted".to_string(),
-            })
-            .await
-            .unwrap();
-        assert_eq!(
-            coordinator.snapshot_versioned().version,
-            StateChangeId::new(1).0
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn test_with_pending_state_timeout_rolls_back_without_consuming_change_id() {
-        let mut coordinator = StateCoordinator::builder().build(default_test_state());
-        let timed_out = TestState {
-            value: 99,
-            name: "timeout".to_string(),
-        };
-
-        let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state_timeout(
-                &timed_out,
-                std::time::Duration::from_secs(1),
-                |_s| async {
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                    Ok::<_, anyhow::Error>(())
-                },
-                no_recovery,
-            )
-            .await;
-
-        assert!(matches!(result, Err(WithEffectError::EffectTimedOut(_))));
-        assert_eq!(
-            coordinator.snapshot_versioned().version,
-            StateChangeId::new(0).0
-        );
-        assert_eq!(coordinator.snapshot_versioned().value, 0);
 
         coordinator
             .upsert_state(TestState {

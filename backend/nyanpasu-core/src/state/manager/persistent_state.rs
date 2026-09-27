@@ -261,9 +261,6 @@ where
             .map_err(|error| match error {
                 WithEffectError::State(error) => UpsertError::State(error),
                 WithEffectError::Effect(error) => UpsertError::WriteConfig(error),
-                WithEffectError::EffectTimedOut(timeout) => UpsertError::WriteConfig(
-                    anyhow::anyhow!("write config timed out after {timeout:?}"),
-                ),
                 WithEffectError::EffectRecovery {
                     effect_error,
                     recovery_error,
@@ -511,11 +508,6 @@ where
             }
             Err(WithEffectError::Effect(ConditionalWriteError::Config(error))) => {
                 Err(ReplaceIfVersionError::WriteConfig(error))
-            }
-            Err(WithEffectError::EffectTimedOut(timeout)) => {
-                Err(ReplaceIfVersionError::WriteConfig(anyhow::anyhow!(
-                    "write timed out after {timeout:?}"
-                )))
             }
             Err(WithEffectError::EffectRecovery {
                 effect_error,

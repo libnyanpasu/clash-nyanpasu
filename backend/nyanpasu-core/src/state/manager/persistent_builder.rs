@@ -236,9 +236,6 @@ where
             Err(e) => match e {
                 WithEffectError::State(e) => Err(UpsertError::State(e)),
                 WithEffectError::Effect(e) => Err(UpsertError::WriteConfig(e)),
-                WithEffectError::EffectTimedOut(timeout) => Err(UpsertError::WriteConfig(
-                    anyhow::anyhow!("write config timed out after {timeout:?}"),
-                )),
                 WithEffectError::EffectRecovery {
                     effect_error,
                     recovery_error,

@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow};
-use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use serde::{Deserialize, Serialize};
@@ -7,7 +6,6 @@ use shared::{CoreTypeMeta, get_arch};
 use specta::Type;
 use std::{
     collections::HashMap,
-    panic::AssertUnwindSafe,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -230,10 +228,7 @@ impl Actor for UpdaterActor {
                     let backend = state.args.backend.clone();
                     let mirror = state.mirror.clone();
                     state.fetch = Some(tokio::spawn(async move {
-                        let result = AssertUnwindSafe(backend.fetch_manifest(mirror))
-                            .catch_unwind()
-                            .await
-                            .unwrap_or_else(|_| Err(anyhow!("updater manifest worker panicked")));
+                        let result = backend.fetch_manifest(mirror).await;
                         let _ = actor.cast(Message::Fetched(Box::new(result)));
                     }));
                 }
@@ -294,15 +289,13 @@ impl Actor for UpdaterActor {
                     let _ = progress_actor.cast(Message::Progress(id, status, download));
                 });
                 let worker = tokio::spawn(async move {
-                    let result = AssertUnwindSafe(async {
+                    let result = async {
                         let prepared = backend
                             .prepare(core, mirror, artifact, tag, progress)
                             .await?;
                         installer.install(prepared).await
-                    })
-                    .catch_unwind()
-                    .await
-                    .unwrap_or_else(|_| Err(anyhow!("updater worker panicked")));
+                    }
+                    .await;
                     let _ = actor.cast(Message::Finished(id, result));
                 });
                 state.tasks.insert(

@@ -24,7 +24,6 @@ use crate::{
     core::migration::modules::profiles::ProfilesFormat,
     state::mutation::MutationCoordinator,
 };
-use futures::FutureExt as _;
 use nyanpasu_core_manager::OperationId;
 use tokio::{sync::watch, task::JoinHandle};
 
@@ -587,9 +586,8 @@ impl ProfilesActor {
     }
 
     /// Downloads and validates on a task the pending entry owns; the file is
-    /// written by the commit handler, after its stale-download fence. A panic
-    /// still settles the attempt. An abort settles nothing: whoever aborts
-    /// has already removed the entry.
+    /// written by the commit handler, after its stale-download fence. An
+    /// abort settles nothing: whoever aborts has already removed the entry.
     fn spawn_download(
         fetcher: Arc<dyn SubscriptionFetcher>,
         url: url::Url,
@@ -606,18 +604,14 @@ impl ProfilesActor {
                 Self::validate_fetched_content(&definition, &fetched.content)?;
                 Ok::<_, String>(fetched)
             };
-            let outcome = match std::panic::AssertUnwindSafe(fetch).catch_unwind().await {
-                Ok(Ok(fetched)) => RefreshOutcome::Succeeded {
+            let outcome = match fetch.await {
+                Ok(fetched) => RefreshOutcome::Succeeded {
                     subscription: fetched.subscription,
                     suggested_update_interval_minutes: fetched.suggested_update_interval_minutes,
                     content: fetched.content,
                     filename: fetched.filename,
                 },
-                Ok(Err(message)) => RefreshOutcome::Failed { message },
-                // Do not downcast panic payloads; emit a stable diagnostic.
-                Err(_) => RefreshOutcome::Failed {
-                    message: "subscription fetch task panicked".into(),
-                },
+                Err(message) => RefreshOutcome::Failed { message },
             };
             settle(outcome);
         })

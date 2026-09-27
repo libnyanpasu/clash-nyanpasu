@@ -549,6 +549,15 @@ impl NyanpasuClient {
         )
     }
 
+    /// Queues a save of the main window's geometry; nothing waits for it.
+    pub fn queue_main_window_geometry_save(
+        &self,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> Result<()> {
+        self.inner.session_state.queue_main_window_save(geometry)?;
+        Ok(())
+    }
+
     /// The geometry the main window reopens with, as last saved.
     pub fn main_window_geometry(&self) -> Option<nyanpasu_config::state::window::WindowState> {
         self.inner.session_state.main_window_geometry()

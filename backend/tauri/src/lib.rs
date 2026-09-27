@@ -246,6 +246,7 @@ pub fn run() -> std::io::Result<()> {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .manage(utils::exit::ExitBoundary::default())
         .invoke_handler(specta_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
@@ -321,11 +322,8 @@ pub fn run() -> std::io::Result<()> {
         .build(context)
         .expect("error while running tauri application");
     app.run(|app_handle, e| match e {
-        tauri::RunEvent::ExitRequested { api, code, .. } if code.is_none() => {
-            api.prevent_exit();
-        }
-        tauri::RunEvent::ExitRequested { .. } => {
-            utils::help::cleanup_processes(app_handle);
+        tauri::RunEvent::ExitRequested { api, code, .. } => {
+            utils::exit::on_exit_requested(app_handle, code, &api);
         }
         tauri::RunEvent::WindowEvent { label, event, .. } if label == "main" => match event {
             tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {

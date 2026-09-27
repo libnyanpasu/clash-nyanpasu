@@ -32,7 +32,8 @@ pub struct SessionStateActorState {
 pub enum SessionStateActorMessage {
     SaveMainWindow {
         geometry: nyanpasu_config::state::window::WindowState,
-        reply: RpcReplyPort<anyhow::Result<SessionStateSnapshot>>,
+        /// `None` for a queued save: nobody waits, so a failure is logged.
+        reply: Option<RpcReplyPort<anyhow::Result<SessionStateSnapshot>>>,
     },
     Patch {
         patch: PersistentStatePatch,
@@ -92,7 +93,17 @@ impl Actor for SessionStateActor {
                     nyanpasu_config::state::window::WindowLabel("main".into()),
                     geometry,
                 );
-                let _ = reply.send(Self::commit(state, next).await);
+                let result = Self::commit(state, next).await;
+                match reply {
+                    Some(reply) => {
+                        let _ = reply.send(result);
+                    }
+                    None => {
+                        if let Err(error) = result {
+                            tracing::warn!("failed to save the main window geometry: {error:#}");
+                        }
+                    }
+                }
             }
             SessionStateActorMessage::Patch { patch, reply } => {
                 let result = async {

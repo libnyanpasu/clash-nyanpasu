@@ -14,7 +14,7 @@ use std::{
     collections::HashMap,
     time::{Duration, Instant},
 };
-use tauri::{App, AppHandle, Manager, async_runtime::block_on};
+use tauri::{App, AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::Event;
 
@@ -410,10 +410,6 @@ pub fn is_main_window_open(app_handle: &AppHandle) -> bool {
     MainWindow.is_open(app_handle)
 }
 
-pub fn save_main_window_state(app_handle: &AppHandle) -> Result<()> {
-    block_on(save_main_window_state_async(app_handle, true))
-}
-
 pub async fn save_main_window_state_async(
     app_handle: &AppHandle,
     _save_to_file: bool,
@@ -444,9 +440,15 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
     is_main_window_open(app_handle)
 }
 
-/// Save window state for the configured window type
+/// Queues a save of the main window's geometry, so the caller never waits
+/// for the write: it runs on the main thread.
 pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
-    save_main_window_state(app_handle)
+    if let Some(geometry) = MainWindow.capture_state(app_handle)? {
+        app_handle
+            .state::<NyanpasuClient>()
+            .queue_main_window_geometry_save(geometry)?;
+    }
+    Ok(())
 }
 
 /// The main window's geometry as it is now, for the ordered shutdown to save

@@ -376,6 +376,10 @@ export const commands = {
     typedError<null, string>(__TAURI_INVOKE('set_tray_icon', { mode, path })),
   openThat: (path: string) =>
     typedError<null, string>(__TAURI_INVOKE('open_that', { path })),
+  /**
+   *  Shuts every owner down and returns with the app still running; the caller
+   *  then installs an update or relaunches.
+   */
   cleanupProcesses: () =>
     typedError<null, string>(__TAURI_INVOKE('cleanup_processes')),
   setStorageItem: (key: string, value: string) =>

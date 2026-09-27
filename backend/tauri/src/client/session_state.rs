@@ -79,8 +79,26 @@ impl SessionStateClient {
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(|reply| SessionStateActorMessage::SaveMainWindow { geometry, reply })
-            .await
+        self.call(|reply| SessionStateActorMessage::SaveMainWindow {
+            geometry,
+            reply: Some(reply),
+        })
+        .await
+    }
+
+    /// Queues a save of the main window's geometry without waiting for it:
+    /// the actor writes it after what is already queued.
+    pub fn queue_main_window_save(
+        &self,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> anyhow::Result<()> {
+        self.inner
+            .actor_ref
+            .cast(SessionStateActorMessage::SaveMainWindow {
+                geometry,
+                reply: None,
+            })
+            .context("the session state actor is gone")
     }
 
     pub async fn patch(&self, patch: PersistentStatePatch) -> anyhow::Result<SessionStateSnapshot> {
@@ -205,5 +223,20 @@ mod tests {
             .expect("saving the main window geometry should succeed");
 
         assert_eq!(client.main_window_geometry(), Some(geometry(42)));
+    }
+
+    #[tokio::test]
+    async fn a_queued_geometry_save_is_written_before_the_next_request() {
+        let (client, _dir) = test_client().await;
+
+        client.queue_main_window_save(geometry(7)).unwrap();
+        // The mailbox is FIFO: a request sent afterwards is answered only once
+        // the queued save has been written.
+        client
+            .patch(PersistentState::new_empty_patch())
+            .await
+            .unwrap();
+
+        assert_eq!(client.main_window_geometry(), Some(geometry(7)));
     }
 }

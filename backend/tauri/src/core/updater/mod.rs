@@ -422,17 +422,9 @@ impl UpdaterClient {
         &self,
         message: impl FnOnce(RpcReplyPort<Result<T>>) -> Message,
     ) -> Result<T> {
-        match self
-            .0
-            .0
-            .call(message, Some(Duration::from_secs(120)))
-            .await?
-        {
+        match self.0.0.call(message, None).await? {
             ractor::rpc::CallResult::Success(result) => result,
-            ractor::rpc::CallResult::Timeout => Err(anyhow!(
-                "updater request timed out; inspect admitted tasks before retrying"
-            )),
-            ractor::rpc::CallResult::SenderError => Err(anyhow!("updater is unavailable")),
+            _ => Err(anyhow!("updater is unavailable")),
         }
     }
     pub async fn fetch_latest(&self) -> Result<ManifestVersionLatest> {

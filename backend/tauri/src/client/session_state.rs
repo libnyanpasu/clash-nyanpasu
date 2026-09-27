@@ -79,41 +79,27 @@ impl SessionStateClient {
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(
-            |reply| SessionStateActorMessage::SaveMainWindow { geometry, reply },
-            Some(std::time::Duration::from_secs(10)),
-        )
-        .await
+        self.call(|reply| SessionStateActorMessage::SaveMainWindow { geometry, reply })
+            .await
     }
 
     pub async fn patch(&self, patch: PersistentStatePatch) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(
-            |reply| SessionStateActorMessage::Patch { patch, reply },
-            None,
-        )
-        .await
+        self.call(|reply| SessionStateActorMessage::Patch { patch, reply })
+            .await
     }
 
     pub async fn replace(&self, state: PersistentState) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(
-            |reply| SessionStateActorMessage::Replace { state, reply },
-            None,
-        )
-        .await
+        self.call(|reply| SessionStateActorMessage::Replace { state, reply })
+            .await
     }
 
-    async fn call<F>(
-        &self,
-        make: F,
-        timeout: Option<std::time::Duration>,
-    ) -> anyhow::Result<SessionStateSnapshot>
+    async fn call<F>(&self, make: F) -> anyhow::Result<SessionStateSnapshot>
     where
         F: FnOnce(RpcReplyPort<anyhow::Result<SessionStateSnapshot>>) -> SessionStateActorMessage,
     {
-        match self.inner.actor_ref.call(make, timeout).await? {
+        match self.inner.actor_ref.call(make, None).await? {
             CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
+            _ => anyhow::bail!("session state actor reply dropped"),
         }
     }
 }

@@ -420,7 +420,7 @@ async fn deliver(actor: &ActorRef<Message>, generation: u64, delivery: Delivery)
         actor
             .call(
                 |reply| Message::Deliver(generation, Box::new(delivery), reply),
-                Some(Duration::from_secs(10))
+                None
             )
             .await,
         Ok(CallResult::Success(true))
@@ -711,13 +711,12 @@ impl StreamsClient {
         match self
             .0
             .actor
-            .call(message, Some(Duration::from_secs(10)))
+            .call(message, None)
             .await
             .context("Clash stream actor unavailable")?
         {
             CallResult::Success(value) => Ok(value),
-            CallResult::Timeout => anyhow::bail!("Clash stream actor timed out"),
-            CallResult::SenderError => anyhow::bail!("Clash stream actor reply dropped"),
+            _ => anyhow::bail!("Clash stream actor reply dropped"),
         }
     }
     pub async fn start(&self) -> Result<()> {

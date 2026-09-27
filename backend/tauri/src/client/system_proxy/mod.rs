@@ -26,9 +26,7 @@ use crate::client::effects::{
 
 pub use self::actor::Args as SystemProxyArgs;
 
-/// Bounds the status query only; a reconcile waits for the actor to settle.
-const SYSTEM_PROXY_RPC_TIMEOUT: Duration = Duration::from_secs(15);
-/// Shorter: the exit path cannot hang on a proxy that will not answer.
+/// The exit path cannot hang on a proxy that will not answer.
 const SYSTEM_PROXY_RESTORE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// What the actor currently holds. Nothing in the effect protocol needs it —
@@ -130,17 +128,17 @@ impl SystemProxyClient {
 
     #[cfg_attr(not(test), allow(dead_code))]
     pub async fn status(&self) -> SystemProxyStatus {
-        match self
-            .actor
-            .call(Message::Status, Some(SYSTEM_PROXY_RPC_TIMEOUT))
-            .await
-        {
+        match self.actor.call(Message::Status, None).await {
             Ok(CallResult::Success(status)) => status,
             other => {
                 tracing::warn!("the system proxy actor did not report its status: {other:?}");
                 SystemProxyStatus {
                     applied_revision: EffectRevision::default(),
-                    health: timeout_health(),
+                    health: EffectHealth::Degraded {
+                        code: "system_proxy_stopped",
+                        message: "the system proxy actor stopped before answering".to_owned(),
+                        retryable: false,
+                    },
                     desired: None,
                     applied_os_proxy: None,
                     guard_active: false,

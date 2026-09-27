@@ -1055,7 +1055,7 @@ async fn an_abandoned_prepare_waits_for_the_try_before_restoring_and_releasing()
         ..
     } = fixture(test_budgets()).await;
 
-    let (_, primed) = simple_mutate(
+    let (primed_id, primed) = simple_mutate(
         &mut clash,
         &client,
         overrides(serde_json::json!({"mode": "global"})),
@@ -1063,6 +1063,10 @@ async fn an_abandoned_prepare_waits_for_the_try_before_restoring_and_releasing()
     )
     .await;
     assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    // The call returns at commit, while the primed Confirm (a product write
+    // with fsyncs) still holds the domain. Settled first, so the 50 ms budget
+    // below cannot lapse while the next attempt is still queued.
+    settled(&client, primed_id).await;
     let committed = clash.snapshot_handle().load().version;
 
     builder.park.store(true, Ordering::SeqCst);
@@ -1085,7 +1089,9 @@ async fn an_abandoned_prepare_waits_for_the_try_before_restoring_and_releasing()
             (clash, result)
         })
     };
-    builder.entered.notified().await;
+    tokio::time::timeout(Duration::from_secs(5), builder.entered.notified())
+        .await
+        .expect("the abandoned attempt should reach its parked Try");
 
     // The transaction gives up on the prepare here; the next mutation must
     // still wait for the Try that is holding the execution domain.
@@ -2358,7 +2364,7 @@ async fn an_expired_ack_keeps_the_domain_until_the_handoff_is_compensated() {
     )
     .await;
 
-    let (_, primed) = simple_mutate(
+    let (primed_id, primed) = simple_mutate(
         &mut clash,
         &client,
         overrides(serde_json::json!({"mode": "global"})),
@@ -2366,6 +2372,9 @@ async fn an_expired_ack_keeps_the_domain_until_the_handoff_is_compensated() {
     )
     .await;
     assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    // Settled first, as in the parked-build test: the budget below must only
+    // lapse once the abandoned attempt holds the domain.
+    settled(&client, primed_id).await;
     let restored_from = endpoint.reconciled_bytes().len();
     let before = application.snapshot_handle().load().version;
     daemon.park.store(true, Ordering::SeqCst);
@@ -2392,7 +2401,9 @@ async fn an_expired_ack_keeps_the_domain_until_the_handoff_is_compensated() {
             (application, result)
         })
     };
-    daemon.entered.notified().await;
+    tokio::time::timeout(Duration::from_secs(5), daemon.entered.notified())
+        .await
+        .expect("the abandoned attempt should reach its parked handoff probe");
 
     // The transaction gives up on the prepare here. The Try is mid-handoff, so
     // the next mutation must queue rather than be admitted onto a runtime

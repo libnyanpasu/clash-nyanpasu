@@ -9,8 +9,8 @@ use crate::state::{
 };
 
 use super::{
-    Ack, AckPolicy, AckStatus, ArcStateSubscriber, PrepareReport, RollbackReason, StateChange,
-    SubscriberAck, SubscriberFailure, SubscriberFailureKind, SubscriberName, Subscribers,
+    Ack, AckStatus, ArcStateSubscriber, PrepareReport, RollbackReason, StateChange, SubscriberAck,
+    SubscriberFailure, SubscriberFailureKind, Subscribers,
 };
 
 mod state {

@@ -307,7 +307,11 @@ where
                     ConfigWriteMode::Inline => file.write(|f| f.write_all(&buf)),
                     ConfigWriteMode::Offloaded => {
                         tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-                            .await?
+                            .await
+                            .map_err(|error| match error.try_into_panic() {
+                                Ok(panic) => std::panic::resume_unwind(panic),
+                                Err(error) => error,
+                            })?
                     }
                 };
                 written.with_context(|| format!("failed to write config: {config_path}"))?;

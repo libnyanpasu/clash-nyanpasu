@@ -1,15 +1,9 @@
-use std::{
-    borrow::Cow,
-    marker::PhantomData,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{marker::PhantomData, sync::Arc, time::Instant};
 
 use tokio::task::JoinSet;
 
 use super::{
-    Ack, AckPolicy, AckStatus, ArcStateSubscriber, RollbackReason, StateChange, SubscriberAck,
-    SubscriberName, state::*,
+    Ack, AckStatus, ArcStateSubscriber, RollbackReason, StateChange, SubscriberAck, state::*,
 };
 
 pub struct Parallel;
@@ -126,24 +120,7 @@ where
 
         let mut acks = Vec::new();
         while let Some(res) = join_set.join_next().await {
-            match res {
-                Ok((index, ack)) => acks.push((index, ack)),
-                Err(error) => {
-                    tracing::error!("failed to join notify task: {error}");
-                    acks.push((
-                        usize::MAX,
-                        SubscriberAck {
-                            name: SubscriberName(Cow::Borrowed("<notify task join failure>")),
-                            policy: AckPolicy::Required,
-                            elapsed: Duration::from_secs(0),
-                            status: AckStatus::Failed {
-                                error: anyhow::anyhow!("failed to join notify task: {error}")
-                                    .into(),
-                            },
-                        },
-                    ));
-                }
-            }
+            acks.push(res.unwrap_or_else(|error| std::panic::resume_unwind(error.into_panic())));
         }
         acks.sort_by_key(|&(index, _)| index);
         acks.into_iter().map(|(_, ack)| ack).collect()
@@ -184,9 +161,7 @@ where
         }
 
         while let Some(res) = join_set.join_next().await {
-            if let Err(error) = res {
-                tracing::error!("failed to join post-commit notify task: {error}");
-            }
+            res.unwrap_or_else(|error| std::panic::resume_unwind(error.into_panic()));
         }
     }
 }
@@ -220,9 +195,7 @@ where
         }
 
         while let Some(res) = join_set.join_next().await {
-            if let Err(error) = res {
-                tracing::error!("failed to join rollback notify task: {error}");
-            }
+            res.unwrap_or_else(|error| std::panic::resume_unwind(error.into_panic()));
         }
     }
 }

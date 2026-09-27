@@ -189,7 +189,11 @@ where
             tokio::task::spawn_blocking(move || {
                 AtomicFile::new(&config_path, AllowOverwrite).write(|f| f.write_all(&buf))
             })
-            .await?
+            .await
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => error,
+            })?
             .with_context(|| format!("failed to write weak snapshot: {}", self.config_path))?;
             Ok(())
         }

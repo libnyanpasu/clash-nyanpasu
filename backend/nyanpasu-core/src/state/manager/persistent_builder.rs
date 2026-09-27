@@ -207,7 +207,11 @@ where
                     formatter.serialize(&mut buf, &builder_for_save, config_prefix.as_deref())?;
                     let file = AtomicFile::new(&config_path, AllowOverwrite);
                     tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-                        .await?
+                        .await
+                        .map_err(|error| match error.try_into_panic() {
+                            Ok(panic) => std::panic::resume_unwind(panic),
+                            Err(error) => error,
+                        })?
                         .with_context(|| format!("failed to write config: {config_path}"))?;
                     completed.store(true, std::sync::atomic::Ordering::Release);
                     Ok::<_, anyhow::Error>(())

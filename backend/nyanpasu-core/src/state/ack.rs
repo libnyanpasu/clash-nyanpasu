@@ -111,20 +111,21 @@ pub enum RollbackReason {
 /// # Rules for Required participants
 ///
 /// A subscriber whose [`StateAckSubscriber::policy`] is [`AckPolicy::Required`]
-/// can veto the commit, so it runs inside the writer permit of the source state.
-/// The transaction has no deadline of its own: it waits for every answer, and a
-/// subscriber that never answers holds the source state for as long as that
-/// takes. Three rules keep that safe:
+/// can veto the commit, so it runs inside the source owner's write, which holds
+/// the state's `&mut` for the whole transaction. The transaction has no deadline
+/// of its own: it waits for every answer, and a subscriber that never answers
+/// holds the source state for as long as that takes. Three rules keep that
+/// safe:
 ///
-/// 1. **No RPC back to the source actor.** `on_prepare` runs while the source
-///    state's writer permit is held, so any call that has to reach that actor
-///    (a read, a patch, a status query) cannot make progress and hangs forever.
-///    Everything the participant needs must be captured before the
-///    transaction starts or carried in the [`StateChange`].
+/// 1. **No RPC back to the source actor.** `on_prepare` runs while that actor
+///    is inside the write, so any call that has to reach it (a read, a patch, a
+///    status query) cannot make progress and hangs forever. Everything the
+///    participant needs must be captured before the transaction starts or
+///    carried in the [`StateChange`].
 /// 2. **Try must be cancel-safe.** The whole prepare fan-out is dropped when the
-///    caller goes away, so `on_prepare` may be cancelled at any await point. It
-///    must leave no half-applied effect that only its own return path would have
-///    cleaned up.
+///    owner's future is dropped (a panic or runtime teardown), so `on_prepare`
+///    may be cancelled at any await point. It must leave no half-applied effect
+///    that only its own return path would have cleaned up.
 /// 3. **Cancel must wait for the in-flight Try.** `on_rolled_back` for an
 ///    attempt must not start undoing while that attempt's `on_prepare` is still
 ///    running, or the undo races the effect it is undoing. The participant

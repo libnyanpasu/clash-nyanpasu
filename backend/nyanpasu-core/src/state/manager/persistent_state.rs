@@ -393,6 +393,10 @@ where
     /// Necessary local writes and their recovery are owned by this transaction.
     /// Recovery must settle partial writes as well as completed publications;
     /// the authoritative abort is published only after it returns.
+    ///
+    /// The transaction runs on the caller, whose future is the owner's work.
+    /// Dropping it drops the transaction, which publishes an abort, flagged as
+    /// needing recovery once the local write has started.
     pub async fn replace_if_version_with_participant<P, W, WFut, R, RFut>(
         &mut self,
         expected_version: Version,
@@ -402,12 +406,12 @@ where
         local_recovery: R,
     ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
     where
-        Formatter: Clone + Send + 'static,
+        Formatter: Clone,
         P: FnOnce(DecisionHandle) -> StateParticipant<State>,
-        W: FnOnce() -> WFut + Send + 'static,
-        WFut: Future<Output = anyhow::Result<()>> + Send + 'static,
-        R: FnOnce() -> RFut + Send + 'static,
-        RFut: Future<Output = anyhow::Result<()>> + Send + 'static,
+        W: FnOnce() -> WFut,
+        WFut: Future<Output = anyhow::Result<()>>,
+        R: FnOnce() -> RFut,
+        RFut: Future<Output = anyhow::Result<()>>,
     {
         let config_path = self.config_path.clone();
         let effect = self.write_config_step(ConfigWriteMode::Inline);
@@ -416,37 +420,17 @@ where
         let local_write_flag = Arc::clone(&local_write_completed);
         let config_written = Arc::new(AtomicBool::new(false));
         let config_written_effect = config_written.clone();
-        let mut owner = self.state_coordinator.persistence_owner();
-        let participant = ParticipantEntry::new(participant);
-        let (completion, result) = tokio::sync::oneshot::channel();
-        let (_caller_lifetime, caller) = tokio::sync::watch::channel(());
-        let mut cancelled = caller.clone();
-        let started = Arc::new(AtomicBool::new(false));
-        let started_effect = started.clone();
-        let decision = participant.decision_writer();
-        // The source owner outlives its caller: dropping a waiter cannot drop an
-        // in-flight write, release its permit, or race its compensation.
-        tokio::spawn(async move {
-            let operation = owner.with_pending_state_if_version_with_participant(
+        let outcome = self
+            .state_coordinator
+            .with_pending_state_if_version_with_participant(
                 expected_version,
                 &next_state,
-                participant,
+                ParticipantEntry::new(participant),
                 |state| async move {
-                    if caller.has_changed().is_err() {
-                        return Err(ConditionalWriteError::LocalWrite(anyhow::anyhow!(
-                            "caller cancelled before persistence"
-                        )));
-                    }
-                    started_effect.store(true, Ordering::Release);
                     local_write()
                         .await
                         .map_err(ConditionalWriteError::LocalWrite)?;
                     local_write_flag.store(true, Ordering::SeqCst);
-                    if caller.has_changed().is_err() {
-                        return Err(ConditionalWriteError::LocalWrite(anyhow::anyhow!(
-                            "caller cancelled during persistence"
-                        )));
-                    }
                     effect(state).await.map_err(ConditionalWriteError::Config)?;
                     config_written_effect.store(true, Ordering::Release);
                     Ok(())
@@ -466,34 +450,13 @@ where
                         ))),
                     }
                 },
-            );
-            let mut operation = Box::pin(operation);
-            let outcome = tokio::select! {
-                biased;
-                outcome = &mut operation => outcome,
-                _ = cancelled.changed() => {
-                    if !started.load(Ordering::Acquire) {
-                        drop(operation);
-                        decision.abort(crate::state::AbortResourceState::Restored);
-                        return;
-                    }
-                    // Finish the write, then the effect's cancellation check sends
-                    // it through resource recovery before any abort is published.
-                    operation.await
-                }
-            };
-            let outcome = Self::map_conditional_outcome(
-                outcome,
-                config_path,
-                local_write_completed.load(Ordering::SeqCst),
-            );
-            let _ = completion.send(outcome);
-        });
-        result.await.map_err(|error| {
-            ReplaceIfVersionError::LocalWrite(anyhow::anyhow!(
-                "source persistence owner failed: {error}"
-            ))
-        })?
+            )
+            .await;
+        Self::map_conditional_outcome(
+            outcome,
+            config_path,
+            local_write_completed.load(Ordering::SeqCst),
+        )
     }
 
     fn map_conditional_outcome(

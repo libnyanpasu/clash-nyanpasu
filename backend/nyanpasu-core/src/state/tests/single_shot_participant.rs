@@ -10,16 +10,12 @@
 //!    notification lands;
 //! 3. the caller's own local write sits between prepare and the commit, and a
 //!    refusal after it completed is never reported as a clean rejection;
-//! 4. a cancelled transaction records the unknown on-disk outcome instead of
-//!    assuming nothing was written, `Drop` never waits for a rollback, and the
-//!    next transaction never overtakes that rollback.
+//! 4. a dropped transaction records the unknown on-disk outcome instead of
+//!    assuming nothing was written.
 
-use std::{
-    sync::{
-        Arc, Mutex as StdMutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc, Mutex as StdMutex,
+    atomic::{AtomicBool, Ordering},
 };
 
 use tokio::sync::{Mutex, Notify};
@@ -415,22 +411,17 @@ async fn a_failed_local_write_rolls_the_transaction_back() {
     );
 }
 
-/// Cancelling the mutation while its local write is outstanding leaves the
-/// on-disk outcome unknown. The decision must say so instead of inferring
-/// "nothing was written" from "the store was not swapped".
+/// Dropping the mutation while its local write is outstanding leaves the
+/// on-disk outcome unknown. The abort the transaction publishes on drop must say
+/// so instead of inferring "nothing was written" from "the store was not
+/// swapped".
 #[tokio::test]
-async fn cancelling_a_local_write_waits_for_completion_and_recovery() {
+async fn dropping_a_local_write_publishes_an_abort_that_needs_recovery() {
     let dir = tempfile::tempdir().unwrap();
     let mut manager = manager_at(&dir).await;
     let handle = Arc::new(StdMutex::new(None));
     let started = Arc::new(Notify::new());
-    let finish_write = Arc::new(Notify::new());
-    let recovery_started = Arc::new(Notify::new());
-    let finish_recovery = Arc::new(Notify::new());
     let writing = started.clone();
-    let release_write = finish_write.clone();
-    let recovering = recovery_started.clone();
-    let release_recovery = finish_recovery.clone();
     let mut pending = Box::pin(manager.replace_if_version_with_participant(
         Version::new(0),
         TestState::new("candidate", 1),
@@ -440,41 +431,33 @@ async fn cancelling_a_local_write_waits_for_completion_and_recovery() {
         },
         move || async move {
             writing.notify_one();
-            release_write.notified().await;
+            std::future::pending::<()>().await;
             Ok(())
         },
-        move || async move {
-            recovering.notify_one();
-            release_recovery.notified().await;
-            Ok(())
-        },
+        || async { Ok(()) },
     ));
     tokio::select! {
         result = &mut pending => panic!("write should be pending: {result:?}"),
         _ = started.notified() => {}
     }
     drop(pending);
+
     let handle = handle.lock().unwrap().clone().unwrap();
-    assert_eq!(handle.decision(), StateDecision::Undecided);
-    finish_write.notify_one();
-    recovery_started.notified().await;
-    assert_eq!(handle.decision(), StateDecision::Undecided);
-    finish_recovery.notify_one();
-    assert_eq!(
-        handle.wait().await,
+    assert!(matches!(
+        handle.decision(),
         StateDecision::Aborted {
-            resources: AbortResourceState::Restored
+            resources: AbortResourceState::NeedsRecovery(_)
         }
-    );
+    ));
     assert_eq!(manager.snapshot().name, "");
 }
 
-/// The other half of the same rule. A transaction abandoned *before* its local
+/// The other half of the same rule. A transaction dropped *before* its local
 /// write started wrote nothing anywhere, so the abort says everything there is
 /// to say. Flagging it would send the caller into the most expensive state in
-/// the system for an ordinary cancelled prepare.
+/// the system for an ordinary dropped prepare.
 #[tokio::test]
-async fn cancelling_before_the_local_write_starts_leaves_the_flag_clear() {
+async fn dropping_before_the_local_write_starts_leaves_the_flag_clear() {
     struct ParkingPrepare {
         entered: Arc<Notify>,
     }
@@ -537,76 +520,6 @@ async fn cancelling_before_the_local_write_starts_leaves_the_flag_clear() {
         "nothing was written, so there is nothing to recover"
     );
     assert_eq!(manager.snapshot().name, "");
-}
-
-/// `Drop` may signal a rollback but must never wait for one.
-#[tokio::test]
-async fn dropping_a_transaction_does_not_wait_for_rollback_subscribers() {
-    struct ParkingRollback {
-        entered: Arc<AtomicBool>,
-        release: Arc<Notify>,
-        finished: Arc<Notify>,
-    }
-
-    #[async_trait::async_trait]
-    impl StateAckSubscriber<TestState> for ParkingRollback {
-        fn name(&self) -> SubscriberName<'_> {
-            "parking-rollback".into()
-        }
-
-        async fn on_rolled_back(&self, _change: StateChange<TestState>, _reason: RollbackReason) {
-            self.entered.store(true, Ordering::SeqCst);
-            self.release.notified().await;
-            self.finished.notify_one();
-        }
-    }
-
-    let dir = tempfile::tempdir().unwrap();
-    let mut manager = manager_at(&dir).await;
-    let entered = Arc::new(AtomicBool::new(false));
-    let release = Arc::new(Notify::new());
-    let finished = Arc::new(Notify::new());
-    manager.add_subscriber(Box::new(ParkingRollback {
-        entered: Arc::clone(&entered),
-        release: Arc::clone(&release),
-        finished: Arc::clone(&finished),
-    }));
-
-    let finish_write = Arc::new(Notify::new());
-    let release_write = finish_write.clone();
-    let started = Arc::new(Notify::new());
-    let started_for_write = Arc::clone(&started);
-    let mut pending = Box::pin(manager.replace_if_version_with_participant(
-        Version::new(0),
-        TestState::new("candidate", 1),
-        |_decision| Arc::new(SilentParticipant) as StateParticipant<TestState>,
-        move || async move {
-            started_for_write.notify_one();
-            release_write.notified().await;
-            Ok(())
-        },
-        || async { Ok(()) },
-    ));
-
-    tokio::select! {
-        result = &mut pending => panic!("the local write should stay pending, got {result:?}"),
-        _ = started.notified() => {}
-    }
-    drop(pending);
-    finish_write.notify_one();
-
-    // This test runs on a current-thread runtime, so nothing else can have run
-    // between the drop and this line. A Drop that waited for the rollback would
-    // have had to run the subscriber first.
-    assert!(
-        !entered.load(Ordering::SeqCst),
-        "Drop must not run rollback notifications synchronously"
-    );
-
-    release.notify_one();
-    tokio::time::timeout(Duration::from_secs(5), finished.notified())
-        .await
-        .expect("the detached rollback task should still complete");
 }
 
 /// A commit refused after the local write completed leaves a published resource
@@ -705,79 +618,6 @@ async fn a_version_conflict_settles_the_participant_decision() {
             resources: AbortResourceState::Restored
         },
         "a conflict is a decision, not an absence of one"
-    );
-}
-
-/// A rollback started by `Drop` still has to settle before the next attempt
-/// prepares. Registered subscribers write downstream state from
-/// `on_rolled_back`, so a rollback landing after the next commit would overwrite
-/// newer state with older.
-#[tokio::test]
-async fn a_dropped_transactions_rollback_settles_before_the_next_prepare() {
-    struct OrderRecorder {
-        log: Arc<Mutex<Vec<&'static str>>>,
-    }
-
-    #[async_trait::async_trait]
-    impl StateAckSubscriber<TestState> for OrderRecorder {
-        fn name(&self) -> SubscriberName<'_> {
-            "order-recorder".into()
-        }
-
-        async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-            self.log.lock().await.push("prepare");
-            Ack::Ok
-        }
-
-        async fn on_rolled_back(&self, _change: StateChange<TestState>, _reason: RollbackReason) {
-            // Give the next attempt every chance to overtake this rollback if
-            // the writer permit is no longer holding it back.
-            for _ in 0..16 {
-                tokio::task::yield_now().await;
-            }
-            self.log.lock().await.push("rollback");
-        }
-    }
-
-    let dir = tempfile::tempdir().unwrap();
-    let mut manager = manager_at(&dir).await;
-    let log = Arc::new(Mutex::new(Vec::new()));
-    manager.add_subscriber(Box::new(OrderRecorder {
-        log: Arc::clone(&log),
-    }));
-
-    let finish_write = Arc::new(Notify::new());
-    let release_write = finish_write.clone();
-    let started = Arc::new(Notify::new());
-    let started_for_write = Arc::clone(&started);
-    let mut attempt_one = Box::pin(manager.replace_if_version_with_participant(
-        Version::new(0),
-        TestState::new("cancelled", 1),
-        |_decision| Arc::new(SilentParticipant) as StateParticipant<TestState>,
-        move || async move {
-            started_for_write.notify_one();
-            release_write.notified().await;
-            Ok(())
-        },
-        || async { Ok(()) },
-    ));
-    tokio::select! {
-        result = &mut attempt_one => panic!("the local write should stay pending, got {result:?}"),
-        _ = started.notified() => {}
-    }
-    drop(attempt_one);
-    finish_write.notify_one();
-
-    let replaced = manager
-        .replace_if_version(Version::new(0), TestState::new("next", 2))
-        .await
-        .unwrap();
-    assert!(matches!(replaced, ReplaceIfVersionResult::Replaced));
-
-    assert_eq!(
-        *log.lock().await,
-        vec!["prepare", "rollback", "prepare"],
-        "the cancelled attempt's rollback must settle before the next attempt prepares"
     );
 }
 

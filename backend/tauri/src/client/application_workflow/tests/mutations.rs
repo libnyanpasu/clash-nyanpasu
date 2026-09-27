@@ -1333,12 +1333,12 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
 
 // -- I1: an abort whose persistence outcome is unknown ---------------------
 
-/// The source transaction is abandoned while its own local write is
-/// outstanding. The store was never swapped, which is no evidence that nothing
-/// reached disk: the file may already hold the candidate. Treating that as an
-/// ordinary Cancel would take the candidate off the runtime and leave the next
-/// boot to load it back, so the attempt isolates the execution domain instead
-/// (v2 §4.2).
+/// The source transaction's own local write fails, and so does the recovery
+/// that would have put its resource back. The store was never swapped, which is
+/// no evidence about what reached disk: the resource may already hold the
+/// candidate. Treating that as an ordinary Cancel would take the candidate off
+/// the runtime while the resource keeps it, so the attempt isolates the
+/// execution domain instead (v2 §4.2).
 #[tokio::test]
 async fn an_abort_whose_persistence_outcome_is_unknown_isolates_the_domain() {
     let Fixture {
@@ -1350,15 +1350,11 @@ async fn an_abort_whose_persistence_outcome_is_unknown_isolates_the_domain() {
         ..
     } = fixture(test_budgets()).await;
 
-    let entered = Arc::new(Notify::new());
-    let release = Arc::new(Notify::new());
     let abandoned = OperationId::generate();
     let version = clash.snapshot_handle().load().version;
     let workflow = client.clone();
-    {
-        let writing = entered.clone();
-        let released = release.clone();
-        let mut pending = Box::pin(clash.replace_if_version_with_participant(
+    let result = clash
+        .replace_if_version_with_participant(
             version,
             overrides(serde_json::json!({"mode": "global"})),
             move |decision| {
@@ -1370,20 +1366,14 @@ async fn an_abort_whose_persistence_outcome_is_unknown_isolates_the_domain() {
                     workflow,
                 )
             },
-            move || async move {
-                writing.notify_one();
-                released.notified().await;
-                Ok(())
-            },
+            || async { Err(anyhow::anyhow!("resource write failed")) },
             || async { Err(anyhow::anyhow!("resource recovery failed")) },
-        ));
-        tokio::select! {
-            result = &mut pending => panic!("write should stay pending: {result:?}"),
-            _ = entered.notified() => {}
-        }
-        drop(pending);
-    }
-    release.notify_one();
+        )
+        .await;
+    assert!(
+        matches!(result, Err(ReplaceIfVersionError::ResourceRecovery { .. })),
+        "{result:?}"
+    );
 
     let receipt = settled(&client, abandoned).await;
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);

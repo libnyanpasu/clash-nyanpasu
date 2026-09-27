@@ -10,7 +10,6 @@ use anyhow::anyhow;
 use arc_swap::ArcSwap;
 use indexmap::IndexMap;
 use std::{future::Future, sync::Arc};
-use tokio::sync::Semaphore;
 
 pub(super) type ArcStateSubscriber<T> = StateParticipant<T>;
 pub(super) type Subscribers<T> = Vec<ArcStateSubscriber<T>>;
@@ -29,10 +28,6 @@ pub(crate) struct ParticipantEntry<T: Clone + Send + Sync + 'static> {
 }
 
 impl<T: Clone + Send + Sync + 'static> ParticipantEntry<T> {
-    pub(crate) fn decision_writer(&self) -> DecisionWriter {
-        self.decision.clone()
-    }
-
     /// Allocate this transaction's decision cell and let the caller build the
     /// participant around the read-only half of it.
     ///
@@ -66,23 +61,10 @@ pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
     current_state: StateStore<T>,
     notify_strategy: NotifyStrategy,
     subscribers: IndexMap<SubscriberName<'static>, ArcStateSubscriber<T>>,
-    semaphore: Arc<Semaphore>,
     next_change_id: StateChangeId,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
-    /// A task-owned writer sharing the same store and writer permit. Its local
-    /// version cursor is refreshed from the store after acquiring the permit.
-    pub(crate) fn persistence_owner(&self) -> Self {
-        Self {
-            current_state: self.current_state.clone(),
-            notify_strategy: self.notify_strategy,
-            subscribers: self.subscribers.clone(),
-            semaphore: self.semaphore.clone(),
-            next_change_id: self.next_change_id,
-        }
-    }
-
     pub fn builder() -> StateCoordinatorBuilder<T> {
         StateCoordinatorBuilder::default()
     }
@@ -155,12 +137,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         &mut self,
         builder: impl StateAsyncBuilder<State = T>,
     ) -> Result<PrepareReport, StateChangedError> {
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
         let subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let new_state = builder
@@ -179,7 +155,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             self.current_state.clone(),
             subscribers,
             notify_strategy,
-            permit,
             DecisionWriter::new(),
         );
         match tx.prepare().await {
@@ -204,12 +179,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     pub async fn upsert_state(&mut self, new_state: T) -> Result<PrepareReport, StateChangedError> {
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
         let subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let next_changed_id = self.pending_change_id();
@@ -224,7 +193,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             self.current_state.clone(),
             subscribers,
             notify_strategy,
-            permit,
             DecisionWriter::new(),
         );
         match tx.prepare().await {
@@ -354,12 +322,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         RFut: Future<Output = Result<(), E>>,
         E: std::fmt::Debug,
     {
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
         let mut subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let next_changed_id = self.pending_change_id();
@@ -401,7 +363,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             self.current_state.clone(),
             subscribers,
             notify_strategy,
-            permit,
             decision,
         );
         let (report, mut tx) = match tx.prepare().await {
@@ -528,7 +489,6 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             })),
             notify_strategy: self.notify_strategy,
             subscribers: self.subscribers,
-            semaphore: Arc::new(Semaphore::new(1)),
             next_change_id: init_change_id.next(),
         }
     }
@@ -550,7 +510,6 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             current_state: Arc::clone(&current_state),
             notify_strategy,
             subscribers: self.subscribers,
-            semaphore: Arc::new(Semaphore::new(1)),
             next_change_id: init_change_id.next(),
         };
 
@@ -559,18 +518,11 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             previous: None,
             current,
         };
-        let permit = coordinator
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
         let tx = new_transaction(
             change,
             current_state,
             subscribers,
             notify_strategy,
-            permit,
             DecisionWriter::new(),
         );
 
@@ -1306,79 +1258,6 @@ mod test {
         assert_eq!(&*coordinator.snapshot_versioned(), &initial);
         // Subscriber NOT called (commit never happened)
         assert_eq!(subscriber.call_count(), 0);
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_with_pending_state_cancel_rolls_back_prepared_subscribers() {
-        struct RollbackSubscriber {
-            events: Arc<Mutex<Vec<&'static str>>>,
-            rolled_back: Arc<Notify>,
-        }
-
-        #[async_trait::async_trait]
-        impl StateAckSubscriber<TestState> for RollbackSubscriber {
-            fn name(&self) -> SubscriberName<'_> {
-                "rollback_subscriber".into()
-            }
-
-            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-                self.events.lock().await.push("prepare");
-                Ack::Ok
-            }
-
-            async fn on_rolled_back(
-                &self,
-                _change: StateChange<TestState>,
-                _reason: RollbackReason,
-            ) {
-                self.events.lock().await.push("rollback");
-                self.rolled_back.notify_one();
-            }
-        }
-
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let effect_started = Arc::new(Notify::new());
-        let rolled_back = Arc::new(Notify::new());
-        let mut coordinator = StateCoordinator::builder()
-            .with_subscriber(Box::new(RollbackSubscriber {
-                events: Arc::clone(&events),
-                rolled_back: Arc::clone(&rolled_back),
-            }))
-            .build(default_test_state());
-        let state = TestState {
-            value: 99,
-            name: "cancelled".to_string(),
-        };
-
-        let mut future = Box::pin(coordinator.with_pending_state(
-            &state,
-            {
-                let effect_started = Arc::clone(&effect_started);
-                move |_s| {
-                    let effect_started = Arc::clone(&effect_started);
-                    async move {
-                        effect_started.notify_one();
-                        std::future::pending::<Result<(), anyhow::Error>>().await
-                    }
-                }
-            },
-            no_recovery,
-        ));
-
-        tokio::select! {
-            result = &mut future => panic!("effect should stay pending, got {result:?}"),
-            _ = effect_started.notified() => {}
-        }
-
-        drop(future);
-
-        // Drop hands the notifications to a detached task instead of blocking,
-        // so the rollback is observed by waiting for it.
-        tokio::time::timeout(Duration::from_secs(5), rolled_back.notified())
-            .await
-            .expect("cancelling the effect must still get the rollback out");
-        assert_eq!(*events.lock().await, vec!["prepare", "rollback"]);
-        assert_eq!(coordinator.snapshot_versioned().value, 0);
     }
 
     #[tokio::test]

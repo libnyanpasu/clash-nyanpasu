@@ -1171,7 +1171,7 @@ impl ProfilesActor {
             Ok(ReplaceIfVersionResult::Replaced) => {}
             result => {
                 // Only a pre-persistence refusal leaves staging to discard here.
-                // Once local_write starts, the source task exclusively owns
+                // Once local_write starts, the source transaction exclusively owns
                 // compensation and publishes its result before releasing admission.
                 let before_write = matches!(
                     &result,

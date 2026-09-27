@@ -168,7 +168,11 @@ impl UpdaterBackend for HttpUpdaterBackend {
                 extraction_source,
             )
         })
-        .await??;
+        .await
+        .map_err(|error| match error.try_into_panic() {
+            Ok(panic) => std::panic::resume_unwind(panic),
+            Err(error) => error,
+        })??;
         progress.report(UpdaterState::Replacing, None);
         Ok(PreparedCoreBinary {
             target: core_type,

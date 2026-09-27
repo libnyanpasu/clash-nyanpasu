@@ -154,7 +154,10 @@ impl WidgetManager {
             )
         })
         .await
-        .context("Failed to send event to widget")?
+        .map_err(|error| match error.try_into_panic() {
+            Ok(panic) => std::panic::resume_unwind(panic),
+            Err(error) => anyhow::Error::new(error).context("Failed to send event to widget"),
+        })?
     }
 
     pub async fn start(&self, widget: StatisticWidgetVariant) -> anyhow::Result<()> {
@@ -184,8 +187,9 @@ impl WidgetManager {
             unreachable!("the starting instance was recorded above");
         };
         let linked = tokio::select! {
+            // The worker drops the sender unsent only by unwinding.
             linked = linked_rx => linked
-                .unwrap_or_else(|_| Err(anyhow::anyhow!("the widget handshake worker panicked")))
+                .unwrap_or_else(|_| panic!("the widget handshake worker panicked"))
                 .context("Failed to get ipc sender"),
             exited = process.exited() => Err(match exited {
                 Ok(status) => anyhow::anyhow!("Widget process exited: {status}"),
@@ -252,9 +256,12 @@ impl WidgetManager {
                         Ok(Ok(Err(error))) => {
                             tracing::warn!("failed to send stop message to widget: {error:#}")
                         }
-                        Ok(Err(error)) => {
-                            tracing::warn!("widget stop message task failed: {error}")
-                        }
+                        Ok(Err(error)) => match error.try_into_panic() {
+                            Ok(panic) => std::panic::resume_unwind(panic),
+                            Err(error) => {
+                                tracing::warn!("widget stop message task failed: {error}")
+                            }
+                        },
                         Err(_) => tracing::warn!("widget stop message did not go out in time"),
                     }
                 }
@@ -285,9 +292,12 @@ impl WidgetManager {
                     Ok(Ok(Err(error))) => {
                         tracing::warn!("failed to release the widget handshake: {error:#}")
                     }
-                    Ok(Err(error)) => {
-                        tracing::warn!("widget handshake release task failed: {error}")
-                    }
+                    Ok(Err(error)) => match error.try_into_panic() {
+                        Ok(panic) => std::panic::resume_unwind(panic),
+                        Err(error) => {
+                            tracing::warn!("widget handshake release task failed: {error}")
+                        }
+                    },
                     Err(_) => tracing::warn!("widget handshake release did not finish in time"),
                 }
                 if tokio::time::timeout_at(deadline, worker).await.is_err() {

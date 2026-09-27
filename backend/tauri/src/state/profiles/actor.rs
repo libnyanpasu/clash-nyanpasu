@@ -648,7 +648,10 @@ impl ProfilesActor {
         let read_target = expected_target.clone();
         let content = tokio::task::spawn_blocking(move || fs.read_external(&read_target))
             .await
-            .map_err(|error| anyhow::anyhow!("mirror source read task failed: {error}"))
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => anyhow::anyhow!("mirror source read task failed: {error}"),
+            })
             .and_then(|content| content);
         let content = match content {
             Ok(content) => content,
@@ -847,7 +850,10 @@ impl ProfilesActor {
         let materialization = Arc::clone(&state.materialization);
         tokio::task::spawn_blocking(move || operation(materialization.as_ref()))
             .await
-            .map_err(|error| anyhow::anyhow!("materialization task failed: {error}"))?
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => anyhow::anyhow!("materialization task failed: {error}"),
+            })?
     }
 
     fn materialization_error(context: &str, error: impl std::fmt::Display) -> ProfilesError {
@@ -890,8 +896,11 @@ impl ProfilesActor {
                 let target = target.clone();
                 let content = tokio::task::spawn_blocking(move || fs.read_external(&target))
                     .await
-                    .map_err(|error| {
-                        Self::materialization_error("mirror source read task failed", error)
+                    .map_err(|error| match error.try_into_panic() {
+                        Ok(panic) => std::panic::resume_unwind(panic),
+                        Err(error) => {
+                            Self::materialization_error("mirror source read task failed", error)
+                        }
                     })?
                     .map_err(|error| {
                         Self::materialization_error("failed to read mirror source", error)
@@ -1068,8 +1077,11 @@ impl ProfilesActor {
                     Some(
                         tokio::task::spawn_blocking(move || fs.read_external(&target))
                             .await
-                            .map_err(|error| {
-                                Self::materialization_error("source read task", error)
+                            .map_err(|error| match error.try_into_panic() {
+                                Ok(panic) => std::panic::resume_unwind(panic),
+                                Err(error) => {
+                                    Self::materialization_error("source read task", error)
+                                }
                             })?
                             .map_err(|error| Self::materialization_error("source read", error))?,
                     )
@@ -1138,7 +1150,11 @@ impl ProfilesActor {
                         }
                         anyhow::Ok(())
                     })
-                    .await?
+                    .await
+                    .map_err(|error| match error.try_into_panic() {
+                        Ok(panic) => std::panic::resume_unwind(panic),
+                        Err(error) => error,
+                    })?
                 },
                 move || async move {
                     tokio::task::spawn_blocking(move || {
@@ -1157,7 +1173,11 @@ impl ProfilesActor {
                             ),
                         }
                     })
-                    .await?
+                    .await
+                    .map_err(|error| match error.try_into_panic() {
+                        Ok(panic) => std::panic::resume_unwind(panic),
+                        Err(error) => error,
+                    })?
                 },
             )
             .await;
@@ -1285,7 +1305,10 @@ impl ProfilesActor {
         let materialization = Arc::clone(&state.materialization);
         tokio::task::spawn_blocking(move || materialization.reconcile(&snapshot))
             .await
-            .map_err(|error| anyhow::anyhow!("materialization reconcile join failed: {error}"))?
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => anyhow::anyhow!("materialization reconcile join failed: {error}"),
+            })?
     }
 
     fn log_reconcile_report(report: &MaterializationReconcileReport) {
@@ -1463,10 +1486,11 @@ impl Actor for ProfilesActor {
         let materialization = Arc::clone(&args.materialization);
         let report = tokio::task::spawn_blocking(move || materialization.reconcile(&loaded))
             .await
-            .map_err(|error| {
-                ActorProcessingErr::from(anyhow::anyhow!(
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => ActorProcessingErr::from(anyhow::anyhow!(
                     "startup materialization reconcile join failed: {error}"
-                ))
+                )),
             })?
             .map_err(|error| {
                 ActorProcessingErr::from(anyhow::anyhow!(

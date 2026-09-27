@@ -460,7 +460,10 @@ async fn run(actor: ActorRef<Message>, core: CoreClient, generation: u64) {
             _ = api.cancelled() => {},
             result = streams.join_next() => {
                 if let Some(Err(error)) = result {
-                    tracing::warn!("Clash stream task failed: {error}");
+                    match error.try_into_panic() {
+                        Ok(panic) => std::panic::resume_unwind(panic),
+                        Err(error) => tracing::warn!("Clash stream task failed: {error}"),
+                    }
                 }
             },
         }

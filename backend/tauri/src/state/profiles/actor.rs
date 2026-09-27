@@ -500,6 +500,7 @@ impl ProfilesActor {
         let settlement = settlement.await.ok();
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
+                state.mutations.effects().profiles_committed();
                 let completion = state.mutations.committed(
                     operation,
                     "profiles",
@@ -1217,6 +1218,7 @@ impl ProfilesActor {
                 });
             }
         }
+        state.mutations.effects().profiles_committed();
         let (receipt, runtime_degradations) = state.mutations.committed(
             operation,
             "profiles",

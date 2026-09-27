@@ -556,16 +556,17 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
     }
 }
 
-/// Commit notifications that count what they were told.
+/// Commit notifications that count what the Runtime told them. The Runtime
+/// sends only its own slice; a source's slice here is a bug.
 #[derive(Default)]
 struct RecordingNotifications {
-    committed: AtomicUsize,
+    bound: AtomicUsize,
     full: AtomicUsize,
 }
 
 impl RecordingNotifications {
-    fn committed(&self) -> usize {
-        self.committed.load(Ordering::SeqCst)
+    fn bound(&self) -> usize {
+        self.bound.load(Ordering::SeqCst)
     }
 
     fn full(&self) -> usize {
@@ -574,16 +575,31 @@ impl RecordingNotifications {
 }
 
 impl crate::client::effects::ports::CommitNotifications for RecordingNotifications {
-    fn committed(
+    fn application_committed(
         &self,
-        _: crate::client::effects::plan::ApplicationEffectInputs,
-        _: bool,
+        _: crate::client::effects::plan::ApplicationEffectFields,
         _: Vec<crate::client::effects::plan::EffectKind>,
     ) {
-        self.committed.fetch_add(1, Ordering::SeqCst);
+        unreachable!("only the application owner sends its slice")
     }
 
-    fn publish_full(&self, _: crate::client::effects::plan::ApplicationEffectInputs) {
+    fn clash_committed(&self, _: crate::client::effects::plan::ClashEffectFields) {
+        unreachable!("only the clash config owner sends its slice")
+    }
+
+    fn profiles_committed(&self) {
+        unreachable!("only the profiles owner sends its slice")
+    }
+
+    fn runtime_bound(
+        &self,
+        _: Option<nyanpasu_config::runtime::executor::ResolvedPortBindings>,
+        _: bool,
+    ) {
+        self.bound.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn publish_full(&self, _: Option<nyanpasu_config::runtime::executor::ResolvedPortBindings>) {
         self.full.fetch_add(1, Ordering::SeqCst);
     }
 }

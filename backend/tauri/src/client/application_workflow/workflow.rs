@@ -56,35 +56,18 @@ impl ApplicationWorkflow {
         (!items.is_empty()).then(|| items.join("; "))
     }
 
-    pub(super) fn notify_committed(&self, refresh: bool) {
-        self.notify_requested(refresh, Vec::new());
+    /// Hands the effects owner the ports the core is bound to now, the
+    /// Runtime's own slice. `refresh` asks the tray for a partial refresh.
+    pub(super) fn notify_bound(&self, refresh: bool) {
+        self.notifications
+            .runtime_bound(self.lifecycle.ports.confirmed(), refresh);
     }
+
     /// Hands every owner its complete desired value. StartupReconcile sends
     /// this exactly once, whatever it found (T10 §1.9).
     pub(super) fn publish_full(&self) {
-        self.notifications.publish_full(
-            crate::client::effects::plan::ApplicationEffectInputs::project(
-                &self.lifecycle.application.load().state,
-                &self.clash.load().state,
-                self.lifecycle.ports.confirmed(),
-            ),
-        );
-    }
-
-    pub(super) fn notify_requested(
-        &self,
-        refresh: bool,
-        requested: Vec<crate::client::effects::plan::EffectKind>,
-    ) {
-        self.notifications.committed(
-            crate::client::effects::plan::ApplicationEffectInputs::project(
-                &self.lifecycle.application.load().state,
-                &self.clash.load().state,
-                self.lifecycle.ports.confirmed(),
-            ),
-            refresh,
-            requested,
-        );
+        self.notifications
+            .publish_full(self.lifecycle.ports.confirmed());
     }
 
     pub async fn execute(
@@ -117,7 +100,7 @@ impl ApplicationWorkflow {
         // re-establishes one instead of refusing (T10 §1.7 #5).
         if matches!(command, CoreCommand::Reconcile) && !self.lifecycle.start_permitted() {
             let result = self.explicit_start(operation_id).await;
-            self.notify_committed(true);
+            self.notify_bound(true);
             return result;
         }
         // A stop accepted after an explicit start takes back the start it
@@ -163,7 +146,7 @@ impl ApplicationWorkflow {
             deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
             deferred.next_attempt = None;
         }
-        self.notify_committed(true);
+        self.notify_bound(true);
         if tracked.is_some() {
             // Returning is the command's own conclusion; an action it left
             // pending is not, and the error it returned says why.

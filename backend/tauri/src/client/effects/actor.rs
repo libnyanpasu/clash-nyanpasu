@@ -1,6 +1,7 @@
 //! Owns peripheral desired state and independent, coalesced execution groups.
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
+use nyanpasu_config::runtime::executor::ResolvedPortBindings;
 #[cfg(test)]
 use ractor::RpcReplyPort;
 use ractor::{Actor, ActorProcessingErr, ActorRef};
@@ -9,7 +10,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     plan::{
-        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind, TrayRefresh,
+        ApplicationEffect, ApplicationEffectFields, ApplicationEffectInputs, ApplicationEffectPlan,
+        ClashEffectFields, EffectKind, TrayRefresh,
     },
     ports::{ApplicationEffectsPort, CommitNotifications},
     status::{EffectHealth, EffectRevision, EffectStatus},
@@ -82,6 +84,7 @@ struct Args {
 struct State {
     port: Arc<dyn ApplicationEffectsPort>,
     ui: Arc<dyn UiEventSink>,
+    /// The latest slice of each owner, side by side.
     desired: ApplicationEffectInputs,
     revision: u64,
     pending: BTreeMap<EffectKind, ApplicationEffect>,
@@ -94,7 +97,7 @@ struct State {
 
 enum Message {
     Publish {
-        inputs: Box<ApplicationEffectInputs>,
+        slice: Slice,
         refresh: bool,
         full: bool,
         requested: Vec<EffectKind>,
@@ -109,6 +112,18 @@ enum Message {
     RetryNow(EffectKind),
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
+}
+
+/// The part of [`ApplicationEffectInputs`] one owner sends. Each has a single
+/// serial sender, so the slice that arrives last is its owner's latest, and
+/// replacing only that part of `desired` needs no version to order it.
+enum Slice {
+    Application(Box<ApplicationEffectFields>),
+    Clash(ClashEffectFields),
+    Ports(Option<ResolvedPortBindings>),
+    /// No effect reads the profiles: their commit only asks for a tray
+    /// refresh.
+    Profiles,
 }
 
 fn group(kind: EffectKind) -> usize {
@@ -312,17 +327,24 @@ impl Actor for EffectsActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             Message::Publish {
-                inputs,
+                slice,
                 refresh,
                 full,
                 requested,
             } if !state.shutdown.is_cancelled() => {
+                let mut inputs = state.desired.clone();
+                match slice {
+                    Slice::Application(app) => inputs.app = *app,
+                    Slice::Clash(clash) => inputs.clash = clash,
+                    Slice::Ports(ports) => inputs.ports = ports,
+                    Slice::Profiles => {}
+                }
                 let changed: Vec<_> = ApplicationEffectPlan::diff(&state.desired, &inputs)
                     .effects()
                     .iter()
                     .map(ApplicationEffect::kind)
                     .collect();
-                state.enqueue(*inputs, refresh, full);
+                state.enqueue(inputs, refresh, full);
                 for kind in requested {
                     if !changed.contains(&kind) {
                         state.retry(kind, false);
@@ -473,6 +495,16 @@ impl EffectsClient {
     pub fn subscribe(&self) -> watch::Receiver<EffectsSnapshot> {
         self.status.clone()
     }
+    fn publish(&self, slice: Slice, refresh: bool, full: bool, requested: Vec<EffectKind>) {
+        if let Err(error) = self.actor.cast(Message::Publish {
+            slice,
+            refresh,
+            full,
+            requested,
+        }) {
+            tracing::warn!(%error, "committed effects could not be queued");
+        }
+    }
     #[cfg(test)]
     pub async fn barrier(&self) {
         assert!(matches!(
@@ -485,30 +517,28 @@ impl EffectsClient {
 }
 
 impl CommitNotifications for EffectsClient {
-    fn committed(
-        &self,
-        inputs: ApplicationEffectInputs,
-        refresh: bool,
-        requested: Vec<EffectKind>,
-    ) {
-        if let Err(error) = self.actor.cast(Message::Publish {
-            inputs: Box::new(inputs),
-            refresh,
-            full: false,
+    fn application_committed(&self, fields: ApplicationEffectFields, requested: Vec<EffectKind>) {
+        self.publish(
+            Slice::Application(Box::new(fields)),
+            false,
+            false,
             requested,
-        }) {
-            tracing::warn!(%error, "committed effects could not be queued");
-        }
+        );
     }
 
-    fn publish_full(&self, inputs: ApplicationEffectInputs) {
-        if let Err(error) = self.actor.cast(Message::Publish {
-            inputs: Box::new(inputs),
-            refresh: true,
-            full: true,
-            requested: Vec::new(),
-        }) {
-            tracing::warn!(%error, "the full effects publish could not be queued");
-        }
+    fn clash_committed(&self, fields: ClashEffectFields) {
+        self.publish(Slice::Clash(fields), false, false, Vec::new());
+    }
+
+    fn profiles_committed(&self) {
+        self.publish(Slice::Profiles, true, false, Vec::new());
+    }
+
+    fn runtime_bound(&self, ports: Option<ResolvedPortBindings>, refresh: bool) {
+        self.publish(Slice::Ports(ports), refresh, false, Vec::new());
+    }
+
+    fn publish_full(&self, ports: Option<ResolvedPortBindings>) {
+        self.publish(Slice::Ports(ports), true, true, Vec::new());
     }
 }

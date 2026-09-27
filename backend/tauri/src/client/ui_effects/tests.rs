@@ -768,8 +768,8 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     .await
     .expect("the effects actor should spawn");
 
-    effects.committed(
-        proxied_inputs(NyanpasuAppConfig {
+    effects.application_committed(
+        (&NyanpasuAppConfig {
             enable_system_proxy: true,
             pac_url: Some(
                 "http://example.test/proxy.pac"
@@ -777,8 +777,8 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
                     .expect("a valid url"),
             ),
             ..NyanpasuAppConfig::default()
-        }),
-        false,
+        })
+            .into(),
         Vec::new(),
     );
     pac.started.notified().await;
@@ -916,12 +916,12 @@ async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
     )
     .await
     .expect("the effects actor should spawn");
-    effects.committed(
-        proxied_inputs(NyanpasuAppConfig {
+    effects.application_committed(
+        (&NyanpasuAppConfig {
             enable_system_proxy: true,
             ..NyanpasuAppConfig::default()
-        }),
-        false,
+        })
+            .into(),
         Vec::new(),
     );
     effects
@@ -934,8 +934,8 @@ async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
         })
         .await
         .expect("the effects actor is alive");
-    effects.committed(
-        proxied_inputs(NyanpasuAppConfig {
+    effects.application_committed(
+        (&NyanpasuAppConfig {
             enable_system_proxy: true,
             pac_url: Some(
                 "http://example.test/proxy.pac"
@@ -943,8 +943,8 @@ async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
                     .expect("a valid url"),
             ),
             ..NyanpasuAppConfig::default()
-        }),
-        false,
+        })
+            .into(),
         Vec::new(),
     );
     pac.started.notified().await;
@@ -1197,7 +1197,7 @@ async fn the_owners_clean_up_independently_and_the_shutdown_waits_for_all() {
     )
     .await
     .expect("the effects actor should spawn");
-    effects.publish_full(inputs(NyanpasuAppConfig::default()));
+    effects.publish_full(None);
     held.applying.notified().await;
 
     shutdown.request();
@@ -1267,14 +1267,14 @@ async fn effects_with_a_widget_starting(
     )
     .await
     .expect("the effects actor should spawn");
-    effects.committed(
-        inputs(NyanpasuAppConfig {
+    effects.application_committed(
+        (&NyanpasuAppConfig {
             network_statistic_widget: NetworkStatisticWidgetConfig::Enabled(
                 StatisticWidgetVariant::Small,
             ),
             ..NyanpasuAppConfig::default()
-        }),
-        false,
+        })
+            .into(),
         Vec::new(),
     );
     host.spawned.notified().await;

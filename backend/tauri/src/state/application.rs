@@ -116,6 +116,7 @@ impl ApplicationActor {
         Self::validate_channel(state, &mut next)?;
         let version = state.manager.snapshot_handle().load().version;
         let operation = OperationId::generate();
+        let requested = hints.requested_owners.clone();
         let (participant, settlement) = state.mutations.participant(operation, hints, class)?;
         let result = state
             .manager
@@ -131,6 +132,10 @@ impl ApplicationActor {
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
                 let mut snapshot = Self::snapshot(state);
+                state
+                    .mutations
+                    .effects()
+                    .application_committed((&snapshot.state).into(), requested);
                 let (receipt, degradations) = state.mutations.committed(
                     operation,
                     "application",

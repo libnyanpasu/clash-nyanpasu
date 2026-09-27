@@ -529,7 +529,7 @@ async fn a_clean_local_start_applies_once_under_a_proven_owner() {
     );
     assert_eq!(g.log(), ["local:reconcile"]);
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.committed(), 0);
+    assert_eq!(g.notifications.bound(), 0);
     assert_eq!(
         ownership(&g.client).await,
         Ownership::Established {
@@ -993,7 +993,7 @@ async fn a_second_startup_reconcile_returns_the_first_report_and_touches_nothing
     assert_eq!(g.daemon.probes.load(Ordering::SeqCst), probes);
     assert_eq!(g.log(), ["local:reconcile"]);
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.committed(), 0);
+    assert_eq!(g.notifications.bound(), 0);
 }
 
 /// S13: whatever startup ends in, it publishes the full view exactly once
@@ -1016,7 +1016,7 @@ async fn every_startup_outcome_publishes_exactly_one_full_view() {
         g.local.lose_reconcile.store(lose, Ordering::SeqCst);
         let report = g.start().await;
         assert_eq!(g.notifications.full(), 1, "{report:?}");
-        assert_eq!(g.notifications.committed(), 0, "{report:?}");
+        assert_eq!(g.notifications.bound(), 0, "{report:?}");
         outcomes.push(std::mem::discriminant(&report.outcome));
     }
     assert_eq!(
@@ -1050,7 +1050,7 @@ async fn an_interrupted_startup_still_publishes_one_full_view_and_stays_isolated
         "{first:?}"
     );
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.committed(), 0);
+    assert_eq!(g.notifications.bound(), 0);
     assert!(g.isolated());
     let view = g.client.mutation_journal().recovery.unwrap();
     assert_eq!(view.origin, AttemptOriginKind::CommittedTarget);
@@ -1150,7 +1150,7 @@ async fn a_refused_first_startup_publishes_once_unless_the_application_is_closin
     g.local.lose_reconcile.store(true, Ordering::SeqCst);
     assert!(g.client.reconcile().await.is_err());
     assert!(g.isolated(), "the lost explicit start isolated the domain");
-    let committed = g.notifications.committed();
+    let bound = g.notifications.bound();
 
     let refused = g.start().await;
 
@@ -1159,7 +1159,7 @@ async fn a_refused_first_startup_publishes_once_unless_the_application_is_closin
         "{refused:?}"
     );
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.committed(), committed);
+    assert_eq!(g.notifications.bound(), bound);
     g.local.deliver();
     g.client.retry_runtime().await.unwrap();
     assert!(!g.isolated());

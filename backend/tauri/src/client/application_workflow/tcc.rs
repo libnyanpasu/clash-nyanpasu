@@ -250,15 +250,14 @@ impl ApplicationWorkflow {
                 let result = self
                     .confirm(outcome, &request, interruption, &mut receipt.degradations)
                     .await;
-                self.notify_requested(
-                    needs_runtime || matches!(&request.change, DomainChange::Profiles { .. }),
-                    request.hints.requested_owners.clone(),
-                );
+                self.notify_bound(needs_runtime);
                 result
             }
             DecisionOutcome::Aborted => {
                 self.advance(AttemptStage::Cancelling);
-                self.cancel(outcome, &baseline).await
+                let result = self.cancel(outcome, &baseline).await;
+                self.notify_bound(false);
+                result
             }
         };
         receipt.conclusion = conclusion;
@@ -452,7 +451,7 @@ impl ApplicationWorkflow {
             RuntimePrepareOutcome::Applied(candidate) => {
                 self.publish_committed_product(candidate.product).await;
                 self.lifecycle.runtime.accept_transition();
-                self.notify_committed(true);
+                self.notify_bound(true);
                 // Converged: the target ends with this attempt.
                 if self.lifecycle.core.pending_action().is_none() {
                     self.live = None;

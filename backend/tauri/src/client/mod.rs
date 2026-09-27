@@ -377,7 +377,7 @@ impl NyanpasuClient {
         )
         .await?;
         if let Some(mutations) = mutations {
-            mutations.connect(application_workflow.clone());
+            mutations.connect(application_workflow.clone(), Arc::new(effects.clone()));
         }
         let updater = crate::core::updater::UpdaterClient::spawn(
             Arc::new(crate::core::updater::HttpUpdaterBackend::new(

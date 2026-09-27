@@ -118,6 +118,10 @@ impl ClashConfigActor {
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
                 let mut snapshot = Self::snapshot(state);
+                state
+                    .mutations
+                    .effects()
+                    .clash_committed((&snapshot.state).into());
                 let (receipt, degradations) =
                     state
                         .mutations

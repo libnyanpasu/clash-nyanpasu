@@ -377,7 +377,7 @@ impl ApplicationWorkflow {
         let Some(origin) = self.live.as_ref().map(|live| live.origin.kind()) else {
             // An action with no attempt behind it has finished, which is all
             // it owed.
-            self.notify_committed(true);
+            self.notify_bound(true);
             return Ok(());
         };
         self.advance(AttemptStage::Recovering);
@@ -401,7 +401,7 @@ impl ApplicationWorkflow {
         // A target recovery put back keeps its health and schedule: only an
         // outcome recovery itself reached for it may change them.
         self.lifecycle.runtime.accept_transition();
-        self.notify_committed(true);
+        self.notify_bound(true);
         Ok(())
     }
 

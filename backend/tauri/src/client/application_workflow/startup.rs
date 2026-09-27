@@ -338,7 +338,7 @@ impl ApplicationWorkflow {
         let (_, reestablished) = self.reestablish(!explicit).await;
         let concluded = self.conclude_reestablish(&reestablished).is_ok();
         if concluded && matches!(reestablished, Reestablished::Applied(_)) {
-            self.notify_committed(true);
+            self.notify_bound(true);
         }
     }
 

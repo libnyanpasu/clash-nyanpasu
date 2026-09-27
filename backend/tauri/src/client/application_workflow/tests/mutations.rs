@@ -140,6 +140,8 @@ pub(super) struct Fixture {
     /// The endpoint the core is reached through, when a test scripts how its
     /// operation waits answer.
     pub(super) scripted: Option<Arc<ScriptedWaitEndpoint>>,
+    /// What the workflow told the effects owner.
+    notifications: Arc<RecordingNotifications>,
     /// The workflow's shutdown token, and the task that waits for it to stop
     /// once the token is cancelled.
     pub(super) shutdown: tokio_util::sync::CancellationToken,
@@ -344,9 +346,10 @@ pub(super) async fn fixture_from(
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
     );
+    let notifications = Arc::new(RecordingNotifications::default());
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
-            notifications: Arc::new(RecordingNotifications::default()),
+            notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
@@ -378,6 +381,7 @@ pub(super) async fn fixture_from(
         core,
         ports,
         scripted,
+        notifications,
         shutdown,
         tasks,
         _dir: dir,
@@ -1019,6 +1023,52 @@ async fn a_lost_rollback_notification_is_resolved_by_the_authoritative_decision(
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
     assert!(kept.lock().unwrap().is_some());
+}
+
+// -- L3-4: the Runtime hands the effects owner only its own slice -----------
+
+/// Confirm and Cancel each hand the effects owner the ports the core is bound
+/// to, once, before the source hears back. A source's own slice never comes
+/// from the Runtime: the recording refuses it.
+#[tokio::test]
+async fn confirm_and_cancel_each_hand_the_effects_owner_the_runtime_slice() {
+    let mut f = fixture().await;
+    let (result, settlement) = mutate_settling(
+        &mut f.clash,
+        &f.client,
+        OperationId::generate(),
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+        plain(),
+        no_local_write,
+    )
+    .await;
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_eq!(
+        settlement.await.unwrap().conclusion,
+        MutationConclusion::Confirmed
+    );
+    assert_eq!(f.notifications.bound(), 1);
+
+    let (result, settlement) = mutate_settling(
+        &mut f.clash,
+        &f.client,
+        OperationId::generate(),
+        overrides(serde_json::json!({"mode": "direct"})),
+        CommandClass::Save,
+        plain(),
+        || Box::pin(async { Err(anyhow::anyhow!("the disk is full")) }),
+    )
+    .await;
+    assert!(result.is_err());
+    assert_eq!(
+        settlement.await.unwrap().conclusion,
+        MutationConclusion::Cancelled
+    );
+    assert_eq!(f.notifications.bound(), 2);
 }
 
 // -- V02: the decision is waited for as long as the write takes -------------
@@ -3515,7 +3565,10 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     use struct_patch::Patch;
     let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
-    mutations.connect(f.client.clone());
+    mutations.connect(
+        f.client.clone(),
+        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+    );
     let snapshot = f.application.snapshot_handle();
     let before = snapshot.load();
     let bytes = std::fs::read(&f.app_path).ok();
@@ -3547,7 +3600,10 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     use struct_patch::Patch;
     let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
-    mutations.connect(f.client.clone());
+    mutations.connect(
+        f.client.clone(),
+        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+    );
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
@@ -4067,7 +4123,10 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
     let settlement = settlement.await.ok();
     assert!(settlement.is_none());
     let coordinator = crate::state::mutation::MutationCoordinator::pending();
-    coordinator.connect(f.client.clone());
+    coordinator.connect(
+        f.client.clone(),
+        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+    );
     let (commit, degradations) = coordinator.committed(
         operation_id,
         "clash",

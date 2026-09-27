@@ -1,6 +1,6 @@
-//! Startup-injected connection to the application transaction participant,
-//! and what a source tells its caller once the Runtime has settled a mutation.
-#[cfg(test)]
+//! Startup-injected connection to the application transaction participant
+//! and the effects owner, and what a source tells its caller once the Runtime
+//! has settled a mutation.
 use std::sync::Arc;
 
 use nyanpasu_core::state::{
@@ -17,13 +17,17 @@ use crate::client::{
         participant::ApplicationMutationParticipant,
         policy::CommandClass,
     },
+    effects::ports::CommitNotifications,
     runtime::{CommitReceipt, Degradation, DegradationPhase, RuntimeCommitStatus},
 };
 
 #[derive(Clone)]
 enum Connection {
     Pending,
-    Ready(ApplicationWorkflowClient),
+    Ready {
+        workflow: ApplicationWorkflowClient,
+        effects: Arc<dyn CommitNotifications>,
+    },
     #[cfg(test)]
     Isolated,
 }
@@ -36,8 +40,9 @@ enum Connection {
 pub(crate) type Settlement = oneshot::Receiver<MutationReceipt>;
 
 /// Only the composition root completes this connection. Domain actors can be
-/// loaded first to supply read-only snapshots; no production mutation can run
-/// before the workflow is connected. The channel carries startup wiring, not
+/// loaded first to supply read-only snapshots, and the effects owner is
+/// spawned from them; no production mutation can run before the workflow and
+/// the effects owner are connected. The channel carries startup wiring, not
 /// shared mutable actor state.
 #[derive(Clone)]
 pub(crate) struct MutationCoordinator(watch::Sender<Connection>);
@@ -47,9 +52,13 @@ impl MutationCoordinator {
         Self(watch::channel(Connection::Pending).0)
     }
 
-    pub fn connect(&self, workflow: ApplicationWorkflowClient) {
+    pub fn connect(
+        &self,
+        workflow: ApplicationWorkflowClient,
+        effects: Arc<dyn CommitNotifications>,
+    ) {
         assert!(matches!(*self.0.borrow(), Connection::Pending));
-        self.0.send_replace(Connection::Ready(workflow));
+        self.0.send_replace(Connection::Ready { workflow, effects });
     }
 
     #[cfg(test)]
@@ -73,7 +82,7 @@ impl MutationCoordinator {
             source_version,
             runtime: RuntimeCommitStatus::Unchanged,
         };
-        if !matches!(*self.0.borrow(), Connection::Ready(_)) {
+        if !matches!(*self.0.borrow(), Connection::Ready { .. }) {
             return (commit, Vec::new());
         }
         let Some(receipt) = settlement else {
@@ -132,6 +141,20 @@ impl MutationCoordinator {
         )
     }
 
+    /// The effects owner a source hands its own slice to once it committed. A
+    /// source commits only through a participant, which it gets only once
+    /// connected.
+    pub fn effects(&self) -> Arc<dyn CommitNotifications> {
+        match &*self.0.borrow() {
+            Connection::Ready { effects, .. } => effects.clone(),
+            #[cfg(test)]
+            Connection::Isolated => {
+                Arc::new(crate::client::effects::ports::NoopCommitNotifications)
+            }
+            Connection::Pending => unreachable!("a source commits only once connected"),
+        }
+    }
+
     pub fn ensure_ready(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
             !matches!(*self.0.borrow(), Connection::Pending),
@@ -159,7 +182,7 @@ impl MutationCoordinator {
         let (settle, settlement) = oneshot::channel();
         let participant = move |decision| -> StateParticipant<T> {
             match connection {
-                Connection::Ready(workflow) => ApplicationMutationParticipant::new(
+                Connection::Ready { workflow, .. } => ApplicationMutationParticipant::new(
                     operation_id,
                     hints,
                     class,

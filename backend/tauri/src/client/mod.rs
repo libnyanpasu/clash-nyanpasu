@@ -13,6 +13,7 @@ mod error;
 mod event_sink;
 pub mod hotkey;
 pub mod logs;
+mod main_thread;
 mod ports;
 pub mod profiles;
 pub mod runtime;
@@ -62,7 +63,10 @@ pub use clash_info::ClashInfo;
 pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
-pub use event_sink::{STATE_CHANGED_URI, StateChanged, TauriUiEventSink, UiEventSink};
+pub use event_sink::{
+    STATE_CHANGED_URI, StateChanged, TauriMainThread, TauriUiEventSink, UiEventSink,
+};
+pub use main_thread::MainThreadExecutor;
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 #[cfg(test)]

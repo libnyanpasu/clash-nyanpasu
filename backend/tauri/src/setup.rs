@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::{
     client::{
-        ClientSetupArgs, NyanpasuClient, OsSystemDnsCache, ProducerTasks, RuntimePaths,
-        ShutdownBudgets, TauriUiEventSink,
+        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, ProducerTasks,
+        RuntimePaths, ShutdownBudgets, TauriMainThread, TauriUiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -43,6 +43,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
+    let main_thread: Arc<dyn MainThreadExecutor> =
+        Arc::new(TauriMainThread::new(app_handle.clone()));
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
@@ -100,8 +102,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // The sink end of the hotkey channel goes into the actor; the receiving end
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
     let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (effects, widget_controller) =
-        build_application_effects(&app_handle, &paths, hotkey_tx, logger_reload)?;
+    let (effects, widget_controller) = build_application_effects(
+        &app_handle,
+        main_thread.clone(),
+        &paths,
+        hotkey_tx,
+        logger_reload,
+    )?;
     let producers = ProducerTasks::default();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
@@ -121,7 +128,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         system_dns: Arc::new(OsSystemDnsCache),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         effects,
-        window: Arc::new(TauriWindowControl::new(app_handle.clone())),
+        window: Arc::new(TauriWindowControl::new(app_handle.clone(), main_thread)),
         accelerators: Arc::new(PlatformAcceleratorValidator),
         producers: producers.clone(),
         shutdown_budgets: ShutdownBudgets::default(),
@@ -182,6 +189,7 @@ async fn hotkey_action_pump(
 /// adapters, and a test still injects a single port.
 fn build_application_effects(
     app_handle: &tauri::AppHandle,
+    main_thread: Arc<dyn MainThreadExecutor>,
     paths: &PathResolver,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
@@ -216,7 +224,7 @@ fn build_application_effects(
     }))
     .context("Failed to spawn the system proxy actor")?;
     let hotkeys = tauri::async_runtime::block_on(HotkeyClient::spawn(HotkeyArgs {
-        registrar: Arc::new(TauriShortcutRegistrar::new(app_handle.clone())),
+        registrar: Arc::new(TauriShortcutRegistrar::new(app_handle.clone(), main_thread)),
         sink: Arc::new(ChannelActionSink::new(hotkey_tx)),
     }))
     .context("Failed to spawn the hotkey actor")?;

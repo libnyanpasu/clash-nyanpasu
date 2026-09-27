@@ -269,18 +269,19 @@ pub trait AcceleratorValidator: Send + Sync + 'static {
 
 /// Platform global-shortcut registration.
 #[cfg_attr(test, mockall::automock)]
+#[async_trait::async_trait]
 pub trait ShortcutRegistrar: Send + Sync + 'static {
     /// The authoritative accelerator check, run before the OS is asked for the
     /// grab. Separate from `register` so a failure is reported per accelerator.
     fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError>;
-    fn register(
+    async fn register(
         &self,
         accelerator: &str,
         action: HotkeyAction,
         sink: Arc<dyn HotkeyActionSink>,
     ) -> anyhow::Result<()>;
-    fn unregister(&self, accelerator: &str) -> anyhow::Result<()>;
-    fn unregister_all(&self) -> anyhow::Result<()>;
+    async fn unregister(&self, accelerator: &str) -> anyhow::Result<()>;
+    async fn unregister_all(&self) -> anyhow::Result<()>;
 }
 
 /// Where a pressed shortcut goes. Fire-and-forget on purpose: the OS callback

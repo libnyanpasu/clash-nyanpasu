@@ -444,30 +444,6 @@ pub(crate) struct MutationJournal {
     pub deferred: Option<DeferredTarget>,
 }
 
-/// The separate budgets of one mutation (v2 §5.5).
-///
-/// They are deliberately not one number: waiting for admission, waiting for the
-/// source decision are different phases with independent bounds.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct MutationBudgets {
-    /// How long a Try may wait for the execution domain before the mutation is
-    /// refused outright. Refusing here is safe: nothing has been tried and
-    /// nothing has been committed.
-    pub admission: std::time::Duration,
-    /// How long `AwaitDecision` keeps waiting before the attempt is treated as
-    /// unresolved.
-    pub decision_wait: std::time::Duration,
-}
-
-impl Default for MutationBudgets {
-    fn default() -> Self {
-        Self {
-            admission: std::time::Duration::from_secs(10),
-            decision_wait: std::time::Duration::from_secs(120),
-        }
-    }
-}
-
 /// How many automatic convergence attempts a deferred target is allowed (D11).
 ///
 /// Manual saves and WaitingDependency checks do not consume it. T8's automatic

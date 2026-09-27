@@ -18,7 +18,7 @@ use super::{
     WaitScript,
     mutations::{
         Rejector, app_with_core, fixture, mutate, no_local_write, overrides, parked_local_write,
-        plain, refused, scripted_fixture, settled, simple_mutate, test_budgets,
+        plain, refused, scripted_fixture, settled, simple_mutate,
     },
 };
 use crate::client::application_workflow::policy::CommandClass;
@@ -41,7 +41,7 @@ async fn stopped_within(tasks: &TaskTracker, wait: Duration) -> bool {
 
 #[tokio::test]
 async fn the_shutdown_refuses_new_work_and_stops_the_core_once() {
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     let submitted = f.endpoint.submissions();
 
     request_shutdown(&f.shutdown, &f.tasks);
@@ -56,7 +56,7 @@ async fn the_shutdown_refuses_new_work_and_stops_the_core_once() {
 /// confirmed.
 #[tokio::test]
 async fn the_shutdown_during_a_try_waits_for_it_to_confirm() {
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     let submitted = f.endpoint.submissions();
     f.builder.park.store(true, Ordering::SeqCst);
     let operation_id = OperationId::generate();
@@ -111,7 +111,7 @@ async fn the_shutdown_during_a_try_waits_for_it_to_confirm() {
 /// refuses the one that arrives behind it without touching its source.
 #[tokio::test]
 async fn the_shutdown_during_await_decision_keeps_the_decision_wait() {
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     let submitted = f.endpoint.submissions();
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
@@ -176,7 +176,7 @@ async fn the_shutdown_during_await_decision_keeps_the_decision_wait() {
 /// stops.
 #[tokio::test]
 async fn the_shutdown_during_a_cancel_waits_for_the_restore() {
-    let mut f = scripted_fixture(test_budgets()).await;
+    let mut f = scripted_fixture().await;
     let (_, primed) = simple_mutate(
         &mut f.clash,
         &f.client,
@@ -231,7 +231,7 @@ async fn the_shutdown_during_a_cancel_waits_for_the_restore() {
 /// workflow stops the core itself and then its own actor.
 #[tokio::test]
 async fn an_abandoned_workflow_still_stops_the_core() {
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     let submitted = f.endpoint.submissions();
     let actor = f.client.0.actor.get_cell();
 

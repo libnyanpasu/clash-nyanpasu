@@ -154,7 +154,7 @@ use super::{
     WaitScript, barrier,
     mutations::{
         Fixture, app_with_core, fixture, mutate, mutate_with_hints, names_overrides, overrides,
-        parked_local_write, plain, refused, scripted_fixture, settled, simple_mutate, test_budgets,
+        parked_local_write, plain, refused, scripted_fixture, settled, simple_mutate,
         unserviceable_check,
     },
     panic_at_confirm,
@@ -230,7 +230,7 @@ fn fail_the_next_save(path: &camino::Utf8Path) {
 /// baseline — here visibly, because the runtime drifted meanwhile.
 #[tokio::test]
 async fn a_panic_during_the_try_keeps_the_mutation_and_restores_its_baseline() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     let baseline = prime(&mut f).await;
 
     f.builder.panic.store(true, Ordering::SeqCst);
@@ -274,7 +274,7 @@ async fn a_panic_during_the_try_keeps_the_mutation_and_restores_its_baseline() {
 /// runtime, however that looks now.
 #[tokio::test]
 async fn a_panic_while_preparing_settles_an_aborted_mutation_without_a_restore() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.builder.panic_capture.store(true, Ordering::SeqCst);
     let (id, result) = simple_mutate(
         &mut f.clash,
@@ -309,7 +309,7 @@ async fn a_panic_while_preparing_settles_an_aborted_mutation_without_a_restore()
 #[tokio::test]
 async fn a_panic_during_confirm_is_finished_by_the_verdict_it_committed() {
     // Applied: the receipt is running, so it is verified in place.
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.notifications.panic_next.store(true, Ordering::SeqCst);
     let (id, result) = simple_mutate(
         &mut f.clash,
@@ -340,7 +340,7 @@ async fn a_panic_during_confirm_is_finished_by_the_verdict_it_committed() {
 
     // Deferred, interrupted before Confirm installed anything: recovery
     // installs the target, with a fresh budget of its own.
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint
         .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
     panic_at_confirm(&f.client).await;
@@ -366,7 +366,7 @@ async fn a_panic_during_confirm_is_finished_by_the_verdict_it_committed() {
     assert!(f.endpoint.reconciled_bytes().is_empty());
 
     // Saved: nothing was owed but the notification recovery now sends.
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     let mut app = f.application.snapshot().as_ref().clone();
     app.language = nyanpasu_config::application::I18nLanguage::English;
     f.notifications.panic_next.store(true, Ordering::SeqCst);
@@ -386,7 +386,7 @@ async fn a_panic_during_confirm_is_finished_by_the_verdict_it_committed() {
 /// installs anything, so the target recovery leaves is recovery's own.
 #[tokio::test]
 async fn a_recovered_deferral_keeps_the_budget_of_the_same_target() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_failure(Some("queue_full"));
     let target = overrides(serde_json::json!({"mode": "direct"}));
     let (_, result) = mutate_with_hints(
@@ -462,7 +462,7 @@ async fn a_recovered_deferral_keeps_the_budget_of_the_same_target() {
 /// it too, or a stale target outlives the save that replaced it.
 #[tokio::test]
 async fn a_recovered_saved_inactive_commit_drops_the_outstanding_target() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_failure(Some("queue_full"));
     let (_, result) = simple_mutate(
         &mut f.clash,
@@ -501,7 +501,7 @@ async fn a_recovered_saved_inactive_commit_drops_the_outstanding_target() {
 /// identity does.
 #[tokio::test]
 async fn saving_an_unchanged_target_never_refills_its_spent_budget() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_failure(Some("queue_full"));
     let target = overrides(serde_json::json!({"mode": "direct"}));
     let (_, result) = mutate_with_hints(
@@ -565,7 +565,7 @@ async fn saving_an_unchanged_target_never_refills_its_spent_budget() {
 /// recovery puts the baseline back and proves it.
 #[tokio::test]
 async fn a_panic_during_cancel_keeps_the_restore_and_recovers_the_baseline() {
-    let mut f = scripted_fixture(test_budgets()).await;
+    let mut f = scripted_fixture().await;
     let baseline = prime(&mut f).await;
 
     let entered = Arc::new(tokio::sync::Notify::new());
@@ -633,7 +633,7 @@ async fn a_panic_during_cancel_keeps_the_restore_and_recovers_the_baseline() {
 /// recovery continue.
 #[tokio::test]
 async fn an_accepted_submission_whose_waiter_panicked_is_waited_out_before_recovery() {
-    let mut f = scripted_fixture(test_budgets()).await;
+    let mut f = scripted_fixture().await;
     let baseline = prime(&mut f).await;
     let scripted = f.scripted.clone().expect("a scripted fixture");
 
@@ -684,7 +684,7 @@ async fn an_accepted_submission_whose_waiter_panicked_is_waited_out_before_recov
 /// asks only about it and resends nothing.
 #[tokio::test]
 async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
-    let mut f = scripted_fixture(test_budgets()).await;
+    let mut f = scripted_fixture().await;
     let baseline = prime(&mut f).await;
     let scripted = f.scripted.clone().expect("a scripted fixture");
 
@@ -737,7 +737,7 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
 /// says it was recovering.
 #[tokio::test]
 async fn a_panic_during_the_recovery_action_leaves_that_action_in_the_slot() {
-    let mut f = scripted_fixture(test_budgets()).await;
+    let mut f = scripted_fixture().await;
     prime(&mut f).await;
     let scripted = f.scripted.clone().expect("a scripted fixture");
 
@@ -773,7 +773,7 @@ async fn a_panic_during_the_recovery_action_leaves_that_action_in_the_slot() {
 /// untouched — and a later explicit retry applies it.
 #[tokio::test]
 async fn a_committed_target_retry_that_lost_its_receipt_goes_back_charged_once() {
-    let mut f = scripted_fixture(test_budgets()).await;
+    let mut f = scripted_fixture().await;
     let scripted = f.scripted.clone().expect("a scripted fixture");
     f.endpoint.set_failure(Some("queue_full"));
     let (id, result) = simple_mutate(
@@ -826,7 +826,7 @@ async fn a_committed_target_retry_that_lost_its_receipt_goes_back_charged_once()
 /// evidence to do so exists; only the explicit one consumes the action.
 #[tokio::test]
 async fn an_automatic_retry_never_recovers() {
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     f.endpoint.set_result_missing(true);
     assert!(f.client.reconcile().await.is_err());
     f.endpoint.set_result_missing(false);
@@ -855,7 +855,7 @@ async fn an_automatic_retry_never_recovers() {
 /// owner from the committed configuration (§4.2), and admission reopens.
 #[tokio::test]
 async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_result_missing(true);
     assert!(f.client.reconcile().await.is_err());
     let view = recovery(&f.client);
@@ -900,107 +900,6 @@ async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
     assert!(admitted.is_ok(), "{admitted:?}");
 }
 
-/// L13 (review 3 #1): the Try succeeded and nothing is pending, but the
-/// decision did not arrive within its budget. The attempt stays and keeps the
-/// domain isolated; once the decision exists, recovery settles it by that
-/// decision, and finishes what Confirm would have owed the commit: the older
-/// blocked target it superseded goes, and its product is published.
-///
-/// Every mutation gets the ordinary decision budget; only the one under test
-/// outlives it, on a clock advanced past that budget once its write is
-/// parked, so no real window has to be met or missed.
-#[tokio::test]
-async fn an_elapsed_decision_wait_keeps_the_attempt_until_the_decision_is_read() {
-    let mut f = fixture(test_budgets()).await;
-    f.endpoint.set_failure(Some("queue_full"));
-    let (_, older) = mutate_with_hints(
-        &mut f.clash,
-        &f.client,
-        overrides(serde_json::json!({"mode": "direct"})),
-        CommandClass::Save,
-        names_overrides(),
-    )
-    .await;
-    assert!(matches!(older, Ok(ReplaceIfVersionResult::Replaced)));
-    for _ in 0..DEFERRED_RETRY_BUDGET {
-        f.client
-            .call(Command::RetryRuntime { explicit: false })
-            .await
-            .unwrap();
-    }
-    assert_eq!(
-        f.client.mutation_journal().deferred.unwrap().health,
-        crate::client::convergence::ConvergenceHealth::Blocked
-    );
-    f.endpoint.set_failure(None);
-    let entered = Arc::new(tokio::sync::Notify::new());
-    let release = Arc::new(tokio::sync::Notify::new());
-    let id = OperationId::generate();
-    let mutation = {
-        let client = f.client.clone();
-        let (entered, release) = (entered.clone(), release.clone());
-        let mut clash = f.clash;
-        tokio::spawn(async move {
-            let result = mutate(
-                &mut clash,
-                &client,
-                id,
-                overrides(serde_json::json!({"mode": "global"})),
-                CommandClass::Save,
-                plain(),
-                parked_local_write(entered, release),
-            )
-            .await;
-            (clash, result)
-        })
-    };
-    entered.notified().await;
-    // The decision wait started before the write was parked, so a paused
-    // clock moved past its budget elapses it and nothing else that matters.
-    tokio::time::pause();
-    tokio::time::advance(test_budgets().decision_wait + std::time::Duration::from_secs(1)).await;
-    tokio::time::resume();
-    let receipt = settled(&f.client, id).await;
-    assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
-    assert!(isolated(&f.client));
-    let view = recovery(&f.client);
-    assert_eq!(
-        (view.stage, view.action),
-        (AttemptStage::AwaitDecision, None)
-    );
-    assert!(f.client.retry_runtime().await.is_err(), "still undecided");
-
-    let (_, refused_result) = simple_mutate(
-        &mut f.application,
-        &f.client,
-        app_with_core(nyanpasu_config::application::ClashCore::ClashRs),
-        CommandClass::ExplicitSwitch,
-    )
-    .await;
-    assert!(refused(&refused_result), "{refused_result:?}");
-
-    release.notify_one();
-    let (clash, result) = mutation.await.unwrap();
-    f.clash = clash;
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_ne!(promoted_mode(&f), Some("global".into()));
-    assert!(f.client.mutation_journal().deferred.is_some());
-    let submitted = f.endpoint.reconciled_bytes().len();
-    f.client.retry_runtime().await.unwrap();
-    assert!(!isolated(&f.client));
-    assert_eq!(
-        f.endpoint.reconciled_bytes().len(),
-        submitted,
-        "the committed receipt is running, so it is verified, not resubmitted"
-    );
-    assert!(
-        f.client.mutation_journal().deferred.is_none(),
-        "the applied commit superseded the older target"
-    );
-    assert_eq!(promoted_mode(&f), Some("global".into()));
-    assert!(f.client.mutation_journal().maintenance.is_none());
-}
-
 /// The mode of the runtime product last published.
 fn promoted_mode(f: &Fixture) -> Option<String> {
     f.store
@@ -1014,7 +913,7 @@ fn promoted_mode(f: &Fixture) -> Option<String> {
 /// and a later explicit retry publishes it without resubmitting anything.
 #[tokio::test]
 async fn a_publication_that_fails_during_recovery_is_retried_later() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     panic_at_confirm(&f.client).await;
     let (id, result) = simple_mutate(
         &mut f.clash,
@@ -1060,7 +959,7 @@ async fn a_publication_that_fails_during_recovery_is_retried_later() {
 /// superseded goes.
 #[tokio::test]
 async fn a_drifted_apply_is_restored_before_its_confirm_is_finished() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_effective_enabled(true);
     f.endpoint.set_failure(Some("queue_full"));
     let (_, older) = mutate_with_hints(
@@ -1147,7 +1046,7 @@ async fn a_drifted_apply_is_restored_before_its_confirm_is_finished() {
 /// recovery settles nothing, and neither does an empty action slot.
 #[tokio::test]
 async fn an_abort_that_needs_recovery_stays_isolated_with_nothing_pending() {
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     let abandoned = OperationId::generate();
     let mut clash = f.clash;
     let version = clash.snapshot_handle().load().version;
@@ -1229,8 +1128,7 @@ async fn a_daemon_release_that_fails_during_recovery_is_retried_later() {
         },
         refuse: std::sync::atomic::AtomicBool::new(true),
     });
-    let mut f =
-        super::mutations::fixture_with_daemon(test_budgets(), true, Some(daemon.clone())).await;
+    let mut f = super::mutations::fixture_with_daemon(true, Some(daemon.clone())).await;
     prime(&mut f).await;
     let mut app = f.application.snapshot().as_ref().clone();
     app.enable_service_mode = true;
@@ -1546,7 +1444,7 @@ async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
 /// without starting anything.
 #[tokio::test]
 async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     f.endpoint.set_result_missing(true);
     assert!(f.client.stop_core().await.is_err());
     assert_eq!(

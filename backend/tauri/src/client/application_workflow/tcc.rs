@@ -92,8 +92,7 @@ impl From<String> for RestoreFailure {
 enum DecisionOutcome {
     Committed,
     Aborted,
-    /// The source owner reports unsettled resources or has not reached its
-    /// decision before the workflow's wait budget ends.
+    /// The source owner reports unsettled resources.
     Unresolved(String),
 }
 
@@ -261,9 +260,9 @@ impl ApplicationWorkflow {
                 self.advance(AttemptStage::Cancelling);
                 self.cancel(outcome, &baseline).await
             }
-            // Neither an elapsed decision wait nor a resource recovery the
-            // source still owes settles anything: the attempt stays, and the
-            // decision is read again when it is recovered.
+            // A resource recovery the source still owes settles nothing: the
+            // attempt stays, and the decision is read again when it is
+            // recovered.
             DecisionOutcome::Unresolved(reason) => (
                 MutationConclusion::RecoveryRequired,
                 Some(format!(
@@ -1214,22 +1213,22 @@ impl ApplicationWorkflow {
 
     // -- AwaitDecision -----------------------------------------------------
 
+    /// Waits for the source transaction's own decision, however long its write
+    /// takes. Every exit of a transaction whose prepare ran publishes one, so
+    /// the wait always ends.
     async fn await_decision(&self, request: &MutationRequest) -> DecisionOutcome {
-        match tokio::time::timeout(self.budgets.decision_wait, request.decision.wait()).await {
-            Ok(StateDecision::Committed { .. }) => DecisionOutcome::Committed,
-            Ok(StateDecision::Aborted {
+        match request.decision.wait().await {
+            StateDecision::Committed { .. } => DecisionOutcome::Committed,
+            StateDecision::Aborted {
                 resources: AbortResourceState::Restored,
-            }) => DecisionOutcome::Aborted,
-            Ok(StateDecision::Aborted {
+            } => DecisionOutcome::Aborted,
+            StateDecision::Aborted {
                 resources: AbortResourceState::NeedsRecovery(incident),
-            }) => DecisionOutcome::Unresolved(format!(
+            } => DecisionOutcome::Unresolved(format!(
                 "needs local resource recovery: {}",
                 incident.message
             )),
-            Err(_) => {
-                DecisionOutcome::Unresolved("reached no decision within the decision budget".into())
-            }
-            Ok(StateDecision::Undecided) => unreachable!("wait only returns a terminal decision"),
+            StateDecision::Undecided => unreachable!("wait only returns a terminal decision"),
         }
     }
 

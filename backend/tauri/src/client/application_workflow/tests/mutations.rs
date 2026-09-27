@@ -43,7 +43,7 @@ use super::{
             ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, TouchedContent,
         },
         mutation::{
-            CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationBudgets, MutationConclusion,
+            CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationConclusion,
             MutationOutcomeKind, MutationReceipt, RefusalCause,
         },
         participant::ApplicationMutationParticipant,
@@ -221,32 +221,31 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
 /// The endpoint publishes a running core with a known applied kind on purpose:
 /// the baseline a Cancel restores is verified against what the host says is
 /// running, and an absent fact is a mismatch rather than a benefit of the doubt.
-pub(super) async fn fixture(budgets: MutationBudgets) -> Fixture {
-    fixture_with(budgets, true).await
+pub(super) async fn fixture() -> Fixture {
+    fixture_with(true).await
 }
 
 /// The same graph with nothing applied yet: a running core this session has no
 /// receipt for. That is the R10 evidence gap, and it is what a session whose
 /// boot reconcile failed actually looks like.
-async fn fixture_without_a_confirmed_apply(budgets: MutationBudgets) -> Fixture {
-    fixture_with(budgets, false).await
+async fn fixture_without_a_confirmed_apply() -> Fixture {
+    fixture_with(false).await
 }
 
-async fn fixture_with(budgets: MutationBudgets, confirmed_apply: bool) -> Fixture {
-    fixture_with_hosts(budgets, confirmed_apply, None).await
+async fn fixture_with(confirmed_apply: bool) -> Fixture {
+    fixture_with_hosts(confirmed_apply, None).await
 }
 
 /// The same graph with a second execution host available, so a mutation that
 /// asks for one can actually be given it. `service` is the endpoint the daemon
 /// hands out once it is adopted.
 async fn fixture_with_hosts(
-    budgets: MutationBudgets,
     confirmed_apply: bool,
     service_host: Option<Arc<TestControlEndpoint>>,
 ) -> Fixture {
     let daemon = service_host
         .map(|endpoint| Arc::new(host_transition_daemon(endpoint)) as Arc<dyn ServiceHostAdapter>);
-    fixture_with_daemon(budgets, confirmed_apply, daemon).await
+    fixture_with_daemon(confirmed_apply, daemon).await
 }
 
 /// The ordinary daemon over a service-side control endpoint, which the tests
@@ -264,21 +263,19 @@ fn host_transition_daemon(
 /// The same graph with the caller's own daemon, for a test that has to hold one
 /// of the handoff's legs still.
 pub(super) async fn fixture_with_daemon(
-    budgets: MutationBudgets,
     confirmed_apply: bool,
     daemon: Option<Arc<dyn ServiceHostAdapter>>,
 ) -> Fixture {
-    fixture_with_parts(budgets, confirmed_apply, daemon, false).await
+    fixture_with_parts(confirmed_apply, daemon, false).await
 }
 
 /// The default graph, with the core reached through a [`ScriptedWaitEndpoint`]
 /// so a test can lose, stall or panic the wait for one chosen operation.
-pub(super) async fn scripted_fixture(budgets: MutationBudgets) -> Fixture {
-    fixture_with_parts(budgets, true, None, true).await
+pub(super) async fn scripted_fixture() -> Fixture {
+    fixture_with_parts(true, None, true).await
 }
 
 async fn fixture_with_parts(
-    budgets: MutationBudgets,
     confirmed_apply: bool,
     daemon: Option<Arc<dyn ServiceHostAdapter>>,
     scripted: bool,
@@ -290,7 +287,6 @@ async fn fixture_with_parts(
             .unwrap(),
     };
     fixture_from(
-        budgets,
         confirmed_apply,
         service,
         scripted,
@@ -304,7 +300,6 @@ async fn fixture_with_parts(
 /// The graph over the caller's own service client, starting from `ownership`.
 /// A test about proving the owner starts `Unproven`, as production does.
 pub(super) async fn fixture_from(
-    budgets: MutationBudgets,
     confirmed_apply: bool,
     service: ServiceClient,
     scripted: bool,
@@ -376,7 +371,6 @@ pub(super) async fn fixture_from(
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-            budgets,
             ownership,
             shutdown: shutdown.clone(),
             tasks: tasks.clone(),
@@ -403,16 +397,6 @@ pub(super) async fn fixture_from(
         shutdown,
         tasks,
         _dir: dir,
-    }
-}
-
-/// Budgets that keep every wait short enough to observe without a sleep. The
-/// admission budget stays generous; the tests that exercise it set it to zero.
-pub(super) fn test_budgets() -> MutationBudgets {
-    MutationBudgets {
-        admission: Duration::from_secs(10),
-
-        decision_wait: Duration::from_secs(5),
     }
 }
 
@@ -720,7 +704,7 @@ fn drop_signal<T: Clone + Send + Sync + 'static>(
 /// by the time the workflow could say no.
 #[tokio::test]
 async fn a_closing_workflow_refuses_a_mutation_before_anything_is_committed() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.client.shutdown().await.unwrap();
 
     let before = f.application.snapshot_handle().load().version;
@@ -741,49 +725,11 @@ async fn a_closing_workflow_refuses_a_mutation_before_anything_is_committed() {
     );
 }
 
-/// An execution domain that is already busy refuses the mutation once its
-/// admission budget is spent, rather than holding the source transaction's
-/// writer permit open behind an unbounded queue.
-#[tokio::test]
-async fn an_occupied_domain_refuses_a_mutation_whose_admission_budget_is_spent() {
-    let mut budgets = test_budgets();
-    budgets.admission = Duration::ZERO;
-    let mut f = fixture(budgets).await;
-    f.builder.park.store(true, Ordering::SeqCst);
-    let reconcile = {
-        let client = f.client.clone();
-        tokio::spawn(async move { client.reconcile().await })
-    };
-    f.builder.entered.notified().await;
-
-    let before = f.clash.snapshot_handle().load().version;
-    let (_, result) = simple_mutate(
-        &mut f.clash,
-        &f.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-
-    assert!(refused(&result), "{result:?}");
-    assert_eq!(f.clash.snapshot_handle().load().version, before);
-    assert_eq!(
-        f.builder.calls.load(Ordering::SeqCst),
-        1,
-        "the refused mutation never built a candidate"
-    );
-
-    f.builder.park.store(false, Ordering::SeqCst);
-    f.builder.release.notify_one();
-    reconcile.await.unwrap().unwrap();
-    f.client.shutdown().await.unwrap();
-}
-
 /// An isolated execution domain refuses mutations too: nothing may be committed
 /// against a runtime nobody can describe.
 #[tokio::test]
 async fn an_isolated_execution_domain_refuses_a_mutation() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_result_missing(true);
     f.client
         .reconcile()
@@ -821,7 +767,7 @@ async fn a_second_domain_is_admitted_only_after_the_first_commits_and_reads_it()
         store,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
     builder.park.store(true, Ordering::SeqCst);
 
     let first = {
@@ -896,7 +842,7 @@ async fn a_late_cancel_for_a_settled_attempt_never_touches_the_current_one() {
         mut clash,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (first, result) = simple_mutate(
         &mut clash,
@@ -966,7 +912,7 @@ async fn a_lost_commit_notification_is_resolved_by_the_authoritative_decision() 
         store,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
     let kept = Arc::new(StdMutex::new(None));
 
     let operation_id = OperationId::generate();
@@ -1014,7 +960,7 @@ async fn a_lost_rollback_notification_is_resolved_by_the_authoritative_decision(
         store,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -1093,6 +1039,96 @@ async fn a_lost_rollback_notification_is_resolved_by_the_authoritative_decision(
     assert!(kept.lock().unwrap().is_some());
 }
 
+// -- V02: the decision is waited for as long as the write takes -------------
+
+/// The Try succeeded and the source write outlives the 120 s the decision wait
+/// used to allow. The workflow keeps waiting, and the decision that finally
+/// arrives settles the attempt: a committed write is confirmed, a failed one is
+/// cancelled back to the baseline. The clock is virtual, so nothing sleeps.
+#[tokio::test(start_paused = true)]
+async fn a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt() {
+    for commit in [true, false] {
+        let mut f = fixture().await;
+        let (primed, result) = simple_mutate(
+            &mut f.clash,
+            &f.client,
+            overrides(serde_json::json!({"mode": "direct"})),
+            CommandClass::Save,
+        )
+        .await;
+        assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+        settled(&f.client, primed).await;
+        let baseline = f.store.last_confirmed_runtime_receipt().unwrap();
+
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let id = OperationId::generate();
+        let mutation = {
+            let client = f.client.clone();
+            let (entered, release) = (entered.clone(), release.clone());
+            let mut clash = f.clash;
+            tokio::spawn(async move {
+                let result = mutate(
+                    &mut clash,
+                    &client,
+                    id,
+                    overrides(serde_json::json!({"mode": "global"})),
+                    CommandClass::Save,
+                    plain(),
+                    move || {
+                        Box::pin(async move {
+                            entered.notify_one();
+                            release.notified().await;
+                            anyhow::ensure!(commit, "scripted source write failure");
+                            Ok(())
+                        })
+                    },
+                )
+                .await;
+                (clash, result)
+            })
+        };
+        entered.notified().await;
+        tokio::time::advance(Duration::from_secs(121)).await;
+        assert!(
+            f.client
+                .mutation_journal()
+                .completed
+                .iter()
+                .all(|receipt| receipt.operation_id != id),
+            "the attempt is still waiting for its decision"
+        );
+        assert_eq!(f.client.status().active, Some(id));
+        assert!(!f.client.status().uncertain);
+
+        release.notify_one();
+        let (clash, result) = mutation.await.unwrap();
+        let receipt = settled(&f.client, id).await;
+        assert!(!f.client.status().uncertain);
+        let promoted = f.store.read().promoted.unwrap();
+        if commit {
+            assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+            assert_eq!(receipt.conclusion, MutationConclusion::Confirmed);
+            assert_eq!(promoted.config["mode"].as_str(), Some("global"));
+        } else {
+            assert!(
+                matches!(result, Err(ReplaceIfVersionError::LocalWrite(_))),
+                "{result:?}"
+            );
+            assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
+            assert_eq!(promoted.config["mode"].as_str(), Some("direct"));
+            assert_eq!(
+                f.store
+                    .last_confirmed_runtime_receipt()
+                    .unwrap()
+                    .config_digest,
+                baseline.config_digest
+            );
+        }
+        drop(clash);
+    }
+}
+
 // -- V07: the Try succeeded and the save did not -----------------------------
 
 /// The runtime accepted the candidate and persisting the source failed. The
@@ -1111,7 +1147,7 @@ async fn a_failed_save_restores_the_verified_runtime_baseline() {
         ports,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     // The host serves effective-config snapshots here, so the inspected apply
     // advances too and the Cancel has to put all of it back. The fake's first
@@ -1214,7 +1250,7 @@ async fn a_drifted_baseline_is_refused_without_overwriting_the_actual_runtime() 
         clash_path,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -1274,7 +1310,7 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
         store,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
@@ -1360,7 +1396,7 @@ async fn an_abort_whose_persistence_outcome_is_unknown_isolates_the_domain() {
         mut application,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let abandoned = OperationId::generate();
     let version = clash.snapshot_handle().load().version;
@@ -1441,7 +1477,7 @@ async fn a_running_core_with_no_confirmed_apply_refuses_a_critical_mutation() {
         store,
         _dir,
         ..
-    } = fixture_without_a_confirmed_apply(test_budgets()).await;
+    } = fixture_without_a_confirmed_apply().await;
 
     let before = application.snapshot_handle().load().version;
     let (operation_id, result) = simple_mutate(
@@ -1494,7 +1530,7 @@ async fn a_running_core_with_no_confirmed_apply_refuses_a_critical_mutation() {
 /// check that could not run is not a passing one (v2 §2.4, V01/V02).
 #[tokio::test]
 async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_check_answer(TestCheckAnswer::Reject(
         nyanpasu_core_manager::CoreError::new(
             CoreErrorKind::ConfigCheckFailed,
@@ -1536,7 +1572,7 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
 /// nothing is started, and no retry loop is armed against the Stop (R7, V11).
 #[tokio::test]
 async fn a_stopped_core_saves_the_checked_target_without_starting_it() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint
         .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
 
@@ -1573,7 +1609,7 @@ async fn a_stopped_core_saves_the_checked_target_without_starting_it() {
 /// refused and the execution domain released, because nothing was submitted.
 #[tokio::test]
 async fn a_host_that_publishes_nothing_refuses_a_critical_mutation() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_status(None, None);
     let before = f.clash.snapshot_handle().load().version;
 
@@ -1626,7 +1662,7 @@ async fn a_host_that_publishes_nothing_refuses_a_critical_mutation() {
 /// and nothing is started behind the Stop (R7, §2.3 `SavedInactive`).
 #[tokio::test]
 async fn a_recorded_user_stop_saves_without_starting_even_when_the_host_is_quiet() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.client.stop_core().await.unwrap();
     f.endpoint.set_status(None, None);
     let submitted = f.endpoint.reconciled_bytes().len();
@@ -1672,7 +1708,7 @@ async fn a_transitional_core_state_refuses_a_mutation_without_isolating_the_doma
         CoreStateDetail::Starting { epoch: 2 },
         CoreStateDetail::Stopping { epoch: 1 },
     ] {
-        let mut f = fixture(test_budgets()).await;
+        let mut f = fixture().await;
         f.endpoint
             .set_status(Some(state.clone()), Some(CoreKind::Mihomo));
 
@@ -1737,7 +1773,7 @@ async fn a_transitional_core_state_refuses_a_mutation_without_isolating_the_doma
 /// the Try is the authority and the receipt records that none ran.
 #[tokio::test]
 async fn an_absent_check_capability_is_skipped_rather_than_refusing_the_mutation() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_check_answer(TestCheckAnswer::Unsupported);
 
     let (operation_id, result) = simple_mutate(
@@ -1771,7 +1807,7 @@ async fn an_absent_check_capability_is_skipped_rather_than_refusing_the_mutation
 /// to fall back on.
 #[tokio::test]
 async fn a_check_the_host_could_not_serve_refuses_a_must_apply_mutation() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint
         .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
 
@@ -1816,7 +1852,7 @@ async fn a_transient_failure_under_a_safe_baseline_commits_the_target_as_deferre
         store,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -1883,7 +1919,7 @@ async fn a_repeated_manual_deferral_preserves_automatic_budget() {
         mut clash,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -2015,7 +2051,7 @@ async fn a_host_switch_moves_the_runtime_inside_the_try_and_back_on_cancel() {
         app_path,
         _dir,
         ..
-    } = fixture_with_hosts(test_budgets(), true, Some(service_host.clone())).await;
+    } = fixture_with_hosts(true, Some(service_host.clone())).await;
 
     // A real baseline apply on the local host, so the Cancel has a receipt that
     // names the host it has to be put back on.
@@ -2138,7 +2174,7 @@ async fn a_failed_apply_after_a_handoff_puts_the_original_runtime_back() {
         mut application,
         _dir,
         ..
-    } = fixture_with_hosts(test_budgets(), true, Some(service_host.clone())).await;
+    } = fixture_with_hosts(true, Some(service_host.clone())).await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -2206,7 +2242,7 @@ async fn an_unobserved_apply_after_a_handoff_keeps_its_recovery_context() {
         mut application,
         _dir,
         ..
-    } = fixture_with_hosts(test_budgets(), true, Some(service_host.clone())).await;
+    } = fixture_with_hosts(true, Some(service_host.clone())).await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -2275,7 +2311,7 @@ async fn a_restore_that_cannot_be_observed_is_not_a_clean_cancel() {
         clash_path,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -2359,7 +2395,7 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
         ports,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (primed_id, primed) = simple_mutate(
         &mut clash,
@@ -2457,7 +2493,7 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
         store,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (primed_id, primed) = simple_mutate(
         &mut clash,
@@ -2550,7 +2586,7 @@ async fn an_unobserved_apply_takes_unchanged_ports_away() {
         ports,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (primed_id, primed) = simple_mutate(
         &mut clash,
@@ -2603,7 +2639,7 @@ async fn a_restore_re_inspects_the_build_its_receipt_names() {
         clash_path,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     // Two applies with the host serving effective-config snapshots — the fake's
     // first answer is a scripted failure — so the second one lands in `applied`.
@@ -2696,7 +2732,7 @@ async fn a_restore_with_no_prior_inspection_still_owes_one() {
         clash_path,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -2761,7 +2797,7 @@ async fn a_content_deferral_keeps_its_identity_once_the_hints_are_gone() {
         profiles_dir,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
     std::fs::create_dir_all(&profiles_dir).unwrap();
     std::fs::write(
         profiles_dir.join("sel.yaml"),
@@ -2887,7 +2923,7 @@ async fn an_unrelated_save_keeps_the_outstanding_targets_identity_and_budget() {
         mut clash,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -3039,7 +3075,7 @@ async fn a_deferred_field_resubmitted_beside_an_unrelated_one_is_re_evaluated() 
         mut clash,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (_, primed) = simple_mutate(
         &mut clash,
@@ -3121,7 +3157,7 @@ async fn an_isolated_domain_retires_the_contexts_of_the_mutations_it_drains() {
         clash_path,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     let (priming, primed) = simple_mutate(
         &mut clash,
@@ -3214,7 +3250,7 @@ async fn a_panicking_mutation_retires_its_context() {
         mut clash,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
 
     builder.panic.store(true, Ordering::SeqCst);
     let (_, result) = simple_mutate(
@@ -3241,7 +3277,7 @@ async fn a_panicking_mutation_retires_its_context() {
 #[tokio::test]
 async fn a_preflight_failure_or_changed_revision_never_submits_or_isolates() {
     for revision_changed in [false, true] {
-        let f = fixture(test_budgets()).await;
+        let f = fixture().await;
         f.builder.park.store(true, Ordering::SeqCst);
         let client = f.client.clone();
         let mut clash = f.clash;
@@ -3274,7 +3310,7 @@ async fn a_preflight_failure_or_changed_revision_never_submits_or_isolates() {
 
 #[tokio::test]
 async fn a_gui_save_does_not_query_core_status() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.core.refresh_status().await.unwrap();
     let before = f.endpoint.status_reads();
     f.endpoint.set_status_fails(true);
@@ -3291,7 +3327,7 @@ async fn a_gui_save_does_not_query_core_status() {
 
 #[tokio::test]
 async fn cross_domain_deferrals_share_the_complete_latest_target() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint
         .set_check_answer(TestCheckAnswer::Reject(unserviceable_check()));
     let mut app = f.application.snapshot().as_ref().clone();
@@ -3348,7 +3384,7 @@ async fn cross_domain_deferrals_share_the_complete_latest_target() {
 #[tokio::test]
 async fn selecting_the_saved_host_again_moves_the_actual_host() {
     let service = TestControlEndpoint::succeeding_on(ExecutionHost::Service);
-    let mut f = fixture_with_hosts(test_budgets(), true, Some(service.clone())).await;
+    let mut f = fixture_with_hosts(true, Some(service.clone())).await;
     let mut desired = f.application.snapshot().as_ref().clone();
     desired.enable_service_mode = true;
     // A previously saved desired value can differ from the actual local owner.
@@ -3377,7 +3413,7 @@ async fn selecting_the_saved_host_again_moves_the_actual_host() {
 }
 #[tokio::test]
 async fn successful_confirm_keeps_the_promoted_inspection() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_effective_enabled(true);
     let _ = crate::core::actor_v2::endpoint::ControlEndpoint::effective_config(f.endpoint.as_ref())
         .await;
@@ -3434,7 +3470,7 @@ impl ServiceHostAdapter for RefusedInstall {
 
 #[tokio::test]
 async fn refused_service_install_does_not_isolate_the_local_runtime() {
-    let mut f = fixture_with_daemon(test_budgets(), true, Some(Arc::new(RefusedInstall))).await;
+    let mut f = fixture_with_daemon(true, Some(Arc::new(RefusedInstall))).await;
     let mut next = f.application.snapshot().as_ref().clone();
     next.enable_service_mode = true;
     let (id, result) = simple_mutate(
@@ -3473,7 +3509,7 @@ async fn refused_service_install_does_not_isolate_the_local_runtime() {
 
 #[tokio::test]
 async fn invalid_overlay_is_rejected_before_source_commit() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     std::fs::create_dir_all(&f.profiles_dir).unwrap();
     std::fs::write(f.profiles_dir.join("invalid.yaml"), "rules: [").unwrap();
     let item = crate::enhance::golden_support::overlay("invalid", "invalid.yaml");
@@ -3492,7 +3528,7 @@ async fn invalid_overlay_is_rejected_before_source_commit() {
 #[tokio::test]
 async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     use super::super::ports::RuntimeBuildPort;
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     let item = crate::enhance::golden_support::overlay("missing", "missing.yaml");
     let mut profiles = Profiles::default();
     profiles.global_transforms.push(item.uid.clone());
@@ -3552,7 +3588,7 @@ async fn uncommitted_runtime_ports_are_not_available_to_peripheral_readers() {
         ports,
         _dir,
         ..
-    } = fixture(test_budgets()).await;
+    } = fixture().await;
     let source = clash.snapshot_handle();
     let version = source.load().version;
     let entered = Arc::new(Notify::new());
@@ -3604,7 +3640,7 @@ async fn uncommitted_runtime_ports_are_not_available_to_peripheral_readers() {
 #[tokio::test]
 async fn application_actor_rejection_keeps_source_version_and_bytes() {
     use struct_patch::Patch;
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(f.client.clone());
     let snapshot = f.application.snapshot_handle();
@@ -3637,7 +3673,7 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
 #[tokio::test]
 async fn application_actor_prepare_does_not_block_committed_reads() {
     use struct_patch::Patch;
-    let f = fixture(test_budgets()).await;
+    let f = fixture().await;
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(f.client.clone());
     let application = crate::client::application::ApplicationClient::from_manager(
@@ -3698,7 +3734,7 @@ async fn domain_actor_refuses_writes_before_composition_is_ready() {
 }
 
 async fn deferred_fixture() -> Fixture {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     f.endpoint.set_failure(Some("queue_full"));
     let (id, result) = simple_mutate(
         &mut f.clash,
@@ -3824,7 +3860,7 @@ async fn dependency_retries_count_waits_until_an_application_result() {
 async fn an_automatic_retry_never_moves_the_runtime_to_another_host() {
     use crate::client::convergence::ConvergenceHealth;
     let service = TestControlEndpoint::succeeding_on(ExecutionHost::Service);
-    let mut f = fixture_with_hosts(test_budgets(), true, Some(service.clone())).await;
+    let mut f = fixture_with_hosts(true, Some(service.clone())).await;
     f.endpoint.set_failure(Some("queue_full"));
     let (id, result) = simple_mutate(
         &mut f.clash,
@@ -3889,7 +3925,7 @@ async fn stopped_runtime_is_not_started_by_retry_now() {
 
 #[tokio::test]
 async fn unknown_retry_queries_original_before_restoring_aborted_source() {
-    let mut f = fixture(test_budgets()).await;
+    let mut f = fixture().await;
     let (id, result) = simple_mutate(
         &mut f.clash,
         &f.client,
@@ -3934,7 +3970,7 @@ async fn unknown_retry_queries_original_before_restoring_aborted_source() {
 
 #[tokio::test]
 async fn committed_product_retry_does_not_resubmit_or_rewrite_source() {
-    let mut f = fixture(MutationBudgets::default()).await;
+    let mut f = fixture().await;
     f.builder.fail_publish.store(true, Ordering::SeqCst);
     let (id, result) = simple_mutate(
         &mut f.clash,

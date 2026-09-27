@@ -328,7 +328,6 @@ async fn workflow_graph_with_clients(
             )),
             ports,
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-            budgets: mutation::MutationBudgets::default(),
             ownership,
             shutdown: tokio_util::sync::CancellationToken::new(),
             tasks: tokio_util::task::TaskTracker::new(),
@@ -997,20 +996,17 @@ fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
     tauri::async_runtime::block_on(async {
         let (artifact, progress) = f.artifact(ClashCore::Mihomo);
         let core_lifecycle = &f.client.inner.application_workflow;
-        let mut timed = Box::pin(core_lifecycle.call_with_timeout(
-            Command::Core(CoreCommand::ReplaceCoreBinary(artifact)),
+        let mut timed = Box::pin(tokio::time::timeout(
             Duration::from_millis(20),
+            core_lifecycle.call(Command::Core(CoreCommand::ReplaceCoreBinary(artifact))),
         ));
         assert!(timed.as_mut().now_or_never().is_none());
         f.installer.entered.notified().await;
-        let error = match timed.await {
-            Err(error) => error,
-            Ok(_) => panic!("parked installation must time out"),
-        };
-        assert_eq!(
-            error.operation_id,
-            f.client.inner.application_workflow.status().active
+        assert!(
+            timed.await.is_err(),
+            "the caller gives up on the parked installation"
         );
+        assert!(core_lifecycle.status().active.is_some());
         let mut pending = Vec::new();
         for _ in 0..MAX_PENDING {
             let mut call = Box::pin(core_lifecycle.reconcile());
@@ -1538,14 +1534,14 @@ fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_i
             let terminal = Arc::new(TerminalProgress::default());
             queued.progress = terminal.clone();
             let client = &f.client.inner.application_workflow;
-            let result = client
-                .call_with_timeout(
-                    Command::Core(CoreCommand::ReplaceCoreBinary(queued)),
-                    Duration::from_millis(20),
-                )
-                .await;
+            let result = tokio::time::timeout(
+                Duration::from_millis(20),
+                client.call(Command::Core(CoreCommand::ReplaceCoreBinary(queued))),
+            )
+            .await;
             assert!(
-                matches!(result, Err(error) if error.kind == Some(CoreErrorKind::BackendUnavailable))
+                result.is_err(),
+                "the caller gives up on the queued installation"
             );
             assert_eq!(client.status().queued.len(), 1);
             assert!(terminal.0.lock().unwrap().is_empty());

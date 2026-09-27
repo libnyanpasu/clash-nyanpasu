@@ -7,7 +7,7 @@ use nyanpasu_core_manager::{CoreError, OperationId};
 use super::{
     Command, Output,
     attempt::{LifecycleCommand, LiveAttempt},
-    mutation::{DeferredTarget, MutationBudgets, MutationCommand, ReestablishCause, TargetOrigin},
+    mutation::{DeferredTarget, MutationCommand, ReestablishCause, TargetOrigin},
     preparation::RuntimePreparation,
     startup::StartupReport,
 };
@@ -28,10 +28,6 @@ pub(super) struct ApplicationWorkflow {
     /// submits it. An absent answer is never a passing one.
     pub validator: Arc<dyn super::ports::RuntimeValidatorPort>,
     pub lifecycle: CoreLifecycleWorkflow,
-    /// The separate budgets of one mutation (v2 §5.5), injected rather than
-    /// read from a constant so a test can reach an elapse path without waiting
-    /// out the production one.
-    pub budgets: MutationBudgets,
     /// A committed desired value the core is not running.
     pub deferred: Option<DeferredTarget>,
     pub pending_product: Option<(Arc<runtime::RuntimeSnapshot>, String)>,

@@ -370,7 +370,6 @@ impl NyanpasuClient {
                 )),
                 ports: ports.clone(),
                 installer: binary_installer,
-                budgets: application_workflow::mutation::MutationBudgets::default(),
                 ownership: core_lifecycle::Ownership::Unproven,
                 shutdown: shutdown.child_token(),
                 tasks: tasks.clone(),

@@ -50,7 +50,7 @@ use super::{
     Progress, RecordingNotifications,
     mutations::{
         manager, mutate_with_hints, names_overrides, overrides, settled, simple_mutate, temp_path,
-        test_budgets, unserviceable_check,
+        unserviceable_check,
     },
     ownership,
 };
@@ -439,7 +439,6 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-            budgets: test_budgets(),
             ownership: Ownership::Unproven,
             shutdown: tokio_util::sync::CancellationToken::new(),
             tasks: tokio_util::task::TaskTracker::new(),

@@ -41,13 +41,12 @@ use crate::core::actor_v2::{
 };
 #[cfg(test)]
 use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
-use mutation::{MutationBudgets, MutationCommand, MutationJournal, MutationRequest, TryAck};
+use mutation::{MutationCommand, MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
 
 const MAX_PENDING: usize = 32;
-const CALL_WAIT: Duration = Duration::from_secs(180);
 
 #[derive(Debug, Clone, Default)]
 pub struct CoreLifecycleStatus {
@@ -171,7 +170,6 @@ struct ApplicationWorkflowState {
     journal: watch::Sender<MutationJournal>,
     /// What the journal last announced; see [`PublishedView`].
     published: PublishedView,
-    budgets: MutationBudgets,
 }
 
 /// The parts of this actor that `configuration_status` reads. The journal
@@ -208,8 +206,6 @@ pub(super) struct ApplicationWorkflowArgs {
     /// and the core lifecycle confirms or invalidates the binding.
     pub ports: Arc<super::SessionPortResolver>,
     pub installer: Arc<dyn BinaryInstaller>,
-    /// The separate budgets of one mutation (v2 §5.5).
-    pub budgets: MutationBudgets,
     /// Who owns the runtime when the workflow starts. Production starts
     /// `Unproven` and lets StartupReconcile prove it (T10 §1.2).
     pub ownership: Ownership,
@@ -223,7 +219,6 @@ struct ActorArgs {
     workflow: ApplicationWorkflow,
     status: watch::Sender<CoreLifecycleStatus>,
     journal: watch::Sender<MutationJournal>,
-    budgets: MutationBudgets,
     schedule_ticks: bool,
 }
 
@@ -541,8 +536,6 @@ impl ApplicationWorkflowState {
             Some("a previous operation left the execution domain isolated; recover first")
         } else if self.pending.len() >= MAX_PENDING {
             Some("the application workflow queue is full")
-        } else if !admittable && self.budgets.admission.is_zero() {
-            Some("the execution domain is occupied and the admission budget is spent")
         } else {
             None
         };
@@ -572,12 +565,12 @@ impl ApplicationWorkflowState {
             },
         });
         if !admittable {
-            // Waiting for the execution domain is bounded separately from every
-            // other budget (v2 §5.5): a mutation that waits holds its source
-            // transaction's writer permit open for exactly as long.
+            // Waiting for the execution domain is bounded: a mutation that
+            // waits holds its source transaction open for exactly as long.
+            const ADMISSION_BUDGET: Duration = Duration::from_secs(10);
             // Detached on purpose: an expiry that arrives for an attempt which
             // was admitted, withdrawn or forgotten in the meantime is a no-op.
-            let _timer = myself.send_after(self.budgets.admission, move || {
+            let _timer = myself.send_after(ADMISSION_BUDGET, move || {
                 Message::AdmissionExpired(operation_id)
             });
         }
@@ -694,7 +687,6 @@ impl Actor for ApplicationWorkflowActor {
             mutations: Vec::new(),
             journal: args.journal,
             published: PublishedView::default(),
-            budgets: args.budgets,
         })
     }
 
@@ -910,7 +902,6 @@ impl ApplicationWorkflowClient {
             clash: args.clash,
             preparation,
             validator: args.validator,
-            budgets: args.budgets,
             deferred: None,
             pending_product: None,
             pending_release: None,
@@ -938,7 +929,6 @@ impl ApplicationWorkflowClient {
                 workflow,
                 status: status_tx,
                 journal: journal_tx,
-                budgets: args.budgets,
                 schedule_ticks,
             },
         )
@@ -964,21 +954,35 @@ impl ApplicationWorkflowClient {
         })))
     }
 
+    /// Waits for the command's own answer, however long it runs. Only a
+    /// request that could not be sent or a reply that was dropped says the
+    /// workflow is gone.
     async fn call(&self, command: Command) -> Result<Output, CoreError> {
-        self.call_with_timeout(command, CALL_WAIT).await
-    }
-
-    async fn call_with_timeout(
-        &self,
-        command: Command,
-        timeout: Duration,
-    ) -> Result<Output, CoreError> {
         let id = OperationId::generate();
-        match self.0.actor.call(|reply| Message::Request(Request { command, response: Response { id, reply: Some(reply) } }), Some(timeout)).await {
+        match self
+            .0
+            .actor
+            .call(
+                |reply| {
+                    Message::Request(Request {
+                        command,
+                        response: Response {
+                            id,
+                            reply: Some(reply),
+                        },
+                    })
+                },
+                None,
+            )
+            .await
+        {
             Ok(CallResult::Success(result)) => result,
-            Ok(CallResult::Timeout) => Err(CoreError::new(CoreErrorKind::BackendUnavailable,
-                "core lifecycle wait timed out; the operation may still be queued or running; inspect Configuration status before retrying", false).with_operation(id)),
-            _ => Err(CoreError::new(CoreErrorKind::Internal, "application workflow actor is unavailable; operation outcome is unknown", false).with_operation(id)),
+            _ => Err(CoreError::new(
+                CoreErrorKind::Internal,
+                "application workflow actor is unavailable; operation outcome is unknown",
+                false,
+            )
+            .with_operation(id)),
         }
     }
 
@@ -1045,7 +1049,8 @@ impl ApplicationWorkflowClient {
     }
 
     /// StartupReconcile (T10 §1.2): once per session, and its report on every
-    /// later call. A reply that never came is `Unsettled`, never a guess.
+    /// later call. The call waits for the report itself, so `Unsettled` here
+    /// means the workflow refused the command or is gone, never a guess.
     pub async fn startup_reconcile(&self) -> startup::StartupReport {
         match self.call(Command::StartupReconcile).await {
             Ok(Output::Startup(report)) => *report,

@@ -170,6 +170,9 @@ pub fn resolve_setup(app: &mut App) {
 
     {
         let client = app.state::<crate::client::NyanpasuClient>();
+        // TODO(startup): resolve_setup needs restructuring; startup_reconcile
+        // should not block setup. See
+        // docs/plan/2026-09-28-workflow-lifecycle-simplification.md §9.
         let report = tauri::async_runtime::block_on(client.startup_reconcile());
         if let Some(observation) = &report.observation {
             log::info!(

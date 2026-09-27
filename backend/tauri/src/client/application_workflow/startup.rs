@@ -261,14 +261,11 @@ impl ApplicationWorkflow {
         report
     }
 
-    /// A StartupReconcile that did not run to its report: its attempt
-    /// panicked, or an isolated domain refused it. Whatever keeps the domain
-    /// isolated stays as it is, but every owner is still handed its full
-    /// desired value, once, and later calls get this report rather than a
-    /// run of their own (§1.9).
+    /// A StartupReconcile that did not run to its report: an isolated domain
+    /// refused it. Whatever keeps the domain isolated stays as it is, but
+    /// every owner is still handed its full desired value, once, and later
+    /// calls get this report rather than a run of their own (§1.9).
     pub(super) fn startup_unsettled(&mut self, operation_id: OperationId, error: &CoreError) {
-        // The report is cached just before its own publish: a panic past that
-        // point is that publish's, and is not repeated.
         if self.startup.is_some() {
             return;
         }

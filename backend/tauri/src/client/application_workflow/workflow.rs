@@ -36,14 +36,11 @@ pub(super) struct ApplicationWorkflow {
     pub pending_release: Option<String>,
     /// The attempt running now, or the latest one that did not settle
     /// (T10 §1.11). With the facade's pending action it is all that an
-    /// explicit recovery reads, and it survives a panic unchanged.
+    /// explicit recovery reads.
     pub live: Option<LiveAttempt>,
     /// StartupReconcile's first report. It runs once; asking again returns
     /// this and touches nothing (T10 §1.2).
     pub startup: Option<StartupReport>,
-    /// One-shot test fault: the next Confirm panics before it changes anything.
-    #[cfg(test)]
-    pub panic_at_confirm: bool,
 }
 
 impl ApplicationWorkflow {

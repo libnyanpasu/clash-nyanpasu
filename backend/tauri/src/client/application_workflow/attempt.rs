@@ -3,10 +3,9 @@
 //! The workflow holds one [`LiveAttempt`]: the attempt running now, or the
 //! latest one that did not settle. The facade holds the one action that
 //! attempt started and has not seen finish. Both are plain fields of the
-//! workflow box, which returns to the actor in `Completed` even when the task
-//! panicked, so after any interruption the two slots hold exactly what they
-//! held at that moment. Normal execution and recovery advance the same slots,
-//! so neither ever describes a stale step.
+//! workflow the actor owns, so after an interruption the two slots hold
+//! exactly what they held at that moment. Normal execution and recovery
+//! advance the same slots, so neither ever describes a stale step.
 //!
 //! The execution domain is isolated while it is idle and either slot is
 //! occupied. Only an explicit recovery runs then: it resolves the pending
@@ -47,8 +46,7 @@ pub(super) struct LiveAttempt {
     /// What the Try told the source transaction, recorded before the ACK left
     /// (or, for a committed target, before the target was updated).
     pub verdict: Option<TryVerdict>,
-    /// Why the attempt did not settle. `None` while it runs, and after a
-    /// panic, which records nothing and needs nothing recorded.
+    /// Why the attempt did not settle. `None` while it runs.
     pub unresolved: Option<String>,
 }
 

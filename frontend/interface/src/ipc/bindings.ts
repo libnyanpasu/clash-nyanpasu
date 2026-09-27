@@ -845,7 +845,6 @@ export type ConfigurationStatus = {
   /**  The latest background-source receipt per profile. */
   sources: SourceStatus[]
   active: string | null
-  queued: string[]
   recent_operations: OperationStatus[]
 }
 

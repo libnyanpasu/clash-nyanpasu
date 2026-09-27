@@ -28,7 +28,6 @@ const status = (
   sources: [],
   recent_operations: [],
   active: null,
-  queued: [],
 })
 const source = (
   profile: string,

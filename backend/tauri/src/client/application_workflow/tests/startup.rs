@@ -164,41 +164,6 @@ impl ControlEndpoint for HostEndpoint {
     }
 }
 
-/// The real build, which can be made to panic: the one way to interrupt a
-/// startup attempt from inside the workflow's own task.
-struct Builder {
-    delegate: adapters::FsRuntimeBuildAdapter,
-    panic: AtomicBool,
-}
-
-#[async_trait::async_trait]
-impl super::super::ports::RuntimeBuildPort for Builder {
-    async fn capture_content(
-        &self,
-        profiles: &Profiles,
-    ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
-        self.delegate.capture_content(profiles).await
-    }
-    fn core_spec(&self, core: &ClashCore) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
-        self.delegate.core_spec(core)
-    }
-    async fn build(
-        &self,
-        revision: runtime::RuntimeRevision,
-        inputs: super::super::inputs::RuntimeInputs,
-        ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
-        strict_transforms: bool,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
-        assert!(!self.panic.load(Ordering::SeqCst), "scripted build panic");
-        self.delegate
-            .build(revision, inputs, ports, strict_transforms)
-            .await
-    }
-    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
-        self.delegate.publish(snapshot).await
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DaemonState {
     NotInstalled,
@@ -352,12 +317,13 @@ pub(super) struct Graph {
     pub(super) daemon: Arc<FakeDaemon>,
     service: ServiceClient,
     pub(super) core: CoreClient,
-    builder: Arc<Builder>,
     log: Log,
     application: PersistentStateManager<NyanpasuAppConfig>,
     clash: PersistentStateManager<ClashConfig>,
     ports: Arc<SessionPortResolver>,
     notifications: Arc<RecordingNotifications>,
+    /// The workflow's shutdown token.
+    shutdown: tokio_util::sync::CancellationToken,
     dir: tempfile::TempDir,
     _profiles: PersistentStateManager<Profiles>,
 }
@@ -416,14 +382,12 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         runtime::RuntimeSnapshotStore::default(),
     ));
     let notifications = Arc::new(RecordingNotifications::default());
-    let builder = Arc::new(Builder {
-        delegate: adapters::FsRuntimeBuildAdapter {
-            profiles_dir: dir.path().join("profiles"),
-            paths: paths.clone(),
-            scripts: crate::enhance::ScriptDirs::under(dir.path()),
-        },
-        panic: AtomicBool::new(false),
+    let builder = Arc::new(adapters::FsRuntimeBuildAdapter {
+        profiles_dir: dir.path().join("profiles"),
+        paths: paths.clone(),
+        scripts: crate::enhance::ScriptDirs::under(dir.path()),
     });
+    let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
             notifications: notifications.clone(),
@@ -435,12 +399,12 @@ pub(super) async fn graph(setup: Setup) -> Graph {
                 None => core.clone(),
             },
             service: service.clone(),
-            builder: builder.clone(),
+            builder,
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ownership: Ownership::Unproven,
-            shutdown: tokio_util::sync::CancellationToken::new(),
+            shutdown: shutdown.clone(),
             tasks: tokio_util::task::TaskTracker::new(),
         },
         false,
@@ -454,12 +418,12 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         daemon,
         service,
         core,
-        builder,
         log,
         application,
         clash,
         ports,
         notifications,
+        shutdown,
         dir,
         _profiles: profiles,
     }
@@ -1070,19 +1034,19 @@ async fn every_startup_outcome_publishes_exactly_one_full_view() {
     );
 }
 
-/// S13, the interrupted case (R21): the startup attempt panics. It still
-/// publishes the full view exactly once, the attempt it left keeps the
-/// domain isolated, and later calls return its unsettled report without
+/// S13, the interrupted case (R21): the startup attempt loses the answer to
+/// its reconcile. It still publishes the full view exactly once, the attempt
+/// it left keeps the domain isolated, and later calls return a report without
 /// running or publishing again, before and after the domain is recovered.
 #[tokio::test]
 async fn an_interrupted_startup_still_publishes_one_full_view_and_stays_isolated() {
     let g = graph(Setup::default()).await;
-    g.builder.panic.store(true, Ordering::SeqCst);
+    g.local.lose_reconcile.store(true, Ordering::SeqCst);
 
     let first = g.start().await;
 
     assert!(
-        matches!(first.outcome, StartupOutcome::Unsettled { .. }),
+        matches!(first.outcome, StartupOutcome::RecoveryRequired { .. }),
         "{first:?}"
     );
     assert_eq!(g.notifications.full(), 1);
@@ -1090,8 +1054,7 @@ async fn an_interrupted_startup_still_publishes_one_full_view_and_stays_isolated
     assert!(g.isolated());
     let view = g.client.mutation_journal().recovery.unwrap();
     assert_eq!(view.origin, AttemptOriginKind::CommittedTarget);
-    assert_eq!(view.action, None, "nothing was submitted before the panic");
-    assert!(g.log().is_empty());
+    assert_eq!(g.log(), ["local:reconcile"]);
 
     let refused = g.start().await;
     assert!(
@@ -1099,17 +1062,18 @@ async fn an_interrupted_startup_still_publishes_one_full_view_and_stays_isolated
         "{refused:?}"
     );
     assert_eq!(g.notifications.full(), 1);
+    assert_eq!(g.log(), ["local:reconcile"]);
 
-    g.builder.panic.store(false, Ordering::SeqCst);
+    g.local.deliver();
     g.client.retry_runtime().await.unwrap();
     assert!(!g.isolated());
-    assert_eq!(g.log(), ["local:reconcile"]);
+    let submitted = g.log();
 
     let cached = g.start().await;
     assert_eq!(cached.operation_id, first.operation_id);
     assert_eq!(cached.outcome, first.outcome);
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.log(), ["local:reconcile"]);
+    assert_eq!(g.log(), submitted, "a cached report runs nothing");
 }
 
 /// R20: a successful explicit start after a user's stop starts the core on
@@ -1182,17 +1146,11 @@ async fn an_explicit_start_after_a_user_stop_starts_the_core_on_either_path() {
 /// calls; one refused because the application is closing publishes nothing.
 #[tokio::test]
 async fn a_refused_first_startup_publishes_once_unless_the_application_is_closing() {
-    let mut g = graph(Setup::default()).await;
-    g.builder.panic.store(true, Ordering::SeqCst);
-    let (_, result) = simple_mutate(
-        &mut g.clash,
-        &g.client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(result.is_err(), "{result:?}");
-    g.builder.panic.store(false, Ordering::SeqCst);
+    let g = graph(Setup::default()).await;
+    g.local.lose_reconcile.store(true, Ordering::SeqCst);
+    assert!(g.client.reconcile().await.is_err());
+    assert!(g.isolated(), "the lost explicit start isolated the domain");
+    let committed = g.notifications.committed();
 
     let refused = g.start().await;
 
@@ -1200,19 +1158,20 @@ async fn a_refused_first_startup_publishes_once_unless_the_application_is_closin
         matches!(refused.outcome, StartupOutcome::Unsettled { .. }),
         "{refused:?}"
     );
-    assert!(g.isolated(), "the panicked save isolated the domain");
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(g.notifications.committed(), 0);
+    assert_eq!(g.notifications.committed(), committed);
+    g.local.deliver();
     g.client.retry_runtime().await.unwrap();
     assert!(!g.isolated());
+    let submitted = g.log();
     let cached = g.start().await;
     assert_eq!(cached.operation_id, refused.operation_id);
     assert_eq!(cached.outcome, refused.outcome);
     assert_eq!(g.notifications.full(), 1);
-    assert!(g.log().is_empty());
+    assert_eq!(g.log(), submitted, "a cached report runs nothing");
 
     let g = graph(Setup::default()).await;
-    g.client.shutdown().await.unwrap();
+    g.shutdown.cancel();
     let closing = g.start().await;
     assert!(
         matches!(closing.outcome, StartupOutcome::Unsettled { .. }),
@@ -1456,7 +1415,7 @@ async fn a_stop_under_a_proven_owner_ends_the_target_once_it_is_confirmed() {
 
 /// S16 (§1.7 #7): a binary replaced while no owner is proven is installed,
 /// its restart is left to the open target, and that target is due at once:
-/// the workflow runs it as soon as the replacement ends.
+/// the next wake-up runs it, without waiting out the schedule it had.
 #[tokio::test]
 async fn a_binary_replaced_without_a_proven_owner_brings_the_target_forward() {
     let g = graph(Setup {
@@ -1490,15 +1449,19 @@ async fn a_binary_replaced_without_a_proven_owner_brings_the_target_forward() {
         !progress.0.load(Ordering::SeqCst),
         "no restart was reported"
     );
-    // Only the target's run probes the daemon; each check is a mailbox round
-    // trip, and the run is then waited out.
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while g.daemon.probes.load(Ordering::SeqCst) == probes {
-            super::barrier(&g.client).await;
-        }
-    })
-    .await
-    .expect("the brought-forward target runs");
+    // Only the target's run probes the daemon. The tick is the one the
+    // convergence timer sends; the retry it starts is over by the barrier.
+    g.client
+        .0
+        .actor
+        .cast(super::Message::ConvergenceTick)
+        .unwrap();
+    super::barrier(&g.client).await;
+    assert_ne!(
+        g.daemon.probes.load(Ordering::SeqCst),
+        probes,
+        "the brought-forward target runs"
+    );
     assert!(
         Instant::now() < scheduled.next_attempt.unwrap(),
         "it ran without waiting out the schedule it had"

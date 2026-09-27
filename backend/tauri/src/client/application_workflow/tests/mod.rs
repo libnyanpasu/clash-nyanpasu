@@ -15,6 +15,7 @@ use super::{
     *,
 };
 use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary};
+use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use struct_patch::Patch;
@@ -63,21 +64,6 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     }
 }
 
-/// The workflow's own shutdown request, which stops the core once the running
-/// operation settled. A reply that never came is reported the way the core
-/// stop reports it, never as a stop.
-async fn workflow_shutdown(client: &NyanpasuClient) -> ShutdownReport {
-    client
-        .inner
-        .application_workflow
-        .shutdown()
-        .await
-        .unwrap_or_else(|error| ShutdownReport {
-            stop: Err(error),
-            final_status: client.core_status().snapshot,
-        })
-}
-
 async fn workflow_graph(
     dir: &tempfile::TempDir,
 ) -> (
@@ -104,7 +90,6 @@ async fn injected_snapshot_store_is_shared_by_workflow_and_reader() {
     let written = store.read().promoted.unwrap();
     let observed = client.runtime().promoted.unwrap();
     assert!(Arc::ptr_eq(&written, &observed));
-    client.shutdown().await.unwrap();
 }
 
 /// V09: an apply the core confirmed is the recovery checkpoint even when the
@@ -146,7 +131,6 @@ async fn a_confirmed_apply_is_the_recovery_baseline_without_an_inspection() {
         "the baseline follows the latest confirmed apply, not the last inspected one"
     );
     assert!(store.read().applied.is_none());
-    client.shutdown().await.unwrap();
 }
 
 /// An unobserved reconcile is the third case where the confirmed binding stops
@@ -163,8 +147,15 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
         .await
         .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
-    let (client, builder, _, clash) =
-        workflow_graph_with_clients(&dir, core, service, false, ports.clone()).await;
+    let (client, builder, _, clash) = workflow_graph_with_clients(
+        &dir,
+        core,
+        service,
+        false,
+        ports.clone(),
+        CancellationToken::new(),
+    )
+    .await;
     builder.release.notify_one();
 
     // Two ports that are distinct by construction. Nothing binds them here, and
@@ -194,7 +185,6 @@ async fn an_unobserved_reconcile_stops_publishing_the_previous_port_binding() {
         "the previous binding on {} is no longer a fact about anything",
         confirmed.mixed_port
     );
-    client.shutdown().await.unwrap();
 }
 
 /// V11 (port half): the confirmed binding describes a running instance. When
@@ -211,8 +201,15 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
         .await
         .unwrap();
     let ports = Arc::new(super::super::SessionPortResolver::default());
-    let (client, builder, _, _) =
-        workflow_graph_with_clients(&dir, core, service, false, ports.clone()).await;
+    let (client, builder, _, _) = workflow_graph_with_clients(
+        &dir,
+        core,
+        service,
+        false,
+        ports.clone(),
+        CancellationToken::new(),
+    )
+    .await;
     builder.release.notify_one();
 
     assert_eq!(
@@ -233,7 +230,6 @@ async fn stopping_the_core_ends_the_confirmed_port_binding() {
         "a stopped core is not still holding {}",
         running.mixed_port
     );
-    client.shutdown().await.unwrap();
 }
 
 async fn workflow_graph_with_store(
@@ -257,6 +253,7 @@ async fn workflow_graph_with_store(
         service,
         false,
         Arc::new(super::super::SessionPortResolver::new(snapshots)),
+        CancellationToken::new(),
     )
     .await
 }
@@ -269,6 +266,8 @@ async fn workflow_graph_with_clients(
     // Injected so a test can read the binding the workflow confirms; the
     // workflow is the only writer.
     ports: Arc<super::super::SessionPortResolver>,
+    // Cancelling it closes the workflow the way the root shutdown does.
+    shutdown: CancellationToken,
 ) -> (
     ApplicationWorkflowClient,
     Arc<BlockingBuilder>,
@@ -329,7 +328,7 @@ async fn workflow_graph_with_clients(
             ports,
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ownership,
-            shutdown: tokio_util::sync::CancellationToken::new(),
+            shutdown,
             tasks: tokio_util::task::TaskTracker::new(),
         },
         schedule_ticks,
@@ -411,8 +410,6 @@ enum WaitScript {
     Missing,
     /// The operation is admitted and still running.
     Running,
-    /// The waiter itself panics while the operation runs on.
-    Panic,
     /// The real terminal result, held until the test releases it.
     Held,
 }
@@ -421,8 +418,8 @@ enum WaitScript {
 ///
 /// Each submission takes the next queued script (`Deliver` once the queue is
 /// empty) and keeps it until a test rescripts that operation, so the one
-/// operation a test cares about can be lost, left running or made to panic
-/// its waiter, and later delivered, while everything else is real.
+/// operation a test cares about can be lost or left running, and later
+/// delivered, while everything else is real.
 struct ScriptedWaitEndpoint {
     delegate: Arc<TestControlEndpoint>,
     queued: std::sync::Mutex<std::collections::VecDeque<WaitScript>>,
@@ -542,7 +539,6 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
                 output: None,
                 error: None,
             }),
-            WaitScript::Panic => panic!("scripted panic while waiting for operation {id}"),
             WaitScript::Held => {
                 self.held.notify_one();
                 self.release.notified().await;
@@ -557,14 +553,11 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
     }
 }
 
-/// Commit notifications that count what they were told, and can panic the
-/// next one: a notification is the step right after a Confirm, which is where
-/// an interruption leaves a committed mutation unsettled.
+/// Commit notifications that count what they were told.
 #[derive(Default)]
 struct RecordingNotifications {
     committed: AtomicUsize,
     full: AtomicUsize,
-    panic_next: AtomicBool,
 }
 
 impl RecordingNotifications {
@@ -584,10 +577,6 @@ impl crate::client::effects::ports::CommitNotifications for RecordingNotificatio
         _: bool,
         _: Vec<crate::client::effects::plan::EffectKind>,
     ) {
-        assert!(
-            !self.panic_next.swap(false, Ordering::SeqCst),
-            "scripted notification panic"
-        );
         self.committed.fetch_add(1, Ordering::SeqCst);
     }
 
@@ -641,10 +630,10 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         tokio::time::timeout(Duration::from_secs(5), endpoint.entered.notified())
             .await
             .unwrap();
+        // Polling once sends the request, so it is in the mailbox behind the
+        // switch before the switch is released.
         let mut uninstall = Box::pin(client.uninstall_service());
         assert!(uninstall.as_mut().now_or_never().is_none());
-        barrier(&client.inner.application_workflow).await;
-        assert_eq!(client.inner.application_workflow.status().queued.len(), 1);
         assert!(!calls.lock().unwrap().contains(&"uninstall"));
         endpoint.release.notify_one();
         assert!(matches!(
@@ -681,7 +670,6 @@ struct Installer {
     release: Notify,
     park: bool,
     fail: bool,
-    panic: bool,
     calls: AtomicUsize,
     submissions_at_copy: AtomicUsize,
 }
@@ -696,7 +684,6 @@ impl BinaryInstaller for Installer {
         if self.park {
             self.release.notified().await;
         }
-        assert!(!self.panic, "scripted installer panic");
         anyhow::ensure!(!self.fail, "scripted installation failure");
         tokio::fs::copy(&artifact.source, &artifact.destination).await?;
         Ok(())
@@ -711,7 +698,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new(park: bool, fail: bool, panic: bool) -> Self {
+    fn new(park: bool, fail: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         let installer = Arc::new(Installer {
@@ -720,7 +707,6 @@ impl Fixture {
             release: Notify::new(),
             park,
             fail,
-            panic,
             calls: AtomicUsize::new(0),
             submissions_at_copy: AtomicUsize::new(0),
         });
@@ -753,34 +739,6 @@ impl Fixture {
     }
 }
 
-/// Arms the one-shot panic at the next Confirm. The workflow is idle, so the
-/// fault lands on the next attempt.
-async fn panic_at_confirm(client: &ApplicationWorkflowClient) {
-    assert!(matches!(
-        client
-            .0
-            .actor
-            .call(Message::PanicAtConfirm, Some(Duration::from_secs(5)))
-            .await
-            .unwrap(),
-        CallResult::Success(true)
-    ));
-}
-
-/// How many attempts still own a control context inside the actor.
-async fn live_mutation_contexts(client: &ApplicationWorkflowClient) -> usize {
-    match client
-        .0
-        .actor
-        .call(Message::LiveMutationContexts, Some(Duration::from_secs(5)))
-        .await
-        .unwrap()
-    {
-        CallResult::Success(live) => live,
-        other => panic!("the workflow should answer: {other:?}"),
-    }
-}
-
 /// Which owner the idle workflow holds proven.
 async fn ownership(client: &ApplicationWorkflowClient) -> Ownership {
     match client
@@ -790,7 +748,7 @@ async fn ownership(client: &ApplicationWorkflowClient) -> Ownership {
         .await
         .unwrap()
     {
-        CallResult::Success(Some(ownership)) => ownership,
+        CallResult::Success(ownership) => ownership,
         other => panic!("the idle workflow should answer: {other:?}"),
     }
 }
@@ -830,7 +788,7 @@ async fn start_replacement(
 
 #[test]
 fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation() {
-    let f = Fixture::new(true, false, false);
+    let f = Fixture::new(true, false);
     tauri::async_runtime::block_on(async {
         f.endpoint.prime(&f.client).await;
         let (task, staging) = start_replacement(&f).await;
@@ -843,14 +801,14 @@ fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation(
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
         assert!(staging.exists());
+        // Polling once sends the reconcile, so it waits behind the parked
+        // installation.
         let mut reconcile = Box::pin(f.client.reconcile_core());
         assert!(reconcile.as_mut().now_or_never().is_none());
-        barrier(&f.client.inner.application_workflow).await;
         assert_eq!(
             f.client.inner.application_workflow.status().active,
             Some(active)
         );
-        assert_eq!(f.client.inner.application_workflow.status().queued.len(), 1);
         assert_eq!(f.endpoint.submissions(), 2);
         // Status reads stay responsive while the installer is parked.
         let _ = f.client.core_status();
@@ -902,7 +860,7 @@ fn replacement_decisions_use_applied_identity_and_always_recover() {
         (ClashCore::Mihomo, None, true, ClashCore::ClashRs, 1, false),
     ];
     for (desired, kind, stopped, target, before_copy, restart) in cases {
-        let f = Fixture::new(false, false, false);
+        let f = Fixture::new(false, false);
         tauri::async_runtime::block_on(async {
             f.endpoint.prime(&f.client).await;
             f.endpoint
@@ -943,7 +901,7 @@ fn replacement_decisions_use_applied_identity_and_always_recover() {
 
 #[test]
 fn failed_death_proof_never_installs_even_when_status_says_stopped() {
-    let f = Fixture::new(false, false, false);
+    let f = Fixture::new(false, false);
     tauri::async_runtime::block_on(async {
         f.endpoint.set_status(
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
@@ -966,118 +924,51 @@ fn failed_death_proof_never_installs_even_when_status_says_stopped() {
 
 #[test]
 fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
-    let f = Fixture::new(true, false, false);
+    let f = Fixture::new(true, false);
     tauri::async_runtime::block_on(async {
         let (replace, _) = start_replacement(&f).await;
         let mut reconcile = Box::pin(f.client.reconcile_core());
         assert!(reconcile.as_mut().now_or_never().is_none());
-        let mut shutdown = Box::pin(workflow_shutdown(&f.client));
+        f.client.request_shutdown();
+        let mut shutdown = Box::pin(f.client.wait_shutdown());
         assert!(shutdown.as_mut().now_or_never().is_none());
-        barrier(&f.client.inner.application_workflow).await;
-        assert!(f.client.inner.application_workflow.status().shutting_down);
+        assert_eq!(f.endpoint.submissions(), 2);
+        f.installer.release.notify_one();
+        replace.await.unwrap().unwrap();
         assert_eq!(
             reconcile.await.unwrap_err().kind,
             Some(CoreErrorKind::OperationConflict)
         );
-        assert_eq!(f.endpoint.submissions(), 2);
-        f.installer.release.notify_one();
-        replace.await.unwrap().unwrap();
-        assert!(shutdown.await.stop.is_ok());
+        shutdown.await;
         let before = f.endpoint.submissions();
-        assert!(workflow_shutdown(&f.client).await.stop.is_ok());
         assert!(f.client.reconcile_core().await.is_err());
         assert_eq!(f.endpoint.submissions(), before);
     });
 }
 
 #[test]
-fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
-    let f = Fixture::new(true, false, false);
+fn failed_installation_does_not_restart() {
+    let f = Fixture::new(false, true);
     tauri::async_runtime::block_on(async {
         let (artifact, progress) = f.artifact(ClashCore::Mihomo);
-        let core_lifecycle = &f.client.inner.application_workflow;
-        let mut timed = Box::pin(tokio::time::timeout(
-            Duration::from_millis(20),
-            core_lifecycle.call(Command::Core(CoreCommand::ReplaceCoreBinary(artifact))),
-        ));
-        assert!(timed.as_mut().now_or_never().is_none());
-        f.installer.entered.notified().await;
         assert!(
-            timed.await.is_err(),
-            "the caller gives up on the parked installation"
+            f.client
+                .inner
+                .application_workflow
+                .replace_binary(artifact)
+                .await
+                .is_err()
         );
-        assert!(core_lifecycle.status().active.is_some());
-        let mut pending = Vec::new();
-        for _ in 0..MAX_PENDING {
-            let mut call = Box::pin(core_lifecycle.reconcile());
-            assert!(call.as_mut().now_or_never().is_none());
-            pending.push(call);
-        }
-        barrier(core_lifecycle).await;
-        assert_eq!(core_lifecycle.status().queued.len(), MAX_PENDING);
-        assert_eq!(
-            core_lifecycle.reconcile().await.unwrap_err().kind,
-            Some(CoreErrorKind::OperationConflict)
-        );
-        let (mut rejected, _) = f.artifact(ClashCore::ClashRs);
-        let terminal = Arc::new(TerminalProgress::default());
-        rejected.progress = terminal.clone();
-        assert!(core_lifecycle.replace_binary(rejected).await.is_err());
-        let outcomes = terminal.0.lock().unwrap().clone();
-        assert_eq!(outcomes.len(), 1);
-        assert!(outcomes[0].as_ref().unwrap().contains("queue is full"));
+        assert!(!progress.0.load(Ordering::SeqCst));
         assert_eq!(f.endpoint.submissions(), 2);
-        let mut shutdown = Box::pin(workflow_shutdown(&f.client));
-        assert!(shutdown.as_mut().now_or_never().is_none());
-        barrier(core_lifecycle).await;
-        for call in pending {
-            assert!(call.await.is_err());
-        }
-        f.installer.release.notify_one();
-        assert!(shutdown.await.stop.is_ok());
-        assert!(
-            progress.1.load(Ordering::SeqCst),
-            "terminal progress survives caller timeout"
-        );
+        assert!(!f.client.inner.application_workflow.status().uncertain);
+        f.client.reconcile_core().await.unwrap();
     });
 }
 
 #[test]
-fn failed_installation_does_not_restart_and_a_panic_fails_admission_closed() {
-    for panic in [false, true] {
-        let f = Fixture::new(false, !panic, panic);
-        tauri::async_runtime::block_on(async {
-            let (artifact, progress) = f.artifact(ClashCore::Mihomo);
-            assert!(
-                f.client
-                    .inner
-                    .application_workflow
-                    .replace_binary(artifact)
-                    .await
-                    .is_err()
-            );
-            assert!(!progress.0.load(Ordering::SeqCst));
-            assert_eq!(f.endpoint.submissions(), 2);
-            assert_eq!(
-                f.client.inner.application_workflow.status().uncertain,
-                panic
-            );
-            if panic {
-                assert_eq!(
-                    f.client.reconcile_core().await.unwrap_err().kind,
-                    Some(CoreErrorKind::OperationConflict)
-                );
-                assert!(workflow_shutdown(&f.client).await.stop.is_ok());
-            } else {
-                f.client.reconcile_core().await.unwrap();
-            }
-        });
-    }
-}
-
-#[test]
 fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product() {
-    let f = Fixture::new(false, false, false);
+    let f = Fixture::new(false, false);
     tauri::async_runtime::block_on(async {
         f.endpoint.prime(&f.client).await;
         f.endpoint.set_result_missing(true);
@@ -1098,13 +989,11 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
             Some(CoreErrorKind::OperationConflict)
         );
         assert_eq!(f.endpoint.submissions(), 1);
-        f.endpoint.set_result_missing(false);
-        assert!(workflow_shutdown(&f.client).await.stop.is_ok());
     });
 }
 
 /// Two graphs share no workflow state: a reconcile in one builds nothing in
-/// the other, and shutting one down leaves the other able to reconcile.
+/// the other, and stopping one leaves the other able to reconcile.
 #[tokio::test]
 async fn a_reconcile_and_a_shutdown_stay_within_their_graph() {
     let dir_a = tempfile::tempdir().unwrap();
@@ -1120,7 +1009,12 @@ async fn a_reconcile_and_a_shutdown_stay_within_their_graph() {
     assert_eq!(build_b.calls.load(Ordering::SeqCst), 0);
     build_a.release.notify_one();
     reconcile_a.await.unwrap().unwrap();
-    a.shutdown().await.unwrap();
+    let stopped = a.0.actor.get_cell();
+    drop(a);
+    stopped
+        .wait(Some(Duration::from_secs(5)))
+        .await
+        .expect("the abandoned workflow stops");
     let reconcile_b = {
         let b = b.clone();
         tokio::spawn(async move { b.reconcile().await })
@@ -1128,7 +1022,6 @@ async fn a_reconcile_and_a_shutdown_stay_within_their_graph() {
     build_b.entered.notified().await;
     build_b.release.notify_one();
     reconcile_b.await.unwrap().unwrap();
-    b.shutdown().await.unwrap();
     assert_eq!(build_a.calls.load(Ordering::SeqCst), 1);
     assert_eq!(build_b.calls.load(Ordering::SeqCst), 1);
 }
@@ -1459,7 +1352,7 @@ fn a_control_channel_patch_applies_the_committed_channel() {
     use nyanpasu_config::clash::config::{ClashConfig, ClashControlChannel};
     use nyanpasu_core_manager::LocalIpcPolicy;
 
-    let f = Fixture::new(false, false, false);
+    let f = Fixture::new(false, false);
     tauri::async_runtime::block_on(async {
         f.endpoint.prime(&f.client).await;
         for (channel, disable_http, policy) in [
@@ -1491,7 +1384,7 @@ fn a_control_channel_patch_applies_the_committed_channel() {
 fn a_control_channel_patch_does_not_start_a_stopped_core() {
     use nyanpasu_config::clash::config::{ClashConfig, ClashControlChannel};
 
-    let f = Fixture::new(false, false, false);
+    let f = Fixture::new(false, false);
     tauri::async_runtime::block_on(async {
         f.endpoint.prime(&f.client).await;
         f.endpoint.set_status(
@@ -1524,39 +1417,41 @@ impl BinaryInstallProgress for TerminalProgress {
     }
 }
 
+/// V27: an installation refused before it runs settles its progress observer
+/// exactly once, whether the shutdown or an isolated execution domain refused
+/// it. It waits behind a parked installation, and its caller has already given
+/// up on it.
 #[test]
 fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_it() {
-    for panic in [false, true] {
-        let f = Fixture::new(true, false, panic);
+    for isolate in [false, true] {
+        let f = Fixture::new(true, false);
         tauri::async_runtime::block_on(async {
+            // A running core, so the installation ends in a restart.
+            f.endpoint.prime(&f.client).await;
             let (first, _) = start_replacement(&f).await;
             let (mut queued, _) = f.artifact(ClashCore::ClashRs);
             let terminal = Arc::new(TerminalProgress::default());
             queued.progress = terminal.clone();
             let client = &f.client.inner.application_workflow;
-            let result = tokio::time::timeout(
-                Duration::from_millis(20),
-                client.call(Command::Core(CoreCommand::ReplaceCoreBinary(queued))),
-            )
-            .await;
-            assert!(
-                result.is_err(),
-                "the caller gives up on the queued installation"
-            );
-            assert_eq!(client.status().queued.len(), 1);
+            // Polling once sends the request; dropping the call then is the
+            // caller giving up on it.
+            let mut call =
+                Box::pin(client.call(Command::Core(CoreCommand::ReplaceCoreBinary(queued))));
+            assert!(call.as_mut().now_or_never().is_none());
+            drop(call);
             assert!(terminal.0.lock().unwrap().is_empty());
-            if panic {
+            if isolate {
+                // The parked installation's restart loses its result.
+                f.endpoint.set_result_missing(true);
                 f.installer.release.notify_one();
                 assert!(first.await.unwrap().is_err());
                 barrier(client).await;
                 assert!(client.status().uncertain);
             } else {
-                let mut shutdown = Box::pin(workflow_shutdown(&f.client));
-                assert!(shutdown.as_mut().now_or_never().is_none());
-                barrier(client).await;
+                f.client.request_shutdown();
                 f.installer.release.notify_one();
                 first.await.unwrap().unwrap();
-                assert!(shutdown.await.stop.is_ok());
+                f.client.wait_shutdown().await;
             }
             let outcomes = terminal.0.lock().unwrap().clone();
             assert_eq!(
@@ -1564,13 +1459,12 @@ fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_i
                 1,
                 "rejected request must deliver exactly one terminal notification"
             );
-            assert!(outcomes[0].as_ref().unwrap().contains(if panic {
+            assert!(outcomes[0].as_ref().unwrap().contains(if isolate {
                 "uncertain outcome"
             } else {
                 "shutting down"
             }));
             assert_eq!(f.installer.calls.load(Ordering::SeqCst), 1);
-            assert!(client.status().queued.is_empty());
         });
     }
 }

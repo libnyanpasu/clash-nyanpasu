@@ -17,10 +17,9 @@ mod workflow;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::VecDeque, panic::AssertUnwindSafe, sync::Arc, time::Duration};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
-use futures_util::FutureExt;
-use nyanpasu_core::state::{DecisionHandle, StateDecision, StateSnapshot};
+use nyanpasu_core::state::{StateDecision, StateSnapshot};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
@@ -46,13 +45,12 @@ use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
 
-const MAX_PENDING: usize = 32;
+/// How many recent results the status and the journal keep.
+const HISTORY_LEN: usize = 32;
 
 #[derive(Debug, Clone, Default)]
 pub struct CoreLifecycleStatus {
     pub active: Option<OperationId>,
-    pub queued: Vec<OperationId>,
-    pub shutting_down: bool,
     pub uncertain: bool,
     /// Bounded recent results, including calls whose caller stopped waiting.
     pub completed: VecDeque<CoreLifecycleOperationResult>,
@@ -89,6 +87,16 @@ struct Response {
     reply: Option<RpcReplyPort<Result<Output, CoreError>>>,
 }
 
+impl Response {
+    /// Work the actor starts itself, which nobody waits for.
+    fn background() -> Self {
+        Self {
+            id: OperationId::generate(),
+            reply: None,
+        }
+    }
+}
+
 struct Request {
     command: Command,
     response: Response,
@@ -96,77 +104,34 @@ struct Request {
 
 enum Message {
     Request(Request),
-    Completed {
-        id: OperationId,
-        workflow: Box<ApplicationWorkflow>,
-        result: Box<Result<Output, CoreError>>,
-    },
-    /// A mutation asking to be admitted. Answered during the source
-    /// transaction's prepare, so it is never queued behind the ordinary work
-    /// FIFO without an answer: a refusal here refuses the whole mutation.
+    /// A mutation's Try, sent during the source transaction's prepare. A
+    /// refusal at entry refuses the whole mutation.
     BeginMutation(Box<MutationRequest>),
-    /// Wake a queued attempt to read its authoritative source outcome.
-    WakeMutation(OperationId),
-    /// A queued mutation spent its admission budget without reaching the
-    /// execution domain.
-    AdmissionExpired(OperationId),
     RecoveryTick,
+    /// The deferred target's next attempt may be due.
     ConvergenceTick,
-    /// Refuses what is queued, lets the running operation settle, then stops
-    /// the core and the actor.
-    Close,
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
-    /// How many attempts still own a control context. Retiring one on every
-    /// terminal path is an invariant with no other observable trace: a context
-    /// that outlives its attempt is unreachable, not visibly wrong.
+    /// Which owner the workflow holds proven.
     #[cfg(test)]
-    LiveMutationContexts(RpcReplyPort<usize>),
-    /// Makes the next Confirm panic before it changes anything: a deferral's
-    /// Confirm calls no port a test could fail in its place.
-    #[cfg(test)]
-    PanicAtConfirm(RpcReplyPort<bool>),
-    /// Which owner the workflow holds proven; `None` while it is out on a
-    /// tracked task.
-    #[cfg(test)]
-    Ownership(RpcReplyPort<Option<Ownership>>),
+    Ownership(RpcReplyPort<Ownership>),
 }
 
 struct ApplicationWorkflowActor;
 
-struct ActiveOperation {
-    response: Response,
-    task: tokio::task::JoinHandle<()>,
-    shutdown: bool,
-}
-
-/// One attempt's control context, owned by the actor for as long as the
-/// attempt exists. It is what makes a settlement addressable by `OperationId`
-/// without a registry: the context is created with the attempt and retired with
-/// it, so a decision can never reach a different attempt.
-struct MutationContext {
-    operation_id: OperationId,
-    decision: DecisionHandle,
-    decision_waiter: tokio::task::JoinHandle<()>,
-    admitted: bool,
-}
+type WakeUp = tokio::task::JoinHandle<Result<(), ractor::MessagingErr<Message>>>;
 
 struct ApplicationWorkflowState {
-    workflow: Option<Box<ApplicationWorkflow>>,
-    active: Option<ActiveOperation>,
-    pending: VecDeque<Request>,
+    workflow: ApplicationWorkflow,
     recovery_timer: Option<tokio::task::JoinHandle<()>>,
-    convergence_timer: Option<tokio::task::JoinHandle<()>>,
-    recovery_due: bool,
-    /// A child of the root shutdown token. Once cancelled, admission is
-    /// closed; `Close` then refuses what is queued.
+    /// The one wake-up for the deferred target's next attempt, with the
+    /// instant it was armed for.
+    convergence_timer: Option<(tokio::time::Instant, WakeUp)>,
+    schedule_ticks: bool,
+    /// A child of the root shutdown token. Once cancelled, every command is
+    /// refused at entry; the running one finishes first either way.
     closing_token: CancellationToken,
     status: watch::Sender<CoreLifecycleStatus>,
-    shutdown: Option<ShutdownReport>,
-    shutdown_waiters: Vec<Response>,
-    abandoned: bool,
-    /// Queued and in-flight mutation contexts.
-    mutations: Vec<MutationContext>,
     journal: watch::Sender<MutationJournal>,
     /// What the journal last announced; see [`PublishedView`].
     published: PublishedView,
@@ -177,7 +142,6 @@ struct ApplicationWorkflowState {
 #[derive(Default, PartialEq)]
 struct PublishedView {
     active: Option<OperationId>,
-    queued: Vec<OperationId>,
     uncertain: bool,
     last_completed: Option<OperationId>,
     maintenance: Option<String>,
@@ -209,8 +173,8 @@ pub(super) struct ApplicationWorkflowArgs {
     /// Who owns the runtime when the workflow starts. Production starts
     /// `Unproven` and lets StartupReconcile prove it (T10 §1.2).
     pub ownership: Ownership,
-    /// Once cancelled, no new command is admitted; the tracked task then
-    /// closes the workflow and waits for it to stop the core and itself.
+    /// Once cancelled, no new command is admitted; the actor is drained and
+    /// stops the core in `post_stop`.
     pub shutdown: CancellationToken,
     pub tasks: TaskTracker,
 }
@@ -227,295 +191,42 @@ fn conflict(message: &str) -> CoreError {
 }
 
 impl ApplicationWorkflowState {
-    /// Admission is closed once the shutdown token is cancelled, before the
-    /// `Close` that follows it arrives.
+    /// Admission is closed once the shutdown token is cancelled. The token is
+    /// read directly, so a command queued behind the running one is refused
+    /// whenever it arrives.
     fn closing(&self) -> bool {
         self.closing_token.is_cancelled()
     }
 
-    fn publish(&mut self) {
-        self.status.send_modify(|status| {
-            status.active = self.active.as_ref().map(|op| op.response.id);
-            status.queued = self
-                .pending
-                .iter()
-                .map(|r| r.response.id)
-                .chain(self.shutdown_waiters.iter().map(|r| r.id))
-                .collect();
-            status.shutting_down = self.closing();
-        });
-        self.publish_journal(None);
+    /// Automatic work runs only while the domain is open and settled.
+    fn automatic_work_allowed(&self) -> bool {
+        !self.closing() && !self.workflow.isolated()
     }
 
-    fn settle(&mut self, request: Response, result: Result<Output, CoreError>) {
-        self.status.send_modify(|status| {
-            if status.completed.len() == MAX_PENDING {
-                status.completed.pop_front();
-            }
-            status.completed.push_back(CoreLifecycleOperationResult {
-                id: request.id,
-                error: match &result {
-                    Err(error) => Some(error.to_string()),
-                    Ok(Output::Shutdown(report)) => {
-                        report.stop.as_ref().err().map(ToString::to_string)
-                    }
-                    Ok(Output::Settled(receipt)) => receipt.detail.clone(),
-                    _ => None,
-                },
-                backend_operation_id: result.as_ref().err().and_then(|error| error.operation_id),
-            });
-        });
-        if let Some(reply) = request.reply {
-            let _ = reply.send(result.map_err(|error| error.with_operation(request.id)));
-        } else if let Err(error) = result {
-            tracing::warn!(%error, "background core lifecycle operation failed");
-        }
-    }
-
-    fn reject(&mut self, request: Request, error: CoreError) {
-        let Request { command, response } = request;
-        match command {
-            Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) => {
-                // A timed-out installer may still reserve its updater task. Rejection
-                // before execution must settle that observer as well as the RPC.
-                let message = error.to_string();
-                if std::panic::catch_unwind(AssertUnwindSafe(|| {
-                    artifact.progress.finished(Some(&message));
-                }))
-                .is_err()
-                {
-                    tracing::error!("binary installation progress observer panicked");
-                }
-            }
-            // The Try never ran, so this refusal leaves the runtime untouched
-            // and the source store on the version it already holds (R4).
-            Command::Mutation(mut command) => {
-                command.request.answer(TryAck::Rejected(error.to_string()));
-            }
-            _ => {}
-        }
-        self.settle(response, Err(error));
-    }
-
-    fn close(&mut self) {
-        self.closing_token.cancel();
-        self.recovery_due = false;
-        if let Some(timer) = self.convergence_timer.take() {
-            timer.abort();
-        }
-        if let Some(timer) = self.recovery_timer.take() {
-            timer.abort();
-        }
-        while let Some(request) = self.pending.pop_front() {
-            // A rejected mutation is a finished attempt. Its context has to move
-            // into the bounded history with it: the transaction is still going
-            // to settle, and a settlement routed to a context nobody will ever
-            // act on again is worse than one recognised as late.
-            let operation_id = request.response.id;
-            self.reject(request, conflict("core lifecycle is shutting down"));
-            self.retire_mutation(operation_id);
-        }
-    }
-
-    fn drive(&mut self, myself: &ActorRef<Message>) {
-        if self.active.is_some() {
-            self.publish();
-            return;
-        }
-        let uncertain = self.workflow.as_ref().is_some_and(|w| w.isolated());
-        if uncertain {
-            self.status.send_modify(|status| status.uncertain = true);
-            let mut probes = VecDeque::new();
-            while let Some(request) = self.pending.pop_front() {
-                if matches!(&request.command, Command::RetryRuntime { explicit: true }) {
-                    probes.push_back(request);
-                    continue;
-                }
-                // Same rule as the shutdown drain: a rejected mutation is a
-                // finished attempt, and its context moves into the bounded
-                // history with it. Leaving it in `mutations` would strand it —
-                // `withdraw_mutation` only retires what is still queued, so the
-                // settlement this transaction is still going to make would find
-                // a context nobody will act on again.
-                let operation_id = request.response.id;
-                let error = CoreError::new(
-                    CoreErrorKind::OperationConflict,
-                    "previous core lifecycle operation has an uncertain outcome; inspect Configuration status and request runtime verification before further mutations",
-                    false,
-                );
-                // A refused first startup still hands every owner its full
-                // desired value, once (T10 §1.9); the workflow is idle here.
-                if matches!(request.command, Command::StartupReconcile)
-                    && let Some(workflow) = self.workflow.as_mut()
-                    && std::panic::catch_unwind(AssertUnwindSafe(|| {
-                        workflow.startup_unsettled(operation_id, &error)
-                    }))
-                    .is_err()
-                {
-                    tracing::error!("the full effects publish panicked");
-                }
-                self.reject(request, error);
-                self.retire_mutation(operation_id);
-            }
-            self.pending = probes;
-        }
-        let request = if self.closing() {
-            // Closing admission alone stops nothing: the core stops when a
-            // shutdown is asked for, or when every client is gone.
-            if self.shutdown.is_some() || (self.shutdown_waiters.is_empty() && !self.abandoned) {
-                self.publish();
-                if self.shutdown.is_some() && self.abandoned {
-                    myself.stop(None);
-                }
-                return;
-            }
-            Some(Request {
-                command: Command::Core(CoreCommand::Shutdown),
-                response: Response {
-                    id: OperationId::generate(),
-                    reply: None,
-                },
-            })
-        } else if let Some(request) = self.pending.pop_front() {
-            Some(request)
-        } else if std::mem::take(&mut self.recovery_due)
-            && !uncertain
-            && self
-                .workflow
-                .as_ref()
-                .is_some_and(|w| w.lifecycle.recovery_due())
-        {
-            Some(Request {
-                command: Command::Core(CoreCommand::RecoverServiceEndpoint),
-                response: Response {
-                    id: OperationId::generate(),
-                    reply: None,
-                },
-            })
-        } else if !uncertain
-            && self
-                .workflow
-                .as_ref()
-                .and_then(|w| w.deferred.as_ref())
-                .is_some_and(|d| {
-                    d.next_attempt
-                        .is_some_and(|at| at <= tokio::time::Instant::now())
-                })
-        {
-            Some(Request {
-                command: Command::RetryRuntime { explicit: false },
-                response: Response {
-                    id: OperationId::generate(),
-                    reply: None,
-                },
-            })
-        } else {
-            None
-        };
-        if let Some(Request { command, response }) = request {
-            if let Command::Mutation(mutation) = &command
-                && mutation.request.decision.decision() != StateDecision::Undecided
-            {
-                let id = response.id;
-                self.reject(
-                    Request { command, response },
-                    conflict("source settled before admission"),
-                );
-                self.retire_mutation(id);
-                self.drive(myself);
-                return;
-            }
-            let Some(mut workflow) = self.workflow.take() else {
-                return;
-            };
-            let id = response.id;
-            if matches!(command, Command::Mutation(_))
-                && let Some(context) = self.context_mut(id)
-            {
-                // The tracked task now waits on the decision itself. Wakes
-                // only withdraw attempts that have not entered this domain.
-                context.admitted = true;
-            }
-            let actor = myself.clone();
-            let shutdown = matches!(command, Command::Core(CoreCommand::Shutdown));
-            // Ownership moves into exactly one tracked task, never a shared lock.
-            // Dropping an RPC waiter cannot cancel the task or admit another one.
-            let task = tokio::spawn(async move {
-                let progress = match &command {
-                    Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) => {
-                        Some(artifact.progress.clone())
-                    }
-                    _ => None,
-                };
-                let startup = matches!(command, Command::StartupReconcile);
-                // A panic records nothing: the attempt and its pending action
-                // are fields of the workflow, and return with it holding
-                // exactly what they held when it unwound.
-                let result = match AssertUnwindSafe(workflow.execute(id, command))
-                    .catch_unwind()
-                    .await
-                {
-                    Ok(result) => result,
-                    Err(_) => {
-                        let error = domain_error(
-                            "core lifecycle workflow panicked; execution state is uncertain",
-                        );
-                        // Every owner is still handed its full desired value
-                        // once (T10 §1.9); a notifier must not keep the actor
-                        // from settling admission either.
-                        if startup
-                            && std::panic::catch_unwind(AssertUnwindSafe(|| {
-                                workflow.startup_unsettled(id, &error)
-                            }))
-                            .is_err()
-                        {
-                            tracing::error!("the full effects publish panicked");
-                        }
-                        Err(error)
-                    }
-                };
-                if let Some(progress) = progress {
-                    let error = result.as_ref().err().map(ToString::to_string);
-                    // An observer must not prevent the actor from settling admission.
-                    if std::panic::catch_unwind(AssertUnwindSafe(|| {
-                        progress.finished(error.as_deref())
-                    }))
-                    .is_err()
-                    {
-                        tracing::error!("binary installation progress observer panicked");
-                    }
-                }
-                let _ = actor.cast(Message::Completed {
-                    id,
-                    workflow,
-                    result: Box::new(result),
-                });
-            });
-            self.active = Some(ActiveOperation {
+    async fn request(&mut self, Request { command, response }: Request) {
+        if self.closing() {
+            self.reject(
+                command,
                 response,
-                task,
-                shutdown,
-            });
+                conflict("core lifecycle is shutting down"),
+            );
+        } else if self.workflow.isolated()
+            && !matches!(command, Command::RetryRuntime { explicit: true })
+        {
+            let error = CoreError::new(
+                CoreErrorKind::OperationConflict,
+                "previous core lifecycle operation has an uncertain outcome; inspect Configuration status and request runtime verification before further mutations",
+                false,
+            );
+            // A refused first startup still hands every owner its full
+            // desired value, once (T10 §1.9).
+            if matches!(command, Command::StartupReconcile) {
+                self.workflow.startup_unsettled(response.id, &error);
+            }
+            self.reject(command, response, error);
+        } else {
+            self.run(command, response).await;
         }
-        self.publish();
-    }
-
-    fn context_mut(&mut self, operation_id: OperationId) -> Option<&mut MutationContext> {
-        self.mutations
-            .iter_mut()
-            .find(|context| context.operation_id == operation_id)
-    }
-
-    /// Whether the execution domain is isolated pending an explicit recovery.
-    ///
-    /// A mutation has to be answered while the workflow may be out on a tracked
-    /// task, so the published flag is consulted too: it is the last value the
-    /// isolation had before the tracked task started.
-    fn recovery_required(&self) -> bool {
-        self.workflow
-            .as_ref()
-            .is_some_and(|workflow| workflow.isolated())
-            || self.status.borrow().uncertain
     }
 
     /// Admission (v2 §5.2 step 2, §4.4, R4).
@@ -523,19 +234,15 @@ impl ApplicationWorkflowState {
     /// Every refusal here happens before the candidate is persisted, so the
     /// source store keeps the version it has and the runtime is untouched. This
     /// is the whole point of putting admission inside `on_prepare`: a workflow
-    /// that is closing, isolated or saturated refuses the mutation rather than
-    /// refusing to apply one that is already committed.
-    fn begin_mutation(&mut self, mut request: MutationRequest, myself: &ActorRef<Message>) {
-        let operation_id = request.operation_id;
-        // The execution domain is free and nothing is ahead of this request, so
-        // `drive` admits it as soon as this handler returns.
-        let admittable = self.active.is_none() && self.pending.is_empty();
+    /// that is closing or isolated refuses the mutation rather than refusing
+    /// to apply one that is already committed.
+    async fn begin_mutation(&mut self, mut request: MutationRequest) {
         let refusal = if self.closing() {
             Some("the application workflow is shutting down")
-        } else if self.recovery_required() {
+        } else if self.workflow.isolated() {
             Some("a previous operation left the execution domain isolated; recover first")
-        } else if self.pending.len() >= MAX_PENDING {
-            Some("the application workflow queue is full")
+        } else if request.decision.decision() != StateDecision::Undecided {
+            Some("the source transaction settled before its Try ran")
         } else {
             None
         };
@@ -543,89 +250,118 @@ impl ApplicationWorkflowState {
             request.answer(TryAck::Rejected(refusal.to_owned()));
             return;
         }
-        let decision = request.decision.clone();
-        let actor = myself.clone();
-        let decision_waiter = tokio::spawn(async move {
-            decision.wait().await;
-            let _ = actor.cast(Message::WakeMutation(operation_id));
-        });
-        self.mutations.push(MutationContext {
-            operation_id,
-            decision: request.decision.clone(),
-            decision_waiter,
-            admitted: false,
-        });
-        self.pending.push_back(Request {
-            command: Command::Mutation(Box::new(MutationCommand { request })),
-            // A mutation has no RPC waiter: its caller is the state transaction,
-            // and that one is answered with the Try verdict during prepare.
-            response: Response {
-                id: operation_id,
-                reply: None,
-            },
-        });
-        if !admittable {
-            // Waiting for the execution domain is bounded: a mutation that
-            // waits holds its source transaction open for exactly as long.
-            const ADMISSION_BUDGET: Duration = Duration::from_secs(10);
-            // Detached on purpose: an expiry that arrives for an attempt which
-            // was admitted, withdrawn or forgotten in the meantime is a no-op.
-            let _timer = myself.send_after(ADMISSION_BUDGET, move || {
-                Message::AdmissionExpired(operation_id)
+        // A mutation has no RPC waiter: its caller is the state transaction,
+        // and that one is answered with the Try verdict during prepare.
+        let response = Response {
+            id: request.operation_id,
+            reply: None,
+        };
+        let command = Command::Mutation(Box::new(MutationCommand { request }));
+        self.run(command, response).await;
+    }
+
+    /// Runs one admitted command to its end. The mailbox is the only queue:
+    /// the next command starts once this one has settled.
+    async fn run(&mut self, command: Command, response: Response) {
+        let id = response.id;
+        self.status.send_modify(|status| status.active = Some(id));
+        self.publish_journal(None);
+        let progress = match &command {
+            Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) => {
+                Some(artifact.progress.clone())
+            }
+            _ => None,
+        };
+        let result = self.workflow.execute(id, command).await;
+        if let Some(progress) = progress {
+            let error = result.as_ref().err().map(ToString::to_string);
+            progress.finished(error.as_deref());
+        }
+        let receipt = match &result {
+            Ok(Output::Settled(receipt)) => Some((**receipt).clone()),
+            _ => None,
+        };
+        self.settle(response, result, receipt);
+    }
+
+    /// Refuses a command before it runs. Nothing was tried, so the runtime is
+    /// where it was.
+    fn reject(&mut self, command: Command, response: Response, error: CoreError) {
+        if let Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) = command {
+            // A refused installation settles its observer as well as the RPC.
+            artifact.progress.finished(Some(&error.to_string()));
+        }
+        self.settle(response, Err(error), None);
+    }
+
+    /// Records a result and publishes it, then answers. Published first: a
+    /// caller that observes its own reply must not read itself as running.
+    fn settle(
+        &mut self,
+        response: Response,
+        result: Result<Output, CoreError>,
+        receipt: Option<mutation::MutationReceipt>,
+    ) {
+        let uncertain = self.workflow.isolated();
+        self.status.send_modify(|status| {
+            status.active = None;
+            status.uncertain = uncertain;
+            if status.completed.len() == HISTORY_LEN {
+                status.completed.pop_front();
+            }
+            status.completed.push_back(CoreLifecycleOperationResult {
+                id: response.id,
+                error: match &result {
+                    Err(error) => Some(error.to_string()),
+                    Ok(Output::Settled(receipt)) => receipt.detail.clone(),
+                    _ => None,
+                },
+                backend_operation_id: result.as_ref().err().and_then(|error| error.operation_id),
             });
+        });
+        self.publish_journal(receipt);
+        if let Some(reply) = response.reply {
+            let _ = reply.send(result.map_err(|error| error.with_operation(response.id)));
+        } else if let Err(error) = result {
+            tracing::warn!(%error, "background core lifecycle operation failed");
         }
     }
 
-    fn wake_mutation(&mut self, operation_id: OperationId) {
-        if self.mutations.iter().any(|context| {
-            context.operation_id == operation_id
-                && !context.admitted
-                && context.decision.decision() != StateDecision::Undecided
-        }) {
-            self.withdraw_mutation(operation_id, "source transaction settled before admission");
+    /// Arms the one wake-up for the deferred target's next attempt. Only a
+    /// command moves `next_attempt`, and this runs after every message, so
+    /// the wake-up follows each write.
+    fn arm_convergence(&mut self, myself: &ActorRef<Message>) {
+        let due = if self.schedule_ticks && self.automatic_work_allowed() {
+            self.workflow
+                .deferred
+                .as_ref()
+                .and_then(|target| target.next_attempt)
+        } else {
+            None
+        };
+        if self.convergence_timer.as_ref().map(|(at, _)| *at) == due {
+            return;
         }
-    }
-
-    /// Takes a queued mutation back out of the work FIFO. Only ever reached
-    /// before the Try was admitted, so nothing was built and nothing applied.
-    fn withdraw_mutation(&mut self, operation_id: OperationId, reason: &str) {
-        let Some(index) = self
-            .pending
-            .iter()
-            .position(|request| request.response.id == operation_id)
-        else {
-            return;
-        };
-        let request = self.pending.remove(index).expect("index came from pending");
-        self.reject(request, conflict(reason));
-        self.retire_mutation(operation_id);
-    }
-
-    /// Releases the decision waiter and control context of a finished attempt.
-    fn retire_mutation(&mut self, operation_id: OperationId) {
-        let Some(index) = self
-            .mutations
-            .iter()
-            .position(|context| context.operation_id == operation_id)
-        else {
-            return;
-        };
-        let context = self.mutations.remove(index);
-        context.decision_waiter.abort();
+        if let Some((_, timer)) = self.convergence_timer.take() {
+            timer.abort();
+        }
+        self.convergence_timer = due.map(|at| {
+            let wait = at.saturating_duration_since(tokio::time::Instant::now());
+            (at, myself.send_after(wait, || Message::ConvergenceTick))
+        });
     }
 
     fn publish_journal(&mut self, receipt: Option<mutation::MutationReceipt>) {
-        let workflow = self.workflow.as_ref();
+        let workflow = &self.workflow;
         let view = {
             let status = self.status.borrow();
             PublishedView {
                 active: status.active,
-                queued: status.queued.clone(),
                 uncertain: status.uncertain,
                 last_completed: status.completed.back().map(|result| result.id),
-                maintenance: workflow.and_then(|w| w.maintenance()),
-                recovery: workflow.and_then(|w| w.recovery_view()),
-                deferred: workflow.and_then(|w| w.deferred.as_ref()).map(|d| {
+                maintenance: workflow.maintenance(),
+                recovery: workflow.recovery_view(),
+                deferred: workflow.deferred.as_ref().map(|d| {
                     (
                         d.operation_id,
                         d.health,
@@ -642,16 +378,14 @@ impl ApplicationWorkflowState {
                 journal.event_seq += 1;
             }
             if let Some(receipt) = receipt {
-                if journal.completed.len() == MAX_PENDING {
+                if journal.completed.len() == HISTORY_LEN {
                     journal.completed.pop_front();
                 }
                 journal.completed.push_back(receipt);
             }
-            if let Some(workflow) = workflow {
-                journal.recovery = workflow.recovery_view();
-                journal.deferred = workflow.deferred.clone();
-                journal.maintenance = workflow.maintenance();
-            }
+            journal.recovery = workflow.recovery_view();
+            journal.deferred = workflow.deferred.clone();
+            journal.maintenance = workflow.maintenance();
             changed
         });
         self.published = view;
@@ -670,21 +404,13 @@ impl Actor for ApplicationWorkflowActor {
     ) -> Result<ApplicationWorkflowState, ActorProcessingErr> {
         Ok(ApplicationWorkflowState {
             closing_token: args.workflow.lifecycle.closing.clone(),
-            workflow: Some(Box::new(args.workflow)),
-            active: None,
-            pending: VecDeque::new(),
+            workflow: args.workflow,
             recovery_timer: args
                 .schedule_ticks
                 .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick)),
-            convergence_timer: args.schedule_ticks.then(|| {
-                myself.send_interval(Duration::from_millis(250), || Message::ConvergenceTick)
-            }),
-            recovery_due: false,
+            convergence_timer: None,
+            schedule_ticks: args.schedule_ticks,
             status: args.status,
-            shutdown: None,
-            shutdown_waiters: Vec::new(),
-            abandoned: false,
-            mutations: Vec::new(),
             journal: args.journal,
             published: PublishedView::default(),
         })
@@ -697,146 +423,65 @@ impl Actor for ApplicationWorkflowActor {
         state: &mut ApplicationWorkflowState,
     ) -> Result<(), ActorProcessingErr> {
         match message {
-            Message::Request(request) => {
-                if matches!(request.command, Command::Core(CoreCommand::Shutdown)) {
-                    if let Some(report) = state.shutdown.clone() {
-                        state.settle(request.response, Ok(Output::Shutdown(report)));
-                    } else if state.shutdown_waiters.len() < MAX_PENDING {
-                        state.shutdown_waiters.push(request.response);
-                        state.close();
-                    } else {
-                        state.settle(request.response, Err(conflict("too many shutdown waiters")));
-                    }
-                } else if state.closing() {
-                    state.reject(request, conflict("core lifecycle is shutting down"));
-                } else if state.pending.len() >= MAX_PENDING {
-                    state.reject(request, conflict("core lifecycle queue is full"));
-                } else {
-                    state.pending.push_back(request);
-                }
-            }
-            Message::Completed {
-                id,
-                workflow,
-                result,
-            } => {
-                if state.active.as_ref().map(|op| op.response.id) != Some(id) {
-                    return Ok(());
-                }
-                let active = state.active.take().expect("matched active operation");
-                let mut result = *result;
-                let _ = active.task.await;
-                state.status.send_modify(|status| {
-                    status.active = None;
-                    status.uncertain = workflow.isolated();
-                });
-                if active.shutdown
-                    && let Err(error) = result
-                {
-                    result = Ok(Output::Shutdown(ShutdownReport {
-                        stop: Err(error),
-                        final_status: workflow.lifecycle.core.core_status().snapshot,
-                    }));
-                }
-                if let Ok(Output::Shutdown(report)) = &result {
-                    state.shutdown = Some(report.clone());
-                    let waiters = std::mem::take(&mut state.shutdown_waiters);
-                    // Published before the waiters are answered: a caller that
-                    // observes its own reply must not then read itself as still
-                    // queued, and `publish` is what recomputes the queue after
-                    // those waiters were taken out of it.
-                    state.publish();
-                    for waiter in waiters {
-                        state.settle(waiter, Ok(Output::Shutdown(report.clone())));
-                    }
-                }
-                let receipt = match &result {
-                    Ok(Output::Settled(receipt)) => Some((**receipt).clone()),
-                    _ => None,
-                };
-                state.workflow = Some(workflow);
-                // Every completed operation retires its context, receipt or
-                // not: a panicked mutation produces none, and the attempt is
-                // just as over. `retire_mutation` is a no-op for the ids that
-                // never had one, which is every non-mutation command.
-                state.retire_mutation(id);
-                state.publish_journal(receipt);
-                state.settle(active.response, result);
-            }
-            Message::BeginMutation(request) => state.begin_mutation(*request, &myself),
-            // Control messages of a transaction that already holds the
-            // execution domain. They are handled whatever the admission flags
-            // say: Closing rejects new mutations, it does not destroy one that
-            // is still waiting for its decision (v2 §11.3).
-            Message::WakeMutation(operation_id) => state.wake_mutation(operation_id),
-            Message::AdmissionExpired(operation_id) => {
-                if state
-                    .context_mut(operation_id)
-                    .is_some_and(|context| !context.admitted)
-                {
-                    state.withdraw_mutation(
-                        operation_id,
-                        "the admission budget elapsed before the execution domain took this mutation",
-                    );
-                }
-            }
-            Message::ConvergenceTick => {}
+            Message::Request(request) => state.request(request).await,
+            Message::BeginMutation(request) => state.begin_mutation(*request).await,
             Message::RecoveryTick => {
-                if !state.closing() {
-                    state.recovery_due = true;
+                if state.automatic_work_allowed() && state.workflow.lifecycle.recovery_due() {
+                    let command = Command::Core(CoreCommand::RecoverServiceEndpoint);
+                    state.run(command, Response::background()).await;
                 }
             }
-            Message::Close => {
-                state.abandoned = true;
-                state.close();
+            Message::ConvergenceTick => {
+                // Whichever wake-up this was, it has fired: the target is read
+                // afresh, and the next one is armed from what it says.
+                state.convergence_timer = None;
+                if state.automatic_work_allowed()
+                    && state
+                        .workflow
+                        .deferred
+                        .as_ref()
+                        .and_then(|target| target.next_attempt)
+                        .is_some_and(|at| at <= tokio::time::Instant::now())
+                {
+                    let command = Command::RetryRuntime { explicit: false };
+                    state.run(command, Response::background()).await;
+                }
             }
             #[cfg(test)]
             Message::Barrier(reply) => {
                 let _ = reply.send(());
             }
             #[cfg(test)]
-            Message::LiveMutationContexts(reply) => {
-                let _ = reply.send(state.mutations.len());
-            }
-            #[cfg(test)]
-            Message::PanicAtConfirm(reply) => {
-                let armed = state
-                    .workflow
-                    .as_mut()
-                    .map(|workflow| workflow.panic_at_confirm = true)
-                    .is_some();
-                let _ = reply.send(armed);
-            }
-            #[cfg(test)]
             Message::Ownership(reply) => {
-                let _ = reply.send(
-                    state
-                        .workflow
-                        .as_ref()
-                        .map(|workflow| workflow.lifecycle.ownership),
-                );
+                let _ = reply.send(state.workflow.lifecycle.ownership);
             }
         }
-        state.drive(&myself);
+        state.arm_convergence(&myself);
         Ok(())
     }
 
+    /// Runs only once the handler has returned, so the command that ran last
+    /// has settled before the core stops.
     async fn post_stop(
         &self,
         _myself: ActorRef<Message>,
         state: &mut ApplicationWorkflowState,
     ) -> Result<(), ActorProcessingErr> {
-        state.closing_token.cancel();
-        if let Some(timer) = state.convergence_timer.take() {
+        if let Some((_, timer)) = state.convergence_timer.take() {
             timer.abort();
         }
         if let Some(timer) = state.recovery_timer.take() {
             timer.abort();
         }
-        // An admitted task is allowed to finish even if the actor is stopped.
-        // In particular, never cancel installation while its blocking copy runs.
-        if let Some(active) = state.active.take() {
-            let _ = active.task.await;
+        let shutdown = Command::Core(CoreCommand::Shutdown);
+        if let Ok(Output::Shutdown(ShutdownReport {
+            stop: Err(error), ..
+        })) = state
+            .workflow
+            .execute(OperationId::generate(), shutdown)
+            .await
+        {
+            tracing::warn!(%error, "the core was not proven stopped");
         }
         Ok(())
     }
@@ -855,8 +500,10 @@ struct ClientInner {
 }
 
 impl Drop for ClientInner {
+    /// Once every client is gone, what is queued still runs, and the actor then
+    /// stops the core in `post_stop`.
     fn drop(&mut self) {
-        let _ = self.actor.cast(Message::Close);
+        let _ = self.actor.drain();
     }
 }
 
@@ -907,8 +554,6 @@ impl ApplicationWorkflowClient {
             pending_release: None,
             live: None,
             startup: None,
-            #[cfg(test)]
-            panic_at_confirm: false,
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),
@@ -916,9 +561,7 @@ impl ApplicationWorkflowClient {
                 runtime: runtime.clone(),
                 ports: args.ports,
                 recovery: ServiceRecovery::default(),
-                // A child, so the workflow's own close cancels only it and
-                // never reads as the shutdown the task below waits for.
-                closing: args.shutdown.child_token(),
+                closing: args.shutdown.clone(),
                 ownership: args.ownership,
             },
         };
@@ -933,17 +576,7 @@ impl ApplicationWorkflowClient {
             },
         )
         .await?;
-        // The scheduler settles each command through a self-cast `Completed`,
-        // which a drain would refuse, so the shutdown closes the workflow and
-        // waits for it to stop the core and then itself. This goes once the
-        // handler runs each command itself (plan L3-2).
-        let (shutdown, closing) = (args.shutdown, actor.clone());
-        args.tasks.spawn(async move {
-            shutdown.cancelled().await;
-            if closing.cast(Message::Close).is_ok() {
-                let _ = closing.get_cell().wait(None).await;
-            }
-        });
+        crate::client::drain_on_shutdown(&args.tasks, args.shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner {
             actor,
             runtime,
@@ -1006,11 +639,6 @@ impl ApplicationWorkflowClient {
     #[cfg(test)]
     pub(in crate::client) fn subscribe_status(&self) -> watch::Receiver<CoreLifecycleStatus> {
         self.0.status.clone()
-    }
-
-    #[cfg(test)]
-    pub(in crate::client) fn wake_mutation(&self, operation_id: OperationId) {
-        let _ = self.0.actor.cast(Message::WakeMutation(operation_id));
     }
 
     /// The structured record of recent mutations, what is deferred and why the
@@ -1102,15 +730,6 @@ impl ApplicationWorkflowClient {
         Command::Core(CoreCommand::StopCore),
         Stop,
         StopReport
-    );
-    // Production stops the core through `Close` on the shutdown token; the
-    // tests still ask for the stop directly until the scheduler goes (L3-2).
-    #[cfg(test)]
-    method!(
-        shutdown,
-        Command::Core(CoreCommand::Shutdown),
-        Shutdown,
-        ShutdownReport
     );
 
     #[cfg(test)]

@@ -49,7 +49,7 @@ use super::{
         participant::ApplicationMutationParticipant,
         policy::{CommandClass, CommandPolicy},
     },
-    RecordingNotifications, ScriptedWaitEndpoint, live_mutation_contexts,
+    RecordingNotifications, ScriptedWaitEndpoint,
 };
 use crate::{
     client::{
@@ -77,12 +77,6 @@ pub(super) struct ParkingBuilder {
     pub(super) entered: Notify,
     pub(super) release: Notify,
     pub(super) park: AtomicBool,
-    /// Scripts the build panicking, which is the one way a mutation finishes
-    /// with no receipt at all.
-    pub(super) panic: AtomicBool,
-    /// Scripts the content capture panicking: the mutation is still
-    /// preparing, and has not read the runtime yet.
-    pub(super) panic_capture: AtomicBool,
     calls: AtomicUsize,
     pub(super) fail_publish: AtomicBool,
 }
@@ -93,10 +87,6 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
     ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
-        assert!(
-            !self.panic_capture.load(Ordering::SeqCst),
-            "scripted capture panic"
-        );
         self.delegate.capture_content(profiles).await
     }
 
@@ -115,7 +105,6 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
             self.entered.notify_one();
             self.release.notified().await;
         }
-        assert!(!self.panic.load(Ordering::SeqCst), "scripted build panic");
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
             .await
@@ -151,7 +140,6 @@ pub(super) struct Fixture {
     /// The endpoint the core is reached through, when a test scripts how its
     /// operation waits answer.
     pub(super) scripted: Option<Arc<ScriptedWaitEndpoint>>,
-    pub(super) notifications: Arc<RecordingNotifications>,
     /// The workflow's shutdown token, and the task that waits for it to stop
     /// once the token is cancelled.
     pub(super) shutdown: tokio_util::sync::CancellationToken,
@@ -270,7 +258,7 @@ pub(super) async fn fixture_with_daemon(
 }
 
 /// The default graph, with the core reached through a [`ScriptedWaitEndpoint`]
-/// so a test can lose, stall or panic the wait for one chosen operation.
+/// so a test can lose or stall the wait for one chosen operation.
 pub(super) async fn scripted_fixture() -> Fixture {
     fixture_with_parts(true, None, true).await
 }
@@ -340,8 +328,6 @@ pub(super) async fn fixture_from(
         entered: Notify::new(),
         release: Notify::new(),
         park: AtomicBool::new(false),
-        panic: AtomicBool::new(false),
-        panic_capture: AtomicBool::new(false),
         fail_publish: AtomicBool::new(false),
     });
     let store = runtime::RuntimeSnapshotStore::default();
@@ -354,14 +340,13 @@ pub(super) async fn fixture_from(
         // baseline with a real mutation first, and that receipt supersedes this.
         store.confirm_applied(Arc::new(adopted_baseline()));
     }
-    let notifications = Arc::new(RecordingNotifications::default());
     let (shutdown, tasks) = (
         tokio_util::sync::CancellationToken::new(),
         tokio_util::task::TaskTracker::new(),
     );
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
-            notifications: notifications.clone(),
+            notifications: Arc::new(RecordingNotifications::default()),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
@@ -393,7 +378,6 @@ pub(super) async fn fixture_from(
         core,
         ports,
         scripted,
-        notifications,
         shutdown,
         tasks,
         _dir: dir,
@@ -526,17 +510,6 @@ pub(super) fn parked_local_write(
     }
 }
 
-async fn wait_queued(client: &ApplicationWorkflowClient, depth: usize) {
-    let mut status = client.0.status.clone();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        status.wait_for(|status| status.queued.len() == depth),
-    )
-    .await
-    .expect("the queue should reach the expected depth")
-    .expect("the workflow should stay alive");
-}
-
 pub(super) fn refused(result: &Result<ReplaceIfVersionResult, ReplaceIfVersionError>) -> bool {
     matches!(
         result,
@@ -566,10 +539,6 @@ pub(super) fn app_with_core(core: ClashCore) -> NyanpasuAppConfig {
 
 pub(super) fn no_local_write() -> futures::future::BoxFuture<'static, anyhow::Result<()>> {
     Box::pin(std::future::ready(Ok(())))
-}
-
-async fn barrier(client: &ApplicationWorkflowClient) {
-    super::barrier(client).await;
 }
 
 /// The structured record of one attempt, once the workflow has settled it.
@@ -697,6 +666,42 @@ fn drop_signal<T: Clone + Send + Sync + 'static>(
     })
 }
 
+/// Signals when the participant's prepare begins, which is when it sends its
+/// Try to the workflow.
+struct PrepareEntered<T: Clone + Send + Sync + 'static> {
+    inner: StateParticipant<T>,
+    entered: Arc<Notify>,
+}
+
+#[async_trait::async_trait]
+impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for PrepareEntered<T> {
+    fn name(&self) -> SubscriberName<'_> {
+        self.inner.name()
+    }
+    fn policy(&self) -> AckPolicy {
+        self.inner.policy()
+    }
+    async fn on_prepare(&self, change: StateChange<T>) -> Ack {
+        self.entered.notify_one();
+        self.inner.on_prepare(change).await
+    }
+    async fn on_committed(&self, change: StateChange<T>) -> Ack {
+        self.inner.on_committed(change).await
+    }
+    async fn on_rolled_back(&self, change: StateChange<T>, reason: RollbackReason) {
+        self.inner.on_rolled_back(change, reason).await;
+    }
+}
+
+fn signal_prepare<T: Clone + Send + Sync + 'static>(entered: Arc<Notify>) -> Decorate<T> {
+    Box::new(move |participant| {
+        Arc::new(PrepareEntered {
+            inner: participant,
+            entered,
+        })
+    })
+}
+
 // -- R4: admission gates the commit ----------------------------------------
 
 /// Closing refuses new mutations, and it refuses them *before* anything is
@@ -705,7 +710,7 @@ fn drop_signal<T: Clone + Send + Sync + 'static>(
 #[tokio::test]
 async fn a_closing_workflow_refuses_a_mutation_before_anything_is_committed() {
     let mut f = fixture().await;
-    f.client.shutdown().await.unwrap();
+    f.shutdown.cancel();
 
     let before = f.application.snapshot_handle().load().version;
     let (_, result) = simple_mutate(
@@ -785,20 +790,28 @@ async fn a_second_domain_is_admitted_only_after_the_first_commits_and_reads_it()
     };
     builder.entered.notified().await;
 
+    let second_prepared = Arc::new(Notify::new());
     let second = {
         let client = client.clone();
+        let entered = second_prepared.clone();
         tokio::spawn(async move {
-            let result = simple_mutate(
+            let operation_id = OperationId::generate();
+            let result = mutate(
                 &mut clash,
                 &client,
+                operation_id,
                 overrides(serde_json::json!({"mode": "global"})),
                 CommandClass::Save,
+                signal_prepare(entered),
+                no_local_write,
             )
             .await;
-            (clash, result)
+            (clash, (operation_id, result))
         })
     };
-    wait_queued(&client, 1).await;
+    // The second Try is sent as its prepare begins, and waits behind the
+    // first in the workflow's mailbox.
+    second_prepared.notified().await;
     assert_eq!(
         builder.calls.load(Ordering::SeqCst),
         1,
@@ -831,75 +844,6 @@ async fn a_second_domain_is_admitted_only_after_the_first_commits_and_reads_it()
 }
 
 // -- settlement routing ----------------------------------------------------
-
-/// A settlement carries the identity of the attempt that created it, so one
-/// arriving late for a finished attempt cannot cancel the attempt running now
-/// (V19).
-#[tokio::test]
-async fn a_late_cancel_for_a_settled_attempt_never_touches_the_current_one() {
-    let Fixture {
-        client,
-        mut clash,
-        _dir,
-        ..
-    } = fixture().await;
-
-    let (first, result) = simple_mutate(
-        &mut clash,
-        &client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&client, first).await.conclusion,
-        MutationConclusion::Confirmed
-    );
-
-    let entered = Arc::new(Notify::new());
-    let release = Arc::new(Notify::new());
-    let second = OperationId::generate();
-    let current = {
-        let client = client.clone();
-        let (entered, release) = (entered.clone(), release.clone());
-        tokio::spawn(async move {
-            let result = mutate(
-                &mut clash,
-                &client,
-                second,
-                overrides(serde_json::json!({"mode": "direct"})),
-                CommandClass::Save,
-                plain(),
-                parked_local_write(entered, release),
-            )
-            .await;
-            (clash, result)
-        })
-    };
-    // The current attempt is past its Try and waiting for its own decision.
-    entered.notified().await;
-
-    client.wake_mutation(first);
-    barrier(&client).await;
-
-    release.notify_one();
-    let (clash, result) = current.await.unwrap();
-    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
-    assert_eq!(
-        settled(&client, second).await.conclusion,
-        MutationConclusion::Confirmed,
-        "the current attempt follows its own decision"
-    );
-    assert!(
-        !client.status().uncertain,
-        "a settlement matching the authoritative decision is not a conflict"
-    );
-    assert_eq!(
-        serde_json::to_value(clash.snapshot().overrides.clone()).unwrap()["mode"],
-        "direct"
-    );
-}
 
 /// The commit notification never arrives. The authoritative decision still
 /// proves the commit, so the workflow confirms rather than hanging or guessing
@@ -1308,6 +1252,8 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
         mut clash,
         mut application,
         store,
+        shutdown,
+        tasks,
         _dir,
         ..
     } = fixture().await;
@@ -1334,29 +1280,25 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
     };
     entered.notified().await;
 
-    let shutdown = {
-        let client = client.clone();
-        tokio::spawn(async move { client.shutdown().await })
-    };
-    let mut status = client.0.status.clone();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        status.wait_for(|status| status.shutting_down),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    shutdown.cancel();
+    tasks.close();
 
+    // The next Try is refused once it is taken, which is after the undecided
+    // one has settled.
     let before = application.snapshot_handle().load().version;
-    let (_, rejected) = simple_mutate(
-        &mut application,
-        &client,
-        app_with_core(ClashCore::ClashRs),
-        CommandClass::ExplicitSwitch,
-    )
-    .await;
-    assert!(refused(&rejected), "{rejected:?}");
-    assert_eq!(application.snapshot_handle().load().version, before);
+    let rejected = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            let (_, result) = simple_mutate(
+                &mut application,
+                &client,
+                app_with_core(ClashCore::ClashRs),
+                CommandClass::ExplicitSwitch,
+            )
+            .await;
+            (application, result)
+        })
+    };
 
     release.notify_one();
     let (clash, result) = undecided.await.unwrap();
@@ -1375,7 +1317,10 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
             .as_str(),
         Some("global")
     );
-    assert!(shutdown.await.unwrap().unwrap().stop.is_ok());
+    let (application, rejected) = rejected.await.unwrap();
+    assert!(refused(&rejected), "{rejected:?}");
+    assert_eq!(application.snapshot_handle().load().version, before);
+    tasks.wait().await;
     drop(clash);
 }
 
@@ -3141,139 +3086,6 @@ async fn a_deferred_field_resubmitted_beside_an_unrelated_one_is_re_evaluated() 
     );
 }
 
-// -- §11.4: every terminal path retires its context -------------------------
-
-/// A mutation drained by an isolated execution domain is a finished attempt.
-/// Its context has to move into the bounded history with it: nothing retires it
-/// afterwards, because the queue it would be withdrawn from no longer holds it.
-#[tokio::test]
-async fn an_isolated_domain_retires_the_contexts_of_the_mutations_it_drains() {
-    let Fixture {
-        client,
-        endpoint,
-        builder,
-        mut clash,
-        mut application,
-        clash_path,
-        _dir,
-        ..
-    } = fixture().await;
-
-    let (priming, primed) = simple_mutate(
-        &mut clash,
-        &client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
-    settled(&client, priming).await;
-    assert_eq!(live_mutation_contexts(&client).await, 0);
-
-    // The first attempt parks inside its build, so the second one queues behind
-    // it and is still in the FIFO when the first isolates the domain.
-    builder.park.store(true, Ordering::SeqCst);
-    let first = OperationId::generate();
-    let isolating = {
-        let client = client.clone();
-        let restore_endpoint = endpoint.clone();
-        tokio::spawn(async move {
-            let result = mutate(
-                &mut clash,
-                &client,
-                first,
-                overrides(serde_json::json!({"mode": "direct"})),
-                CommandClass::Save,
-                plain(),
-                move || {
-                    Box::pin(async move {
-                        restore_endpoint.set_result_missing(true);
-                        Ok(())
-                    })
-                },
-            )
-            .await;
-            (clash, result)
-        })
-    };
-    builder.entered.notified().await;
-
-    let queued = {
-        let client = client.clone();
-        tokio::spawn(async move {
-            let result = simple_mutate(
-                &mut application,
-                &client,
-                app_with_core(ClashCore::ClashRs),
-                CommandClass::ExplicitSwitch,
-            )
-            .await;
-            (application, result)
-        })
-    };
-    wait_queued(&client, 1).await;
-    assert_eq!(live_mutation_contexts(&client).await, 2);
-
-    // From here the first attempt's save fails and its restore cannot be
-    // verified, which is what isolates the execution domain.
-    std::fs::remove_file(&clash_path).unwrap();
-    std::fs::create_dir_all(&clash_path).unwrap();
-    builder.release.notify_one();
-
-    let (_clash, result) = isolating.await.unwrap();
-    assert!(
-        matches!(result, Err(ReplaceIfVersionError::WriteConfig(_))),
-        "{result:?}"
-    );
-    assert_eq!(
-        settled(&client, first).await.conclusion,
-        MutationConclusion::RecoveryRequired
-    );
-
-    let (_application, (_, queued_result)) = queued.await.unwrap();
-    assert!(refused(&queued_result), "{queued_result:?}");
-    barrier(&client).await;
-    assert_eq!(
-        live_mutation_contexts(&client).await,
-        0,
-        "a drained mutation must not leave a context nothing will ever retire"
-    );
-}
-
-/// A panicking mutation produces no receipt, and the attempt is over all the
-/// same. The context follows it out.
-#[tokio::test]
-async fn a_panicking_mutation_retires_its_context() {
-    let Fixture {
-        client,
-        builder,
-        mut clash,
-        _dir,
-        ..
-    } = fixture().await;
-
-    builder.panic.store(true, Ordering::SeqCst);
-    let (_, result) = simple_mutate(
-        &mut clash,
-        &client,
-        overrides(serde_json::json!({"mode": "direct"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(
-        matches!(result, Err(ReplaceIfVersionError::State(_))),
-        "{result:?}"
-    );
-
-    barrier(&client).await;
-    assert!(client.status().uncertain);
-    assert_eq!(
-        live_mutation_contexts(&client).await,
-        0,
-        "a panicked attempt must not leave a context behind either"
-    );
-}
-
 #[tokio::test]
 async fn a_preflight_failure_or_changed_revision_never_submits_or_isolates() {
     for revision_changed in [false, true] {
@@ -3667,7 +3479,6 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     assert_eq!(snapshot.load().version, before.version);
     assert_eq!(std::fs::read(&f.app_path).ok(), bytes);
     assert_eq!(f.endpoint.submissions(), 0);
-    f.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -3699,7 +3510,6 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     f.builder.release.notify_one();
     save.await.unwrap().unwrap();
     assert!(application.snapshot().version > before.version);
-    f.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -3795,7 +3605,6 @@ async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
             .contains("mode: direct"),
         true
     );
-    f.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -3815,7 +3624,6 @@ async fn runtime_retry_waits_for_check_dependency_without_spending_apply_budget(
     assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET);
     assert_eq!(gap.attempts, 0);
     assert_eq!(f.endpoint.submissions(), before);
-    f.client.shutdown().await.unwrap();
 }
 
 /// S17 on a committed target: consecutive dependency results count up
@@ -3850,7 +3658,6 @@ async fn dependency_retries_count_waits_until_an_application_result() {
     assert_eq!(gap.waits, 0);
     assert_eq!(gap.attempts_remaining, DEFERRED_RETRY_BUDGET - 1);
     assert_eq!(gap.attempts, 1);
-    f.client.shutdown().await.unwrap();
 }
 
 /// T10 §1.7 #2 (D11): an automatic retry never moves the runtime to another
@@ -3920,7 +3727,6 @@ async fn stopped_runtime_is_not_started_by_retry_now() {
         f.client.mutation_journal().deferred.unwrap().health,
         ConvergenceHealth::WaitingDependency
     );
-    f.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -3965,7 +3771,6 @@ async fn unknown_retry_queries_original_before_restoring_aborted_source() {
             .config_digest,
         baseline.config_digest
     );
-    f.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -3989,5 +3794,4 @@ async fn committed_product_retry_does_not_resubmit_or_rewrite_source() {
     assert!(f.client.mutation_journal().maintenance.is_none());
     assert_eq!(f.endpoint.reconciled_bytes().len(), submitted);
     assert_eq!(f.clash.snapshot_handle().load().version, version);
-    f.client.shutdown().await.unwrap();
 }

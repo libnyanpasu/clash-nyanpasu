@@ -1,11 +1,11 @@
 //! The mutation lifecycle: `Preparing → TryingCritical → AwaitDecision →
 //! Confirming | Cancelling | RecoveryRequired` (v2 图 3).
 //!
-//! All of it runs inside the workflow's single execution domain, as one tracked
-//! task. Holding the domain from the Try through the decision is what keeps the
-//! committed order and the applied order the same: the next mutation is admitted
-//! only after this one has settled, so it reads the source configuration this
-//! one committed rather than the one it replaced (v2 §5.2).
+//! All of it runs inside the workflow's single execution domain, as one command
+//! of the actor's handler. Holding the domain from the Try through the decision
+//! is what keeps the committed order and the applied order the same: the next
+//! mutation is admitted only after this one has settled, so it reads the source
+//! configuration this one committed rather than the one it replaced (v2 §5.2).
 //!
 //! The phases compose the pure services rather than restating them: `impact`
 //! classifies, `policy` decides what the command may do and whether a failure
@@ -365,9 +365,6 @@ impl ApplicationWorkflow {
             return Ok(());
         };
         let reestablish = matches!(target.origin, TargetOrigin::Reestablish(_));
-        // A move between two slots of the box, with nothing held in a local an
-        // unwind could drop: a panic from here on leaves the target inside the
-        // attempt.
         self.live = Some(LiveAttempt::committed_target(operation_id, target));
         if reestablish {
             self.retry_reestablish(explicit).await;
@@ -936,7 +933,7 @@ impl ApplicationWorkflow {
         // the verdict until all of it has finished.
         self.lifecycle.runtime.begin_transition();
         // Charged before the first action that can reach the runtime is
-        // written, so neither a panic nor a lost receipt skips it (T10 §1.8).
+        // written, so a lost receipt does not skip it (T10 §1.8).
         self.charge_attempt(charge);
         let mut handed_off = false;
         let mut expected = baseline
@@ -1241,11 +1238,6 @@ impl ApplicationWorkflow {
         interruption: Option<crate::client::core_lifecycle::apply::RuntimeApplyContext>,
         degradations: &mut Vec<crate::client::runtime::Degradation>,
     ) -> (MutationConclusion, Option<String>) {
-        #[cfg(test)]
-        assert!(
-            !std::mem::take(&mut self.panic_at_confirm),
-            "scripted panic at Confirm"
-        );
         match outcome {
             RuntimePrepareOutcome::Applied(candidate) => {
                 let applied = AppliedVerdict::new(&candidate, leaves_service_mode(&request.change));

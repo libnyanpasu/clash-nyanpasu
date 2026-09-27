@@ -7,7 +7,7 @@
 //! now (C1, V19).
 //!
 //! The participant submits the candidate during prepare. Source settlement is
-//! read directly from its authoritative handle by the tracked workflow task.
+//! read directly from its authoritative handle by the workflow's handler.
 
 // The production writers of these values are the three domain actors, which
 // move onto the participant in T6; until then only the workflow's own tests
@@ -65,8 +65,8 @@ impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant
         SubscriberName(std::borrow::Cow::Borrowed(&self.name))
     }
 
-    /// Admission, the prepare-heavy build and the single tracked Try all happen
-    /// here, before anything is persisted. A refusal is therefore a refusal of
+    /// Admission, the prepare-heavy build and the single Try all happen here,
+    /// before anything is persisted. A refusal is therefore a refusal of
     /// the whole mutation, and the store keeps the version it had (R4).
     ///
     /// The source transaction waits for this verdict for as long as the Try

@@ -48,7 +48,6 @@ async fn the_shutdown_refuses_new_work_and_stops_the_core_once() {
 
     assert!(f.client.reconcile().await.is_err(), "closed to new work");
     assert!(stopped_within(&f.tasks, SETTLE).await);
-    assert!(f.client.status().shutting_down);
     assert_eq!(f.endpoint.submissions(), submitted + 1, "one stop");
 }
 
@@ -108,9 +107,10 @@ async fn the_shutdown_during_a_try_waits_for_it_to_confirm() {
 }
 
 /// X3 (V16): the shutdown keeps a transaction waiting for its decision and
-/// refuses the one that arrives behind it without touching its source.
+/// refuses the one queued behind it without touching its source. That one is
+/// taken, and refused, once the first has settled.
 #[tokio::test]
-async fn the_shutdown_during_await_decision_keeps_the_decision_wait() {
+async fn the_shutdown_during_await_decision_waits_for_the_decision() {
     let f = fixture().await;
     let submitted = f.endpoint.submissions();
     let entered = Arc::new(Notify::new());
@@ -142,15 +142,19 @@ async fn the_shutdown_during_await_decision_keeps_the_decision_wait() {
     );
     let mut application = f.application;
     let before = application.snapshot_handle().load().version;
-    let (_, queued) = simple_mutate(
-        &mut application,
-        &f.client,
-        app_with_core(ClashCore::ClashRs),
-        CommandClass::ExplicitSwitch,
-    )
-    .await;
-    assert!(refused(&queued), "{queued:?}");
-    assert_eq!(application.snapshot_handle().load().version, before);
+    let queued = {
+        let client = f.client.clone();
+        tokio::spawn(async move {
+            let (_, result) = simple_mutate(
+                &mut application,
+                &client,
+                app_with_core(ClashCore::ClashRs),
+                CommandClass::ExplicitSwitch,
+            )
+            .await;
+            (application, result)
+        })
+    };
     assert_eq!(
         f.endpoint.submissions(),
         submitted + 1,
@@ -167,6 +171,9 @@ async fn the_shutdown_during_await_decision_keeps_the_decision_wait() {
         MutationConclusion::Confirmed,
         "the shutdown does not destroy an undecided transaction"
     );
+    let (application, queued) = queued.await.unwrap();
+    assert!(refused(&queued), "{queued:?}");
+    assert_eq!(application.snapshot_handle().load().version, before);
     assert!(stopped_within(&f.tasks, SETTLE).await);
     assert_eq!(f.endpoint.submissions(), submitted + 2, "then the stop");
 }
@@ -227,8 +234,8 @@ async fn the_shutdown_during_a_cancel_waits_for_the_restore() {
     );
 }
 
-/// The abandoned-client path is unchanged: once every client is gone, the
-/// workflow stops the core itself and then its own actor.
+/// Once every client is gone, the actor is drained and stops the core in
+/// `post_stop`, with no token cancelled.
 #[tokio::test]
 async fn an_abandoned_workflow_still_stops_the_core() {
     let f = fixture().await;

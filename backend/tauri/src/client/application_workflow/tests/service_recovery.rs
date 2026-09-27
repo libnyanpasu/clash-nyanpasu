@@ -105,6 +105,7 @@ struct RecoveryGraph {
     client: ApplicationWorkflowClient,
     daemon: Arc<RecoveringDaemon>,
     builder: Arc<BlockingBuilder>,
+    shutdown: CancellationToken,
 }
 
 impl RecoveryGraph {
@@ -145,12 +146,14 @@ impl RecoveryGraph {
         core.change_host(endpoint).await.unwrap();
         core.refresh_status().await.unwrap();
         let service = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
+        let shutdown = CancellationToken::new();
         let (client, builder, application, _) = workflow_graph_with_clients(
             &dir,
             core.clone(),
             service,
             schedule_ticks,
             Arc::new(crate::client::SessionPortResolver::default()),
+            shutdown.clone(),
         )
         .await;
         // The Service host these tests recover is the one the configuration
@@ -164,6 +167,7 @@ impl RecoveryGraph {
             client,
             daemon,
             builder,
+            shutdown,
         }
     }
 
@@ -267,7 +271,6 @@ async fn daemon_crash_reconnects_and_restores_only_a_previously_running_core() {
             usize::from(running)
         );
         assert!(!graph.client.status().uncertain);
-        graph.client.shutdown().await.unwrap();
     }
 }
 
@@ -282,7 +285,6 @@ async fn transport_outage_reconnects_without_restart_or_reconcile() {
         graph.client.core_status().connectivity,
         EndpointConnectivity::Connected
     );
-    graph.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -319,7 +321,6 @@ async fn unknown_probe_retries_with_cooldown_and_stops_at_the_connection_budget(
         graph.client.core_status().connectivity,
         EndpointConnectivity::Connected
     );
-    graph.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -333,7 +334,6 @@ async fn explicit_service_stop_suppresses_recovery() {
     assert!(graph.client.status().active.is_none());
     assert_eq!(graph.daemon.probes.load(Ordering::SeqCst), probes);
     assert_eq!(graph.starts(), 0);
-    graph.client.shutdown().await.unwrap();
 }
 
 /// A command the workflow refuses before it does anything must not commit its
@@ -353,7 +353,6 @@ async fn a_rejected_uninstall_leaves_recovery_armed() {
         EndpointConnectivity::Connected
     );
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
-    graph.client.shutdown().await.unwrap();
 }
 
 /// The router refuses to claim a runtime it cannot prove stopped, so a Local
@@ -380,7 +379,6 @@ async fn a_failed_local_handoff_leaves_recovery_armed_on_the_service_host() {
         EndpointConnectivity::Connected
     );
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
-    graph.client.shutdown().await.unwrap();
 }
 
 /// A stop the user asked for is not a snapshot: the projection can still say
@@ -408,7 +406,6 @@ async fn a_deliberately_stopped_core_is_not_restarted_by_recovery() {
         1,
         "the stop, and nothing that starts the core again"
     );
-    graph.client.shutdown().await.unwrap();
 }
 
 /// The pump publishes asynchronously, so a command can enter while the
@@ -448,7 +445,6 @@ async fn a_degradation_landing_mid_command_still_restores_the_core() {
         generation,
         "the restore reuses the endpoint the command adopted"
     );
-    graph.client.shutdown().await.unwrap();
 }
 
 /// The stop guard is not cleared by a reconcile that failed, and re-arming the
@@ -474,7 +470,6 @@ async fn a_user_stop_survives_a_failed_reconcile_and_a_service_rearm() {
         1,
         "the stop, and nothing that starts the core again"
     );
-    graph.client.shutdown().await.unwrap();
 }
 
 /// An applied config is what ends the stop: after it the core is running by the
@@ -492,7 +487,6 @@ async fn a_successful_reconcile_discharges_a_user_stop() {
         3,
         "stop, the user's reconcile, and the restore the outage owed"
     );
-    graph.client.shutdown().await.unwrap();
 }
 
 /// A rejection changes nothing, in either direction: the round-1 fix kept an
@@ -518,7 +512,6 @@ async fn a_failed_local_handoff_preserves_an_explicit_suppression() {
     assert!(graph.client.status().active.is_none());
     assert_eq!(graph.daemon.probes.load(Ordering::SeqCst), probes);
     assert_eq!(graph.starts(), 0);
-    graph.client.shutdown().await.unwrap();
 }
 
 /// A terminal failure ends the automatic retries; it must not also destroy the
@@ -540,7 +533,6 @@ async fn a_terminal_restore_failure_is_finished_by_an_explicit_service_start() {
     graph.client.start_service().await.unwrap();
     graph.attempt().await;
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
-    graph.client.shutdown().await.unwrap();
 }
 
 /// The user can reconnect the host manually before the first recovery tick.
@@ -563,7 +555,6 @@ async fn a_manual_reconnect_still_restores_the_interrupted_core() {
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
     graph.attempt().await;
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
-    graph.client.shutdown().await.unwrap();
 }
 
 /// Reattaching the endpoint clears the degraded projection and the snapshot the
@@ -600,7 +591,6 @@ async fn an_unfinished_restore_survives_a_reconnected_endpoint() {
         "a connected endpoint must not be re-adopted"
     );
     assert_eq!(graph.starts(), 1);
-    graph.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -611,20 +601,19 @@ async fn shutdown_during_restart_prevents_readoption_and_reconcile() {
     let generation = graph.client.core_status().generation;
     graph.client.0.actor.cast(Message::RecoveryTick).unwrap();
     graph.daemon.start_entered.notified().await;
-    let client = graph.client.clone();
-    let mut shutdown = Box::pin(client.shutdown());
-    assert!(shutdown.as_mut().now_or_never().is_none());
-    barrier(&graph.client).await;
-    assert!(graph.client.status().shutting_down);
+    let stopped = graph.client.0.actor.get_cell();
+    graph.shutdown.cancel();
     graph.daemon.start_release.notify_one();
-    shutdown.await.unwrap();
+    stopped
+        .wait(Some(Duration::from_secs(5)))
+        .await
+        .expect("the workflow stops once the recovery it was running ends");
     assert_eq!(graph.client.core_status().generation, generation);
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 0);
-    let probes = graph.daemon.probes.load(Ordering::SeqCst);
-    graph.client.0.actor.cast(Message::RecoveryTick).unwrap();
-    barrier(&graph.client).await;
-    assert!(graph.client.status().active.is_none());
-    assert_eq!(graph.daemon.probes.load(Ordering::SeqCst), probes);
+    assert!(
+        graph.client.0.actor.cast(Message::RecoveryTick).is_err(),
+        "nothing recovers after the shutdown"
+    );
 }
 
 #[tokio::test]
@@ -642,7 +631,6 @@ async fn recovery_tick_after_handoff_does_not_pull_service_back() {
     assert_eq!(graph.daemon.probes.load(Ordering::SeqCst), probes);
     assert_eq!(graph.starts(), 0);
     assert_eq!(graph.client.core_status().host, ExecutionHost::Local);
-    graph.client.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -663,5 +651,4 @@ async fn production_timer_recovers_without_a_user_request() {
     );
     assert_eq!(graph.starts(), 1);
     assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
-    graph.client.shutdown().await.unwrap();
 }

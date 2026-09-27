@@ -17,7 +17,10 @@ use super::{
 use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary};
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::{
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    time::Duration,
+};
 use struct_patch::Patch;
 use tokio::sync::Notify;
 
@@ -1151,48 +1154,123 @@ fn config_commit_failure_never_reconciles_or_changes_the_snapshot() {
     });
 }
 
+/// V08/V09 (U7): a save whose write fails after its Try applied is returned
+/// as an error that names the persistence cause and what became of the
+/// runtime: rolled back, or not, in which case the domain is isolated. The
+/// source keeps its version either way.
 #[test]
 fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
-    let dir = tempfile::tempdir().unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
-    let args = test_client_args_with_endpoint(&dir, endpoint.clone());
-    let path = args.paths.clash_config_path();
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
-    tauri::async_runtime::block_on(async {
-        endpoint.prime(&client).await;
-        disable_mode_interruption(&client).await;
-        let before = client.inner.clash_config.snapshot();
-        let mut settled = client.inner.application_workflow.subscribe_mutations();
-        let completed = settled.borrow().completed.len();
-        if path.exists() {
-            std::fs::remove_file(&path).unwrap();
-        }
-        std::fs::create_dir_all(&path).unwrap();
-        assert!(
-            client
+    for restore_lost in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let scripted = ScriptedWaitEndpoint::new(endpoint.clone());
+        let args = test_client_args_with_endpoint(&dir, scripted.clone());
+        let path = args.paths.clash_config_path();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
+            disable_mode_interruption(&client).await;
+            let before = client.inner.clash_config.snapshot();
+            if path.exists() {
+                std::fs::remove_file(&path).unwrap();
+            }
+            std::fs::create_dir_all(&path).unwrap();
+            // The Try applies; the Cancel's restore may lose its answer.
+            scripted.queue(WaitScript::Deliver);
+            if restore_lost {
+                scripted.queue(WaitScript::Missing);
+            }
+            let error = client
                 .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
                 .await
-                .is_err()
-        );
-        let after = client.inner.clash_config.snapshot();
-        assert_eq!(after.version, before.version);
-        assert_eq!(
-            serde_json::to_value(after.state).unwrap(),
-            serde_json::to_value(before.state).unwrap()
-        );
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            settled.wait_for(|journal| journal.completed.len() > completed),
+                .expect_err("the save failed")
+                .to_string();
+            let after = client.inner.clash_config.snapshot();
+            assert_eq!(after.version, before.version);
+            assert_eq!(
+                serde_json::to_value(after.state).unwrap(),
+                serde_json::to_value(before.state).unwrap()
+            );
+            assert!(error.contains("failed to persist clash config"), "{error}");
+            assert!(error.contains("failed to write config"), "{error}");
+            assert_eq!(
+                endpoint.submissions(),
+                2,
+                "Try applied and Cancel resubmitted the baseline"
+            );
+            if restore_lost {
+                assert!(error.contains("rolling the runtime back failed"), "{error}");
+                assert!(error.contains("recovery required"), "{error}");
+                assert!(client.inner.application_workflow.status().uncertain);
+            } else {
+                assert!(
+                    error.contains("the runtime was rolled back to the previous configuration"),
+                    "{error}"
+                );
+                assert!(!client.inner.application_workflow.status().uncertain);
+            }
+        });
+    }
+}
+
+/// An installation sent after the workflow has stopped never reaches it, so it
+/// certainly did not run: the caller gets a definite refusal, and the progress
+/// observer its one terminal answer.
+#[test]
+fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
+    let f = Fixture::new(false, false);
+    tauri::async_runtime::block_on(async {
+        f.client.request_shutdown();
+        f.client.wait_shutdown().await;
+        let (mut artifact, _) = f.artifact(ClashCore::Mihomo);
+        let terminal = Arc::new(TerminalProgress::default());
+        artifact.progress = terminal.clone();
+        let error = f
+            .client
+            .inner
+            .application_workflow
+            .replace_binary(artifact)
+            .await
+            .unwrap_err();
+        assert!(error.message.contains("was not run"), "{error}");
+        let outcomes = terminal.0.lock().unwrap().clone();
+        assert_eq!(outcomes.len(), 1, "exactly one terminal notification");
+        assert!(outcomes[0].as_ref().unwrap().contains("was not run"));
+        assert_eq!(f.installer.calls.load(Ordering::SeqCst), 0);
+
+        // Through the updater, the same refusal ends its task as a failure
+        // that reserves nothing.
+        use crate::core::updater::{UpdaterClient, UpdaterState};
+        let updater = UpdaterClient::spawn(
+            Arc::new(crate::core::updater::tests::ReadyBackend),
+            Arc::new(f.client.inner.application_workflow.clone()),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
-        .unwrap()
         .unwrap();
-        assert_eq!(
-            endpoint.submissions(),
-            2,
-            "Try applied and Cancel restored the baseline"
+        updater.fetch_latest().await.unwrap();
+        let id = updater.update(ClashCore::Mihomo).await.unwrap();
+        let state = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let state = updater.inspect(id).await.unwrap().state;
+                if matches!(state, UpdaterState::Done | UpdaterState::Failed(_)) {
+                    return state;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the updater task ends");
+        assert!(
+            matches!(&state, UpdaterState::Failed(reason) if reason.contains("was not run")),
+            "{state:?}"
         );
-        assert!(!client.inner.application_workflow.status().uncertain);
+        assert_ne!(
+            updater.update(ClashCore::Mihomo).await.unwrap(),
+            id,
+            "a failed task reserves nothing"
+        );
     });
 }
 

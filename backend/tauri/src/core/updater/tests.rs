@@ -150,10 +150,7 @@ async fn settled_report(client: &UpdaterClient, id: usize) -> UpdaterSummary {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let summary = client.inspect(id).await.unwrap();
-            if matches!(
-                summary.state,
-                UpdaterState::Done | UpdaterState::Failed(_) | UpdaterState::Pending(_)
-            ) {
+            if matches!(summary.state, UpdaterState::Done | UpdaterState::Failed(_)) {
                 return summary;
             }
         }
@@ -355,7 +352,7 @@ async fn the_shutdown_waits_for_an_extraction_in_progress() {
     shutdown.run().await;
 }
 
-struct ReadyBackend;
+pub(crate) struct ReadyBackend;
 
 #[async_trait]
 impl UpdaterBackend for ReadyBackend {
@@ -408,9 +405,6 @@ impl CoreUpdateInstaller for RecordingInstaller {
             .send(artifact)
             .map_err(|_| anyhow!("test installation receiver dropped"))?;
         match self.error {
-            Some("installation request timed out") => Err(anyhow::Error::new(
-                ports::InstallPending("installation request timed out".into()),
-            )),
             Some(error) => Err(anyhow!(error)),
             None => Ok(()),
         }
@@ -446,52 +440,6 @@ async fn successful_install_finishes_and_keeps_staging_owned_by_installer() {
     assert_eq!(std::fs::read(&prepared.source).unwrap(), b"core binary");
     drop(prepared);
     assert!(!staging_path.exists());
-}
-
-#[tokio::test]
-async fn pending_install_reserves_admission_until_authoritative_completion() {
-    let (client, mut installed) = installing_client(Some("installation request timed out")).await;
-    client.fetch_latest().await.unwrap();
-    let id = client.update(ClashCore::Mihomo).await.unwrap();
-    assert!(
-        matches!(settled_report(&client, id).await.state, UpdaterState::Pending(reason) if reason.contains("timed out"))
-    );
-    let prepared = installed.try_recv().unwrap();
-    client
-        .0
-        .0
-        .cast(Message::Prune(
-            Instant::now() + RETENTION + Duration::from_secs(1),
-        ))
-        .unwrap();
-    assert_eq!(client.update(ClashCore::Mihomo).await.unwrap(), id);
-    assert!(matches!(
-        client.inspect(id).await.unwrap().state,
-        UpdaterState::Pending(_)
-    ));
-    prepared.progress.restarting();
-    client
-        .0
-        .0
-        .cast(Message::Prune(
-            Instant::now() + RETENTION + Duration::from_secs(1),
-        ))
-        .unwrap();
-    assert!(matches!(
-        client.inspect(id).await.unwrap().state,
-        UpdaterState::Restarting
-    ));
-    assert_eq!(client.update(ClashCore::Mihomo).await.unwrap(), id);
-    prepared.progress.finished(None);
-    assert!(matches!(
-        client.inspect(id).await.unwrap().state,
-        UpdaterState::Done
-    ));
-    prepared.progress.finished(Some("late stale failure"));
-    assert!(matches!(
-        client.inspect(id).await.unwrap().state,
-        UpdaterState::Done
-    ));
 }
 
 #[tokio::test]

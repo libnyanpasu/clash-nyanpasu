@@ -34,7 +34,6 @@ pub enum UpdaterState {
     Replacing,
     Restarting,
     Done,
-    Pending(String),
     Failed(String),
 }
 

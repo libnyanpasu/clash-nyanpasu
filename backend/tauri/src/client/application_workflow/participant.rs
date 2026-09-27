@@ -7,7 +7,8 @@
 //! now (C1, V19).
 //!
 //! The participant submits the candidate during prepare. Source settlement is
-//! read directly from its authoritative handle by the workflow's handler.
+//! read directly from its authoritative handle by the workflow's handler, and
+//! the settled receipt goes back to the source on the channel it handed over.
 
 // The production writers of these values are the three domain actors, which
 // move onto the participant in T6; until then only the workflow's own tests
@@ -16,13 +17,16 @@
 
 use nyanpasu_core::state::{Ack, DecisionHandle, StateAckSubscriber, StateChange, SubscriberName};
 use nyanpasu_core_manager::OperationId;
-use std::{marker::PhantomData, sync::Arc};
+use std::{
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
 use tokio::sync::oneshot;
 
 use super::{
     ApplicationWorkflowClient,
     impact::MutationHints,
-    mutation::{MutationDomain, MutationRequest},
+    mutation::{MutationDomain, MutationReceipt, MutationRequest},
     policy::CommandClass,
 };
 
@@ -32,6 +36,9 @@ pub(crate) struct ApplicationMutationParticipant<T: MutationDomain> {
     class: CommandClass,
     decision: DecisionHandle,
     workflow: ApplicationWorkflowClient,
+    /// Taken by the one prepare that sends the Try: `on_prepare` has only
+    /// `&self`.
+    settle: Mutex<Option<oneshot::Sender<MutationReceipt>>>,
     name: String,
     _state: PhantomData<T>,
 }
@@ -46,6 +53,7 @@ impl<T: MutationDomain> ApplicationMutationParticipant<T> {
         class: CommandClass,
         decision: DecisionHandle,
         workflow: ApplicationWorkflowClient,
+        settle: oneshot::Sender<MutationReceipt>,
     ) -> Arc<Self> {
         Arc::new(Self {
             name: format!("application-mutation/{operation_id}"),
@@ -54,6 +62,7 @@ impl<T: MutationDomain> ApplicationMutationParticipant<T> {
             class,
             decision,
             workflow,
+            settle: Mutex::new(Some(settle)),
             _state: PhantomData,
         })
     }
@@ -81,6 +90,7 @@ impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant
             class: self.class,
             decision: self.decision.clone(),
             ack: Some(ack),
+            settle: self.settle.lock().unwrap().take(),
         }) {
             return Ack::Failed(error);
         }

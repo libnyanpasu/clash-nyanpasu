@@ -408,9 +408,43 @@ pub(super) async fn mutate<T>(
 where
     T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
 {
+    mutate_settling(
+        manager,
+        client,
+        operation_id,
+        next,
+        class,
+        decorate,
+        local_write,
+    )
+    .await
+    .0
+}
+
+/// The same mutation, with the settlement the Runtime sends its source. It
+/// arrives once Confirm or Cancel is over, which a test may be holding still,
+/// so awaiting it is the caller's choice.
+pub(super) async fn mutate_settling<T>(
+    manager: &mut PersistentStateManager<T>,
+    client: &ApplicationWorkflowClient,
+    operation_id: OperationId,
+    next: T,
+    class: CommandClass,
+    decorate: Decorate<T>,
+    local_write: impl FnOnce() -> futures::future::BoxFuture<'static, anyhow::Result<()>>
+    + Send
+    + 'static,
+) -> (
+    Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
+    crate::state::mutation::Settlement,
+)
+where
+    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+{
     let version = manager.snapshot_handle().load().version;
     let client = client.clone();
-    manager
+    let (settle, settlement) = tokio::sync::oneshot::channel();
+    let result = manager
         .replace_if_version_with_participant(
             version,
             next,
@@ -421,12 +455,14 @@ where
                     class,
                     decision,
                     client,
+                    settle,
                 ))
             },
             local_write,
             || async { Ok(()) },
         )
-        .await
+        .await;
+    (result, settlement)
 }
 
 /// One mutation carrying request-local hints, which is how a content update
@@ -448,6 +484,7 @@ where
     let operation_id = OperationId::generate();
     let version = manager.snapshot_handle().load().version;
     let client = client.clone();
+    let (settle, _settlement) = tokio::sync::oneshot::channel();
     let result = manager
         .replace_if_version_with_participant(
             version,
@@ -459,6 +496,7 @@ where
                     class,
                     decision,
                     client,
+                    settle,
                 )
             },
             no_local_write,
@@ -1118,11 +1156,14 @@ async fn a_failed_save_restores_the_verified_runtime_baseline() {
     std::fs::remove_file(&clash_path).unwrap();
     std::fs::create_dir_all(&clash_path).unwrap();
 
-    let (operation_id, result) = simple_mutate(
+    let (result, settlement) = mutate_settling(
         &mut clash,
         &client,
+        OperationId::generate(),
         overrides(serde_json::json!({"mode": "rule"})),
         CommandClass::Save,
+        plain(),
+        no_local_write,
     )
     .await;
     assert!(
@@ -1130,9 +1171,16 @@ async fn a_failed_save_restores_the_verified_runtime_baseline() {
         "{result:?}"
     );
 
-    let receipt = settled(&client, operation_id).await;
+    let receipt = settlement.await.expect("the Runtime settles its Try");
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
+    // V08: the persistence cause, and that the runtime went back.
+    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
+    assert!(text.contains("failed to write config"), "{text}");
+    assert!(
+        text.contains("the runtime was rolled back to the previous configuration"),
+        "{text}"
+    );
     assert_eq!(clash.snapshot_handle().load().version, committed);
     assert_eq!(
         store
@@ -1324,85 +1372,87 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
     drop(clash);
 }
 
-// -- I1: an abort whose persistence outcome is unknown ---------------------
+// -- I1: an abort that owes a resource recovery ----------------------------
 
 /// The source transaction's own local write fails, and so does the recovery
-/// that would have put its resource back. The store was never swapped, which is
-/// no evidence about what reached disk: the resource may already hold the
-/// candidate. Treating that as an ordinary Cancel would take the candidate off
-/// the runtime while the resource keeps it, so the attempt isolates the
-/// execution domain instead (v2 §4.2).
+/// that would have put its resource back. The runtime goes back to the
+/// committed configuration all the same, as for any abort, and the caller is
+/// told both: the resource recovery failed, and the runtime was rolled back
+/// (U7, Q-D).
 #[tokio::test]
-async fn an_abort_whose_persistence_outcome_is_unknown_isolates_the_domain() {
+async fn an_abort_that_owes_a_resource_recovery_still_rolls_the_runtime_back() {
     let Fixture {
         client,
         endpoint,
         mut clash,
-        mut application,
+        store,
         _dir,
         ..
     } = fixture().await;
+    let (primed, result) = simple_mutate(
+        &mut clash,
+        &client,
+        overrides(serde_json::json!({"mode": "direct"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&client, primed).await;
+    let baseline = store.last_confirmed_runtime_receipt().unwrap();
 
-    let abandoned = OperationId::generate();
     let version = clash.snapshot_handle().load().version;
     let workflow = client.clone();
+    let operation_id = OperationId::generate();
+    let (settle, settlement) = tokio::sync::oneshot::channel();
     let result = clash
         .replace_if_version_with_participant(
             version,
             overrides(serde_json::json!({"mode": "global"})),
             move |decision| {
                 ApplicationMutationParticipant::new(
-                    abandoned,
+                    operation_id,
                     MutationHints::default(),
                     CommandClass::Save,
                     decision,
                     workflow,
+                    settle,
                 )
             },
-            || async { Err(anyhow::anyhow!("resource write failed")) },
-            || async { Err(anyhow::anyhow!("resource recovery failed")) },
+            || async { Err(anyhow::anyhow!("disk full").context("resource write failed")) },
+            || async { Err(anyhow::anyhow!("file locked").context("resource recovery failed")) },
         )
         .await;
     assert!(
         matches!(result, Err(ReplaceIfVersionError::ResourceRecovery { .. })),
         "{result:?}"
     );
-
-    let receipt = settled(&client, abandoned).await;
+    let receipt = settlement.await.expect("the Runtime settles its Try");
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
+    assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
+    assert!(!client.status().uncertain);
     assert_eq!(
-        receipt.conclusion,
-        MutationConclusion::RecoveryRequired,
-        "an abort that may have written the candidate is not a Cancel"
-    );
-    assert!(client.status().uncertain);
-    let recovery = client
-        .mutation_journal()
-        .recovery
-        .expect("an isolated domain names why");
-    assert_eq!(recovery.operation_id, abandoned);
-    assert_eq!(
-        recovery.stage,
-        super::super::attempt::AttemptStage::AwaitDecision
+        store
+            .last_confirmed_runtime_receipt()
+            .unwrap()
+            .config_digest,
+        baseline.config_digest
     );
     assert_eq!(
-        endpoint.reconciled_bytes().len(),
-        1,
-        "the candidate was applied and nothing undid it"
+        endpoint.reconciled_bytes().last(),
+        Some(&baseline.config_text.as_bytes().to_vec()),
+        "the Cancel put the baseline back"
     );
-
-    // And the isolation holds: nothing new may be committed against a runtime
-    // nobody can describe.
-    let before = application.snapshot_handle().load().version;
-    let (_, refused_result) = simple_mutate(
-        &mut application,
-        &client,
-        app_with_core(ClashCore::ClashRs),
-        CommandClass::ExplicitSwitch,
-    )
-    .await;
-    assert!(refused(&refused_result), "{refused_result:?}");
-    assert_eq!(application.snapshot_handle().load().version, before);
+    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
+    // Both failures reach the caller with their causes.
+    assert!(text.contains("resource write failed: disk full"), "{text}");
+    assert!(
+        text.contains("resource recovery failed: file locked"),
+        "{text}"
+    );
+    assert!(
+        text.contains("the runtime was rolled back to the previous configuration"),
+        "{text}"
+    );
     drop(clash);
 }
 
@@ -1485,11 +1535,14 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
     ));
 
     let before = f.clash.snapshot_handle().load().version;
-    let (operation_id, result) = simple_mutate(
+    let (result, settlement) = mutate_settling(
         &mut f.clash,
         &f.client,
+        OperationId::generate(),
         overrides(serde_json::json!({"mode": "global"})),
         CommandClass::Save,
+        plain(),
+        no_local_write,
     )
     .await;
 
@@ -1499,9 +1552,15 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
         f.endpoint.reconciled_bytes().is_empty(),
         "a rejected candidate is never submitted"
     );
-    let receipt = settled(&f.client, operation_id).await;
+    let receipt = settlement.await.expect("a Try that ran is settled");
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
     assert_eq!(receipt.conclusion, MutationConclusion::Withdrawn);
+    // V07: the caller is told why.
+    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
+    assert!(
+        text.contains("the core will not run this document"),
+        "{text}"
+    );
     // A Try that ran and was refused, not an evidence gap: the two refusals are
     // different facts and the receipt is where they stay apart.
     assert_eq!(
@@ -2022,6 +2081,7 @@ async fn a_host_switch_moves_the_runtime_inside_the_try_and_back_on_cancel() {
         let release = Arc::clone(&release);
         tokio::spawn(async move {
             let version = application.snapshot_handle().load().version;
+            let (settle, _settlement) = tokio::sync::oneshot::channel();
             let result = application
                 .replace_if_version_with_participant(
                     version,
@@ -2036,6 +2096,7 @@ async fn a_host_switch_moves_the_runtime_inside_the_try_and_back_on_cancel() {
                             CommandClass::ExplicitSwitch,
                             decision,
                             client,
+                            settle,
                         )
                     },
                     parked_local_write(entered, release),
@@ -3794,4 +3855,229 @@ async fn committed_product_retry_does_not_resubmit_or_rewrite_source() {
     assert!(f.client.mutation_journal().maintenance.is_none());
     assert_eq!(f.endpoint.reconciled_bytes().len(), submitted);
     assert_eq!(f.clash.snapshot_handle().load().version, version);
+}
+
+// -- the settlement goes back to the source ------------------------------------
+
+/// V05: a transaction that fails its version check never calls its
+/// participant, so the Runtime never hears of it. The settlement its source
+/// waits for resolves as soon as the transaction returns, empty.
+#[tokio::test]
+async fn a_conflicting_version_never_waits_for_a_settlement() {
+    let mut f = fixture().await;
+    let stale = f.clash.snapshot_handle().load().version;
+    let (_, primed) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
+    let submitted = f.endpoint.reconciled_bytes().len();
+
+    let client = f.client.clone();
+    let operation_id = OperationId::generate();
+    let (settle, settlement) = tokio::sync::oneshot::channel();
+    let result = f
+        .clash
+        .replace_if_version_with_participant(
+            stale,
+            overrides(serde_json::json!({"mode": "direct"})),
+            move |decision| {
+                ApplicationMutationParticipant::new(
+                    operation_id,
+                    MutationHints::default(),
+                    CommandClass::Save,
+                    decision,
+                    client,
+                    settle,
+                )
+            },
+            no_local_write,
+            || async { Ok(()) },
+        )
+        .await;
+
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Conflict { .. })),
+        "{result:?}"
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), settlement)
+            .await
+            .expect("the settlement resolves once the transaction returns")
+            .is_err(),
+        "nothing was settled"
+    );
+    assert_eq!(f.endpoint.reconciled_bytes().len(), submitted, "no Try ran");
+}
+
+/// V06: a Try that never reached the workflow did not run. The source keeps
+/// its version, the core is untouched, and the error says the mutation was not
+/// run.
+#[tokio::test]
+async fn a_try_the_workflow_never_received_is_refused_as_not_run() {
+    let mut f = fixture().await;
+    f.shutdown.cancel();
+    f.tasks.close();
+    f.tasks.wait().await;
+
+    let before = f.clash.snapshot_handle().load().version;
+    let (result, settlement) = mutate_settling(
+        &mut f.clash,
+        &f.client,
+        OperationId::generate(),
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+        plain(),
+        no_local_write,
+    )
+    .await;
+    let settlement = settlement.await.ok();
+    assert!(settlement.is_none(), "the Runtime never took the Try");
+    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), settlement.as_ref());
+    assert!(text.contains("the mutation was not run"), "{text}");
+    assert_eq!(f.clash.snapshot_handle().load().version, before);
+    assert!(f.endpoint.reconciled_bytes().is_empty());
+}
+
+/// V09: the save fails and the rollback cannot be verified either. The error
+/// names both, and the execution domain is isolated.
+#[tokio::test]
+async fn a_failed_save_whose_rollback_fails_reports_both() {
+    let mut f = scripted_fixture().await;
+    let (primed, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+    settled(&f.client, primed).await;
+    let scripted = f.scripted.clone().expect("a scripted fixture");
+    // The Try applies; the Cancel's restore loses its answer.
+    scripted.queue(super::WaitScript::Deliver);
+    scripted.queue(super::WaitScript::Missing);
+    std::fs::remove_file(&f.clash_path).unwrap();
+    std::fs::create_dir_all(&f.clash_path).unwrap();
+
+    let (result, settlement) = mutate_settling(
+        &mut f.clash,
+        &f.client,
+        OperationId::generate(),
+        overrides(serde_json::json!({"mode": "direct"})),
+        CommandClass::Save,
+        plain(),
+        no_local_write,
+    )
+    .await;
+    assert!(
+        matches!(result, Err(ReplaceIfVersionError::WriteConfig(_))),
+        "{result:?}"
+    );
+    let receipt = settlement.await.expect("the Runtime settles its Try");
+    assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
+    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
+    assert!(text.contains("failed to write config"), "{text}");
+    assert!(text.contains("rolling the runtime back failed"), "{text}");
+    assert!(text.contains("recovery required"), "{text}");
+    assert!(f.client.status().uncertain);
+}
+
+/// V10: the journal is only a display. Every source hears its own result on
+/// its own channel, even once the journal's history has moved past it.
+#[tokio::test]
+async fn every_settlement_arrives_whatever_the_journal_keeps() {
+    let mut f = fixture().await;
+    let mut attempts = Vec::new();
+    for index in 0..=super::super::HISTORY_LEN {
+        let mode = if index % 2 == 0 { "global" } else { "direct" };
+        let operation_id = OperationId::generate();
+        let (result, settlement) = mutate_settling(
+            &mut f.clash,
+            &f.client,
+            operation_id,
+            overrides(serde_json::json!({ "mode": mode })),
+            CommandClass::Save,
+            plain(),
+            no_local_write,
+        )
+        .await;
+        assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+        attempts.push((operation_id, settlement));
+    }
+    // Nothing is read until every attempt ran: the Runtime sends a receipt
+    // before its handler returns, and the oneshot keeps it. It journals the
+    // receipt before sending it, so once the last one has arrived the history
+    // has moved past the first.
+    let (last_id, last) = attempts.pop().expect("more than one attempt ran");
+    let receipt = last.await.expect("every attempt is settled to its source");
+    assert_eq!(receipt.operation_id, last_id);
+    let first = attempts[0].0;
+    assert!(
+        f.client
+            .mutation_journal()
+            .completed
+            .iter()
+            .all(|receipt| receipt.operation_id != first),
+        "the journal's history no longer holds the first attempt"
+    );
+    for (operation_id, settlement) in attempts {
+        let receipt = settlement
+            .await
+            .expect("every attempt is settled to its source");
+        assert_eq!(receipt.operation_id, operation_id);
+    }
+}
+
+/// V11: the Runtime owner is gone after it accepted the Try. The source has
+/// committed, and its caller is told that the runtime needs recovery.
+#[tokio::test]
+async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
+    let f = fixture().await;
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let operation_id = OperationId::generate();
+    let mutation = {
+        let client = f.client.clone();
+        let (entered, release) = (entered.clone(), release.clone());
+        let mut clash = f.clash;
+        tokio::spawn(async move {
+            let settled = mutate_settling(
+                &mut clash,
+                &client,
+                operation_id,
+                overrides(serde_json::json!({"mode": "global"})),
+                CommandClass::Save,
+                plain(),
+                parked_local_write(entered, release),
+            )
+            .await;
+            (clash, settled)
+        })
+    };
+    entered.notified().await;
+    f.client.0.actor.kill();
+    release.notify_one();
+
+    let (clash, (result, settlement)) = mutation.await.unwrap();
+    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+    let settlement = settlement.await.ok();
+    assert!(settlement.is_none());
+    let coordinator = crate::state::mutation::MutationCoordinator::pending();
+    coordinator.connect(f.client.clone());
+    let (commit, degradations) = coordinator.committed(
+        operation_id,
+        "clash",
+        *clash.snapshot_handle().load().version.as_ref(),
+        settlement,
+    );
+    assert_eq!(
+        commit.runtime,
+        crate::client::runtime::RuntimeCommitStatus::RecoveryRequired
+    );
+    assert_eq!(degradations.len(), 1);
+    assert_eq!(degradations[0].code, "runtime_recovery_required");
 }

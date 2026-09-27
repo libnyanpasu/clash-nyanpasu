@@ -165,16 +165,15 @@ enum ConditionalWriteError {
     Config(anyhow::Error),
 }
 
-impl std::fmt::Display for ConditionalWriteError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl ConditionalWriteError {
+    /// The failure named by the write it came from, with its cause chain kept.
+    fn into_cause(self) -> anyhow::Error {
         match self {
-            Self::LocalWrite(error) => write!(f, "local write failed: {error}"),
-            Self::Config(error) => write!(f, "config write failed: {error}"),
+            Self::LocalWrite(error) => error.context("local write failed"),
+            Self::Config(error) => error.context("config write failed"),
         }
     }
-}
 
-impl ConditionalWriteError {
     fn into_inner(self) -> anyhow::Error {
         match self {
             Self::LocalWrite(error) | Self::Config(error) => error,
@@ -385,7 +384,7 @@ where
                 effect_error,
                 recovery_error,
             }) => Err(ReplaceIfVersionError::ResourceRecovery {
-                cause: anyhow::anyhow!("{effect_error}"),
+                cause: effect_error.into_cause(),
                 recovery_error: recovery_error.into_inner(),
             }),
         }

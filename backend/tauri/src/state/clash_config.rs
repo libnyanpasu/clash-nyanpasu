@@ -3,15 +3,14 @@ use crate::{
         impact::{MutationHints, RequestedRuntimeFields},
         policy::CommandClass,
     },
-    state::mutation::MutationCoordinator,
+    state::mutation::{self, MutationCoordinator},
 };
 use nyanpasu_core_manager::OperationId;
 
-use anyhow::Context as _;
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
-use nyanpasu_core::state::{PersistentStateManager, VersionedState};
+use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
 use tokio_util::sync::CancellationToken;
@@ -104,8 +103,8 @@ impl ClashConfigActor {
     ) -> anyhow::Result<ClashConfigSnapshot> {
         let version = state.manager.snapshot_handle().load().version;
         let operation = OperationId::generate();
-        let participant = state.mutations.participant(operation, hints, class)?;
-        state
+        let (participant, settlement) = state.mutations.participant(operation, hints, class)?;
+        let result = state
             .manager
             .replace_if_version_with_participant(
                 version,
@@ -114,16 +113,29 @@ impl ClashConfigActor {
                 || async { Ok(()) },
                 || async { Ok(()) },
             )
-            .await
-            .context("failed to persist clash config")?;
-        let mut snapshot = Self::snapshot(state);
-        let (receipt, degradations) = state
-            .mutations
-            .finish(operation, "clash", snapshot.version)
             .await;
-        snapshot.receipt = Some(receipt);
-        snapshot.degradations = degradations;
-        Ok(snapshot)
+        let settlement = settlement.await.ok();
+        match result {
+            Ok(ReplaceIfVersionResult::Replaced) => {
+                let mut snapshot = Self::snapshot(state);
+                let (receipt, degradations) =
+                    state
+                        .mutations
+                        .committed(operation, "clash", snapshot.version, settlement);
+                snapshot.receipt = Some(receipt);
+                snapshot.degradations = degradations;
+                Ok(snapshot)
+            }
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => Err(anyhow::anyhow!(
+                "clash config version conflict: expected {}, actual {}",
+                version.as_ref(),
+                actual_version.as_ref()
+            )),
+            Err(error) => Err(anyhow::anyhow!(
+                "failed to persist clash config: {}",
+                mutation::uncommitted(&error, settlement.as_ref())
+            )),
+        }
     }
 }
 

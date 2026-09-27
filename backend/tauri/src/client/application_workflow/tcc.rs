@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::state::{AbortResourceState, StateDecision};
+use nyanpasu_core::state::StateDecision;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use nyanpasu_ipc::api::status::CoreStateDetail;
 
@@ -91,9 +91,9 @@ impl From<String> for RestoreFailure {
 /// How the decision phase ended.
 enum DecisionOutcome {
     Committed,
+    /// Aborted, whether or not the source put its own resources back: the
+    /// runtime goes back to the committed configuration either way (U7).
     Aborted,
-    /// The source owner reports unsettled resources.
-    Unresolved(String),
 }
 
 impl ApplicationWorkflow {
@@ -260,15 +260,6 @@ impl ApplicationWorkflow {
                 self.advance(AttemptStage::Cancelling);
                 self.cancel(outcome, &baseline).await
             }
-            // A resource recovery the source still owes settles nothing: the
-            // attempt stays, and the decision is read again when it is
-            // recovered.
-            DecisionOutcome::Unresolved(reason) => (
-                MutationConclusion::RecoveryRequired,
-                Some(format!(
-                    "the source transaction of operation {operation_id} {reason}"
-                )),
-            ),
         };
         receipt.conclusion = conclusion;
         receipt.detail = detail;
@@ -1216,15 +1207,7 @@ impl ApplicationWorkflow {
     async fn await_decision(&self, request: &MutationRequest) -> DecisionOutcome {
         match request.decision.wait().await {
             StateDecision::Committed { .. } => DecisionOutcome::Committed,
-            StateDecision::Aborted {
-                resources: AbortResourceState::Restored,
-            } => DecisionOutcome::Aborted,
-            StateDecision::Aborted {
-                resources: AbortResourceState::NeedsRecovery(incident),
-            } => DecisionOutcome::Unresolved(format!(
-                "needs local resource recovery: {}",
-                incident.message
-            )),
+            StateDecision::Aborted { .. } => DecisionOutcome::Aborted,
             StateDecision::Undecided => unreachable!("wait only returns a terminal decision"),
         }
     }

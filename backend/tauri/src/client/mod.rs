@@ -981,23 +981,7 @@ impl crate::core::updater::ports::CoreUpdateInstaller
         &self,
         artifact: core_lifecycle::ports::PreparedCoreBinary,
     ) -> anyhow::Result<()> {
-        self.replace_binary(artifact).await.map_err(|error| {
-            if error.operation_id.is_some()
-                && matches!(
-                    error.kind,
-                    Some(
-                        nyanpasu_core_manager::CoreErrorKind::BackendUnavailable
-                            | nyanpasu_core_manager::CoreErrorKind::Internal
-                    )
-                )
-            {
-                anyhow::Error::new(crate::core::updater::ports::InstallPending(
-                    error.to_string(),
-                ))
-            } else {
-                anyhow::Error::from(error)
-            }
-        })
+        Ok(self.replace_binary(artifact).await?)
     }
 }
 

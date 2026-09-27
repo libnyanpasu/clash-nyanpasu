@@ -2510,12 +2510,7 @@ export type RulesRes = {
 }
 
 export type RuntimeCommitStatus =
-  | 'applied'
-  | 'deferred'
-  | 'saved_inactive'
-  | 'unchanged'
-  | 'pending'
-  | 'recovery_required'
+  'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
 
 export type RuntimeConvergence = {
   health: ConvergenceHealth
@@ -2908,8 +2903,7 @@ export type UpdaterState =
   | 'replacing'
   | 'restarting'
   | 'done'
-  | ({ pending: string } & { failed?: never })
-  | ({ failed: string } & { pending?: never })
+  | { failed: string }
 
 export type UpdaterSummary = {
   id: number

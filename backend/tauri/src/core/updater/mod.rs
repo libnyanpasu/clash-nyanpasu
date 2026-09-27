@@ -331,7 +331,7 @@ impl Actor for UpdaterActor {
             }
             Message::Progress(id, progress, download) => {
                 if let Some(task) = state.tasks.get_mut(&id) {
-                    // Terminal install notifications remain authoritative after an RPC timeout.
+                    // A finished install stays finished, whatever reports arrive late.
                     if matches!(task.summary.state, UpdaterState::Done) {
                         return Ok(());
                     }
@@ -347,21 +347,13 @@ impl Actor for UpdaterActor {
             Message::Finished(id, result) => {
                 if let Some(task) = state.tasks.get_mut(&id) {
                     task.worker.take();
-                    let pending = result
-                        .as_ref()
-                        .err()
-                        .is_some_and(|error| error.is::<ports::InstallPending>())
-                        && task.finished.is_none();
                     if !matches!(task.summary.state, UpdaterState::Done) {
                         task.summary.state = match result {
                             Ok(()) => UpdaterState::Done,
-                            Err(error) if pending => UpdaterState::Pending(format!("{error:#}")),
                             Err(error) => UpdaterState::Failed(format!("{error:#}")),
                         };
                     }
-                    if !pending {
-                        task.finished = Some(Instant::now());
-                    }
+                    task.finished = Some(Instant::now());
                 }
             }
             Message::Prune(now) => {
@@ -452,4 +444,4 @@ impl UpdaterClient {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -7,7 +7,7 @@ use nyanpasu_core_manager::{CoreError, OperationId};
 use super::{
     Command, Output,
     attempt::{LifecycleCommand, LiveAttempt},
-    mutation::{DeferredTarget, MutationCommand, ReestablishCause, TargetOrigin},
+    mutation::{DeferredTarget, ReestablishCause, TargetOrigin},
     preparation::RuntimePreparation,
     startup::StartupReport,
 };
@@ -103,10 +103,6 @@ impl ApplicationWorkflow {
                 .retry_runtime(operation_id, explicit)
                 .await
                 .map(|_| Output::Unit),
-            Command::Mutation(command) => {
-                let MutationCommand { request } = *command;
-                Ok(Output::Settled(Box::new(self.run_mutation(request).await)))
-            }
         }
     }
 

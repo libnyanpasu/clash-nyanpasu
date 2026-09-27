@@ -48,8 +48,4 @@ pub(in crate::client) enum Output {
     RestartWithheld,
     /// StartupReconcile's report (T10 §1.6).
     Startup(Box<super::application_workflow::startup::StartupReport>),
-    /// One source-config mutation, settled. The caller of a mutation is the
-    /// state transaction, which was answered during prepare; this is the
-    /// structured record the workflow keeps afterwards.
-    Settled(Box<super::application_workflow::mutation::MutationReceipt>),
 }

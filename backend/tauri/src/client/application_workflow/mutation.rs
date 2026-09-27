@@ -129,6 +129,10 @@ pub(crate) struct MutationRequest {
     /// one verdict is ever sent, and a refusal before admission is one of them.
     /// The receiving end disappears when the whole prepare fan-out is dropped.
     pub ack: Option<oneshot::Sender<TryAck>>,
+    /// Where the settled attempt's receipt goes. The source waits for it once
+    /// its transaction has returned; a request refused before its Try drops it
+    /// unsent, which that wait reads as "the Runtime did nothing".
+    pub settle: Option<oneshot::Sender<MutationReceipt>>,
 }
 
 impl MutationRequest {
@@ -138,11 +142,6 @@ impl MutationRequest {
             let _ = channel.send(ack);
         }
     }
-}
-
-/// One admitted mutation, carrying its authoritative source decision handle.
-pub(crate) struct MutationCommand {
-    pub request: MutationRequest,
 }
 
 /// The workflow's verdict on the critical part of a mutation, in the shape the
@@ -432,7 +431,8 @@ pub(crate) enum ReestablishCause {
 }
 
 /// What the workflow publishes about mutations, separate from the core
-/// lifecycle status so a diagnostic read never competes with admission.
+/// lifecycle status so a diagnostic read never competes with admission. It is
+/// a display: a source learns its own result from its settlement, never here.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MutationJournal {
     pub maintenance: Option<String>,

@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::state::{AbortResourceState, DecisionHandle, StateDecision};
+use nyanpasu_core::state::{DecisionHandle, StateDecision};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 
 use super::{
@@ -417,9 +417,9 @@ impl ApplicationWorkflow {
         let (operation_id, domain, decision) = (live.operation_id, *domain, decision.decision());
         let (baseline, verdict) = (live.baseline.clone(), live.verdict.clone());
         match decision {
-            StateDecision::Aborted {
-                resources: AbortResourceState::Restored,
-            } => match baseline {
+            // The source's own resources are its to report; the runtime goes
+            // back to the committed configuration either way (U7).
+            StateDecision::Aborted { .. } => match baseline {
                 // The attempt never read the runtime, so it cannot have
                 // changed it.
                 None => Ok(()),
@@ -500,10 +500,7 @@ impl ApplicationWorkflow {
                      the source and this workflow disagree about what was decided"
                 )),
             },
-            StateDecision::Undecided
-            | StateDecision::Aborted {
-                resources: AbortResourceState::NeedsRecovery(_),
-            } => Err("source decision or local resource recovery is unresolved".into()),
+            StateDecision::Undecided => Err("the source decision is unresolved".into()),
         }
     }
 

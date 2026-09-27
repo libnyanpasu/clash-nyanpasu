@@ -73,10 +73,12 @@ pub enum ProfilesError {
     ImportFailed { message: String },
     #[error("failed to persist profiles: {0}")]
     Persist(String),
-    #[error("profiles source transaction failed: {source}; staging cleanup: {cleanup:?}")]
+    #[error("profiles source transaction failed: {detail}; staging cleanup: {cleanup:?}")]
     SourceTransaction {
         #[source]
         source: nyanpasu_core::state::ReplaceIfVersionError,
+        /// The persistence cause chain and what the Runtime did about it.
+        detail: String,
         cleanup: Option<String>,
     },
     #[error("profiles state version conflict: expected {expected}, actual {actual}")]
@@ -481,11 +483,11 @@ impl ProfilesActor {
         ProfilesError,
     > {
         let operation = OperationId::generate();
-        let participant = state
+        let (participant, settlement) = state
             .mutations
             .participant(operation, hints, class)
             .map_err(|error| ProfilesError::Persist(error.to_string()))?;
-        match state
+        let result = state
             .manager
             .replace_if_version_with_participant(
                 expected_version,
@@ -494,28 +496,29 @@ impl ProfilesActor {
                 || async { Ok(()) },
                 || async { Ok(()) },
             )
-            .await
-            .map_err(|source| ProfilesError::SourceTransaction {
-                source,
-                cleanup: None,
-            })? {
-            ReplaceIfVersionResult::Replaced => {
-                let completion = state
-                    .mutations
-                    .finish(
-                        operation,
-                        "profiles",
-                        *state.manager.snapshot_handle().load().version.as_ref(),
-                    )
-                    .await;
+            .await;
+        let settlement = settlement.await.ok();
+        match result {
+            Ok(ReplaceIfVersionResult::Replaced) => {
+                let completion = state.mutations.committed(
+                    operation,
+                    "profiles",
+                    *state.manager.snapshot_handle().load().version.as_ref(),
+                    settlement,
+                );
                 Ok((Arc::new(next), completion))
             }
-            ReplaceIfVersionResult::Conflict { actual_version } => {
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => {
                 Err(ProfilesError::VersionConflict {
                     expected: *expected_version.as_ref(),
                     actual: *actual_version.as_ref(),
                 })
             }
+            Err(source) => Err(ProfilesError::SourceTransaction {
+                detail: crate::state::mutation::uncommitted(&source, settlement.as_ref()),
+                source,
+                cleanup: None,
+            }),
         }
     }
 
@@ -1102,7 +1105,7 @@ impl ProfilesActor {
         } else {
             None
         };
-        let participant = state
+        let (participant, settlement) = state
             .mutations
             .participant(operation, hints, class)
             .map_err(|error| ProfilesError::Persist(error.to_string()))?;
@@ -1155,6 +1158,7 @@ impl ProfilesActor {
                 },
             )
             .await;
+        let settlement = settlement.await.ok();
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {}
             result => {
@@ -1191,6 +1195,7 @@ impl ProfilesActor {
                 }
                 return Err(match result {
                     Err(source) => ProfilesError::SourceTransaction {
+                        detail: crate::state::mutation::uncommitted(&source, settlement.as_ref()),
                         source,
                         cleanup: (!failures.is_empty()).then(|| failures.join("; ")),
                     },
@@ -1212,14 +1217,12 @@ impl ProfilesActor {
                 });
             }
         }
-        let (receipt, runtime_degradations) = state
-            .mutations
-            .finish(
-                operation,
-                "profiles",
-                *state.manager.snapshot_handle().load().version.as_ref(),
-            )
-            .await;
+        let (receipt, runtime_degradations) = state.mutations.committed(
+            operation,
+            "profiles",
+            *state.manager.snapshot_handle().load().version.as_ref(),
+            settlement,
+        );
         let snapshot = Arc::new(candidate);
         Self::reconcile_committed(myself, state, &snapshot);
         let mut degradations = Vec::new();

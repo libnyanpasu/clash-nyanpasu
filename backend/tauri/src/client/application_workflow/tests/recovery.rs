@@ -416,18 +416,23 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
     let scripted = f.scripted.clone().expect("a scripted fixture");
 
     scripted.queue(WaitScript::Missing);
-    let (id, result) = simple_mutate(
+    let (result, settlement) = super::mutations::mutate_settling(
         &mut f.clash,
         &f.client,
+        OperationId::generate(),
         overrides(serde_json::json!({"mode": "direct"})),
         CommandClass::Save,
+        plain(),
+        super::mutations::no_local_write,
     )
     .await;
     assert!(refused(&result), "{result:?}");
-    assert_eq!(
-        settled(&f.client, id).await.conclusion,
-        MutationConclusion::RecoveryRequired
-    );
+    // Settled before the domain stays isolated, and the caller is told the
+    // outcome is unknown.
+    let receipt = settlement.await.expect("an unknown Try is settled too");
+    assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
+    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
+    assert!(text.contains("unknown and needs recovery"), "{text}");
     let (tried, _) = pending_submission(&f.client);
 
     scripted.rescript(tried, WaitScript::Deliver);
@@ -591,43 +596,6 @@ async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
     )
     .await;
     assert!(admitted.is_ok(), "{admitted:?}");
-}
-
-/// L14 (review 3 #1): an aborted decision that still owes a local resource
-/// recovery settles nothing, and neither does an empty action slot.
-#[tokio::test]
-async fn an_abort_that_needs_recovery_stays_isolated_with_nothing_pending() {
-    let f = fixture().await;
-    let abandoned = OperationId::generate();
-    let mut clash = f.clash;
-    let version = clash.snapshot_handle().load().version;
-    let workflow = f.client.clone();
-    clash
-        .replace_if_version_with_participant(
-            version,
-            overrides(serde_json::json!({"mode": "global"})),
-            move |decision| {
-                super::super::participant::ApplicationMutationParticipant::new(
-                    abandoned,
-                    super::super::impact::MutationHints::default(),
-                    CommandClass::Save,
-                    decision,
-                    workflow,
-                )
-            },
-            || async { Err(anyhow::anyhow!("resource write failed")) },
-            || async { Err(anyhow::anyhow!("resource recovery failed")) },
-        )
-        .await
-        .expect_err("the failed write and its failed recovery refuse the mutation");
-    settled(&f.client, abandoned).await;
-    assert!(isolated(&f.client));
-    assert_eq!(recovery(&f.client).action, None);
-
-    let error = f.client.retry_runtime().await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
-    assert!(isolated(&f.client));
-    assert_eq!(recovery(&f.client).operation_id, abandoned);
 }
 
 /// The ordinary daemon, except that its next stop can be held past the

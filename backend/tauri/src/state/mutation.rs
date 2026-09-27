@@ -1,14 +1,23 @@
-//! Startup-injected connection to the application transaction participant.
+//! Startup-injected connection to the application transaction participant,
+//! and what a source tells its caller once the Runtime has settled a mutation.
 #[cfg(test)]
 use std::sync::Arc;
 
-use nyanpasu_core::state::{DecisionHandle, StateParticipant};
+use nyanpasu_core::state::{
+    AckStatus, DecisionHandle, ReplaceIfVersionError, StateParticipant, error::StateChangedError,
+};
 use nyanpasu_core_manager::OperationId;
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
-use crate::client::application_workflow::{
-    ApplicationWorkflowClient, impact::MutationHints, mutation::MutationDomain,
-    participant::ApplicationMutationParticipant, policy::CommandClass,
+use crate::client::{
+    application_workflow::{
+        ApplicationWorkflowClient,
+        impact::MutationHints,
+        mutation::{MutationConclusion, MutationDomain, MutationOutcomeKind, MutationReceipt},
+        participant::ApplicationMutationParticipant,
+        policy::CommandClass,
+    },
+    runtime::{CommitReceipt, Degradation, DegradationPhase, RuntimeCommitStatus},
 };
 
 #[derive(Clone)]
@@ -18,6 +27,13 @@ enum Connection {
     #[cfg(test)]
     Isolated,
 }
+
+/// The Runtime's receipt for one mutation. The source awaits it once its
+/// transaction has returned, whatever the transaction's result. It resolves
+/// at once, with an error, when the Runtime never took the Try: the
+/// transaction dropped the participant unused, or the request was refused or
+/// never delivered.
+pub(crate) type Settlement = oneshot::Receiver<MutationReceipt>;
 
 /// Only the composition root completes this connection. Domain actors can be
 /// loaded first to supply read-only snapshots; no production mutation can run
@@ -41,71 +57,69 @@ impl MutationCoordinator {
         Self(watch::channel(Connection::Isolated).0)
     }
 
-    pub async fn finish(
+    /// What the caller of a committed mutation is told about the runtime. No
+    /// receipt means the Runtime owner stopped after it accepted the Try: the
+    /// source is committed, and the runtime is left to be recovered.
+    pub fn committed(
         &self,
         operation_id: OperationId,
         domain: &str,
         source_version: u64,
-    ) -> (
-        crate::client::runtime::CommitReceipt,
-        Vec<crate::client::runtime::Degradation>,
-    ) {
-        use crate::client::{
-            application_workflow::mutation::{MutationConclusion, MutationOutcomeKind},
-            runtime::{CommitReceipt, Degradation, DegradationPhase, RuntimeCommitStatus},
-        };
+        settlement: Option<MutationReceipt>,
+    ) -> (CommitReceipt, Vec<Degradation>) {
         let mut commit = CommitReceipt {
             operation_id: Some(operation_id.to_string()),
             domain: domain.into(),
             source_version,
             runtime: RuntimeCommitStatus::Unchanged,
         };
-        let connection = self.0.borrow().clone();
-        let Connection::Ready(workflow) = connection else {
+        if !matches!(*self.0.borrow(), Connection::Ready(_)) {
             return (commit, Vec::new());
+        }
+        let Some(receipt) = settlement else {
+            commit.runtime = RuntimeCommitStatus::RecoveryRequired;
+            return (
+                commit,
+                vec![Degradation {
+                    phase: DegradationPhase::RuntimeApply,
+                    code: "runtime_recovery_required".into(),
+                    message: format!(
+                        "configuration saved; the runtime owner stopped before operation \
+                         {operation_id} settled"
+                    ),
+                    retryable: false,
+                }],
+            );
         };
-        let receipt = workflow.wait_mutation(operation_id).await;
-        commit.runtime = match receipt.as_ref() {
-            Some(r) if r.conclusion == MutationConclusion::RecoveryRequired => {
-                RuntimeCommitStatus::RecoveryRequired
-            }
-            Some(r) => match r.outcome {
+        commit.runtime = if receipt.conclusion == MutationConclusion::RecoveryRequired {
+            RuntimeCommitStatus::RecoveryRequired
+        } else {
+            match receipt.outcome {
                 MutationOutcomeKind::Applied => RuntimeCommitStatus::Applied,
                 MutationOutcomeKind::Deferred => RuntimeCommitStatus::Deferred,
                 MutationOutcomeKind::SavedInactive => RuntimeCommitStatus::SavedInactive,
                 MutationOutcomeKind::Saved => RuntimeCommitStatus::Unchanged,
+                // A refused Try aborts its transaction, and an unknown one
+                // concludes RecoveryRequired.
                 MutationOutcomeKind::Rejected | MutationOutcomeKind::RecoveryRequired => {
-                    RuntimeCommitStatus::RecoveryRequired
+                    unreachable!("a committed mutation's Try was accepted")
                 }
-            },
-            None => RuntimeCommitStatus::Pending,
+            }
         };
-        let (code, message, retryable) = match receipt {
-            Some(receipt) if receipt.outcome == MutationOutcomeKind::Deferred => {
-                ("runtime_deferred", receipt.detail.unwrap_or_default(), true)
-            }
-            Some(receipt)
-                if receipt.outcome == MutationOutcomeKind::RecoveryRequired
-                    || receipt.conclusion == MutationConclusion::RecoveryRequired =>
-            {
-                (
-                    "runtime_recovery_required",
-                    receipt.detail.unwrap_or_default(),
-                    false,
-                )
-            }
-            Some(receipt) if !receipt.degradations.is_empty() => {
-                return (commit, receipt.degradations);
-            }
-            Some(receipt) => match receipt.detail {
-                Some(message) => ("mutation_completion_warning", message, false),
-                None => return (commit, Vec::new()),
-            },
-            None => (
-                "operation_pending",
-                format!("configuration saved; operation {operation_id} is still settling"),
+        let (code, message, retryable) = if receipt.outcome == MutationOutcomeKind::Deferred {
+            ("runtime_deferred", receipt.detail.unwrap_or_default(), true)
+        } else if receipt.conclusion == MutationConclusion::RecoveryRequired {
+            (
+                "runtime_recovery_required",
+                receipt.detail.unwrap_or_default(),
                 false,
-            ),
+            )
+        } else if !receipt.degradations.is_empty() {
+            return (commit, receipt.degradations);
+        } else if let Some(message) = receipt.detail {
+            ("mutation_completion_warning", message, false)
+        } else {
+            return (commit, Vec::new());
         };
         (
             commit,
@@ -126,18 +140,24 @@ impl MutationCoordinator {
         Ok(())
     }
 
+    /// The Runtime's participant for one mutation, and the settlement it will
+    /// send back.
     pub fn participant<T: MutationDomain>(
         &self,
         operation_id: OperationId,
         hints: MutationHints,
         class: CommandClass,
-    ) -> anyhow::Result<impl FnOnce(DecisionHandle) -> StateParticipant<T> + use<T>> {
+    ) -> anyhow::Result<(
+        impl FnOnce(DecisionHandle) -> StateParticipant<T> + use<T>,
+        Settlement,
+    )> {
         let connection = self.0.borrow().clone();
         anyhow::ensure!(
             !matches!(connection, Connection::Pending),
             "application workflow is not ready"
         );
-        Ok(move |decision| -> StateParticipant<T> {
+        let (settle, settlement) = oneshot::channel();
+        let participant = move |decision| -> StateParticipant<T> {
             match connection {
                 Connection::Ready(workflow) => ApplicationMutationParticipant::new(
                     operation_id,
@@ -145,12 +165,76 @@ impl MutationCoordinator {
                     class,
                     decision,
                     workflow,
+                    settle,
                 ),
                 #[cfg(test)]
                 Connection::Isolated => Arc::new(IsolatedParticipant),
                 Connection::Pending => unreachable!("checked before opening a source transaction"),
             }
-        })
+        };
+        Ok((participant, settlement))
+    }
+}
+
+/// Why a source transaction that installed the Runtime participant did not
+/// commit, in the words its caller reads: the persistence cause chain, the
+/// reasons a refused prepare gave, and what became of a Try the Runtime had
+/// already applied (U7). The caller only ever sees text, so all of it is here.
+pub(crate) fn uncommitted(
+    error: &ReplaceIfVersionError,
+    settlement: Option<&MutationReceipt>,
+) -> String {
+    let cause = match error {
+        // The variant's own text names the first cause; the rest of the chain
+        // follows it.
+        ReplaceIfVersionError::WriteConfig(cause) | ReplaceIfVersionError::LocalWrite(cause) => {
+            cause
+                .chain()
+                .skip(1)
+                .fold(error.to_string(), |text, cause| format!("{text}: {cause}"))
+        }
+        ReplaceIfVersionError::ResourceRecovery {
+            cause,
+            recovery_error,
+        } => format!(
+            "persistence failed ({cause:#}) and resource recovery failed: {recovery_error:#}"
+        ),
+        ReplaceIfVersionError::State(StateChangedError::PrepareAck(refusal)) => {
+            let reasons: Vec<String> = refusal
+                .report
+                .subscriber_acks
+                .iter()
+                .filter(|ack| ack.is_required_failure())
+                .map(|ack| match &ack.status {
+                    AckStatus::Rejected { reason } => reason.clone(),
+                    AckStatus::Failed { error } => format!("{error:#}"),
+                    AckStatus::Acked | AckStatus::Degraded { .. } => {
+                        unreachable!("only a refusal or a failure fails a required ACK")
+                    }
+                })
+                .collect();
+            format!("{error}: {}", reasons.join("; "))
+        }
+        error => error.to_string(),
+    };
+    let runtime = settlement.and_then(|receipt| match (receipt.outcome, receipt.conclusion) {
+        (MutationOutcomeKind::RecoveryRequired, _) => Some(format!(
+            "what the runtime is running is unknown and needs recovery: {}",
+            receipt.detail.as_deref().unwrap_or_default()
+        )),
+        (_, MutationConclusion::Cancelled) => {
+            Some("the runtime was rolled back to the previous configuration".to_owned())
+        }
+        (_, MutationConclusion::RecoveryRequired) => Some(format!(
+            "rolling the runtime back failed: {}; recovery required",
+            receipt.detail.as_deref().unwrap_or_default()
+        )),
+        // Withdrawn: nothing reached the runtime.
+        _ => None,
+    });
+    match runtime {
+        Some(runtime) => format!("{cause}; {runtime}"),
+        None => cause,
     }
 }
 

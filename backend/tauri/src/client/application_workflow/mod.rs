@@ -17,7 +17,7 @@ mod workflow;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::VecDeque, sync::Arc, time::Duration};
+use std::{collections::VecDeque, sync::Arc};
 
 use nyanpasu_core::state::{StateDecision, StateSnapshot};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
@@ -40,7 +40,7 @@ use crate::core::actor_v2::{
 };
 #[cfg(test)]
 use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
-use mutation::{MutationCommand, MutationJournal, MutationRequest, TryAck};
+use mutation::{MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
@@ -66,20 +66,26 @@ pub struct CoreLifecycleOperationResult {
     pub backend_operation_id: Option<OperationId>,
 }
 
-/// Work serialized by the execution domain. A source mutation runs as a
-/// participant of its owning domain's transaction, so the workflow never
-/// becomes a second commit point for a configuration domain.
+/// Work serialized by the execution domain. A source mutation is not one of
+/// these: it arrives as `BeginMutation`, a participant of its owning domain's
+/// transaction, so the workflow never becomes a second commit point for a
+/// configuration domain.
 pub(super) enum Command {
     /// Proves who owns the runtime and applies the committed configuration,
     /// once per session (T10 §1).
     StartupReconcile,
     Core(CoreCommand),
-    /// One source-config mutation, running as a Required participant of the
-    /// transaction that produced its candidate.
-    Mutation(Box<MutationCommand>),
     RetryRuntime {
         explicit: bool,
     },
+}
+
+/// Settles a command that was refused before it ran. An installation owes
+/// its progress observer the same terminal answer as its caller.
+fn refuse(command: Command, error: &CoreError) {
+    if let Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) = command {
+        artifact.progress.finished(Some(&error.to_string()));
+    }
 }
 
 struct Response {
@@ -250,56 +256,72 @@ impl ApplicationWorkflowState {
             request.answer(TryAck::Rejected(refusal.to_owned()));
             return;
         }
-        // A mutation has no RPC waiter: its caller is the state transaction,
-        // and that one is answered with the Try verdict during prepare.
-        let response = Response {
-            id: request.operation_id,
-            reply: None,
-        };
-        let command = Command::Mutation(Box::new(MutationCommand { request }));
-        self.run(command, response).await;
+        // The caller is the source transaction, answered with the Try's
+        // verdict during prepare; the receipt goes back to its owner once the
+        // attempt has settled.
+        let id = request.operation_id;
+        let settle = request.settle.take();
+        self.start(id);
+        let receipt = self.workflow.run_mutation(request).await;
+        self.record(id, receipt.detail.clone(), None, Some(receipt.clone()));
+        if let Some(settle) = settle {
+            let _ = settle.send(receipt);
+        }
     }
 
     /// Runs one admitted command to its end. The mailbox is the only queue:
     /// the next command starts once this one has settled.
     async fn run(&mut self, command: Command, response: Response) {
-        let id = response.id;
-        self.status.send_modify(|status| status.active = Some(id));
-        self.publish_journal(None);
+        self.start(response.id);
         let progress = match &command {
             Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) => {
                 Some(artifact.progress.clone())
             }
             _ => None,
         };
-        let result = self.workflow.execute(id, command).await;
+        let result = self.workflow.execute(response.id, command).await;
         if let Some(progress) = progress {
             let error = result.as_ref().err().map(ToString::to_string);
             progress.finished(error.as_deref());
         }
-        let receipt = match &result {
-            Ok(Output::Settled(receipt)) => Some((**receipt).clone()),
-            _ => None,
-        };
-        self.settle(response, result, receipt);
+        self.settle(response, result);
     }
 
     /// Refuses a command before it runs. Nothing was tried, so the runtime is
     /// where it was.
     fn reject(&mut self, command: Command, response: Response, error: CoreError) {
-        if let Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) = command {
-            // A refused installation settles its observer as well as the RPC.
-            artifact.progress.finished(Some(&error.to_string()));
-        }
-        self.settle(response, Err(error), None);
+        refuse(command, &error);
+        self.settle(response, Err(error));
+    }
+
+    fn start(&mut self, id: OperationId) {
+        self.status.send_modify(|status| status.active = Some(id));
+        self.publish_journal(None);
     }
 
     /// Records a result and publishes it, then answers. Published first: a
     /// caller that observes its own reply must not read itself as running.
-    fn settle(
+    fn settle(&mut self, response: Response, result: Result<Output, CoreError>) {
+        let error = result.as_ref().err();
+        self.record(
+            response.id,
+            error.map(ToString::to_string),
+            error.and_then(|error| error.operation_id),
+            None,
+        );
+        if let Some(reply) = response.reply {
+            let _ = reply.send(result.map_err(|error| error.with_operation(response.id)));
+        } else if let Err(error) = result {
+            tracing::warn!(%error, "background core lifecycle operation failed");
+        }
+    }
+
+    /// Records a finished operation in the status and the journal.
+    fn record(
         &mut self,
-        response: Response,
-        result: Result<Output, CoreError>,
+        id: OperationId,
+        error: Option<String>,
+        backend_operation_id: Option<OperationId>,
         receipt: Option<mutation::MutationReceipt>,
     ) {
         let uncertain = self.workflow.isolated();
@@ -310,21 +332,12 @@ impl ApplicationWorkflowState {
                 status.completed.pop_front();
             }
             status.completed.push_back(CoreLifecycleOperationResult {
-                id: response.id,
-                error: match &result {
-                    Err(error) => Some(error.to_string()),
-                    Ok(Output::Settled(receipt)) => receipt.detail.clone(),
-                    _ => None,
-                },
-                backend_operation_id: result.as_ref().err().and_then(|error| error.operation_id),
+                id,
+                error,
+                backend_operation_id,
             });
         });
         self.publish_journal(receipt);
-        if let Some(reply) = response.reply {
-            let _ = reply.send(result.map_err(|error| error.with_operation(response.id)));
-        } else if let Err(error) = result {
-            tracing::warn!(%error, "background core lifecycle operation failed");
-        }
     }
 
     /// Arms the one wake-up for the deferred target's next attempt. Only a
@@ -610,6 +623,17 @@ impl ApplicationWorkflowClient {
             .await
         {
             Ok(CallResult::Success(result)) => result,
+            // Never delivered, so it certainly did not run.
+            Err(ractor::MessagingErr::SendErr(Message::Request(Request { command, .. }))) => {
+                let error = CoreError::new(
+                    CoreErrorKind::OperationConflict,
+                    "the application workflow is closed; the command was not run",
+                    false,
+                )
+                .with_operation(id);
+                refuse(command, &error);
+                Err(error)
+            }
             _ => Err(CoreError::new(
                 CoreErrorKind::Internal,
                 "application workflow actor is unavailable; operation outcome is unknown",
@@ -650,30 +674,6 @@ impl ApplicationWorkflowClient {
     }
     pub(crate) fn subscribe_mutations(&self) -> watch::Receiver<MutationJournal> {
         self.0.mutations.clone()
-    }
-
-    pub(crate) async fn wait_mutation(
-        &self,
-        operation_id: OperationId,
-    ) -> Option<mutation::MutationReceipt> {
-        let mut journal = self.0.mutations.clone();
-        let settled = tokio::time::timeout(
-            Duration::from_secs(180),
-            journal.wait_for(|journal| {
-                journal
-                    .completed
-                    .iter()
-                    .any(|receipt| receipt.operation_id == operation_id)
-            }),
-        )
-        .await
-        .ok()?
-        .ok()?;
-        settled
-            .completed
-            .iter()
-            .find(|receipt| receipt.operation_id == operation_id)
-            .cloned()
     }
 
     /// StartupReconcile (T10 §1.2): once per session, and its report on every

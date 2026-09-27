@@ -28,34 +28,6 @@ pub enum AckPolicy {
     Advisory,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AckOptions {
-    pub timeout: Duration,
-    pub policy: AckPolicy,
-}
-
-impl AckOptions {
-    pub const fn required(timeout: Duration) -> Self {
-        Self {
-            timeout,
-            policy: AckPolicy::Required,
-        }
-    }
-
-    pub const fn advisory(timeout: Duration) -> Self {
-        Self {
-            timeout,
-            policy: AckPolicy::Advisory,
-        }
-    }
-}
-
-impl Default for AckOptions {
-    fn default() -> Self {
-        Self::required(Duration::from_secs(30))
-    }
-}
-
 #[derive(Debug)]
 pub enum Ack {
     Ok,
@@ -105,7 +77,6 @@ impl PartialEq<&str> for SubscriberName<'_> {
 pub enum SubscriberFailureKind {
     Rejected { reason: String },
     Failed { error: Arc<anyhow::Error> },
-    TimedOut,
 }
 
 #[derive(Debug, Clone)]
@@ -116,9 +87,7 @@ pub struct SubscriberFailure {
 
 #[derive(Debug, Clone)]
 pub enum RollbackReason {
-    /// Global coordinator timeout waiting for required ACKs.
-    Timeout,
-    /// Any required ACK returned a failure status (rejected, failed, or timed out).
+    /// Any required ACK returned a failure status (rejected or failed).
     SubscriberFailed(Vec<SubscriberFailure>),
     /// An unexpected error occurred in the coordinator or during notification.
     CoordinatorError(Arc<anyhow::Error>),
@@ -141,19 +110,21 @@ pub enum RollbackReason {
 ///
 /// # Rules for Required participants
 ///
-/// A subscriber whose [`AckOptions::policy`] is [`AckPolicy::Required`] can veto
-/// the commit, so it runs inside the writer permit of the source state. Three
-/// rules keep that safe:
+/// A subscriber whose [`StateAckSubscriber::policy`] is [`AckPolicy::Required`]
+/// can veto the commit, so it runs inside the writer permit of the source state.
+/// The transaction has no deadline of its own: it waits for every answer, and a
+/// subscriber that never answers holds the source state for as long as that
+/// takes. Three rules keep that safe:
 ///
 /// 1. **No RPC back to the source actor.** `on_prepare` runs while the source
 ///    state's writer permit is held, so any call that has to reach that actor
-///    (a read, a patch, a status query) cannot make progress and will deadlock
-///    or time out. Everything the participant needs must be captured before the
+///    (a read, a patch, a status query) cannot make progress and hangs forever.
+///    Everything the participant needs must be captured before the
 ///    transaction starts or carried in the [`StateChange`].
 /// 2. **Try must be cancel-safe.** The whole prepare fan-out is dropped when the
-///    caller goes away or the ACK times out, so `on_prepare` may be cancelled at
-///    any await point. It must leave no half-applied effect that only its own
-///    return path would have cleaned up.
+///    caller goes away, so `on_prepare` may be cancelled at any await point. It
+///    must leave no half-applied effect that only its own return path would have
+///    cleaned up.
 /// 3. **Cancel must wait for the in-flight Try.** `on_rolled_back` for an
 ///    attempt must not start undoing while that attempt's `on_prepare` is still
 ///    running, or the undo races the effect it is undoing. The participant
@@ -161,7 +132,7 @@ pub enum RollbackReason {
 ///
 /// The commit decision itself is never carried by these notifications alone: a
 /// single-shot participant also holds a [`crate::state::DecisionHandle`], which
-/// stays readable when `on_committed` is dropped or times out.
+/// stays readable when `on_committed` is dropped.
 #[async_trait::async_trait]
 pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
     /// A unique name for this subscriber, used in logging and reporting.
@@ -172,9 +143,9 @@ pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
         false
     }
 
-    /// Ack options for this subscriber. By default, it's required with a 30-second timeout.
-    fn ack_options(&self) -> AckOptions {
-        AckOptions::default()
+    /// Whether a failed prepare vetoes the commit. Required by default.
+    fn policy(&self) -> AckPolicy {
+        AckPolicy::Required
     }
 
     /// Required / advisory ACK
@@ -206,8 +177,8 @@ where
         (**self).is_shutdown()
     }
 
-    fn ack_options(&self) -> AckOptions {
-        (**self).ack_options()
+    fn policy(&self) -> AckPolicy {
+        (**self).policy()
     }
 
     async fn on_prepare(&self, change: StateChange<T>) -> Ack {
@@ -241,7 +212,6 @@ pub enum AckStatus {
     Failed {
         error: Arc<anyhow::Error>,
     },
-    TimedOut,
     /// A Service is shutdown and cannot process ACKs, so the coordinator will skip waiting for it and treat it as if it acknowledged immediately.
     SkippedShutdown,
 }
@@ -263,7 +233,6 @@ impl From<Ack> for AckStatus {
 pub struct SubscriberAck {
     pub name: SubscriberName<'static>,
     pub policy: AckPolicy,
-    pub timeout: Duration,
     pub elapsed: Duration,
     pub status: AckStatus,
 }
@@ -273,7 +242,7 @@ impl SubscriberAck {
         self.policy == AckPolicy::Required
             && matches!(
                 self.status,
-                AckStatus::Rejected { .. } | AckStatus::Failed { .. } | AckStatus::TimedOut
+                AckStatus::Rejected { .. } | AckStatus::Failed { .. }
             )
     }
 }
@@ -299,7 +268,7 @@ impl PrepareReport {
             a.policy == AckPolicy::Advisory
                 && matches!(
                     a.status,
-                    AckStatus::Rejected { .. } | AckStatus::Failed { .. } | AckStatus::TimedOut
+                    AckStatus::Rejected { .. } | AckStatus::Failed { .. }
                 )
         })
     }
@@ -321,7 +290,6 @@ mod tests {
             subscriber_acks: vec![SubscriberAck {
                 name: "advisory".into(),
                 policy: AckPolicy::Advisory,
-                timeout: Duration::from_secs(1),
                 elapsed: Duration::from_millis(1),
                 status: AckStatus::Rejected {
                     reason: "not acceptable".to_string(),

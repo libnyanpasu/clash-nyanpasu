@@ -6,8 +6,8 @@
 //!
 //! 1. every attempt gets its own participant object, so a late callback can
 //!    only carry the identity of the attempt that created it;
-//! 2. a committed transaction stays readable as committed even when the
-//!    `on_committed` notification never lands;
+//! 2. a committed transaction reads as committed before its `on_committed`
+//!    notification lands;
 //! 3. the caller's own local write sits between prepare and the commit, and a
 //!    refusal after it completed is never reported as a clean rejection;
 //! 4. a cancelled transaction records the unknown on-disk outcome instead of
@@ -17,7 +17,7 @@
 use std::{
     sync::{
         Arc, Mutex as StdMutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -25,9 +25,9 @@ use std::{
 use tokio::sync::{Mutex, Notify};
 
 use crate::state::{
-    AbortResourceState, Ack, AckOptions, DecisionHandle, ReplaceIfVersionError,
-    ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange, StateChangeId,
-    StateDecision, StateParticipant, SubscriberName, Version, error::StateChangedError,
+    AbortResourceState, Ack, DecisionHandle, ReplaceIfVersionError, ReplaceIfVersionResult,
+    RollbackReason, StateAckSubscriber, StateChange, StateChangeId, StateDecision,
+    StateParticipant, SubscriberName, Version, error::StateChangedError,
 };
 
 use super::support::{StoreHijacker, TestState, config_path, manager_at, read_config};
@@ -199,7 +199,10 @@ async fn two_failed_attempts_keep_separate_participant_identities() {
         current: Arc::new(TestState::new("candidate", 1)),
     };
     participants[0]
-        .on_rolled_back(change, RollbackReason::Timeout)
+        .on_rolled_back(
+            change,
+            RollbackReason::CoordinatorError(Arc::new(anyhow::anyhow!("late rollback"))),
+        )
         .await;
     assert_eq!(
         log.lock().await.last().cloned(),
@@ -215,58 +218,51 @@ async fn two_failed_attempts_keep_separate_participant_identities() {
     assert_eq!(manager.snapshot().name, "");
 }
 
-/// The participant's `on_committed` never completes, so the notification is
-/// lost. The decision handle still proves the commit.
+/// The participant's `on_committed` is held still, so the notification has not
+/// landed. The decision handle already proves the commit.
 #[tokio::test]
-async fn a_committed_decision_survives_a_lost_commit_notification() {
-    struct DeafParticipant {
-        committed_seen: Arc<AtomicUsize>,
+async fn a_committed_decision_is_readable_before_the_commit_notification_lands() {
+    struct HeldParticipant {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
     }
 
     #[async_trait::async_trait]
-    impl StateAckSubscriber<TestState> for DeafParticipant {
+    impl StateAckSubscriber<TestState> for HeldParticipant {
         fn name(&self) -> SubscriberName<'_> {
-            "deaf-participant".into()
-        }
-
-        fn ack_options(&self) -> AckOptions {
-            AckOptions::required(Duration::from_millis(50))
+            "held-participant".into()
         }
 
         async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
-            tokio::time::sleep(Duration::from_secs(3600)).await;
-            self.committed_seen.fetch_add(1, Ordering::SeqCst);
+            self.entered.notify_one();
+            self.release.notified().await;
             Ack::Ok
         }
     }
 
     let dir = tempfile::tempdir().unwrap();
     let mut manager = manager_at(&dir).await;
-    let committed_seen = Arc::new(AtomicUsize::new(0));
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
     let handle: Arc<StdMutex<Option<DecisionHandle>>> = Arc::new(StdMutex::new(None));
 
-    let result = manager
-        .replace_if_version_with_participant(
-            Version::new(0),
-            TestState::new("next", 1),
-            |decision| {
-                *handle.lock().unwrap() = Some(decision);
-                Arc::new(DeafParticipant {
-                    committed_seen: Arc::clone(&committed_seen),
-                })
-            },
-            no_local_write,
-            || async { Ok(()) },
-        )
-        .await
-        .unwrap();
-
-    assert!(matches!(result, ReplaceIfVersionResult::Replaced));
-    assert_eq!(
-        committed_seen.load(Ordering::SeqCst),
-        0,
-        "the commit notification must have been lost for this test to mean anything"
-    );
+    let mut replace = Box::pin(manager.replace_if_version_with_participant(
+        Version::new(0),
+        TestState::new("next", 1),
+        |decision| {
+            *handle.lock().unwrap() = Some(decision);
+            Arc::new(HeldParticipant {
+                entered: Arc::clone(&entered),
+                release: Arc::clone(&release),
+            })
+        },
+        no_local_write,
+        || async { Ok(()) },
+    ));
+    tokio::select! {
+        result = &mut replace => panic!("the commit notification is held, got {result:?}"),
+        _ = entered.notified() => {}
+    }
 
     let handle = handle.lock().unwrap().clone().expect("handle was built");
     assert_eq!(
@@ -275,12 +271,10 @@ async fn a_committed_decision_survives_a_lost_commit_notification() {
             version: Version::new(1)
         }
     );
-    assert!(!matches!(
-        handle.decision(),
-        StateDecision::Aborted {
-            resources: AbortResourceState::NeedsRecovery(_)
-        }
-    ));
+
+    release.notify_one();
+    let result = replace.await.unwrap();
+    assert!(matches!(result, ReplaceIfVersionResult::Replaced));
 }
 
 #[tokio::test]

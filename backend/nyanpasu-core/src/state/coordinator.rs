@@ -1031,8 +1031,8 @@ mod test {
             fn name(&self) -> SubscriberName<'_> {
                 "advisory".into()
             }
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::advisory(std::time::Duration::from_secs(30))
+            fn policy(&self) -> AckPolicy {
+                AckPolicy::Advisory
             }
             async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
                 Ack::Failed(anyhow::anyhow!("advisory failure"))
@@ -1226,46 +1226,58 @@ mod test {
         );
     }
 
-    #[tokio::test]
-    async fn test_timeout_subscriber() {
-        struct SlowSubscriber;
+    /// A Required prepare is waited for, however long it takes: the transaction
+    /// has no deadline of its own that could turn a slow answer into a rollback
+    /// (V01).
+    #[tokio::test(start_paused = true)]
+    async fn test_blocked_required_prepare_is_waited_for() {
+        struct BlockedSubscriber {
+            entered: Arc<Notify>,
+            release: Arc<Notify>,
+        }
         #[async_trait::async_trait]
-        impl StateAckSubscriber<TestState> for SlowSubscriber {
+        impl StateAckSubscriber<TestState> for BlockedSubscriber {
             fn name(&self) -> SubscriberName<'_> {
-                "slow".into()
-            }
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::required(std::time::Duration::from_millis(50))
+                "blocked".into()
             }
             async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                self.entered.notify_one();
+                self.release.notified().await;
                 Ack::Ok
             }
         }
 
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
         let mut coordinator = StateCoordinator::builder()
-            .with_subscriber(Box::new(SlowSubscriber))
+            .with_subscriber(Box::new(BlockedSubscriber {
+                entered: Arc::clone(&entered),
+                release: Arc::clone(&release),
+            }))
             .build(default_test_state());
         let test_state = TestState {
             value: 1,
-            name: "timeout_test".to_string(),
+            name: "blocked".to_string(),
         };
 
-        let result = coordinator.upsert_state(test_state.clone()).await;
-        assert!(result.is_err());
-
-        match &result.unwrap_err() {
-            StateChangedError::PrepareAck(e) => {
-                assert!(e.report.has_required_failures());
-                assert!(matches!(
-                    e.report.subscriber_acks[0].status,
-                    AckStatus::TimedOut
-                ));
-            }
-            other => panic!("Expected PrepareAck with TimedOut, got: {other:?}"),
+        let mut upsert = Box::pin(coordinator.upsert_state(test_state.clone()));
+        tokio::select! {
+            result = &mut upsert => panic!("the prepare is blocked, got {result:?}"),
+            _ = entered.notified() => {}
         }
 
-        assert_eq!(coordinator.snapshot_versioned().value, 0);
+        // Past the 90 s the old ACK budget allowed. The paused sleep returns
+        // only once every task is idle, so anything the jump woke has run.
+        tokio::time::advance(Duration::from_secs(91)).await;
+        tokio::select! {
+            result = &mut upsert => panic!("a blocked Required prepare must be waited for, got {result:?}"),
+            _ = tokio::time::sleep(Duration::from_millis(1)) => {}
+        }
+
+        release.notify_one();
+        let report = upsert.await.expect("the released prepare commits");
+        assert!(!report.has_required_failures());
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
     }
 
     #[tokio::test]
@@ -1313,8 +1325,8 @@ mod test {
             fn is_shutdown(&self) -> bool {
                 true
             }
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::advisory(std::time::Duration::from_secs(30))
+            fn policy(&self) -> AckPolicy {
+                AckPolicy::Advisory
             }
             async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
                 panic!("should not be called");
@@ -1775,66 +1787,6 @@ mod test {
         assert_eq!(history[0], (None, state));
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn test_build_initialized_prepare_timeout_returns_init_ack_error() {
-        struct InitPrepareTimeoutSubscriber {
-            prepare_calls: Arc<AtomicUsize>,
-            committed_calls: Arc<AtomicUsize>,
-        }
-
-        #[async_trait::async_trait]
-        impl StateAckSubscriber<TestState> for InitPrepareTimeoutSubscriber {
-            fn name(&self) -> SubscriberName<'_> {
-                "init_timeout".into()
-            }
-
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::required(std::time::Duration::from_secs(1))
-            }
-
-            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-                self.prepare_calls.fetch_add(1, Ordering::SeqCst);
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                Ack::Ok
-            }
-
-            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
-                self.committed_calls.fetch_add(1, Ordering::SeqCst);
-                Ack::Ok
-            }
-        }
-
-        let prepare_calls = Arc::new(AtomicUsize::new(0));
-        let committed_calls = Arc::new(AtomicUsize::new(0));
-        let state = TestState {
-            value: 42,
-            name: "init_timeout".to_string(),
-        };
-
-        let result = StateCoordinator::builder()
-            .with_subscriber(Box::new(InitPrepareTimeoutSubscriber {
-                prepare_calls: Arc::clone(&prepare_calls),
-                committed_calls: Arc::clone(&committed_calls),
-            }))
-            .build_initialized(state.clone())
-            .await;
-
-        let (coordinator, report) = match result {
-            Ok(_) => panic!("initialization should fail when required prepare ACK times out"),
-            Err(error) => error.into_parts(),
-        };
-
-        assert_eq!(prepare_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(committed_calls.load(Ordering::SeqCst), 0);
-        assert!(report.has_required_failures());
-        assert_eq!(report.subscriber_acks.len(), 1);
-        assert!(matches!(
-            report.subscriber_acks[0].status,
-            AckStatus::TimedOut
-        ));
-        assert_eq!(&*coordinator.snapshot_versioned(), &state);
-    }
-
     #[tokio::test]
     async fn test_error_display() {
         let state_error = StateChangedError::Validation(anyhow::anyhow!("bad input"));
@@ -1870,8 +1822,8 @@ mod test {
             fn name(&self) -> SubscriberName<'_> {
                 "advisory_fail".into()
             }
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::advisory(std::time::Duration::from_secs(30))
+            fn policy(&self) -> AckPolicy {
+                AckPolicy::Advisory
             }
             async fn on_prepare(&self, _: StateChange<TestState>) -> Ack {
                 Ack::Failed(anyhow::anyhow!("advisory error"))

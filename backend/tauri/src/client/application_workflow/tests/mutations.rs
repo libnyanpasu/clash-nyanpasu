@@ -27,7 +27,7 @@ use nyanpasu_config::{
     profile::{ManagedProfilePath, ProfileId, Profiles},
 };
 use nyanpasu_core::state::{
-    Ack, AckOptions, PersistentStateManager, PersistentStateManagerSetup, ReplaceIfVersionError,
+    Ack, AckPolicy, PersistentStateManager, PersistentStateManagerSetup, ReplaceIfVersionError,
     ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange, StateParticipant,
     SubscriberName, error::StateChangedError,
 };
@@ -126,48 +126,6 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
             "scripted product publication failure"
         );
         self.delegate.publish(snapshot).await
-    }
-}
-
-/// The daemon preparation, with its first probe held still.
-///
-/// `change_execution_host` asks the service host whether it is ready before it
-/// can own anything, and that leg is the one the participant's ACK budget
-/// cannot bound: it can install and start a daemon. Parking it is how the ACK
-/// budget is made to elapse while the Try is genuinely mid-handoff.
-struct ParkingDaemon {
-    delegate: crate::client::tests::HostTransitionServiceAdapter,
-    entered: Notify,
-    release: Notify,
-    park: AtomicBool,
-}
-
-#[async_trait::async_trait]
-impl ServiceHostAdapter for ParkingDaemon {
-    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
-        if self.park.swap(false, Ordering::SeqCst) {
-            self.entered.notify_one();
-            self.release.notified().await;
-        }
-        self.delegate.probe().await
-    }
-    async fn install(&self) -> Result<(), String> {
-        self.delegate.install().await
-    }
-    async fn uninstall(&self) -> Result<(), String> {
-        self.delegate.uninstall().await
-    }
-    async fn start_daemon(&self) -> Result<(), String> {
-        self.delegate.start_daemon().await
-    }
-    async fn stop_daemon(&self) -> Result<(), String> {
-        self.delegate.stop_daemon().await
-    }
-    async fn update(&self) -> Result<(), String> {
-        self.delegate.update().await
-    }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
-        self.delegate.endpoint()
     }
 }
 
@@ -456,14 +414,12 @@ pub(super) fn plain<T: Clone + Send + Sync + 'static>() -> Decorate<T> {
 ///
 /// The attempt identity is the caller's so a test can address a settlement
 /// before the attempt has finished, exactly as the domain actor will.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn mutate<T>(
     manager: &mut PersistentStateManager<T>,
     client: &ApplicationWorkflowClient,
     operation_id: OperationId,
     next: T,
     class: CommandClass,
-    ack_timeout: Duration,
     decorate: Decorate<T>,
     local_write: impl FnOnce() -> futures::future::BoxFuture<'static, anyhow::Result<()>>
     + Send
@@ -479,13 +435,12 @@ where
             version,
             next,
             move |decision| {
-                decorate(ApplicationMutationParticipant::<T>::with_ack_timeout(
+                decorate(ApplicationMutationParticipant::<T>::new(
                     operation_id,
                     MutationHints::default(),
                     class,
                     decision,
                     client,
-                    ack_timeout,
                 ))
             },
             local_write,
@@ -518,13 +473,12 @@ where
             version,
             next,
             move |decision| {
-                ApplicationMutationParticipant::<T>::with_ack_timeout(
+                ApplicationMutationParticipant::<T>::new(
                     operation_id,
                     hints,
                     class,
                     decision,
                     client,
-                    Duration::from_secs(10),
                 )
             },
             no_local_write,
@@ -554,7 +508,6 @@ where
         operation_id,
         next,
         class,
-        Duration::from_secs(10),
         plain(),
         no_local_write,
     )
@@ -712,8 +665,8 @@ impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for DropSignal<T> {
     fn name(&self) -> SubscriberName<'_> {
         self.inner.name()
     }
-    fn ack_options(&self) -> AckOptions {
-        self.inner.ack_options()
+    fn policy(&self) -> AckPolicy {
+        self.inner.policy()
     }
     async fn on_prepare(&self, change: StateChange<T>) -> Ack {
         self.inner.on_prepare(change).await
@@ -959,7 +912,6 @@ async fn a_late_cancel_for_a_settled_attempt_never_touches_the_current_one() {
                 second,
                 overrides(serde_json::json!({"mode": "direct"})),
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -1012,7 +964,6 @@ async fn a_lost_commit_notification_is_resolved_by_the_authoritative_decision() 
         operation_id,
         overrides(serde_json::json!({"mode": "global"})),
         CommandClass::Save,
-        Duration::from_secs(10),
         drop_signal(true, kept.clone()),
         no_local_write,
     )
@@ -1037,12 +988,16 @@ async fn a_lost_commit_notification_is_resolved_by_the_authoritative_decision() 
 }
 
 /// The rollback notification never arrives. The authoritative decision says
-/// Aborted, so the workflow cancels and puts the baseline back (V26).
+/// Aborted, so the workflow cancels and puts the baseline back (V26). The
+/// execution domain stays held until that restore is done: the next mutation's
+/// Try starts only after it.
 #[tokio::test]
 async fn a_lost_rollback_notification_is_resolved_by_the_authoritative_decision() {
     let Fixture {
         client,
         endpoint,
+        builder,
+        mut application,
         mut clash,
         store,
         _dir,
@@ -1070,91 +1025,16 @@ async fn a_lost_rollback_notification_is_resolved_by_the_authoritative_decision(
         operation_id,
         overrides(serde_json::json!({"mode": "direct"})),
         CommandClass::Save,
-        Duration::from_secs(10),
         drop_signal(false, kept.clone()),
         no_local_write,
     )
     .await;
-
     assert!(refused(&result), "{result:?}");
-    let receipt = settled(&client, operation_id).await;
-    assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
-    assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
-    assert_eq!(
-        store
-            .last_confirmed_runtime_receipt()
-            .expect("the baseline is the checkpoint again")
-            .config_digest,
-        baseline.config_digest
-    );
-    let submitted = endpoint.reconciled_bytes();
-    assert_eq!(submitted.len(), 3, "primed, tried, restored");
-    assert_eq!(
-        submitted[2], submitted[0],
-        "the restore resubmits the baseline document, not the withdrawn candidate"
-    );
-    assert!(kept.lock().unwrap().is_some());
-}
 
-// -- 图 13: an abandoned prepare never abandons the Try ---------------------
-
-/// The ACK budget elapses while the Try is in flight. The transaction aborts,
-/// but the Try is a tracked task: the workflow waits for its real terminal
-/// result, restores the baseline, and only then releases the execution domain.
-/// The next attempt is admitted after that, never during it (V24).
-#[tokio::test]
-async fn an_abandoned_prepare_waits_for_the_try_before_restoring_and_releasing() {
-    let Fixture {
-        client,
-        endpoint,
-        builder,
-        mut application,
-        mut clash,
-        store,
-        _dir,
-        ..
-    } = fixture(test_budgets()).await;
-
-    let (primed_id, primed) = simple_mutate(
-        &mut clash,
-        &client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
-    // The call returns at commit, while the primed Confirm (a product write
-    // with fsyncs) still holds the domain. Settled first, so the 50 ms budget
-    // below cannot lapse while the next attempt is still queued.
-    settled(&client, primed_id).await;
-    let committed = clash.snapshot_handle().load().version;
-
+    // The veto reaches its caller while the Cancel may still be restoring. The
+    // next mutation parks as soon as its Try starts, and by then the restore
+    // has to be complete.
     builder.park.store(true, Ordering::SeqCst);
-    let abandoned = OperationId::generate();
-    let timed_out = {
-        let client = client.clone();
-        tokio::spawn(async move {
-            let result = mutate(
-                &mut clash,
-                &client,
-                abandoned,
-                overrides(serde_json::json!({"mode": "direct"})),
-                CommandClass::Save,
-                // Short enough that the budget elapses while the Try is parked.
-                Duration::from_millis(50),
-                plain(),
-                no_local_write,
-            )
-            .await;
-            (clash, result)
-        })
-    };
-    tokio::time::timeout(Duration::from_secs(5), builder.entered.notified())
-        .await
-        .expect("the abandoned attempt should reach its parked Try");
-
-    // The transaction gives up on the prepare here; the next mutation must
-    // still wait for the Try that is holding the execution domain.
     let next = {
         let client = client.clone();
         tokio::spawn(async move {
@@ -1168,47 +1048,37 @@ async fn an_abandoned_prepare_waits_for_the_try_before_restoring_and_releasing()
             (application, result)
         })
     };
-    wait_queued(&client, 1).await;
-    let (clash, abandoned_result) = timed_out.await.unwrap();
-    assert!(refused(&abandoned_result), "{abandoned_result:?}");
+    builder.entered.notified().await;
+    let submitted = endpoint.reconciled_bytes();
+    assert_eq!(submitted.len(), 3, "primed, tried, restored");
     assert_eq!(
-        builder.calls.load(Ordering::SeqCst),
-        2,
-        "the queued mutation has not started while the abandoned Try runs"
+        submitted[2], submitted[0],
+        "the restore resubmits the baseline document, not the withdrawn candidate"
+    );
+    assert_eq!(
+        store
+            .last_confirmed_runtime_receipt()
+            .expect("the baseline is the checkpoint again")
+            .config_digest,
+        baseline.config_digest
     );
 
     builder.park.store(false, Ordering::SeqCst);
     builder.release.notify_one();
-    let (application, (next_id, next_result)) = next.await.unwrap();
-    assert!(matches!(next_result, Ok(ReplaceIfVersionResult::Replaced)));
+    let (_application, (next_id, next_result)) = next.await.unwrap();
+    assert!(
+        matches!(next_result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{next_result:?}"
+    );
     assert_eq!(
         settled(&client, next_id).await.conclusion,
         MutationConclusion::Confirmed
     );
 
-    let receipt = settled(&client, abandoned).await;
+    let receipt = settled(&client, operation_id).await;
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
-    assert_eq!(
-        clash.snapshot_handle().load().version,
-        committed,
-        "the abandoned attempt committed nothing"
-    );
-    let submitted = endpoint.reconciled_bytes();
-    assert_eq!(submitted.len(), 4, "primed, tried, restored, next");
-    assert_eq!(
-        submitted[2], submitted[0],
-        "the baseline is restored before the next mutation is admitted"
-    );
-    assert_eq!(
-        store
-            .read()
-            .promoted
-            .expect("the next mutation publishes")
-            .target_core,
-        ClashCore::ClashRs
-    );
-    drop(application);
+    assert!(kept.lock().unwrap().is_some());
 }
 
 // -- V07: the Try succeeded and the save did not -----------------------------
@@ -1407,7 +1277,6 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
                 in_flight,
                 overrides(serde_json::json!({"mode": "global"})),
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -2178,13 +2047,12 @@ async fn a_host_switch_moves_the_runtime_inside_the_try_and_back_on_cancel() {
                         ..NyanpasuAppConfig::default()
                     },
                     move |decision| {
-                        ApplicationMutationParticipant::<NyanpasuAppConfig>::with_ack_timeout(
+                        ApplicationMutationParticipant::<NyanpasuAppConfig>::new(
                             operation_id,
                             MutationHints::default(),
                             CommandClass::ExplicitSwitch,
                             decision,
                             client,
-                            Duration::from_secs(10),
                         )
                     },
                     parked_local_write(entered, release),
@@ -2390,149 +2258,6 @@ async fn an_unobserved_apply_after_a_handoff_keeps_its_recovery_context() {
     assert!(!application.snapshot().enable_service_mode);
 }
 
-/// B5 / 图 13, on the leg the ACK budget most plainly cannot bound.
-///
-/// The participant's ACK budget bounds the *transaction's wait* for a verdict,
-/// never the Try. Here it elapses while the daemon preparation is still
-/// running, so the transaction aborts with nothing decided about the runtime.
-/// An elapsed budget is not a cancellation: the handoff completes, the
-/// candidate is applied on the host it asked for, and the execution domain
-/// stays held until that real terminal result arrives and the Cancel has put
-/// the original host and runtime back. The existing parked-build coverage
-/// stops short of these service transitions.
-#[tokio::test]
-async fn an_expired_ack_keeps_the_domain_until_the_handoff_is_compensated() {
-    let service_host = TestControlEndpoint::succeeding_on(ExecutionHost::Service);
-    service_host.set_status(
-        Some(CoreStateDetail::Running { epoch: 1, pid: 9 }),
-        Some(CoreKind::Mihomo),
-    );
-    let daemon = Arc::new(ParkingDaemon {
-        delegate: host_transition_daemon(service_host.clone()),
-        entered: Notify::new(),
-        release: Notify::new(),
-        // Armed after the graph is up: the service actor probes on its own
-        // while it starts, and the leg this test holds is the handoff's.
-        park: AtomicBool::new(false),
-    });
-    let Fixture {
-        client,
-        endpoint,
-        core,
-        mut clash,
-        mut application,
-        _dir,
-        ..
-    } = fixture_with_daemon(
-        test_budgets(),
-        true,
-        Some(daemon.clone() as Arc<dyn ServiceHostAdapter>),
-    )
-    .await;
-
-    let (primed_id, primed) = simple_mutate(
-        &mut clash,
-        &client,
-        overrides(serde_json::json!({"mode": "global"})),
-        CommandClass::Save,
-    )
-    .await;
-    assert!(matches!(primed, Ok(ReplaceIfVersionResult::Replaced)));
-    // Settled first, as in the parked-build test: the budget below must only
-    // lapse once the abandoned attempt holds the domain.
-    settled(&client, primed_id).await;
-    let restored_from = endpoint.reconciled_bytes().len();
-    let before = application.snapshot_handle().load().version;
-    daemon.park.store(true, Ordering::SeqCst);
-
-    let abandoned = OperationId::generate();
-    let timed_out = {
-        let client = client.clone();
-        tokio::spawn(async move {
-            let result = mutate(
-                &mut application,
-                &client,
-                abandoned,
-                NyanpasuAppConfig {
-                    enable_service_mode: true,
-                    ..NyanpasuAppConfig::default()
-                },
-                CommandClass::ExplicitSwitch,
-                // Short enough that the budget elapses inside the preparation.
-                Duration::from_millis(50),
-                plain(),
-                no_local_write,
-            )
-            .await;
-            (application, result)
-        })
-    };
-    tokio::time::timeout(Duration::from_secs(5), daemon.entered.notified())
-        .await
-        .expect("the abandoned attempt should reach its parked handoff probe");
-
-    // The transaction gives up on the prepare here. The Try is mid-handoff, so
-    // the next mutation must queue rather than be admitted onto a runtime
-    // nobody can describe yet.
-    let next = {
-        let client = client.clone();
-        tokio::spawn(async move {
-            let result = simple_mutate(
-                &mut clash,
-                &client,
-                overrides(serde_json::json!({"mode": "direct"})),
-                CommandClass::Save,
-            )
-            .await;
-            (clash, result)
-        })
-    };
-    wait_queued(&client, 1).await;
-    let (application, abandoned_result) = timed_out.await.unwrap();
-    assert!(refused(&abandoned_result), "{abandoned_result:?}");
-    assert_eq!(
-        application.snapshot_handle().load().version,
-        before,
-        "an elapsed ACK budget commits nothing"
-    );
-    assert_eq!(
-        endpoint.reconciled_bytes().len(),
-        restored_from,
-        "and it restores nothing while the handoff it started is still running"
-    );
-
-    daemon.release.notify_one();
-    let receipt = settled(&client, abandoned).await;
-    assert_eq!(
-        receipt.conclusion,
-        MutationConclusion::Cancelled,
-        "the abandoned attempt is settled by the Try's own terminal result: {:?}",
-        receipt.detail
-    );
-    assert_eq!(
-        core.status().host,
-        ExecutionHost::Local,
-        "and the host it moved is put back"
-    );
-    assert!(
-        endpoint.reconciled_bytes().len() > restored_from,
-        "together with the runtime that was running on it"
-    );
-
-    // Only now is the queued mutation admitted, and it reads a runtime the
-    // compensation has already settled.
-    let (_clash, (queued, queued_result)) = next.await.unwrap();
-    assert!(
-        matches!(queued_result, Ok(ReplaceIfVersionResult::Replaced)),
-        "{queued_result:?}"
-    );
-    assert_eq!(
-        settled(&client, queued).await.conclusion,
-        MutationConclusion::Confirmed
-    );
-    assert!(!client.status().uncertain);
-}
-
 // -- C4: a restore is proven by a fresh observation, never by a cached one ---
 
 /// The Try applied, the save failed, the restore was submitted, and then the
@@ -2575,7 +2300,6 @@ async fn a_restore_that_cannot_be_observed_is_not_a_clean_cancel() {
                 operation_id,
                 target,
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -2662,7 +2386,6 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
                 operation_id,
                 on_mixed_port(7897),
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -2762,7 +2485,6 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
                 // Only the mode moves: every port strategy is the baseline's.
                 overrides(serde_json::json!({"mode": "direct"})),
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -3424,7 +3146,6 @@ async fn an_isolated_domain_retires_the_contexts_of_the_mutations_it_drains() {
                 first,
                 overrides(serde_json::json!({"mode": "direct"})),
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 move || {
                     Box::pin(async move {
@@ -3846,7 +3567,6 @@ async fn uncommitted_runtime_ports_are_not_available_to_peripheral_readers() {
                 id,
                 on_mixed_port(7897),
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )

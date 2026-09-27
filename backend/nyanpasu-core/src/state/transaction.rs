@@ -92,8 +92,7 @@ struct RollbackGuardData<T: Clone + Send + Sync + 'static> {
 ///   run yet.
 /// - the `Drop` path has no caller left at all. It takes the permit the
 ///   cancelled path was still holding into the detached task that re-runs the
-///   notifications, and releases it when they finish, bounded by the
-///   subscribers' ACK budget.
+///   notifications, and releases it when they finish.
 ///
 /// So "no prepare overtakes the previous attempt's rollback" holds whether the
 /// rollback completed or was cancelled halfway through.
@@ -418,7 +417,6 @@ where
                                 AckStatus::Failed { error } => SubscriberFailureKind::Failed {
                                     error: error.clone(),
                                 },
-                                AckStatus::TimedOut => SubscriberFailureKind::TimedOut,
                                 _ => unreachable!(),
                             },
                         })

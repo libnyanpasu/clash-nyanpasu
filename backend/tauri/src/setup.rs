@@ -71,6 +71,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // For commands that need a path, such as the Windows UWP loopback tool.
     app.manage(paths.clone());
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
+    // TODO(ipc-timeout): nyanpasu_ipc::Client sets no request timeout. Remove the
+    // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context("Failed to build the service IPC client")?;
     let service_binary = paths

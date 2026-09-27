@@ -933,11 +933,8 @@ impl ApplicationWorkflow {
         // transaction bounds it. `change_execution_host` may install or start
         // the daemon before it can own anything, the reconcile below carries the
         // core's own apply budget, and `compensate_handoff` adds a move back
-        // plus a reconcile of the baseline. The participant's 90s ACK budget
-        // bounds only the transaction's *wait* for the verdict (图 13): when it
-        // elapses the transaction aborts and this keeps running as a tracked
-        // task, and the Cancel that follows waits for its real terminal result.
-        // An elapsed ACK is never evidence that any of this was cancelled.
+        // plus a reconcile of the baseline. The source transaction waits for
+        // the verdict until all of it has finished.
         self.lifecycle.runtime.begin_transition();
         // Charged before the first action that can reach the runtime is
         // written, so neither a panic nor a lost receipt skips it (T10 §1.8).

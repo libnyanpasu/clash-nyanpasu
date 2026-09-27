@@ -30,57 +30,45 @@ where
         change: &StateChange<T>,
         subscriber: ArcStateSubscriber<T>,
     ) -> SubscriberAck {
-        let opt = subscriber.ack_options();
+        let policy = subscriber.policy();
 
         if subscriber.is_shutdown() {
             return SubscriberAck {
                 name: subscriber.name().into_static(),
-                policy: opt.policy,
-                timeout: opt.timeout,
+                policy,
                 elapsed: Duration::from_secs(0),
                 status: AckStatus::SkippedShutdown,
             };
         }
 
         let start = Instant::now();
-        let status =
-            match tokio::time::timeout(opt.timeout, subscriber.on_prepare(change.clone())).await {
-                Ok(Ack::Ok) => AckStatus::Acked,
+        let status = match subscriber.on_prepare(change.clone()).await {
+            Ack::Ok => AckStatus::Acked,
 
-                Ok(Ack::Degraded(message)) => AckStatus::Degraded { message },
+            Ack::Degraded(message) => AckStatus::Degraded { message },
 
-                Ok(Ack::Rejected(reason)) => {
-                    tracing::warn!(
-                        subscriber = %subscriber.name(),
-                        reason = %reason,
-                        "subscriber rejected state change"
-                    );
-                    AckStatus::Rejected { reason }
+            Ack::Rejected(reason) => {
+                tracing::warn!(
+                    subscriber = %subscriber.name(),
+                    reason = %reason,
+                    "subscriber rejected state change"
+                );
+                AckStatus::Rejected { reason }
+            }
+
+            Ack::Failed(error) => {
+                tracing::error!(
+                    subscriber = %subscriber.name(),
+                    "subscriber ACK failed: {error}"
+                );
+                AckStatus::Failed {
+                    error: error.into(),
                 }
-
-                Ok(Ack::Failed(error)) => {
-                    tracing::error!(
-                        subscriber = %subscriber.name(),
-                        "subscriber ACK failed: {error}"
-                    );
-                    AckStatus::Failed {
-                        error: error.into(),
-                    }
-                }
-
-                Err(_) => {
-                    tracing::warn!(
-                        subscriber = %subscriber.name(),
-                        timeout_ms = opt.timeout.as_millis(),
-                        "subscriber ACK timed out"
-                    );
-                    AckStatus::TimedOut
-                }
-            };
+            }
+        };
         SubscriberAck {
             name: subscriber.name().into_static(),
-            policy: opt.policy,
-            timeout: opt.timeout,
+            policy,
             elapsed: start.elapsed(),
             status,
         }
@@ -96,34 +84,26 @@ where
             return;
         }
 
-        let opt = subscriber.ack_options();
-        match tokio::time::timeout(opt.timeout, subscriber.on_committed(change.clone())).await {
-            Ok(Ack::Ok) => {}
-            Ok(Ack::Degraded(message)) => {
+        match subscriber.on_committed(change.clone()).await {
+            Ack::Ok => {}
+            Ack::Degraded(message) => {
                 tracing::warn!(
                     subscriber = %subscriber.name(),
                     message = %message,
                     "subscriber post-commit notification degraded"
                 );
             }
-            Ok(Ack::Rejected(reason)) => {
+            Ack::Rejected(reason) => {
                 tracing::warn!(
                     subscriber = %subscriber.name(),
                     reason = %reason,
                     "subscriber rejected post-commit notification"
                 );
             }
-            Ok(Ack::Failed(error)) => {
+            Ack::Failed(error) => {
                 tracing::warn!(
                     subscriber = %subscriber.name(),
                     "subscriber post-commit notification failed: {error}"
-                );
-            }
-            Err(_) => {
-                tracing::warn!(
-                    subscriber = %subscriber.name(),
-                    timeout_ms = opt.timeout.as_millis(),
-                    "subscriber post-commit notification timed out"
                 );
             }
         }
@@ -143,20 +123,7 @@ where
             return;
         }
 
-        let opt = subscriber.ack_options();
-        if tokio::time::timeout(
-            opt.timeout,
-            subscriber.on_rolled_back(change.clone(), reason),
-        )
-        .await
-        .is_err()
-        {
-            tracing::warn!(
-                subscriber = %subscriber.name(),
-                timeout_ms = opt.timeout.as_millis(),
-                "subscriber rollback notification timed out"
-            );
-        }
+        subscriber.on_rolled_back(change.clone(), reason).await;
     }
 }
 
@@ -186,7 +153,6 @@ where
                         SubscriberAck {
                             name: SubscriberName(Cow::Borrowed("<notify task join failure>")),
                             policy: AckPolicy::Required,
-                            timeout: Duration::from_secs(0),
                             elapsed: Duration::from_secs(0),
                             status: AckStatus::Failed {
                                 error: anyhow::anyhow!("failed to join notify task: {error}")

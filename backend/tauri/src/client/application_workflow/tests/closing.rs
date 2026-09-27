@@ -76,7 +76,6 @@ async fn closing_during_a_try_waits_for_it_to_confirm() {
                 operation_id,
                 overrides(serde_json::json!({"mode": "global"})),
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 no_local_write,
             )
@@ -131,7 +130,6 @@ async fn closing_during_await_decision_keeps_the_decision_wait() {
                 operation_id,
                 overrides(serde_json::json!({"mode": "global"})),
                 CommandClass::Save,
-                Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -208,7 +206,6 @@ async fn closing_during_a_cancel_waits_for_the_restore() {
         operation_id,
         overrides(serde_json::json!({"mode": "direct"})),
         CommandClass::Save,
-        Duration::from_secs(10),
         plain(),
         no_local_write,
     )

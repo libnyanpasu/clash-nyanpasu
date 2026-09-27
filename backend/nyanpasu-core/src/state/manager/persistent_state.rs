@@ -383,11 +383,11 @@ where
     ///
     /// `participant` is built from the transaction's own read-only
     /// [`DecisionHandle`], so it can still tell what the transaction decided
-    /// after its `on_committed` notification was dropped or timed out. It joins
-    /// the permanently registered subscribers of the same transaction: same
-    /// prepare fan-out, same required-failure rollback, same notifications. It
-    /// is never registered on the coordinator, so a cancelled replacement
-    /// cannot leave a subscription behind.
+    /// after its `on_committed` notification was dropped. It joins the
+    /// permanently registered subscribers of the same transaction: same prepare
+    /// fan-out, same required-failure rollback, same notifications. It is never
+    /// registered on the coordinator, so a cancelled replacement cannot leave a
+    /// subscription behind.
     ///
     /// Necessary local writes and their recovery are owned by this transaction.
     /// Recovery must settle partial writes as well as completed publications;

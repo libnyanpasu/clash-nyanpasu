@@ -582,7 +582,6 @@ async fn a_panic_during_cancel_keeps_the_restore_and_recovers_the_baseline() {
                 id,
                 overrides(serde_json::json!({"mode": "direct"})),
                 CommandClass::Save,
-                std::time::Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -948,7 +947,6 @@ async fn an_elapsed_decision_wait_keeps_the_attempt_until_the_decision_is_read()
                 id,
                 overrides(serde_json::json!({"mode": "global"})),
                 CommandClass::Save,
-                std::time::Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )

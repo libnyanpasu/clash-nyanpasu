@@ -375,14 +375,6 @@ where
             }
         };
 
-        for ack in acks.iter() {
-            if matches!(ack.status, AckStatus::SkippedShutdown) {
-                // Remove shutdown subscriber in this transaction for state dispatch consistent
-                self.subscribers.retain(|s| s.name().0 != ack.name.0);
-            }
-        }
-        self.rollback_guard.update_subscribers(&self.subscribers);
-
         let failed_acks: Vec<_> = acks
             .iter()
             .filter(|ack| ack.is_required_failure())

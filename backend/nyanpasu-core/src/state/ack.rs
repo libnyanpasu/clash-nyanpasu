@@ -138,11 +138,6 @@ pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
     /// A unique name for this subscriber, used in logging and reporting.
     fn name(&self) -> SubscriberName<'_>;
 
-    /// If true, the coordinator will skip this subscriber and treat it as if it acknowledged immediately.
-    fn is_shutdown(&self) -> bool {
-        false
-    }
-
     /// Whether a failed prepare vetoes the commit. Required by default.
     fn policy(&self) -> AckPolicy {
         AckPolicy::Required
@@ -150,6 +145,10 @@ pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
 
     /// Required / advisory ACK
     /// The coordinator will wait for the ACK response before proceeding to the next subscriber or finalizing the commit.
+    ///
+    /// The coordinator never skips a subscriber. One that cannot serve the
+    /// change, for example because its service has stopped, answers
+    /// [`Ack::Failed`] or [`Ack::Rejected`] here.
     async fn on_prepare(&self, _change: StateChange<T>) -> Ack {
         Ack::Ok
     }
@@ -171,10 +170,6 @@ where
 {
     fn name(&self) -> SubscriberName<'_> {
         (**self).name()
-    }
-
-    fn is_shutdown(&self) -> bool {
-        (**self).is_shutdown()
     }
 
     fn policy(&self) -> AckPolicy {
@@ -203,17 +198,9 @@ pub type StateParticipant<T> = Arc<dyn StateAckSubscriber<T> + Send + Sync>;
 #[derive(Debug)]
 pub enum AckStatus {
     Acked,
-    Degraded {
-        message: String,
-    },
-    Rejected {
-        reason: String,
-    },
-    Failed {
-        error: Arc<anyhow::Error>,
-    },
-    /// A Service is shutdown and cannot process ACKs, so the coordinator will skip waiting for it and treat it as if it acknowledged immediately.
-    SkippedShutdown,
+    Degraded { message: String },
+    Rejected { reason: String },
+    Failed { error: Arc<anyhow::Error> },
 }
 
 impl From<Ack> for AckStatus {

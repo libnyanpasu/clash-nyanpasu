@@ -31,16 +31,6 @@ where
         subscriber: ArcStateSubscriber<T>,
     ) -> SubscriberAck {
         let policy = subscriber.policy();
-
-        if subscriber.is_shutdown() {
-            return SubscriberAck {
-                name: subscriber.name().into_static(),
-                policy,
-                elapsed: Duration::from_secs(0),
-                status: AckStatus::SkippedShutdown,
-            };
-        }
-
         let start = Instant::now();
         let status = match subscriber.on_prepare(change.clone()).await {
             Ack::Ok => AckStatus::Acked,
@@ -80,10 +70,6 @@ where
     T: Clone + Send + Sync + 'static,
 {
     async fn notify_one(change: &StateChange<T>, subscriber: ArcStateSubscriber<T>) {
-        if subscriber.is_shutdown() {
-            return;
-        }
-
         match subscriber.on_committed(change.clone()).await {
             Ack::Ok => {}
             Ack::Degraded(message) => {
@@ -119,10 +105,6 @@ where
         subscriber: ArcStateSubscriber<T>,
         reason: RollbackReason,
     ) {
-        if subscriber.is_shutdown() {
-            return;
-        }
-
         subscriber.on_rolled_back(change.clone(), reason).await;
     }
 }

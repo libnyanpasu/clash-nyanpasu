@@ -145,7 +145,7 @@ impl RecoveryGraph {
         core.change_host(endpoint).await.unwrap();
         core.refresh_status().await.unwrap();
         let service = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
-        let (client, _, builder, application, _) = dirty_graph_with_clients(
+        let (client, builder, application, _) = workflow_graph_with_clients(
             &dir,
             core.clone(),
             service,

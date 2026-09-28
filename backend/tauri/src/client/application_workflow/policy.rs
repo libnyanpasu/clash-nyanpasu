@@ -49,8 +49,8 @@ impl CommandPolicy {
 /// different promise from saving a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CommandClass {
-    /// `select_core`, `set_execution_host`, and profile activation or
-    /// deactivation: the user named something that has to be running.
+    /// `select_core`, an `enable_service_mode` switch, and profile activation
+    /// or deactivation: the user named something that has to be running.
     ExplicitSwitch,
     /// Every other source-config write: clash and overrides parameters, managed
     /// content updates, profile bookkeeping, application settings.
@@ -255,7 +255,7 @@ mod tests {
 
     /// `RuntimeImpact::None` is in the list on purpose. Re-selecting the profile
     /// that is already current classifies as no impact, and so do `update_core`
-    /// and `set_execution_host` called with the value already stored; all three
+    /// and an `enable_service_mode` switch to the value already stored; all three
     /// still owe the confirmation the command promised.
     #[test]
     fn an_explicit_switch_must_apply() {

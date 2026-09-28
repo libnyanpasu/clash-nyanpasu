@@ -11,7 +11,6 @@ mod consts;
 mod core;
 mod enhance;
 mod event_handler;
-mod feat;
 mod ipc;
 mod server;
 mod service;

@@ -364,7 +364,14 @@ fn no_op_and_session_saves_do_not_dispatch() {
         let current = client.get_app_config().await.unwrap().language;
         client.patch_app_config(language(current)).await.unwrap();
         client
-            .patch_session_state(nyanpasu_config::state::PersistentState::new_empty_patch())
+            .save_main_window_geometry(nyanpasu_config::state::window::WindowState {
+                width: 800,
+                height: 600,
+                x: 0,
+                y: 0,
+                maximized: false,
+                fullscreen: false,
+            })
             .await
             .unwrap();
         client.inner.effects.barrier().await;

@@ -1,19 +1,14 @@
 //! Pure projection + diff: which side effects a committed configuration change
-//! implies, and whether the runtime config has to be rebuilt.
+//! implies.
 
-use std::{collections::BTreeSet, time::Duration};
+use std::time::Duration;
 
 use nyanpasu_config::{
     application::{
         ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig,
         ProxiesSelectorMode, TrayMenuMode,
     },
-    clash::config::{
-        ClashConfig, ClashControlChannel,
-        clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
-        overrides::Mode,
-        tun_stack::TunStack,
-    },
+    clash::config::{ClashConfig, overrides::Mode},
     runtime::executor::ResolvedPortBindings,
 };
 use struct_patch::Patch;
@@ -55,14 +50,6 @@ pub struct ApplicationEffectFields {
 pub struct ClashEffectFields {
     pub mode: Mode,
     pub enable_tun_mode: bool,
-    pub tun_stack: TunStack,
-    pub mixed_port: PortStrategy,
-    pub socks_port: Option<PortStrategy>,
-    pub http_port: Option<PortStrategy>,
-    pub external_controller: ExternalControllerStrategy,
-    pub enable_clash_fields: bool,
-    pub clash_control_channel: ClashControlChannel,
-    pub clash_ipc_disable_http_controller: bool,
 }
 
 impl ApplicationEffectInputs {
@@ -95,14 +82,6 @@ impl ApplicationEffectInputs {
             clash: ClashEffectFields {
                 mode: clash.overrides.mode(),
                 enable_tun_mode: clash.enable_tun_mode,
-                tun_stack: clash.tun_stack,
-                mixed_port: clash.mixed_port.clone(),
-                socks_port: clash.socks_port.clone(),
-                http_port: clash.http_port.clone(),
-                external_controller: clash.external_controller.clone(),
-                enable_clash_fields: clash.enable_clash_fields,
-                clash_control_channel: clash.clash_control_channel,
-                clash_ipc_disable_http_controller: clash.clash_ipc_disable_http_controller,
             },
             ports,
         }
@@ -332,37 +311,6 @@ impl ApplicationEffectPlan {
         Self::from_changes(desired.into_patch(), tray)
     }
 
-    /// Adds the desired value of every kind in `kinds` to this plan, taken from
-    /// `full`.
-    ///
-    /// Used to re-run effects whose previous dispatch degraded: a diff plan only
-    /// describes what changed, so a kind that failed earlier would otherwise
-    /// never be handed its value again. The `full` entry wins over a same-kind
-    /// entry already in the plan, because it is the wider of the two wherever
-    /// they differ (a full tray refresh subsumes a partial one) and the two are
-    /// projected from the same snapshot otherwise. The result keeps the
-    /// `EffectKind` ordering and holds at most one effect per kind.
-    pub fn with_retries(self, full: &ApplicationEffectPlan, kinds: &BTreeSet<EffectKind>) -> Self {
-        if kinds.is_empty() {
-            return self;
-        }
-
-        let mut effects: Vec<ApplicationEffect> = self
-            .effects
-            .into_iter()
-            .filter(|effect| !kinds.contains(&effect.kind()))
-            .collect();
-        effects.extend(
-            full.effects
-                .iter()
-                .filter(|effect| kinds.contains(&effect.kind()))
-                .cloned(),
-        );
-        effects.sort_by_key(ApplicationEffect::kind);
-
-        Self { effects }
-    }
-
     pub fn is_empty(&self) -> bool {
         self.effects.is_empty()
     }
@@ -413,89 +361,6 @@ impl ApplicationEffectPlan {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeApplyKind {
-    None,
-    Rebuild,
-    ControlChannel,
-}
-
-/// How the core is reached.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ControlChannelDesired {
-    channel: ClashControlChannel,
-    disable_http_controller: bool,
-}
-
-/// What the generated runtime config is built from.
-#[derive(Debug, Clone, PartialEq)]
-struct RuntimeRebuildDesired {
-    enable_tun_mode: bool,
-    tun_stack: TunStack,
-    mixed_port: PortStrategy,
-    socks_port: Option<PortStrategy>,
-    http_port: Option<PortStrategy>,
-    external_controller: ExternalControllerStrategy,
-    enable_clash_fields: bool,
-}
-
-/// The clash fields a running core reacts to, grouped by how it must react.
-#[derive(Debug, Clone, PartialEq, Patch)]
-#[patch(name = "ClashRuntimeChanges")]
-#[patch(attribute(derive(Debug, Clone, Default, PartialEq)))]
-struct ClashRuntimeDesired {
-    control_channel: ControlChannelDesired,
-    rebuild: RuntimeRebuildDesired,
-}
-
-impl ClashEffectFields {
-    fn runtime_desired(&self) -> ClashRuntimeDesired {
-        ClashRuntimeDesired {
-            control_channel: ControlChannelDesired {
-                channel: self.clash_control_channel,
-                disable_http_controller: self.clash_ipc_disable_http_controller,
-            },
-            rebuild: RuntimeRebuildDesired {
-                enable_tun_mode: self.enable_tun_mode,
-                tun_stack: self.tun_stack,
-                mixed_port: self.mixed_port.clone(),
-                socks_port: self.socks_port.clone(),
-                http_port: self.http_port.clone(),
-                external_controller: self.external_controller.clone(),
-                enable_clash_fields: self.enable_clash_fields,
-            },
-        }
-    }
-}
-
-/// How the running core must react to a committed clash-config change.
-///
-/// The core binary and the execution host are deliberately absent: both have
-/// dedicated facade operations whose queues this would race.
-pub fn runtime_apply_kind(
-    before: &ApplicationEffectInputs,
-    after: &ApplicationEffectInputs,
-) -> RuntimeApplyKind {
-    let ClashRuntimeChanges {
-        control_channel,
-        rebuild,
-    } = after
-        .clash
-        .runtime_desired()
-        .into_patch_by_diff(before.clash.runtime_desired());
-
-    // A control-channel change outranks a rebuild, matching `bridge/verge.rs`,
-    // which picks `apply_control_channel` over `rebuild_running_config`
-    // whenever both would apply.
-    if control_channel.is_some() {
-        RuntimeApplyKind::ControlChannel
-    } else if rebuild.is_some() {
-        RuntimeApplyKind::Rebuild
-    } else {
-        RuntimeApplyKind::None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,10 +370,8 @@ mod tests {
             ProxiesSelectorMode, TrayMenuMode,
         },
         clash::config::{
-            ClashConfig, ClashControlChannel,
-            clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
+            ClashConfig,
             overrides::{ClashGuardOverridesPatch, Mode},
-            tun_stack::TunStack,
         },
         runtime::executor::ResolvedPortBindings,
     };
@@ -537,14 +400,6 @@ mod tests {
             clash: ClashEffectFields {
                 mode: Mode::Rule,
                 enable_tun_mode: false,
-                tun_stack: TunStack::default(),
-                mixed_port: PortStrategy::new_allow_fallback(7890),
-                socks_port: None,
-                http_port: None,
-                external_controller: ExternalControllerStrategy::default(),
-                enable_clash_fields: true,
-                clash_control_channel: ClashControlChannel::PreferIpc,
-                clash_ipc_disable_http_controller: false,
             },
             ports: Some(ResolvedPortBindings {
                 mixed_port: 7890,
@@ -660,22 +515,6 @@ mod tests {
                 port: Some(7890),
                 pac_url: None,
             })
-        );
-    }
-
-    #[test]
-    fn socks_port_removal_reports_rebuild() {
-        let mut before = inputs();
-        before.clash.socks_port = Some(PortStrategy::new_allow_fallback(1080));
-        let after = inputs();
-
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild
-        );
-        assert!(
-            ApplicationEffectPlan::diff(&before, &after).is_empty(),
-            "a clash port strategy is not an application effect input"
         );
     }
 
@@ -929,43 +768,6 @@ mod tests {
         );
     }
 
-    /// Same exposure on the rebuild group: none of these fields is an
-    /// application effect input, so each must rebuild and plan nothing.
-    #[test]
-    fn every_rebuild_field_reports_rebuild_on_its_own() {
-        fn assert_rebuild(label: &str, mutate: impl FnOnce(&mut ApplicationEffectInputs)) {
-            let before = inputs();
-            let mut after = inputs();
-            mutate(&mut after);
-
-            assert_eq!(
-                runtime_apply_kind(&before, &after),
-                RuntimeApplyKind::Rebuild,
-                "{label} alone must rebuild the runtime config"
-            );
-            assert!(
-                ApplicationEffectPlan::diff(&before, &after).is_empty(),
-                "{label} is not an application effect input"
-            );
-        }
-
-        assert_rebuild("tun_stack", |after| {
-            after.clash.tun_stack = TunStack::System
-        });
-        assert_rebuild("http_port", |after| {
-            after.clash.http_port = Some(PortStrategy::new_allow_fallback(7891));
-        });
-        assert_rebuild("external_controller", |after| {
-            after.clash.external_controller = ExternalControllerStrategy {
-                port: PortStrategy::new_allow_fallback(9999),
-                ..ExternalControllerStrategy::default()
-            };
-        });
-        assert_rebuild("enable_clash_fields", |after| {
-            after.clash.enable_clash_fields = false;
-        });
-    }
-
     #[test]
     fn unchanged_inputs_have_empty_changes() {
         use struct_patch::Status;
@@ -992,7 +794,7 @@ mod tests {
     }
 
     #[test]
-    fn tun_toggle_alone_produces_part_tray_and_rebuild() {
+    fn tun_toggle_alone_produces_part_tray() {
         let before = inputs();
         let mut after = inputs();
         after.clash.enable_tun_mode = true;
@@ -1001,144 +803,10 @@ mod tests {
 
         assert_eq!(kinds(&plan), vec![EffectKind::Tray]);
         assert_eq!(plan.effects()[0], tray(TrayRefresh::Part, &after));
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild
-        );
     }
 
     #[test]
-    fn with_retries_of_an_empty_set_is_the_identity() {
-        let before = inputs();
-        let mut after = inputs();
-        after.app.language = I18nLanguage::Korean;
-        let plan = ApplicationEffectPlan::diff(&before, &after);
-        let full = ApplicationEffectPlan::full(&after);
-
-        assert_eq!(plan.clone().with_retries(&full, &BTreeSet::new()), plan);
-    }
-
-    #[test]
-    fn with_retries_inserts_missing_kinds_in_kind_order() {
-        let before = inputs();
-        let mut after = inputs();
-        after.app.language = I18nLanguage::Korean;
-        let plan = ApplicationEffectPlan::diff(&before, &after);
-        let full = ApplicationEffectPlan::full(&after);
-
-        let merged = plan.with_retries(
-            &full,
-            &BTreeSet::from([EffectKind::SystemProxy, EffectKind::Logger]),
-        );
-
-        assert_eq!(
-            kinds(&merged),
-            vec![
-                EffectKind::Locale,
-                EffectKind::Logger,
-                EffectKind::SystemProxy,
-                EffectKind::Tray,
-            ]
-        );
-        assert!(kinds(&merged).is_sorted(), "retries must keep plan order");
-    }
-
-    #[test]
-    fn with_retries_keeps_one_effect_per_kind() {
-        let before = inputs();
-        let mut after = inputs();
-        after.app.language = I18nLanguage::Korean;
-        let plan = ApplicationEffectPlan::diff(&before, &after);
-        let full = ApplicationEffectPlan::full(&after);
-
-        let merged = plan.with_retries(&full, &BTreeSet::from([EffectKind::Locale]));
-
-        assert_eq!(kinds(&merged), vec![EffectKind::Locale, EffectKind::Tray]);
-        assert_eq!(
-            merged.effects()[0],
-            ApplicationEffect::Locale(I18nLanguage::Korean)
-        );
-    }
-
-    #[test]
-    fn a_retried_tray_refresh_widens_a_partial_one() {
-        let before = inputs();
-        let mut after = inputs();
-        after.app.enable_system_proxy = true;
-        let plan = ApplicationEffectPlan::diff(&before, &after);
-        let full = ApplicationEffectPlan::full(&after);
-
-        assert_eq!(
-            plan.effects().last(),
-            Some(&tray(TrayRefresh::Part, &after))
-        );
-
-        let merged = plan.with_retries(&full, &BTreeSet::from([EffectKind::Tray]));
-
-        assert_eq!(
-            kinds(&merged),
-            vec![EffectKind::SystemProxy, EffectKind::Tray]
-        );
-        assert_eq!(
-            merged.effects().last(),
-            Some(&tray(TrayRefresh::Full, &after))
-        );
-    }
-
-    #[test]
-    fn runtime_apply_kind_prefers_control_channel_over_rebuild() {
-        let before = inputs();
-        let mut after = inputs();
-        after.clash.clash_control_channel = ClashControlChannel::HttpOnly;
-        after.clash.enable_tun_mode = true;
-
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::ControlChannel
-        );
-
-        let mut after = inputs();
-        after.clash.clash_ipc_disable_http_controller = true;
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::ControlChannel
-        );
-    }
-
-    #[test]
-    fn runtime_apply_kind_reports_rebuild_for_port_and_tun_changes() {
-        let before = inputs();
-
-        let mut after = inputs();
-        after.clash.mixed_port = PortStrategy::new_allow_fallback(7891);
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild,
-            "mixed port strategy changes must rebuild the runtime config"
-        );
-
-        let mut after = inputs();
-        after.clash.enable_tun_mode = true;
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild
-        );
-
-        let mut after = inputs();
-        after.clash.socks_port = Some(PortStrategy::new_allow_fallback(1080));
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild
-        );
-
-        assert_eq!(
-            runtime_apply_kind(&before, &inputs()),
-            RuntimeApplyKind::None
-        );
-    }
-
-    #[test]
-    fn runtime_apply_kind_ignores_core_and_service_mode() {
+    fn service_mode_is_not_an_effect_input_and_core_only_shapes_the_tray() {
         let app = NyanpasuAppConfig::default();
         let clash = ClashConfig::default();
         let before = ApplicationEffectInputs::project(&app, &clash, None);
@@ -1152,7 +820,6 @@ mod tests {
             before, after,
             "service mode may not enter the effect inputs"
         );
-        assert_eq!(runtime_apply_kind(&before, &after), RuntimeApplyKind::None);
 
         // The core reaches the effects only through the tray menu it shapes.
         let core_switched = NyanpasuAppConfig {
@@ -1163,7 +830,6 @@ mod tests {
             ..app.clone()
         };
         let after = ApplicationEffectInputs::project(&core_switched, &clash, None);
-        assert_eq!(runtime_apply_kind(&before, &after), RuntimeApplyKind::None);
         assert_eq!(
             ApplicationEffectPlan::diff(&before, &after).effects(),
             [tray(TrayRefresh::Full, &after)]

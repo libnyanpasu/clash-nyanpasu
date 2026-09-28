@@ -662,7 +662,7 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
 }
 
 #[test]
-fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interruption() {
+fn cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_interruption() {
     let f = Fixture::new(false);
     tauri::async_runtime::block_on(async {
         let uid = add_profile(&f).await;
@@ -681,9 +681,8 @@ fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interrupti
         let active = workflow.status().active.unwrap();
         first.abort();
         assert!(first.await.unwrap_err().is_cancelled());
-        let mut dirty =
-            Box::pin(workflow.call(super::Command::Core(super::CoreCommand::RuntimeDirty)));
-        assert!(dirty.as_mut().now_or_never().is_none());
+        let mut reconcile = Box::pin(workflow.reconcile());
+        assert!(reconcile.as_mut().now_or_never().is_none());
         let next = {
             let client = f.client.clone();
             tokio::spawn(async move { client.activate_profile(None).await })
@@ -701,7 +700,7 @@ fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interrupti
         assert!(f.client.get_profiles().await.unwrap().current.is_some());
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
-        dirty.await.unwrap();
+        reconcile.await.unwrap();
         assert!(next.await.unwrap().unwrap().degradations().is_empty());
         assert!(
             workflow
@@ -867,7 +866,12 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
         .await
         .unwrap()
         .unwrap();
-        let mut host = Box::pin(f.client.change_execution_host(ExecutionHost::Local));
+        let mut host = Box::pin(
+            f.client
+                .inner
+                .application_workflow
+                .change_host(ExecutionHost::Local),
+        );
         assert!(host.as_mut().now_or_never().is_none());
         let staging = Arc::new(tempfile::tempdir().unwrap());
         let progress = Arc::new(super::Progress::default());
@@ -878,7 +882,7 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
             staging,
             progress: progress.clone(),
         };
-        let mut install = Box::pin(f.client.replace_core_binary(artifact));
+        let mut install = Box::pin(f.client.inner.application_workflow.replace_binary(artifact));
         assert!(install.as_mut().now_or_never().is_none());
         super::barrier(&f.client.inner.application_workflow).await;
         assert_eq!(f.client.inner.application_workflow.status().queued.len(), 3);
@@ -961,7 +965,7 @@ impl RecordingBuilder {
         Arc::new(Self {
             delegate: super::adapters::FsRuntimeBuildAdapter {
                 profiles_dir: f.client.inner.profiles_dir.clone(),
-                paths: f.client.inner.runtime_paths.clone(),
+                paths: crate::client::tests::test_runtime_paths(&f._dir),
                 scripts: crate::enhance::ScriptDirs::under(f._dir.path()),
             },
             inputs: Mutex::new(Vec::new()),
@@ -995,10 +999,10 @@ fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         let mut original = f.client.get_clash_config().await.unwrap();
         original.clash_control_channel = ClashControlChannel::HttpOnly;
         original.clash_ipc_disable_http_controller = false;
-        let mut newer = original.clone();
-        newer.clash_control_channel = ClashControlChannel::PreferIpc;
-        newer.clash_ipc_disable_http_controller = true;
-        f.client.replace_clash_config(newer).await.unwrap();
+        let mut newer = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+        newer.clash_control_channel = Some(ClashControlChannel::PreferIpc);
+        newer.clash_ipc_disable_http_controller = Some(true);
+        f.client.patch_clash_config(newer).await.unwrap();
         let builder = RecordingBuilder::new(&f, false, false);
         let mut preparation = super::RuntimePreparation::new(
             f.client.inner.application.snapshot_handle(),

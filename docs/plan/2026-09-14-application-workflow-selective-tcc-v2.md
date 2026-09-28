@@ -1,7 +1,7 @@
 # ApplicationWorkflow 选择性 TCC、降级收敛与通知隔离：完整设计实施计划 v2
 
 日期：2026-09-14  
-状态：分阶段实施；2026-09-19 的 T2–T5 接口修整见 [审计修整记录](2026-09-19-tcc-contract-audit.md)。下文原执行记录仍是对应日期的历史基线。
+状态：分阶段实施。T0–T9 已合并（#5294、#5320–#5324、#5366–#5368、#5374）；T10/T11 已在本地 stacked 分支实施，待合并、三平台 CI 与维护者 GUI smoke，见 [T10 实施记录](2026-09-25-tcc-t10-implementation.md) 与 [T11 实施记录](2026-09-25-tcc-t11-implementation.md)。2026-09-19 的 T2–T5 接口修整见 [审计修整记录](2026-09-19-tcc-contract-audit.md)；T6–T9 见 [T6](2026-09-24-tcc-t6-implementation.md)、[T7](2026-09-24-tcc-t7-implementation.md)、[T8](2026-09-24-tcc-t8-implementation.md)、[T9](2026-09-24-tcc-t9-implementation.md) 实施记录与 [review 记录](2026-09-24-tcc-t6-t9-review.md)。下文原执行记录仍是对应日期的历史基线。
 依据：用户提供的 Fabel 计划 [F]、DeepSeek Harness 分析 [D]，以及本轮三条指导原则。本文以附件记载的固定基线为设计起点，不声称重新验证了当前 main、远端 PR 状态或用户本地工作区。
 
 > **核心决策：复用 nyanpasu-state 的状态事务；只让关键运行态参与应用侧 TCC；确定性且不可自动恢复的关键失败优先拒绝/回退；已知安全、允许延后、可重试的失败可以保留 desired 并降级；大多数副作用在提交后通知或协调，GUI、托盘永不决定源配置提交。**

@@ -2,8 +2,13 @@ use crate::{
     client::{ClientError, NyanpasuClient},
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
-    feat::{self, CopyEnvOption},
-    utils::{candy, collect::EnvInfo, dirs, help, resolve},
+    utils::{
+        candy,
+        collect::EnvInfo,
+        dirs, help,
+        proxy_env::{self, CopyEnvOption},
+        resolve,
+    },
 };
 use anyhow::Context;
 use chrono::Local;
@@ -1330,7 +1335,7 @@ pub fn copy_clash_env(
     client: State<'_, NyanpasuClient>,
     env_type: CopyEnvOption,
 ) {
-    feat::copy_clash_env(&app_handle, client.clash_info().port, &env_type);
+    proxy_env::copy_clash_env(&app_handle, client.clash_info().port, &env_type);
 }
 
 #[tauri::command]

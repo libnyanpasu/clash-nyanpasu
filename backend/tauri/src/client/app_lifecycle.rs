@@ -1153,7 +1153,7 @@ mod tests {
                 fn drop(&mut self) {
                     record(
                         &self.1,
-                        match self.0.core_lifecycle_status().shutting_down {
+                        match self.0.inner.application_workflow.status().shutting_down {
                             true => "producer cancelled after closing",
                             false => "producer cancelled before closing",
                         },

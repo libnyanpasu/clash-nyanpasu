@@ -34,15 +34,13 @@ use super::{
     },
     runtime,
 };
-use crate::{
-    core::actor_v2::{
-        CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport,
-        endpoint::ExecutionHost,
-        facade::{CoreFacade, ReconcileReport, RecoverReport, StopReport},
-        service_actor::{ServiceClient, ServiceHostStatus},
-    },
-    state::profiles::ports::RebuildNotifier,
+use crate::core::actor_v2::{
+    CoreClient, CoreStatusProjection, ShutdownReport,
+    facade::{CoreFacade, ReconcileReport, StopReport},
+    service_actor::{ServiceClient, ServiceHostStatus},
 };
+#[cfg(test)]
+use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
 use attempt::AttemptStage;
 use mutation::{MutationBudgets, MutationCommand, MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
@@ -51,23 +49,6 @@ use workflow::ApplicationWorkflow;
 
 const MAX_PENDING: usize = 32;
 const CALL_WAIT: Duration = Duration::from_secs(180);
-const DIRTY_WINDOW: Duration = Duration::from_millis(500);
-
-#[derive(Clone)]
-pub(super) struct DirtyNotifier(watch::Sender<()>);
-
-impl DirtyNotifier {
-    pub fn channel() -> (Self, watch::Receiver<()>) {
-        let (tx, rx) = watch::channel(());
-        (Self(tx), rx)
-    }
-}
-
-impl RebuildNotifier for DirtyNotifier {
-    fn request_rebuild(&self) {
-        self.0.send_replace(());
-    }
-}
 
 #[derive(Debug, Clone, Default)]
 pub struct CoreLifecycleStatus {
@@ -79,12 +60,13 @@ pub struct CoreLifecycleStatus {
     pub completed: VecDeque<CoreLifecycleOperationResult>,
 }
 
-// Diagnostic records returned by the facade for callers recovering a timed-out RPC.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct CoreLifecycleOperationResult {
     pub id: OperationId,
+    // Only tests read the failure detail so far; no status surface shows it.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub error: Option<String>,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub backend_operation_id: Option<OperationId>,
 }
 
@@ -191,7 +173,6 @@ enum Message {
     /// A queued mutation spent its admission budget without reaching the
     /// execution domain.
     AdmissionExpired(OperationId),
-    DirtyTick,
     RecoveryTick,
     ConvergenceTick,
     /// Closes admission for the ordered shutdown: refuses what is queued and
@@ -239,9 +220,6 @@ struct ApplicationWorkflowState {
     workflow: Option<Box<ApplicationWorkflow>>,
     active: Option<ActiveOperation>,
     pending: VecDeque<Request>,
-    dirty_rx: watch::Receiver<()>,
-    dirty: bool,
-    timer: Option<tokio::task::JoinHandle<()>>,
     recovery_timer: Option<tokio::task::JoinHandle<()>>,
     convergence_timer: Option<tokio::task::JoinHandle<()>>,
     recovery_due: bool,
@@ -293,7 +271,6 @@ pub(super) struct ApplicationWorkflowArgs {
     /// and the core lifecycle confirms or invalidates the binding.
     pub ports: Arc<super::SessionPortResolver>,
     pub installer: Arc<dyn BinaryInstaller>,
-    pub dirty: watch::Receiver<()>,
     /// The separate budgets of one mutation (v2 §5.5).
     pub budgets: MutationBudgets,
     /// Who owns the runtime when the workflow starts. Production starts
@@ -303,11 +280,10 @@ pub(super) struct ApplicationWorkflowArgs {
 
 struct ActorArgs {
     workflow: ApplicationWorkflow,
-    dirty: watch::Receiver<()>,
     status: watch::Sender<CoreLifecycleStatus>,
     journal: watch::Sender<MutationJournal>,
     budgets: MutationBudgets,
-    schedule_dirty_ticks: bool,
+    schedule_ticks: bool,
 }
 
 fn conflict(message: &str) -> CoreError {
@@ -341,14 +317,6 @@ impl ApplicationWorkflowState {
                     Ok(Output::Shutdown(report)) => {
                         report.stop.as_ref().err().map(ToString::to_string)
                     }
-                    Ok(Output::Mutation(outcome)) if !outcome.degradations().is_empty() => Some(
-                        outcome
-                            .degradations()
-                            .iter()
-                            .map(|d| d.message.as_str())
-                            .collect::<Vec<_>>()
-                            .join("; "),
-                    ),
                     Ok(Output::Settled(receipt)) => receipt.detail.clone(),
                     _ => None,
                 },
@@ -397,10 +365,6 @@ impl ApplicationWorkflowState {
         if let Some(timer) = self.recovery_timer.take() {
             timer.abort();
         }
-        if let Some(timer) = self.timer.take() {
-            timer.abort();
-        }
-        self.dirty = false;
         while let Some(request) = self.pending.pop_front() {
             // A rejected mutation is a finished attempt. Its context has to move
             // into the bounded history with it: the transaction is still going
@@ -420,7 +384,6 @@ impl ApplicationWorkflowState {
         let uncertain = self.workflow.as_ref().is_some_and(|w| w.isolated());
         if uncertain {
             self.status.send_modify(|status| status.uncertain = true);
-            self.dirty = false;
             let mut probes = VecDeque::new();
             while let Some(request) = self.pending.pop_front() {
                 if matches!(&request.command, Command::RetryRuntime { explicit: true }) {
@@ -500,15 +463,6 @@ impl ApplicationWorkflowState {
         {
             Some(Request {
                 command: Command::RetryRuntime { explicit: false },
-                response: Response {
-                    id: OperationId::generate(),
-                    reply: None,
-                },
-            })
-        } else if self.dirty && !uncertain {
-            self.dirty = false;
-            Some(Request {
-                command: Command::Core(CoreCommand::RuntimeDirty),
                 response: Response {
                     id: OperationId::generate(),
                     reply: None,
@@ -777,21 +731,15 @@ impl Actor for ApplicationWorkflowActor {
         myself: ActorRef<Message>,
         args: ActorArgs,
     ) -> Result<ApplicationWorkflowState, ActorProcessingErr> {
-        let timer = args
-            .schedule_dirty_ticks
-            .then(|| myself.send_interval(DIRTY_WINDOW, || Message::DirtyTick));
         Ok(ApplicationWorkflowState {
             closing_token: args.workflow.lifecycle.closing.clone(),
             workflow: Some(Box::new(args.workflow)),
             active: None,
             pending: VecDeque::new(),
-            dirty_rx: args.dirty,
-            dirty: false,
-            timer,
             recovery_timer: args
-                .schedule_dirty_ticks
+                .schedule_ticks
                 .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick)),
-            convergence_timer: args.schedule_dirty_ticks.then(|| {
+            convergence_timer: args.schedule_ticks.then(|| {
                 myself.send_interval(Duration::from_millis(250), || Message::ConvergenceTick)
             }),
             recovery_due: false,
@@ -897,12 +845,6 @@ impl Actor for ApplicationWorkflowActor {
                     );
                 }
             }
-            Message::DirtyTick => {
-                if !state.closing && state.dirty_rx.has_changed().unwrap_or(false) {
-                    state.dirty_rx.borrow_and_update();
-                    state.dirty = true;
-                }
-            }
             Message::ConvergenceTick => {}
             Message::RecoveryTick => {
                 if !state.closing {
@@ -960,9 +902,6 @@ impl Actor for ApplicationWorkflowActor {
         _myself: ActorRef<Message>,
         state: &mut ApplicationWorkflowState,
     ) -> Result<(), ActorProcessingErr> {
-        if let Some(timer) = state.timer.take() {
-            timer.abort();
-        }
         state.closing_token.cancel();
         if let Some(timer) = state.convergence_timer.take() {
             timer.abort();
@@ -1017,10 +956,10 @@ impl ApplicationWorkflowClient {
         Self::spawn_with_ticks(args, true).await
     }
 
-    // Tests drive DirtyTick through the mailbox without racing a wall-clock timer.
+    // Tests drive the ticks through the mailbox without racing a wall-clock timer.
     async fn spawn_with_ticks(
         args: ApplicationWorkflowArgs,
-        schedule_dirty_ticks: bool,
+        schedule_ticks: bool,
     ) -> anyhow::Result<Self> {
         let runtime = args.ports.runtime();
         let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
@@ -1066,11 +1005,10 @@ impl ApplicationWorkflowClient {
             ApplicationWorkflowActor,
             ActorArgs {
                 workflow,
-                dirty: args.dirty,
                 status: status_tx,
                 journal: journal_tx,
                 budgets: args.budgets,
-                schedule_dirty_ticks,
+                schedule_ticks,
             },
         )
         .await?;
@@ -1098,7 +1036,7 @@ impl ApplicationWorkflowClient {
         match self.0.actor.call(|reply| Message::Request(Request { command, response: Response { id, reply: Some(reply) } }), Some(timeout)).await {
             Ok(CallResult::Success(result)) => result,
             Ok(CallResult::Timeout) => Err(CoreError::new(CoreErrorKind::BackendUnavailable,
-                "core lifecycle wait timed out; the operation may still be queued or running; inspect core_lifecycle_status before retrying", false).with_operation(id)),
+                "core lifecycle wait timed out; the operation may still be queued or running; inspect Configuration status before retrying", false).with_operation(id)),
             _ => Err(CoreError::new(CoreErrorKind::Internal, "application workflow actor is unavailable; operation outcome is unknown", false).with_operation(id)),
         }
     }
@@ -1225,12 +1163,6 @@ impl ApplicationWorkflowClient {
             .map(|_| ())
     }
 
-    pub async fn apply_control_channel(&self) -> Result<(), CoreError> {
-        self.call(Command::Core(CoreCommand::ApplyControlChannel))
-            .await
-            .map(|_| ())
-    }
-
     pub(super) fn snapshot_store(&self) -> &runtime::RuntimeSnapshotStore {
         &self.0.runtime
     }
@@ -1264,36 +1196,19 @@ impl ApplicationWorkflowClient {
         StopReport
     );
     method!(
-        recover_core,
-        Command::Core(CoreCommand::RecoverCore),
-        Recover,
-        RecoverReport
-    );
-    method!(
         shutdown,
         Command::Core(CoreCommand::Shutdown),
         Shutdown,
         ShutdownReport
     );
 
+    #[cfg(test)]
     pub async fn change_host(&self, host: ExecutionHost) -> Result<HandoffReport, CoreError> {
         match self
             .call(Command::Core(CoreCommand::ChangeHost(host)))
             .await?
         {
             Output::Handoff(result) => Ok(result),
-            _ => unreachable!(),
-        }
-    }
-    pub async fn set_execution_host(
-        &self,
-        service: bool,
-    ) -> Result<runtime::MutationOutcome<()>, CoreError> {
-        match self
-            .call(Command::Core(CoreCommand::SetExecutionHost(service)))
-            .await?
-        {
-            Output::Mutation(result) => Ok(result),
             _ => unreachable!(),
         }
     }

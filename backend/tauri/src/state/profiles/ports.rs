@@ -52,13 +52,6 @@ pub trait SubscriptionFetcher: Send + Sync + 'static {
     ) -> anyhow::Result<FetchedSubscription>;
 }
 
-/// Background-commit rebuild signal (design §6.4). Fire-and-forget; debouncing
-/// is the receiver's concern.
-#[cfg_attr(test, mockall::automock)]
-pub trait RebuildNotifier: Send + Sync + 'static {
-    fn request_rebuild(&self);
-}
-
 #[derive(Debug, Clone)]
 pub(crate) enum MaterializationResource {
     File { content: String },

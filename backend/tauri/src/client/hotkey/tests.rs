@@ -629,9 +629,12 @@ mod facade {
     /// A mode change would otherwise ask the core to drop connections, which
     /// the stub endpoint cannot answer.
     async fn disable_mode_interruption(client: &NyanpasuClient) {
+        use struct_patch::Patch as _;
         let mut config = client.get_clash_config().await.unwrap();
         config.break_connection.on_mode_change = false;
-        client.replace_clash_config(config).await.unwrap();
+        let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+        patch.break_connection = config.break_connection.into_patch();
+        client.patch_clash_config(patch).await.unwrap();
     }
 
     #[test]

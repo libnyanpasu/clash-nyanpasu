@@ -16,7 +16,6 @@ use crate::core::actor_v2::{
         CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
         StopReport, UncertainReconcile,
     },
-    service_actor::ServicePhase,
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -159,44 +158,13 @@ impl CoreLifecycleWorkflow {
                 self.recover_service_endpoint(preparation).await?;
                 Ok(Output::Unit)
             }
-            Command::ApplyControlChannel => {
-                let status = self.core.refresh_status().await?;
-                if !matches!(
-                    status.snapshot.and_then(|s| s.state),
-                    Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
-                ) {
-                    self.permit_start()?;
-                    self.reconcile(preparation).await?;
-                }
-                Ok(Output::Unit)
-            }
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
-            Command::RuntimeDirty => {
-                self.permit_start()?;
-                self.reconcile(preparation).await?;
-                Ok(Output::Unit)
-            }
+            #[cfg(test)]
             Command::ChangeHost(host) => Ok(Output::Handoff(
                 self.move_execution_host(host)
                     .await
                     .map_err(|failure| failure.error)?,
             )),
-            Command::SetExecutionHost(service_mode) => {
-                self.permit_start()?;
-                let effect = self.set_host(service_mode, preparation).await;
-                let degradations = effect.err().map_or_else(Vec::new, |error| {
-                    vec![runtime::Degradation {
-                        phase: runtime::DegradationPhase::SystemEffect,
-                        code: "service_host_transition_failed".into(),
-                        message: error.message,
-                        retryable: error.retryable,
-                    }]
-                });
-                Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
-                    (),
-                    degradations,
-                )))
-            }
             Command::ReplaceCoreBinary(artifact) => {
                 Ok(if self.replace_binary(artifact, preparation).await? {
                     Output::RestartWithheld
@@ -216,7 +184,6 @@ impl CoreLifecycleWorkflow {
                 self.ports.invalidate();
                 Ok(Output::Stop(report))
             }
-            Command::RecoverCore => Ok(Output::Recover(self.core.recover().await?)),
             Command::InstallService => {
                 self.core.install_service().await?;
                 Ok(Output::Unit)
@@ -344,19 +311,6 @@ impl CoreLifecycleWorkflow {
             && self.core.core_status().host == desired
     }
 
-    fn permit_start(&self) -> Result<(), CoreError> {
-        if self.start_permitted() {
-            Ok(())
-        } else {
-            Err(CoreError::new(
-                CoreErrorKind::OperationConflict,
-                "no host is proven to own the runtime the configuration asks for; restart the \
-                 core to re-establish it",
-                false,
-            ))
-        }
-    }
-
     /// Hands the runtime to a daemon that is already `Ready`, and never
     /// converges one: no install, no daemon start, no elevation prompt
     /// (T10 §1.3). Proving who owns the runtime afterwards is the caller's.
@@ -461,42 +415,14 @@ impl CoreLifecycleWorkflow {
         Ok(())
     }
 
-    async fn set_host(
-        &mut self,
-        service_mode: bool,
-        preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<(), CoreError> {
-        let host = if service_mode {
-            ExecutionHost::Service
-        } else {
-            ExecutionHost::Local
-        };
-        let report = self
-            .move_execution_host(host)
-            .await
-            .map_err(|failure| failure.error)?;
-        if matches!(report, HandoffReport::Completed { .. }) {
-            self.reconcile(preparation).await?;
-        }
-        if !service_mode
-            && !matches!(
-                self.core.service_status().phase,
-                ServicePhase::NotInstalled | ServicePhase::DaemonStopped
-            )
-        {
-            self.core.stop_service().await?;
-        }
-        Ok(())
-    }
-
     /// Moves ownership of the runtime to `host` and nothing else.
     ///
     /// A completed handoff leaves the runtime stopped awaiting a reconcile, so
     /// every caller owes one — with the candidate it is trying, or with the
-    /// baseline it is putting back. That is why this is separate from
-    /// [`CoreLifecycleWorkflow::set_host`], which follows it with the committed
-    /// configuration: a Try has a candidate that is not committed yet, and a
-    /// Cancel has a receipt rather than a configuration to rebuild (v2 §5.3).
+    /// baseline it is putting back. It never rebuilds the committed
+    /// configuration itself: a Try has a candidate that is not committed yet,
+    /// and a Cancel has a receipt rather than a configuration to rebuild
+    /// (v2 §5.3).
     pub(in crate::client) async fn move_execution_host(
         &mut self,
         host: ExecutionHost,

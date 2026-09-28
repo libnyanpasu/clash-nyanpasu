@@ -135,18 +135,15 @@ impl TryVerdict {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LifecycleCommand {
     Reconcile,
-    ApplyControlChannel,
+    #[cfg(test)]
     ChangeHost(ExecutionHost),
-    SetExecutionHost(bool),
     ReplaceCoreBinary,
     StopCore,
-    RecoverCore,
     InstallService,
     StartService,
     StopService,
     RestartService,
     UninstallService,
-    RuntimeDirty,
     RecoverServiceEndpoint,
 }
 
@@ -156,18 +153,15 @@ impl LifecycleCommand {
     pub(super) fn of(command: &CoreCommand) -> Option<Self> {
         Some(match command {
             CoreCommand::Reconcile => Self::Reconcile,
-            CoreCommand::ApplyControlChannel => Self::ApplyControlChannel,
+            #[cfg(test)]
             CoreCommand::ChangeHost(host) => Self::ChangeHost(*host),
-            CoreCommand::SetExecutionHost(service) => Self::SetExecutionHost(*service),
             CoreCommand::ReplaceCoreBinary(_) => Self::ReplaceCoreBinary,
             CoreCommand::StopCore => Self::StopCore,
-            CoreCommand::RecoverCore => Self::RecoverCore,
             CoreCommand::InstallService => Self::InstallService,
             CoreCommand::StartService => Self::StartService,
             CoreCommand::StopService => Self::StopService,
             CoreCommand::RestartService => Self::RestartService,
             CoreCommand::UninstallService => Self::UninstallService,
-            CoreCommand::RuntimeDirty => Self::RuntimeDirty,
             CoreCommand::RecoverServiceEndpoint => Self::RecoverServiceEndpoint,
             CoreCommand::Shutdown => return None,
         })

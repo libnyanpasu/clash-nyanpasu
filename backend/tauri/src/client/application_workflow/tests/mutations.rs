@@ -38,7 +38,7 @@ use tokio::sync::Notify;
 
 use super::{
     super::{
-        ApplicationWorkflowArgs, ApplicationWorkflowClient, DirtyNotifier, adapters,
+        ApplicationWorkflowArgs, ApplicationWorkflowClient, adapters,
         impact::{
             ActivationIntent, ContentDigest, MutationHints, RequestedRuntimeFields, TouchedContent,
         },
@@ -397,7 +397,6 @@ pub(super) async fn fixture_from(
         // baseline with a real mutation first, and that receipt supersedes this.
         store.confirm_applied(Arc::new(adopted_baseline()));
     }
-    let (_notifier, dirty) = DirtyNotifier::channel();
     let notifications = Arc::new(RecordingNotifications::default());
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
@@ -411,8 +410,6 @@ pub(super) async fn fixture_from(
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
-
-            dirty,
             budgets,
             ownership,
         },

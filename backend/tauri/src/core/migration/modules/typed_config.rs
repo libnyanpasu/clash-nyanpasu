@@ -491,6 +491,32 @@ mod tests {
     }
 
     #[test]
+    fn split_legacy_config_migrates_a_non_random_mixed_port_as_fixed() {
+        use nyanpasu_config::clash::config::clash_strategy::{PortStrategy, PortStrategyKind};
+
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(
+            &ctx.nyanpasu_config_path(),
+            &IVerge {
+                enable_random_port: Some(false),
+                verge_mixed_port: Some(7891),
+                ..IVerge::template()
+            },
+        );
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        assert_eq!(
+            clash.mixed_port,
+            PortStrategy {
+                kind: PortStrategyKind::Fixed,
+                start_port: 7891,
+            }
+        );
+    }
+
+    #[test]
     fn legacy_runtime_with_existing_typed_state_detects_repair_baseline() {
         let (ctx, _temp) = test_ctx();
         write_yaml(

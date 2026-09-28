@@ -43,13 +43,14 @@ pub(super) fn clash_config_from_legacy(
     let mixed_port = legacy_verge
         .verge_mixed_port
         .unwrap_or_else(|| IClashTemp::guard_mixed_port(&legacy_clash));
-    next.mixed_port = if legacy_verge.enable_random_port.unwrap_or(false) {
-        PortStrategy {
-            kind: PortStrategyKind::Random,
-            start_port: mixed_port,
-        }
-    } else {
-        PortStrategy::new_allow_fallback(mixed_port)
+    // The legacy app bound a non-random mixed port as is, with no fallback.
+    next.mixed_port = PortStrategy {
+        kind: if legacy_verge.enable_random_port.unwrap_or(false) {
+            PortStrategyKind::Random
+        } else {
+            PortStrategyKind::Fixed
+        },
+        start_port: mixed_port,
     };
 
     if let Some(controller) = external_controller_from_legacy_clash(&legacy_clash) {

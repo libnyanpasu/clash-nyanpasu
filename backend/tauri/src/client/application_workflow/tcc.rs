@@ -21,13 +21,13 @@ use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use nyanpasu_ipc::api::status::CoreStateDetail;
 
 use super::{
-    attempt::{AppliedVerdict, AttemptStage, LiveAttempt, TryVerdict},
+    attempt::{AppliedVerdict, AttemptStage, LiveAttempt},
     impact,
     mutation::{
-        AppliedCandidate, ApplyFailure, CheckRecord, ConfigDomain, DEFERRED_RETRY_BUDGET,
-        DeferredTarget, DomainChange, EvidenceGap, KnownRuntimeState, MutationConclusion,
-        MutationReceipt, MutationRequest, MutationStage, RefusalCause, RetryableCause,
-        RuntimePrepareOutcome, TargetOrigin,
+        AppliedCandidate, ApplyFailure, CheckRecord, DEFERRED_RETRY_BUDGET, DeferredTarget,
+        DomainChange, EvidenceGap, KnownRuntimeState, MutationConclusion, MutationReceipt,
+        MutationRequest, MutationStage, RefusalCause, RetryableCause, RuntimePrepareOutcome,
+        TargetOrigin,
     },
     policy::{
         BaselineAvailability, CommandPolicy, CoreRunIntent, FailureDisposition, TryCauseKind,
@@ -112,7 +112,6 @@ impl ApplicationWorkflow {
         );
         self.live = Some(LiveAttempt::source_decision(
             operation_id,
-            domain,
             request.decision.clone(),
         ));
 
@@ -181,14 +180,14 @@ impl ApplicationWorkflow {
         ) {
             self.lifecycle.runtime.accept_transition();
         }
-        // Recorded before the ACK leaves: once the transaction can decide, a
-        // recovery has to know what this Try told it, and what Confirm would
-        // owe it.
-        let mut verdict = TryVerdict::of(&outcome);
-        if let Some(TryVerdict::Applied(applied)) = &mut verdict {
-            applied.releases_service = leaves_service_mode(&request.change);
+        // Recorded before the ACK leaves: once the transaction can commit, a
+        // recovery has to know what Confirm would owe the applied Try.
+        if let RuntimePrepareOutcome::Applied(candidate) = &outcome {
+            self.record_verdict(AppliedVerdict::new(
+                candidate,
+                leaves_service_mode(&request.change),
+            ));
         }
-        self.record_verdict(verdict);
         if !matches!(outcome, RuntimePrepareOutcome::RecoveryRequired(_)) {
             self.advance(AttemptStage::AwaitDecision);
         }
@@ -201,11 +200,8 @@ impl ApplicationWorkflow {
             degradations: Vec::new(),
             operation_id,
             domain,
-            impact,
-            policy,
             check,
             outcome: outcome.kind(),
-            refusal: outcome.refusal(),
             conclusion: MutationConclusion::Withdrawn,
             detail: None,
         };
@@ -418,7 +414,6 @@ impl ApplicationWorkflow {
         if !waiting && self.committed_target().attempts == attempts {
             self.charge_attempt(charge);
         }
-        self.record_verdict(TryVerdict::of(&outcome));
         let target = self.committed_target();
         match outcome {
             RuntimePrepareOutcome::Applied(candidate) => {
@@ -1120,7 +1115,6 @@ impl ApplicationWorkflow {
         });
         match decision {
             FailureDisposition::Deferrable => RuntimePrepareOutcome::Deferred {
-                baseline: baseline.state.clone(),
                 digest: facts
                     .target_digest
                     .expect("deferral requires a serialized complete runtime target"),
@@ -1197,19 +1191,9 @@ impl ApplicationWorkflow {
                 }
                 (MutationConclusion::Confirmed, detail)
             }
-            RuntimePrepareOutcome::Deferred {
-                baseline,
-                digest,
-                cause,
-            } => {
+            RuntimePrepareOutcome::Deferred { digest, cause } => {
                 let message = cause.message.clone();
-                self.install_mutation_target(
-                    request.operation_id,
-                    request.change.domain(),
-                    baseline,
-                    digest,
-                    cause,
-                );
+                self.install_mutation_target(request.operation_id, digest, cause);
                 (MutationConclusion::Confirmed, Some(message))
             }
             RuntimePrepareOutcome::SavedInactive { identity } => {
@@ -1329,11 +1313,9 @@ impl ApplicationWorkflow {
     /// running. The same identity keeps the outstanding target's accounting,
     /// and only a different one opens a fresh budget: manual saves and
     /// unavailable dependency checks never refill it (D11, V22).
-    pub(super) fn install_mutation_target(
+    fn install_mutation_target(
         &mut self,
         operation_id: nyanpasu_core_manager::OperationId,
-        domain: ConfigDomain,
-        baseline: KnownRuntimeState,
         identity: String,
         cause: RetryableCause,
     ) {
@@ -1346,9 +1328,8 @@ impl ApplicationWorkflow {
             .map_or(DEFERRED_RETRY_BUDGET, |p| p.attempts_remaining);
         self.deferred = Some(DeferredTarget {
             operation_id,
-            origin: TargetOrigin::Mutation { domain },
+            origin: TargetOrigin::Mutation,
             identity,
-            baseline,
             cause,
             attempts_remaining,
             attempts: previous.as_ref().map_or(0, |p| p.attempts),

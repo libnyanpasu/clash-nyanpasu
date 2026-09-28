@@ -694,13 +694,11 @@ fn cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_interr
         f.calls.release.notify_one();
         reconcile.await.unwrap();
         assert!(next.await.unwrap().unwrap().degradations().is_empty());
-        assert!(
-            workflow
-                .status()
-                .completed
-                .iter()
-                .any(|result| result.id == active && result.error.is_none())
-        );
+        assert!(workflow.mutation_journal().completed.iter().any(|receipt| {
+            receipt.operation_id == active
+                && receipt.conclusion
+                    == crate::client::application_workflow::mutation::MutationConclusion::Confirmed
+        }));
         assert_eq!(
             *f.calls.events.lock().unwrap(),
             ["reconcile", "close", "reconcile", "reconcile", "close"]

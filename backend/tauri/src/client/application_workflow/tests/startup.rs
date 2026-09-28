@@ -39,7 +39,6 @@ use tokio::{sync::Notify, time::Instant};
 use super::{
     super::{
         ApplicationWorkflowArgs, ApplicationWorkflowClient, Command, adapters,
-        attempt::{ActionView, AttemptOriginKind},
         mutation::{
             DEFERRED_RETRY_BUDGET, DeferredTarget, MutationOutcomeKind, ReestablishCause,
             TargetOrigin,
@@ -954,16 +953,13 @@ async fn an_unobserved_startup_submission_isolates_until_its_operation_ends() {
         "{report:?}"
     );
     assert!(g.isolated());
-    let view = g.client.mutation_journal().recovery.unwrap();
-    assert_eq!(view.origin, AttemptOriginKind::CommittedTarget);
-    assert!(matches!(
-        view.action,
-        Some(ActionView::Submission { accepted: true, .. })
-    ));
     assert_eq!(g.notifications.full(), 1);
-    assert_eq!(
-        g.client.retry_runtime().await.unwrap_err().kind,
-        Some(CoreErrorKind::OperationConflict)
+    let error = g.client.retry_runtime().await.unwrap_err();
+    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(
+        error.message.contains("core operation"),
+        "the slot names the lost submission: {}",
+        error.message
     );
     assert_eq!(g.log(), ["local:reconcile"], "nothing is resent blind");
 
@@ -1052,8 +1048,7 @@ async fn an_interrupted_startup_still_publishes_one_full_view_and_stays_isolated
     assert_eq!(g.notifications.full(), 1);
     assert_eq!(g.notifications.bound(), 0);
     assert!(g.isolated());
-    let view = g.client.mutation_journal().recovery.unwrap();
-    assert_eq!(view.origin, AttemptOriginKind::CommittedTarget);
+    assert!(g.client.mutation_journal().recovery.is_some());
     assert_eq!(g.log(), ["local:reconcile"]);
 
     let refused = g.start().await;

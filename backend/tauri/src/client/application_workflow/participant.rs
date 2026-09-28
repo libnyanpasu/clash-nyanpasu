@@ -10,11 +10,6 @@
 //! read directly from its authoritative handle by the workflow's handler, and
 //! the settled receipt goes back to the source on the channel it handed over.
 
-// The production writers of these values are the three domain actors, which
-// move onto the participant in T6; until then only the workflow's own tests
-// construct one, so the lib build sees the plumbing without its producers.
-#![allow(dead_code)]
-
 use nyanpasu_core::state::{Ack, DecisionHandle, StateAckSubscriber, StateChange, SubscriberName};
 use nyanpasu_core_manager::OperationId;
 use std::{

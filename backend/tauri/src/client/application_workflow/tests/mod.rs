@@ -840,15 +840,7 @@ fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation(
             "replacement restart followed by queued reconcile"
         );
         assert!(!staging.exists());
-        assert!(
-            f.client
-                .inner
-                .application_workflow
-                .status()
-                .completed
-                .iter()
-                .any(|r| r.id == active && r.error.is_none())
-        );
+        assert!(!f.client.inner.application_workflow.status().uncertain);
     });
 }
 
@@ -995,14 +987,6 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
         assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
         assert!(f.client.inner.application_workflow.status().uncertain);
         assert!(f.client.promoted_runtime().await.is_some());
-        let status = f.client.inner.application_workflow.status();
-        let result = status
-            .completed
-            .iter()
-            .find(|r| Some(r.id) == error.operation_id)
-            .unwrap();
-        assert!(result.backend_operation_id.is_some());
-        assert_ne!(result.backend_operation_id, error.operation_id);
         assert_eq!(
             f.client.stop_core().await.unwrap_err().kind,
             Some(CoreErrorKind::OperationConflict)

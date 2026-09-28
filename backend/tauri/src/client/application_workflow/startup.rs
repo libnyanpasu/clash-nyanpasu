@@ -21,7 +21,7 @@ use nyanpasu_ipc::{
 
 use super::{
     Output,
-    attempt::{AttemptOrigin, AttemptStage, LiveAttempt, TryVerdict},
+    attempt::{AttemptOrigin, AttemptStage, LiveAttempt},
     mutation::{
         ApplyFailure, CheckRecord, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState,
         MutationStage, ReestablishCause, RefusalCause, RetryableCause, RuntimePrepareOutcome,
@@ -388,7 +388,6 @@ impl ApplicationWorkflow {
                 operation_id,
                 origin: TargetOrigin::Reestablish(cause),
                 identity: String::new(),
-                baseline: KnownRuntimeState::NeverApplied,
                 cause: RetryableCause {
                     stage: MutationStage::Preparing,
                     message: "the runtime is being re-established".into(),
@@ -741,7 +740,6 @@ impl ApplicationWorkflow {
             target.attempts = 0;
             target.waits = 0;
         }
-        target.baseline = KnownRuntimeState::Stopped;
         let baseline = RestorableBaseline {
             settled: true,
             observed: status.snapshot.as_ref().and_then(|s| s.state.clone()),
@@ -791,7 +789,6 @@ impl ApplicationWorkflow {
         if !waiting && self.committed_target().attempts == attempts {
             self.charge_attempt(charge);
         }
-        self.record_verdict(TryVerdict::of(&outcome));
         if !matches!(
             outcome,
             RuntimePrepareOutcome::Applied(_) | RuntimePrepareOutcome::RecoveryRequired(_)

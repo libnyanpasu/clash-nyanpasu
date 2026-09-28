@@ -218,7 +218,6 @@ impl CoreLifecycleWorkflow {
                 self.core.uninstall_service().await?;
                 Ok(Output::Unit)
             }
-            Command::Shutdown => Ok(Output::Shutdown(self.core.shutdown().await)),
         }
     }
 

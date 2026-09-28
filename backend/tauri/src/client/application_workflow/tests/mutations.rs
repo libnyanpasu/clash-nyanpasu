@@ -44,11 +44,11 @@ use super::{
             TouchedContent, runtime_impact,
         },
         mutation::{
-            CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationConclusion,
-            MutationOutcomeKind, MutationReceipt, RefusalCause,
+            CheckRecord, DEFERRED_RETRY_BUDGET, MutationConclusion, MutationOutcomeKind,
+            MutationReceipt,
         },
         participant::ApplicationMutationParticipant,
-        policy::{CommandClass, CommandPolicy},
+        policy::CommandClass,
     },
     RecordingNotifications, ScriptedWaitEndpoint,
 };
@@ -1568,9 +1568,10 @@ async fn a_running_core_with_no_confirmed_apply_refuses_a_critical_mutation() {
     );
     let receipt = settled(&client, operation_id).await;
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    assert_eq!(
-        receipt.refusal,
-        Some(RefusalCause::Evidence(EvidenceGap::NoRestorableBaseline))
+    let text = crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+    assert!(
+        text.contains("a core is running that this session has not applied to"),
+        "{text}"
     );
     assert!(
         !client.status().uncertain,
@@ -1638,13 +1639,10 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
         text.contains("the core will not run this document"),
         "{text}"
     );
-    // A Try that ran and was refused, not an evidence gap: the two refusals are
-    // different facts and the receipt is where they stay apart.
-    assert_eq!(
-        receipt.refusal,
-        Some(RefusalCause::Try(
-            super::super::policy::TryCauseKind::Deterministic
-        ))
+    // A Try that ran and was refused, not an evidence gap.
+    assert!(
+        text.contains("the core rejected this configuration"),
+        "{text}"
     );
     assert!(!f.client.status().uncertain);
 }
@@ -1711,9 +1709,10 @@ async fn a_host_that_publishes_nothing_refuses_a_critical_mutation() {
     let receipt = settled(&f.client, operation_id).await;
     assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    assert_eq!(
-        receipt.refusal,
-        Some(RefusalCause::Evidence(EvidenceGap::BaselineUnconfirmed))
+    let text = crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+    assert!(
+        text.contains("reports no settled runtime state (None)"),
+        "{text}"
     );
     assert!(
         !f.client.status().uncertain,
@@ -1809,18 +1808,18 @@ async fn a_transitional_core_state_refuses_a_mutation_without_isolating_the_doma
             "{state:?}: a core mid-transition is not a baseline to apply against"
         );
         let receipt = settled(&f.client, operation_id).await;
-        assert_eq!(
-            receipt.policy,
-            CommandPolicy::MustApply,
-            "{state:?}: a transition is not a stop, so the command keeps its policy"
+        assert_ne!(
+            receipt.outcome,
+            MutationOutcomeKind::SavedInactive,
+            "{state:?}: a transition is not a stop"
         );
-        assert_ne!(receipt.outcome, MutationOutcomeKind::SavedInactive);
         assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
         assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-        assert_eq!(
-            receipt.refusal,
-            Some(RefusalCause::Evidence(EvidenceGap::CoreTransitioning)),
-            "{state:?}"
+        let text =
+            crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+        assert!(
+            text.contains("reports no settled runtime state (Some("),
+            "{state:?}: {text}"
         );
         assert!(
             !f.client.status().uncertain,
@@ -2086,7 +2085,6 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
     ));
     assert!(matches!(
         RuntimePrepareOutcome::Deferred {
-            baseline: super::super::mutation::KnownRuntimeState::Stopped,
             digest: "digest".into(),
             cause: RetryableCause {
                 stage: super::super::mutation::MutationStage::TryingCritical,
@@ -2210,11 +2208,6 @@ async fn a_host_switch_moves_the_runtime_inside_the_try_and_back_on_cancel() {
     );
 
     let receipt = settled(&client, operation_id).await;
-    assert_eq!(
-        receipt.impact,
-        super::super::impact::RuntimeImpact::HostSwitch
-    );
-    assert_eq!(receipt.policy, CommandPolicy::MustApply);
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(
         receipt.conclusion,
@@ -2373,8 +2366,8 @@ async fn an_unobserved_apply_after_a_handoff_keeps_its_recovery_context() {
             .mutation_journal()
             .recovery
             .expect("an isolated domain names why")
-            .stage,
-        super::super::attempt::AttemptStage::TryingCritical
+            .operation_id,
+        operation_id
     );
     assert!(!application.snapshot().enable_service_mode);
 }
@@ -2455,8 +2448,8 @@ async fn a_restore_that_cannot_be_observed_is_not_a_clean_cancel() {
             .mutation_journal()
             .recovery
             .expect("an isolated domain names why")
-            .stage,
-        super::super::attempt::AttemptStage::Cancelling
+            .operation_id,
+        operation_id
     );
 }
 
@@ -2539,12 +2532,11 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
         receipt.detail
     );
     assert!(client.status().uncertain);
+    let error = client.retry_runtime().await.unwrap_err();
     assert!(
-        matches!(
-            client.mutation_journal().recovery.unwrap().action,
-            Some(super::super::attempt::ActionView::Submission { .. })
-        ),
-        "an unknown restore retains its lower operation identity"
+        error.message.contains("core operation"),
+        "an unknown restore retains its lower operation identity: {}",
+        error.message
     );
     assert!(
         ports.confirmed().is_none(),

@@ -11,11 +11,6 @@
 //! the source state, and the runtime revision orders published views. None of
 //! them substitutes for another.
 
-// The production writers of these values are the three domain actors, which
-// move onto the participant in T6; until then only the workflow's own tests
-// construct one, so the lib build sees the plumbing without its producers.
-#![allow(dead_code)]
-
 use std::sync::Arc;
 
 use nyanpasu_config::{
@@ -27,7 +22,7 @@ use tokio::sync::oneshot;
 
 use super::{
     impact::{self, MutationHints, RuntimeImpact},
-    policy::{CommandClass, CommandPolicy, TryCauseKind},
+    policy::{CommandClass, TryCauseKind},
 };
 use crate::client::runtime::{RuntimeApplyReceipt, RuntimeSnapshot};
 
@@ -39,7 +34,8 @@ pub(crate) enum ConfigDomain {
     Profiles,
 }
 
-/// The candidate of one mutation together with the committed value it replaces.
+/// The candidate of one mutation, and the committed value it replaces where
+/// the Runtime reads that.
 ///
 /// The candidate comes from the `StateChange` of the transaction the workflow
 /// participates in, never from a read of the domain: at prepare time the store
@@ -52,7 +48,6 @@ pub(crate) enum DomainChange {
         candidate: Arc<NyanpasuAppConfig>,
     },
     Clash {
-        previous: Option<Arc<ClashConfig>>,
         candidate: Arc<ClashConfig>,
     },
     Profiles {
@@ -106,9 +101,6 @@ impl MutationDomain for ClashConfig {
 
     fn domain_change(change: StateChange<Self>) -> DomainChange {
         DomainChange::Clash {
-            previous: change
-                .previous
-                .map(|previous| Arc::new(previous.state.clone())),
             candidate: change.current,
         }
     }
@@ -168,8 +160,11 @@ impl MutationRequest {
 pub(crate) enum MutationStage {
     Preparing,
     TryingCritical,
+    // Never constructed; this predates the workflow cleanup and is left to
+    // its own change.
+    #[allow(dead_code)]
     AwaitDecision,
-    Confirming,
+    #[allow(dead_code)]
     Cancelling,
 }
 
@@ -230,6 +225,9 @@ pub(crate) enum RefusalCause {
 /// A critical Try that did not apply, typed by the stage that observed it.
 #[derive(Debug, Clone)]
 pub(crate) struct ApplyFailure {
+    // Never read; this predates the workflow cleanup and is left to its own
+    // change.
+    #[allow(dead_code)]
     pub stage: MutationStage,
     pub cause: RefusalCause,
     pub message: String,
@@ -263,7 +261,6 @@ pub(crate) enum RuntimePrepareOutcome {
     /// The candidate is safe to commit unapplied: every condition of
     /// `policy::disposition` held.
     Deferred {
-        baseline: KnownRuntimeState,
         /// The document that is committed but not running.
         digest: String,
         cause: RetryableCause,
@@ -275,6 +272,9 @@ pub(crate) enum RuntimePrepareOutcome {
     /// The candidate must not be committed, and the runtime is where it was.
     Rejected {
         cause: ApplyFailure,
+        // Never read; this predates the workflow cleanup and is left to its
+        // own change.
+        #[allow(dead_code)]
         restored: KnownRuntimeState,
     },
     /// What actually ran cannot be established, so no commit decision may be
@@ -293,14 +293,6 @@ impl RuntimePrepareOutcome {
             Self::Deferred { cause, .. } => Ack::Degraded(cause.message.clone()),
             Self::Rejected { cause, .. } => Ack::Rejected(cause.message.clone()),
             Self::RecoveryRequired(error) => Ack::Failed(anyhow::anyhow!(error.clone())),
-        }
-    }
-
-    /// The typed cause of a refusal, when this outcome is one.
-    pub fn refusal(&self) -> Option<RefusalCause> {
-        match self {
-            Self::Rejected { cause, .. } => Some(cause.cause),
-            _ => None,
         }
     }
 
@@ -369,13 +361,8 @@ pub(crate) struct MutationReceipt {
     pub degradations: Vec<crate::client::runtime::Degradation>,
     pub operation_id: OperationId,
     pub domain: ConfigDomain,
-    pub impact: RuntimeImpact,
-    pub policy: CommandPolicy,
     pub check: CheckRecord,
     pub outcome: MutationOutcomeKind,
-    /// Why a refused mutation was refused. The structured cause lives here, so
-    /// nothing has to read it back out of an ACK's message (v2 §4.4).
-    pub refusal: Option<RefusalCause>,
     pub conclusion: MutationConclusion,
     /// Diagnostics for the operator, never an input to a decision.
     pub detail: Option<String>,
@@ -394,7 +381,6 @@ pub(crate) struct DeferredTarget {
     /// Only a different target opens a new automatic budget. A manual save of
     /// the same target neither spends nor refills it (D11, V22).
     pub identity: String,
-    pub baseline: KnownRuntimeState,
     pub cause: RetryableCause,
     pub attempts_remaining: u8,
     pub attempts: u32,
@@ -410,7 +396,7 @@ pub(crate) struct DeferredTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TargetOrigin {
     /// A source mutation committed it unapplied.
-    Mutation { domain: ConfigDomain },
+    Mutation,
     /// The runtime has to be re-established from the committed configuration.
     Reestablish(ReestablishCause),
 }

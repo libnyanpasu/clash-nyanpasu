@@ -24,7 +24,6 @@ use crate::{
     core::migration::modules::profiles::ProfilesFormat,
     state::mutation::MutationCoordinator,
 };
-use futures::FutureExt as _;
 use nyanpasu_core_manager::OperationId;
 use tokio::{sync::watch, task::JoinHandle};
 
@@ -587,9 +586,8 @@ impl ProfilesActor {
     }
 
     /// Downloads and validates on a task the pending entry owns; the file is
-    /// written by the commit handler, after its stale-download fence. A panic
-    /// still settles the attempt. An abort settles nothing: whoever aborts
-    /// has already removed the entry.
+    /// written by the commit handler, after its stale-download fence. An
+    /// abort settles nothing: whoever aborts has already removed the entry.
     fn spawn_download(
         fetcher: Arc<dyn SubscriptionFetcher>,
         url: url::Url,
@@ -606,18 +604,14 @@ impl ProfilesActor {
                 Self::validate_fetched_content(&definition, &fetched.content)?;
                 Ok::<_, String>(fetched)
             };
-            let outcome = match std::panic::AssertUnwindSafe(fetch).catch_unwind().await {
-                Ok(Ok(fetched)) => RefreshOutcome::Succeeded {
+            let outcome = match fetch.await {
+                Ok(fetched) => RefreshOutcome::Succeeded {
                     subscription: fetched.subscription,
                     suggested_update_interval_minutes: fetched.suggested_update_interval_minutes,
                     content: fetched.content,
                     filename: fetched.filename,
                 },
-                Ok(Err(message)) => RefreshOutcome::Failed { message },
-                // Do not downcast panic payloads; emit a stable diagnostic.
-                Err(_) => RefreshOutcome::Failed {
-                    message: "subscription fetch task panicked".into(),
-                },
+                Err(message) => RefreshOutcome::Failed { message },
             };
             settle(outcome);
         })
@@ -654,7 +648,10 @@ impl ProfilesActor {
         let read_target = expected_target.clone();
         let content = tokio::task::spawn_blocking(move || fs.read_external(&read_target))
             .await
-            .map_err(|error| anyhow::anyhow!("mirror source read task failed: {error}"))
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => anyhow::anyhow!("mirror source read task failed: {error}"),
+            })
             .and_then(|content| content);
         let content = match content {
             Ok(content) => content,
@@ -853,7 +850,10 @@ impl ProfilesActor {
         let materialization = Arc::clone(&state.materialization);
         tokio::task::spawn_blocking(move || operation(materialization.as_ref()))
             .await
-            .map_err(|error| anyhow::anyhow!("materialization task failed: {error}"))?
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => anyhow::anyhow!("materialization task failed: {error}"),
+            })?
     }
 
     fn materialization_error(context: &str, error: impl std::fmt::Display) -> ProfilesError {
@@ -896,8 +896,11 @@ impl ProfilesActor {
                 let target = target.clone();
                 let content = tokio::task::spawn_blocking(move || fs.read_external(&target))
                     .await
-                    .map_err(|error| {
-                        Self::materialization_error("mirror source read task failed", error)
+                    .map_err(|error| match error.try_into_panic() {
+                        Ok(panic) => std::panic::resume_unwind(panic),
+                        Err(error) => {
+                            Self::materialization_error("mirror source read task failed", error)
+                        }
                     })?
                     .map_err(|error| {
                         Self::materialization_error("failed to read mirror source", error)
@@ -1074,8 +1077,11 @@ impl ProfilesActor {
                     Some(
                         tokio::task::spawn_blocking(move || fs.read_external(&target))
                             .await
-                            .map_err(|error| {
-                                Self::materialization_error("source read task", error)
+                            .map_err(|error| match error.try_into_panic() {
+                                Ok(panic) => std::panic::resume_unwind(panic),
+                                Err(error) => {
+                                    Self::materialization_error("source read task", error)
+                                }
                             })?
                             .map_err(|error| Self::materialization_error("source read", error))?,
                     )
@@ -1144,7 +1150,11 @@ impl ProfilesActor {
                         }
                         anyhow::Ok(())
                     })
-                    .await?
+                    .await
+                    .map_err(|error| match error.try_into_panic() {
+                        Ok(panic) => std::panic::resume_unwind(panic),
+                        Err(error) => error,
+                    })?
                 },
                 move || async move {
                     tokio::task::spawn_blocking(move || {
@@ -1163,7 +1173,11 @@ impl ProfilesActor {
                             ),
                         }
                     })
-                    .await?
+                    .await
+                    .map_err(|error| match error.try_into_panic() {
+                        Ok(panic) => std::panic::resume_unwind(panic),
+                        Err(error) => error,
+                    })?
                 },
             )
             .await;
@@ -1171,7 +1185,7 @@ impl ProfilesActor {
             Ok(ReplaceIfVersionResult::Replaced) => {}
             result => {
                 // Only a pre-persistence refusal leaves staging to discard here.
-                // Once local_write starts, the source task exclusively owns
+                // Once local_write starts, the source transaction exclusively owns
                 // compensation and publishes its result before releasing admission.
                 let before_write = matches!(
                     &result,
@@ -1291,7 +1305,10 @@ impl ProfilesActor {
         let materialization = Arc::clone(&state.materialization);
         tokio::task::spawn_blocking(move || materialization.reconcile(&snapshot))
             .await
-            .map_err(|error| anyhow::anyhow!("materialization reconcile join failed: {error}"))?
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => anyhow::anyhow!("materialization reconcile join failed: {error}"),
+            })?
     }
 
     fn log_reconcile_report(report: &MaterializationReconcileReport) {
@@ -1469,10 +1486,11 @@ impl Actor for ProfilesActor {
         let materialization = Arc::clone(&args.materialization);
         let report = tokio::task::spawn_blocking(move || materialization.reconcile(&loaded))
             .await
-            .map_err(|error| {
-                ActorProcessingErr::from(anyhow::anyhow!(
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => ActorProcessingErr::from(anyhow::anyhow!(
                     "startup materialization reconcile join failed: {error}"
-                ))
+                )),
             })?
             .map_err(|error| {
                 ActorProcessingErr::from(anyhow::anyhow!(

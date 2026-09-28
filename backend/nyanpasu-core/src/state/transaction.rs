@@ -1,7 +1,6 @@
 mod notify;
 
 use std::{marker::PhantomData, sync::Arc};
-use tokio::sync::OwnedSemaphorePermit;
 
 use crate::state::{
     AbortResourceState, PersistenceIncident, StateStore, Version, VersionedState,
@@ -9,8 +8,8 @@ use crate::state::{
 };
 
 use super::{
-    Ack, AckPolicy, AckStatus, ArcStateSubscriber, PrepareReport, RollbackReason, StateChange,
-    SubscriberAck, SubscriberFailure, SubscriberFailureKind, SubscriberName, Subscribers,
+    Ack, AckStatus, ArcStateSubscriber, PrepareReport, RollbackReason, StateChange, SubscriberAck,
+    SubscriberFailure, SubscriberFailureKind, Subscribers,
 };
 
 mod state {
@@ -36,7 +35,6 @@ pub fn new_transaction<T>(
     store: StateStore<T>,
     subscribers: Subscribers<T>,
     notify_strategy: NotifyStrategy,
-    permit: OwnedSemaphorePermit,
     decision: DecisionWriter,
 ) -> StateTransaction<T, state::Pending>
 where
@@ -47,7 +45,6 @@ where
         store,
         subscribers,
         notify_strategy,
-        permit,
         decision,
     )
 }
@@ -66,8 +63,6 @@ pub struct StateTransaction<T: Clone + Send + Sync + 'static, S = state::Pending
 
 struct RollbackGuardData<T: Clone + Send + Sync + 'static> {
     change: StateChange<T>,
-    subscribers: Subscribers<T>,
-    notify_strategy: NotifyStrategy,
     decision: DecisionWriter,
     /// Set once the caller starts writing this candidate outside the store. From
     /// that point on a dropped transaction leaves an unknown on-disk state.
@@ -75,31 +70,15 @@ struct RollbackGuardData<T: Clone + Send + Sync + 'static> {
     resources: AbortResourceState,
 }
 
-/// Holds the writer permit for as long as this transaction may still need to
-/// roll back.
+/// Publishes the abort of a transaction dropped before it committed or rolled
+/// back.
 ///
-/// The permit lives here rather than next to it in [`StateTransaction`] because
-/// `Drop` has to keep it alive across the rollback notifications it hands to a
-/// detached task. Releasing it earlier would let the next transaction's prepare
-/// overtake the previous attempt's `on_rolled_back`.
-///
-/// The permit orders both rollback paths, and only the permit does:
-///
-/// - the explicit `_rollback` path holds it across its own notifications and
-///   hands it back once they have run. The caller's borrow of the state manager
-///   cannot stand in for it: a cancelled caller drops that borrow the moment its
-///   future goes away, while the notifications this transaction owes have not
-///   run yet.
-/// - the `Drop` path has no caller left at all. It takes the permit the
-///   cancelled path was still holding into the detached task that re-runs the
-///   notifications, and releases it when they finish, bounded by the
-///   subscribers' ACK budget.
-///
-/// So "no prepare overtakes the previous attempt's rollback" holds whether the
-/// rollback completed or was cancelled halfway through.
+/// The transaction is its owner's own work, so it is dropped only when that
+/// owner panics or the runtime is torn down. No rollback notification runs
+/// then; what the transaction still owes is its decision, so a participant
+/// waiting on the [`crate::state::DecisionHandle`] is never left `Undecided`.
 struct RollbackGuard<T: Clone + Send + Sync + 'static> {
     data: Option<RollbackGuardData<T>>,
-    permit: Option<OwnedSemaphorePermit>,
 }
 
 impl<T> RollbackGuard<T>
@@ -107,40 +86,12 @@ where
     T: Clone + Send + Sync + 'static,
 {
     fn disarmed() -> Self {
-        Self {
-            data: None,
-            permit: None,
-        }
+        Self { data: None }
     }
 
-    fn holding(permit: OwnedSemaphorePermit) -> Self {
-        Self {
-            data: None,
-            permit: Some(permit),
-        }
-    }
-
-    /// Hand the writer permit back to the semaphore.
-    fn release_permit(&mut self) {
-        drop(self.permit.take());
-    }
-
-    #[cfg(test)]
-    fn holds_permit(&self) -> bool {
-        self.permit.is_some()
-    }
-
-    fn arm(
-        &mut self,
-        change: &StateChange<T>,
-        subscribers: &[ArcStateSubscriber<T>],
-        notify_strategy: NotifyStrategy,
-        decision: DecisionWriter,
-    ) {
+    fn arm(&mut self, change: &StateChange<T>, decision: DecisionWriter) {
         self.data = Some(RollbackGuardData {
             change: change.clone(),
-            subscribers: subscribers.to_vec(),
-            notify_strategy,
             decision,
             local_persistence_started: false,
             resources: AbortResourceState::Restored,
@@ -159,12 +110,6 @@ where
         }
     }
 
-    fn update_subscribers(&mut self, subscribers: &[ArcStateSubscriber<T>]) {
-        if let Some(data) = &mut self.data {
-            data.subscribers = subscribers.to_vec();
-        }
-    }
-
     fn disarm(&mut self) {
         self.data = None;
     }
@@ -174,13 +119,7 @@ impl<T> Drop for RollbackGuard<T>
 where
     T: Clone + Send + Sync + 'static,
 {
-    /// Drop never waits for anything: it records the outcome and hands the
-    /// rollback notifications to a detached task that holds the writer permit
-    /// until they finish. Callers that need the notifications settled before
-    /// their own next step must roll the transaction back explicitly on the
-    /// async path instead.
     fn drop(&mut self) {
-        let permit = self.permit.take();
         let Some(data) = self.data.take() else {
             return;
         };
@@ -203,36 +142,8 @@ where
         } else {
             tracing::warn!(
                 change_id = ?data.change.id,
-                "state transaction dropped before commit or rollback completed; \
-                 signalling rollback subscribers"
+                "state transaction dropped before commit or rollback completed"
             );
-        }
-
-        let reason = RollbackReason::CoordinatorError(Arc::new(anyhow::anyhow!(
-            "state transaction dropped before commit or rollback completed"
-        )));
-        match tokio::runtime::Handle::try_current() {
-            Ok(handle) => {
-                handle.spawn(async move {
-                    notify_rollback(
-                        &data.change,
-                        &data.subscribers,
-                        data.notify_strategy,
-                        reason,
-                    )
-                    .await;
-                    // Only now may the next writer start, so its prepare cannot
-                    // overtake this attempt's rollback.
-                    drop(permit);
-                });
-            }
-            Err(_) => {
-                tracing::error!(
-                    change_id = ?data.change.id,
-                    "state transaction dropped outside a tokio runtime; rollback subscribers \
-                     were not notified and may still hold prepared resources"
-                );
-            }
         }
     }
 }
@@ -274,7 +185,6 @@ where
         store: StateStore<T>,
         subscribers: Subscribers<T>,
         notify_strategy: NotifyStrategy,
-        permit: OwnedSemaphorePermit,
         decision: DecisionWriter,
     ) -> StateTransaction<T, state::Pending> {
         StateTransaction {
@@ -282,7 +192,7 @@ where
             subscribers,
             store,
             notify_strategy,
-            rollback_guard: RollbackGuard::holding(permit),
+            rollback_guard: RollbackGuard::disarmed(),
             decision,
             _state: PhantomData,
         }
@@ -305,11 +215,6 @@ where
         self.decision.abort(resources);
 
         // Notify all subscribers about the rollback. This is best effort and does not affect the rollback process.
-        //
-        // The writer permit stays with the guard for the whole await. Dropping
-        // this future here leaves the notifications unrun, and the guard's
-        // `Drop` carries that same permit into the detached task that re-runs
-        // them — which is the only thing keeping the next prepare behind them.
         notify_rollback(
             &self.change,
             &self.subscribers,
@@ -317,10 +222,7 @@ where
             reason,
         )
         .await;
-        // The notifications have run, so nothing is owed any more: the permit
-        // goes back, and the returned RolledBack transaction never holds one.
         self.rollback_guard.disarm();
-        self.rollback_guard.release_permit();
 
         StateTransaction {
             change: self.change,
@@ -352,12 +254,7 @@ where
         (PrepareReport, StateTransaction<T, state::Prepared>),
         Box<(PrepareReport, StateTransaction<T, state::RolledBack>)>,
     > {
-        self.rollback_guard.arm(
-            &self.change,
-            &self.subscribers,
-            self.notify_strategy,
-            self.decision.clone(),
-        );
+        self.rollback_guard.arm(&self.change, self.decision.clone());
 
         let acks = match self.notify_strategy {
             NotifyStrategy::Parallel => {
@@ -375,14 +272,6 @@ where
                 .await
             }
         };
-
-        for ack in acks.iter() {
-            if matches!(ack.status, AckStatus::SkippedShutdown) {
-                // Remove shutdown subscriber in this transaction for state dispatch consistent
-                self.subscribers.retain(|s| s.name().0 != ack.name.0);
-            }
-        }
-        self.rollback_guard.update_subscribers(&self.subscribers);
 
         let failed_acks: Vec<_> = acks
             .iter()
@@ -402,7 +291,6 @@ where
                     acks.iter()
                         .any(|ack| ack.name.0.as_ref() == name.0.as_ref())
                 });
-                self.rollback_guard.update_subscribers(&self.subscribers);
             }
 
             let tx = self
@@ -418,7 +306,6 @@ where
                                 AckStatus::Failed { error } => SubscriberFailureKind::Failed {
                                     error: error.clone(),
                                 },
-                                AckStatus::TimedOut => SubscriberFailureKind::TimedOut,
                                 _ => unreachable!(),
                             },
                         })
@@ -532,14 +419,10 @@ where
                 let guard = self.store.compare_and_swap(&prev, new_state);
 
                 if !Arc::ptr_eq(&guard, &prev) {
-                    // Deliberately *not* decided here. The candidate will never
-                    // commit, but what it already persisted outside the store is
-                    // still being put back, and a participant that reads
-                    // `Aborted` while that recovery runs would settle on an
-                    // outcome the recovery may still qualify (v2 §4.2). The
-                    // decision is recorded by `_rollback`, after the caller's
-                    // recovery has finished; a caller dropped in between leaves
-                    // it to the rollback guard, which flags the unknown
+                    // Deliberately *not* decided here: the caller first records
+                    // what the candidate left outside the store, and `_rollback`
+                    // publishes that with the abort. A caller dropped in between
+                    // leaves it to the rollback guard, which flags the unknown
                     // persistence outcome as well.
                     return Err(Box::new(CommitCasMismatch {
                         tx: Box::new(self),
@@ -562,7 +445,6 @@ where
         self.decision.commit(self.change.id.0);
 
         self.rollback_guard.disarm();
-        self.rollback_guard.release_permit();
 
         let StateTransaction {
             change,
@@ -646,56 +528,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{StateAckSubscriber, StateChangeId, SubscriberName, Version};
+    use crate::state::{StateAckSubscriber, StateChangeId, StateDecision, SubscriberName};
     use arc_swap::ArcSwap;
-    use std::{sync::Arc, time::Duration};
-    use tokio::sync::{Mutex, Notify, Semaphore};
-
-    struct BlockingCommitSubscriber {
-        started: Arc<Notify>,
-        release: Arc<Notify>,
-    }
-
-    #[async_trait::async_trait]
-    impl StateAckSubscriber<i32> for BlockingCommitSubscriber {
-        fn name(&self) -> SubscriberName<'_> {
-            "blocking_commit".into()
-        }
-
-        async fn on_committed(&self, _change: StateChange<i32>) -> Ack {
-            self.started.notify_one();
-            self.release.notified().await;
-            Ack::Ok
-        }
-    }
-
-    struct RollbackRecordingSubscriber {
-        events: Arc<Mutex<Vec<&'static str>>>,
-        rolled_back: Arc<Notify>,
-    }
-
-    #[async_trait::async_trait]
-    impl StateAckSubscriber<i32> for RollbackRecordingSubscriber {
-        fn name(&self) -> SubscriberName<'_> {
-            "rollback_recorder".into()
-        }
-
-        async fn on_prepare(&self, _change: StateChange<i32>) -> Ack {
-            self.events.lock().await.push("prepare");
-            Ack::Ok
-        }
-
-        async fn on_rolled_back(&self, _change: StateChange<i32>, _reason: RollbackReason) {
-            self.events.lock().await.push("rollback");
-            self.rolled_back.notify_one();
-        }
-    }
+    use tokio::sync::Notify;
 
     struct BlockingPrepareSubscriber {
-        events: Arc<Mutex<Vec<&'static str>>>,
         started: Arc<Notify>,
-        release: Arc<Notify>,
-        rolled_back: Arc<Notify>,
     }
 
     #[async_trait::async_trait]
@@ -705,344 +543,86 @@ mod tests {
         }
 
         async fn on_prepare(&self, _change: StateChange<i32>) -> Ack {
-            self.events.lock().await.push("prepare");
             self.started.notify_one();
-            self.release.notified().await;
+            std::future::pending::<()>().await;
             Ack::Ok
         }
-
-        async fn on_rolled_back(&self, _change: StateChange<i32>, _reason: RollbackReason) {
-            self.events.lock().await.push("rollback");
-            self.rolled_back.notify_one();
-        }
     }
 
-    struct BlockingRollbackSubscriber {
-        started: Arc<Notify>,
-        release: Arc<Notify>,
-    }
-
-    #[async_trait::async_trait]
-    impl StateAckSubscriber<i32> for BlockingRollbackSubscriber {
-        fn name(&self) -> SubscriberName<'_> {
-            "blocking_rollback".into()
-        }
-
-        async fn on_prepare(&self, _change: StateChange<i32>) -> Ack {
-            Ack::Ok
-        }
-
-        async fn on_rolled_back(&self, _change: StateChange<i32>, _reason: RollbackReason) {
-            self.started.notify_one();
-            self.release.notified().await;
-        }
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn commit_releases_permit_before_post_commit_notifications_finish() {
-        let store: StateStore<i32> = Arc::new(ArcSwap::from_pointee(VersionedState {
+    fn store_at_zero() -> StateStore<i32> {
+        Arc::new(ArcSwap::from_pointee(VersionedState {
             version: Version::new(0),
             state: 0,
-        }));
-        let previous = store.load_full();
-        let semaphore = Arc::new(Semaphore::new(1));
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never close");
-        let started = Arc::new(Notify::new());
-        let release = Arc::new(Notify::new());
-        let subscribers: Subscribers<i32> = vec![Arc::new(BlockingCommitSubscriber {
-            started: Arc::clone(&started),
-            release: Arc::clone(&release),
-        })];
-        let change = StateChange {
-            id: StateChangeId::new(1),
-            previous: Some(previous),
-            current: Arc::new(1),
-        };
-        let tx = new_transaction(
-            change,
-            Arc::clone(&store),
-            subscribers,
-            NotifyStrategy::Parallel,
-            permit,
-            DecisionWriter::new(),
-        );
-
-        let commit_task = tokio::spawn(async move {
-            if tx.commit().await.is_err() {
-                panic!("commit should succeed");
-            }
-        });
-
-        started.notified().await;
-        assert_eq!(store.load_full().state, 1);
-
-        let next_permit = tokio::time::timeout(
-            Duration::from_millis(100),
-            semaphore.clone().acquire_owned(),
-        )
-        .await;
-        assert!(
-            next_permit.is_ok(),
-            "post-commit notification must not keep the writer permit"
-        );
-        drop(next_permit);
-
-        release.notify_one();
-        commit_task.await.unwrap();
+        }))
     }
 
-    /// The permit is what keeps the next prepare behind this attempt's
-    /// `on_rolled_back`, so the explicit path holds it for as long as those
-    /// notifications are still running — and hands it straight back afterwards.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn rollback_holds_the_permit_until_its_notifications_finish() {
-        let store: StateStore<i32> = Arc::new(ArcSwap::from_pointee(VersionedState {
-            version: Version::new(0),
-            state: 0,
-        }));
-        let previous = store.load_full();
-        let semaphore = Arc::new(Semaphore::new(1));
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never close");
-        let started = Arc::new(Notify::new());
-        let release = Arc::new(Notify::new());
-        let subscribers: Subscribers<i32> = vec![Arc::new(BlockingRollbackSubscriber {
-            started: Arc::clone(&started),
-            release: Arc::clone(&release),
-        })];
+    fn transaction(
+        store: &StateStore<i32>,
+        subscribers: Subscribers<i32>,
+        decision: DecisionWriter,
+    ) -> StateTransaction<i32, state::Pending> {
         let change = StateChange {
             id: StateChangeId::new(1),
-            previous: Some(previous),
+            previous: Some(store.load_full()),
             current: Arc::new(1),
         };
-        let tx = new_transaction(
+        new_transaction(
             change,
-            Arc::clone(&store),
+            Arc::clone(store),
             subscribers,
             NotifyStrategy::Parallel,
-            permit,
-            DecisionWriter::new(),
-        );
-        let (_report, prepared_tx) = match tx.prepare().await {
-            Ok(result) => result,
-            Err(_) => panic!("prepare should succeed"),
-        };
-
-        let rollback_task = tokio::spawn(async move {
-            prepared_tx
-                .rollback(RollbackReason::CoordinatorError(Arc::new(anyhow::anyhow!(
-                    "test rollback"
-                ))))
-                .await
-        });
-
-        started.notified().await;
-
-        let next_permit = tokio::time::timeout(
-            Duration::from_millis(100),
-            semaphore.clone().acquire_owned(),
+            decision,
         )
-        .await;
-        assert!(
-            next_permit.is_err(),
-            "a prepare must not overtake the rollback notification that is still running"
-        );
-
-        release.notify_one();
-        let rolled_back_tx = rollback_task.await.unwrap();
-        assert!(
-            !rolled_back_tx.rollback_guard.holds_permit(),
-            "rolled-back transactions must not retain the writer permit"
-        );
-
-        let permit_after_rollback = tokio::time::timeout(
-            Duration::from_millis(100),
-            semaphore.clone().acquire_owned(),
-        )
-        .await;
-        assert!(
-            permit_after_rollback.is_ok(),
-            "holding a rolled-back transaction must not block future writers"
-        );
     }
 
-    /// Cancelling the explicit rollback is the window the guard exists for: the
-    /// caller's borrow is gone, its notifications never ran, and the detached
-    /// replacement has to inherit the permit rather than find it already back
-    /// in the semaphore.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn a_cancelled_rollback_keeps_the_permit_until_the_detached_notification_finishes() {
-        let store: StateStore<i32> = Arc::new(ArcSwap::from_pointee(VersionedState {
-            version: Version::new(0),
-            state: 0,
-        }));
-        let previous = store.load_full();
-        let semaphore = Arc::new(Semaphore::new(1));
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never close");
-        let started = Arc::new(Notify::new());
-        let release = Arc::new(Notify::new());
-        let subscribers: Subscribers<i32> = vec![Arc::new(BlockingRollbackSubscriber {
-            started: Arc::clone(&started),
-            release: Arc::clone(&release),
-        })];
-        let change = StateChange {
-            id: StateChangeId::new(1),
-            previous: Some(previous),
-            current: Arc::new(1),
-        };
-        let tx = new_transaction(
-            change,
-            Arc::clone(&store),
-            subscribers,
-            NotifyStrategy::Parallel,
-            permit,
-            DecisionWriter::new(),
-        );
-        let (_report, prepared_tx) = match tx.prepare().await {
-            Ok(result) => result,
-            Err(_) => panic!("prepare should succeed"),
-        };
-
-        let mut rollback = Box::pin(prepared_tx.rollback(RollbackReason::CoordinatorError(
-            Arc::new(anyhow::anyhow!("test rollback")),
-        )));
-        tokio::select! {
-            _ = &mut rollback => panic!("the blocked notification keeps the rollback pending"),
-            _ = started.notified() => {}
-        }
-        drop(rollback);
-
-        // Drop re-runs the notification it cancelled; the writer permit must
-        // still be with it.
-        tokio::time::timeout(Duration::from_secs(5), started.notified())
-            .await
-            .expect("drop must re-run the rollback notification");
-        let next_permit = tokio::time::timeout(
-            Duration::from_millis(100),
-            semaphore.clone().acquire_owned(),
-        )
-        .await;
-        assert!(
-            next_permit.is_err(),
-            "a cancelled rollback must not let the next writer start before its \
-             notifications have run"
-        );
-
-        release.notify_one();
-        tokio::time::timeout(Duration::from_secs(5), semaphore.clone().acquire_owned())
-            .await
-            .expect("the permit goes back once the detached notification finishes")
-            .expect("semaphore should never close");
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn prepared_transaction_drop_notifies_rollback() {
-        let store: StateStore<i32> = Arc::new(ArcSwap::from_pointee(VersionedState {
-            version: Version::new(0),
-            state: 0,
-        }));
-        let previous = store.load_full();
-        let semaphore = Arc::new(Semaphore::new(1));
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never close");
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let rolled_back = Arc::new(Notify::new());
-        let subscribers: Subscribers<i32> = vec![Arc::new(RollbackRecordingSubscriber {
-            events: Arc::clone(&events),
-            rolled_back: Arc::clone(&rolled_back),
-        })];
-        let change = StateChange {
-            id: StateChangeId::new(1),
-            previous: Some(previous),
-            current: Arc::new(1),
-        };
-        let tx = new_transaction(
-            change,
-            Arc::clone(&store),
-            subscribers,
-            NotifyStrategy::Parallel,
-            permit,
-            DecisionWriter::new(),
-        );
-        let (_report, prepared_tx) = match tx.prepare().await {
+    /// A prepared transaction dropped before its commit still publishes the
+    /// abort, so its participant is never left `Undecided`.
+    #[tokio::test]
+    async fn prepared_transaction_drop_publishes_the_abort() {
+        let store = store_at_zero();
+        let decision = DecisionWriter::new();
+        let handle = decision.handle();
+        let (_report, prepared_tx) = match transaction(&store, Vec::new(), decision).prepare().await
+        {
             Ok(result) => result,
             Err(_) => panic!("prepare should succeed"),
         };
 
         drop(prepared_tx);
 
-        // Drop hands the notifications to a detached task instead of blocking,
-        // so the rollback is observed by waiting for it.
-        tokio::time::timeout(Duration::from_secs(5), rolled_back.notified())
-            .await
-            .expect("drop must still get the rollback notification out");
-        assert_eq!(*events.lock().await, vec!["prepare", "rollback"]);
+        assert_eq!(
+            handle.decision(),
+            StateDecision::Aborted {
+                resources: AbortResourceState::Restored
+            }
+        );
         assert_eq!(store.load_full().state, 0);
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn pending_prepare_future_drop_notifies_rollback() {
-        let store: StateStore<i32> = Arc::new(ArcSwap::from_pointee(VersionedState {
-            version: Version::new(0),
-            state: 0,
-        }));
-        let previous = store.load_full();
-        let semaphore = Arc::new(Semaphore::new(1));
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never close");
-        let events = Arc::new(Mutex::new(Vec::new()));
+    /// The same holds for a transaction dropped while its prepare is running.
+    #[tokio::test]
+    async fn pending_prepare_future_drop_publishes_the_abort() {
+        let store = store_at_zero();
         let started = Arc::new(Notify::new());
-        let release = Arc::new(Notify::new());
-        let rolled_back = Arc::new(Notify::new());
+        let decision = DecisionWriter::new();
+        let handle = decision.handle();
         let subscribers: Subscribers<i32> = vec![Arc::new(BlockingPrepareSubscriber {
-            events: Arc::clone(&events),
             started: Arc::clone(&started),
-            release,
-            rolled_back: Arc::clone(&rolled_back),
         })];
-        let change = StateChange {
-            id: StateChangeId::new(1),
-            previous: Some(previous),
-            current: Arc::new(1),
-        };
-        let tx = new_transaction(
-            change,
-            Arc::clone(&store),
-            subscribers,
-            NotifyStrategy::Parallel,
-            permit,
-            DecisionWriter::new(),
-        );
-        let mut prepare_future = Box::pin(tx.prepare());
+        let mut prepare_future = Box::pin(transaction(&store, subscribers, decision).prepare());
 
         tokio::select! {
             _ = &mut prepare_future => panic!("prepare should stay pending"),
             _ = started.notified() => {}
         }
-
         drop(prepare_future);
 
-        tokio::time::timeout(Duration::from_secs(5), rolled_back.notified())
-            .await
-            .expect("drop must still get the rollback notification out");
-        assert_eq!(*events.lock().await, vec!["prepare", "rollback"]);
+        assert_eq!(
+            handle.decision(),
+            StateDecision::Aborted {
+                resources: AbortResourceState::Restored
+            }
+        );
         assert_eq!(store.load_full().state, 0);
     }
 }

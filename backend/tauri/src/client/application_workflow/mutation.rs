@@ -127,8 +127,7 @@ pub(crate) struct MutationRequest {
     pub decision: DecisionHandle,
     /// Where the Try's verdict goes. `None` once it has been answered: exactly
     /// one verdict is ever sent, and a refusal before admission is one of them.
-    /// The receiving end disappears when the coordinator's ACK budget elapses
-    /// and the whole prepare fan-out is abandoned.
+    /// The receiving end disappears when the whole prepare fan-out is dropped.
     pub ack: Option<oneshot::Sender<TryAck>>,
 }
 

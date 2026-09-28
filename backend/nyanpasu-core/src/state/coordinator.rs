@@ -9,8 +9,7 @@ use super::{
 use anyhow::anyhow;
 use arc_swap::ArcSwap;
 use indexmap::IndexMap;
-use std::{future::Future, sync::Arc, time::Duration};
-use tokio::sync::Semaphore;
+use std::{future::Future, sync::Arc};
 
 pub(super) type ArcStateSubscriber<T> = StateParticipant<T>;
 pub(super) type Subscribers<T> = Vec<ArcStateSubscriber<T>>;
@@ -29,10 +28,6 @@ pub(crate) struct ParticipantEntry<T: Clone + Send + Sync + 'static> {
 }
 
 impl<T: Clone + Send + Sync + 'static> ParticipantEntry<T> {
-    pub(crate) fn decision_writer(&self) -> DecisionWriter {
-        self.decision.clone()
-    }
-
     /// Allocate this transaction's decision cell and let the caller build the
     /// participant around the read-only half of it.
     ///
@@ -66,23 +61,10 @@ pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
     current_state: StateStore<T>,
     notify_strategy: NotifyStrategy,
     subscribers: IndexMap<SubscriberName<'static>, ArcStateSubscriber<T>>,
-    semaphore: Arc<Semaphore>,
     next_change_id: StateChangeId,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
-    /// A task-owned writer sharing the same store and writer permit. Its local
-    /// version cursor is refreshed from the store after acquiring the permit.
-    pub(crate) fn persistence_owner(&self) -> Self {
-        Self {
-            current_state: self.current_state.clone(),
-            notify_strategy: self.notify_strategy,
-            subscribers: self.subscribers.clone(),
-            semaphore: self.semaphore.clone(),
-            next_change_id: self.next_change_id,
-        }
-    }
-
     pub fn builder() -> StateCoordinatorBuilder<T> {
         StateCoordinatorBuilder::default()
     }
@@ -155,12 +137,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         &mut self,
         builder: impl StateAsyncBuilder<State = T>,
     ) -> Result<PrepareReport, StateChangedError> {
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
         let subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let new_state = builder
@@ -179,7 +155,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             self.current_state.clone(),
             subscribers,
             notify_strategy,
-            permit,
             DecisionWriter::new(),
         );
         match tx.prepare().await {
@@ -204,12 +179,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     pub async fn upsert_state(&mut self, new_state: T) -> Result<PrepareReport, StateChangedError> {
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
         let subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let next_changed_id = self.pending_change_id();
@@ -224,7 +193,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             self.current_state.clone(),
             subscribers,
             notify_strategy,
-            permit,
             DecisionWriter::new(),
         );
         match tx.prepare().await {
@@ -263,40 +231,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         E: std::fmt::Debug,
     {
         Self::expect_no_conflict(
-            self.run_pending_state(new_state, None, None, None, effect_fn, recovery_fn)
+            self.run_pending_state(new_state, None, None, effect_fn, recovery_fn)
                 .await?,
-        )
-    }
-
-    /// Run an external effect between prepare and commit, rolling back if the
-    /// effect does not complete before `effect_timeout`.
-    ///
-    /// The effect is still executed while the coordinator holds the writer
-    /// permit, so callers should keep it short and cancellation-safe.
-    pub async fn with_pending_state_timeout<'s, F, Fut, R, RF, RFut, E>(
-        &mut self,
-        new_state: &'s T,
-        effect_timeout: Duration,
-        effect_fn: F,
-        recovery_fn: RF,
-    ) -> Result<(R, PrepareReport), WithEffectError<E>>
-    where
-        F: FnOnce(&'s T) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 's,
-        RF: FnOnce(T) -> RFut,
-        RFut: Future<Output = Result<(), E>>,
-        E: std::fmt::Debug,
-    {
-        Self::expect_no_conflict(
-            self.run_pending_state(
-                new_state,
-                None,
-                Some(effect_timeout),
-                None,
-                effect_fn,
-                recovery_fn,
-            )
-            .await?,
         )
     }
 
@@ -318,7 +254,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         self.run_pending_state(
             new_state,
             Some(expected_version),
-            None,
             None,
             effect_fn,
             recovery_fn,
@@ -346,7 +281,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         self.run_pending_state(
             new_state,
             Some(expected_version),
-            None,
             Some(participant),
             effect_fn,
             recovery_fn,
@@ -370,14 +304,13 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     /// The one prepare / persist / commit / rollback path.
     ///
     /// Every entry point above funnels into this function; the optional
-    /// expected version, effect timeout and single-shot participant are the only
-    /// things that vary. There is deliberately no second implementation of the
-    /// transaction algorithm for participants to use.
+    /// expected version and single-shot participant are the only things that
+    /// vary. There is deliberately no second implementation of the transaction
+    /// algorithm for participants to use.
     async fn run_pending_state<'s, F, Fut, R, RF, RFut, E>(
         &mut self,
         new_state: &'s T,
         expected_version: Option<Version>,
-        effect_timeout: Option<Duration>,
         participant: Option<ParticipantEntry<T>>,
         effect_fn: F,
         recovery_fn: RF,
@@ -389,12 +322,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         RFut: Future<Output = Result<(), E>>,
         E: std::fmt::Debug,
     {
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
         let mut subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let next_changed_id = self.pending_change_id();
@@ -436,7 +363,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             self.current_state.clone(),
             subscribers,
             notify_strategy,
-            permit,
             decision,
         );
         let (report, mut tx) = match tx.prepare().await {
@@ -452,49 +378,34 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         // Everything the caller has to persist for this candidate happens here,
         // between prepare and the compare-and-swap.
         tx.mark_local_persistence_started();
-        let effect_result = match effect_timeout {
-            Some(timeout) => match tokio::time::timeout(timeout, effect_fn(new_state)).await {
-                Ok(result) => result.map_err(WithEffectError::Effect),
-                Err(_) => Err(WithEffectError::EffectTimedOut(timeout)),
-            },
-            None => effect_fn(new_state).await.map_err(WithEffectError::Effect),
-        };
-        let result = match effect_result {
+        let result = match effect_fn(new_state).await {
             Ok(result) => result,
             Err(error) => {
-                if matches!(error, WithEffectError::EffectTimedOut(_)) {
-                    // Dropping an effect future cannot stop an offloaded write.
-                    tx.set_abort_resources(AbortResourceState::NeedsRecovery(
-                        PersistenceIncident {
-                            message: format!("persistence timed out: {error:?}"),
-                        },
-                    ));
-                } else {
-                    match recovery_fn(self.snapshot_versioned().state.clone()).await {
-                        Ok(()) => tx.set_abort_resources(AbortResourceState::Restored),
-                        Err(recovery_error) => {
-                            tx.set_abort_resources(AbortResourceState::NeedsRecovery(PersistenceIncident {
-                                message: format!("effect failed: {error:?}; recovery failed: {recovery_error:?}"),
-                            }));
-                            tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
-                                "local resources could not be restored"
-                            ))))
-                            .await;
-                            let WithEffectError::Effect(effect_error) = error else {
-                                unreachable!()
-                            };
-                            return Err(WithEffectError::EffectRecovery {
-                                effect_error,
-                                recovery_error,
-                            });
-                        }
+                match recovery_fn(self.snapshot_versioned().state.clone()).await {
+                    Ok(()) => tx.set_abort_resources(AbortResourceState::Restored),
+                    Err(recovery_error) => {
+                        tx.set_abort_resources(AbortResourceState::NeedsRecovery(
+                            PersistenceIncident {
+                                message: format!(
+                                    "effect failed: {error:?}; recovery failed: {recovery_error:?}"
+                                ),
+                            },
+                        ));
+                        tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
+                            "local resources could not be restored"
+                        ))))
+                        .await;
+                        return Err(WithEffectError::EffectRecovery {
+                            effect_error: error,
+                            recovery_error,
+                        });
                     }
                 }
                 tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
                     "effect function failed: {error:#?}"
                 ))))
                 .await;
-                return Err(error);
+                return Err(WithEffectError::Effect(error));
             }
         };
 
@@ -506,29 +417,22 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             }
             Err(mut commit_mismatch) => {
                 let actual = self.sync_change_id_after_cas_mismatch();
-                let commit_error = StateChangedError::StateCasMismatch {
-                    expected: current_state.version,
-                    actual,
-                };
-                let committed = self.snapshot_versioned();
-                let recovery_result = recovery_fn(committed.state.clone()).await;
-                let resources = match &recovery_result {
-                    Ok(()) => AbortResourceState::Restored,
-                    Err(error) => AbortResourceState::NeedsRecovery(PersistenceIncident {
-                        message: format!("CAS recovery failed: {error:?}"),
-                    }),
-                };
-                commit_mismatch.set_abort_resources(resources);
-                // Recovery is complete before rollback notifications begin. The
-                // latter are best-effort and may be cancelled by the caller.
+                // Nothing the effect wrote is put back, so the abort cannot claim
+                // the resources outside the store were restored.
+                commit_mismatch.set_abort_resources(AbortResourceState::NeedsRecovery(
+                    PersistenceIncident {
+                        message: format!(
+                            "the store moved to {actual:?} after this candidate was persisted"
+                        ),
+                    },
+                ));
                 commit_mismatch.notify_rollback().await;
-                match recovery_result {
-                    Ok(()) => Err(WithEffectError::State(commit_error)),
-                    Err(recovery_error) => Err(WithEffectError::Recovery {
-                        commit_error,
-                        recovery_error,
-                    }),
-                }
+                Err(WithEffectError::State(
+                    StateChangedError::StateCasMismatch {
+                        expected: current_state.version,
+                        actual,
+                    },
+                ))
             }
         }
     }
@@ -578,7 +482,6 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             })),
             notify_strategy: self.notify_strategy,
             subscribers: self.subscribers,
-            semaphore: Arc::new(Semaphore::new(1)),
             next_change_id: init_change_id.next(),
         }
     }
@@ -600,7 +503,6 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             current_state: Arc::clone(&current_state),
             notify_strategy,
             subscribers: self.subscribers,
-            semaphore: Arc::new(Semaphore::new(1)),
             next_change_id: init_change_id.next(),
         };
 
@@ -609,18 +511,11 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             previous: None,
             current,
         };
-        let permit = coordinator
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore should never closed");
         let tx = new_transaction(
             change,
             current_state,
             subscribers,
             notify_strategy,
-            permit,
             DecisionWriter::new(),
         );
 
@@ -653,9 +548,12 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
 mod test {
     use super::*;
     use crate::state::Version;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        },
+        time::Duration,
     };
     use tokio::sync::{Mutex, Notify};
 
@@ -679,25 +577,6 @@ mod test {
         should_fail: Arc<AtomicBool>,
         should_degrade: Arc<AtomicBool>,
         committed_history: Arc<Mutex<Vec<CommittedEntry>>>,
-    }
-
-    struct BlockingRollbackSubscriber {
-        started: Arc<Notify>,
-        release: Arc<Notify>,
-        recovery_completed: Arc<AtomicBool>,
-    }
-
-    #[async_trait::async_trait]
-    impl StateAckSubscriber<TestState> for BlockingRollbackSubscriber {
-        fn name(&self) -> SubscriberName<'_> {
-            "blocking_rollback".into()
-        }
-
-        async fn on_rolled_back(&self, _change: StateChange<TestState>, _reason: RollbackReason) {
-            assert!(self.recovery_completed.load(Ordering::SeqCst));
-            self.started.notify_one();
-            self.release.notified().await;
-        }
     }
 
     impl MockAckSubscriber {
@@ -1031,8 +910,8 @@ mod test {
             fn name(&self) -> SubscriberName<'_> {
                 "advisory".into()
             }
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::advisory(std::time::Duration::from_secs(30))
+            fn policy(&self) -> AckPolicy {
+                AckPolicy::Advisory
             }
             async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
                 Ack::Failed(anyhow::anyhow!("advisory failure"))
@@ -1226,116 +1105,58 @@ mod test {
         );
     }
 
-    #[tokio::test]
-    async fn test_timeout_subscriber() {
-        struct SlowSubscriber;
+    /// A Required prepare is waited for, however long it takes: the transaction
+    /// has no deadline of its own that could turn a slow answer into a rollback
+    /// (V01).
+    #[tokio::test(start_paused = true)]
+    async fn test_blocked_required_prepare_is_waited_for() {
+        struct BlockedSubscriber {
+            entered: Arc<Notify>,
+            release: Arc<Notify>,
+        }
         #[async_trait::async_trait]
-        impl StateAckSubscriber<TestState> for SlowSubscriber {
+        impl StateAckSubscriber<TestState> for BlockedSubscriber {
             fn name(&self) -> SubscriberName<'_> {
-                "slow".into()
-            }
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::required(std::time::Duration::from_millis(50))
+                "blocked".into()
             }
             async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                self.entered.notify_one();
+                self.release.notified().await;
                 Ack::Ok
             }
         }
 
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
         let mut coordinator = StateCoordinator::builder()
-            .with_subscriber(Box::new(SlowSubscriber))
+            .with_subscriber(Box::new(BlockedSubscriber {
+                entered: Arc::clone(&entered),
+                release: Arc::clone(&release),
+            }))
             .build(default_test_state());
         let test_state = TestState {
             value: 1,
-            name: "timeout_test".to_string(),
+            name: "blocked".to_string(),
         };
 
-        let result = coordinator.upsert_state(test_state.clone()).await;
-        assert!(result.is_err());
-
-        match &result.unwrap_err() {
-            StateChangedError::PrepareAck(e) => {
-                assert!(e.report.has_required_failures());
-                assert!(matches!(
-                    e.report.subscriber_acks[0].status,
-                    AckStatus::TimedOut
-                ));
-            }
-            other => panic!("Expected PrepareAck with TimedOut, got: {other:?}"),
+        let mut upsert = Box::pin(coordinator.upsert_state(test_state.clone()));
+        tokio::select! {
+            result = &mut upsert => panic!("the prepare is blocked, got {result:?}"),
+            _ = entered.notified() => {}
         }
 
-        assert_eq!(coordinator.snapshot_versioned().value, 0);
-    }
-
-    #[tokio::test]
-    async fn test_fused_required_subscriber_is_skipped() {
-        struct TerminatedSubscriber;
-        #[async_trait::async_trait]
-        impl StateAckSubscriber<TestState> for TerminatedSubscriber {
-            fn name(&self) -> SubscriberName<'_> {
-                "terminated".into()
-            }
-            fn is_shutdown(&self) -> bool {
-                true
-            }
-            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
-                panic!("should not be called");
-            }
+        // Past the 90 s the old ACK budget allowed. The paused sleep returns
+        // only once every task is idle, so anything the jump woke has run.
+        tokio::time::advance(Duration::from_secs(91)).await;
+        tokio::select! {
+            result = &mut upsert => panic!("a blocked Required prepare must be waited for, got {result:?}"),
+            _ = tokio::time::sleep(Duration::from_millis(1)) => {}
         }
 
-        let mut coordinator = StateCoordinator::builder()
-            .with_subscriber(Box::new(TerminatedSubscriber))
-            .build(default_test_state());
-        let test_state = TestState {
-            value: 1,
-            name: "fused_test".to_string(),
-        };
-
-        let result = coordinator.upsert_state(test_state.clone()).await;
-        assert!(result.is_ok());
-        let report = result.unwrap();
-        assert!(matches!(
-            report.subscriber_acks[0].status,
-            AckStatus::SkippedShutdown
-        ));
+        release.notify_one();
+        let report = upsert.await.expect("the released prepare commits");
+        assert!(!report.has_required_failures());
         assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
-    }
-
-    #[tokio::test]
-    async fn test_fused_advisory_subscriber_is_ok() {
-        struct TerminatedAdvisorySubscriber;
-        #[async_trait::async_trait]
-        impl StateAckSubscriber<TestState> for TerminatedAdvisorySubscriber {
-            fn name(&self) -> SubscriberName<'_> {
-                "terminated_advisory".into()
-            }
-            fn is_shutdown(&self) -> bool {
-                true
-            }
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::advisory(std::time::Duration::from_secs(30))
-            }
-            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
-                panic!("should not be called");
-            }
-        }
-
-        let mut coordinator = StateCoordinator::builder()
-            .with_subscriber(Box::new(TerminatedAdvisorySubscriber))
-            .build(default_test_state());
-        let test_state = TestState {
-            value: 1,
-            name: "fused_advisory_test".to_string(),
-        };
-
-        let result = coordinator.upsert_state(test_state).await;
-        assert!(result.is_ok());
-        let report = result.unwrap();
-        assert!(matches!(
-            report.subscriber_acks[0].status,
-            AckStatus::SkippedShutdown
-        ));
     }
 
     #[tokio::test]
@@ -1413,79 +1234,6 @@ mod test {
         assert_eq!(subscriber.call_count(), 0);
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_with_pending_state_cancel_rolls_back_prepared_subscribers() {
-        struct RollbackSubscriber {
-            events: Arc<Mutex<Vec<&'static str>>>,
-            rolled_back: Arc<Notify>,
-        }
-
-        #[async_trait::async_trait]
-        impl StateAckSubscriber<TestState> for RollbackSubscriber {
-            fn name(&self) -> SubscriberName<'_> {
-                "rollback_subscriber".into()
-            }
-
-            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-                self.events.lock().await.push("prepare");
-                Ack::Ok
-            }
-
-            async fn on_rolled_back(
-                &self,
-                _change: StateChange<TestState>,
-                _reason: RollbackReason,
-            ) {
-                self.events.lock().await.push("rollback");
-                self.rolled_back.notify_one();
-            }
-        }
-
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let effect_started = Arc::new(Notify::new());
-        let rolled_back = Arc::new(Notify::new());
-        let mut coordinator = StateCoordinator::builder()
-            .with_subscriber(Box::new(RollbackSubscriber {
-                events: Arc::clone(&events),
-                rolled_back: Arc::clone(&rolled_back),
-            }))
-            .build(default_test_state());
-        let state = TestState {
-            value: 99,
-            name: "cancelled".to_string(),
-        };
-
-        let mut future = Box::pin(coordinator.with_pending_state(
-            &state,
-            {
-                let effect_started = Arc::clone(&effect_started);
-                move |_s| {
-                    let effect_started = Arc::clone(&effect_started);
-                    async move {
-                        effect_started.notify_one();
-                        std::future::pending::<Result<(), anyhow::Error>>().await
-                    }
-                }
-            },
-            no_recovery,
-        ));
-
-        tokio::select! {
-            result = &mut future => panic!("effect should stay pending, got {result:?}"),
-            _ = effect_started.notified() => {}
-        }
-
-        drop(future);
-
-        // Drop hands the notifications to a detached task instead of blocking,
-        // so the rollback is observed by waiting for it.
-        tokio::time::timeout(Duration::from_secs(5), rolled_back.notified())
-            .await
-            .expect("cancelling the effect must still get the rollback out");
-        assert_eq!(*events.lock().await, vec!["prepare", "rollback"]);
-        assert_eq!(coordinator.snapshot_versioned().value, 0);
-    }
-
     #[tokio::test]
     async fn test_with_pending_state_effect_failure_does_not_consume_change_id() {
         let mut coordinator = StateCoordinator::builder().build(default_test_state());
@@ -1506,46 +1254,6 @@ mod test {
             coordinator.snapshot_versioned().version,
             StateChangeId::new(0).0
         );
-
-        coordinator
-            .upsert_state(TestState {
-                value: 1,
-                name: "accepted".to_string(),
-            })
-            .await
-            .unwrap();
-        assert_eq!(
-            coordinator.snapshot_versioned().version,
-            StateChangeId::new(1).0
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn test_with_pending_state_timeout_rolls_back_without_consuming_change_id() {
-        let mut coordinator = StateCoordinator::builder().build(default_test_state());
-        let timed_out = TestState {
-            value: 99,
-            name: "timeout".to_string(),
-        };
-
-        let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state_timeout(
-                &timed_out,
-                std::time::Duration::from_secs(1),
-                |_s| async {
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                    Ok::<_, anyhow::Error>(())
-                },
-                no_recovery,
-            )
-            .await;
-
-        assert!(matches!(result, Err(WithEffectError::EffectTimedOut(_))));
-        assert_eq!(
-            coordinator.snapshot_versioned().version,
-            StateChangeId::new(0).0
-        );
-        assert_eq!(coordinator.snapshot_versioned().value, 0);
 
         coordinator
             .upsert_state(TestState {
@@ -1614,117 +1322,6 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_conditional_commit_cas_mismatch_recovers_committed_state() {
-        let mut coordinator = StateCoordinator::builder().build(default_test_state());
-        let store = Arc::clone(&coordinator.current_state);
-        let recovered = Arc::new(Mutex::new(None));
-        let recovered_for_closure = Arc::clone(&recovered);
-        let next = TestState {
-            value: 42,
-            name: "conditional".to_string(),
-        };
-        let winner = TestState {
-            value: 7,
-            name: "winner".to_string(),
-        };
-        let winner_for_effect = winner.clone();
-
-        let result: Result<_, WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state_if_version(
-                Version::new(0),
-                &next,
-                move |_state| async move {
-                    store.store(Arc::new(VersionedState {
-                        version: Version::new(7),
-                        state: winner_for_effect,
-                    }));
-                    Ok(())
-                },
-                move |committed| {
-                    let committed = committed.clone();
-                    async move {
-                        *recovered_for_closure.lock().await = Some(committed);
-                        Ok(())
-                    }
-                },
-            )
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(WithEffectError::State(StateChangedError::StateCasMismatch {
-                expected,
-                actual
-            })) if expected == Version::new(0) && actual == Version::new(7)
-        ));
-        assert_eq!(recovered.lock().await.as_ref(), Some(&winner));
-        assert_eq!(&coordinator.snapshot_versioned().state, &winner);
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_conditional_cas_recovery_precedes_blocking_rollback_notification() {
-        let rollback_started = Arc::new(Notify::new());
-        let rollback_release = Arc::new(Notify::new());
-        let recovery_completed = Arc::new(AtomicBool::new(false));
-        let subscriber = BlockingRollbackSubscriber {
-            started: Arc::clone(&rollback_started),
-            release: Arc::clone(&rollback_release),
-            recovery_completed: Arc::clone(&recovery_completed),
-        };
-        let mut coordinator = StateCoordinator::builder()
-            .with_subscriber(Box::new(subscriber))
-            .build(default_test_state());
-        let store = Arc::clone(&coordinator.current_state);
-        let next = TestState {
-            value: 42,
-            name: "conditional".to_string(),
-        };
-        let winner = TestState {
-            value: 7,
-            name: "winner".to_string(),
-        };
-        let winner_for_effect = winner.clone();
-        let recovery_completed_for_closure = Arc::clone(&recovery_completed);
-
-        let operation = tokio::spawn(async move {
-            coordinator
-                .with_pending_state_if_version(
-                    Version::new(0),
-                    &next,
-                    move |_state| async move {
-                        store.store(Arc::new(VersionedState {
-                            version: Version::new(7),
-                            state: winner_for_effect,
-                        }));
-                        Ok::<_, anyhow::Error>(())
-                    },
-                    move |committed| async move {
-                        assert_eq!(committed, winner);
-                        recovery_completed_for_closure.store(true, Ordering::SeqCst);
-                        Ok::<_, anyhow::Error>(())
-                    },
-                )
-                .await
-        });
-
-        tokio::time::timeout(Duration::from_secs(1), rollback_started.notified())
-            .await
-            .expect("rollback subscriber should be reached");
-        assert!(recovery_completed.load(Ordering::SeqCst));
-        assert!(!operation.is_finished());
-
-        rollback_release.notify_one();
-        let result = operation.await.expect("conditional operation should join");
-        assert!(matches!(
-            result,
-            Err(WithEffectError::State(StateChangedError::StateCasMismatch {
-                expected,
-                actual
-            })) if expected == Version::new(0) && actual == Version::new(7)
-        ));
-    }
-
-    #[tokio::test]
     async fn test_empty_subscribers_list() {
         let mut coordinator = StateCoordinator::builder().build(default_test_state());
         let test_state = TestState {
@@ -1775,66 +1372,6 @@ mod test {
         assert_eq!(history[0], (None, state));
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn test_build_initialized_prepare_timeout_returns_init_ack_error() {
-        struct InitPrepareTimeoutSubscriber {
-            prepare_calls: Arc<AtomicUsize>,
-            committed_calls: Arc<AtomicUsize>,
-        }
-
-        #[async_trait::async_trait]
-        impl StateAckSubscriber<TestState> for InitPrepareTimeoutSubscriber {
-            fn name(&self) -> SubscriberName<'_> {
-                "init_timeout".into()
-            }
-
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::required(std::time::Duration::from_secs(1))
-            }
-
-            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-                self.prepare_calls.fetch_add(1, Ordering::SeqCst);
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                Ack::Ok
-            }
-
-            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
-                self.committed_calls.fetch_add(1, Ordering::SeqCst);
-                Ack::Ok
-            }
-        }
-
-        let prepare_calls = Arc::new(AtomicUsize::new(0));
-        let committed_calls = Arc::new(AtomicUsize::new(0));
-        let state = TestState {
-            value: 42,
-            name: "init_timeout".to_string(),
-        };
-
-        let result = StateCoordinator::builder()
-            .with_subscriber(Box::new(InitPrepareTimeoutSubscriber {
-                prepare_calls: Arc::clone(&prepare_calls),
-                committed_calls: Arc::clone(&committed_calls),
-            }))
-            .build_initialized(state.clone())
-            .await;
-
-        let (coordinator, report) = match result {
-            Ok(_) => panic!("initialization should fail when required prepare ACK times out"),
-            Err(error) => error.into_parts(),
-        };
-
-        assert_eq!(prepare_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(committed_calls.load(Ordering::SeqCst), 0);
-        assert!(report.has_required_failures());
-        assert_eq!(report.subscriber_acks.len(), 1);
-        assert!(matches!(
-            report.subscriber_acks[0].status,
-            AckStatus::TimedOut
-        ));
-        assert_eq!(&*coordinator.snapshot_versioned(), &state);
-    }
-
     #[tokio::test]
     async fn test_error_display() {
         let state_error = StateChangedError::Validation(anyhow::anyhow!("bad input"));
@@ -1870,8 +1407,8 @@ mod test {
             fn name(&self) -> SubscriberName<'_> {
                 "advisory_fail".into()
             }
-            fn ack_options(&self) -> AckOptions {
-                AckOptions::advisory(std::time::Duration::from_secs(30))
+            fn policy(&self) -> AckPolicy {
+                AckPolicy::Advisory
             }
             async fn on_prepare(&self, _: StateChange<TestState>) -> Ack {
                 Ack::Failed(anyhow::anyhow!("advisory error"))

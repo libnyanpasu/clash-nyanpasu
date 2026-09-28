@@ -1,5 +1,8 @@
+use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
+
+use super::main_thread::MainThreadExecutor;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,6 +56,26 @@ impl<R: tauri::Runtime> UiEventSink for TauriUiEventSink<R> {
         {
             crate::log_err!(window.emit(STATE_CHANGED_URI, state));
         }
+    }
+}
+
+/// Hands work to the Tauri event loop's thread.
+#[derive(Clone)]
+pub struct TauriMainThread<R: tauri::Runtime = tauri::Wry> {
+    app_handle: tauri::AppHandle<R>,
+}
+
+impl<R: tauri::Runtime> TauriMainThread<R> {
+    pub fn new(app_handle: tauri::AppHandle<R>) -> Self {
+        Self { app_handle }
+    }
+}
+
+impl<R: tauri::Runtime> MainThreadExecutor for TauriMainThread<R> {
+    fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> anyhow::Result<()> {
+        self.app_handle
+            .run_on_main_thread(task)
+            .context("the event loop refused the task")
     }
 }
 

@@ -14,11 +14,9 @@
 // construct one, so the lib build sees the plumbing without its producers.
 #![allow(dead_code)]
 
-use nyanpasu_core::state::{
-    Ack, AckOptions, DecisionHandle, StateAckSubscriber, StateChange, SubscriberName,
-};
+use nyanpasu_core::state::{Ack, DecisionHandle, StateAckSubscriber, StateChange, SubscriberName};
 use nyanpasu_core_manager::OperationId;
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::oneshot;
 
 use super::{
@@ -28,36 +26,12 @@ use super::{
     policy::CommandClass,
 };
 
-/// How long the source transaction waits for the workflow's Try verdict.
-///
-/// This is the coordinator's budget, applied by it to this very `on_prepare`
-/// future (v2 §5.5). When it elapses the wait ends and the transaction aborts —
-/// the Try itself keeps running as a tracked task, and the Cancel that follows
-/// waits for its real terminal result before restoring anything (图 13).
-///
-/// It therefore bounds *this wait* and nothing else. The Try it is waiting on
-/// has no bound of its own here, and several of its legs can outlast this one
-/// comfortably: a host switch installs or starts the daemon through
-/// `ServiceClient::ensure_ready` before anything is submitted, the reconcile
-/// that follows carries the core's own apply budget, and a failure after a
-/// completed handoff compensates by moving the runtime back and reconciling the
-/// baseline on the original host. Each of those runs to its own terminal
-/// answer, and the execution domain stays held until they do.
-///
-/// The consequence that matters is what this timeout is *not*: it is never
-/// proof that the Try was cancelled. It says the transaction stopped waiting,
-/// which is why an elapsed budget produces `Ack::Failed` rather than a
-/// rejection, and why the tracked completion is preserved and settled through
-/// the ordinary Cancel path instead of being abandoned with the waiter.
-const MUTATION_ACK_TIMEOUT: Duration = Duration::from_secs(90);
-
 pub(crate) struct ApplicationMutationParticipant<T: MutationDomain> {
     operation_id: OperationId,
     hints: MutationHints,
     class: CommandClass,
     decision: DecisionHandle,
     workflow: ApplicationWorkflowClient,
-    ack_timeout: Duration,
     name: String,
     _state: PhantomData<T>,
 }
@@ -73,26 +47,6 @@ impl<T: MutationDomain> ApplicationMutationParticipant<T> {
         decision: DecisionHandle,
         workflow: ApplicationWorkflowClient,
     ) -> Arc<Self> {
-        Self::with_ack_timeout(
-            operation_id,
-            hints,
-            class,
-            decision,
-            workflow,
-            MUTATION_ACK_TIMEOUT,
-        )
-    }
-
-    /// A shorter budget, so a test can reach the abandoned-prepare path without
-    /// waiting out the production one.
-    pub fn with_ack_timeout(
-        operation_id: OperationId,
-        hints: MutationHints,
-        class: CommandClass,
-        decision: DecisionHandle,
-        workflow: ApplicationWorkflowClient,
-        ack_timeout: Duration,
-    ) -> Arc<Self> {
         Arc::new(Self {
             name: format!("application-mutation/{operation_id}"),
             operation_id,
@@ -100,7 +54,6 @@ impl<T: MutationDomain> ApplicationMutationParticipant<T> {
             class,
             decision,
             workflow,
-            ack_timeout,
             _state: PhantomData,
         })
     }
@@ -112,13 +65,13 @@ impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant
         SubscriberName(std::borrow::Cow::Borrowed(&self.name))
     }
 
-    fn ack_options(&self) -> AckOptions {
-        AckOptions::required(self.ack_timeout)
-    }
-
     /// Admission, the prepare-heavy build and the single tracked Try all happen
     /// here, before anything is persisted. A refusal is therefore a refusal of
     /// the whole mutation, and the store keeps the version it had (R4).
+    ///
+    /// The source transaction waits for this verdict for as long as the Try
+    /// takes: a host switch may install or start the daemon before anything is
+    /// submitted. Only the IPC calls inside the Try carry deadlines.
     async fn on_prepare(&self, change: StateChange<T>) -> Ack {
         let (ack, verdict) = oneshot::channel();
         if let Err(error) = self.workflow.begin_mutation(MutationRequest {

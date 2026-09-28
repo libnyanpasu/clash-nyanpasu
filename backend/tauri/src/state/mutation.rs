@@ -166,10 +166,6 @@ impl<T: Clone + Send + Sync + 'static> nyanpasu_core::state::StateAckSubscriber<
         nyanpasu_core::state::SubscriberName("isolated-domain-test".into())
     }
 
-    fn ack_options(&self) -> nyanpasu_core::state::AckOptions {
-        nyanpasu_core::state::AckOptions::required(std::time::Duration::from_secs(1))
-    }
-
     async fn on_prepare(
         &self,
         _: nyanpasu_core::state::StateChange<T>,

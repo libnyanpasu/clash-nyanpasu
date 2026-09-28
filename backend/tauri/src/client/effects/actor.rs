@@ -1,7 +1,6 @@
 //! Owns peripheral desired state and independent, coalesced execution groups.
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use futures_util::FutureExt;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::{sync::watch, time::Instant};
 
@@ -266,17 +265,12 @@ impl State {
             let ui = self.ui.clone();
             let actor = myself.clone();
             self.active[index] = Some(tokio::spawn(async move {
-                let work = async {
-                    if index == 2 {
-                        ui.refresh_clash();
-                    }
-                    port.apply(revision, ApplicationEffectPlan::from_effects(effects))
-                        .await
-                };
-                let statuses = std::panic::AssertUnwindSafe(work)
-                    .catch_unwind()
-                    .await
-                    .unwrap_or_default();
+                if index == 2 {
+                    ui.refresh_clash();
+                }
+                let statuses = port
+                    .apply(revision, ApplicationEffectPlan::from_effects(effects))
+                    .await;
                 let _ = actor.cast(Message::Completed {
                     group: index,
                     revision,
@@ -355,20 +349,14 @@ impl Actor for EffectsActor {
                     if entry.status.desired_revision != revision {
                         continue;
                     }
-                    match statuses.iter().find(|s| s.kind == kind) {
-                        Some(status) if status.health == EffectHealth::Healthy => {
-                            entry.status.applied_revision = revision;
-                            entry.status.health = EffectHealth::Healthy;
-                        }
-                        Some(status) => entry.status.health = status.health.clone(),
-                        None => {
-                            entry.status.health = EffectHealth::Degraded {
-                                code: "effect_owner_silent",
-                                message: format!("{kind:?} returned no result"),
-                                retryable: false,
-                            }
-                        }
+                    let status = statuses
+                        .iter()
+                        .find(|s| s.kind == kind)
+                        .expect("the effects port reports one status per effect");
+                    if status.health == EffectHealth::Healthy {
+                        entry.status.applied_revision = revision;
                     }
+                    entry.status.health = status.health.clone();
                     entry.health = match &entry.status.health {
                         EffectHealth::Healthy => ConvergenceHealth::Healthy,
                         EffectHealth::Degraded {

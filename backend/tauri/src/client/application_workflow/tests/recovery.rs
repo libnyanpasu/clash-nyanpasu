@@ -582,7 +582,6 @@ async fn a_panic_during_cancel_keeps_the_restore_and_recovers_the_baseline() {
                 id,
                 overrides(serde_json::json!({"mode": "direct"})),
                 CommandClass::Save,
-                std::time::Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -948,7 +947,6 @@ async fn an_elapsed_decision_wait_keeps_the_attempt_until_the_decision_is_read()
                 id,
                 overrides(serde_json::json!({"mode": "global"})),
                 CommandClass::Save,
-                std::time::Duration::from_secs(10),
                 plain(),
                 parked_local_write(entered, release),
             )
@@ -1150,16 +1148,12 @@ async fn a_drifted_apply_is_restored_before_its_confirm_is_finished() {
 #[tokio::test]
 async fn an_abort_that_needs_recovery_stays_isolated_with_nothing_pending() {
     let f = fixture(test_budgets()).await;
-    let entered = Arc::new(tokio::sync::Notify::new());
-    let release = Arc::new(tokio::sync::Notify::new());
     let abandoned = OperationId::generate();
     let mut clash = f.clash;
     let version = clash.snapshot_handle().load().version;
     let workflow = f.client.clone();
-    {
-        let writing = entered.clone();
-        let released = release.clone();
-        let mut pending = Box::pin(clash.replace_if_version_with_participant(
+    clash
+        .replace_if_version_with_participant(
             version,
             overrides(serde_json::json!({"mode": "global"})),
             move |decision| {
@@ -1171,20 +1165,11 @@ async fn an_abort_that_needs_recovery_stays_isolated_with_nothing_pending() {
                     workflow,
                 )
             },
-            move || async move {
-                writing.notify_one();
-                released.notified().await;
-                Ok(())
-            },
+            || async { Err(anyhow::anyhow!("resource write failed")) },
             || async { Err(anyhow::anyhow!("resource recovery failed")) },
-        ));
-        tokio::select! {
-            result = &mut pending => panic!("write should stay pending: {result:?}"),
-            _ = entered.notified() => {}
-        }
-        drop(pending);
-    }
-    release.notify_one();
+        )
+        .await
+        .expect_err("the failed write and its failed recovery refuse the mutation");
     settled(&f.client, abandoned).await;
     assert!(isolated(&f.client));
     assert_eq!(recovery(&f.client).action, None);

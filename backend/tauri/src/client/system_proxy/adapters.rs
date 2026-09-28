@@ -269,7 +269,10 @@ impl PacPort for HttpPacBackend {
             .context("failed to install the PAC url")
         })
         .await
-        .map_err(|error| anyhow!("the PAC worker panicked: {error}"))?
+        .map_err(|error| match error.try_into_panic() {
+            Ok(panic) => std::panic::resume_unwind(panic),
+            Err(error) => anyhow!("the PAC worker did not run: {error}"),
+        })?
     }
 
     fn disable(&self) -> anyhow::Result<()> {

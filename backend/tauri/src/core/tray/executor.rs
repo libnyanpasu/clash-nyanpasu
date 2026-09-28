@@ -160,18 +160,6 @@ pub(super) fn request(
 /// Runs the queued work until none is left. The one place tray work runs,
 /// on the main thread.
 pub(super) fn drain(queue: &Mutex<TrayQueue>, tray: &mut impl TrayTarget) {
-    /// Clears `scheduled` when a step panics, so a later request schedules a
-    /// new drain instead of merging into one that is gone. Work still pending
-    /// runs in that drain.
-    struct Unwind<'q>(&'q Mutex<TrayQueue>);
-    impl Drop for Unwind<'_> {
-        fn drop(&mut self) {
-            if std::thread::panicking() {
-                self.0.lock().scheduled = false;
-            }
-        }
-    }
-    let _unwind = Unwind(queue);
     loop {
         let taken = queue.lock().take();
         let Some(work) = taken else {
@@ -225,8 +213,6 @@ mod tests {
         invalidate_after_publish: bool,
         /// Rebuilds remove the icon and fail to build its replacement.
         rebuild_fails: bool,
-        /// The first step of this kind that runs panics.
-        panics_on: Option<Step>,
     }
 
     impl<'q> FakeTray<'q> {
@@ -245,7 +231,6 @@ mod tests {
                 reentrant: None,
                 invalidate_after_publish: false,
                 rebuild_fails: false,
-                panics_on: None,
             }
         }
 
@@ -282,10 +267,6 @@ mod tests {
                 self.reentrant = None;
                 self.request(work);
                 self.request(work);
-            }
-            if self.panics_on == Some(step) {
-                self.panics_on = None;
-                panic!("the {step:?} step panicked");
             }
             match step {
                 Step::Rebuild if self.rebuild_fails => {
@@ -434,36 +415,6 @@ mod tests {
         let mut tray = FakeTray::known(&queue);
         drain(&queue, &mut tray);
         assert_eq!(tray.ran, [Step::Part, Step::Proxies]);
-    }
-
-    /// The drain is gone once a step panics; a later request must schedule a
-    /// new one rather than merge into it, and the work it left runs there.
-    #[test]
-    fn a_panicking_step_leaves_the_executor_schedulable() {
-        let queue = Mutex::new(TrayQueue::default());
-        let schedules = Cell::new(0);
-        request(
-            &queue,
-            TrayWork::PART | TrayWork::PROXIES,
-            counting(&schedules),
-        )
-        .unwrap();
-        let mut tray = FakeTray::known(&queue);
-        tray.reentrant = Some((Step::Part, TrayWork::REBUILD));
-        tray.panics_on = Some(Step::Part);
-        let drained =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drain(&queue, &mut tray)));
-        assert!(drained.is_err());
-        assert!(!queue.lock().scheduled);
-
-        request(&queue, TrayWork::PROXIES, counting(&schedules)).unwrap();
-        assert_eq!(schedules.get(), 2);
-        drain(&queue, &mut tray);
-        assert_eq!(
-            tray.ran,
-            [Step::Part, Step::Rebuild, Step::Part, Step::Proxies]
-        );
-        assert!(!queue.lock().scheduled);
     }
 
     /// A main thread whose scheduler runs the drain inline, as

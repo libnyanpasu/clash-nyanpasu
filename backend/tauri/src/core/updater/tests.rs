@@ -199,27 +199,7 @@ async fn shutdown_completes_pending_fetch_with_error() {
     assert!(fetch.unwrap_err().to_string().contains("shutting down"));
 }
 
-struct ReadyBackend {
-    fetch_panics: AtomicUsize,
-    prepare_panics: AtomicUsize,
-}
-
-impl ReadyBackend {
-    fn new(fetch_panics: usize, prepare_panics: usize) -> Arc<Self> {
-        Arc::new(Self {
-            fetch_panics: AtomicUsize::new(fetch_panics),
-            prepare_panics: AtomicUsize::new(prepare_panics),
-        })
-    }
-}
-
-fn consume_panic(counter: &AtomicUsize) -> bool {
-    counter
-        .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
-            count.checked_sub(1)
-        })
-        .is_ok()
-}
+struct ReadyBackend;
 
 #[async_trait]
 impl UpdaterBackend for ReadyBackend {
@@ -227,10 +207,6 @@ impl UpdaterBackend for ReadyBackend {
         &self,
         _mirror: Option<(String, Instant)>,
     ) -> Result<(ManifestVersion, (String, Instant))> {
-        assert!(
-            !consume_panic(&self.fetch_panics),
-            "simulated manifest panic"
-        );
         let mut manifest = ManifestVersion::default();
         manifest.latest.mihomo = "test-version".into();
         manifest
@@ -248,10 +224,6 @@ impl UpdaterBackend for ReadyBackend {
         _tag: CoreTypeMeta,
         progress: UpdaterProgress,
     ) -> Result<PreparedCoreBinary> {
-        assert!(
-            !consume_panic(&self.prepare_panics),
-            "simulated preparation panic"
-        );
         let staging = Arc::new(tempfile::TempDir::new()?);
         let source = staging.path().join("prepared");
         std::fs::write(&source, b"core binary")?;
@@ -289,19 +261,21 @@ impl CoreUpdateInstaller for RecordingInstaller {
 }
 
 async fn installing_client(
-    backend: Arc<ReadyBackend>,
     error: Option<&'static str>,
 ) -> (UpdaterClient, mpsc::UnboundedReceiver<PreparedCoreBinary>) {
     let (installed, receiver) = mpsc::unbounded_channel();
-    let client = UpdaterClient::spawn(backend, Arc::new(RecordingInstaller { installed, error }))
-        .await
-        .unwrap();
+    let client = UpdaterClient::spawn(
+        Arc::new(ReadyBackend),
+        Arc::new(RecordingInstaller { installed, error }),
+    )
+    .await
+    .unwrap();
     (client, receiver)
 }
 
 #[tokio::test]
 async fn successful_install_finishes_and_keeps_staging_owned_by_installer() {
-    let (client, mut installed) = installing_client(ReadyBackend::new(0, 0), None).await;
+    let (client, mut installed) = installing_client(None).await;
     client.fetch_latest().await.unwrap();
     let id = client.update(ClashCore::Mihomo).await.unwrap();
     assert!(matches!(
@@ -318,11 +292,7 @@ async fn successful_install_finishes_and_keeps_staging_owned_by_installer() {
 
 #[tokio::test]
 async fn pending_install_reserves_admission_until_authoritative_completion() {
-    let (client, mut installed) = installing_client(
-        ReadyBackend::new(0, 0),
-        Some("installation request timed out"),
-    )
-    .await;
+    let (client, mut installed) = installing_client(Some("installation request timed out")).await;
     client.fetch_latest().await.unwrap();
     let id = client.update(ClashCore::Mihomo).await.unwrap();
     assert!(
@@ -368,35 +338,8 @@ async fn pending_install_reserves_admission_until_authoritative_completion() {
 }
 
 #[tokio::test]
-async fn panicking_fetch_and_prepare_release_admission_for_retry() {
-    let (client, mut installed) = installing_client(ReadyBackend::new(1, 1), None).await;
-    assert!(
-        client
-            .fetch_latest()
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("panicked")
-    );
-    client.fetch_latest().await.unwrap();
-    let first = client.update(ClashCore::Mihomo).await.unwrap();
-    assert!(
-        matches!(settled_report(&client, first).await.state, UpdaterState::Failed(reason) if reason.contains("panicked"))
-    );
-    let second = client.update(ClashCore::Mihomo).await.unwrap();
-    assert_ne!(first, second);
-    assert!(matches!(
-        settled_report(&client, second).await.state,
-        UpdaterState::Done
-    ));
-    assert!(installed.try_recv().is_ok());
-    client.shutdown().await.unwrap();
-}
-
-#[tokio::test]
 async fn definitive_install_failure_allows_fresh_admission() {
-    let (client, mut installed) =
-        installing_client(ReadyBackend::new(0, 0), Some("permission denied")).await;
+    let (client, mut installed) = installing_client(Some("permission denied")).await;
     client.fetch_latest().await.unwrap();
     let id = client.update(ClashCore::Mihomo).await.unwrap();
     assert!(

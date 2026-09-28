@@ -848,6 +848,11 @@ where
 {
     match tokio::task::spawn_blocking(work).await {
         Ok(result) => result,
-        Err(error) => Err(anyhow::anyhow!("the system proxy worker panicked: {error}")),
+        Err(error) => match error.try_into_panic() {
+            Ok(panic) => std::panic::resume_unwind(panic),
+            Err(error) => Err(anyhow::anyhow!(
+                "the system proxy worker did not run: {error}"
+            )),
+        },
     }
 }

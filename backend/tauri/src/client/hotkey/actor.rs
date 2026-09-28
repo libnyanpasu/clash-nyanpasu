@@ -246,9 +246,8 @@ impl State {
     async fn unregister_all(&mut self) -> EffectStatus {
         self.closed = true;
         self.registered.clear();
-        let registrar = self.registrar.clone();
         let revision = self.applied_revision;
-        match blocking(move || registrar.unregister_all()).await {
+        match self.registrar.unregister_all().await {
             Ok(()) => self.healthy(revision),
             Err(error) => self.degraded(
                 revision,
@@ -262,16 +261,13 @@ impl State {
     async fn register(&self, accelerator: &str, action: HotkeyAction) -> anyhow::Result<()> {
         // No validation here: `reconcile` cleared the whole desired set before
         // it released anything.
-        let registrar = self.registrar.clone();
-        let sink = self.sink.clone();
-        let accelerator = accelerator.to_owned();
-        blocking(move || registrar.register(&accelerator, action, sink)).await
+        self.registrar
+            .register(accelerator, action, self.sink.clone())
+            .await
     }
 
     async fn unregister(&self, accelerator: &str) -> anyhow::Result<()> {
-        let registrar = self.registrar.clone();
-        let accelerator = accelerator.to_owned();
-        blocking(move || registrar.unregister(&accelerator)).await
+        self.registrar.unregister(accelerator).await
     }
 
     fn status(&self) -> HotkeyStatus {
@@ -325,17 +321,5 @@ impl State {
                 retryable,
             },
         }
-    }
-}
-
-/// The platform shortcut API blocks. Running it on the mailbox turn would stall
-/// every other message behind a window-server round trip.
-async fn blocking<F>(work: F) -> anyhow::Result<()>
-where
-    F: FnOnce() -> anyhow::Result<()> + Send + 'static,
-{
-    match tokio::task::spawn_blocking(work).await {
-        Ok(result) => result,
-        Err(error) => Err(anyhow::anyhow!("the hotkey worker panicked: {error}")),
     }
 }

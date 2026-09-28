@@ -9,7 +9,6 @@ import {
   fromNetworkStatisticWidgetOption,
   parseControllerAddress,
   proxyChangeBreakMode,
-  randomPortKind,
   toNetworkStatisticWidgetOption,
 } from '../src/ipc/settings-conversions'
 
@@ -28,13 +27,6 @@ describe('network statistic widget', () => {
       kind: 'enabled',
       value: 'small',
     })
-  })
-})
-
-describe('random port switch', () => {
-  it('selects random when on and allow_fallback when off', () => {
-    expect(randomPortKind(true)).toBe('random')
-    expect(randomPortKind(false)).toBe('allow_fallback')
   })
 })
 

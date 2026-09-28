@@ -74,7 +74,7 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                 tracing::info!("Blocking shutdown for cleanup...");
                 let reason = w!("Clash Nyanpasu is cleaning up...");
                 if unsafe { ShutdownBlockReasonCreate(hwnd, reason.as_ptr()) } == 0 {
-                    let err = Error::from_win32();
+                    let err = Error::from_thread();
                     tracing::error!("Failed to create shutdown block reason: {err}");
                 }
                 tx.send(()).unwrap();
@@ -85,7 +85,7 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                 }
                 tracing::info!("Shutdown hook is ready for shutdown");
                 if unsafe { ShutdownBlockReasonDestroy(hwnd) } == 0 {
-                    let err = Error::from_win32();
+                    let err = Error::from_thread();
                     tracing::error!("Failed to destroy shutdown block reason: {err}");
                 }
             }
@@ -131,7 +131,7 @@ fn setup_shutdown_hook_inner(
 
     let h_instance = unsafe { GetModuleHandleW(std::ptr::null()) };
     if h_instance.is_null() {
-        let err = Error::from_win32();
+        let err = Error::from_thread();
         anyhow::bail!("Failed to get module handle: {err}");
     }
 
@@ -143,7 +143,7 @@ fn setup_shutdown_hook_inner(
 
     unsafe {
         if RegisterClassExW(&window_class_ex) == 0 {
-            let err = Error::from_win32();
+            let err = Error::from_thread();
             anyhow::bail!("Failed to register window class: {err}");
         }
     }
@@ -166,7 +166,7 @@ fn setup_shutdown_hook_inner(
         )
     };
     if hidden_window.is_null() {
-        let err = Error::from_win32();
+        let err = Error::from_thread();
         anyhow::bail!("Failed to create hidden window: {err}");
     }
 
@@ -187,7 +187,7 @@ fn setup_shutdown_hook_inner(
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             } else {
-                let err = Error::from_win32();
+                let err = Error::from_thread();
                 tracing::error!(
                     "GetMessageW failed with {result}, shutdown hook thread exiting: {err}"
                 );

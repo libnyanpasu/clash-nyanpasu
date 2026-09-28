@@ -134,6 +134,7 @@
   "settings_debug_utils_open_log_directory": "로그 디렉터리 열기",
   "settings_nyanpasu_logs": "로그 설정",
   "settings_nyanpasu_max_log_files_label": "최대 로그 파일 수",
+  "settings_nyanpasu_max_log_file_size_label": "최대 로그 파일 크기",
   "settings_nyanpasu_app_log_level_label": "앱 로그 레벨",
   "settings_nyanpasu_network_statistic_widget_label": "네트워크 통계 위젯",
   "settings_nyanpasu_network_statistic_widget_disabled": "사용 안 함",

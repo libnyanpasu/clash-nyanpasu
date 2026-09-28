@@ -134,6 +134,7 @@
   "settings_debug_utils_open_log_directory": "Открыть директорию журналов",
   "settings_nyanpasu_logs": "Настройки журналов",
   "settings_nyanpasu_max_log_files_label": "Максимальное количество файлов журнала",
+  "settings_nyanpasu_max_log_file_size_label": "Максимальный размер файла журнала",
   "settings_nyanpasu_app_log_level_label": "Уровень логирования приложения",
   "settings_nyanpasu_network_statistic_widget_label": "Виджет статистики сети",
   "settings_nyanpasu_network_statistic_widget_disabled": "Отключено",

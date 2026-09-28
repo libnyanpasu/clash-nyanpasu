@@ -150,8 +150,11 @@ pub struct NyanpasuAppConfig {
     /// proxy 页面布局 列数
     pub proxy_layout_column: i32,
 
-    /// 日记轮转时间，单位：天
+    /// 最多保留的日志文件数
     pub max_log_files: usize,
+
+    /// 单个日志文件的大小上限，单位：MiB
+    pub max_log_file_size: u64,
 
     /// Check update when app launch
     pub enable_auto_check_update: bool,
@@ -234,6 +237,7 @@ impl Default for NyanpasuAppConfig {
             enable_builtin_enhanced: true,
             proxy_layout_column: 0,
             max_log_files: 7,
+            max_log_file_size: 10,
             enable_auto_check_update: true,
             release_channel: None,
             tray_selector_mode: ProxiesSelectorMode::default(),

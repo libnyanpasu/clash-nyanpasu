@@ -177,6 +177,7 @@
   "settings_debug_utils_open_log_directory": "Open Log Directory",
   "settings_nyanpasu_logs": "Log Settings",
   "settings_nyanpasu_max_log_files_label": "Max Log Files",
+  "settings_nyanpasu_max_log_file_size_label": "Max Log File Size",
   "settings_nyanpasu_app_log_level_label": "App Log Level",
   "settings_nyanpasu_network_statistic_widget_label": "Network Statistic Widget",
   "settings_nyanpasu_network_statistic_widget_disabled": "Disabled",

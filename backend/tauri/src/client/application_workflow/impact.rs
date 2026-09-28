@@ -685,6 +685,12 @@ mod tests {
                 owners: &[EffectKind::Logger],
             },
             AppCase {
+                field: "max_log_file_size",
+                mutate: |app| app.max_log_file_size = 20,
+                impact: RuntimeImpact::None,
+                owners: &[EffectKind::Logger],
+            },
+            AppCase {
                 field: "enable_auto_launch",
                 mutate: |app| app.enable_auto_launch = true,
                 impact: RuntimeImpact::None,

@@ -25,7 +25,7 @@ use crate::client::{
     },
     system_proxy::SystemProxyClient,
     ui_effects::ports::{
-        LocaleSink, LoggerRefresher, TrayRefresher, WidgetController, WidgetError,
+        LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController, WidgetError,
     },
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
@@ -99,8 +99,13 @@ impl ApplicationEffectExecutor {
             EffectKind::Logger,
             revision,
             "logger_refresh_failed",
-            self.logger
-                .refresh(Some(desired.level.clone()), Some(desired.max_files)),
+            self.logger.refresh(
+                Some(desired.level.clone()),
+                Some(LogRotation {
+                    max_files: desired.max_files,
+                    max_file_size: desired.max_file_size,
+                }),
+            ),
         )
     }
 

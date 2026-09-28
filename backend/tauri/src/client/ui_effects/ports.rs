@@ -29,6 +29,15 @@ pub trait TrayRefresher: Send + Sync + 'static {
     async fn refresh_part(&self, view: TrayView) -> anyhow::Result<()>;
 }
 
+/// How the log file is split and how many of its files are kept. The two
+/// limits change together because the file writer is rebuilt from both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogRotation {
+    pub max_files: usize,
+    /// Split the current file once it exceeds this many MiB.
+    pub max_file_size: u64,
+}
+
 /// Reconfigures the running logger.
 ///
 /// The two `Option`s are the shape the underlying reload signal already has:
@@ -36,7 +45,11 @@ pub trait TrayRefresher: Send + Sync + 'static {
 /// port keeps the signal's own vocabulary so the adapter stays a pass-through.
 #[cfg_attr(test, mockall::automock)]
 pub trait LoggerRefresher: Send + Sync + 'static {
-    fn refresh(&self, level: Option<LoggingLevel>, max_files: Option<usize>) -> anyhow::Result<()>;
+    fn refresh(
+        &self,
+        level: Option<LoggingLevel>,
+        rotation: Option<LogRotation>,
+    ) -> anyhow::Result<()>;
 }
 
 /// How long a widget stop waits for the widget to leave before it reports the

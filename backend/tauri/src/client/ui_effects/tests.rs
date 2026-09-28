@@ -17,9 +17,9 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     adapters::TauriWidgetController,
     ports::{
-        LocaleSink, LoggerRefresher, MockLocaleSink, MockLoggerRefresher, MockTrayRefresher,
-        MockWidgetController, MockWidgetRuntime, TrayRefresher, WIDGET_STOP_BOUND,
-        WidgetController, WidgetError,
+        LocaleSink, LogRotation, LoggerRefresher, MockLocaleSink, MockLoggerRefresher,
+        MockTrayRefresher, MockWidgetController, MockWidgetRuntime, TrayRefresher,
+        WIDGET_STOP_BOUND, WidgetController, WidgetError,
     },
 };
 use crate::client::{
@@ -384,17 +384,23 @@ fn system_proxy_change_only_requests_part_refresh() {
 }
 
 #[test]
-fn logger_effect_forwards_level_and_max_files() {
+fn logger_effect_forwards_level_and_rotation() {
+    let rotation = LogRotation {
+        max_files: 21,
+        max_file_size: 5,
+    };
     let mut logger = MockLoggerRefresher::new();
     logger
         .expect_refresh()
-        .withf(|level, max_files| *level == Some(LoggingLevel::Error) && *max_files == Some(21))
+        .withf(move |level, forwarded| {
+            *level == Some(LoggingLevel::Error) && *forwarded == Some(rotation)
+        })
         .times(1)
         .returning(|_, _| Ok(()));
 
     let logger: Arc<dyn LoggerRefresher> = Arc::new(logger);
     logger
-        .refresh(Some(LoggingLevel::Error), Some(21))
+        .refresh(Some(LoggingLevel::Error), Some(rotation))
         .expect("the logger accepts the reload signal");
 }
 
@@ -1311,15 +1317,19 @@ async fn the_shutdown_ends_a_widget_handshake_and_reaps_the_child() {
 fn the_logger_refresher_forwards_to_the_reload_channel_it_was_given() {
     let (reload, signals) = std::sync::mpsc::channel();
     let refresher = super::adapters::TracingLoggerRefresher::new(reload);
+    let rotation = LogRotation {
+        max_files: 3,
+        max_file_size: 10,
+    };
 
     refresher
-        .refresh(Some(LoggingLevel::Info), Some(3))
+        .refresh(Some(LoggingLevel::Info), Some(rotation))
         .unwrap();
     assert_eq!(
         signals.try_recv().unwrap(),
-        (Some(LoggingLevel::Info), Some(3))
+        (Some(LoggingLevel::Info), Some(rotation))
     );
 
     drop(signals);
-    assert!(refresher.refresh(None, Some(7)).is_err());
+    assert!(refresher.refresh(None, Some(rotation)).is_err());
 }

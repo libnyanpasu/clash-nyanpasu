@@ -173,6 +173,7 @@ tracing-subscriber = { version = '0.3', features = [
 tracing-error = '0.2'
 tracing-log = { version = '0.2' }
 tracing-appender = { version = '0.2', features = ['parking_lot'] }
+flexi_logger = { version = '0.31', default-features = false }
 test-log = { workspace = true }
 tracing-test = { workspace = true }
 

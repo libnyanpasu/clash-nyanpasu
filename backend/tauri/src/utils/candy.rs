@@ -9,7 +9,11 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 pub fn collect_logs(target_path: &Path) -> Result<()> {
     let logs_dir = app_logs_dir()?;
     let now = Local::now().format("%Y-%m-%d");
-    let globstr = format!("{}/*.{}.app.log", logs_dir.to_str().unwrap(), now);
+    let globstr = format!(
+        "{}/clash-nyanpasu_{}_*.log",
+        logs_dir.to_str().unwrap(),
+        now
+    );
     let mut paths = Vec::new();
     for entry in glob(&globstr)? {
         {

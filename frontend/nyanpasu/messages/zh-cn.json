@@ -177,6 +177,7 @@
   "settings_debug_utils_open_log_directory": "打开日志路径",
   "settings_nyanpasu_logs": "日志设置",
   "settings_nyanpasu_max_log_files_label": "最大日志文件数量",
+  "settings_nyanpasu_max_log_file_size_label": "单个日志文件大小上限",
   "settings_nyanpasu_app_log_level_label": "应用日志级别",
   "settings_nyanpasu_network_statistic_widget_label": "网络悬浮窗",
   "settings_nyanpasu_network_statistic_widget_disabled": "禁用",

@@ -5,12 +5,6 @@ import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provid
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
   Modal,
   ModalClose,
   ModalContent,
@@ -19,6 +13,13 @@ import {
 } from '@/components/ui/modal'
 import { LinearProgress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { SwitchItem } from '@/components/ui/switch'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import {
@@ -29,6 +30,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { commands, useSetting, type ReleaseChannel } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/utils'
 import { relaunch } from '@tauri-apps/plugin-process'
 import {
   SettingsCard,
@@ -64,6 +66,10 @@ const ReleaseChannelSelector = () => {
     beta: m.release_channel_beta(),
     nightly: m.release_channel_nightly(),
   }
+  const notices: Partial<Record<ReleaseChannel, string>> = {
+    stable: m.release_channel_stable_notice(),
+    nightly: m.release_channel_nightly_notice(),
+  }
   const handleChange = useLockFn(async (channel: ReleaseChannel) => {
     try {
       await setReleaseChannel(channel)
@@ -72,39 +78,63 @@ const ReleaseChannelSelector = () => {
     }
   })
   return (
-    <div className="w-full space-y-2 px-4 py-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            className="w-full justify-between"
-            disabled={
-              !releaseChannel || releaseChannel === 'nightly' || isChecking
-            }
-            loading={isChangingChannel}
-          >
-            <span>{m.release_channel_label()}</span>
-            {': '}
-            <span>{releaseChannel ? labels[releaseChannel] : '…'}</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
+    <div
+      className={cn(
+        'flex w-full items-center justify-between gap-4',
+        'bg-surface-variant/30 dark:bg-surface-variant/10',
+        'min-h-16 rounded-[20px] px-4 py-3',
+      )}
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="truncate">{m.release_channel_label()}</p>
+
+        {/* nightly locks the selector, so explain why inline */}
+        {releaseChannel === 'nightly' && (
+          <p className="text-on-surface-variant text-xs">{notices.nightly}</p>
+        )}
+      </div>
+
+      <Select
+        variant="outlined"
+        value={releaseChannel ?? ''}
+        onValueChange={(value) => handleChange(value as ReleaseChannel)}
+        disabled={
+          !releaseChannel ||
+          releaseChannel === 'nightly' ||
+          isChecking ||
+          isChangingChannel
+        }
+      >
+        <SelectTrigger
+          className="h-10 w-32 flex-none py-2 data-disabled:cursor-not-allowed data-disabled:opacity-50"
+          aria-label={m.release_channel_label()}
+        >
+          <SelectValue className="truncate pr-4 text-sm">
+            {releaseChannel ? labels[releaseChannel] : null}
+          </SelectValue>
+        </SelectTrigger>
+
+        <SelectContent align="end" className="min-w-72">
           {(Object.keys(labels) as ReleaseChannel[]).map((channel) => (
-            <DropdownMenuCheckboxItem
+            <SelectItem
               key={channel}
-              checked={releaseChannel === channel}
-              onSelect={() => handleChange(channel)}
+              value={channel}
+              textValue={labels[channel]}
+              className="h-auto min-h-12 py-3"
             >
-              {labels[channel]}
-            </DropdownMenuCheckboxItem>
+              <span className="flex flex-col gap-0.5">
+                <span>{labels[channel]}</span>
+
+                {notices[channel] && (
+                  <span className="text-on-surface-variant text-xs">
+                    {notices[channel]}
+                  </span>
+                )}
+              </span>
+            </SelectItem>
           ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <p className="text-on-surface-variant text-sm">
-        {m.release_channel_nightly_notice()}
-      </p>
-      <p className="text-on-surface-variant text-sm">
-        {m.release_channel_stable_notice()}
-      </p>
+        </SelectContent>
+      </Select>
     </div>
   )
 }
@@ -300,10 +330,10 @@ export default function NyanpasuVersion() {
         </div>
       </SettingsCardContent>
 
-      <ReleaseChannelSelector />
-
       {isSupported ? (
         <SettingsCardFooter className="flex-col gap-2">
+          <ReleaseChannelSelector />
+
           <AutoCheckUpdate />
 
           {hasNewVersion ? (
@@ -324,7 +354,9 @@ export default function NyanpasuVersion() {
           )}
         </SettingsCardFooter>
       ) : (
-        <SettingsCardFooter>
+        <SettingsCardFooter className="flex-col gap-2">
+          <ReleaseChannelSelector />
+
           <Button
             variant="flat"
             className="w-full"

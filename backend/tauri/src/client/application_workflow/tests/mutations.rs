@@ -1629,6 +1629,39 @@ async fn a_running_core_with_no_confirmed_apply_refuses_a_critical_mutation() {
     );
 }
 
+/// The service host never names the core it applied. A session whose boot
+/// reconcile was confirmed there still has a restorable baseline, so a
+/// critical mutation is admitted rather than refused as if nothing had been
+/// applied.
+#[tokio::test]
+async fn a_host_that_does_not_name_its_core_admits_a_critical_mutation() {
+    let Fixture {
+        client,
+        endpoint,
+        mut application,
+        _dir,
+        ..
+    } = fixture().await;
+    endpoint.set_status(Some(CoreStateDetail::Running { epoch: 1, pid: 7 }), None);
+
+    let (operation_id, result) = simple_mutate(
+        &mut application,
+        &client,
+        app_with_core(ClashCore::ClashRs),
+        CommandClass::ExplicitSwitch,
+    )
+    .await;
+
+    assert!(
+        matches!(result, Ok(ReplaceIfVersionResult::Replaced)),
+        "{result:?}"
+    );
+    assert_eq!(
+        settled(&client, operation_id).await.conclusion,
+        MutationConclusion::Confirmed
+    );
+}
+
 // -- the check is never skipped --------------------------------------------
 
 /// A candidate the core rejects is refused before it reaches the runtime, and a

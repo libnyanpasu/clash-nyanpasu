@@ -2,7 +2,6 @@ import type {
   BreakConnectionStrategy,
   ExternalControllerStrategy,
   NetworkStatisticWidgetConfig,
-  PortStrategyKind,
   ProxyChangeBreakMode,
   StatisticWidgetVariant,
 } from './bindings'
@@ -20,13 +19,6 @@ export const fromNetworkStatisticWidgetOption = (
   option === 'disabled'
     ? { kind: 'disabled' }
     : { kind: 'enabled', value: option }
-
-/**
- * The port kind the random-port switch selects. Turning it off selects
- * `allow_fallback`, the kind a disabled random port has always meant.
- */
-export const randomPortKind = (random: boolean): PortStrategyKind =>
-  random ? 'random' : 'allow_fallback'
 
 export type ControllerAddress = {
   host: string

@@ -14,8 +14,10 @@ import FieldFilterCard from './_modules/field-filter-card'
 import FieldFilterSwitch from './_modules/field-filter-switch'
 import IPv6Switch from './_modules/ipv6-switch'
 import LogLevelSelector from './_modules/log-level-selector'
-import MixedPortConfig from './_modules/mixed-port-config'
-import RandomPortSwitch from './_modules/random-port-switch'
+import {
+  MixedPortConfig,
+  OptionalPortConfig,
+} from './_modules/proxy-port-config'
 import TunStackSelector from './_modules/tun-stack-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/clash')({
@@ -56,11 +58,9 @@ const PortSettings = () => {
       <SettingsGroup>
         <MixedPortConfig />
 
-        <SettingsCard>
-          <SettingsCardContent>
-            <RandomPortSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
+        <OptionalPortConfig field="socks_port" />
+
+        <OptionalPortConfig field="http_port" />
       </SettingsGroup>
     </div>
   )

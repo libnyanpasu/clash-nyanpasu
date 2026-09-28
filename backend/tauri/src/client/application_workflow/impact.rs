@@ -264,13 +264,12 @@ struct ApplicationRuntimeInputs<'a> {
     enable_builtin_enhanced: bool,
 }
 
-impl<'a> ApplicationRuntimeInputs<'a> {
-    fn of(app: &'a NyanpasuAppConfig) -> Self {
-        Self {
-            enable_service_mode: app.enable_service_mode,
-            core: &app.core,
-            enable_builtin_enhanced: app.enable_builtin_enhanced,
-        }
+/// The fields of `app` the runtime reads, and nothing else.
+fn application_runtime_inputs(app: &NyanpasuAppConfig) -> ApplicationRuntimeInputs<'_> {
+    ApplicationRuntimeInputs {
+        enable_service_mode: app.enable_service_mode,
+        core: &app.core,
+        enable_builtin_enhanced: app.enable_builtin_enhanced,
     }
 }
 
@@ -349,20 +348,19 @@ struct ClashRuntimeInputs<'a> {
     disable_http_controller: bool,
 }
 
-impl<'a> ClashRuntimeInputs<'a> {
-    fn of(clash: &'a ClashConfig) -> Self {
-        Self {
-            overrides: &clash.overrides,
-            enable_clash_fields: clash.enable_clash_fields,
-            enable_tun_mode: clash.enable_tun_mode,
-            tun_stack: clash.tun_stack,
-            mixed_port: &clash.mixed_port,
-            socks_port: clash.socks_port.as_ref(),
-            http_port: clash.http_port.as_ref(),
-            external_controller: &clash.external_controller,
-            control_channel: clash.clash_control_channel,
-            disable_http_controller: clash.clash_ipc_disable_http_controller,
-        }
+/// The fields of `clash` the runtime reads, and nothing else.
+fn clash_runtime_inputs(clash: &ClashConfig) -> ClashRuntimeInputs<'_> {
+    ClashRuntimeInputs {
+        overrides: &clash.overrides,
+        enable_clash_fields: clash.enable_clash_fields,
+        enable_tun_mode: clash.enable_tun_mode,
+        tun_stack: clash.tun_stack,
+        mixed_port: &clash.mixed_port,
+        socks_port: clash.socks_port.as_ref(),
+        http_port: clash.http_port.as_ref(),
+        external_controller: &clash.external_controller,
+        control_channel: clash.clash_control_channel,
+        disable_http_controller: clash.clash_ipc_disable_http_controller,
     }
 }
 
@@ -371,7 +369,7 @@ impl<'a> ClashRuntimeInputs<'a> {
 /// One verdict for build inputs and control-channel inputs alike: they are
 /// decided by the same candidate and settled by one reconcile (roadmap §6.2).
 pub(crate) fn classify_clash(previous: &ClashConfig, candidate: &ClashConfig) -> RuntimeImpact {
-    if ClashRuntimeInputs::of(previous) == ClashRuntimeInputs::of(candidate) {
+    if clash_runtime_inputs(previous) == clash_runtime_inputs(candidate) {
         RuntimeImpact::None
     } else {
         RuntimeImpact::Reconcile
@@ -465,11 +463,11 @@ pub(crate) fn selection_changed(previous: &Profiles, candidate: &Profiles) -> bo
 /// `None` when the projection cannot be serialized. A target with no identity
 /// is never treated as equal to another one.
 pub(crate) fn application_target(candidate: &NyanpasuAppConfig) -> Option<String> {
-    digest(&ApplicationRuntimeInputs::of(candidate))
+    digest(&application_runtime_inputs(candidate))
 }
 
 pub(crate) fn clash_target(candidate: &ClashConfig) -> Option<String> {
-    digest(&ClashRuntimeInputs::of(candidate))
+    digest(&clash_runtime_inputs(candidate))
 }
 
 /// The profiles projection is the runtime dependency closure of the candidate

@@ -17,9 +17,9 @@ mod workflow;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 
-use nyanpasu_core::state::{StateDecision, StateSnapshot};
+use nyanpasu_core::state::{Ack, StateDecision, StateSnapshot};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
@@ -34,13 +34,13 @@ use super::{
     runtime,
 };
 use crate::core::actor_v2::{
-    CoreClient, CoreStatusProjection, ShutdownReport,
+    CoreClient, CoreStatusProjection,
     facade::{CoreFacade, ReconcileReport, StopReport},
     service_actor::{ServiceClient, ServiceHostStatus},
 };
 #[cfg(test)]
 use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
-use mutation::{MutationJournal, MutationRequest, TryAck};
+use mutation::{MutationJournal, MutationRequest};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
@@ -52,18 +52,6 @@ const HISTORY_LEN: usize = 32;
 pub struct CoreLifecycleStatus {
     pub active: Option<OperationId>,
     pub uncertain: bool,
-    /// Bounded recent results, including calls whose caller stopped waiting.
-    pub completed: VecDeque<CoreLifecycleOperationResult>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CoreLifecycleOperationResult {
-    pub id: OperationId,
-    // Only tests read the failure detail so far; no status surface shows it.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub error: Option<String>,
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub backend_operation_id: Option<OperationId>,
 }
 
 /// Work serialized by the execution domain. A source mutation is not one of
@@ -149,7 +137,6 @@ struct ApplicationWorkflowState {
 struct PublishedView {
     active: Option<OperationId>,
     uncertain: bool,
-    last_completed: Option<OperationId>,
     maintenance: Option<String>,
     recovery: Option<attempt::RecoveryView>,
     deferred: Option<(
@@ -253,7 +240,7 @@ impl ApplicationWorkflowState {
             None
         };
         if let Some(refusal) = refusal {
-            request.answer(TryAck::Rejected(refusal.to_owned()));
+            request.answer(Ack::Rejected(refusal.to_owned()));
             return;
         }
         // The caller is the source transaction, answered with the Try's
@@ -263,7 +250,7 @@ impl ApplicationWorkflowState {
         let settle = request.settle.take();
         self.start(id);
         let receipt = self.workflow.run_mutation(request).await;
-        self.record(id, receipt.detail.clone(), None, Some(receipt.clone()));
+        self.record(Some(receipt.clone()));
         if let Some(settle) = settle {
             let _ = settle.send(receipt);
         }
@@ -299,16 +286,10 @@ impl ApplicationWorkflowState {
         self.publish_journal(None);
     }
 
-    /// Records a result and publishes it, then answers. Published first: a
+    /// Publishes that the operation ended, then answers. Published first: a
     /// caller that observes its own reply must not read itself as running.
     fn settle(&mut self, response: Response, result: Result<Output, CoreError>) {
-        let error = result.as_ref().err();
-        self.record(
-            response.id,
-            error.map(ToString::to_string),
-            error.and_then(|error| error.operation_id),
-            None,
-        );
+        self.record(None);
         if let Some(reply) = response.reply {
             let _ = reply.send(result.map_err(|error| error.with_operation(response.id)));
         } else if let Err(error) = result {
@@ -316,26 +297,12 @@ impl ApplicationWorkflowState {
         }
     }
 
-    /// Records a finished operation in the status and the journal.
-    fn record(
-        &mut self,
-        id: OperationId,
-        error: Option<String>,
-        backend_operation_id: Option<OperationId>,
-        receipt: Option<mutation::MutationReceipt>,
-    ) {
+    /// Records that the operation finished in the status and the journal.
+    fn record(&mut self, receipt: Option<mutation::MutationReceipt>) {
         let uncertain = self.workflow.isolated();
         self.status.send_modify(|status| {
             status.active = None;
             status.uncertain = uncertain;
-            if status.completed.len() == HISTORY_LEN {
-                status.completed.pop_front();
-            }
-            status.completed.push_back(CoreLifecycleOperationResult {
-                id,
-                error,
-                backend_operation_id,
-            });
         });
         self.publish_journal(receipt);
     }
@@ -371,7 +338,6 @@ impl ApplicationWorkflowState {
             PublishedView {
                 active: status.active,
                 uncertain: status.uncertain,
-                last_completed: status.completed.back().map(|result| result.id),
                 maintenance: workflow.maintenance(),
                 recovery: workflow.recovery_view(),
                 deferred: workflow.deferred.as_ref().map(|d| {
@@ -486,14 +452,7 @@ impl Actor for ApplicationWorkflowActor {
         if let Some(timer) = state.recovery_timer.take() {
             timer.abort();
         }
-        let shutdown = Command::Core(CoreCommand::Shutdown);
-        if let Ok(Output::Shutdown(ShutdownReport {
-            stop: Err(error), ..
-        })) = state
-            .workflow
-            .execute(OperationId::generate(), shutdown)
-            .await
-        {
+        if let Err(error) = state.workflow.lifecycle.core.shutdown().await.stop {
             tracing::warn!(%error, "the core was not proven stopped");
         }
         Ok(())
@@ -504,9 +463,6 @@ struct ClientInner {
     actor: ActorRef<Message>,
     runtime: runtime::RuntimeSnapshotStore,
     status: watch::Receiver<CoreLifecycleStatus>,
-    /// Read through `mutation_journal`; the status surface that publishes it to
-    /// the UI lands with the commands that route through the participant (T6).
-    #[allow(dead_code)]
     mutations: watch::Receiver<MutationJournal>,
     core: crate::core::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
@@ -654,9 +610,7 @@ impl ApplicationWorkflowClient {
         self.0
             .actor
             .cast(Message::BeginMutation(Box::new(request)))
-            .map_err(|_| {
-                anyhow::anyhow!("the application workflow is unavailable; the mutation was not run")
-            })
+            .map_err(|_| anyhow::anyhow!("the runtime owner is unavailable; nothing was committed"))
     }
 
     /// The status watch, for a test that has to see closing begin.
@@ -668,7 +622,6 @@ impl ApplicationWorkflowClient {
     /// The structured record of recent mutations, what is deferred and why the
     /// execution domain is isolated. Diagnostics: control logic reads these
     /// values, never the text of an ACK.
-    #[allow(dead_code)]
     pub(in crate::client) fn mutation_journal(&self) -> MutationJournal {
         self.0.mutations.borrow().clone()
     }

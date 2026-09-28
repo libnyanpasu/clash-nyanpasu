@@ -21,7 +21,7 @@ use nyanpasu_ipc::{
 
 use super::{
     Output,
-    attempt::{AttemptOrigin, AttemptStage, LiveAttempt, TryVerdict},
+    attempt::{AttemptOrigin, AttemptStage, LiveAttempt},
     mutation::{
         ApplyFailure, CheckRecord, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState,
         MutationStage, ReestablishCause, RefusalCause, RetryableCause, RuntimePrepareOutcome,
@@ -210,21 +210,21 @@ pub(super) enum Reestablished {
     RecoveryRequired(String),
 }
 
-impl From<&Reestablished> for StartupOutcome {
-    fn from(reestablished: &Reestablished) -> Self {
-        match reestablished {
-            Reestablished::Applied(_) | Reestablished::Accepted | Reestablished::Stopped => {
-                Self::Ready
-            }
-            Reestablished::Degraded { health, reason, .. } => Self::ReadyDegraded {
+impl Reestablished {
+    /// What startup reports for this attempt. The report drops what the
+    /// attempt applied and whether it waits on a dependency.
+    fn outcome(&self) -> StartupOutcome {
+        match self {
+            Self::Applied(_) | Self::Accepted | Self::Stopped => StartupOutcome::Ready,
+            Self::Degraded { health, reason, .. } => StartupOutcome::ReadyDegraded {
                 health: *health,
                 reason: reason.clone(),
             },
-            Reestablished::StopUnsatisfied(reason) => Self::ReadyDegraded {
+            Self::StopUnsatisfied(reason) => StartupOutcome::ReadyDegraded {
                 health: ConvergenceHealth::Blocked,
                 reason: reason.clone(),
             },
-            Reestablished::RecoveryRequired(reason) => Self::RecoveryRequired {
+            Self::RecoveryRequired(reason) => StartupOutcome::RecoveryRequired {
                 reason: reason.clone(),
             },
         }
@@ -246,7 +246,7 @@ impl ApplicationWorkflow {
         self.live = Some(LiveAttempt::committed_target(operation_id, target));
         let (observation, reestablished) = self.reestablish(false).await;
         let outcome = match self.conclude_reestablish(&reestablished) {
-            Ok(()) => StartupOutcome::from(&reestablished),
+            Ok(()) => reestablished.outcome(),
             Err(reason) => StartupOutcome::RecoveryRequired { reason },
         };
         let report = StartupReport {
@@ -388,7 +388,6 @@ impl ApplicationWorkflow {
                 operation_id,
                 origin: TargetOrigin::Reestablish(cause),
                 identity: String::new(),
-                baseline: KnownRuntimeState::NeverApplied,
                 cause: RetryableCause {
                     stage: MutationStage::Preparing,
                     message: "the runtime is being re-established".into(),
@@ -741,7 +740,6 @@ impl ApplicationWorkflow {
             target.attempts = 0;
             target.waits = 0;
         }
-        target.baseline = KnownRuntimeState::Stopped;
         let baseline = RestorableBaseline {
             settled: true,
             observed: status.snapshot.as_ref().and_then(|s| s.state.clone()),
@@ -791,7 +789,6 @@ impl ApplicationWorkflow {
         if !waiting && self.committed_target().attempts == attempts {
             self.charge_attempt(charge);
         }
-        self.record_verdict(TryVerdict::of(&outcome));
         if !matches!(
             outcome,
             RuntimePrepareOutcome::Applied(_) | RuntimePrepareOutcome::RecoveryRequired(_)

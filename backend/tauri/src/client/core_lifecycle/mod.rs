@@ -4,12 +4,9 @@ pub(in crate::client) mod apply;
 pub mod ports;
 mod workflow;
 
+use crate::core::actor_v2::facade::{ReconcileReport, StopReport};
 #[cfg(test)]
 use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
-use crate::core::actor_v2::{
-    ShutdownReport,
-    facade::{ReconcileReport, StopReport},
-};
 use ports::PreparedCoreBinary;
 use std::time::Duration;
 pub(crate) use workflow::Ownership;
@@ -32,7 +29,6 @@ pub(in crate::client) enum Command {
     RestartService,
     UninstallService,
     RecoverServiceEndpoint,
-    Shutdown,
 }
 
 pub(in crate::client) enum Output {
@@ -41,7 +37,6 @@ pub(in crate::client) enum Output {
     #[cfg(test)]
     Handoff(HandoffReport),
     Stop(StopReport),
-    Shutdown(ShutdownReport),
     /// The binary was installed, and the restart it owed was left to the
     /// open reestablish target: no host is proven to own the runtime
     /// (T10 §1.7 #7). Never leaves the workflow.

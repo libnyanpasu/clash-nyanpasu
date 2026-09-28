@@ -72,7 +72,9 @@ impl NyanpasuClient {
                 message: Some(recovery.reason.clone()),
             }
         } else if execution.uncertain {
-            RuntimeConvergence { health: ConvergenceHealth::RecoveryRequired, operation_id: execution.completed.back().map(|r| r.id.to_string()), attempts: 0, automatic_remaining: 0, message: Some("A lifecycle operation has an unresolved outcome; further mutations remain isolated.".into()) }
+            // An action is pending with no attempt behind it, so there is no
+            // recovery view whose operation it could name.
+            RuntimeConvergence { health: ConvergenceHealth::RecoveryRequired, operation_id: None, attempts: 0, automatic_remaining: 0, message: Some("A lifecycle operation has an unresolved outcome; further mutations remain isolated.".into()) }
         } else if let Some(deferred) = &journal.deferred {
             RuntimeConvergence {
                 health: deferred.health,

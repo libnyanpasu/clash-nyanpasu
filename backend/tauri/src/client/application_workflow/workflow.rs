@@ -6,7 +6,7 @@ use nyanpasu_core_manager::{CoreError, OperationId};
 
 use super::{
     Command, Output,
-    attempt::{LifecycleCommand, LiveAttempt},
+    attempt::LiveAttempt,
     mutation::{DeferredTarget, ReestablishCause, TargetOrigin},
     preparation::RuntimePreparation,
     startup::StartupReport,
@@ -89,8 +89,7 @@ impl ApplicationWorkflow {
         }
     }
 
-    /// Runs one lifecycle command as an attempt of its own. Shutdown is not
-    /// one: nothing follows it that a recovery could continue.
+    /// Runs one lifecycle command as an attempt of its own.
     async fn execute_lifecycle(
         &mut self,
         operation_id: OperationId,
@@ -111,16 +110,13 @@ impl ApplicationWorkflow {
         {
             target.origin = TargetOrigin::Reestablish(ReestablishCause::Recovery);
         }
-        let tracked = LifecycleCommand::of(&command);
-        if let Some(command) = tracked {
-            // The actor admits nothing but an explicit recovery or shutdown
-            // while the domain is isolated, so no unresolved attempt is here.
-            debug_assert!(
-                self.live.is_none(),
-                "an unresolved attempt is never replaced"
-            );
-            self.live = Some(LiveAttempt::lifecycle(operation_id, command));
-        }
+        // The actor admits nothing but an explicit recovery while the domain
+        // is isolated, so no unresolved attempt is here.
+        debug_assert!(
+            self.live.is_none(),
+            "an unresolved attempt is never replaced"
+        );
+        self.live = Some(LiveAttempt::lifecycle(operation_id));
         let result = match self.lifecycle.execute(command, &mut self.preparation).await {
             // The restart a binary replacement owed waits for a proven owner:
             // the open reestablish target is what brings it (T10 §1.7 #7).
@@ -141,23 +137,21 @@ impl ApplicationWorkflow {
         // the owner and confirms the stop, and that is what ends it.
         if matches!(&result, Ok(Output::Stop(_)))
             && let Some(deferred) = &mut self.deferred
-            && matches!(deferred.origin, TargetOrigin::Mutation { .. })
+            && matches!(deferred.origin, TargetOrigin::Mutation)
         {
             deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
             deferred.next_attempt = None;
         }
         self.notify_bound(true);
-        if tracked.is_some() {
-            // Returning is the command's own conclusion; an action it left
-            // pending is not, and the error it returned says why.
-            let reason = self
-                .lifecycle
-                .core
-                .pending_action()
-                .and(result.as_ref().err())
-                .map(ToString::to_string);
-            self.conclude_attempt(reason);
-        }
+        // Returning is the command's own conclusion; an action it left
+        // pending is not, and the error it returned says why.
+        let reason = self
+            .lifecycle
+            .core
+            .pending_action()
+            .and(result.as_ref().err())
+            .map(ToString::to_string);
+        self.conclude_attempt(reason);
         result
     }
 }

@@ -207,17 +207,11 @@ impl RecoveryGraph {
         }
     }
 
+    /// One recovery tick, run to its end: the handler runs the recovery
+    /// inline, so the barrier queued behind the tick waits for it.
     async fn attempt(&self) {
-        let before = self.client.status().completed.len();
         self.client.0.actor.cast(Message::RecoveryTick).unwrap();
-        let mut status = self.client.0.status.clone();
-        tokio::time::timeout(
-            Duration::from_secs(5),
-            status.wait_for(|s| s.active.is_none() && s.completed.len() > before),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        barrier(&self.client).await;
     }
 
     /// The pump is what puts a state into the projection, so a test that needs
@@ -637,14 +631,14 @@ async fn recovery_tick_after_handoff_does_not_pull_service_back() {
 async fn production_timer_recovers_without_a_user_request() {
     let graph = RecoveryGraph::with_ticks(true, true).await;
     graph.outage(true).await;
-    let mut lifecycle = graph.client.0.status.clone();
-    tokio::time::timeout(
-        Duration::from_secs(12),
-        lifecycle.wait_for(|s| !s.completed.is_empty() && s.active.is_none()),
-    )
+    let mut events = graph.client.core_events();
+    tokio::time::timeout(Duration::from_secs(12), async {
+        while events.recv().await.unwrap().connectivity != EndpointConnectivity::Connected {}
+    })
     .await
-    .unwrap()
     .unwrap();
+    // The recovery that reconnected the endpoint runs to its end first.
+    barrier(&graph.client).await;
     assert_eq!(
         graph.client.core_status().connectivity,
         EndpointConnectivity::Connected

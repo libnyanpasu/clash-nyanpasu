@@ -1,5 +1,7 @@
 # T11 删除重复机制、全回归与文档交付
 
+> **已被取代（2026-09-28）：** “保留的 fencing”中的 workflow 准入 FIFO、`MAX_PENDING`、mutation context、decision waiter 与准入预算，以及“行为差异”中 workflow 等待超时的错误文字，已被 [Workflow 与生命周期精简计划](2026-09-28-workflow-lifecycle-simplification.md) 取代：Runtime 的 actor handler 直接 await 整条命令，mailbox 是唯一的串行化机制，调用方不再有等待超时（L3-1 `de66af65d`、L3-2 `74b8621cc`）。closing 与隔离门保留，closing 改读根令牌。正文作为历史保留，不再改写。
+
 基线：L4 `refactor/inject-app-infrastructure` 的 head。实施分支 `refactor/tcc-t11-cleanup`，本地 stacked，未推送、未合并。整栈起点为 `main@4f59ca781`，自下而上五层：
 
 | 层  | 分支                                 |

@@ -151,7 +151,7 @@ use nyanpasu_core_manager::{CoreErrorKind, OperationId};
 use std::sync::atomic::Ordering;
 
 use super::{
-    WaitScript, barrier,
+    ScriptedWaitEndpoint, WaitScript, barrier,
     mutations::{
         Fixture, app_with_core, fixture, mutate, mutate_with_hints, names_overrides, overrides,
         parked_local_write, plain, refused, scripted_fixture, settled, simple_mutate,
@@ -159,7 +159,7 @@ use super::{
 };
 use crate::client::application_workflow::{
     ApplicationWorkflowClient, Command,
-    attempt::{ActionView, AttemptOriginKind, AttemptStage, LifecycleCommand, RecoveryView},
+    attempt::RecoveryView,
     mutation::{DEFERRED_RETRY_BUDGET, MutationConclusion, MutationOutcomeKind},
     policy::CommandClass,
 };
@@ -190,15 +190,13 @@ fn isolated(client: &ApplicationWorkflowClient) -> bool {
     client.status().uncertain
 }
 
-/// The one operation the pending action names.
-fn pending_submission(client: &ApplicationWorkflowClient) -> (OperationId, bool) {
-    match recovery(client).action {
-        Some(ActionView::Submission {
-            operation,
-            accepted,
-        }) => (operation, accepted),
-        other => panic!("the pending action should be a submission, got {other:?}"),
-    }
+/// The one operation the pending action names: the latest one submitted, as
+/// nothing is submitted while an earlier action is unresolved.
+fn pending_submission(scripted: &ScriptedWaitEndpoint) -> OperationId {
+    *scripted
+        .operations()
+        .last()
+        .expect("the pending action is a submission")
 }
 
 /// A baseline the next mutation's Cancel can put back, applied for real.
@@ -329,13 +327,8 @@ async fn a_lost_cancel_restore_is_kept_and_recovers_the_baseline() {
     );
     until_idle(&f.client).await;
 
-    let view = recovery(&f.client);
-    assert_eq!(
-        (view.operation_id, view.stage),
-        (id, AttemptStage::Cancelling)
-    );
-    let (restore, accepted) = pending_submission(&f.client);
-    assert!(accepted);
+    assert_eq!(recovery(&f.client).operation_id, id);
+    let restore = pending_submission(&scripted);
     assert_ne!(restore, tried, "the slot holds the restore, not the Try");
     scripted.rescript(restore, WaitScript::Deliver);
     f.client.retry_runtime().await.unwrap();
@@ -377,20 +370,19 @@ async fn an_accepted_submission_still_running_is_waited_out_before_recovery() {
         "{result:?}"
     );
     until_idle(&f.client).await;
-    let view = recovery(&f.client);
-    assert_eq!(
-        (view.operation_id, view.stage),
-        (id, AttemptStage::TryingCritical)
-    );
-    let (tried, accepted) = pending_submission(&f.client);
-    assert!(accepted, "the ticket arrived before the wait ended");
+    assert_eq!(recovery(&f.client).operation_id, id);
+    let tried = pending_submission(&scripted);
 
     scripted.rescript(tried, WaitScript::Running);
     let submitted = scripted.submitted();
     let error = f.client.retry_runtime().await.unwrap_err();
     assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(
+        error.message.contains(&format!("{tried} is still Running")),
+        "the ticket arrived before the wait ended: {}",
+        error.message
+    );
     assert!(isolated(&f.client));
-    assert_eq!(pending_submission(&f.client).0, tried);
     assert_eq!(scripted.submitted(), submitted, "nothing is resent blind");
 
     scripted.rescript(tried, WaitScript::Deliver);
@@ -416,10 +408,11 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
     let scripted = f.scripted.clone().expect("a scripted fixture");
 
     scripted.queue(WaitScript::Missing);
+    let id = OperationId::generate();
     let (result, settlement) = super::mutations::mutate_settling(
         &mut f.clash,
         &f.client,
-        OperationId::generate(),
+        id,
         overrides(serde_json::json!({"mode": "direct"})),
         CommandClass::Save,
         plain(),
@@ -433,19 +426,26 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
     assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
     let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
     assert!(text.contains("unknown and needs recovery"), "{text}");
-    let (tried, _) = pending_submission(&f.client);
+    let tried = pending_submission(&scripted);
 
     scripted.rescript(tried, WaitScript::Deliver);
     scripted.queue(WaitScript::Missing);
     assert!(f.client.retry_runtime().await.is_err());
-    let (restore, accepted) = pending_submission(&f.client);
+    let restore = pending_submission(&scripted);
     assert_ne!(restore, tried, "the resolved action was consumed");
-    assert!(accepted);
-    assert_eq!(recovery(&f.client).stage, AttemptStage::Recovering);
+    assert_eq!(
+        recovery(&f.client).operation_id,
+        id,
+        "recovery continues the mutation's own attempt"
+    );
 
     let submitted = scripted.submitted();
-    assert!(f.client.retry_runtime().await.is_err());
-    assert_eq!(pending_submission(&f.client).0, restore);
+    let error = f.client.retry_runtime().await.unwrap_err();
+    assert!(
+        error.message.contains(&restore.to_string()),
+        "{}",
+        error.message
+    );
     assert_eq!(
         scripted.submitted(),
         submitted,
@@ -494,9 +494,7 @@ async fn a_committed_target_retry_that_lost_its_receipt_goes_back_charged_once()
         .await
         .unwrap();
     assert!(isolated(&f.client));
-    let view = recovery(&f.client);
-    assert_eq!(view.origin, AttemptOriginKind::CommittedTarget);
-    let (retried, _) = pending_submission(&f.client);
+    let retried = pending_submission(&scripted);
 
     scripted.rescript(retried, WaitScript::Deliver);
     f.client.retry_runtime().await.unwrap();
@@ -537,7 +535,6 @@ async fn an_automatic_retry_never_recovers() {
         .map(|error| error.kind);
     assert_eq!(refused, Some(Some(CoreErrorKind::OperationConflict)));
     assert!(isolated(&f.client));
-    assert!(recovery(&f.client).action.is_some());
 
     f.client.retry_runtime().await.unwrap();
     assert!(
@@ -556,19 +553,13 @@ async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
     let mut f = fixture().await;
     f.endpoint.set_result_missing(true);
     assert!(f.client.reconcile().await.is_err());
-    let view = recovery(&f.client);
-    assert_eq!(
-        view.origin,
-        AttemptOriginKind::Lifecycle {
-            command: LifecycleCommand::Reconcile
-        }
+    assert!(isolated(&f.client));
+    let error = f.client.retry_runtime().await.unwrap_err();
+    assert!(
+        error.message.contains("core operation"),
+        "still unobserved: {}",
+        error.message
     );
-    assert!(matches!(
-        view.action,
-        Some(ActionView::Submission { accepted: true, .. })
-    ));
-    assert!(f.client.retry_runtime().await.is_err());
-    assert!(recovery(&f.client).action.is_some(), "still unobserved");
 
     f.endpoint.set_result_missing(false);
     let submitted = f.endpoint.reconciled_bytes().len();
@@ -702,15 +693,11 @@ async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
     daemon.parked.notified().await;
     until_idle(&f.client).await;
     let view = recovery(&f.client);
-    assert_eq!(
-        (view.operation_id, view.stage),
-        (id, AttemptStage::Confirming)
-    );
-    assert_eq!(
-        view.action,
-        Some(ActionView::ServiceCommand {
-            command: crate::core::actor_v2::service_actor::ServiceCommandKind::StopDaemon
-        })
+    assert_eq!(view.operation_id, id);
+    assert!(
+        view.reason.contains("service StopDaemon command"),
+        "{}",
+        view.reason
     );
     assert_eq!(f.client.core_status().host, ExecutionHost::Local);
     assert!(
@@ -827,39 +814,22 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
         "the daemon probes a stable Ready while the helper runs"
     );
     assert!(client.status().uncertain);
-    let view = recovery(&client);
-    assert_eq!(
-        view.origin,
-        AttemptOriginKind::Lifecycle {
-            command: LifecycleCommand::InstallService
-        }
-    );
-    assert_eq!(
-        view.action,
-        Some(ActionView::ServiceCommand {
-            command: crate::core::actor_v2::service_actor::ServiceCommandKind::Install
-        })
-    );
     assert_eq!(
         client.start_service().await.unwrap_err().kind,
         Some(CoreErrorKind::OperationConflict)
     );
-    assert!(client.retry_runtime().await.is_err());
-    assert!(recovery(&client).action.is_some(), "the helper still runs");
+    let error = client.retry_runtime().await.unwrap_err();
+    assert!(
+        error.message.contains("service Install command"),
+        "the helper still runs: {}",
+        error.message
+    );
 
     assert!(local.reconciled_bytes().is_empty());
 
     daemon.release.notify_one();
     let resolved = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        loop {
-            let _ = client.retry_runtime().await;
-            if client
-                .mutation_journal()
-                .recovery
-                .is_none_or(|view| view.action.is_none())
-            {
-                break;
-            }
+        while client.retry_runtime().await.is_err() {
             tokio::task::yield_now().await;
         }
     })
@@ -902,19 +872,14 @@ async fn a_lost_handoff() -> super::startup::Graph {
         "{report:?}"
     );
     assert!(isolated(&g.client));
-    assert_eq!(
-        recovery(&g.client).action,
-        Some(ActionView::Handoff {
-            target: crate::core::actor_v2::endpoint::ExecutionHost::Local
-        })
-    );
-    assert_eq!(
-        g.client.retry_runtime().await.unwrap_err().kind,
-        Some(CoreErrorKind::OperationConflict),
-        "the router is still handing off"
+    let error = g.client.retry_runtime().await.unwrap_err();
+    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(
+        error.message.contains("handoff to Local"),
+        "the router is still handing off: {}",
+        error.message
     );
     assert!(isolated(&g.client));
-    assert!(recovery(&g.client).action.is_some());
     g
 }
 
@@ -1000,12 +965,7 @@ async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
     let f = fixture().await;
     f.endpoint.set_result_missing(true);
     assert!(f.client.stop_core().await.is_err());
-    assert_eq!(
-        recovery(&f.client).origin,
-        AttemptOriginKind::Lifecycle {
-            command: LifecycleCommand::StopCore
-        }
-    );
+    assert!(isolated(&f.client));
     f.endpoint.set_result_missing(false);
     f.endpoint.set_status(
         Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),

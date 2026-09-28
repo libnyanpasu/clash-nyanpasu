@@ -27,9 +27,9 @@ use nyanpasu_config::{
     profile::{ManagedProfilePath, ProfileId, Profiles},
 };
 use nyanpasu_core::state::{
-    Ack, AckPolicy, PersistentStateManager, PersistentStateManagerSetup, ReplaceIfVersionError,
-    ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange, StateParticipant,
-    SubscriberName, error::StateChangedError,
+    Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
+    ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange,
+    StateParticipant, SubscriberName, error::StateChangedError,
 };
 use nyanpasu_core_manager::{CoreErrorKind, CoreKind, OperationId};
 use nyanpasu_ipc::api::status::CoreStateDetail;
@@ -44,11 +44,11 @@ use super::{
             TouchedContent, runtime_impact,
         },
         mutation::{
-            CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationConclusion,
-            MutationOutcomeKind, MutationReceipt, RefusalCause,
+            CheckRecord, DEFERRED_RETRY_BUDGET, MutationConclusion, MutationOutcomeKind,
+            MutationReceipt,
         },
         participant::ApplicationMutationParticipant,
-        policy::{CommandClass, CommandPolicy},
+        policy::CommandClass,
     },
     RecordingNotifications, ScriptedWaitEndpoint,
 };
@@ -413,7 +413,15 @@ pub(super) async fn mutate<T>(
     + 'static,
 ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
 where
-    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+    T: super::super::mutation::MutationDomain
+        + Clone
+        + Send
+        + Sync
+        + 'static
+        + Serialize
+        + DeserializeOwned
+        + Default,
+    super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     mutate_settling(
         manager,
@@ -446,7 +454,15 @@ pub(super) async fn mutate_settling<T>(
     crate::state::mutation::Settlement,
 )
 where
-    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+    T: super::super::mutation::MutationDomain
+        + Clone
+        + Send
+        + Sync
+        + 'static
+        + Serialize
+        + DeserializeOwned
+        + Default,
+    super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let hints = MutationHints::default();
     let (version, impact) = {
@@ -498,7 +514,15 @@ pub(super) async fn mutate_with_hints<T>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
-    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+    T: super::super::mutation::MutationDomain
+        + Clone
+        + Send
+        + Sync
+        + 'static
+        + Serialize
+        + DeserializeOwned
+        + Default,
+    super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let operation_id = OperationId::generate();
     let (version, impact) = {
@@ -547,7 +571,15 @@ pub(super) async fn simple_mutate<T>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
-    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+    T: super::super::mutation::MutationDomain
+        + Clone
+        + Send
+        + Sync
+        + 'static
+        + Serialize
+        + DeserializeOwned
+        + Default,
+    super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let operation_id = OperationId::generate();
     let result = mutate(
@@ -1568,9 +1600,10 @@ async fn a_running_core_with_no_confirmed_apply_refuses_a_critical_mutation() {
     );
     let receipt = settled(&client, operation_id).await;
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    assert_eq!(
-        receipt.refusal,
-        Some(RefusalCause::Evidence(EvidenceGap::NoRestorableBaseline))
+    let text = crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+    assert!(
+        text.contains("a core is running that this session has not applied to"),
+        "{text}"
     );
     assert!(
         !client.status().uncertain,
@@ -1638,13 +1671,10 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
         text.contains("the core will not run this document"),
         "{text}"
     );
-    // A Try that ran and was refused, not an evidence gap: the two refusals are
-    // different facts and the receipt is where they stay apart.
-    assert_eq!(
-        receipt.refusal,
-        Some(RefusalCause::Try(
-            super::super::policy::TryCauseKind::Deterministic
-        ))
+    // A Try that ran and was refused, not an evidence gap.
+    assert!(
+        text.contains("the core rejected this configuration"),
+        "{text}"
     );
     assert!(!f.client.status().uncertain);
 }
@@ -1711,9 +1741,10 @@ async fn a_host_that_publishes_nothing_refuses_a_critical_mutation() {
     let receipt = settled(&f.client, operation_id).await;
     assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    assert_eq!(
-        receipt.refusal,
-        Some(RefusalCause::Evidence(EvidenceGap::BaselineUnconfirmed))
+    let text = crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+    assert!(
+        text.contains("reports no settled runtime state (None)"),
+        "{text}"
     );
     assert!(
         !f.client.status().uncertain,
@@ -1809,18 +1840,18 @@ async fn a_transitional_core_state_refuses_a_mutation_without_isolating_the_doma
             "{state:?}: a core mid-transition is not a baseline to apply against"
         );
         let receipt = settled(&f.client, operation_id).await;
-        assert_eq!(
-            receipt.policy,
-            CommandPolicy::MustApply,
-            "{state:?}: a transition is not a stop, so the command keeps its policy"
+        assert_ne!(
+            receipt.outcome,
+            MutationOutcomeKind::SavedInactive,
+            "{state:?}: a transition is not a stop"
         );
-        assert_ne!(receipt.outcome, MutationOutcomeKind::SavedInactive);
         assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
         assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-        assert_eq!(
-            receipt.refusal,
-            Some(RefusalCause::Evidence(EvidenceGap::CoreTransitioning)),
-            "{state:?}"
+        let text =
+            crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+        assert!(
+            text.contains("reports no settled runtime state (Some("),
+            "{state:?}: {text}"
         );
         assert!(
             !f.client.status().uncertain,
@@ -2073,20 +2104,19 @@ async fn a_repeated_manual_deferral_preserves_automatic_budget() {
 #[test]
 fn the_ack_of_an_outcome_follows_the_failure_matrix() {
     use super::super::{
-        mutation::{ApplyFailure, RefusalCause, RetryableCause, RuntimePrepareOutcome, TryAck},
+        mutation::{ApplyFailure, RefusalCause, RetryableCause, RuntimePrepareOutcome},
         policy::TryCauseKind,
     };
 
-    assert_eq!(
+    assert!(matches!(
         RuntimePrepareOutcome::SavedInactive {
             identity: String::new()
         }
         .ack(),
-        TryAck::Ok
-    );
-    assert_eq!(
+        Ack::Ok
+    ));
+    assert!(matches!(
         RuntimePrepareOutcome::Deferred {
-            baseline: super::super::mutation::KnownRuntimeState::Stopped,
             digest: "digest".into(),
             cause: RetryableCause {
                 stage: super::super::mutation::MutationStage::TryingCritical,
@@ -2094,9 +2124,9 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
             },
         }
         .ack(),
-        TryAck::Degraded("briefly unreachable".into())
-    );
-    assert_eq!(
+        Ack::Degraded(message) if message == "briefly unreachable"
+    ));
+    assert!(matches!(
         RuntimePrepareOutcome::Rejected {
             cause: ApplyFailure {
                 stage: super::super::mutation::MutationStage::TryingCritical,
@@ -2106,8 +2136,8 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
             restored: super::super::mutation::KnownRuntimeState::Stopped,
         }
         .ack(),
-        TryAck::Rejected("the core rejected it".into())
-    );
+        Ack::Rejected(message) if message == "the core rejected it"
+    ));
 }
 
 // -- R14: a host switch is applied, not assumed -----------------------------
@@ -2210,11 +2240,6 @@ async fn a_host_switch_moves_the_runtime_inside_the_try_and_back_on_cancel() {
     );
 
     let receipt = settled(&client, operation_id).await;
-    assert_eq!(
-        receipt.impact,
-        super::super::impact::RuntimeImpact::HostSwitch
-    );
-    assert_eq!(receipt.policy, CommandPolicy::MustApply);
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(
         receipt.conclusion,
@@ -2373,8 +2398,8 @@ async fn an_unobserved_apply_after_a_handoff_keeps_its_recovery_context() {
             .mutation_journal()
             .recovery
             .expect("an isolated domain names why")
-            .stage,
-        super::super::attempt::AttemptStage::TryingCritical
+            .operation_id,
+        operation_id
     );
     assert!(!application.snapshot().enable_service_mode);
 }
@@ -2455,8 +2480,8 @@ async fn a_restore_that_cannot_be_observed_is_not_a_clean_cancel() {
             .mutation_journal()
             .recovery
             .expect("an isolated domain names why")
-            .stage,
-        super::super::attempt::AttemptStage::Cancelling
+            .operation_id,
+        operation_id
     );
 }
 
@@ -2539,12 +2564,11 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
         receipt.detail
     );
     assert!(client.status().uncertain);
+    let error = client.retry_runtime().await.unwrap_err();
     assert!(
-        matches!(
-            client.mutation_journal().recovery.unwrap().action,
-            Some(super::super::attempt::ActionView::Submission { .. })
-        ),
-        "an unknown restore retains its lower operation identity"
+        error.message.contains("core operation"),
+        "an unknown restore retains its lower operation identity: {}",
+        error.message
     );
     assert!(
         ports.confirmed().is_none(),
@@ -4138,9 +4162,9 @@ async fn a_conflicting_version_never_waits_for_a_settlement() {
     assert_eq!(f.endpoint.reconciled_bytes().len(), submitted, "no Try ran");
 }
 
-/// V06: a Try that never reached the workflow did not run. The source keeps
-/// its version, the core is untouched, and the error says the mutation was not
-/// run.
+/// V06: a Try that never reached the workflow did not run. The participant
+/// refuses it rather than failing it, the source keeps its version, the core
+/// is untouched, and the error says nothing was committed.
 #[tokio::test]
 async fn a_try_the_workflow_never_received_is_refused_as_not_run() {
     let mut f = fixture().await;
@@ -4161,8 +4185,18 @@ async fn a_try_the_workflow_never_received_is_refused_as_not_run() {
     .await;
     let settlement = settlement.await.ok();
     assert!(settlement.is_none(), "the Runtime never took the Try");
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), settlement.as_ref());
-    assert!(text.contains("the mutation was not run"), "{text}");
+    let Err(ReplaceIfVersionError::State(StateChangedError::PrepareAck(refusal))) = &result else {
+        panic!("{result:?}");
+    };
+    assert!(
+        matches!(
+            refusal.report.subscriber_acks.as_slice(),
+            [ack] if matches!(&ack.status, AckStatus::Rejected { reason }
+                if reason.contains("nothing was committed"))
+        ),
+        "{:?}",
+        refusal.report
+    );
     assert_eq!(f.clash.snapshot_handle().load().version, before);
     assert!(f.endpoint.reconciled_bytes().is_empty());
 }

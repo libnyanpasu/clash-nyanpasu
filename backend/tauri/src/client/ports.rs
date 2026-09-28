@@ -28,14 +28,13 @@ pub struct PortsFingerprint {
     external: ExternalControllerStrategy,
 }
 
-impl PortsFingerprint {
-    fn of(clash: &ClashConfig) -> Self {
-        Self {
-            mixed: clash.mixed_port.clone(),
-            socks: clash.socks_port.clone(),
-            http: clash.http_port.clone(),
-            external: clash.external_controller.clone(),
-        }
+/// The port strategies of `clash`, which are all a resolution depends on.
+fn ports_fingerprint(clash: &ClashConfig) -> PortsFingerprint {
+    PortsFingerprint {
+        mixed: clash.mixed_port.clone(),
+        socks: clash.socks_port.clone(),
+        http: clash.http_port.clone(),
+        external: clash.external_controller.clone(),
     }
 }
 
@@ -73,7 +72,7 @@ impl SessionPortResolver {
     /// running core still holds would make a Fixed strategy report its own
     /// port as occupied and move an AllowFallback one off it. Writes nothing.
     pub fn resolve_candidate(&self, clash: &ClashConfig) -> anyhow::Result<CandidatePortBindings> {
-        let fingerprint = PortsFingerprint::of(clash);
+        let fingerprint = ports_fingerprint(clash);
         let previous = self
             .runtime
             .confirmed()

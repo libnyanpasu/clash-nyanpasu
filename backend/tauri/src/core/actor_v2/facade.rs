@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use futures::future::{BoxFuture, FutureExt, Shared};
 use nyanpasu_core_manager::{
     ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec, Epoch,
     InstanceOptions, OperationId, ReconcileRequest, RevisionId,
@@ -10,7 +9,6 @@ use nyanpasu_core_manager::{
 use nyanpasu_ipc::api::core::v2::{
     OperationInfo, OperationOutputInfo, OperationPhase, ReconcileOutcomeKind,
 };
-use tokio::sync::OnceCell;
 
 use super::{
     ControllerGeneration, CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport,
@@ -128,8 +126,6 @@ impl CommandFailure {
     }
 }
 
-type SharedShutdown = Shared<BoxFuture<'static, ShutdownReport>>;
-
 /// The one external action this application started and has not yet seen
 /// finish (T10 §1.11).
 ///
@@ -227,7 +223,6 @@ pub(crate) enum ActionEvidence {
 pub struct CoreFacade {
     core: CoreClient,
     service: ServiceClient,
-    shutdown: OnceCell<SharedShutdown>,
     pending: Option<PendingAction>,
 }
 
@@ -236,7 +231,6 @@ impl CoreFacade {
         Self {
             core,
             service,
-            shutdown: OnceCell::new(),
             pending: None,
         }
     }
@@ -730,26 +724,13 @@ impl CoreFacade {
     }
 
     pub async fn shutdown(&self) -> ShutdownReport {
-        self.shutdown
-            .get_or_init(|| {
-                let core = self.core.clone();
-                std::future::ready(
-                    async move {
-                        match core.shutdown().await {
-                            Ok(report) => report,
-                            Err(error) => ShutdownReport {
-                                stop: Err(error),
-                                final_status: core.status().snapshot,
-                            },
-                        }
-                    }
-                    .boxed()
-                    .shared(),
-                )
-            })
-            .await
-            .clone()
-            .await
+        match self.core.shutdown().await {
+            Ok(report) => report,
+            Err(error) => ShutdownReport {
+                stop: Err(error),
+                final_status: self.core.status().snapshot,
+            },
+        }
     }
 
     /// A command whose terminal output the caller still has to classify: the
@@ -900,10 +881,7 @@ fn unexpected_output(command: &str, output: &OperationOutputInfo) -> CoreError {
 mod tests {
     use std::{
         borrow::Cow,
-        sync::{
-            Arc, Mutex,
-            atomic::{AtomicUsize, Ordering},
-        },
+        sync::{Arc, Mutex, atomic::Ordering},
     };
 
     use camino::Utf8PathBuf;
@@ -933,7 +911,6 @@ mod tests {
         host: ExecutionHost,
         status: CoreStatusSnapshot,
         submissions: Mutex<Vec<CoreSubmission>>,
-        stops: AtomicUsize,
         calls: Arc<Mutex<Vec<&'static str>>>,
         reconcile_outcome: Mutex<ReconcileOutcomeInfo>,
         /// Scripts a lost operation result: the submission was admitted but
@@ -960,7 +937,6 @@ mod tests {
                     applied_kind: None,
                 },
                 submissions: Mutex::new(Vec::new()),
-                stops: AtomicUsize::new(0),
                 calls: Arc::new(Mutex::new(Vec::new())),
                 reconcile_outcome: Mutex::new(ReconcileOutcomeInfo {
                     outcome: ReconcileOutcomeKind::Noop,
@@ -1023,9 +999,6 @@ mod tests {
         }
 
         async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
-            if matches!(submission.envelope.command, CoreCommand::Stop) {
-                self.stops.fetch_add(1, Ordering::SeqCst);
-            }
             if self.lose_next.swap(false, Ordering::SeqCst) {
                 self.lost
                     .lock()
@@ -1345,18 +1318,6 @@ mod tests {
             facade.pending_action().is_none(),
             "validation failed before any mutation was submitted"
         );
-    }
-
-    #[tokio::test]
-    async fn a_second_shutdown_awaits_the_same_future() {
-        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
-        let (facade, _) = facade(local.clone()).await;
-        let facade = Arc::new(facade);
-
-        let (first, second) = tokio::join!(facade.shutdown(), facade.shutdown());
-
-        assert_eq!(first.stop, second.stop);
-        assert_eq!(local.stops.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

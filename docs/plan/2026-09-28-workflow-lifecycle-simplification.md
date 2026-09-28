@@ -1,6 +1,6 @@
 # Workflow 与生命周期精简实施计划
 
-> **状态**：实施中（2026-09-28）。§12 各项按默认执行；PR-0 不在本计划内执行。
+> **状态**：已实施（2026-09-28），分 PR-1..PR-3 交付，待评审；实施记录见 §16。§12 各项按默认执行；PR-0 不在本计划内执行。
 >
 > **基线**：`refactor/tcc-t11-cleanup@fb7de1b06`（PR #5389；栈 #5385–#5389 均未合并），`backend/nyanpasu-runtime@f5b581fad`。锁定版本：ractor 0.16.5、tokio-util 0.7.19、tauri 2.11.5、tauri-runtime-wry 2.11.4、tauri-plugin-global-shortcut 2.3.2、atomicwrites 0.4.4。
 >
@@ -74,7 +74,7 @@
 | 生产中唯一起作用的 ACK 期限，是 participant 的 90 s `MUTATION_ACK_TIMEOUT`。默认 30 s，以及 committed / rolled-back 两个期限，只包着 no-op 回调。                                                                                                                                                                                                                  | `participant.rs:52,115-117`；`backend/nyanpasu-core/src/state/ack.rs:53-57`                                                                                                          |
 | 生产入口：`replace_if_version_with_participant` 共 4 处，`upsert` 1 处。没有生产代码使用 `replace_if_version`、`with_pending_state_timeout`、Simple / Weak / Builder 这几个 manager。                                                                                                                                                                              | `state/application.rs:119`，`state/clash_config.rs:106`，`state/profiles/actor.rs:468,1136`；`state/session_state.rs:60`                                                             |
 | 所有 store 写入都在同一个 writer permit 之下进行，**生产中不可能出现 CAS 失配**。                                                                                                                                                                                                                                                                                  | `nyanpasu-core/src/state/transaction.rs:532,552`；`snapshot.rs:6-19`                                                                                                                 |
-| 配置写入是 `AtomicFile`：先写同目录临时文件，`sync_all`，再 rename。写失败时旧文件保持不变，恢复性回写因 `config_written = false` 被跳过。                                                                                                                                                                                                                         | atomicwrites-0.4.4 `lib.rs:118-121,134-164,179-202`；`nyanpasu-core/.../persistent_state.rs:346-350,456-460`                                                                         |
+| 配置写入是 `AtomicFile`：先写同目录临时文件，`sync_all`，再 rename。rename 之前失败时旧文件保持不变；Unix 上 rename 之后还要同步源、目标两个目录，这一步失败同样返回 Err，而目标已是新文件（第二次审查更正，见 §11、§16.6）。两种失败下 `config_written` 都是 false，恢复性回写都被跳过。                                                                          | atomicwrites-0.4.4 `lib.rs:118-121,134-164,179-202`；`nyanpasu-core/.../persistent_state.rs:346-350,456-460`                                                                         |
 | **一旦 `on_prepare` 被调用，每一条出口都会发布决定。** 各出口的发布点：<br>• `RollbackGuard` 在 prepare 之前已经上膛，drop 时发布 Aborted；<br>• 版本冲突在调用 participant 之前就 abort；<br>• 调用方取消也会 abort。<br>所以删除 `decision_wait` 不会因为写入方被丢弃而挂死。                                                                                    | `transaction.rs:355-360,182-195`；`coordinator.rs:414-421`；`persistent_state.rs:473-477`；`decision.rs:44-54`                                                                       |
 | **Cancel 今天已经会把旧运行配置恢复回内核。** 恢复方式是用 baseline receipt 的 `config_text` 重新 reconcile，然后用一次新的观察去核验。                                                                                                                                                                                                                            | `client/application_workflow/tcc.rs:1393-1412` → `restore` `:1460-1606`                                                                                                              |
 | 缺的是调用方这一侧：源持久化失败时，`?` 直接返回，跳过了 `finish`。Cancel 与这次回复并发进行，它的结果只写进 journal。                                                                                                                                                                                                                                             | `state/application.rs:117-127`、`clash_config.rs:104-114`、`profiles/actor.rs:466-479,1134-1225`；测试 `tests/mod.rs:1262-1304` 只能等 journal                                       |
@@ -128,9 +128,13 @@ Application   ClashConfig      Profiles      SessionState        ← 源 owner�
 | SystemProxy                           | actor              | mailbox                                                      | post_stop 停止 guard，然后执行已有的 `restore()`（等待自己的 OS 写入）                                |
 | Hotkey                                | actor              | mailbox                                                      | post_stop 经 `MainThreadExecutor` 执行 `unregister_all`                                               |
 | Widget                                | 普通结构体 + Mutex | 锁                                                           | 握手 `select!` 在令牌取消时结束；被跟踪的任务调用 `stop(now + WIDGET_STOP_BOUND)`（进程边界期限保留） |
-| Updater                               | actor              | mailbox                                                      | 下载阶段可以取消；已开始的安装要等它完成                                                              |
+| Updater                               | actor              | mailbox                                                      | 令牌只结束下载（在 backend 的下载内生效）；已开始的解压与安装要等它完成                               |
 | 边界 producer（4 个）                 | 被跟踪的任务       | 无                                                           | 令牌取消即结束（沿用 `ProducerTasks::track` 的写法）                                                  |
-| Streams / Proxies / Logs / server     | —                  | —                                                            | 没有持久副作用，不跟踪，交给进程退出（Q-G）                                                           |
+| Streams / Proxies                     | actor              | mailbox                                                      | drain；Streams 的 post_stop 停止并 await worker，Proxies 的监视与定时轮询随 state 结束                |
+| Logs（日志查询）                      | actor（子模块）    | mailbox                                                      | 被跟踪的任务在令牌取消后调用 `shutdown()`（client 不暴露 cell）                                       |
+| 内部 HTTP server                      | 独立线程           | 无                                                           | 不跟踪，交给进程退出（Q-G）；唯一的写入是图标缓存，被截断的缓存读取失败后删除重取                     |
+
+Streams / Proxies / Logs 原先也按 Q-G 交给进程退出。第二次审查指出 IPC `cleanup_processes` 关停后应用继续运行，streams worker 与 proxies 定时器会继续请求 core，因此改为跟踪（§16.6）。
 
 ### 3.3 一次运行态相关修改的执行链（目标）
 
@@ -785,21 +789,34 @@ nyanpasu-core 的最小改动：让 `replace_if_version_with_participant` 的 pa
 
 ## 11. 残留与独立问题（不并入本计划）
 
-| 项                                                                                                                       | 性质                                        | 建议去向                                                                             |
-| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **PR-0**：`nyanpasu_ipc::Client` 没有请求超时（`client/mod.rs:116-131`，上游 origin/main 也一样）                        | 下层缺陷（U3）                              | 上游 nyanpasu-runtime PR；本仓库在 `setup.rs:74-75` 加 TODO，并在 roadmap §12.2 登记 |
-| `resolve_setup` 重构（§9）                                                                                               | U11                                         | 后续 setup PR；`resolve.rs:171-173` 的 TODO 与 roadmap 行                            |
-| 子模块 `nyanpasu-logging` 的 5 s call / stop 期限，以及 JoinError→Err 转换（`session.rs:44-63,92-98`）                   | 同进程期限，但在子模块里                    | 上游 PR                                                                              |
-| 用户 JS / Lua 脚本没有执行上限（`application_workflow/adapters.rs:53-89`，`enhance/`）                                   | 早已存在；死循环会让该域保存永久挂起        | 独立 issue（解释器边界）                                                             |
-| macOS 的 Quit / Cmd+Q / 注销会直接进入 `RunEvent::Exit`，没有 `ExitRequested`（`lib.rs:267-283,323-350`）                | 疑似今天就没有优雅关停，需要 macOS 复现     | 独立 issue                                                                           |
-| 日志的 `WorkerGuard` 从未 drop / flush（`utils/init/logging.rs:93-97`）                                                  | 早已存在                                    | 独立 issue                                                                           |
-| 内部 HTTP server 从未停止；选端口与绑定之间有竞争窗口（`lib.rs:308-316`，`setup.rs:153-155`）                            | 早已存在，疑似                              | 独立 issue                                                                           |
-| 前端没有监听 core / service 状态事件，Starting 被显示为“已停止”                                                          | F2 的相关项                                 | 随 §9 的后续 PR                                                                      |
-| `ShutdownState::CleaningUp` 死分支（`shutdown_hook.rs:32,94-104`）                                                       | 早已存在的死代码，按 AGENTS §3 只提及不删除 | 后续 Windows PR（roadmap 已有 hook static 一行）                                     |
-| 零散的 `run_on_main_thread` 调用（`core/tray/mod.rs:221`、`ipc.rs:1305-1362`、`resolve.rs:160-162,237-254`）             | 可以改用 `MainThreadExecutor`               | 后续                                                                                 |
-| `CoreUpdateInstaller` 只剩“actor 不可用”一种 pending 映射后，更新器任务可能永久 Pending（`core/updater/mod.rs:352-368`） | 疑似，需要复现（U10）                       | 实施 L3-3 时核对；若成立，报告后再定                                                 |
-| 今天每次退出可能卡约 5 s 并报告热键 Incomplete                                                                           | 疑似；L2-1 / L2-2 之后应当消失              | smoke 确认                                                                           |
-| Linux 的 SIGTERM 没有处理（`Cargo.toml` 中的 `ctrlc` 未使用）                                                            | 早已存在                                    | 独立 issue                                                                           |
+| 项                                                                                                                       | 性质                                                                                              | 建议去向                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **PR-0**：`nyanpasu_ipc::Client` 没有请求超时（`client/mod.rs:116-131`，上游 origin/main 也一样）                        | 下层缺陷（U3）                                                                                    | 上游 nyanpasu-runtime PR；本仓库在 `setup.rs:74-75` 加 TODO，并在 roadmap §12.2 登记 |
+| `resolve_setup` 重构（§9）                                                                                               | U11                                                                                               | 后续 setup PR；`resolve.rs:171-173` 的 TODO 与 roadmap 行                            |
+| 子模块 `nyanpasu-logging` 的 5 s call / stop 期限，以及 JoinError→Err 转换（`session.rs:44-63,92-98`）                   | 同进程期限，但在子模块里                                                                          | 上游 PR                                                                              |
+| 用户 JS / Lua 脚本没有执行上限（`application_workflow/adapters.rs:53-89`，`enhance/`）                                   | 早已存在；死循环会让该域保存永久挂起                                                              | 独立 issue（解释器边界）                                                             |
+| macOS 的 Quit / Cmd+Q / 注销会直接进入 `RunEvent::Exit`，没有 `ExitRequested`（`lib.rs:267-283,323-350`）                | 疑似今天就没有优雅关停，需要 macOS 复现                                                           | 独立 issue                                                                           |
+| 日志的 `WorkerGuard` 从未 drop / flush（`utils/init/logging.rs:93-97`）                                                  | 早已存在                                                                                          | 独立 issue                                                                           |
+| 内部 HTTP server 从未停止；选端口与绑定之间有竞争窗口（`lib.rs:308-316`，`setup.rs:153-155`）                            | 早已存在，疑似。它会下载并写图标缓存，被截断的缓存读取失败后删除重取，所以仍交给进程退出（§16.6） | 独立 issue                                                                           |
+| 前端没有监听 core / service 状态事件，Starting 被显示为“已停止”                                                          | F2 的相关项                                                                                       | 随 §9 的后续 PR                                                                      |
+| `ShutdownState::CleaningUp` 死分支（`shutdown_hook.rs:32,94-104`）                                                       | 早已存在的死代码，按 AGENTS §3 只提及不删除                                                       | 后续 Windows PR（roadmap 已有 hook static 一行）                                     |
+| 零散的 `run_on_main_thread` 调用（`core/tray/mod.rs:221`、`ipc.rs:1305-1362`、`resolve.rs:160-162,237-254`）             | 可以改用 `MainThreadExecutor`                                                                     | 后续                                                                                 |
+| `CoreUpdateInstaller` 只剩“actor 不可用”一种 pending 映射后，更新器任务可能永久 Pending（`core/updater/mod.rs:352-368`） | 疑似，需要复现（U10）                                                                             | 已在 L3-3 解决，见 §16.3                                                             |
+| 今天每次退出可能卡约 5 s 并报告热键 Incomplete                                                                           | 疑似；L2-1 / L2-2 之后应当消失                                                                    | smoke 确认                                                                           |
+| Linux 的 SIGTERM 没有处理（`Cargo.toml` 中的 `ctrlc` 未使用）                                                            | 早已存在                                                                                          | 独立 issue                                                                           |
+
+实施中新增的残留（2026-09-28）：
+
+| 项                                                                                                                                                                                                                                                                            | 性质                                                                   | 建议去向                                                                                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| profiles 测试 `add_success_leaves_no_materialization_staging_leftovers`（`client/profiles.rs`）偶发失败：`fb7de1b06` 上 100 次失败 4 次，`477a0875f` 上 60 次失败 2 次，残留 `journal/file-first/{prepared,promoting}/*.YAML.tmp`                                             | 早已存在，未调查（U10）                                                | 独立 issue                                                                                                                |
+| `tcc.rs` `confirm()` 的 `Rejected` 分支（“committed after its runtime target was refused”）不可达：Required 拒绝必然中止源事务，与 L4-2 删除的恢复分支同理                                                                                                                    | 早已存在的不可达分支，计划未列                                         | 后续清理 PR                                                                                                               |
+| 本计划之前已死的项：`MutationStage::{AwaitDecision, Cancelling}`、`ApplyFailure.stage`、`RuntimePrepareOutcome::Rejected.restored`（L4-2 改为逐项 `allow(dead_code)`），`StagedResourceToken::as_str` 与 `ContentDigest::as_str`，非 macOS 构建上 `impact.rs` 的 `unused_mut` | 早已存在的死代码，按 AGENTS §3 只提及                                  | 后续清理 PR                                                                                                               |
+| clippy 报告的 13 条 unused dependency 清单警告（`tauri` 9 条，`boa_utils`、`nyanpasu-config`、`nyanpasu-core`、`nyanpasu-helper` 各 1 条）                                                                                                                                    | 早已存在                                                               | 后续依赖整理                                                                                                              |
+| future-incompat lint `recursion_depth_exceeding_limit`（每个 crate 只报一次）的报告位置从 `core/proxies.rs` 移到 workflow actor 的 `handle`（L3-2 之后）                                                                                                                      | 仍是警告；将来的 Rust 版本会改为硬错误                                 | 在 PR 中说明；转为硬错误前单独处理                                                                                        |
+| 测试 `commit_receipt_and_status_keep_source_separate_from_pending_notifications`（`client/effects/tests.rs`）无上限地等待 `port.entered.notified()`，回归时挂起而不是失败                                                                                                     | 早已存在的测试缺陷                                                     | 后续测试 PR                                                                                                               |
+| PR-2 验收 `rg` 的剩余命中：`client/effects/actor.rs` 的 `fn drive`（effects 分组调度，Q-E 保留）与 `tests/closing.rs` 中的一个测试名                                                                                                                                          | 已接受，不是第二层调度                                                 | 无                                                                                                                        |
+| 原子写入在 rename 之后的目录同步失败（Unix）时返回 Err，但目标已是新文件：state 保留旧快照，Runtime Cancel 恢复旧运行配置，磁盘却是新配置（`nyanpasu-core/.../persistent_state.rs` `write_config_step`；atomicwrites-0.4.4 `lib.rs:179-202`）                                 | 早已存在：基线同样因 `config_written = false` 跳过回写；第二次审查发现 | 独立 PR：在写入边界区分“尚未发布”与“已发布但持久性确认失败”，无法确认时如实报告；补 rename 之后目录同步失败的故障注入测试 |
 
 ---
 
@@ -815,7 +832,7 @@ nyanpasu-core 的最小改动：让 `replace_if_version_with_participant` 的 pa
 | Q-D | `Aborted{NeedsRecovery}`（profiles 资源补偿失败）同样 Cancel 回滚，并报告两个错误；取消“永久隔离”特例                                            | 执行（统一适用 U7） |
 | Q-E | effects 的分组、合并、重试调度保留，只删除超时、abort 和关停协议                                                                                 | 保留                |
 | Q-F | 重启沿用 `launch` 重启器，但放到所有 owner 结束之后再 spawn；不换成 tauri 的 `restart()`（后者带 macOS Info.plist 查找，但单例锁上的行为未验证） | 沿用                |
-| Q-G | 退出时只跟踪有真实清理工作的 owner（§3.2 表）；Streams / Proxies / Logs / server 交给进程退出                                                    | 执行                |
+| Q-G | 退出时只跟踪有真实清理工作的 owner（§3.2 表）；内部 HTTP server 交给进程退出。Streams / Proxies / Logs 原也在此列，第二次审查后改为跟踪（§16.6） | 执行（已修订）      |
 | Q-H | L4-3 的 `of()` 全部改掉，包括 workflow 之外的 `ports.rs` 与 `system_proxy`                                                                       | 执行                |
 | Q-I | P1-1 把未入库的评审稿作为输入一并入库                                                                                                            | 入库                |
 
@@ -889,3 +906,116 @@ cargo check --manifest-path backend/Cargo.toml --target x86_64-unknown-linux-gnu
   - 最终窗口几何的保存。
 
   没有执行的 smoke 如实标记为“未执行”。
+
+---
+
+## 16. 实施记录
+
+提交哈希为第二次审查修复折叠之后的哈希（§16.6）。§16.2 中带哈希的验证记录保留当时的哈希。
+
+### 16.1 分支与提交
+
+**PR-1** `refactor/lifecycle-lower-modules`（基于 `refactor/tcc-t11-cleanup@fb7de1b06`）：
+
+| 计划项 | 提交                                                                                  |
+| ------ | ------------------------------------------------------------------------------------- |
+| P1-1   | `352e26f4c` docs(plan): plan the workflow and lifecycle simplification                |
+| P1-2   | `fd4570c3f` docs(agents): scope deadlines to network IO and state the ownership rules |
+| P1-3   | `8e834ca0e` refactor(state): stop timing subscriber acknowledgements                  |
+| P1-4   | `1b391975d` refactor(state): drop the shutdown-skip hook                              |
+| P1-5   | `2c6e95172` refactor(state): remove the unused effect timeout                         |
+| P1-6   | `a548de7cb` refactor(state): let notification and write panics propagate              |
+| P1-7   | `4c0941090` refactor(state): run the participant transaction on the caller            |
+| P1-8   | `cf8af1e05` refactor(state): drop the config write-back after a store race            |
+| P1-9   | `a4ba27f28` feat(client): run hotkey registration on an injected main-thread executor |
+| P1-10  | `904051c06` refactor: remove production catch_unwind from the resource owners         |
+| P1-11  | `eaafe2f9c` refactor: stop turning worker panics into errors                          |
+| P1-12  | `48265fd6b` refactor(client): await in-process calls outside the shutdown path        |
+
+**PR-2** `refactor/owner-shutdown-and-workflow`（基于 PR-1 `48265fd6b`）：
+
+| 计划项 | 提交                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------ |
+| L2-1   | `97005f38c` refactor(lifecycle): request the exit without blocking the main thread         |
+| L2-2   | `86fa17e06` refactor(lifecycle): let each owner tear itself down on the shutdown token     |
+| L3-1   | `58df1aaa5` refactor(workflow): wait for the decision and the caller without local budgets |
+| L3-2   | `a2241fe8b` refactor(workflow): run each command in the actor handler                      |
+| L3-3   | `686bb63bc` refactor(workflow): hand the mutation settlement back to the source            |
+| L3-4   | `3372e4461` refactor(effects): notify effects per domain from each owner                   |
+| L3-5   | `eb7a521d6` refactor(state): accept local write hooks without a participant                |
+| L3-6   | `b013f814d` refactor(workflow): classify at the source, keep plain saves off runtime       |
+
+**PR-3** `refactor/workflow-residue-cleanup`（基于 PR-2 `b013f814d`）：
+
+| 计划项 | 提交                                                                          |
+| ------ | ----------------------------------------------------------------------------- |
+| L4-1   | `c064e636d` refactor(workflow): acknowledge with Ack instead of a mirror type |
+| L4-2   | `8d1e3fa3e` refactor(workflow): keep only recovery state with a real cause    |
+| L4-3   | `06404f746` refactor: replace of() constructors with From and named functions |
+| L4-4   | 本提交：docs: mark the superseded lifecycle and timeout statements            |
+
+### 16.2 验证
+
+- **PR-1**（`477a0875f`）：
+  - `cargo fmt` 检查通过；clippy 由每个提交的 pre-commit hook 执行并通过；
+  - workspace `cargo test --workspace --all-features`：1238 passed、0 failed、2 ignored（20 个测试集）；
+  - bindings 导出无漂移；`pnpm lint:architecture-ledger` 与 `pnpm test:architecture-ledger` 通过；
+  - Linux 交叉检查（§15 的 `--target x86_64-unknown-linux-gnu`）未执行：本机缺少 aws-lc-sys 所需的交叉 gcc。已人工核对删除的符号在 cfg 门控代码中也没有引用，以三平台 CI 为准。
+- **PR-2**（`767606625`，即 L3-6 修订前的 head；之后折叠了测试与属性行，以及 §16.5 的审查修复，得到 `431aab4c6`）：
+  - workspace 1219 passed、0 failed、2 ignored；
+  - bindings 导出与提交内容一致；wire 变化只有 L3-2 删除的 `queued`，以及 L3-3 删除的 `RuntimeCommitStatus::Pending` 与 `UpdaterState::Pending`；
+  - ledger、`pnpm typecheck`、`pnpm test:frontend` 通过。
+- **PR-3**：
+  - 每个提交：`cargo test -p clash-nyanpasu --lib` 919 passed、0 failed、1 ignored；clippy `--all-targets --all-features` 的警告与 PR-2 head 相同；
+  - L4-3 之后 workspace 1219 passed、0 failed、2 ignored；
+  - 没有 wire 变化（`frontend/` 无 diff），未运行 `pnpm typecheck` 与 `pnpm test:frontend`；
+  - L4-4：prettier 与 `pnpm lint:architecture-ledger` 通过。
+- **审查修复之后**（§16.5）：PR-2 head `431aab4c6` 与 PR-3 head 各跑 `cargo test -p clash-nyanpasu --lib` 919 passed、0 failed、1 ignored，`cargo test -p nyanpasu-core` 108 passed、0 failed；hook clippy 通过。
+- **三平台 CI**：推送后，第二次审查修复之前的栈顶 `9115616da` 上 run 36380052236 全部通过（Windows / macOS / Ubuntu 的 lint、Tauri 构建与单元测试）。
+- **第二次审查修复之后**（§16.6）：
+  - 从 L2-2 到 L4-3 的每个重写提交，`cargo clippy -p clash-nyanpasu --lib --tests --all-features` 均通过，诊断与重写前的同一提交一致（忽略行列号），没有新增警告；
+  - `cargo test -p clash-nyanpasu --lib`：PR-1 head 939 passed、PR-2 head 923 passed、PR-3 head 922 passed，均 0 failed、1 ignored；`cargo test -p nyanpasu-core` 108 passed、0 failed；
+  - 新测试与改动的测试连跑 10 次无抖动；
+  - 栈顶全量 gate：`cargo fmt` 检查通过；workspace `cargo test --workspace --all-features` 1222 passed、0 failed、2 ignored（新增 4 个测试、删除 1 个）；bindings 导出无漂移；ledger 与其测试、`pnpm typecheck`、`pnpm test:frontend` 60/60 均通过。
+- **未执行**：§15 的全部 smoke；修复折叠后的三平台 CI。
+
+### 16.3 实施中的裁定
+
+1. **P1-12 取方案 A**：updater 的 `call`（120 s）、`StreamsClient::call`（10 s）与 `SessionStateClient::save_main_window`（10 s）同时服务关停步骤（`updater.shutdown()`、`streams.stop()`、第 6 步最终几何保存）。方案 A 按计划把三者都改为 `None`，不给这些辅助函数加 timeout 参数；备选是只给关停调用方保留期限（B），或留到 L2-2 再改（C）。理由：关停路径上的这些调用本来就被旧编排外层的 `Issued::by`（`timeout_at`）逐步约束，辅助函数里不需要再保留关停期限；L2-2 连同编排一起删除了这层约束。proxies 调用与刷新（120 s）、streams `deliver`（10 s）、system proxy `status()`（`SYSTEM_PROXY_RPC_TIMEOUT`）不涉及关停，直接删除。
+2. **删除 `InstallPending` 与 `UpdaterState::Pending`（L3-3）**：送不到已停止 workflow 的安装请求从未送达，确定没有执行，所以是明确的失败：client 结算 progress observer 并返回错误，更新器把任务记为失败，而不是永久 Pending。此外没有别的来源产生 pending，因此 `InstallPending`、`UpdaterState::Pending`、`RuntimeCommitStatus::Pending` 以及前端 `core-manager-card.tsx` 对 `pending` 的判断一并删除。§11 中“更新器任务可能永久 Pending”的疑点随之解决。
+3. **D2 取方案 (a)（L3-6）**：profiles actor 的规则表与 `classify_profiles` 不能等价合并（`SetValidFields` 同值、当前远程 profile 的 `PatchRemoteOptions` 两处不同）。actor 侧的 `CommitReport.affects_current` 与 `evaluate_affects` 没有生产或 wire 读者（不参与序列化、不在 bindings 中，被 blanket `dead_code` allow 掩盖），因此删除；`AffectsRule` 只用于推导分类读取的 hints 与 class。新分类与旧标志在三种情况下不同：重新选择当前 profile、重新设置相同的全局 transforms（请求本身要求运行态，所以现在会进入 Runtime），以及对当前远程 profile 的 `PatchRemoteOptions`（运行中的定义变了）。旧标志没有读者，所以生产行为不变。
+4. **MutationDomain 取方案 A（L4-3）**：L3-6 给该 trait 增加了 `classify`，`runtime_impact` 按域分派到它，所以 trait 保留，只剩 `classify`；构造式的 `domain_change` 改为三个 `From<StateChange<X>> for DomainChange`，参与者的约束写为 `DomainChange: From<StateChange<T>>`。这是对 L4-3 表中“删除该 trait”的偏离。
+5. **CAS 失配发布 `Aborted { NeedsRecovery }`（P1-8）**：失配时候选已经写到磁盘，而回写已删除，所以这次中止被标为需要恢复；`local_recovery` 不再在 CAS 失配时运行。生产中不可达：所有写入都经过 owner 的 `&mut self`。
+6. **Cancel 也发送 `runtime_bound(false)`（L3-4）**：新增。经过验证的恢复可能落在新实例上，确认的端口绑定会变，effects 需要拿到它；端口没变时是 no-op。
+7. **纯保存没有 OperationId，也不再出现在 `recent_operations`（L3-6，用户可见）**：它们从来不是运行态操作；非当前 profile 的刷新返回 `Committed { operation_id: None }`。
+8. **Shutdown 命令改为 `post_stop` 直接调用（L4-2）**：`post_stop` 是它唯一的发送方。删除 `CoreCommand::Shutdown` 与 `Output::Shutdown` 后，每个 lifecycle 命令都是被跟踪的 attempt，L4-2 所说的 `!matches!(cmd, Shutdown)` 不再需要。`post_stop` 不再调用 `capture_core_intent` 与 `notify_bound(true)`：它只在令牌取消后运行，此时 effects 已忽略新的发布，生产中不可观察。
+9. **只有待决动作、没有 attempt 的隔离，Configuration status 的 `runtime.operation_id` 为 `null`（L4-2）**：这种情况没有 recovery view；原先借用的“最近完成的操作”已随 `CoreLifecycleStatus.completed` 删除。
+
+### 16.4 弱于计划或只能 smoke 的验收项
+
+- **V21**：只有 owner 一侧的测试（SessionState 在 drain 时写完已入队的最终保存）；`utils/exit.rs` 中“先入队保存、再 `request_shutdown`”的边界顺序离开 Tauri 无法单测，只能 smoke。
+- **V22**：只能 smoke（§8 已注明）。
+- **V03**：没有 actor 级测试，由结构保证：调用方丢弃 future 不会取消 ractor handler（P1-7、L3-2）。
+- **P1-3 的否决路径断言**：扩展后的 `a_lost_rollback_notification_is_resolved_by_the_authoritative_decision` 只能观察顺序，不是确定性的，因为恢复用的 reconcile 没有 park 钩子；L3-2 之后顺序由单个 handler 从结构上保证。
+
+### 16.5 代码审查（`/ccg:review`）
+
+- **codex**（后端，范围 `fb7de1b06..` PR-3 head）：90/100，PASS WITH MINOR FIXES，没有 Critical 或 Major。三项发现逐条对照代码核实后：
+  1. **profiles 的 `ResourceRecovery` 丢失底层 io 原因**：`map_conditional_outcome` 用 `anyhow!("{e}")` 压平了错误链。基线已存在，但违背 U7“错误里包含具体的错误”，所以修复并折叠进 L3-3：保留错误对象（`into_cause()`），`uncommitted()` 对 `ResourceRecovery` 用 `{:#}` 打印两条链；core 测试断言根因仍是 io 错误，tauri 测试断言错误文本含两层原因。
+  2. **V10 无法在 §8 的失效条件下变红**：每次立即读取结算时 journal 仍保留该条目。改为先收集全部接收端、在历史淘汰第一条之后再读取，并折叠进 L3-3；阴性对照（让辅助函数改从 journal 取结果）下新测试变红、旧测试仍绿。
+  3. **`startup_reconcile` 文档仍描述已删除的 `CALL_WAIT` 上限**：改正并折叠进 L3-1。
+- **antigravity**（前端）：账号资格检查失败，重试 3 次后跳过；前端 4 个文件由审查代理人工核对，没有残留读取者，i18n key 仍在使用。
+- **审查指出、判定为非缺陷的两处行为变化**：
+  - IPC `cleanup_processes` 路径不再调用 `shutdown_hook::set_ready_for_shutdown()`；此后的 Windows 注销仍能结束：门处于 Finished，hook 的 `exit(0)` 会被放行（§3.4 只要求等待任务调用它）。
+  - 关停进行中发生 panic 时，panic hook 的 `exit(1)` 被门阻止，进程最终以关停开始时的退出码（通常为 0）结束，而不是 1。
+
+### 16.6 第二次审查（外部审计，2026-09-28）
+
+审计固定在 `477a0875f` / `431aab4c6` / `9115616da`，只读源码、补丁与 CI 状态。逐条对照代码核实后：
+
+1. **Streams、Proxies 与日志查询 actor 没有接入关停令牌**（P2）：确认。根源是 Q-G 的前提错误：计划以为这些 owner 随进程退出结束，但 IPC `cleanup_processes` 关停后应用继续运行，streams worker 取不到 Core API 时每秒重试，proxies 每 10 s 轮询 core。旧的有序关停在第 7 步与日志一步停掉了这三者，所以相对基线是 L2-2 引入的回归。修复折叠进 L2-2：两个 actor 用 `drain_on_shutdown`；日志 client 不暴露 cell，由一个被跟踪的任务在令牌取消后调用 `shutdown()`。测试 `client::app_lifecycle::tests::the_shutdown_stops_the_streams_proxies_and_log_owners` 持有 client、启动 streams、关停后断言三者都已停止；逐个去掉接线的阴性对照都变红。
+2. **Updater 的令牌取消了包含阻塞解压的整个 `prepare`**（P2）：确认。`select!` 丢弃等待后 worker 结束，`wait_shutdown` 可能在 `spawn_blocking` 解压仍写 staging 时返回。修复折叠进 L2-2：`UpdaterBackend::prepare` 接收令牌，只在 `DownloadSession::new`（两次 HEAD 探测）与下载循环中响应，解压总是执行到底。审查建议解压后、安装前再检查令牌，未采纳：workflow 的 `request()` 在令牌取消后拒绝一切命令，安装由它的 owner 拒绝，再加一道是重复检查。测试 `core::updater::tests::the_shutdown_waits_for_an_extraction_in_progress`（阴性对照：放回外层 `select!` 后变红），`core::updater::instance::tests::the_shutdown_ends_a_download_whose_body_never_finishes` 与 `…_whose_probe_never_returns`（阴性对照：去掉对应分支后变红）。
+3. **`CoreFacade` 仍保留共享的 shutdown future**（P3）：确认。L4-2 之后 workflow 的 `post_stop` 是唯一的生产调用方。`SharedShutdown`、`OnceCell` 字段与测试 `a_second_shutdown_awaits_the_same_future` 一并删除，折叠进 L4-2。
+4. **“原子写入返回错误就说明旧文件未变”的前提不成立**（P2，遗留）：确认。atomicwrites 在 Unix 上 rename 之后同步目录，这一步的错误会传播。基线同样跳过回写，不是本栈引入的回归；本栈只是把错误前提写进了 P1-8 的提交说明、代码注释与 §2。三处已更正，缺陷本身列入 §11，不在本栈修复。
+5. **内部 HTTP server 没有 graceful shutdown**：早已存在，§11 已列。它唯一的写入是图标缓存，被截断的缓存读取失败后会删除重取，所以仍交给进程退出（Q-G 的剩余部分）。
+6. **`core/actor_v2` 的调用方预算**（`CALL_BUDGET_SLACK`、`handoff_budget()`、`shutdown_budget()`）：审查也认可它们随上游 IPC 请求超时一起删除（roadmap §12.2 已登记），不是遗漏。

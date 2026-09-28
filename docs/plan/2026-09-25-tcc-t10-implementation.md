@@ -1,5 +1,11 @@
 # T10 启动、后台源、恢复与关闭生命周期
 
+> **已被取代（2026-09-28）：** 下列内容已被 [Workflow 与生命周期精简计划](2026-09-28-workflow-lifecycle-simplification.md) 取代；正文作为历史保留，不再改写。
+>
+> - 任务 7 的单飞有序关闭（`NyanpasuClient::shutdown`、截止时间、结构化报告、`begin_terminate()`），以及“其他行为差异”中的关闭各项：改为根 CancellationToken 加各 owner 自行收尾，退出不再阻塞主线程（精简计划 §3.4；L2-1 `89cc462b6`、L2-2 `be09913ff`）。
+> - R21 中“StartupReconcile 中途 panic”与“lifecycle 命令 panic 后走 reestablish”：panic 即缺陷，生产代码不再捕获（精简计划 U5，L3-2 `74b8621cc`）。丢失回复后的恢复不变；“只发布一次完整视图”改由丢失回执触发的测试守护。
+> - “边界”中会挂起的 `an_expired_ack_keeps_the_domain_until_the_handoff_is_compensated`：随 ACK 期限一起删除（精简计划 P1-3，`8e834ca0e`）。
+
 基线：L2 `refactor/remove-legacy-config` 的 head（其下 L1 `refactor/typed-config-ipc`，起点 `main@4f59ca781`）。实施分支 `feat/tcc-startup-shutdown`，本地 stacked，未推送、未合并。设计：[`docs/superpowers/specs/2026-09-25-tcc-t10-lifecycle/design.md`](../superpowers/specs/2026-09-25-tcc-t10-lifecycle/design.md)（提交 `docs(tcc): design the T10 startup and shutdown lifecycle`，codex 评审四轮后批准）。
 
 ## 范围与假设

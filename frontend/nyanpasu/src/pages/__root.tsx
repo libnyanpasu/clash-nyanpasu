@@ -48,8 +48,14 @@ export const Catch = ({ error }: ErrorComponentProps) => {
       <p>Something went wrong... Caught in error boundary.</p>
 
       <pre className="overflow-x-auto font-mono whitespace-pre-wrap select-text">
-        {error.message}
-        {error.stack}
+        {error instanceof Error ? (
+          <>
+            {error.message}
+            {error.stack}
+          </>
+        ) : (
+          String(error)
+        )}
       </pre>
 
       <div className="flex items-center gap-2">

@@ -76,6 +76,8 @@ export const DATA_SLOTS = [
   'editor-header-title',
   'enable-builtin-enhanced-switch',
   'enable-builtin-enhanced-switch-container',
+  'expand-include-all-switch',
+  'expand-include-all-switch-container',
   'external-controller-config-card',
   'field-filter-settings-container',
   'field-filter-switch-container',

@@ -2,6 +2,8 @@
 
 > **状态修订（2026-09-26）：** 本文的失败策略与选择性 TCC 冲突时，以 [选择性 TCC v2 §2](../../../plan/2026-09-14-application-workflow-selective-tcc-v2.md#2-核心不变量与失败策略) 与 [roadmap §1.3](../../../design/actor-migration-roadmap.md#13-选择性-tcc-与提交后收敛) 的失败矩阵为准：关键 runtime 失败可以拒绝候选；外围效果在提交后执行，绝不回滚已提交的源配置。启动、关闭与恢复见 [T10 生命周期设计](../2026-09-25-tcc-t10-lifecycle/design.md)。正文保持原样，不再按此改写。
 
+> **已被取代（2026-09-28）：** §5.3 中 `reconcile` / `status` 的 `SYSTEM_PROXY_RPC_TIMEOUT` 与 `restore` 的 5s 期限已被 [Workflow 与生命周期精简计划](../../../plan/2026-09-28-workflow-lifecycle-simplification.md) 取代：同进程调用等待真实结果（P1-12 `477a0875f`），`restore` 改在 SystemProxy 自己的 `post_stop` 中执行、不设期限（L2-2 `be09913ff`）。正文保持原样。
+
 **日期：** 2026-09-12
 **基线：** `main @ 31967446d`（worktree `feat/pr6-effect-plan`）
 **范围：** 任务 6e-1、6e-2、6a、6b、6e-3

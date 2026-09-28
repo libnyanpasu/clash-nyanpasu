@@ -1,5 +1,13 @@
 # TCC T10：启动、后台源、恢复与关闭生命周期设计
 
+> **已被取代（2026-09-28）：** 下列内容已被 [Workflow 与生命周期精简计划](../../../plan/2026-09-28-workflow-lifecycle-simplification.md) 取代；正文作为历史保留，不再改写。
+>
+> - §0.1 第 8 条与 §5 的单飞有序关闭（截止时间、先发请求再等待确认、结构化报告、`begin_terminate`）：改为根 CancellationToken 加各 owner 自行收尾（精简计划 §3.4，L2-2 `be09913ff`）。
+> - §1.11 中 tracked task 与 `catch_unwind` 分支交还两个槽、panic 后槽保持 panic 时刻的内容：Runtime 的 actor handler 直接 await 整条命令，panic 不再捕获（精简计划 U5，L3-2 `74b8621cc`）。
+> - §1.11 中“决定等待超时（Unresolved）”保留 `live`，以及 `Aborted { NeedsRecovery }` 保留 `live`、不执行 Cancel：决定等待不设期限（L3-1 `de66af65d`），NeedsRecovery 同样执行 Cancel（精简计划 Q-D，L3-3 `1e4a48c3e`）。
+> - §1.11 动作表中的“调用方预算耗尽”：同进程调用方不再设预算，只剩 `core/actor_v2` 与 IPC 之间的边界期限，由 PR-0 收口（精简计划 §10）。
+> - §12 R42 所说的 100 ms 决定窗口：`decision_wait` 已删除（L3-1）。
+
 日期：2026-09-25（修订 5：codex 评审 1–3、CCG 评审 1 的 L3a 与 L3b，见 §12）
 提交路径：`docs/superpowers/specs/2026-09-25-tcc-t10-lifecycle/design.md`（由 leader 提交）
 代码基线：`main @ 4f59ca781`（只读核对）；实施基线为 L2 head（`refactor/remove-legacy-config`）。文中行号均指 `4f59ca781`，Task 6a/6b/7 开工前在分支上复核（Ruling R5）。

@@ -16,7 +16,6 @@ pub struct ConfigurationStatus {
     /// The latest background-source receipt per profile.
     pub sources: Vec<SourceStatus>,
     pub active: Option<String>,
-    pub queued: Vec<String>,
     pub recent_operations: Vec<OperationStatus>,
 }
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -107,7 +106,6 @@ impl NyanpasuClient {
             source_versions,
             runtime,
             active: execution.active.map(|id| id.to_string()),
-            queued: execution.queued.iter().map(ToString::to_string).collect(),
             effects: effects
                 .effects
                 .iter()

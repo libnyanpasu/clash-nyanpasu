@@ -1009,10 +1009,12 @@ pub async fn get_service_install_prompt() -> Result<String> {
     Ok(prompt)
 }
 
+/// Shuts every owner down and returns with the app still running; the caller
+/// then installs an update or relaunches.
 #[tauri::command]
 #[specta::specta]
-pub fn cleanup_processes(app_handle: AppHandle) -> Result {
-    crate::utils::help::cleanup_processes(&app_handle);
+pub async fn cleanup_processes(app_handle: AppHandle) -> Result {
+    crate::utils::exit::clean_up(&app_handle).await;
     Ok(())
 }
 

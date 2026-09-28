@@ -65,10 +65,9 @@ pub(in crate::client) struct ServiceRecovery {
     attempts: u8,
     suppressed: bool,
     intent: CoreIntent,
-    /// Queued ticks coalesce into one flag, so a tick that arrived during a
-    /// long attempt would otherwise fire the next one immediately. This is
-    /// what makes the interval a floor between attempts rather than between
-    /// their starts.
+    /// Ticks queue up behind a long attempt, so the first one after it would
+    /// otherwise fire the next one immediately. This is what makes the
+    /// interval a floor between attempts rather than between their starts.
     next_attempt: Option<tokio::time::Instant>,
 }
 

@@ -55,10 +55,8 @@ use nyanpasu_config::{
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub(crate) use app_lifecycle::Terminating;
-pub use app_lifecycle::{
-    MainWindowGeometry, ProducerTasks, ShutdownBudgets, ShutdownRequest, StepOutcome,
-};
+pub(crate) use app_lifecycle::drain_on_shutdown;
+pub use app_lifecycle::track_until_shutdown;
 pub use clash_info::ClashInfo;
 pub use error::{ClientError, Result};
 #[cfg(test)]
@@ -85,9 +83,11 @@ pub struct ClientSetupArgs {
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-    /// The boundary producers the composition root spawns and shutdown stops.
-    pub producers: ProducerTasks,
-    pub shutdown_budgets: ShutdownBudgets,
+    /// The root shutdown token. The composition root owns it because some
+    /// owners are spawned before the client; the client cancels it.
+    pub shutdown: tokio_util::sync::CancellationToken,
+    /// Every owner the shutdown waits for.
+    pub tasks: tokio_util::task::TaskTracker,
 }
 
 #[derive(Clone)]
@@ -99,18 +99,32 @@ async fn new_typed_config_clients(
     mutations: crate::state::mutation::MutationCoordinator,
     build_channel: crate::bundle::Channel,
     paths: PathResolver,
+    shutdown: &tokio_util::sync::CancellationToken,
+    tasks: &tokio_util::task::TaskTracker,
 ) -> anyhow::Result<(ApplicationClient, SessionStateClient, ClashConfigClient)> {
     let application = ApplicationClient::new(
         mutations.clone(),
         build_channel,
         utf8_path(paths.application_config_path())?,
+        shutdown.child_token(),
+        tasks,
     )
     .await?;
 
-    let session_state = SessionStateClient::new(utf8_path(paths.session_state_path())?).await?;
+    let session_state = SessionStateClient::new(
+        utf8_path(paths.session_state_path())?,
+        shutdown.child_token(),
+        tasks,
+    )
+    .await?;
 
-    let clash_config =
-        ClashConfigClient::new(mutations.clone(), utf8_path(paths.clash_config_path())?).await?;
+    let clash_config = ClashConfigClient::new(
+        mutations.clone(),
+        utf8_path(paths.clash_config_path())?,
+        shutdown.child_token(),
+        tasks,
+    )
+    .await?;
 
     Ok((application, session_state, clash_config))
 }
@@ -186,12 +200,10 @@ struct NyanpasuClientInner {
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
     accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-    producers: ProducerTasks,
-    shutdown_budgets: ShutdownBudgets,
-    /// The one ordered shutdown this client runs (T10 §5.2).
-    shutdown: tokio::sync::OnceCell<app_lifecycle::ShutdownRun>,
-    #[cfg(test)]
-    shutdown_probe: app_lifecycle::ShutdownProbe,
+    /// The root shutdown token; `request_shutdown` cancels it.
+    shutdown: tokio_util::sync::CancellationToken,
+    /// Every owner the shutdown waits for.
+    tasks: tokio_util::task::TaskTracker,
 }
 
 impl NyanpasuClient {
@@ -209,8 +221,8 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
-            producers,
-            shutdown_budgets,
+            shutdown,
+            tasks,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
@@ -218,6 +230,7 @@ impl NyanpasuClient {
         let runtime_paths_for_setup = runtime_paths.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
         let wiring = mutations.clone();
+        let (owner_shutdown, owner_tasks) = (shutdown.clone(), tasks.clone());
         let (application, session_state, clash_config, profiles, ports, fs) =
             tauri::async_runtime::block_on(async move {
                 runtime_paths_for_setup
@@ -228,6 +241,8 @@ impl NyanpasuClient {
                     mutations.clone(),
                     bundle_metadata.release_channel,
                     paths.clone(),
+                    &owner_shutdown,
+                    &owner_tasks,
                 )
                 .await?;
 
@@ -246,6 +261,8 @@ impl NyanpasuClient {
                     file_service.clone() as Arc<dyn ProfileFsPort>,
                     file_service.clone() as Arc<dyn SubscriptionFetcher>,
                     file_service.clone() as Arc<dyn ProfileMaterializationPort>,
+                    owner_shutdown.child_token(),
+                    &owner_tasks,
                 )
                 .await?;
                 anyhow::Ok((
@@ -278,8 +295,8 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
-            producers,
-            shutdown_budgets,
+            shutdown,
+            tasks,
         ))
     }
 
@@ -305,20 +322,34 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
-        producers: ProducerTasks,
-        shutdown_budgets: ShutdownBudgets,
+        shutdown: tokio_util::sync::CancellationToken,
+        tasks: tokio_util::task::TaskTracker,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
+        // The log client exposes no actor cell, so a tracked task stops it.
+        tasks.spawn({
+            let (logs, token) = (app_logs.clone(), shutdown.child_token());
+            async move {
+                token.cancelled().await;
+                if let Err(error) = logs.shutdown().await {
+                    tracing::warn!("the application log did not shut down cleanly: {error}");
+                }
+            }
+        });
         let service_logs = logging.service;
-        let effects = effects::actor::EffectsClient::spawn(effects::actor::EffectsArgs {
-            port: effects,
-            ui: ui_sink,
-            initial: effects::plan::ApplicationEffectInputs::project(
-                &application.snapshot().state,
-                &clash_config.snapshot().state,
-                ports.confirmed(),
-            ),
-        })
+        let effects = effects::actor::EffectsClient::spawn(
+            effects::actor::EffectsArgs {
+                port: effects,
+                ui: ui_sink,
+                initial: effects::plan::ApplicationEffectInputs::project(
+                    &application.snapshot().state,
+                    &clash_config.snapshot().state,
+                    ports.confirmed(),
+                ),
+                shutdown: shutdown.child_token(),
+            },
+            &tasks,
+        )
         .await?;
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
@@ -339,13 +370,14 @@ impl NyanpasuClient {
                 )),
                 ports: ports.clone(),
                 installer: binary_installer,
-                budgets: application_workflow::mutation::MutationBudgets::default(),
                 ownership: core_lifecycle::Ownership::Unproven,
+                shutdown: shutdown.child_token(),
+                tasks: tasks.clone(),
             },
         )
         .await?;
         if let Some(mutations) = mutations {
-            mutations.connect(application_workflow.clone());
+            mutations.connect(application_workflow.clone(), Arc::new(effects.clone()));
         }
         let updater = crate::core::updater::UpdaterClient::spawn(
             Arc::new(crate::core::updater::HttpUpdaterBackend::new(
@@ -356,10 +388,22 @@ impl NyanpasuClient {
                 ports.clone(),
             )),
             Arc::new(application_workflow.clone()),
+            shutdown.child_token(),
+            &tasks,
         )
         .await?;
-        let proxies = crate::core::proxies::ProxiesClient::spawn(core_v2.clone()).await?;
-        let streams = crate::core::clash::ws::StreamsClient::spawn(core_v2.clone()).await?;
+        let proxies = crate::core::proxies::ProxiesClient::spawn(
+            core_v2.clone(),
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await?;
+        let streams = crate::core::clash::ws::StreamsClient::spawn(
+            core_v2.clone(),
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await?;
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 bundle_metadata,
@@ -381,11 +425,8 @@ impl NyanpasuClient {
                 effects,
                 window,
                 accelerators,
-                producers,
-                shutdown_budgets,
-                shutdown: tokio::sync::OnceCell::new(),
-                #[cfg(test)]
-                shutdown_probe: app_lifecycle::ShutdownProbe::new(),
+                shutdown,
+                tasks,
             }),
         })
     }
@@ -547,6 +588,15 @@ impl NyanpasuClient {
                 },
             ),
         )
+    }
+
+    /// Queues a save of the main window's geometry; nothing waits for it.
+    pub fn queue_main_window_geometry_save(
+        &self,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> Result<()> {
+        self.inner.session_state.queue_main_window_save(geometry)?;
+        Ok(())
     }
 
     /// The geometry the main window reopens with, as last saved.
@@ -931,23 +981,7 @@ impl crate::core::updater::ports::CoreUpdateInstaller
         &self,
         artifact: core_lifecycle::ports::PreparedCoreBinary,
     ) -> anyhow::Result<()> {
-        self.replace_binary(artifact).await.map_err(|error| {
-            if error.operation_id.is_some()
-                && matches!(
-                    error.kind,
-                    Some(
-                        nyanpasu_core_manager::CoreErrorKind::BackendUnavailable
-                            | nyanpasu_core_manager::CoreErrorKind::Internal
-                    )
-                )
-            {
-                anyhow::Error::new(crate::core::updater::ports::InstallPending(
-                    error.to_string(),
-                ))
-            } else {
-                anyhow::Error::from(error)
-            }
-        })
+        Ok(self.replace_binary(artifact).await?)
     }
 }
 
@@ -1811,15 +1845,23 @@ pub(crate) mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             crate::bundle::Channel::Stable,
             temp_config_path(dir, "application.yaml"),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("application client should be created");
-        let session_state = SessionStateClient::new(temp_config_path(dir, "session-state.yaml"))
-            .await
-            .expect("session state client should be created");
+        let session_state = SessionStateClient::new(
+            temp_config_path(dir, "session-state.yaml"),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("session state client should be created");
         let clash_config = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(dir, "clash-config.yaml"),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("clash config client should be created");
@@ -1921,23 +1963,6 @@ pub(crate) mod tests {
                 .close_log_session(LogSource::App, "window".into(), session.id)
                 .await
                 .unwrap();
-            // The ordered shutdown ends with the application log: once it
-            // has returned, the log actor answers nothing.
-            client.shutdown(ShutdownRequest::default()).await;
-            assert_eq!(
-                client
-                    .open_log_session(
-                        LogSource::App,
-                        "window".into(),
-                        OpenLogs {
-                            request_id: "after".into(),
-                            file: None,
-                        },
-                    )
-                    .await
-                    .unwrap_err(),
-                LogError::Unavailable
-            );
         });
     }
 
@@ -1963,6 +1988,8 @@ pub(crate) mod tests {
             Arc::new(MockProfileFsPort::new()),
             Arc::new(MockSubscriptionFetcher::new()),
             test_materialization_port(),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("profiles client should be created");
@@ -2000,8 +2027,8 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            ProducerTasks::default(),
-            ShutdownBudgets::default(),
+            tokio_util::sync::CancellationToken::new(),
+            tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap()
@@ -2119,15 +2146,23 @@ pub(crate) mod tests {
         let application = ApplicationClient::from_manager(
             crate::state::mutation::MutationCoordinator::isolated(),
             manager,
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("application client should be created");
-        let session_state = SessionStateClient::new(temp_config_path(&dir, "session-state.yaml"))
-            .await
-            .expect("session state client should be created");
+        let session_state = SessionStateClient::new(
+            temp_config_path(&dir, "session-state.yaml"),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("session state client should be created");
         let clash_config = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(&dir, "clash-config.yaml"),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("clash config client should be created");
@@ -2224,8 +2259,8 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            producers: ProducerTasks::default(),
-            shutdown_budgets: ShutdownBudgets::default(),
+            shutdown: tokio_util::sync::CancellationToken::new(),
+            tasks: tokio_util::task::TaskTracker::new(),
         }
     }
 
@@ -2507,6 +2542,8 @@ pub(crate) mod tests {
             file_service.clone() as Arc<dyn ProfileFsPort>,
             fetcher,
             file_service.clone() as Arc<dyn ProfileMaterializationPort>,
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("profiles client should be created");
@@ -2539,8 +2576,8 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            ProducerTasks::default(),
-            ShutdownBudgets::default(),
+            tokio_util::sync::CancellationToken::new(),
+            tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
@@ -2617,6 +2654,8 @@ pub(crate) mod tests {
                 crate::state::mutation::MutationCoordinator::isolated(),
                 crate::bundle::Channel::Stable,
                 paths,
+                &tokio_util::sync::CancellationToken::new(),
+                &tokio_util::task::TaskTracker::new(),
             )
             .await
             .expect("typed clients should load persisted state");
@@ -2652,8 +2691,8 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            producers: ProducerTasks::default(),
-            shutdown_budgets: ShutdownBudgets::default(),
+            shutdown: tokio_util::sync::CancellationToken::new(),
+            tasks: tokio_util::task::TaskTracker::new(),
         })
         .expect("client should construct with typed config actors");
 
@@ -3553,6 +3592,8 @@ pub(crate) mod tests {
                 Arc::new(MockProfileFsPort::new()),
                 Arc::new(MockSubscriptionFetcher::new()),
                 Arc::new(materialization),
+                tokio_util::sync::CancellationToken::new(),
+                &tokio_util::task::TaskTracker::new(),
             )
             .await
             .expect("profiles client");
@@ -3590,8 +3631,8 @@ pub(crate) mod tests {
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-                ProducerTasks::default(),
-                ShutdownBudgets::default(),
+                tokio_util::sync::CancellationToken::new(),
+                tokio_util::task::TaskTracker::new(),
             )
             .await
             .unwrap();
@@ -3903,7 +3944,8 @@ pub(crate) mod tests {
                     .and_then(serde_yaml::Value::as_str),
                 Some("t6-fresh")
             );
-            client.shutdown(ShutdownRequest::default()).await;
+            client.request_shutdown();
+            client.wait_shutdown().await;
         });
     }
 }

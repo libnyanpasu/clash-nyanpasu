@@ -1,5 +1,5 @@
 use crate::{
-    client::{MainWindowGeometry, NyanpasuClient, application_workflow::startup::StartupOutcome},
+    client::{NyanpasuClient, application_workflow::startup::StartupOutcome},
     core::{storage::Storage, tray::proxies},
     log_err,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
@@ -14,7 +14,7 @@ use std::{
     collections::HashMap,
     time::{Duration, Instant},
 };
-use tauri::{App, AppHandle, Manager, async_runtime::block_on};
+use tauri::{App, AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::Event;
 
@@ -170,6 +170,9 @@ pub fn resolve_setup(app: &mut App) {
 
     {
         let client = app.state::<crate::client::NyanpasuClient>();
+        // TODO(startup): resolve_setup needs restructuring; startup_reconcile
+        // should not block setup. See
+        // docs/plan/2026-09-28-workflow-lifecycle-simplification.md §9.
         let report = tauri::async_runtime::block_on(client.startup_reconcile());
         if let Some(observation) = &report.observation {
             log::info!(
@@ -410,10 +413,6 @@ pub fn is_main_window_open(app_handle: &AppHandle) -> bool {
     MainWindow.is_open(app_handle)
 }
 
-pub fn save_main_window_state(app_handle: &AppHandle) -> Result<()> {
-    block_on(save_main_window_state_async(app_handle, true))
-}
-
 pub async fn save_main_window_state_async(
     app_handle: &AppHandle,
     _save_to_file: bool,
@@ -444,19 +443,15 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
     is_main_window_open(app_handle)
 }
 
-/// Save window state for the configured window type
+/// Queues a save of the main window's geometry, so the caller never waits
+/// for the write: it runs on the main thread.
 pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
-    save_main_window_state(app_handle)
-}
-
-/// The main window's geometry as it is now, for the ordered shutdown to save
-/// last. Only a missing main window is a skip; a capture that fails is
-/// reported as such.
-pub fn capture_main_window_geometry(app_handle: &AppHandle) -> MainWindowGeometry {
-    if app_handle.get_webview_window(MainWindow.label()).is_none() {
-        return MainWindowGeometry::default();
+    if let Some(geometry) = MainWindow.capture_state(app_handle)? {
+        app_handle
+            .state::<NyanpasuClient>()
+            .queue_main_window_geometry_save(geometry)?;
     }
-    MainWindowGeometry::from_capture(MainWindow.capture_state(app_handle))
+    Ok(())
 }
 
 /// Webview tray menu window

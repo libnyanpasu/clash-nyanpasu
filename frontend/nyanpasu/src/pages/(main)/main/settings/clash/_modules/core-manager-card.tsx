@@ -126,7 +126,7 @@ function useCoreUpdateTask(
       return m.settings_clash_core_manager_card_decompressing()
     }
 
-    if (state === 'replacing' || (isObject(state) && 'pending' in state)) {
+    if (state === 'replacing') {
       return m.settings_clash_core_manager_card_replacing()
     }
 

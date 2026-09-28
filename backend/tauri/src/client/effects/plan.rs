@@ -52,7 +52,43 @@ pub struct ClashEffectFields {
     pub enable_tun_mode: bool,
 }
 
+/// The application owner's slice: what it hands the effects owner after a
+/// commit.
+impl From<&NyanpasuAppConfig> for ApplicationEffectFields {
+    fn from(app: &NyanpasuAppConfig) -> Self {
+        Self {
+            enable_system_proxy: app.enable_system_proxy,
+            system_proxy_bypass: app.system_proxy_bypass.clone(),
+            enable_proxy_guard: app.enable_proxy_guard,
+            proxy_guard_interval: app.proxy_guard_interval,
+            pac_url: app.pac_url.clone(),
+            enable_auto_launch: app.enable_auto_launch,
+            hotkeys: app.hotkeys.clone(),
+            language: app.language,
+            app_log_level: app.app_log_level.clone(),
+            max_log_files: app.max_log_files,
+            tray_selector_mode: app.tray_selector_mode,
+            tray_menu_mode: app.tray_menu_mode,
+            enable_tray_text: app.enable_tray_text,
+            enable_tray_traffic: app.enable_tray_traffic,
+            network_statistic_widget: app.network_statistic_widget,
+            core: app.core,
+        }
+    }
+}
+
+/// The clash config owner's slice.
+impl From<&ClashConfig> for ClashEffectFields {
+    fn from(clash: &ClashConfig) -> Self {
+        Self {
+            mode: clash.overrides.mode(),
+            enable_tun_mode: clash.enable_tun_mode,
+        }
+    }
+}
+
 impl ApplicationEffectInputs {
+    /// All three slices at once, for a reader that is not one of their owners.
     /// Ports come from the session resolver rather than the config, so this is
     /// a projection with three sources and not a `From` impl.
     pub fn project(
@@ -61,28 +97,8 @@ impl ApplicationEffectInputs {
         ports: Option<ResolvedPortBindings>,
     ) -> Self {
         Self {
-            app: ApplicationEffectFields {
-                enable_system_proxy: app.enable_system_proxy,
-                system_proxy_bypass: app.system_proxy_bypass.clone(),
-                enable_proxy_guard: app.enable_proxy_guard,
-                proxy_guard_interval: app.proxy_guard_interval,
-                pac_url: app.pac_url.clone(),
-                enable_auto_launch: app.enable_auto_launch,
-                hotkeys: app.hotkeys.clone(),
-                language: app.language,
-                app_log_level: app.app_log_level.clone(),
-                max_log_files: app.max_log_files,
-                tray_selector_mode: app.tray_selector_mode,
-                tray_menu_mode: app.tray_menu_mode,
-                enable_tray_text: app.enable_tray_text,
-                enable_tray_traffic: app.enable_tray_traffic,
-                network_statistic_widget: app.network_statistic_widget,
-                core: app.core,
-            },
-            clash: ClashEffectFields {
-                mode: clash.overrides.mode(),
-                enable_tun_mode: clash.enable_tun_mode,
-            },
+            app: app.into(),
+            clash: clash.into(),
             ports,
         }
     }

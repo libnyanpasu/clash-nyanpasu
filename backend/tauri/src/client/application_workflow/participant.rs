@@ -7,7 +7,8 @@
 //! now (C1, V19).
 //!
 //! The participant submits the candidate during prepare. Source settlement is
-//! read directly from its authoritative handle by the tracked workflow task.
+//! read directly from its authoritative handle by the workflow's handler, and
+//! the settled receipt goes back to the source on the channel it handed over.
 
 // The production writers of these values are the three domain actors, which
 // move onto the participant in T6; until then only the workflow's own tests
@@ -16,13 +17,16 @@
 
 use nyanpasu_core::state::{Ack, DecisionHandle, StateAckSubscriber, StateChange, SubscriberName};
 use nyanpasu_core_manager::OperationId;
-use std::{marker::PhantomData, sync::Arc};
+use std::{
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
 use tokio::sync::oneshot;
 
 use super::{
     ApplicationWorkflowClient,
-    impact::MutationHints,
-    mutation::{MutationDomain, MutationRequest},
+    impact::{MutationHints, RuntimeImpact},
+    mutation::{MutationDomain, MutationReceipt, MutationRequest},
     policy::CommandClass,
 };
 
@@ -30,8 +34,12 @@ pub(crate) struct ApplicationMutationParticipant<T: MutationDomain> {
     operation_id: OperationId,
     hints: MutationHints,
     class: CommandClass,
+    impact: RuntimeImpact,
     decision: DecisionHandle,
     workflow: ApplicationWorkflowClient,
+    /// Taken by the one prepare that sends the Try: `on_prepare` has only
+    /// `&self`.
+    settle: Mutex<Option<oneshot::Sender<MutationReceipt>>>,
     name: String,
     _state: PhantomData<T>,
 }
@@ -44,16 +52,20 @@ impl<T: MutationDomain> ApplicationMutationParticipant<T> {
         operation_id: OperationId,
         hints: MutationHints,
         class: CommandClass,
+        impact: RuntimeImpact,
         decision: DecisionHandle,
         workflow: ApplicationWorkflowClient,
+        settle: oneshot::Sender<MutationReceipt>,
     ) -> Arc<Self> {
         Arc::new(Self {
             name: format!("application-mutation/{operation_id}"),
             operation_id,
             hints,
             class,
+            impact,
             decision,
             workflow,
+            settle: Mutex::new(Some(settle)),
             _state: PhantomData,
         })
     }
@@ -65,8 +77,8 @@ impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant
         SubscriberName(std::borrow::Cow::Borrowed(&self.name))
     }
 
-    /// Admission, the prepare-heavy build and the single tracked Try all happen
-    /// here, before anything is persisted. A refusal is therefore a refusal of
+    /// Admission, the prepare-heavy build and the single Try all happen here,
+    /// before anything is persisted. A refusal is therefore a refusal of
     /// the whole mutation, and the store keeps the version it had (R4).
     ///
     /// The source transaction waits for this verdict for as long as the Try
@@ -79,8 +91,10 @@ impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant
             change: T::domain_change(change),
             hints: self.hints.clone(),
             class: self.class,
+            impact: self.impact,
             decision: self.decision.clone(),
             ack: Some(ack),
+            settle: self.settle.lock().unwrap().take(),
         }) {
             return Ack::Failed(error);
         }

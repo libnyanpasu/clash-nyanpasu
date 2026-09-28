@@ -376,6 +376,10 @@ export const commands = {
     typedError<null, string>(__TAURI_INVOKE('set_tray_icon', { mode, path })),
   openThat: (path: string) =>
     typedError<null, string>(__TAURI_INVOKE('open_that', { path })),
+  /**
+   *  Shuts every owner down and returns with the app still running; the caller
+   *  then installs an update or relaunches.
+   */
   cleanupProcesses: () =>
     typedError<null, string>(__TAURI_INVOKE('cleanup_processes')),
   setStorageItem: (key: string, value: string) =>
@@ -841,7 +845,6 @@ export type ConfigurationStatus = {
   /**  The latest background-source receipt per profile. */
   sources: SourceStatus[]
   active: string | null
-  queued: string[]
   recent_operations: OperationStatus[]
 }
 
@@ -2507,12 +2510,7 @@ export type RulesRes = {
 }
 
 export type RuntimeCommitStatus =
-  | 'applied'
-  | 'deferred'
-  | 'saved_inactive'
-  | 'unchanged'
-  | 'pending'
-  | 'recovery_required'
+  'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
 
 export type RuntimeConvergence = {
   health: ConvergenceHealth
@@ -2905,8 +2903,7 @@ export type UpdaterState =
   | 'replacing'
   | 'restarting'
   | 'done'
-  | ({ pending: string } & { failed?: never })
-  | ({ failed: string } & { pending?: never })
+  | { failed: string }
 
 export type UpdaterSummary = {
   id: number

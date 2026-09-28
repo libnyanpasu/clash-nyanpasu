@@ -1,26 +1,28 @@
 //! The mutation lifecycle: `Preparing → TryingCritical → AwaitDecision →
 //! Confirming | Cancelling | RecoveryRequired` (v2 图 3).
 //!
-//! All of it runs inside the workflow's single execution domain, as one tracked
-//! task. Holding the domain from the Try through the decision is what keeps the
-//! committed order and the applied order the same: the next mutation is admitted
-//! only after this one has settled, so it reads the source configuration this
-//! one committed rather than the one it replaced (v2 §5.2).
+//! All of it runs inside the workflow's single execution domain, as one command
+//! of the actor's handler. Holding the domain from the Try through the decision
+//! is what keeps the committed order and the applied order the same: the next
+//! mutation is admitted only after this one has settled, so it reads the source
+//! configuration this one committed rather than the one it replaced (v2 §5.2).
 //!
-//! The phases compose the pure services rather than restating them: `impact`
-//! classifies, `policy` decides what the command may do and whether a failure
-//! may still commit, the validator port asks the core about the candidate, and
-//! `runtime_recovery` decides whether a restore actually landed.
+//! Only a mutation its source classified as reaching the runtime gets here,
+//! with that impact. The phases compose the pure services rather than
+//! restating them: `policy` decides what the command may do and whether a
+//! failure may still commit, the validator port asks the core about the
+//! candidate, and `runtime_recovery` decides whether a restore actually
+//! landed.
 
 use std::sync::Arc;
 
-use nyanpasu_core::state::{AbortResourceState, StateDecision};
+use nyanpasu_core::state::StateDecision;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use nyanpasu_ipc::api::status::CoreStateDetail;
 
 use super::{
     attempt::{AppliedVerdict, AttemptStage, LiveAttempt, TryVerdict},
-    impact::{self, ChangedOwnerInputs, MutationHints, RuntimeImpact},
+    impact,
     mutation::{
         AppliedCandidate, ApplyFailure, CheckRecord, ConfigDomain, DEFERRED_RETRY_BUDGET,
         DeferredTarget, DomainChange, EvidenceGap, KnownRuntimeState, MutationConclusion,
@@ -28,8 +30,8 @@ use super::{
         RuntimePrepareOutcome, TargetOrigin,
     },
     policy::{
-        BaselineAvailability, CommandClass, CommandPolicy, CoreRunIntent, FailureDisposition,
-        TryCauseKind, TryFailureFacts, disposition, policy_for,
+        BaselineAvailability, CommandPolicy, CoreRunIntent, FailureDisposition, TryCauseKind,
+        TryFailureFacts, disposition, policy_for,
     },
     ports::{RuntimeCheckOutcome, RuntimeCheckRequest, RuntimeCheckUnavailable},
     workflow::ApplicationWorkflow,
@@ -38,7 +40,6 @@ use crate::{
     client::{
         convergence::{OutcomeClass, next_wait},
         core_lifecycle::{RuntimeSubmission, desired_host, ports::RuntimePreparationPort},
-        effects::plan::ApplicationEffectInputs,
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
     core::actor_v2::{
@@ -91,10 +92,9 @@ impl From<String> for RestoreFailure {
 /// How the decision phase ended.
 enum DecisionOutcome {
     Committed,
+    /// Aborted, whether or not the source put its own resources back: the
+    /// runtime goes back to the committed configuration either way (U7).
     Aborted,
-    /// The source owner reports unsettled resources or has not reached its
-    /// decision before the workflow's wait budget ends.
-    Unresolved(String),
 }
 
 impl ApplicationWorkflow {
@@ -122,7 +122,7 @@ impl ApplicationWorkflow {
         };
         let selection_changed = matches!(&request.change,
             DomainChange::Profiles { previous: Some(previous), candidate }
-                if previous.current != candidate.current);
+                if impact::selection_changed(previous, candidate));
         let interrupt = (request.hints.mode_requested && clash.break_connection.on_mode_change)
             || (selection_changed && clash.break_connection.on_profile_change);
         let interruption = if interrupt {
@@ -141,49 +141,21 @@ impl ApplicationWorkflow {
         } else {
             None
         };
-        let classified = classify(&request.change, &request.hints);
-        let needs_runtime = classified != RuntimeImpact::None
-            || request.class == CommandClass::ExplicitSwitch
-            || request.hints.names_runtime_field();
-        let impact = classified.max(if needs_runtime {
-            RuntimeImpact::Reconcile
-        } else {
-            RuntimeImpact::None
-        });
-        // UI-only saves do not read the core or the runtime's source files.
-        let inputs = if needs_runtime {
-            Some(self.capture_candidate(&request).await)
-        } else {
-            None
-        };
+        let impact = request.impact;
+        let inputs = self.capture_candidate(&request).await;
         let target = inputs
             .as_ref()
-            .and_then(|inputs| inputs.as_ref().ok())
+            .ok()
             .map(|inputs| inputs.target_key())
             .transpose();
-        let baseline = if needs_runtime {
-            let baseline = self.observe_baseline().await;
-            self.record_baseline(&baseline);
-            baseline
-        } else {
-            RestorableBaseline {
-                expected: None,
-                settled: false,
-                observed: None,
-                state: KnownRuntimeState::NeverApplied,
-                host: self.lifecycle.core.core_status().host,
-                run_intent: CoreRunIntent::Running,
-                binding: None,
-                confirmed_build: None,
-            }
-        };
-        let peripheral = self.changed_owner_inputs(&request.change);
-        let policy = policy_for(request.class, impact, &peripheral, baseline.run_intent);
+        let baseline = self.observe_baseline().await;
+        self.record_baseline(&baseline);
+        let policy = policy_for(request.class, impact, baseline.run_intent);
 
         let mut check = CheckRecord::NotOwed;
         self.advance(AttemptStage::TryingCritical);
         let outcome = match (inputs, target) {
-            (Some(Err(error)), _) | (_, Err(error)) => RuntimePrepareOutcome::Rejected {
+            (Err(error), _) | (_, Err(error)) => RuntimePrepareOutcome::Rejected {
                 cause: ApplyFailure {
                     stage: MutationStage::Preparing,
                     cause: RefusalCause::Try(TryCauseKind::Deterministic),
@@ -196,7 +168,7 @@ impl ApplicationWorkflow {
                     policy,
                     &baseline,
                     target,
-                    inputs.and_then(Result::ok),
+                    inputs.ok(),
                     &mut check,
                     AttemptCharge::None,
                 )
@@ -251,25 +223,15 @@ impl ApplicationWorkflow {
                 let result = self
                     .confirm(outcome, &request, interruption, &mut receipt.degradations)
                     .await;
-                self.notify_requested(
-                    needs_runtime || matches!(&request.change, DomainChange::Profiles { .. }),
-                    request.hints.requested_owners.clone(),
-                );
+                self.notify_bound(true);
                 result
             }
             DecisionOutcome::Aborted => {
                 self.advance(AttemptStage::Cancelling);
-                self.cancel(outcome, &baseline).await
+                let result = self.cancel(outcome, &baseline).await;
+                self.notify_bound(false);
+                result
             }
-            // Neither an elapsed decision wait nor a resource recovery the
-            // source still owes settles anything: the attempt stays, and the
-            // decision is read again when it is recovered.
-            DecisionOutcome::Unresolved(reason) => (
-                MutationConclusion::RecoveryRequired,
-                Some(format!(
-                    "the source transaction of operation {operation_id} {reason}"
-                )),
-            ),
         };
         receipt.conclusion = conclusion;
         receipt.detail = detail;
@@ -366,9 +328,6 @@ impl ApplicationWorkflow {
             return Ok(());
         };
         let reestablish = matches!(target.origin, TargetOrigin::Reestablish(_));
-        // A move between two slots of the box, with nothing held in a local an
-        // unwind could drop: a panic from here on leaves the target inside the
-        // attempt.
         self.live = Some(LiveAttempt::committed_target(operation_id, target));
         if reestablish {
             self.retry_reestablish(explicit).await;
@@ -465,7 +424,7 @@ impl ApplicationWorkflow {
             RuntimePrepareOutcome::Applied(candidate) => {
                 self.publish_committed_product(candidate.product).await;
                 self.lifecycle.runtime.accept_transition();
-                self.notify_committed(true);
+                self.notify_bound(true);
                 // Converged: the target ends with this attempt.
                 if self.lifecycle.core.pending_action().is_none() {
                     self.live = None;
@@ -509,7 +468,7 @@ impl ApplicationWorkflow {
                 target.next_attempt = waiting
                     .then(|| tokio::time::Instant::now() + std::time::Duration::from_secs(5));
             }
-            RuntimePrepareOutcome::SavedInactive { .. } | RuntimePrepareOutcome::Saved => {
+            RuntimePrepareOutcome::SavedInactive { .. } => {
                 target.health = ConvergenceHealth::WaitingDependency;
                 target.next_attempt = None;
             }
@@ -707,26 +666,6 @@ impl ApplicationWorkflow {
         }
     }
 
-    /// Which peripheral owners this candidate hands a new input to. Only they
-    /// may be given a new desired target after the commit (roadmap §9.1); a
-    /// profiles mutation moves none of them.
-    fn changed_owner_inputs(&self, change: &DomainChange) -> ChangedOwnerInputs {
-        let app = self.lifecycle.application.load().state.clone();
-        let clash = self.clash.load().state.clone();
-        let ports = self.lifecycle.ports.confirmed();
-        let previous = ApplicationEffectInputs::project(&app, &clash, ports.clone());
-        let candidate = match change {
-            DomainChange::Application { candidate, .. } => {
-                ApplicationEffectInputs::project(candidate, &clash, ports)
-            }
-            DomainChange::Clash { candidate, .. } => {
-                ApplicationEffectInputs::project(&app, candidate, ports)
-            }
-            DomainChange::Profiles { .. } => return ChangedOwnerInputs::default(),
-        };
-        ChangedOwnerInputs::diff(&previous, &candidate)
-    }
-
     // -- TryingCritical ----------------------------------------------------
 
     pub(super) async fn try_critical(
@@ -738,13 +677,6 @@ impl ApplicationWorkflow {
         check: &mut CheckRecord,
         charge: AttemptCharge,
     ) -> RuntimePrepareOutcome {
-        if matches!(
-            policy,
-            CommandPolicy::SaveOnly | CommandPolicy::SaveThenNotify
-        ) {
-            return RuntimePrepareOutcome::Saved;
-        }
-
         // Nothing unsettled can say whether a core may be started, or what a
         // Cancel would have to put back. A transition in progress is not a
         // stopped core and not a running one; an absent answer is neither
@@ -937,7 +869,7 @@ impl ApplicationWorkflow {
         // the verdict until all of it has finished.
         self.lifecycle.runtime.begin_transition();
         // Charged before the first action that can reach the runtime is
-        // written, so neither a panic nor a lost receipt skips it (T10 §1.8).
+        // written, so a lost receipt does not skip it (T10 §1.8).
         self.charge_attempt(charge);
         let mut handed_off = false;
         let mut expected = baseline
@@ -1131,7 +1063,6 @@ impl ApplicationWorkflow {
             // Either the outcome is unknown, or no Try ran at all. Neither is a
             // failure this may compensate.
             RuntimePrepareOutcome::RecoveryRequired(_)
-            | RuntimePrepareOutcome::Saved
             | RuntimePrepareOutcome::SavedInactive { .. } => return outcome,
         }
         match self.restore(baseline).await {
@@ -1214,22 +1145,14 @@ impl ApplicationWorkflow {
 
     // -- AwaitDecision -----------------------------------------------------
 
+    /// Waits for the source transaction's own decision, however long its write
+    /// takes. Every exit of a transaction whose prepare ran publishes one, so
+    /// the wait always ends.
     async fn await_decision(&self, request: &MutationRequest) -> DecisionOutcome {
-        match tokio::time::timeout(self.budgets.decision_wait, request.decision.wait()).await {
-            Ok(StateDecision::Committed { .. }) => DecisionOutcome::Committed,
-            Ok(StateDecision::Aborted {
-                resources: AbortResourceState::Restored,
-            }) => DecisionOutcome::Aborted,
-            Ok(StateDecision::Aborted {
-                resources: AbortResourceState::NeedsRecovery(incident),
-            }) => DecisionOutcome::Unresolved(format!(
-                "needs local resource recovery: {}",
-                incident.message
-            )),
-            Err(_) => {
-                DecisionOutcome::Unresolved("reached no decision within the decision budget".into())
-            }
-            Ok(StateDecision::Undecided) => unreachable!("wait only returns a terminal decision"),
+        match request.decision.wait().await {
+            StateDecision::Committed { .. } => DecisionOutcome::Committed,
+            StateDecision::Aborted { .. } => DecisionOutcome::Aborted,
+            StateDecision::Undecided => unreachable!("wait only returns a terminal decision"),
         }
     }
 
@@ -1242,11 +1165,6 @@ impl ApplicationWorkflow {
         interruption: Option<crate::client::core_lifecycle::apply::RuntimeApplyContext>,
         degradations: &mut Vec<crate::client::runtime::Degradation>,
     ) -> (MutationConclusion, Option<String>) {
-        #[cfg(test)]
-        assert!(
-            !std::mem::take(&mut self.panic_at_confirm),
-            "scripted panic at Confirm"
-        );
         match outcome {
             RuntimePrepareOutcome::Applied(candidate) => {
                 let applied = AppliedVerdict::new(&candidate, leaves_service_mode(&request.change));
@@ -1298,7 +1216,6 @@ impl ApplicationWorkflow {
                 self.confirm_saved_inactive(identity);
                 (MutationConclusion::Confirmed, None)
             }
-            RuntimePrepareOutcome::Saved => (MutationConclusion::Confirmed, None),
             // A Required rejection aborts the transaction, so a commit on top of
             // one means the store and this workflow disagree about what was
             // decided. Nothing here may assume which is right.
@@ -1673,39 +1590,7 @@ struct TryOutcomeFacts {
 /// Confirm release the daemon.
 fn leaves_service_mode(change: &DomainChange) -> bool {
     matches!(change, DomainChange::Application { previous: Some(previous), candidate }
-        if previous.enable_service_mode && !candidate.enable_service_mode)
-}
-
-fn classify(change: &DomainChange, hints: &MutationHints) -> RuntimeImpact {
-    // A store always holds a previous value once it has loaded, so `None` means
-    // a domain that was never initialized. Assuming it moved a build input is
-    // the conservative reading: it costs a rebuild and never skips one.
-    match change {
-        DomainChange::Application {
-            previous,
-            candidate,
-        } => previous
-            .as_ref()
-            .map_or(RuntimeImpact::Reconcile, |previous| {
-                impact::classify_application(previous, candidate)
-            }),
-        DomainChange::Clash {
-            previous,
-            candidate,
-        } => previous
-            .as_ref()
-            .map_or(RuntimeImpact::Reconcile, |previous| {
-                impact::classify_clash(previous, candidate)
-            }),
-        DomainChange::Profiles {
-            previous,
-            candidate,
-        } => previous
-            .as_ref()
-            .map_or(RuntimeImpact::Reconcile, |previous| {
-                impact::classify_profiles(previous, candidate, hints)
-            }),
-    }
+        if impact::leaves_service_mode(previous, candidate))
 }
 
 /// Why no check ran, typed for the deferral decision.

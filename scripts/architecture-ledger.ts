@@ -246,7 +246,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     name: "SHUTDOWN_STATE",
     category: "external",
     reason:
-      "read by the Win32 window procedure; written by set_ready_for_shutdown from utils::help::cleanup_processes",
+      "read by the Win32 window procedure; written by set_ready_for_shutdown from the exit boundary in utils::exit",
   },
   // -- test-only ------------------------------------------------------------
   {

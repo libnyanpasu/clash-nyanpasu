@@ -5,9 +5,10 @@
 //! critical part does not apply ([`CommandPolicy`]), and given what the Try
 //! actually reported, may the commit still go ahead ([`disposition`]).
 
-use super::impact::{ChangedOwnerInputs, RuntimeImpact};
+use super::impact::RuntimeImpact;
 
-/// What a command may do when the runtime part of it cannot be applied.
+/// What a command that reaches the runtime may do when that part of it
+/// cannot be applied.
 ///
 /// Assigned by [`policy_for`] from the command class and the classified impact.
 /// The frontend cannot pick it: a request must not be able to declare itself
@@ -21,11 +22,6 @@ pub(crate) enum CommandPolicy {
     /// The desired value may be committed unapplied, but only when every
     /// condition in [`disposition`] holds.
     AllowDeferredWhenSafe,
-    /// Nothing to apply and no owner to notify: validate and commit.
-    SaveOnly,
-    /// Nothing critical to apply, but peripheral owners have a new target.
-    /// Commit on validation and let them reconcile afterwards.
-    SaveThenNotify,
     /// The user stopped the core. Save the checked target, start nothing, and
     /// run no retry loop against that intent.
     SavedInactive,
@@ -34,9 +30,8 @@ pub(crate) enum CommandPolicy {
 impl CommandPolicy {
     /// Whether this command may commit a desired value it could not apply.
     ///
-    /// Only one policy may. `MustApply` refuses by definition; under the other
-    /// three no critical Try was owed in the first place, so a failure from one
-    /// is a contradiction rather than a licence to defer.
+    /// Only one policy may. `MustApply` refuses by definition, and under
+    /// `SavedInactive` no Try runs at all.
     pub fn allows_deferral(self) -> bool {
         matches!(self, Self::AllowDeferredWhenSafe)
     }
@@ -69,30 +64,13 @@ pub(crate) enum CoreRunIntent {
     StoppedByUser,
 }
 
-/// The static policy for one candidate.
+/// The static policy for one candidate that reaches the runtime, as
+/// [`runtime_impact`](super::impact::runtime_impact) decided.
 pub(crate) fn policy_for(
     class: CommandClass,
     impact: RuntimeImpact,
-    peripheral: &ChangedOwnerInputs,
     intent: CoreRunIntent,
 ) -> CommandPolicy {
-    // An explicit switch owes a target whatever its diff says. Re-selecting the
-    // profile that is already current, or re-picking the running core, produces
-    // no impact at all, and treating that as a plain save would drop the
-    // confirmation the command promised: an empty diff is not evidence that the
-    // target ever converged.
-    let critical = class == CommandClass::ExplicitSwitch || impact != RuntimeImpact::None;
-
-    if !critical {
-        // Nothing critical to apply, so the only question left is whether any
-        // peripheral owner was handed a target to reconcile after the commit.
-        return if peripheral.is_empty() {
-            CommandPolicy::SaveOnly
-        } else {
-            CommandPolicy::SaveThenNotify
-        };
-    }
-
     if intent == CoreRunIntent::StoppedByUser {
         return CommandPolicy::SavedInactive;
     }
@@ -104,8 +82,7 @@ pub(crate) fn policy_for(
         // to defer: committing it while the old one keeps running would leave
         // the app claiming a core it never started.
         (_, RuntimeImpact::CoreSwap | RuntimeImpact::HostSwitch) => CommandPolicy::MustApply,
-        // A `Save` with no impact returned above, so this one really moved a
-        // build input.
+        // A `Save` that reached the runtime moved a build input or named one.
         (CommandClass::Save, _) => CommandPolicy::AllowDeferredWhenSafe,
     }
 }
@@ -192,92 +169,23 @@ pub(crate) fn disposition(facts: &TryFailureFacts) -> FailureDisposition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::effects::plan::{
-        ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-    };
-    use nyanpasu_config::{
-        application::NyanpasuAppConfig, clash::config::ClashConfig,
-        runtime::executor::ResolvedPortBindings,
-    };
 
-    /// Owners are a diff result, so they are built through one here too rather
-    /// than hand-assembled.
-    fn peripheral(mutate: impl FnOnce(&mut NyanpasuAppConfig)) -> ChangedOwnerInputs {
-        let app = NyanpasuAppConfig {
-            language: nyanpasu_config::application::I18nLanguage::English,
-            tray_menu_mode: nyanpasu_config::application::TrayMenuMode::Native,
-            ..NyanpasuAppConfig::default()
-        };
-        let clash = ClashConfig::default();
-        let ports = Some(ResolvedPortBindings {
-            mixed_port: 7890,
-            ..ResolvedPortBindings::default()
-        });
-        let previous = ApplicationEffectInputs::project(&app, &clash, ports.clone());
-        let mut candidate_app = app;
-        mutate(&mut candidate_app);
-        let candidate = ApplicationEffectInputs::project(&candidate_app, &clash, ports);
-        ChangedOwnerInputs::diff(&previous, &candidate)
-    }
-
-    fn unchanged() -> ChangedOwnerInputs {
-        peripheral(|_| {})
-    }
-
-    fn system_proxy_changed() -> ChangedOwnerInputs {
-        peripheral(|app| app.enable_system_proxy = true)
-    }
-
-    #[test]
-    fn an_owner_diff_is_what_separates_save_only_from_save_then_notify() {
-        assert!(unchanged().is_empty());
-        assert!(system_proxy_changed().contains(EffectKind::SystemProxy));
-
-        assert_eq!(
-            policy_for(
-                CommandClass::Save,
-                RuntimeImpact::None,
-                &unchanged(),
-                CoreRunIntent::Running
-            ),
-            CommandPolicy::SaveOnly
-        );
-        assert_eq!(
-            policy_for(
-                CommandClass::Save,
-                RuntimeImpact::None,
-                &system_proxy_changed(),
-                CoreRunIntent::Running
-            ),
-            CommandPolicy::SaveThenNotify
-        );
-    }
-
-    /// `RuntimeImpact::None` is in the list on purpose. Re-selecting the profile
-    /// that is already current classifies as no impact, and so do `update_core`
-    /// and an `enable_service_mode` switch to the value already stored; all three
+    /// Re-selecting the profile that is already current reaches the runtime
+    /// with the least impact, and so do `update_core` and an
+    /// `enable_service_mode` switch to the value already stored; all three
     /// still owe the confirmation the command promised.
     #[test]
     fn an_explicit_switch_must_apply() {
         for impact in [
-            RuntimeImpact::None,
             RuntimeImpact::Reconcile,
             RuntimeImpact::CoreSwap,
             RuntimeImpact::HostSwitch,
         ] {
-            for owners in [unchanged(), system_proxy_changed()] {
-                assert_eq!(
-                    policy_for(
-                        CommandClass::ExplicitSwitch,
-                        impact,
-                        &owners,
-                        CoreRunIntent::Running
-                    ),
-                    CommandPolicy::MustApply,
-                    "{impact:?} with owners {:?}",
-                    owners.kinds()
-                );
-            }
+            assert_eq!(
+                policy_for(CommandClass::ExplicitSwitch, impact, CoreRunIntent::Running),
+                CommandPolicy::MustApply,
+                "{impact:?}"
+            );
         }
     }
 
@@ -288,8 +196,7 @@ mod tests {
         assert_eq!(
             policy_for(
                 CommandClass::ExplicitSwitch,
-                RuntimeImpact::None,
-                &unchanged(),
+                RuntimeImpact::Reconcile,
                 CoreRunIntent::StoppedByUser
             ),
             CommandPolicy::SavedInactive
@@ -302,7 +209,6 @@ mod tests {
             policy_for(
                 CommandClass::Save,
                 RuntimeImpact::Reconcile,
-                &unchanged(),
                 CoreRunIntent::Running
             ),
             CommandPolicy::AllowDeferredWhenSafe
@@ -315,12 +221,7 @@ mod tests {
     fn a_save_that_moves_the_core_or_the_host_must_still_apply() {
         for impact in [RuntimeImpact::CoreSwap, RuntimeImpact::HostSwitch] {
             assert_eq!(
-                policy_for(
-                    CommandClass::Save,
-                    impact,
-                    &unchanged(),
-                    CoreRunIntent::Running
-                ),
+                policy_for(CommandClass::Save, impact, CoreRunIntent::Running),
                 CommandPolicy::MustApply,
                 "{impact:?}"
             );
@@ -336,7 +237,7 @@ mod tests {
                 RuntimeImpact::HostSwitch,
             ] {
                 assert_eq!(
-                    policy_for(class, impact, &unchanged(), CoreRunIntent::StoppedByUser),
+                    policy_for(class, impact, CoreRunIntent::StoppedByUser),
                     CommandPolicy::SavedInactive,
                     "{class:?} {impact:?}"
                 );
@@ -344,29 +245,9 @@ mod tests {
         }
     }
 
-    /// A stopped core is not a reason to stop reconciling the system proxy or
-    /// the tray: those owners never needed the core.
-    #[test]
-    fn a_stopped_core_still_notifies_peripheral_owners() {
-        assert_eq!(
-            policy_for(
-                CommandClass::Save,
-                RuntimeImpact::None,
-                &system_proxy_changed(),
-                CoreRunIntent::StoppedByUser
-            ),
-            CommandPolicy::SaveThenNotify
-        );
-    }
-
     #[test]
     fn only_allow_deferred_when_safe_permits_a_deferral() {
-        for policy in [
-            CommandPolicy::MustApply,
-            CommandPolicy::SaveOnly,
-            CommandPolicy::SaveThenNotify,
-            CommandPolicy::SavedInactive,
-        ] {
+        for policy in [CommandPolicy::MustApply, CommandPolicy::SavedInactive] {
             assert!(!policy.allows_deferral(), "{policy:?}");
         }
         assert!(CommandPolicy::AllowDeferredWhenSafe.allows_deferral());
@@ -463,16 +344,5 @@ mod tests {
             ..deferrable()
         };
         assert_eq!(disposition(&facts), FailureDisposition::RecoveryRequired);
-    }
-
-    /// `ApplicationEffectPlan` is reachable from here, so the import that gives
-    /// the owner diff its meaning stays honest.
-    #[test]
-    fn an_empty_plan_produces_no_owner_inputs() {
-        let app = NyanpasuAppConfig::default();
-        let clash = ClashConfig::default();
-        let inputs = ApplicationEffectInputs::project(&app, &clash, None);
-        assert!(ApplicationEffectPlan::diff(&inputs, &inputs).is_empty());
-        assert!(unchanged().is_empty());
     }
 }

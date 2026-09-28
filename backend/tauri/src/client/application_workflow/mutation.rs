@@ -26,7 +26,7 @@ use nyanpasu_core_manager::OperationId;
 use tokio::sync::oneshot;
 
 use super::{
-    impact::{MutationHints, RuntimeImpact},
+    impact::{self, MutationHints, RuntimeImpact},
     policy::{CommandClass, CommandPolicy, TryCauseKind},
 };
 use crate::client::runtime::{RuntimeApplyReceipt, RuntimeSnapshot};
@@ -75,12 +75,20 @@ impl DomainChange {
 ///
 /// The participant is generic over the state type so it can be handed to the
 /// owning `PersistentStateManager` unchanged; this trait is what lets it erase
-/// that type into a [`DomainChange`] the workflow can classify.
+/// that type into a [`DomainChange`] for the workflow, and what lets a source
+/// classify its own candidate.
 pub(crate) trait MutationDomain: Clone + Send + Sync + 'static {
     fn domain_change(change: StateChange<Self>) -> DomainChange;
+
+    /// How far the candidate moves the runtime, read off the two documents.
+    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact;
 }
 
 impl MutationDomain for NyanpasuAppConfig {
+    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
+        impact::classify_application(previous, candidate)
+    }
+
     fn domain_change(change: StateChange<Self>) -> DomainChange {
         DomainChange::Application {
             previous: change
@@ -92,6 +100,10 @@ impl MutationDomain for NyanpasuAppConfig {
 }
 
 impl MutationDomain for ClashConfig {
+    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
+        impact::classify_clash(previous, candidate)
+    }
+
     fn domain_change(change: StateChange<Self>) -> DomainChange {
         DomainChange::Clash {
             previous: change
@@ -103,6 +115,10 @@ impl MutationDomain for ClashConfig {
 }
 
 impl MutationDomain for Profiles {
+    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact {
+        impact::classify_profiles(previous, candidate, hints)
+    }
+
     fn domain_change(change: StateChange<Self>) -> DomainChange {
         DomainChange::Profiles {
             previous: change
@@ -121,6 +137,9 @@ pub(crate) struct MutationRequest {
     pub change: DomainChange,
     pub hints: MutationHints,
     pub class: CommandClass,
+    /// How far the source's own classification says the candidate moves the
+    /// runtime. The Runtime acts on it and never classifies again.
+    pub impact: RuntimeImpact,
     /// The authoritative decision of this transaction. It stays readable after
     /// the commit/rollback notification is dropped, which is what keeps
     /// `AwaitDecision` from hanging or guessing (v2 §3.3/§4.2).
@@ -129,6 +148,10 @@ pub(crate) struct MutationRequest {
     /// one verdict is ever sent, and a refusal before admission is one of them.
     /// The receiving end disappears when the whole prepare fan-out is dropped.
     pub ack: Option<oneshot::Sender<TryAck>>,
+    /// Where the settled attempt's receipt goes. The source waits for it once
+    /// its transaction has returned; a request refused before its Try drops it
+    /// unsent, which that wait reads as "the Runtime did nothing".
+    pub settle: Option<oneshot::Sender<MutationReceipt>>,
 }
 
 impl MutationRequest {
@@ -138,11 +161,6 @@ impl MutationRequest {
             let _ = channel.send(ack);
         }
     }
-}
-
-/// One admitted mutation, carrying its authoritative source decision handle.
-pub(crate) struct MutationCommand {
-    pub request: MutationRequest,
 }
 
 /// The workflow's verdict on the critical part of a mutation, in the shape the
@@ -278,9 +296,6 @@ pub(crate) enum RuntimePrepareOutcome {
     /// saved, but nothing is started (R7). `identity` is the candidate's
     /// target, which decides what the save does to an open target (T10 §1.7).
     SavedInactive { identity: String },
-    /// Nothing critical was owed: a plain source save, with or without
-    /// peripheral owners to notify afterwards.
-    Saved,
     /// The candidate must not be committed, and the runtime is where it was.
     Rejected {
         cause: ApplyFailure,
@@ -296,7 +311,7 @@ impl RuntimePrepareOutcome {
     /// The ACK this outcome owes the state transaction (v2 §4.4).
     pub fn ack(&self) -> TryAck {
         match self {
-            Self::Applied(_) | Self::SavedInactive { .. } | Self::Saved => TryAck::Ok,
+            Self::Applied(_) | Self::SavedInactive { .. } => TryAck::Ok,
             Self::Deferred { cause, .. } => TryAck::Degraded(cause.message.clone()),
             Self::Rejected { cause, .. } => TryAck::Rejected(cause.message.clone()),
             Self::RecoveryRequired(error) => TryAck::Failed(error.clone()),
@@ -316,7 +331,6 @@ impl RuntimePrepareOutcome {
             Self::Applied(_) => MutationOutcomeKind::Applied,
             Self::Deferred { .. } => MutationOutcomeKind::Deferred,
             Self::SavedInactive { .. } => MutationOutcomeKind::SavedInactive,
-            Self::Saved => MutationOutcomeKind::Saved,
             Self::Rejected { .. } => MutationOutcomeKind::Rejected,
             Self::RecoveryRequired(_) => MutationOutcomeKind::RecoveryRequired,
         }
@@ -328,7 +342,6 @@ pub(crate) enum MutationOutcomeKind {
     Applied,
     Deferred,
     SavedInactive,
-    Saved,
     Rejected,
     RecoveryRequired,
 }
@@ -432,7 +445,8 @@ pub(crate) enum ReestablishCause {
 }
 
 /// What the workflow publishes about mutations, separate from the core
-/// lifecycle status so a diagnostic read never competes with admission.
+/// lifecycle status so a diagnostic read never competes with admission. It is
+/// a display: a source learns its own result from its settlement, never here.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MutationJournal {
     pub maintenance: Option<String>,
@@ -442,30 +456,6 @@ pub(crate) struct MutationJournal {
     /// and the pending action.
     pub recovery: Option<super::attempt::RecoveryView>,
     pub deferred: Option<DeferredTarget>,
-}
-
-/// The separate budgets of one mutation (v2 §5.5).
-///
-/// They are deliberately not one number: waiting for admission, waiting for the
-/// source decision are different phases with independent bounds.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct MutationBudgets {
-    /// How long a Try may wait for the execution domain before the mutation is
-    /// refused outright. Refusing here is safe: nothing has been tried and
-    /// nothing has been committed.
-    pub admission: std::time::Duration,
-    /// How long `AwaitDecision` keeps waiting before the attempt is treated as
-    /// unresolved.
-    pub decision_wait: std::time::Duration,
-}
-
-impl Default for MutationBudgets {
-    fn default() -> Self {
-        Self {
-            admission: std::time::Duration::from_secs(10),
-            decision_wait: std::time::Duration::from_secs(120),
-        }
-    }
 }
 
 /// How many automatic convergence attempts a deferred target is allowed (D11).

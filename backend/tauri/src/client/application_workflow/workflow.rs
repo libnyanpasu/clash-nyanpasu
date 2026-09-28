@@ -6,8 +6,8 @@ use nyanpasu_core_manager::{CoreError, OperationId};
 
 use super::{
     Command, Output,
-    attempt::{AttemptStage, LifecycleCommand, LiveAttempt},
-    mutation::{DeferredTarget, MutationBudgets, MutationCommand, ReestablishCause, TargetOrigin},
+    attempt::{LifecycleCommand, LiveAttempt},
+    mutation::{DeferredTarget, ReestablishCause, TargetOrigin},
     preparation::RuntimePreparation,
     startup::StartupReport,
 };
@@ -28,10 +28,6 @@ pub(super) struct ApplicationWorkflow {
     /// submits it. An absent answer is never a passing one.
     pub validator: Arc<dyn super::ports::RuntimeValidatorPort>,
     pub lifecycle: CoreLifecycleWorkflow,
-    /// The separate budgets of one mutation (v2 §5.5), injected rather than
-    /// read from a constant so a test can reach an elapse path without waiting
-    /// out the production one.
-    pub budgets: MutationBudgets,
     /// A committed desired value the core is not running.
     pub deferred: Option<DeferredTarget>,
     pub pending_product: Option<(Arc<runtime::RuntimeSnapshot>, String)>,
@@ -40,17 +36,11 @@ pub(super) struct ApplicationWorkflow {
     pub pending_release: Option<String>,
     /// The attempt running now, or the latest one that did not settle
     /// (T10 §1.11). With the facade's pending action it is all that an
-    /// explicit recovery reads, and it survives a panic unchanged.
+    /// explicit recovery reads.
     pub live: Option<LiveAttempt>,
     /// StartupReconcile's first report. It runs once; asking again returns
     /// this and touches nothing (T10 §1.2).
     pub startup: Option<StartupReport>,
-    /// The stage the running attempt last reached, for a shutdown that has
-    /// to say what it is still waiting for (T10 §5.4 step 3).
-    pub stage: tokio::sync::watch::Sender<Option<(OperationId, AttemptStage)>>,
-    /// One-shot test fault: the next Confirm panics before it changes anything.
-    #[cfg(test)]
-    pub panic_at_confirm: bool,
 }
 
 impl ApplicationWorkflow {
@@ -66,35 +56,18 @@ impl ApplicationWorkflow {
         (!items.is_empty()).then(|| items.join("; "))
     }
 
-    pub(super) fn notify_committed(&self, refresh: bool) {
-        self.notify_requested(refresh, Vec::new());
+    /// Hands the effects owner the ports the core is bound to now, the
+    /// Runtime's own slice. `refresh` asks the tray for a partial refresh.
+    pub(super) fn notify_bound(&self, refresh: bool) {
+        self.notifications
+            .runtime_bound(self.lifecycle.ports.confirmed(), refresh);
     }
+
     /// Hands every owner its complete desired value. StartupReconcile sends
     /// this exactly once, whatever it found (T10 §1.9).
     pub(super) fn publish_full(&self) {
-        self.notifications.publish_full(
-            crate::client::effects::plan::ApplicationEffectInputs::project(
-                &self.lifecycle.application.load().state,
-                &self.clash.load().state,
-                self.lifecycle.ports.confirmed(),
-            ),
-        );
-    }
-
-    pub(super) fn notify_requested(
-        &self,
-        refresh: bool,
-        requested: Vec<crate::client::effects::plan::EffectKind>,
-    ) {
-        self.notifications.committed(
-            crate::client::effects::plan::ApplicationEffectInputs::project(
-                &self.lifecycle.application.load().state,
-                &self.clash.load().state,
-                self.lifecycle.ports.confirmed(),
-            ),
-            refresh,
-            requested,
-        );
+        self.notifications
+            .publish_full(self.lifecycle.ports.confirmed());
     }
 
     pub async fn execute(
@@ -113,10 +86,6 @@ impl ApplicationWorkflow {
                 .retry_runtime(operation_id, explicit)
                 .await
                 .map(|_| Output::Unit),
-            Command::Mutation(command) => {
-                let MutationCommand { request } = *command;
-                Ok(Output::Settled(Box::new(self.run_mutation(request).await)))
-            }
         }
     }
 
@@ -131,7 +100,7 @@ impl ApplicationWorkflow {
         // re-establishes one instead of refusing (T10 §1.7 #5).
         if matches!(command, CoreCommand::Reconcile) && !self.lifecycle.start_permitted() {
             let result = self.explicit_start(operation_id).await;
-            self.notify_committed(true);
+            self.notify_bound(true);
             return result;
         }
         // A stop accepted after an explicit start takes back the start it
@@ -177,7 +146,7 @@ impl ApplicationWorkflow {
             deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
             deferred.next_attempt = None;
         }
-        self.notify_committed(true);
+        self.notify_bound(true);
         if tracked.is_some() {
             // Returning is the command's own conclusion; an action it left
             // pending is not, and the error it returned says why.

@@ -1,16 +1,15 @@
 //! Pure impact classification for one configuration mutation.
 //!
-//! Two questions that must not be collapsed into one:
-//!
-//! - does the candidate move a *runtime build input*, so the critical part of
-//!   the mutation has to build, check and try it ([`RuntimeImpact`]);
-//! - which *peripheral owners* were handed new inputs, so only those may be
-//!   given a new desired target ([`ChangedOwnerInputs`]).
+//! One question: does the mutation reach the runtime, so its critical part has
+//! to build, check and try the candidate ([`runtime_impact`])? A source asks it
+//! before it opens its transaction, and only a mutation that does reach the
+//! runtime takes the Runtime owner into it. Which peripheral owners a commit
+//! hands new inputs is the effects owner's diff, not a question asked here.
 //!
 //! Every input is a parameter and every output is data: nothing here reads
-//! state, spawns work, or touches Tauri. The workflow composes the results.
+//! state, spawns work, or touches Tauri.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 
 use indexmap::IndexSet;
 use nyanpasu_config::{
@@ -24,12 +23,8 @@ use nyanpasu_config::{
     profile::{ManagedProfilePath, ProfileDefinition, ProfileId, Profiles},
 };
 
-use crate::{
-    client::effects::plan::{
-        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-    },
-    state::profiles::ProfilesActor,
-};
+use super::{mutation::MutationDomain, policy::CommandClass};
+use crate::state::profiles::ProfilesActor;
 
 /// How much of the running core a candidate forces to change.
 ///
@@ -261,7 +256,7 @@ impl MutationHints {
 /// - `enable_builtin_enhanced` gates that transform table.
 ///
 /// Every other field of [`NyanpasuAppConfig`] drives a peripheral owner or
-/// nothing at all, which is what [`ChangedOwnerInputs`] reports instead.
+/// nothing at all.
 #[derive(Debug, PartialEq, serde::Serialize)]
 struct ApplicationRuntimeInputs<'a> {
     enable_service_mode: bool,
@@ -279,6 +274,27 @@ impl<'a> ApplicationRuntimeInputs<'a> {
     }
 }
 
+/// Whether a mutation reaches the runtime at all, and how far; `None` is a
+/// plain save the runtime takes no part in.
+///
+/// The request counts as much as the diff. An explicit switch, or a request
+/// that named a runtime field, owes the runtime a Try even when the documents
+/// are equal: re-selecting the running core or profile, or resubmitting an
+/// unconverged field, is a request for that runtime (R15), and a repeated mode
+/// switch still owes its connection interruption. A patch that spans runtime
+/// and other fields is one transaction and classifies as a whole.
+pub(crate) fn runtime_impact<T: MutationDomain>(
+    previous: &T,
+    candidate: &T,
+    hints: &MutationHints,
+    class: CommandClass,
+) -> Option<RuntimeImpact> {
+    let classified = T::classify(previous, candidate, hints);
+    let requested = class == CommandClass::ExplicitSwitch || hints.names_runtime_field();
+    (classified != RuntimeImpact::None || requested)
+        .then(|| classified.max(RuntimeImpact::Reconcile))
+}
+
 pub(crate) fn classify_application(
     previous: &NyanpasuAppConfig,
     candidate: &NyanpasuAppConfig,
@@ -294,6 +310,16 @@ pub(crate) fn classify_application(
     } else {
         RuntimeImpact::None
     }
+}
+
+/// Whether committing the candidate moves the runtime off the service host,
+/// which is what makes Confirm release the daemon.
+pub(crate) fn leaves_service_mode(
+    previous: &NyanpasuAppConfig,
+    candidate: &NyanpasuAppConfig,
+) -> bool {
+    classify_application(previous, candidate) == RuntimeImpact::HostSwitch
+        && !candidate.enable_service_mode
 }
 
 /// Every clash-config field the runtime build or the control channel reads.
@@ -379,7 +405,7 @@ pub(crate) fn classify_profiles(
     // `global_transforms` is compared as a list, not through the closure: the
     // closure is a set, and reordering the global transforms leaves it equal
     // while changing the order they run in.
-    if previous.current != candidate.current
+    if selection_changed(previous, candidate)
         || previous.global_transforms != candidate.global_transforms
         || previous.valid != candidate.valid
         || before != after
@@ -418,6 +444,12 @@ pub(crate) fn classify_profiles(
     }
 
     RuntimeImpact::None
+}
+
+/// Whether the candidate selects a different current profile, which is what
+/// interrupts connections on a profile change.
+pub(crate) fn selection_changed(previous: &Profiles, candidate: &Profiles) -> bool {
+    previous.current != candidate.current
 }
 
 /// The runtime target a candidate asks for, as a stable identity.
@@ -503,53 +535,10 @@ fn closure_files<'a>(
         .collect()
 }
 
-/// The peripheral owners whose *inputs* a candidate moves.
-///
-/// Only an owner listed here may be handed a new desired target (roadmap §9.1).
-/// A language change must not raise the system proxy's target generation: doing
-/// so would let any unrelated save reset that owner's retry budget.
-///
-/// This is not "the owner has converged". An owner absent here can still be
-/// holding a target it never managed to apply. That fact lives in the owner's
-/// own `EffectStatus`, where `applied_revision` trails `desired_revision`, and
-/// the scheduler combines the two — it is never folded into this projection,
-/// because then "nothing changed for you" and "you are behind" would be one
-/// indistinguishable signal.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ChangedOwnerInputs(BTreeSet<EffectKind>);
-
-impl ChangedOwnerInputs {
-    /// Reuses the effect plan's struct-patch diff, so an owner appears here on
-    /// exactly the inputs that would produce its effect.
-    pub fn diff(previous: &ApplicationEffectInputs, candidate: &ApplicationEffectInputs) -> Self {
-        Self(
-            ApplicationEffectPlan::diff(previous, candidate)
-                .effects()
-                .iter()
-                .map(ApplicationEffect::kind)
-                .collect(),
-        )
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Read by the post-commit dispatch that hands each owner its new target
-    /// (T7); the workflow itself only asks whether any owner moved.
-    #[allow(dead_code)]
-    pub fn contains(&self, kind: EffectKind) -> bool {
-        self.0.contains(&kind)
-    }
-
-    #[allow(dead_code)]
-    pub fn kinds(&self) -> &BTreeSet<EffectKind> {
-        &self.0
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
     use nyanpasu_config::{
         application::{
@@ -578,7 +567,10 @@ mod tests {
     use struct_patch::Patch as _;
 
     use crate::{
-        client::effects::status::{EffectHealth, EffectRevision, EffectStatus},
+        client::effects::{
+            plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
+            status::{EffectHealth, EffectRevision, EffectStatus},
+        },
         enhance::golden_support,
     };
 
@@ -616,15 +608,19 @@ mod tests {
         )
     }
 
+    /// The owners the effect plan hands a new target, in kind order.
     fn owners(
         previous: &ApplicationEffectInputs,
         candidate: &ApplicationEffectInputs,
     ) -> Vec<EffectKind> {
-        ChangedOwnerInputs::diff(previous, candidate)
-            .kinds()
+        let mut kinds: Vec<EffectKind> = ApplicationEffectPlan::diff(previous, candidate)
+            .effects()
             .iter()
-            .copied()
-            .collect()
+            .map(ApplicationEffect::kind)
+            .collect();
+        kinds.sort();
+        kinds.dedup();
+        kinds
     }
 
     fn overrides_patch(patch: ClashGuardOverridesPatch) -> ClashConfig {
@@ -926,7 +922,7 @@ mod tests {
             RuntimeImpact::None
         );
         assert!(
-            ChangedOwnerInputs::diff(
+            owners(
                 &effect_inputs(&base_app(), &clash),
                 &effect_inputs(&base_app(), &clash)
             )
@@ -1368,7 +1364,94 @@ mod tests {
         );
     }
 
-    /// Metadata is the SaveOnly case: no build stage reads it, not even for the
+    /// V13: whether a mutation reaches the runtime reads the request as much as
+    /// the diff, and a patch that spans both kinds of field is one mutation.
+    /// The profiles rows live with the profiles actor, which derives the hints
+    /// and class they are classified with.
+    #[test]
+    fn runtime_impact_reads_the_request_and_the_diff_together() {
+        let (save, switch) = (CommandClass::Save, CommandClass::ExplicitSwitch);
+        let unnamed = MutationHints::default();
+        let named = MutationHints {
+            requested: RequestedRuntimeFields::runtime(),
+            ..MutationHints::default()
+        };
+
+        let app = base_app();
+        let mut theme = app.clone();
+        theme.theme_mode = ThemeMode::Dark;
+        let mut host = app.clone();
+        host.enable_service_mode = true;
+        let mut mixed = theme.clone();
+        mixed.core = ClashCore::ClashRs;
+        for (case, candidate, class, hints, expected) in [
+            (
+                "relevant",
+                &host,
+                save,
+                &unnamed,
+                Some(RuntimeImpact::HostSwitch),
+            ),
+            ("irrelevant", &theme, save, &unnamed, None),
+            (
+                "mixed",
+                &mixed,
+                save,
+                &unnamed,
+                Some(RuntimeImpact::CoreSwap),
+            ),
+            (
+                "same core or host",
+                &app,
+                switch,
+                &unnamed,
+                Some(RuntimeImpact::Reconcile),
+            ),
+            (
+                "same field, named",
+                &app,
+                save,
+                &named,
+                Some(RuntimeImpact::Reconcile),
+            ),
+            ("same document, unnamed", &app, save, &unnamed, None),
+        ] {
+            assert_eq!(
+                runtime_impact(&app, candidate, hints, class),
+                expected,
+                "app: {case}"
+            );
+        }
+
+        let clash = base_clash();
+        let mut web_ui = clash.clone();
+        web_ui.web_ui_list.push("http://127.0.0.1:9090/ui".into());
+        let mode = overrides_patch(ClashGuardOverridesPatch {
+            mode: Some(Mode::Direct),
+            ..ClashGuardOverridesPatch::default()
+        });
+        let mut mixed = mode.clone();
+        mixed.web_ui_list = web_ui.web_ui_list.clone();
+        for (case, candidate, hints, expected) in [
+            ("relevant", &mode, &unnamed, Some(RuntimeImpact::Reconcile)),
+            ("irrelevant", &web_ui, &unnamed, None),
+            ("mixed", &mixed, &unnamed, Some(RuntimeImpact::Reconcile)),
+            (
+                "same field, named",
+                &clash,
+                &named,
+                Some(RuntimeImpact::Reconcile),
+            ),
+        ] {
+            assert_eq!(
+                runtime_impact(&clash, candidate, hints, save),
+                expected,
+                "clash: {case}"
+            );
+        }
+    }
+
+    /// Metadata is a plain save: no build stage reads it, not even for the
     /// profile that is running.
     #[test]
     fn profile_metadata_has_no_runtime_impact() {
@@ -1409,12 +1492,12 @@ mod tests {
         let mut candidate = base_app();
         candidate.language = I18nLanguage::SimplifiedChinese;
 
-        let changed = ChangedOwnerInputs::diff(
+        let changed = owners(
             &effect_inputs(&previous, &clash),
             &effect_inputs(&candidate, &clash),
         );
         assert!(
-            !changed.contains(EffectKind::SystemProxy),
+            !changed.contains(&EffectKind::SystemProxy),
             "a language change must not raise the system proxy's target"
         );
 
@@ -1443,7 +1526,7 @@ mod tests {
 
         assert_eq!(classify_clash(&previous, &candidate), RuntimeImpact::None);
         assert!(
-            ChangedOwnerInputs::diff(
+            owners(
                 &effect_inputs(&app, &previous),
                 &effect_inputs(&app, &candidate)
             )

@@ -3,10 +3,9 @@
 //! The workflow holds one [`LiveAttempt`]: the attempt running now, or the
 //! latest one that did not settle. The facade holds the one action that
 //! attempt started and has not seen finish. Both are plain fields of the
-//! workflow box, which returns to the actor in `Completed` even when the task
-//! panicked, so after any interruption the two slots hold exactly what they
-//! held at that moment. Normal execution and recovery advance the same slots,
-//! so neither ever describes a stale step.
+//! workflow the actor owns, so after an interruption the two slots hold
+//! exactly what they held at that moment. Normal execution and recovery
+//! advance the same slots, so neither ever describes a stale step.
 //!
 //! The execution domain is isolated while it is idle and either slot is
 //! occupied. Only an explicit recovery runs then: it resolves the pending
@@ -15,7 +14,7 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::state::{AbortResourceState, DecisionHandle, StateDecision};
+use nyanpasu_core::state::{DecisionHandle, StateDecision};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 
 use super::{
@@ -47,8 +46,7 @@ pub(super) struct LiveAttempt {
     /// What the Try told the source transaction, recorded before the ACK left
     /// (or, for a committed target, before the target was updated).
     pub verdict: Option<TryVerdict>,
-    /// Why the attempt did not settle. `None` while it runs, and after a
-    /// panic, which records nothing and needs nothing recorded.
+    /// Why the attempt did not settle. `None` while it runs.
     pub unresolved: Option<String>,
 }
 
@@ -82,7 +80,6 @@ pub(super) enum TryVerdict {
     Applied(AppliedVerdict),
     Deferred { identity: String },
     SavedInactive { identity: String },
-    Saved,
     Rejected,
 }
 
@@ -122,7 +119,6 @@ impl TryVerdict {
             RuntimePrepareOutcome::SavedInactive { identity } => Some(Self::SavedInactive {
                 identity: identity.clone(),
             }),
-            RuntimePrepareOutcome::Saved => Some(Self::Saved),
             RuntimePrepareOutcome::Rejected { .. } => Some(Self::Rejected),
             RuntimePrepareOutcome::RecoveryRequired(_) => None,
         }
@@ -311,7 +307,6 @@ impl ApplicationWorkflow {
     pub(super) fn advance(&mut self, stage: AttemptStage) {
         if let Some(live) = &mut self.live {
             live.stage = stage;
-            self.stage.send_replace(Some((live.operation_id, stage)));
         }
     }
 
@@ -380,7 +375,7 @@ impl ApplicationWorkflow {
         let Some(origin) = self.live.as_ref().map(|live| live.origin.kind()) else {
             // An action with no attempt behind it has finished, which is all
             // it owed.
-            self.notify_committed(true);
+            self.notify_bound(true);
             return Ok(());
         };
         self.advance(AttemptStage::Recovering);
@@ -404,7 +399,7 @@ impl ApplicationWorkflow {
         // A target recovery put back keeps its health and schedule: only an
         // outcome recovery itself reached for it may change them.
         self.lifecycle.runtime.accept_transition();
-        self.notify_committed(true);
+        self.notify_bound(true);
         Ok(())
     }
 
@@ -420,9 +415,9 @@ impl ApplicationWorkflow {
         let (operation_id, domain, decision) = (live.operation_id, *domain, decision.decision());
         let (baseline, verdict) = (live.baseline.clone(), live.verdict.clone());
         match decision {
-            StateDecision::Aborted {
-                resources: AbortResourceState::Restored,
-            } => match baseline {
+            // The source's own resources are its to report; the runtime goes
+            // back to the committed configuration either way (U7).
+            StateDecision::Aborted { .. } => match baseline {
                 // The attempt never read the runtime, so it cannot have
                 // changed it.
                 None => Ok(()),
@@ -497,16 +492,13 @@ impl ApplicationWorkflow {
                     self.confirm_saved_inactive(identity);
                     Ok(())
                 }
-                (Some(TryVerdict::Saved), _) | (_, None) => Ok(()),
+                (_, None) => Ok(()),
                 (None | Some(TryVerdict::Rejected), Some(_)) => Err(format!(
                     "operation {operation_id} was committed without a verdict that accepted it; \
                      the source and this workflow disagree about what was decided"
                 )),
             },
-            StateDecision::Undecided
-            | StateDecision::Aborted {
-                resources: AbortResourceState::NeedsRecovery(_),
-            } => Err("source decision or local resource recovery is unresolved".into()),
+            StateDecision::Undecided => Err("the source decision is unresolved".into()),
         }
     }
 

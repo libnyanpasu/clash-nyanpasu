@@ -206,11 +206,6 @@ export function ConfigurationStatusPanel() {
                   {m.configuration_pending()}: {status.active}
                 </p>
               )}
-              {status.queued.map((id) => (
-                <p key={id}>
-                  {m.configuration_pending()}: {id}
-                </p>
-              ))}
               {status.recent_operations.slice(0, 8).map((operation) => (
                 <div key={operation.operation_id} className="my-2 break-all">
                   <code>{operation.operation_id}</code>: {operation.domain} /{' '}

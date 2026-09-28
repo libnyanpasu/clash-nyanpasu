@@ -2,18 +2,20 @@
 use super::{
     actor::{EffectsArgs, EffectsClient, EffectsSnapshot},
     plan::{
-        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind, TrayRefresh,
+        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
+        SystemProxyDesired, TrayRefresh,
     },
-    ports::{ApplicationEffectsPort, CommitNotifications, EffectsShutdown},
+    ports::{ApplicationEffectsPort, CommitNotifications},
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
-    NyanpasuClient, ShutdownRequest, StepOutcome, UiEventSink,
+    NyanpasuClient, UiEventSink,
     tests::{TestControlEndpoint, test_client_args_with_endpoint},
 };
 use nyanpasu_config::{
     application::{I18nLanguage, NyanpasuAppConfig},
     clash::config::ClashConfig,
+    runtime::executor::ResolvedPortBindings,
 };
 use std::{
     sync::{
@@ -24,6 +26,7 @@ use std::{
 };
 use struct_patch::Patch;
 use tokio::sync::Notify;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Default)]
 struct Ui;
@@ -78,31 +81,45 @@ impl ApplicationEffectsPort for Port {
             })
             .collect()
     }
-    fn begin_shutdown(&self) {}
-    async fn shutdown(&self, _: Duration) -> EffectsShutdown {
-        EffectsShutdown {
-            system_proxy: StepOutcome::Done { detail: None },
-            hotkeys: StepOutcome::Done { detail: None },
-            widget: StepOutcome::Done { detail: None },
-        }
-    }
-}
-/// Generous: these tests are about what the actor does, not its bounds.
-const SHUTDOWN_BUDGET: Duration = Duration::from_secs(12);
-fn within(budget: Duration) -> tokio::time::Instant {
-    tokio::time::Instant::now() + budget
 }
 fn inputs() -> ApplicationEffectInputs {
     ApplicationEffectInputs::project(&NyanpasuAppConfig::default(), &ClashConfig::default(), None)
 }
-async fn graph(port: Arc<Port>) -> EffectsClient {
-    EffectsClient::spawn(EffectsArgs {
-        port,
-        ui: Arc::new(Ui),
-        initial: inputs(),
-    })
+/// The effects owner's share of the root shutdown.
+struct Shutdown {
+    token: CancellationToken,
+    tasks: TaskTracker,
+}
+impl Shutdown {
+    fn new() -> Self {
+        Self {
+            token: CancellationToken::new(),
+            tasks: TaskTracker::new(),
+        }
+    }
+    fn request(&self) {
+        self.token.cancel();
+        self.tasks.close();
+    }
+    async fn run(&self) {
+        self.request();
+        self.tasks.wait().await;
+    }
+}
+async fn graph(port: Arc<dyn ApplicationEffectsPort>) -> (EffectsClient, Shutdown) {
+    let shutdown = Shutdown::new();
+    let client = EffectsClient::spawn(
+        EffectsArgs {
+            port,
+            ui: Arc::new(Ui),
+            initial: inputs(),
+            shutdown: shutdown.token.clone(),
+        },
+        &shutdown.tasks,
+    )
     .await
-    .unwrap()
+    .unwrap();
+    (client, shutdown)
 }
 async fn wait(
     client: &EffectsClient,
@@ -127,8 +144,8 @@ async fn blocked_pac_does_not_block_visual_or_hotkey_group() {
         block: Some(EffectKind::SystemProxy),
         ..Default::default()
     });
-    let client = graph(port.clone()).await;
-    client.publish_full(inputs());
+    let (client, shutdown) = graph(port.clone()).await;
+    client.publish_full(None);
     port.entered.notified().await;
     let state = wait(&client, |s| {
         s.effects
@@ -159,7 +176,7 @@ async fn blocked_pac_does_not_block_visual_or_hotkey_group() {
             .all(|s| s.health == EffectHealth::Healthy)
     })
     .await;
-    client.shutdown(within(SHUTDOWN_BUDGET)).await;
+    shutdown.run().await;
 }
 
 #[tokio::test]
@@ -168,8 +185,8 @@ async fn blocked_gui_does_not_block_proxy_group() {
         block: Some(EffectKind::Tray),
         ..Default::default()
     });
-    let client = graph(port.clone()).await;
-    client.publish_full(inputs());
+    let (client, shutdown) = graph(port.clone()).await;
+    client.publish_full(None);
     port.entered.notified().await;
     wait(&client, |s| {
         s.effects
@@ -179,7 +196,7 @@ async fn blocked_gui_does_not_block_proxy_group() {
     })
     .await;
     port.release.notify_one();
-    client.shutdown(within(SHUTDOWN_BUDGET)).await;
+    shutdown.run().await;
 }
 
 #[tokio::test]
@@ -188,15 +205,15 @@ async fn queued_visual_targets_coalesce_and_full_subsumes_part() {
         block: Some(EffectKind::Locale),
         ..Default::default()
     });
-    let client = graph(port.clone()).await;
+    let (client, shutdown) = graph(port.clone()).await;
     let mut desired = inputs();
     desired.app.language = I18nLanguage::Korean;
-    client.committed(desired.clone(), false, Vec::new());
+    client.application_committed(desired.app.clone(), Vec::new());
     port.entered.notified().await;
     desired.app.language = I18nLanguage::English;
-    client.committed(desired.clone(), false, Vec::new());
+    client.application_committed(desired.app.clone(), Vec::new());
     desired.app.enable_tray_text = !desired.app.enable_tray_text;
-    client.committed(desired.clone(), false, Vec::new());
+    client.application_committed(desired.app.clone(), Vec::new());
     client.barrier().await;
     assert_eq!(port.calls.lock().unwrap().len(), 1);
     port.release.notify_one();
@@ -218,7 +235,75 @@ async fn queued_visual_targets_coalesce_and_full_subsumes_part() {
         ]
     );
     drop(calls);
-    client.shutdown(within(SHUTDOWN_BUDGET)).await;
+    shutdown.run().await;
+}
+
+/// The newest `kind` effect the owners were handed, once every slice sent so
+/// far has been planned and the newest plan for `kind` applied.
+async fn last_applied(client: &EffectsClient, port: &Port, kind: EffectKind) -> ApplicationEffect {
+    client.barrier().await;
+    wait(client, |s| {
+        s.effects
+            .iter()
+            .map(|e| &e.status)
+            .any(|s| s.kind == kind && s.health == EffectHealth::Healthy)
+    })
+    .await;
+    let applied = port
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .flat_map(|(_, effects)| effects)
+        .find(|effect| effect.kind() == kind)
+        .cloned();
+    applied.expect("the effect was planned")
+}
+
+/// V29: the application and the Runtime each send their own slice, and the
+/// two interleave. Each replaces only its own part of what the effects owner
+/// holds, so the system proxy, which reads both, gets the newest of each.
+#[tokio::test]
+async fn interleaved_slices_from_two_owners_each_keep_their_newest_value() {
+    let port = Arc::new(Port::default());
+    let (client, shutdown) = graph(port.clone()).await;
+    let bound = |mixed_port| {
+        Some(ResolvedPortBindings {
+            mixed_port,
+            ..ResolvedPortBindings::default()
+        })
+    };
+    let mut app = inputs().app;
+    app.enable_system_proxy = true;
+    app.system_proxy_bypass = "first".into();
+    client.application_committed(app.clone(), Vec::new());
+    client.runtime_bound(bound(7890), false);
+    app.system_proxy_bypass = "second".into();
+    client.application_committed(app.clone(), Vec::new());
+    assert_eq!(
+        last_applied(&client, &port, EffectKind::SystemProxy).await,
+        ApplicationEffect::SystemProxy(SystemProxyDesired {
+            enabled: true,
+            bypass: "second".into(),
+            port: Some(7890),
+            pac_url: None,
+        }),
+        "the application's slice keeps the ports the Runtime sent"
+    );
+
+    client.runtime_bound(bound(7891), false);
+    assert_eq!(
+        last_applied(&client, &port, EffectKind::SystemProxy).await,
+        ApplicationEffect::SystemProxy(SystemProxyDesired {
+            enabled: true,
+            bypass: "second".into(),
+            port: Some(7891),
+            pac_url: None,
+        }),
+        "the Runtime's slice keeps the application's"
+    );
+    shutdown.run().await;
 }
 
 #[tokio::test]
@@ -227,13 +312,13 @@ async fn stale_completion_does_not_publish_success_for_new_desired() {
         block: Some(EffectKind::SystemProxy),
         ..Default::default()
     });
-    let client = graph(port.clone()).await;
+    let (client, shutdown) = graph(port.clone()).await;
     let mut desired = inputs();
     desired.app.system_proxy_bypass = "old".into();
-    client.committed(desired.clone(), false, Vec::new());
+    client.application_committed(desired.app.clone(), Vec::new());
     port.entered.notified().await;
     desired.app.system_proxy_bypass = "new".into();
-    client.committed(desired, false, Vec::new());
+    client.application_committed(desired.app, Vec::new());
     client.barrier().await;
     let revision = client.snapshot().revision;
     port.fail.store(true, Ordering::SeqCst);
@@ -253,20 +338,22 @@ async fn stale_completion_does_not_publish_success_for_new_desired() {
     assert_eq!(status.desired_revision.get(), revision);
     assert_eq!(status.applied_revision.get(), 0);
     assert_eq!(port.calls.lock().unwrap().len(), 2);
-    client.shutdown(within(SHUTDOWN_BUDGET)).await;
+    shutdown.run().await;
 }
 
 #[tokio::test]
 async fn independent_graphs_and_shutdown_admission() {
     let a = Arc::new(Port::default());
     let b = Arc::new(Port::default());
-    let left = graph(a.clone()).await;
-    let right = graph(b.clone()).await;
-    left.shutdown(within(SHUTDOWN_BUDGET)).await;
-    left.publish_full(inputs());
-    left.barrier().await;
+    let (left, left_shutdown) = graph(a.clone()).await;
+    let (right, right_shutdown) = graph(b.clone()).await;
+    left_shutdown.request();
+    // Queued before this test yields, so ahead of the drain: only the token
+    // keeps it from reaching the owners.
+    left.publish_full(None);
+    left_shutdown.tasks.wait().await;
     assert!(a.calls.lock().unwrap().is_empty());
-    right.publish_full(inputs());
+    right.publish_full(None);
     wait(&right, |s| {
         s.effects.len() == 8
             && s.effects
@@ -276,7 +363,7 @@ async fn independent_graphs_and_shutdown_admission() {
     })
     .await;
     assert_eq!(b.calls.lock().unwrap().len(), 3);
-    right.shutdown(within(SHUTDOWN_BUDGET)).await;
+    right_shutdown.run().await;
 }
 
 #[test]
@@ -311,7 +398,8 @@ fn source_commit_and_second_save_do_not_wait_for_gui() {
             I18nLanguage::English
         );
         port.release.notify_one();
-        client.shutdown(ShutdownRequest::default()).await;
+        client.request_shutdown();
+        client.wait_shutdown().await;
     });
 }
 
@@ -349,7 +437,8 @@ fn asynchronous_failure_is_status_and_never_cancels_source() {
             client.get_app_config().await.unwrap().language,
             I18nLanguage::Korean
         );
-        client.shutdown(ShutdownRequest::default()).await;
+        client.request_shutdown();
+        client.wait_shutdown().await;
     });
 }
 
@@ -376,7 +465,8 @@ fn no_op_and_session_saves_do_not_dispatch() {
             .unwrap();
         client.inner.effects.barrier().await;
         assert!(port.calls.lock().unwrap().is_empty());
-        client.shutdown(ShutdownRequest::default()).await;
+        client.request_shutdown();
+        client.wait_shutdown().await;
     });
 }
 
@@ -405,7 +495,63 @@ fn rejected_source_never_dispatches() {
             client.get_app_config().await.unwrap().language,
             I18nLanguage::Korean
         );
-        client.shutdown(ShutdownRequest::default()).await;
+        client.request_shutdown();
+        client.wait_shutdown().await;
+    });
+}
+
+/// The clash config and profiles owners hand the effects owner their own
+/// slices: a mode change reaches the tray from the clash config owner, and a
+/// profiles commit asks the tray for a partial refresh.
+#[test]
+fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
+    use crate::client::tests::minimal_file_profile_request;
+    use nyanpasu_config::clash::config::overrides::{ClashGuardOverridesPatch, Mode};
+    let dir = tempfile::tempdir().unwrap();
+    let port = Arc::new(Port::default());
+    let endpoint = TestControlEndpoint::succeeding();
+    let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
+    args.effects = port.clone();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    tauri::async_runtime::block_on(async {
+        endpoint.prime(&client).await;
+        client
+            .patch_runtime_overrides(ClashGuardOverridesPatch {
+                mode: Some(Mode::Global),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let ApplicationEffect::Tray(_, view) =
+            last_applied(&client.inner.effects, &port, EffectKind::Tray).await
+        else {
+            unreachable!("filtered by kind")
+        };
+        assert_eq!(view.part.mode, Mode::Global);
+
+        // Both of the profiles owner's commit paths: one with a materialized
+        // resource, one that writes the document alone.
+        port.calls.lock().unwrap().clear();
+        let uid = client
+            .add_profile(
+                minimal_file_profile_request(),
+                Some("proxies: []\nmode: rule\n".into()),
+            )
+            .await
+            .unwrap()
+            .into_value();
+        assert!(matches!(
+            last_applied(&client.inner.effects, &port, EffectKind::Tray).await,
+            ApplicationEffect::Tray(TrayRefresh::Part, _)
+        ));
+        port.calls.lock().unwrap().clear();
+        client.reorder_profiles_by_list(vec![uid]).await.unwrap();
+        assert!(matches!(
+            last_applied(&client.inner.effects, &port, EffectKind::Tray).await,
+            ApplicationEffect::Tray(TrayRefresh::Part, _)
+        ));
+        client.request_shutdown();
+        client.wait_shutdown().await;
     });
 }
 
@@ -417,10 +563,10 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
         retryable: true,
         ..Default::default()
     });
-    let client = graph(port.clone()).await;
+    let (client, shutdown) = graph(port.clone()).await;
     let mut desired = inputs();
     desired.app.language = I18nLanguage::Korean;
-    client.committed(desired.clone(), false, Vec::new());
+    client.application_committed(desired.app.clone(), Vec::new());
     wait(&client, |s| {
         s.effects.iter().any(|p| {
             p.status.kind == EffectKind::Locale && p.health == ConvergenceHealth::RetryScheduled
@@ -452,7 +598,7 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
     assert_eq!(port.calls.lock().unwrap().len(), count);
     // An unrelated save neither probes Locale nor creates a fresh budget.
     desired.app.system_proxy_bypass = "unrelated".into();
-    client.committed(desired, false, Vec::new());
+    client.application_committed(desired.app, Vec::new());
     client.barrier().await;
     assert_eq!(
         client
@@ -483,18 +629,18 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
             .automatic_remaining,
         0
     );
-    client.shutdown(within(SHUTDOWN_BUDGET)).await;
+    shutdown.run().await;
 }
 
 #[tokio::test]
 async fn missing_binding_waits_without_spending_apply_budget() {
     use crate::client::convergence::ConvergenceHealth;
     let port = Arc::new(Port::default());
-    let client = graph(port.clone()).await;
+    let (client, shutdown) = graph(port.clone()).await;
     let mut desired = inputs();
     desired.app.enable_system_proxy = true;
     desired.app.enable_proxy_guard = true;
-    client.committed(desired, false, Vec::new());
+    client.application_committed(desired.app, Vec::new());
     let state = wait(&client, |s| {
         s.effects.iter().any(|p| {
             p.status.kind == EffectKind::SystemProxy
@@ -527,7 +673,7 @@ async fn missing_binding_waits_without_spending_apply_budget() {
             .attempts,
         0
     );
-    client.shutdown(within(SHUTDOWN_BUDGET)).await;
+    shutdown.run().await;
 }
 
 #[tokio::test]
@@ -537,10 +683,10 @@ async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
         fail: AtomicBool::new(true),
         ..Default::default()
     });
-    let client = graph(port.clone()).await;
+    let (client, shutdown) = graph(port.clone()).await;
     let mut desired = inputs();
     desired.app.language = I18nLanguage::Korean;
-    client.committed(desired.clone(), false, vec![EffectKind::Locale]);
+    client.application_committed(desired.app.clone(), vec![EffectKind::Locale]);
     wait(&client, |s| {
         s.effects
             .iter()
@@ -557,7 +703,7 @@ async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
             .attempts,
         1
     );
-    client.committed(desired, false, vec![EffectKind::Locale]);
+    client.application_committed(desired.app, vec![EffectKind::Locale]);
     wait(&client, |s| {
         s.effects.iter().any(|p| {
             p.status.kind == EffectKind::Locale
@@ -566,7 +712,7 @@ async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
         })
     })
     .await;
-    client.shutdown(within(SHUTDOWN_BUDGET)).await;
+    shutdown.run().await;
 }
 
 #[tokio::test]
@@ -595,12 +741,11 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
         wire["commits"][0]["source_version"],
         before.source_versions.application + 1
     );
+    // A language is no runtime input, so the save ran no operation.
+    assert!(wire["commits"][0]["operation_id"].is_null());
+    assert_eq!(wire["commits"][0]["runtime"], "unchanged");
     let pending = client.configuration_status();
     assert!(pending.event_seq > before.event_seq);
-    assert_eq!(
-        wire["commits"][0]["operation_id"],
-        pending.recent_operations[0].operation_id
-    );
     assert!(pending.effects.iter().any(|e| e.kind == EffectKind::Locale
         && e.health == crate::client::convergence::ConvergenceHealth::Pending));
     port.release.notify_one();
@@ -613,147 +758,56 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
     })
     .await;
     assert!(client.configuration_status().event_seq > pending.event_seq);
-    client.shutdown(ShutdownRequest::default()).await;
+    client.request_shutdown();
+    client.wait_shutdown().await;
 }
 
-/// Parks the system proxy group and records, in order, the shutdown signal,
-/// the moment the parked group's waiter is dropped, and the cleanups.
-#[derive(Default)]
-struct OrderedPort {
-    events: Mutex<Vec<&'static str>>,
-    entered: Notify,
-    cleanups: std::sync::atomic::AtomicUsize,
-}
-
-impl OrderedPort {
-    fn record(&self, event: &'static str) {
-        self.events.lock().unwrap().push(event);
-    }
-
-    fn events(&self) -> Vec<&'static str> {
-        self.events.lock().unwrap().clone()
-    }
-}
-
-/// Records its drop, which is how an aborted group's waiter ends.
-struct DroppedWaiter(Arc<OrderedPort>);
-
-impl Drop for DroppedWaiter {
-    fn drop(&mut self) {
-        self.0.record("group waiter dropped");
-    }
-}
-
-#[async_trait::async_trait]
-impl ApplicationEffectsPort for Arc<OrderedPort> {
-    async fn apply(
-        &self,
-        revision: EffectRevision,
-        plan: ApplicationEffectPlan,
-    ) -> Vec<EffectStatus> {
-        if plan
-            .effects()
-            .iter()
-            .any(|effect| effect.kind() == EffectKind::SystemProxy)
-        {
-            let _waiter = DroppedWaiter(self.clone());
-            self.entered.notify_one();
-            std::future::pending::<()>().await;
-        }
-        plan.effects()
-            .iter()
-            .map(|effect| EffectStatus {
-                kind: effect.kind(),
-                desired_revision: revision,
-                applied_revision: revision,
-                health: EffectHealth::Healthy,
-            })
-            .collect()
-    }
-
-    fn begin_shutdown(&self) {
-        self.record("owners signalled");
-    }
-
-    async fn shutdown(&self, _: Duration) -> EffectsShutdown {
-        self.record("owners cleaned up");
-        self.cleanups.fetch_add(1, Ordering::SeqCst);
-        EffectsShutdown {
-            system_proxy: StepOutcome::Done { detail: None },
-            hotkeys: StepOutcome::incomplete("scripted"),
-            widget: StepOutcome::Done { detail: None },
-        }
-    }
-}
-
-fn answered<T>(reply: crate::client::app_lifecycle::Reply<T>) -> T {
-    match reply {
-        crate::client::app_lifecycle::Reply::Answered(answer) => answer,
-        _ => panic!("the effects actor should answer"),
-    }
-}
-
-/// X10 (T10 §5.5): the first shutdown seals, signals the owners, drops the
-/// group waiters and only then cleans up; a later one returns the same
-/// result and runs none of it again.
+/// V20, V26: once the token is cancelled, a group already running is waited
+/// for rather than aborted, and nothing new starts, whatever arrives after the
+/// cancel.
 #[tokio::test]
-async fn shutdown_signals_before_it_reaps_and_cleans_up_once() {
-    let port = Arc::new(OrderedPort::default());
-    let client = EffectsClient::spawn(EffectsArgs {
-        port: Arc::new(port.clone()),
-        ui: Arc::new(Ui),
-        initial: inputs(),
-    })
-    .await
-    .unwrap();
-    client.publish_full(inputs());
-    port.entered.notified().await;
-
-    let first = answered(client.shutdown(within(SHUTDOWN_BUDGET)).await);
-    let second = answered(client.shutdown(within(SHUTDOWN_BUDGET)).await);
-
-    assert_eq!(
-        port.events(),
-        [
-            "owners signalled",
-            "group waiter dropped",
-            "owners cleaned up"
-        ]
-    );
-    assert_eq!(first, second, "the cached result");
-    assert_eq!(port.cleanups.load(Ordering::SeqCst), 1);
-    assert_eq!(first.hotkeys, StepOutcome::incomplete("scripted"));
-}
-
-/// Held retries stay held, while a commit that settles afterwards still
-/// reaches its owners until the effects are sealed.
-#[tokio::test(start_paused = true)]
-async fn held_retries_never_run_but_later_commits_still_apply() {
-    use crate::client::convergence::ConvergenceHealth;
+async fn the_shutdown_awaits_running_groups_and_starts_no_new_one() {
     let port = Arc::new(Port {
-        fail: AtomicBool::new(true),
-        retryable: true,
+        block: Some(EffectKind::SystemProxy),
         ..Default::default()
     });
-    let client = graph(port.clone()).await;
-    let mut desired = inputs();
-    desired.app.language = I18nLanguage::Korean;
-    client.committed(desired.clone(), false, Vec::new());
+    let (client, shutdown) = graph(port.clone()).await;
+    client.publish_full(None);
+    port.entered.notified().await;
     wait(&client, |s| {
-        s.effects.iter().any(|p| {
-            p.status.kind == EffectKind::Locale && p.health == ConvergenceHealth::RetryScheduled
-        })
+        s.effects
+            .iter()
+            .map(|e| &e.status)
+            .any(|s| s.kind == EffectKind::Tray && s.health == EffectHealth::Healthy)
+            && s.effects
+                .iter()
+                .map(|e| &e.status)
+                .any(|s| s.kind == EffectKind::Hotkeys && s.health == EffectHealth::Healthy)
     })
     .await;
+    let started = port.calls.lock().unwrap().len();
 
-    answered(client.hold_retries().await);
-    let held = port.calls.lock().unwrap().len();
-    tokio::time::advance(Duration::from_secs(100)).await;
-    client.barrier().await;
-    assert_eq!(port.calls.lock().unwrap().len(), held, "no automatic retry");
+    shutdown.request();
+    // Queued before this test yields, so ahead of the drain: only the token
+    // keeps them from starting a group.
+    let mut desired = inputs();
+    desired.app.language = I18nLanguage::Korean;
+    client.application_committed(desired.app, Vec::new());
+    client.retry_now(EffectKind::Locale).unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), shutdown.tasks.wait())
+            .await
+            .is_err(),
+        "the blocked group is awaited, not aborted"
+    );
 
-    desired.app.language = I18nLanguage::English;
-    client.committed(desired, false, Vec::new());
-    wait(&client, |_| port.calls.lock().unwrap().len() == held + 1).await;
-    client.shutdown(within(SHUTDOWN_BUDGET)).await;
+    port.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), shutdown.tasks.wait())
+        .await
+        .expect("the owner stops once its group ended");
+    assert_eq!(
+        port.calls.lock().unwrap().len(),
+        started,
+        "no group started after the cancel"
+    );
 }

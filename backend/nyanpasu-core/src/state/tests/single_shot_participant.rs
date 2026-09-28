@@ -675,10 +675,17 @@ async fn yaml_failure_waits_for_local_recovery_and_publishes_its_result() {
         let result = mutation.await;
         let outcome = decision.wait().await;
         if fail_recovery {
-            assert!(matches!(
-                result,
-                Err(ReplaceIfVersionError::ResourceRecovery { .. })
-            ));
+            let Err(ReplaceIfVersionError::ResourceRecovery { cause, .. }) = result else {
+                panic!("expected a resource recovery failure: {result:?}");
+            };
+            // The failed config write keeps its chain down to the io error.
+            assert!(
+                cause
+                    .root_cause()
+                    .downcast_ref::<atomicwrites::Error<std::io::Error>>()
+                    .is_some(),
+                "{cause:?}"
+            );
             assert!(matches!(
                 outcome,
                 StateDecision::Aborted {

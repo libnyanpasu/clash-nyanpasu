@@ -346,7 +346,6 @@ fn lifecycle_work_cannot_overtake_pending_interruption() {
                     .await
             })
         };
-        super::barrier(&f.client.inner.application_workflow).await;
         assert!(!next.is_finished());
 
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
@@ -559,7 +558,6 @@ fn profile_mutations_cannot_overtake_pending_interruption() {
             let client = f.client.clone();
             tokio::spawn(async move { client.activate_profile(None).await })
         };
-        super::barrier(&f.client.inner.application_workflow).await;
         assert!(!next.is_finished());
 
         // The deselection is already committed; what queues is its apply.
@@ -681,20 +679,14 @@ fn cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_interr
         let active = workflow.status().active.unwrap();
         first.abort();
         assert!(first.await.unwrap_err().is_cancelled());
+        // Polling once sends the reconcile, so it waits behind the held
+        // interruption.
         let mut reconcile = Box::pin(workflow.reconcile());
         assert!(reconcile.as_mut().now_or_never().is_none());
         let next = {
             let client = f.client.clone();
             tokio::spawn(async move { client.activate_profile(None).await })
         };
-        let mut status = workflow.0.status.clone();
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            status.wait_for(|status| status.queued.len() == 1),
-        )
-        .await
-        .unwrap()
-        .unwrap();
         assert_eq!(workflow.status().active, Some(active));
         // The same-domain deselection is still waiting in the source actor.
         assert!(f.client.get_profiles().await.unwrap().current.is_some());
@@ -734,16 +726,16 @@ fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
         .unwrap();
         let mut next = Box::pin(f.client.activate_profile(None));
         assert!(next.as_mut().now_or_never().is_none());
-        let mut shutdown = Box::pin(super::workflow_shutdown(&f.client));
+        f.client.request_shutdown();
+        let mut shutdown = Box::pin(f.client.wait_shutdown());
         assert!(shutdown.as_mut().now_or_never().is_none());
-        super::barrier(&f.client.inner.application_workflow).await;
         assert!(f.client.get_profiles().await.unwrap().current.is_some());
         assert!(shutdown.as_mut().now_or_never().is_none());
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
         assert!(next.await.is_err());
         assert!(first.await.unwrap().unwrap().degradations().is_empty());
-        assert!(shutdown.await.stop.is_ok());
+        shutdown.await;
         assert_eq!(
             f.calls
                 .events
@@ -754,57 +746,6 @@ fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
                 .count(),
             1
         );
-    });
-}
-
-/// Admission failure in a second domain must leave its source unchanged.
-#[test]
-fn full_queue_rejects_a_source_patch_before_commit() {
-    let f = Fixture::new(false);
-    tauri::async_runtime::block_on(async {
-        let uid = add_profile(&f).await;
-        f.calls.hold_close.store(true, Ordering::SeqCst);
-        let first = {
-            let client = f.client.clone();
-            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
-        };
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            f.calls.entered.notified(),
-        )
-        .await
-        .unwrap();
-        let workflow = &f.client.inner.application_workflow;
-        for _ in 0..super::MAX_PENDING {
-            workflow
-                .0
-                .actor
-                .cast(super::Message::Request(super::Request {
-                    command: super::Command::Core(super::CoreCommand::Reconcile),
-                    response: super::Response {
-                        id: OperationId::generate(),
-                        reply: None,
-                    },
-                }))
-                .unwrap();
-        }
-        super::barrier(workflow).await;
-        assert_eq!(workflow.status().queued.len(), super::MAX_PENDING);
-        let before = f.client.inner.clash_config.snapshot().version;
-        assert!(
-            f.client
-                .patch_runtime_overrides(mode_patch())
-                .await
-                .is_err()
-        );
-        assert_eq!(f.client.inner.clash_config.snapshot().version, before);
-        let mut shutdown = Box::pin(super::workflow_shutdown(&f.client));
-        assert!(shutdown.as_mut().now_or_never().is_none());
-        super::barrier(workflow).await;
-        f.calls.hold_close.store(false, Ordering::SeqCst);
-        f.calls.release.notify_one();
-        first.await.unwrap().unwrap();
-        assert!(shutdown.await.stop.is_ok());
     });
 }
 
@@ -858,14 +799,8 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
                     .await
             })
         };
-        let mut status = f.client.inner.application_workflow.0.status.clone();
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            status.wait_for(|status| status.queued.len() == 1),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        // Polling once sends each request, so both wait behind the held
+        // interruption.
         let mut host = Box::pin(
             f.client
                 .inner
@@ -884,8 +819,6 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
         };
         let mut install = Box::pin(f.client.inner.application_workflow.replace_binary(artifact));
         assert!(install.as_mut().now_or_never().is_none());
-        super::barrier(&f.client.inner.application_workflow).await;
-        assert_eq!(f.client.inner.application_workflow.status().queued.len(), 3);
         // A queued Try has not committed its source.
         assert_eq!(
             serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],

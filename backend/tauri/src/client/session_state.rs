@@ -8,6 +8,7 @@ use nyanpasu_config::state::{
 };
 use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::session_state::{
     SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
@@ -27,13 +28,14 @@ struct SessionStateClientInner {
 
 #[allow(dead_code)]
 impl SessionStateClient {
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.inner.actor_ref.get_cell())
-    }
-
-    pub(crate) async fn new(config_path: Utf8PathBuf) -> anyhow::Result<Self> {
+    /// The actor admits every request, the shutdown's final geometry save
+    /// included: `shutdown` only drains it, so whatever was queued before the
+    /// cancel is written before it stops.
+    pub(crate) async fn new(
+        config_path: Utf8PathBuf,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> anyhow::Result<Self> {
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<PersistentState>::builder()
             .config_path(config_path)
@@ -55,6 +57,7 @@ impl SessionStateClient {
             .await
             .context("failed to spawn session state actor")?
             .0;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(SessionStateClientInner {
@@ -79,8 +82,26 @@ impl SessionStateClient {
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(|reply| SessionStateActorMessage::SaveMainWindow { geometry, reply })
-            .await
+        self.call(|reply| SessionStateActorMessage::SaveMainWindow {
+            geometry,
+            reply: Some(reply),
+        })
+        .await
+    }
+
+    /// Queues a save of the main window's geometry without waiting for it:
+    /// the actor writes it after what is already queued.
+    pub fn queue_main_window_save(
+        &self,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> anyhow::Result<()> {
+        self.inner
+            .actor_ref
+            .cast(SessionStateActorMessage::SaveMainWindow {
+                geometry,
+                reply: None,
+            })
+            .context("the session state actor is gone")
     }
 
     pub async fn patch(&self, patch: PersistentStatePatch) -> anyhow::Result<SessionStateSnapshot> {
@@ -132,9 +153,13 @@ mod tests {
 
     async fn test_client() -> (SessionStateClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
-        let client = SessionStateClient::new(temp_config_path(&dir))
-            .await
-            .expect("session state client should be created");
+        let client = SessionStateClient::new(
+            temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("session state client should be created");
         (client, dir)
     }
 
@@ -205,5 +230,20 @@ mod tests {
             .expect("saving the main window geometry should succeed");
 
         assert_eq!(client.main_window_geometry(), Some(geometry(42)));
+    }
+
+    #[tokio::test]
+    async fn a_queued_geometry_save_is_written_before_the_next_request() {
+        let (client, _dir) = test_client().await;
+
+        client.queue_main_window_save(geometry(7)).unwrap();
+        // The mailbox is FIFO: a request sent afterwards is answered only once
+        // the queued save has been written.
+        client
+            .patch(PersistentState::new_empty_patch())
+            .await
+            .unwrap();
+
+        assert_eq!(client.main_window_geometry(), Some(geometry(7)));
     }
 }

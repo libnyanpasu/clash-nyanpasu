@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri_specta::Event;
 use tokio::{sync::broadcast, task::JoinHandle};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::core::actor_v2::{
     CoreClient,
@@ -234,7 +235,6 @@ enum Delivery {
 }
 enum Message {
     Start(RpcReplyPort<()>),
-    Stop(RpcReplyPort<()>),
     Snapshot(RpcReplyPort<ClashWsSnapshot>),
     Recording(ClashWsKind, bool, RpcReplyPort<ClashWsRecording>),
     Clear(ClashWsKind, RpcReplyPort<()>),
@@ -609,10 +609,6 @@ impl Actor for StreamsActor {
                 }
                 let _ = reply.send(());
             }
-            Message::Stop(reply) => {
-                state.stop().await;
-                let _ = reply.send(());
-            }
             Message::Snapshot(reply) => {
                 let _ = reply.send(state.snapshot());
             }
@@ -685,7 +681,11 @@ impl Drop for Inner {
     }
 }
 impl StreamsClient {
-    pub async fn spawn(core: CoreClient) -> Result<Self> {
+    pub async fn spawn(
+        core: CoreClient,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<Self> {
         let connections = broadcast::channel(16).0;
         let events = broadcast::channel(64).0;
         let (actor, _) = Actor::spawn(
@@ -698,6 +698,7 @@ impl StreamsClient {
             },
         )
         .await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner {
             actor,
             connections,
@@ -722,9 +723,6 @@ impl StreamsClient {
     pub async fn start(&self) -> Result<()> {
         self.call(Message::Start).await
     }
-    pub async fn stop(&self) -> Result<()> {
-        self.call(Message::Stop).await
-    }
     pub async fn snapshot(&self) -> Result<ClashWsSnapshot> {
         self.call(Message::Snapshot).await
     }
@@ -744,12 +742,6 @@ impl StreamsClient {
     }
     pub fn subscribe_ws(&self) -> broadcast::Receiver<ClashWsEvent> {
         self.0.events.subscribe()
-    }
-
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.0.actor.get_cell())
     }
 }
 
@@ -786,61 +778,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stop_restart_fences_queued_samples_and_resets_speed_baseline() {
-        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client = StreamsClient::spawn(core.clone()).await.unwrap();
-        let mut events = client.subscribe_ws();
-        client.start().await.unwrap();
-        connected(&mut events).await;
-        let api = core.api_client().await.unwrap();
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(500))
-            )
-            .await
-        );
-        let snapshot = client.snapshot().await.unwrap();
-        assert_eq!(snapshot.connections[0].download_speed, 0);
-        assert_eq!(snapshot.connections[0].download_total, 500);
-        client.stop().await.unwrap();
-        assert!(
-            !deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(900))
-            )
-            .await
-        );
-        assert!(!deliver(&client.0.actor, 1, Delivery::Bind(api.clone())).await);
-        assert!(client.snapshot().await.unwrap().connections.is_empty());
-        client.start().await.unwrap();
-        connected(&mut events).await;
-        assert!(
-            !deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(1000))
-            )
-            .await
-        );
-        assert!(deliver(&client.0.actor, 3, Delivery::Sample(api, sample(1000))).await);
-        assert_eq!(
-            client.snapshot().await.unwrap().connections[0].download_speed,
-            0
-        );
-        client.stop().await.unwrap();
-        server.abort();
-    }
-
-    #[tokio::test]
     async fn replacement_rejects_old_capability_and_clears_all_histories() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let endpoint = endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-        let client = StreamsClient::spawn(core.clone()).await.unwrap();
+        let client =
+            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
         let mut events = client.subscribe_ws();
         client.start().await.unwrap();
         connected(&mut events).await;
@@ -866,7 +811,6 @@ mod tests {
             client.snapshot().await.unwrap().connections[0].download_speed,
             0
         );
-        client.stop().await.unwrap();
         server.abort();
     }
 
@@ -874,7 +818,10 @@ mod tests {
     async fn recording_clear_and_history_limits_are_serialized_with_samples() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client = StreamsClient::spawn(core.clone()).await.unwrap();
+        let client =
+            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
         let mut events = client.subscribe_ws();
         client.start().await.unwrap();
         connected(&mut events).await;
@@ -928,7 +875,6 @@ mod tests {
         let new = client.snapshot().await.unwrap();
         assert!(new.sequence > snapshot.sequence);
         assert_eq!(new.connections.len(), 1);
-        client.stop().await.unwrap();
         server.abort();
     }
 
@@ -964,7 +910,9 @@ mod tests {
         )
         .await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client = StreamsClient::spawn(core).await.unwrap();
+        let client = StreamsClient::spawn(core, CancellationToken::new(), &TaskTracker::new())
+            .await
+            .unwrap();
         let mut events = client.subscribe_ws();
         client.start().await.unwrap();
         tokio::time::timeout(Duration::from_secs(3), async {

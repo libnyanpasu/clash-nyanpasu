@@ -1,17 +1,17 @@
 use crate::{
     client::application_workflow::{
-        impact::{MutationHints, RequestedRuntimeFields},
+        impact::{self, MutationHints, RequestedRuntimeFields},
         policy::CommandClass,
     },
-    state::mutation::MutationCoordinator,
+    state::mutation::{self, MutationCoordinator},
 };
 use nyanpasu_core_manager::OperationId;
 
-use anyhow::Context as _;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
-use nyanpasu_core::state::{PersistentStateManager, VersionedState};
+use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone)]
 pub struct ApplicationSnapshot {
@@ -43,11 +43,14 @@ impl ApplicationSnapshot {
 pub struct ApplicationActorArgs {
     pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<NyanpasuAppConfig>,
+    /// Once cancelled, every write is refused.
+    pub shutdown: CancellationToken,
 }
 
 pub struct ApplicationActorState {
     mutations: MutationCoordinator,
     manager: PersistentStateManager<NyanpasuAppConfig>,
+    shutdown: CancellationToken,
 }
 
 #[derive(Debug)]
@@ -110,29 +113,67 @@ impl ApplicationActor {
         hints: MutationHints,
         class: CommandClass,
     ) -> anyhow::Result<ApplicationSnapshot> {
+        state.mutations.ensure_ready()?;
         Self::validate_channel(state, &mut next)?;
-        let version = state.manager.snapshot_handle().load().version;
-        let operation = OperationId::generate();
-        let participant = state.mutations.participant(operation, hints, class)?;
-        state
-            .manager
-            .replace_if_version_with_participant(
-                version,
-                next,
-                participant,
-                || async { Ok(()) },
-                || async { Ok(()) },
-            )
-            .await
-            .context("failed to persist application config")?;
-        let mut snapshot = Self::snapshot(state);
-        let (receipt, degradations) = state
-            .mutations
-            .finish(operation, "application", snapshot.version)
-            .await;
-        snapshot.receipt = Some(receipt);
-        snapshot.degradations = degradations;
-        Ok(snapshot)
+        let (version, impact) = {
+            let current = state.manager.snapshot_handle().load();
+            let impact = impact::runtime_impact(&current.state, &next, &hints, class);
+            (current.version, impact)
+        };
+        let requested = hints.requested_owners.clone();
+        // Only a mutation that reaches the runtime takes the Runtime into its
+        // transaction; any other save commits on its own.
+        let (operation, result, settlement) = match impact {
+            Some(impact) => {
+                let operation = OperationId::generate();
+                let (participant, settlement) = state
+                    .mutations
+                    .participant(operation, hints, class, impact)?;
+                let result = state
+                    .manager
+                    .replace_if_version_with_participant(
+                        version,
+                        next,
+                        participant,
+                        || async { Ok(()) },
+                        || async { Ok(()) },
+                    )
+                    .await;
+                (Some(operation), result, settlement.await.ok())
+            }
+            None => (
+                None,
+                state.manager.replace_if_version(version, next).await,
+                None,
+            ),
+        };
+        match result {
+            Ok(ReplaceIfVersionResult::Replaced) => {
+                let mut snapshot = Self::snapshot(state);
+                state
+                    .mutations
+                    .effects()
+                    .application_committed((&snapshot.state).into(), requested);
+                let (receipt, degradations) = state.mutations.committed(
+                    operation,
+                    "application",
+                    snapshot.version,
+                    settlement,
+                );
+                snapshot.receipt = Some(receipt);
+                snapshot.degradations = degradations;
+                Ok(snapshot)
+            }
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => Err(anyhow::anyhow!(
+                "application config version conflict: expected {}, actual {}",
+                version.as_ref(),
+                actual_version.as_ref()
+            )),
+            Err(error) => Err(anyhow::anyhow!(
+                "failed to persist application config: {}",
+                mutation::uncommitted(&error, settlement.as_ref())
+            )),
+        }
     }
 }
 
@@ -149,6 +190,7 @@ impl Actor for ApplicationActor {
         Ok(ApplicationActorState {
             mutations: args.mutations,
             manager: args.manager,
+            shutdown: args.shutdown,
         })
     }
 
@@ -159,6 +201,14 @@ impl Actor for ApplicationActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            ApplicationActorMessage::Patch { reply, .. }
+            | ApplicationActorMessage::Replace { reply, .. }
+                if state.shutdown.is_cancelled() =>
+            {
+                let _ = reply.send(Err(anyhow::anyhow!(
+                    "the application config is closed: the app is shutting down"
+                )));
+            }
             ApplicationActorMessage::Patch { patch, reply } => {
                 let _ = reply.send(Self::patch(state, patch).await);
             }

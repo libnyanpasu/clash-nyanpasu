@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 mod instance;
 pub(crate) mod ports;
@@ -141,7 +142,6 @@ enum Message {
     ),
     Finished(usize, Result<()>),
     Prune(Instant),
-    Shutdown(RpcReplyPort<Result<()>>),
 }
 
 struct Task {
@@ -153,6 +153,9 @@ struct Task {
 struct Args {
     backend: Arc<dyn UpdaterBackend>,
     installer: Arc<dyn CoreUpdateInstaller>,
+    /// Once cancelled, nothing new is admitted and fetches and downloads end;
+    /// an extraction or install that already started is awaited.
+    shutdown: CancellationToken,
 }
 struct State {
     args: Args,
@@ -163,7 +166,6 @@ struct State {
     fetch: Option<tokio::task::JoinHandle<()>>,
     fetch_waiters: Vec<RpcReplyPort<Result<ManifestVersionLatest>>>,
     timer: tokio::task::JoinHandle<()>,
-    closing: bool,
 }
 impl Drop for State {
     fn drop(&mut self) {
@@ -205,7 +207,6 @@ impl Actor for UpdaterActor {
             fetch: None,
             fetch_waiters: Vec::new(),
             timer,
-            closing: false,
         })
     }
     async fn handle(
@@ -219,7 +220,7 @@ impl Actor for UpdaterActor {
                 if reply.is_closed() {
                     return Ok(());
                 }
-                if state.closing || state.fetch_waiters.len() >= MAX_TASKS {
+                if state.args.shutdown.is_cancelled() || state.fetch_waiters.len() >= MAX_TASKS {
                     let _ = reply.send(Err(anyhow!("updater is shutting down or busy")));
                     return Ok(());
                 }
@@ -253,7 +254,7 @@ impl Actor for UpdaterActor {
                 if reply.is_closed() {
                     return Ok(());
                 }
-                if state.closing {
+                if state.args.shutdown.is_cancelled() {
                     let _ = reply.send(Err(anyhow!("updater is shutting down")));
                     return Ok(());
                 }
@@ -288,10 +289,11 @@ impl Actor for UpdaterActor {
                 let progress = UpdaterProgress::new(move |status, download| {
                     let _ = progress_actor.cast(Message::Progress(id, status, download));
                 });
+                let shutdown = state.args.shutdown.clone();
                 let worker = tokio::spawn(async move {
                     let result = async {
                         let prepared = backend
-                            .prepare(core, mirror, artifact, tag, progress)
+                            .prepare(core, mirror, artifact, tag, progress, &shutdown)
                             .await?;
                         installer.install(prepared).await
                     }
@@ -329,7 +331,7 @@ impl Actor for UpdaterActor {
             }
             Message::Progress(id, progress, download) => {
                 if let Some(task) = state.tasks.get_mut(&id) {
-                    // Terminal install notifications remain authoritative after an RPC timeout.
+                    // A finished install stays finished, whatever reports arrive late.
                     if matches!(task.summary.state, UpdaterState::Done) {
                         return Ok(());
                     }
@@ -345,21 +347,13 @@ impl Actor for UpdaterActor {
             Message::Finished(id, result) => {
                 if let Some(task) = state.tasks.get_mut(&id) {
                     task.worker.take();
-                    let pending = result
-                        .as_ref()
-                        .err()
-                        .is_some_and(|error| error.is::<ports::InstallPending>())
-                        && task.finished.is_none();
                     if !matches!(task.summary.state, UpdaterState::Done) {
                         task.summary.state = match result {
                             Ok(()) => UpdaterState::Done,
-                            Err(error) if pending => UpdaterState::Pending(format!("{error:#}")),
                             Err(error) => UpdaterState::Failed(format!("{error:#}")),
                         };
                     }
-                    if !pending {
-                        task.finished = Some(Instant::now());
-                    }
+                    task.finished = Some(Instant::now());
                 }
             }
             Message::Prune(now) => {
@@ -370,27 +364,32 @@ impl Actor for UpdaterActor {
                         })
                 });
             }
-            Message::Shutdown(reply) => {
-                state.closing = true;
-                state.timer.abort();
-                if let Some(fetch) = state.fetch.take() {
-                    fetch.abort();
-                    let _ = fetch.await;
-                }
-                for waiter in state.fetch_waiters.drain(..) {
-                    let _ = waiter.send(Err(anyhow!("updater is shutting down")));
-                }
-                for task in state.tasks.values_mut() {
-                    if let Some(worker) = task.worker.take() {
-                        worker.abort();
-                        let _ = worker.await;
-                    }
-                    if task.finished.is_none() {
-                        task.summary.state = UpdaterState::Failed("updater shut down".into());
-                        task.finished = Some(Instant::now());
-                    }
-                }
-                let _ = reply.send(Ok(()));
+        }
+        Ok(())
+    }
+
+    /// Ends the fetch and waits for every worker: a download ends with the
+    /// shutdown token, and an extraction or install that started finishes
+    /// first.
+    async fn post_stop(
+        &self,
+        _actor: ActorRef<Message>,
+        state: &mut State,
+    ) -> Result<(), ActorProcessingErr> {
+        state.timer.abort();
+        if let Some(fetch) = state.fetch.take() {
+            fetch.abort();
+            let _ = fetch.await;
+        }
+        for waiter in state.fetch_waiters.drain(..) {
+            let _ = waiter.send(Err(anyhow!("updater is shutting down")));
+        }
+        for task in state.tasks.values_mut() {
+            if let Some(worker) = task.worker.take()
+                && let Err(error) = worker.await
+                && let Ok(panic) = error.try_into_panic()
+            {
+                std::panic::resume_unwind(panic);
             }
         }
         Ok(())
@@ -405,17 +404,23 @@ impl Drop for ClientInner {
 #[derive(Clone)]
 pub(crate) struct UpdaterClient(Arc<ClientInner>);
 impl UpdaterClient {
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.0.0.get_cell())
-    }
-
     pub async fn spawn(
         backend: Arc<dyn UpdaterBackend>,
         installer: Arc<dyn CoreUpdateInstaller>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
     ) -> Result<Self> {
-        let (actor, _) = Actor::spawn(None, UpdaterActor, Args { backend, installer }).await?;
+        let (actor, _) = Actor::spawn(
+            None,
+            UpdaterActor,
+            Args {
+                backend,
+                installer,
+                shutdown: shutdown.clone(),
+            },
+        )
+        .await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner(actor))))
     }
     async fn call<T: Send + 'static>(
@@ -436,10 +441,7 @@ impl UpdaterClient {
     pub async fn inspect(&self, id: usize) -> Result<UpdaterSummary> {
         self.call(|reply| Message::Inspect(id, reply)).await
     }
-    pub async fn shutdown(&self) -> Result<()> {
-        self.call(Message::Shutdown).await
-    }
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

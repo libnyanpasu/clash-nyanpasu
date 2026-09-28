@@ -165,16 +165,15 @@ enum ConditionalWriteError {
     Config(anyhow::Error),
 }
 
-impl std::fmt::Display for ConditionalWriteError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl ConditionalWriteError {
+    /// The failure named by the write it came from, with its cause chain kept.
+    fn into_cause(self) -> anyhow::Error {
         match self {
-            Self::LocalWrite(error) => write!(f, "local write failed: {error}"),
-            Self::Config(error) => write!(f, "config write failed: {error}"),
+            Self::LocalWrite(error) => error.context("local write failed"),
+            Self::Config(error) => error.context("config write failed"),
         }
     }
-}
 
-impl ConditionalWriteError {
     fn into_inner(self) -> anyhow::Error {
         match self {
             Self::LocalWrite(error) | Self::Config(error) => error,
@@ -339,30 +338,92 @@ where
         R: FnOnce() -> RFut,
         RFut: Future<Output = anyhow::Result<()>>,
     {
+        self.replace_with_local_write(
+            expected_version,
+            next_state,
+            Some(ParticipantEntry::new(participant)),
+            local_write,
+            local_recovery,
+        )
+        .await
+    }
+
+    /// [`PersistentStateManager::replace_if_version_with_participant`] with no
+    /// participant: only the registered subscribers take part, and the local
+    /// write and its recovery are owned by the transaction the same way.
+    pub async fn replace_if_version_with_local_write<W, WFut, R, RFut>(
+        &mut self,
+        expected_version: Version,
+        next_state: State,
+        local_write: W,
+        local_recovery: R,
+    ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
+    where
+        Formatter: Clone,
+        W: FnOnce() -> WFut,
+        WFut: Future<Output = anyhow::Result<()>>,
+        R: FnOnce() -> RFut,
+        RFut: Future<Output = anyhow::Result<()>>,
+    {
+        self.replace_with_local_write(
+            expected_version,
+            next_state,
+            None,
+            local_write,
+            local_recovery,
+        )
+        .await
+    }
+
+    async fn replace_with_local_write<W, WFut, R, RFut>(
+        &mut self,
+        expected_version: Version,
+        next_state: State,
+        participant: Option<ParticipantEntry<State>>,
+        local_write: W,
+        local_recovery: R,
+    ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
+    where
+        Formatter: Clone,
+        W: FnOnce() -> WFut,
+        WFut: Future<Output = anyhow::Result<()>>,
+        R: FnOnce() -> RFut,
+        RFut: Future<Output = anyhow::Result<()>>,
+    {
         let effect = self.write_config_step(ConfigWriteMode::Inline);
-        let outcome = self
-            .state_coordinator
-            .with_pending_state_if_version_with_participant(
-                expected_version,
-                &next_state,
-                ParticipantEntry::new(participant),
-                |state| async move {
-                    local_write()
-                        .await
-                        .map_err(ConditionalWriteError::LocalWrite)?;
-                    effect(state).await.map_err(ConditionalWriteError::Config)
-                },
-                // Only the caller's own local write is undone. A config write
-                // that failed before its rename left the old file; one whose
-                // directory sync failed after the rename (Unix) left the new
-                // file, and nothing here reconciles that.
-                |_committed| async move {
-                    local_recovery()
-                        .await
-                        .map_err(ConditionalWriteError::LocalWrite)
-                },
-            )
-            .await;
+        let write = |state| async move {
+            local_write()
+                .await
+                .map_err(ConditionalWriteError::LocalWrite)?;
+            effect(state).await.map_err(ConditionalWriteError::Config)
+        };
+        // Only the caller's own local write is undone. A config write that
+        // failed before its rename left the old file; one whose directory sync
+        // failed after the rename (Unix) left the new file, and nothing here
+        // reconciles that.
+        let recover = |_committed| async move {
+            local_recovery()
+                .await
+                .map_err(ConditionalWriteError::LocalWrite)
+        };
+        let outcome = match participant {
+            Some(participant) => {
+                self.state_coordinator
+                    .with_pending_state_if_version_with_participant(
+                        expected_version,
+                        &next_state,
+                        participant,
+                        write,
+                        recover,
+                    )
+                    .await
+            }
+            None => {
+                self.state_coordinator
+                    .with_pending_state_if_version(expected_version, &next_state, write, recover)
+                    .await
+            }
+        };
         Self::map_conditional_outcome(outcome)
     }
 
@@ -385,7 +446,7 @@ where
                 effect_error,
                 recovery_error,
             }) => Err(ReplaceIfVersionError::ResourceRecovery {
-                cause: anyhow::anyhow!("{effect_error}"),
+                cause: effect_error.into_cause(),
                 recovery_error: recovery_error.into_inner(),
             }),
         }
@@ -730,6 +791,88 @@ mod tests {
         assert_eq!(
             read_yaml::<TestState>(&config_path).await.unwrap().name,
             "next"
+        );
+    }
+
+    /// The participant-free entry owns the caller's local write and its
+    /// recovery exactly as the participant one does.
+    #[tokio::test]
+    async fn test_replace_if_version_with_local_write_owns_the_write_and_its_recovery() {
+        let temp_dir = tempdir().unwrap();
+        let config_path =
+            Utf8PathBuf::from_path_buf(temp_dir.path().join("local_write.yaml")).unwrap();
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
+        let writes = Arc::new(AtomicUsize::new(0));
+        let recoveries = Arc::new(AtomicUsize::new(0));
+
+        let (wrote, recovered) = (writes.clone(), recoveries.clone());
+        let result = manager
+            .replace_if_version_with_local_write(
+                Version::new(0),
+                TestState::new("next".into(), 1),
+                move || async move {
+                    wrote.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                },
+                move || async move {
+                    recovered.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+            .await
+            .unwrap();
+        assert!(matches!(result, ReplaceIfVersionResult::Replaced));
+        assert_eq!(
+            read_yaml::<TestState>(&config_path).await.unwrap().name,
+            "next"
+        );
+        assert_eq!(
+            (
+                writes.load(Ordering::SeqCst),
+                recoveries.load(Ordering::SeqCst)
+            ),
+            (1, 0)
+        );
+
+        let recovered = recoveries.clone();
+        let result = manager
+            .replace_if_version_with_local_write(
+                Version::new(1),
+                TestState::new("failed".into(), 2),
+                || async { Err(anyhow::anyhow!("scripted local write failure")) },
+                move || async move {
+                    recovered.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+            .await;
+        assert!(matches!(result, Err(ReplaceIfVersionError::LocalWrite(_))));
+        assert_eq!(recoveries.load(Ordering::SeqCst), 1);
+        assert_eq!(manager.snapshot().name, "next");
+
+        let wrote = writes.clone();
+        let result = manager
+            .replace_if_version_with_local_write(
+                Version::new(0),
+                TestState::new("stale".into(), 3),
+                move || async move {
+                    wrote.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                },
+                || async { Ok(()) },
+            )
+            .await
+            .unwrap();
+        assert!(matches!(result, ReplaceIfVersionResult::Conflict { .. }));
+        assert_eq!(
+            writes.load(Ordering::SeqCst),
+            1,
+            "a conflict writes nothing"
         );
     }
 

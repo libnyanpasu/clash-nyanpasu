@@ -1,19 +1,19 @@
 use crate::{
     client::application_workflow::{
-        impact::{MutationHints, RequestedRuntimeFields},
+        impact::{self, MutationHints, RequestedRuntimeFields},
         policy::CommandClass,
     },
-    state::mutation::MutationCoordinator,
+    state::mutation::{self, MutationCoordinator},
 };
 use nyanpasu_core_manager::OperationId;
 
-use anyhow::Context as _;
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
-use nyanpasu_core::state::{PersistentStateManager, VersionedState};
+use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch;
+use tokio_util::sync::CancellationToken;
 
 /// Snapshot of the saved Clash configuration domain, not live Clash runtime API state.
 #[derive(Debug, Clone)]
@@ -46,11 +46,14 @@ impl ClashConfigSnapshot {
 pub struct ClashConfigActorArgs {
     pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<ClashConfig>,
+    /// Once cancelled, every write is refused.
+    pub shutdown: CancellationToken,
 }
 
 pub struct ClashConfigActorState {
     mutations: MutationCoordinator,
     manager: PersistentStateManager<ClashConfig>,
+    shutdown: CancellationToken,
 }
 
 #[derive(Debug)]
@@ -98,28 +101,63 @@ impl ClashConfigActor {
         hints: MutationHints,
         class: CommandClass,
     ) -> anyhow::Result<ClashConfigSnapshot> {
-        let version = state.manager.snapshot_handle().load().version;
-        let operation = OperationId::generate();
-        let participant = state.mutations.participant(operation, hints, class)?;
-        state
-            .manager
-            .replace_if_version_with_participant(
-                version,
-                next,
-                participant,
-                || async { Ok(()) },
-                || async { Ok(()) },
-            )
-            .await
-            .context("failed to persist clash config")?;
-        let mut snapshot = Self::snapshot(state);
-        let (receipt, degradations) = state
-            .mutations
-            .finish(operation, "clash", snapshot.version)
-            .await;
-        snapshot.receipt = Some(receipt);
-        snapshot.degradations = degradations;
-        Ok(snapshot)
+        state.mutations.ensure_ready()?;
+        let (version, impact) = {
+            let current = state.manager.snapshot_handle().load();
+            let impact = impact::runtime_impact(&current.state, &next, &hints, class);
+            (current.version, impact)
+        };
+        // Only a mutation that reaches the runtime takes the Runtime into its
+        // transaction; any other save commits on its own.
+        let (operation, result, settlement) = match impact {
+            Some(impact) => {
+                let operation = OperationId::generate();
+                let (participant, settlement) = state
+                    .mutations
+                    .participant(operation, hints, class, impact)?;
+                let result = state
+                    .manager
+                    .replace_if_version_with_participant(
+                        version,
+                        next,
+                        participant,
+                        || async { Ok(()) },
+                        || async { Ok(()) },
+                    )
+                    .await;
+                (Some(operation), result, settlement.await.ok())
+            }
+            None => (
+                None,
+                state.manager.replace_if_version(version, next).await,
+                None,
+            ),
+        };
+        match result {
+            Ok(ReplaceIfVersionResult::Replaced) => {
+                let mut snapshot = Self::snapshot(state);
+                state
+                    .mutations
+                    .effects()
+                    .clash_committed((&snapshot.state).into());
+                let (receipt, degradations) =
+                    state
+                        .mutations
+                        .committed(operation, "clash", snapshot.version, settlement);
+                snapshot.receipt = Some(receipt);
+                snapshot.degradations = degradations;
+                Ok(snapshot)
+            }
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => Err(anyhow::anyhow!(
+                "clash config version conflict: expected {}, actual {}",
+                version.as_ref(),
+                actual_version.as_ref()
+            )),
+            Err(error) => Err(anyhow::anyhow!(
+                "failed to persist clash config: {}",
+                mutation::uncommitted(&error, settlement.as_ref())
+            )),
+        }
     }
 }
 
@@ -136,6 +174,7 @@ impl Actor for ClashConfigActor {
         Ok(ClashConfigActorState {
             mutations: args.mutations,
             manager: args.manager,
+            shutdown: args.shutdown,
         })
     }
 
@@ -146,6 +185,15 @@ impl Actor for ClashConfigActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            ClashConfigActorMessage::Patch { reply, .. }
+            | ClashConfigActorMessage::PatchOverrides { reply, .. }
+            | ClashConfigActorMessage::Replace { reply, .. }
+                if state.shutdown.is_cancelled() =>
+            {
+                let _ = reply.send(Err(anyhow::anyhow!(
+                    "the clash config is closed: the app is shutting down"
+                )));
+            }
             ClashConfigActorMessage::Patch { patch, reply } => {
                 let _ = reply.send(Self::patch(state, patch).await);
             }

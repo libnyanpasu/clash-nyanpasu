@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
+use tokio_util::sync::CancellationToken;
 
 use super::{ManifestVersion, instance::UpdaterState, shared::CoreTypeMeta};
 use crate::{
@@ -47,6 +48,8 @@ pub(crate) trait UpdaterBackend: Send + Sync + 'static {
         mirror: Option<(String, Instant)>,
     ) -> anyhow::Result<(ManifestVersion, (String, Instant))>;
 
+    /// Downloads and extracts the core. The download ends with `shutdown`;
+    /// an extraction that started runs to its end.
     async fn prepare(
         &self,
         core_type: ClashCore,
@@ -54,6 +57,7 @@ pub(crate) trait UpdaterBackend: Send + Sync + 'static {
         artifact: String,
         tag: CoreTypeMeta,
         progress: UpdaterProgress,
+        shutdown: &CancellationToken,
     ) -> anyhow::Result<PreparedCoreBinary>;
 }
 
@@ -61,9 +65,3 @@ pub(crate) trait UpdaterBackend: Send + Sync + 'static {
 pub(crate) trait CoreUpdateInstaller: Send + Sync + 'static {
     async fn install(&self, artifact: PreparedCoreBinary) -> anyhow::Result<()>;
 }
-
-/// The lifecycle RPC stopped waiting while the installation may still be admitted.
-/// Keep the task reserved until its authoritative progress callback settles it.
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub(crate) struct InstallPending(pub String);

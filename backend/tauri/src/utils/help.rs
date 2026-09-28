@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
-use tauri::{AppHandle, Manager, process::current_binary};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
@@ -195,47 +195,18 @@ pub fn get_max_scale_factor() -> f64 {
 }
 
 #[instrument(skip(app_handle))]
-pub fn cleanup_processes(app_handle: &AppHandle) {
-    // Managed Tauri state — no process-global client lookup. Every exit path
-    // lands here, and the client runs one ordered shutdown however many ask
-    // (T10 §5.2). Tauri ExitRequested is already off the main event-loop
-    // spin, so blocking here matches the existing cleanup pattern.
-    if let Some(client) = app_handle
-        .try_state::<crate::client::NyanpasuClient>()
-        .map(|state| state.inner().clone())
-    {
-        let request = crate::client::ShutdownRequest {
-            main_window: super::resolve::capture_main_window_geometry(app_handle),
-        };
-        nyanpasu_utils::runtime::block_on(client.shutdown(request));
-    }
-    #[cfg(windows)]
-    crate::shutdown_hook::set_ready_for_shutdown();
-}
-
-#[instrument(skip(app_handle))]
 pub fn quit_application(app_handle: &AppHandle) {
     app_handle.exit(0);
 }
 
+/// Exits through the exit boundary, which starts the relauncher once every
+/// owner has shut down.
 #[instrument(skip(app_handle))]
 pub fn restart_application(app_handle: &AppHandle) {
-    cleanup_processes(app_handle);
-    let env = app_handle.env();
-    let path = current_binary(&env).unwrap();
-    let arg = std::env::args().collect::<Vec<String>>();
-    let mut args = vec!["launch".to_string(), "--".to_string()];
-    // filter out the first arg
-    if arg.len() > 1 {
-        args.extend(arg.iter().skip(1).cloned());
-    }
-    tracing::info!("restart app: {:#?} with args: {:#?}", path, args);
-    std::process::Command::new(path)
-        .args(args)
-        .spawn()
-        .expect("application failed to start");
+    app_handle
+        .state::<super::exit::ExitBoundary>()
+        .request_restart();
     app_handle.exit(0);
-    std::process::exit(0);
 }
 
 #[macro_export]

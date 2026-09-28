@@ -20,9 +20,9 @@ use windows_sys::Win32::{
 // `STATIC_ALLOWLIST` in `scripts/architecture-ledger.ts`). The window procedure
 // is a bare `extern "system"` callback that Win32 calls with only the window
 // and the message, so it reads the sender and the phase from here.
-// `SHUTDOWN_STATE` is also written by `set_ready_for_shutdown`, which
-// `utils::help::cleanup_processes` calls once the app has cleaned up. There is
-// one hook per process: `setup_shutdown_hook` refuses a second call.
+// `SHUTDOWN_STATE` is also written by `set_ready_for_shutdown`, which the exit
+// boundary (`utils::exit`) calls once the app has cleaned up. There is one hook
+// per process: `setup_shutdown_hook` refuses a second call.
 static SHUTDOWN_HOOK_INSTANCE: OnceCell<std::sync::mpsc::Sender<()>> = OnceCell::new();
 
 #[atomic_enum]

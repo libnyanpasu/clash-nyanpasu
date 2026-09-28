@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::{sync::watch, time::Instant};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     actor_v2::{CoreClient, api::ApiClient},
@@ -305,13 +306,11 @@ impl Drop for ClientInner {
 #[derive(Clone)]
 pub(crate) struct ProxiesClient(Arc<ClientInner>);
 impl ProxiesClient {
-    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
-    /// The request is sent before this returns; the handle only waits.
-    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
-        crate::client::Terminating::begin(self.0.actor.get_cell())
-    }
-
-    pub async fn spawn(core: CoreClient) -> Result<Self> {
+    pub async fn spawn(
+        core: CoreClient,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<Self> {
         let (snapshots, snapshot_rx) = watch::channel(None);
         let (changes, changes_rx) = watch::channel(());
         let (actor, _) = Actor::spawn(
@@ -324,6 +323,7 @@ impl ProxiesClient {
             },
         )
         .await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner {
             actor,
             snapshots: snapshot_rx,
@@ -603,7 +603,10 @@ mod tests {
         let (url, server) = server(router).await;
         let endpoint = endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-        let client = ProxiesClient::spawn(core.clone()).await.unwrap();
+        let client =
+            ProxiesClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
         (client, core, endpoint, fixture, server)
     }
     #[tokio::test]

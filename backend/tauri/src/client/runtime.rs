@@ -538,7 +538,6 @@ pub enum RuntimeCommitStatus {
     Deferred,
     SavedInactive,
     Unchanged,
-    Pending,
     RecoveryRequired,
 }
 

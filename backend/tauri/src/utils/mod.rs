@@ -3,6 +3,7 @@ pub mod color;
 pub mod config;
 pub mod dialog;
 pub mod dirs;
+pub mod exit;
 pub mod help;
 pub mod init;
 pub mod path;

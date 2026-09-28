@@ -4,7 +4,7 @@
 //! fan-out to actor clients and adapters stays inside the executor. There is no
 //! lookup API here, so this is not a service locator.
 
-use std::time::Duration;
+use nyanpasu_config::runtime::executor::ResolvedPortBindings;
 
 #[cfg(test)]
 use super::status::EffectHealth;
@@ -12,26 +12,6 @@ use super::{
     plan::ApplicationEffectPlan,
     status::{EffectRevision, EffectStatus},
 };
-use crate::client::StepOutcome;
-
-/// What the shutdown's independent cleanups confirmed, one outcome per owner
-/// (T10 §5.5).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EffectsShutdown {
-    pub system_proxy: StepOutcome,
-    pub hotkeys: StepOutcome,
-    pub widget: StepOutcome,
-}
-
-impl EffectsShutdown {
-    pub fn children(&self) -> Vec<(&'static str, StepOutcome)> {
-        vec![
-            ("SystemProxy", self.system_proxy.clone()),
-            ("Hotkeys", self.hotkeys.clone()),
-            ("Widget", self.widget.clone()),
-        ]
-    }
-}
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
@@ -47,16 +27,6 @@ pub trait ApplicationEffectsPort: Send + Sync + 'static {
         revision: EffectRevision,
         plan: ApplicationEffectPlan,
     ) -> Vec<EffectStatus>;
-
-    /// Tells every owner the shutdown began, without waiting for anything
-    /// (T10 §5.5 step 2): work already running abandons what it waits on.
-    fn begin_shutdown(&self);
-
-    /// Shutdown path: restores the system state the app found, drops its OS
-    /// registrations and stops the widget. The three are started together and
-    /// each is bounded on its own within `budget`, so one that hangs keeps
-    /// neither of the others from finishing. Never fails.
-    async fn shutdown(&self, budget: Duration) -> EffectsShutdown;
 }
 
 /// Accepts every plan and changes nothing. The composition root now assembles
@@ -83,17 +53,6 @@ impl ApplicationEffectsPort for NoopApplicationEffects {
                 health: EffectHealth::Healthy,
             })
             .collect()
-    }
-
-    fn begin_shutdown(&self) {}
-
-    async fn shutdown(&self, _: Duration) -> EffectsShutdown {
-        let nothing = || StepOutcome::skipped("no effect owners");
-        EffectsShutdown {
-            system_proxy: nothing(),
-            hotkeys: nothing(),
-            widget: nothing(),
-        }
     }
 }
 
@@ -122,42 +81,58 @@ mod tests {
             assert_eq!(status.applied_revision, revision);
             assert_eq!(status.health, EffectHealth::Healthy);
         }
-        assert!(
-            NoopApplicationEffects
-                .shutdown(Duration::ZERO)
-                .await
-                .children()
-                .iter()
-                .all(|(_, outcome)| matches!(outcome, StepOutcome::Skipped { .. }))
-        );
     }
 }
 
 /// Post-commit notification only: never a source-transaction vote.
+///
+/// One method per slice of [`ApplicationEffectInputs`], and each slice has
+/// exactly one sender: the serial owner of that domain. Nobody reads or
+/// forwards a sibling's slice; the effects owner combines them.
+///
+/// [`ApplicationEffectInputs`]: super::plan::ApplicationEffectInputs
 pub(crate) trait CommitNotifications: Send + Sync + 'static {
-    fn committed(
+    /// The application owner, once its commit has settled. `requested` names
+    /// the owners the request asked for even when their inputs did not move.
+    fn application_committed(
         &self,
-        inputs: super::plan::ApplicationEffectInputs,
-        refresh: bool,
+        fields: super::plan::ApplicationEffectFields,
         requested: Vec<super::plan::EffectKind>,
     );
 
+    /// The clash config owner, once its commit has settled.
+    fn clash_committed(&self, fields: super::plan::ClashEffectFields);
+
+    /// The profiles owner. No effect reads the profiles, so a commit only asks
+    /// the tray for a partial refresh.
+    fn profiles_committed(&self);
+
+    /// The Runtime, after a mutation's Confirm or Cancel, a lifecycle command
+    /// or a recovery: the ports the core is bound to now. `refresh` asks the
+    /// tray for a partial refresh even when nothing it reads moved.
+    fn runtime_bound(&self, ports: Option<ResolvedPortBindings>, refresh: bool);
+
     /// Hands every owner its complete desired value and rebuilds the tray.
-    /// StartupReconcile sends it once (T10 §1.9).
-    fn publish_full(&self, inputs: super::plan::ApplicationEffectInputs);
+    /// StartupReconcile sends it once (T10 §1.9), with the ports it bound.
+    fn publish_full(&self, ports: Option<ResolvedPortBindings>);
 }
 
 #[cfg(test)]
 pub(crate) struct NoopCommitNotifications;
 #[cfg(test)]
 impl CommitNotifications for NoopCommitNotifications {
-    fn committed(
+    fn application_committed(
         &self,
-        _: super::plan::ApplicationEffectInputs,
-        _: bool,
+        _: super::plan::ApplicationEffectFields,
         _: Vec<super::plan::EffectKind>,
     ) {
     }
 
-    fn publish_full(&self, _: super::plan::ApplicationEffectInputs) {}
+    fn clash_committed(&self, _: super::plan::ClashEffectFields) {}
+
+    fn profiles_committed(&self) {}
+
+    fn runtime_bound(&self, _: Option<ResolvedPortBindings>, _: bool) {}
+
+    fn publish_full(&self, _: Option<ResolvedPortBindings>) {}
 }

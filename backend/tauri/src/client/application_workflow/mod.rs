@@ -166,6 +166,9 @@ pub(super) struct ApplicationWorkflowArgs {
     /// Who owns the runtime when the workflow starts. Production starts
     /// `Unproven` and lets StartupReconcile prove it (T10 §1.2).
     pub ownership: Ownership,
+    /// The config dir this instance installs the daemon with, so the workflow
+    /// never retires or stops a daemon another instance of the app runs.
+    pub instance_config_dir: std::path::PathBuf,
     /// Once cancelled, no new command is admitted; the actor is drained and
     /// stops the core in `post_stop`.
     pub shutdown: CancellationToken,
@@ -532,6 +535,7 @@ impl ApplicationWorkflowClient {
                 recovery: ServiceRecovery::default(),
                 closing: args.shutdown.clone(),
                 ownership: args.ownership,
+                instance_config_dir: args.instance_config_dir,
             },
         };
         let (actor, _) = Actor::spawn(

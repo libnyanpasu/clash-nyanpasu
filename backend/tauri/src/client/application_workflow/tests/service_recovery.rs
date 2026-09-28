@@ -132,6 +132,7 @@ impl RecoveryGraph {
                 endpoint: endpoint.clone(),
                 calls: Arc::new(std::sync::Mutex::new(Vec::new())),
                 stopped: AtomicBool::new(false),
+                installed_for: Default::default(),
             },
             endpoint: endpoint.clone(),
             probe_fails: AtomicBool::new(false),

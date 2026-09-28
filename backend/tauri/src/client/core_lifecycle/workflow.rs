@@ -35,6 +35,9 @@ pub(in crate::client) struct CoreLifecycleWorkflow {
     /// S2/S3, a completed host move and the constructor write it; a stop
     /// never does (T10 §1.7).
     pub ownership: Ownership,
+    /// The config dir this instance installs the daemon with. A daemon that
+    /// reports another one serves another instance of the app.
+    pub instance_config_dir: std::path::PathBuf,
 }
 
 /// Whether the application has proven which host owns the runtime.

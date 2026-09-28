@@ -13,9 +13,11 @@
 //! read to the last, so an interruption anywhere leaves it where recovery
 //! looks for it.
 
+use std::{ffi::OsStr, path::Path};
+
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 use nyanpasu_ipc::{
-    api::status::{ConfigRevisionInfo, CoreStateDetail},
+    api::status::{ConfigRevisionInfo, CoreStateDetail, StatusResBody},
     types::ServiceStatus,
 };
 
@@ -98,12 +100,18 @@ pub(crate) enum ServiceEvidence {
         instance: Option<String>,
         revision: Option<ConfigRevisionInfo>,
     },
+    /// The daemon answers for another instance of the app, and its core is
+    /// not stopped. That core is not this instance's to retire.
+    ForeignCore { ready: bool, phase: ServicePhase },
     /// The probe failed, or the answer does not say whether a core is held.
     Unreadable { phase: ServicePhase },
 }
 
 impl ServiceEvidence {
-    pub(crate) fn from_probe(probe: &Result<ServiceHostStatus, CoreError>) -> Self {
+    pub(crate) fn from_probe(
+        probe: &Result<ServiceHostStatus, CoreError>,
+        instance_config_dir: &Path,
+    ) -> Self {
         let Ok(status) = probe else {
             return Self::Unreadable {
                 phase: ServicePhase::Unknown,
@@ -121,6 +129,9 @@ impl ServiceEvidence {
             (ServiceStatus::Running, None) => Self::Unreadable { phase },
             (ServiceStatus::Running, Some(server)) => match &server.core_infos.detail {
                 Some(CoreStateDetail::Stopped { .. }) => Self::CoreStopped { ready, phase },
+                Some(_) if !serves_instance(server, instance_config_dir) => {
+                    Self::ForeignCore { ready, phase }
+                }
                 Some(_) => Self::CoreRunning {
                     ready,
                     phase,
@@ -137,9 +148,23 @@ impl ServiceEvidence {
             Self::Absent { phase }
             | Self::CoreStopped { phase, .. }
             | Self::CoreRunning { phase, .. }
+            | Self::ForeignCore { phase, .. }
             | Self::Unreadable { phase } => *phase,
         }
     }
+}
+
+/// Whether the daemon was installed for this instance. Every instance of the
+/// app reaches the same daemon, but each installs it with its own config dir,
+/// which the daemon reports back; a dev build next to a release is another
+/// instance. The Unix install passes the dir wrapped in quotes, so those are
+/// not part of the identity.
+pub(super) fn serves_instance(server: &StatusResBody<'_>, instance_config_dir: &Path) -> bool {
+    let reported = server.runtime_infos.nyanpasu_config_dir.as_os_str();
+    reported
+        .to_str()
+        .map_or(reported, |reported| OsStr::new(reported.trim_matches('"')))
+        == instance_config_dir.as_os_str()
 }
 
 /// Who should own the runtime, and what it takes to prove it (§1.3, S2).
@@ -169,17 +194,22 @@ pub(crate) fn plan_owner(
     service: &ServiceEvidence,
 ) -> OwnerPlan {
     use ExecutionHost::{Local, Service};
-    use ServiceEvidence::{Absent, CoreRunning, CoreStopped};
+    use ServiceEvidence::{Absent, CoreRunning, CoreStopped, ForeignCore};
     let phase = service.phase();
     match (desired, owner, service) {
-        (Local, Local, Absent { .. } | CoreStopped { .. }) => OwnerPlan::Owned,
+        // Another instance's core is left to that instance.
+        (Local, Local, Absent { .. } | CoreStopped { .. } | ForeignCore { .. }) => OwnerPlan::Owned,
         (Local, Local, CoreRunning { ready: true, .. }) => OwnerPlan::RetireServiceThenLocal,
         (Local, Local, _) => OwnerPlan::Unproven { phase },
         (Local, Service, _) => OwnerPlan::HandBackToLocal,
         (Service, Service, _) => OwnerPlan::Owned,
-        (Service, Local, CoreStopped { ready: true, .. } | CoreRunning { ready: true, .. }) => {
-            OwnerPlan::AdoptService
-        }
+        (
+            Service,
+            Local,
+            CoreStopped { ready: true, .. }
+            | CoreRunning { ready: true, .. }
+            | ForeignCore { ready: true, .. },
+        ) => OwnerPlan::AdoptService,
         (Service, Local, Absent { .. } | CoreStopped { ready: false, .. }) => {
             OwnerPlan::WaitForService { phase }
         }
@@ -464,7 +494,10 @@ impl ApplicationWorkflow {
             );
             return (observation, waiting);
         }
-        let service = ServiceEvidence::from_probe(&self.lifecycle.core.probe_service_host().await);
+        let service = ServiceEvidence::from_probe(
+            &self.lifecycle.core.probe_service_host().await,
+            &self.lifecycle.instance_config_dir,
+        );
         let runtime = self.lifecycle.core.refresh_status().await.ok();
         let owner = runtime.as_ref().map_or_else(
             || self.lifecycle.core.core_status().host,
@@ -944,7 +977,18 @@ mod tests {
     use super::*;
     use crate::core::service::compat::ServiceCompat;
 
+    const INSTANCE_CONFIG_DIR: &str = "/nyanpasu/config";
+
     fn status(
+        status: ServiceStatus,
+        phase: ServicePhase,
+        detail: Option<Option<CoreStateDetail>>,
+    ) -> Result<ServiceHostStatus, CoreError> {
+        installed_for(INSTANCE_CONFIG_DIR, status, phase, detail)
+    }
+
+    fn installed_for(
+        config_dir: &str,
         status: ServiceStatus,
         phase: ServicePhase,
         detail: Option<Option<CoreStateDetail>>,
@@ -970,7 +1014,7 @@ mod tests {
                 runtime_infos: RuntimeInfos {
                     service_data_dir: Cow::Owned(Default::default()),
                     service_config_dir: Cow::Owned(Default::default()),
-                    nyanpasu_config_dir: Cow::Owned(Default::default()),
+                    nyanpasu_config_dir: Cow::Owned(config_dir.into()),
                     nyanpasu_data_dir: Cow::Owned(Default::default()),
                 },
                 logs: None,
@@ -1041,6 +1085,44 @@ mod tests {
                 },
             ),
             (
+                installed_for(
+                    "\"/nyanpasu/config\"",
+                    ServiceStatus::Running,
+                    Ready,
+                    Some(Some(RUNNING)),
+                ),
+                ServiceEvidence::CoreRunning {
+                    ready: true,
+                    phase: Ready,
+                    instance: Some("instance".into()),
+                    revision: None,
+                },
+            ),
+            (
+                installed_for(
+                    "/nyanpasu-dev/config",
+                    ServiceStatus::Running,
+                    Ready,
+                    Some(Some(RUNNING)),
+                ),
+                ServiceEvidence::ForeignCore {
+                    ready: true,
+                    phase: Ready,
+                },
+            ),
+            (
+                installed_for(
+                    "/nyanpasu-dev/config",
+                    ServiceStatus::Running,
+                    Ready,
+                    Some(Some(STOPPED)),
+                ),
+                ServiceEvidence::CoreStopped {
+                    ready: true,
+                    phase: Ready,
+                },
+            ),
+            (
                 status(ServiceStatus::Running, Ready, None),
                 ServiceEvidence::Unreadable { phase: Ready },
             ),
@@ -1062,7 +1144,11 @@ mod tests {
             ),
         ];
         for (probe, expected) in cases {
-            assert_eq!(ServiceEvidence::from_probe(&probe), expected, "{probe:?}");
+            assert_eq!(
+                ServiceEvidence::from_probe(&probe, Path::new(INSTANCE_CONFIG_DIR)),
+                expected,
+                "{probe:?}"
+            );
         }
     }
 
@@ -1088,6 +1174,10 @@ mod tests {
             instance: None,
             revision: None,
         };
+        let foreign = |ready: bool| ServiceEvidence::ForeignCore {
+            ready,
+            phase: if ready { Ready } else { Exhausted },
+        };
         let unreadable = ServiceEvidence::Unreadable { phase: Unknown };
         let cases = [
             (Local, Local, &absent, OwnerPlan::Owned),
@@ -1105,6 +1195,8 @@ mod tests {
                 &running(false),
                 OwnerPlan::Unproven { phase: Exhausted },
             ),
+            (Local, Local, &foreign(true), OwnerPlan::Owned),
+            (Local, Local, &foreign(false), OwnerPlan::Owned),
             (
                 Local,
                 Local,
@@ -1119,6 +1211,13 @@ mod tests {
             (Service, Service, &unreadable, OwnerPlan::Owned),
             (Service, Local, &stopped_ready, OwnerPlan::AdoptService),
             (Service, Local, &running(true), OwnerPlan::AdoptService),
+            (Service, Local, &foreign(true), OwnerPlan::AdoptService),
+            (
+                Service,
+                Local,
+                &foreign(false),
+                OwnerPlan::Unproven { phase: Exhausted },
+            ),
             (
                 Service,
                 Local,

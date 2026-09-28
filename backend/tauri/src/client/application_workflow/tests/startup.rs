@@ -10,6 +10,7 @@
 
 use std::{
     borrow::Cow,
+    path::PathBuf,
     sync::{
         Arc, Mutex as StdMutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -177,6 +178,8 @@ pub(super) struct FakeDaemon {
     pub(super) state: StdMutex<DaemonState>,
     pub(super) unreadable: AtomicBool,
     pub(super) version: StdMutex<&'static str>,
+    /// The config dir the daemon reports it was installed with.
+    installed_for: PathBuf,
     hold_update: AtomicBool,
     hold_install: AtomicBool,
     held: Notify,
@@ -224,7 +227,7 @@ impl ServiceHostAdapter for FakeDaemon {
                     runtime_infos: RuntimeInfos {
                         service_data_dir: Cow::Owned(Default::default()),
                         service_config_dir: Cow::Owned(Default::default()),
-                        nyanpasu_config_dir: Cow::Owned(Default::default()),
+                        nyanpasu_config_dir: Cow::Owned(self.installed_for.clone()),
                         nyanpasu_data_dir: Cow::Owned(Default::default()),
                     },
                     logs: None,
@@ -291,6 +294,8 @@ pub(super) struct Setup {
     /// The router already drives the service host when the workflow starts,
     /// as after a handoff an earlier command made.
     pub(super) owner_on_service: bool,
+    /// The daemon was installed by another instance of the app.
+    pub(super) foreign_daemon: bool,
 }
 
 impl Default for Setup {
@@ -305,6 +310,7 @@ impl Default for Setup {
             command_timeout: Duration::from_secs(100),
             handoff_budget: None,
             owner_on_service: false,
+            foreign_daemon: false,
         }
     }
 }
@@ -344,6 +350,11 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         state: StdMutex::new(setup.daemon),
         unreadable: AtomicBool::new(false),
         version: StdMutex::new(setup.version),
+        installed_for: if setup.foreign_daemon {
+            PathBuf::from("/another-instance/config")
+        } else {
+            PathBuf::new()
+        },
         hold_update: AtomicBool::new(setup.hold_update),
         hold_install: AtomicBool::new(false),
         held: Notify::new(),
@@ -403,6 +414,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ownership: Ownership::Unproven,
+            instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),
             tasks: tokio_util::task::TaskTracker::new(),
         },
@@ -667,6 +679,36 @@ async fn a_residual_service_core_is_retired_by_handing_the_runtime_back() {
     assert_eq!(g.log(), ["local:stop", "service:stop", "local:reconcile"]);
     assert_eq!(g.host(), ExecutionHost::Local);
     assert!(g.service_host.delegate.reconciled_bytes().is_empty());
+    assert_eq!(
+        ownership(&g.client).await,
+        Ownership::Established {
+            host: ExecutionHost::Local
+        }
+    );
+}
+
+/// S6: a core another instance of the app runs in the shared daemon, with
+/// Local asked for. It is not this instance's to retire, so it is left
+/// running and only the local core starts.
+#[tokio::test]
+async fn another_instances_service_core_is_left_running() {
+    let g = graph(Setup {
+        daemon: DaemonState::Running,
+        residual: true,
+        foreign_daemon: true,
+        ..Setup::default()
+    })
+    .await;
+
+    let report = g.start().await;
+
+    assert_eq!(report.outcome, StartupOutcome::Ready, "{report:?}");
+    assert!(matches!(
+        report.observation.unwrap().service,
+        Some(ServiceEvidence::ForeignCore { ready: true, .. })
+    ));
+    assert_eq!(g.log(), ["local:reconcile"]);
+    assert_eq!(g.host(), ExecutionHost::Local);
     assert_eq!(
         ownership(&g.client).await,
         Ownership::Established {

@@ -248,6 +248,7 @@ fn host_transition_daemon(
         endpoint,
         calls: Arc::new(StdMutex::new(Vec::new())),
         stopped: AtomicBool::new(false),
+        installed_for: Default::default(),
     }
 }
 
@@ -365,6 +366,7 @@ pub(super) async fn fixture_from(
             ports: ports.clone(),
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ownership,
+            instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),
             tasks: tasks.clone(),
         },

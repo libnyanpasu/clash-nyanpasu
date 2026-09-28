@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
 import {
   acceptConfigurationStatus,
@@ -19,6 +20,16 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+  SettingsCard,
+  SettingsCardContent,
+  SettingsGroup,
+  SettingsLabel,
+} from '../../_modules/settings-card'
 
 function healthLabel(health: ConvergenceHealth) {
   const labels = {
@@ -66,7 +77,45 @@ const CONFIGURATION_MUTATIONS = new Set<unknown>([
 
 const STATUS_KEY = ['getConfigurationStatus']
 
-export function ConfigurationStatusPanel() {
+const StatusItem = ({
+  label,
+  health,
+  message,
+  retry,
+  busy,
+}: {
+  label: string
+  health: ConvergenceHealth
+  message?: string | null
+  retry?: () => void
+  busy?: boolean
+}) => (
+  <SettingsCard>
+    <SettingsCardContent>
+      <ItemContainer>
+        <ItemLabel className="min-w-0">
+          <ItemLabelText>{label}</ItemLabelText>
+
+          <ItemLabelDescription>{healthLabel(health)}</ItemLabelDescription>
+
+          {message && (
+            <ItemLabelDescription className="break-all">
+              {message}
+            </ItemLabelDescription>
+          )}
+        </ItemLabel>
+
+        {retry && (
+          <Button variant="stroked" disabled={busy} onClick={retry}>
+            {m.configuration_retry()}
+          </Button>
+        )}
+      </ItemContainer>
+    </SettingsCardContent>
+  </SettingsCard>
+)
+
+export default function ConfigurationStatus() {
   const queryClient = useQueryClient()
   const mutations = useMutationState({
     filters: {
@@ -132,91 +181,112 @@ export function ConfigurationStatusPanel() {
       : undefined
 
   const sources = status ? attentionSources(status) : []
-  const attention =
-    status &&
-    (status.maintenance ||
-      status.runtime.health !== 'healthy' ||
-      status.effects.some((effect) => effect.health !== 'healthy') ||
-      sources.length > 0)
+  const operations = status?.recent_operations.slice(0, 8) ?? []
+
   return (
-    <details className="bg-background fixed right-4 bottom-4 z-40 max-w-md rounded-xl border p-3 text-sm shadow-lg">
-      <summary className="cursor-pointer">
-        {m.configuration_status()} {attention || unconfirmed ? '•' : ''}
-      </summary>
-      <div className="mt-3 max-h-80 space-y-3 overflow-auto" aria-live="polite">
-        {unconfirmed && <p role="status">{m.configuration_unconfirmed()}</p>}
-        {error && <p role="status">{error}</p>}
-        {!status ? (
-          <p>{m.configuration_pending()}</p>
-        ) : (
-          <>
-            <p>{m.configuration_committed_note()}</p>
-            {status.maintenance && <p>{status.maintenance}</p>}
-            <div>
-              <strong>{m.configuration_runtime()}</strong>:{' '}
-              {healthLabel(status.runtime.health)}
-              {status.runtime.message && <p>{status.runtime.message}</p>}
-              {(status.runtime.health !== 'healthy' || status.maintenance) && (
-                <button
-                  className="underline"
-                  disabled={busy}
-                  onClick={() => retry.mutate(undefined)}
-                >
-                  {m.configuration_retry()}
-                </button>
-              )}
-            </div>
-            {status.effects.map((effect) => (
-              <div key={effect.kind}>
-                <span>
-                  {effectLabel(effect.kind)}: {healthLabel(effect.health)}
-                </span>
-                {effect.message && <p>{effect.message}</p>}
-                {effect.health !== 'healthy' && (
-                  <button
-                    className="ml-2 underline"
-                    disabled={busy}
-                    onClick={() => retry.mutate(effect.kind)}
-                  >
-                    {m.configuration_retry()}
-                  </button>
-                )}
-              </div>
-            ))}
-            {sources.length > 0 && (
-              <div>
-                <strong>{m.configuration_sources()}</strong>
-                {sources.map((source) => {
-                  const message = sourceMessage(source)
-                  return (
-                    <div key={source.profile}>
-                      <span>
-                        {source.name}: {healthLabel(source.health)}
-                      </span>
-                      {message && <p>{message}</p>}
-                    </div>
-                  )
-                })}
-              </div>
+    <div data-slot="configuration-status-container" aria-live="polite">
+      <SettingsLabel>{m.configuration_status()}</SettingsLabel>
+
+      <SettingsGroup>
+        <SettingsCard>
+          <SettingsCardContent className="flex flex-col gap-2 text-sm">
+            <p className="text-on-surface-variant">
+              {m.configuration_committed_note()}
+            </p>
+
+            {unconfirmed && (
+              <p className="text-error" role="status">
+                {m.configuration_unconfirmed()}
+              </p>
             )}
-            <details>
-              <summary>{m.configuration_recent_operations()}</summary>
+
+            {error && (
+              <p className="text-error" role="status">
+                {error}
+              </p>
+            )}
+
+            {!status && <p>{m.configuration_pending()}</p>}
+
+            {status?.maintenance && <p>{status.maintenance}</p>}
+          </SettingsCardContent>
+        </SettingsCard>
+
+        {status && (
+          <StatusItem
+            label={m.configuration_runtime()}
+            health={status.runtime.health}
+            message={status.runtime.message}
+            retry={
+              status.runtime.health !== 'healthy' || status.maintenance
+                ? () => retry.mutate(undefined)
+                : undefined
+            }
+            busy={busy}
+          />
+        )}
+
+        {status?.effects.map((effect) => (
+          <StatusItem
+            key={effect.kind}
+            label={effectLabel(effect.kind)}
+            health={effect.health}
+            message={effect.message}
+            retry={
+              effect.health !== 'healthy'
+                ? () => retry.mutate(effect.kind)
+                : undefined
+            }
+            busy={busy}
+          />
+        ))}
+      </SettingsGroup>
+
+      {sources.length > 0 && (
+        <>
+          <SettingsLabel>{m.configuration_sources()}</SettingsLabel>
+
+          <SettingsGroup>
+            {sources.map((source) => (
+              <StatusItem
+                key={source.profile}
+                label={source.name}
+                health={source.health}
+                message={sourceMessage(source)}
+              />
+            ))}
+          </SettingsGroup>
+        </>
+      )}
+
+      {status && (status.active || operations.length > 0) && (
+        <>
+          <SettingsLabel>{m.configuration_recent_operations()}</SettingsLabel>
+
+          <SettingsCard>
+            <SettingsCardContent className="flex flex-col gap-3 text-sm">
               {status.active && (
                 <p>
                   {m.configuration_pending()}: {status.active}
                 </p>
               )}
-              {status.recent_operations.slice(0, 8).map((operation) => (
-                <div key={operation.operation_id} className="my-2 break-all">
-                  <code>{operation.operation_id}</code>: {operation.domain} /{' '}
-                  {operation.outcome} / {operation.conclusion}
+
+              {operations.map((operation) => (
+                <div key={operation.operation_id} className="break-all">
+                  <code>{operation.operation_id}</code>
+
+                  <p className="text-on-surface-variant">
+                    {operation.domain} / {operation.outcome} /{' '}
+                    {operation.conclusion}
+                  </p>
+
                   {operation.message && <p>{operation.message}</p>}
                 </div>
               ))}
-            </details>
-          </>
-        )}
-      </div>
-    </details>
+            </SettingsCardContent>
+          </SettingsCard>
+        </>
+      )}
+    </div>
   )
 }

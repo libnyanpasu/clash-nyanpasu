@@ -27,9 +27,9 @@ use nyanpasu_config::{
     profile::{ManagedProfilePath, ProfileId, Profiles},
 };
 use nyanpasu_core::state::{
-    Ack, AckPolicy, PersistentStateManager, PersistentStateManagerSetup, ReplaceIfVersionError,
-    ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange, StateParticipant,
-    SubscriberName, error::StateChangedError,
+    Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
+    ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange,
+    StateParticipant, SubscriberName, error::StateChangedError,
 };
 use nyanpasu_core_manager::{CoreErrorKind, CoreKind, OperationId};
 use nyanpasu_ipc::api::status::CoreStateDetail;
@@ -2073,18 +2073,18 @@ async fn a_repeated_manual_deferral_preserves_automatic_budget() {
 #[test]
 fn the_ack_of_an_outcome_follows_the_failure_matrix() {
     use super::super::{
-        mutation::{ApplyFailure, RefusalCause, RetryableCause, RuntimePrepareOutcome, TryAck},
+        mutation::{ApplyFailure, RefusalCause, RetryableCause, RuntimePrepareOutcome},
         policy::TryCauseKind,
     };
 
-    assert_eq!(
+    assert!(matches!(
         RuntimePrepareOutcome::SavedInactive {
             identity: String::new()
         }
         .ack(),
-        TryAck::Ok
-    );
-    assert_eq!(
+        Ack::Ok
+    ));
+    assert!(matches!(
         RuntimePrepareOutcome::Deferred {
             baseline: super::super::mutation::KnownRuntimeState::Stopped,
             digest: "digest".into(),
@@ -2094,9 +2094,9 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
             },
         }
         .ack(),
-        TryAck::Degraded("briefly unreachable".into())
-    );
-    assert_eq!(
+        Ack::Degraded(message) if message == "briefly unreachable"
+    ));
+    assert!(matches!(
         RuntimePrepareOutcome::Rejected {
             cause: ApplyFailure {
                 stage: super::super::mutation::MutationStage::TryingCritical,
@@ -2106,8 +2106,8 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
             restored: super::super::mutation::KnownRuntimeState::Stopped,
         }
         .ack(),
-        TryAck::Rejected("the core rejected it".into())
-    );
+        Ack::Rejected(message) if message == "the core rejected it"
+    ));
 }
 
 // -- R14: a host switch is applied, not assumed -----------------------------
@@ -4138,9 +4138,9 @@ async fn a_conflicting_version_never_waits_for_a_settlement() {
     assert_eq!(f.endpoint.reconciled_bytes().len(), submitted, "no Try ran");
 }
 
-/// V06: a Try that never reached the workflow did not run. The source keeps
-/// its version, the core is untouched, and the error says the mutation was not
-/// run.
+/// V06: a Try that never reached the workflow did not run. The participant
+/// refuses it rather than failing it, the source keeps its version, the core
+/// is untouched, and the error says nothing was committed.
 #[tokio::test]
 async fn a_try_the_workflow_never_received_is_refused_as_not_run() {
     let mut f = fixture().await;
@@ -4161,8 +4161,18 @@ async fn a_try_the_workflow_never_received_is_refused_as_not_run() {
     .await;
     let settlement = settlement.await.ok();
     assert!(settlement.is_none(), "the Runtime never took the Try");
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), settlement.as_ref());
-    assert!(text.contains("the mutation was not run"), "{text}");
+    let Err(ReplaceIfVersionError::State(StateChangedError::PrepareAck(refusal))) = &result else {
+        panic!("{result:?}");
+    };
+    assert!(
+        matches!(
+            refusal.report.subscriber_acks.as_slice(),
+            [ack] if matches!(&ack.status, AckStatus::Rejected { reason }
+                if reason.contains("nothing was committed"))
+        ),
+        "{:?}",
+        refusal.report
+    );
     assert_eq!(f.clash.snapshot_handle().load().version, before);
     assert!(f.endpoint.reconciled_bytes().is_empty());
 }

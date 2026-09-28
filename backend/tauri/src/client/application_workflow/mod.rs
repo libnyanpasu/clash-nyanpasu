@@ -19,7 +19,7 @@ mod tests;
 
 use std::{collections::VecDeque, sync::Arc};
 
-use nyanpasu_core::state::{StateDecision, StateSnapshot};
+use nyanpasu_core::state::{Ack, StateDecision, StateSnapshot};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
@@ -40,7 +40,7 @@ use crate::core::actor_v2::{
 };
 #[cfg(test)]
 use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
-use mutation::{MutationJournal, MutationRequest, TryAck};
+use mutation::{MutationJournal, MutationRequest};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
@@ -253,7 +253,7 @@ impl ApplicationWorkflowState {
             None
         };
         if let Some(refusal) = refusal {
-            request.answer(TryAck::Rejected(refusal.to_owned()));
+            request.answer(Ack::Rejected(refusal.to_owned()));
             return;
         }
         // The caller is the source transaction, answered with the Try's
@@ -654,9 +654,7 @@ impl ApplicationWorkflowClient {
         self.0
             .actor
             .cast(Message::BeginMutation(Box::new(request)))
-            .map_err(|_| {
-                anyhow::anyhow!("the application workflow is unavailable; the mutation was not run")
-            })
+            .map_err(|_| anyhow::anyhow!("the runtime owner is unavailable; nothing was committed"))
     }
 
     /// The status watch, for a test that has to see closing begin.

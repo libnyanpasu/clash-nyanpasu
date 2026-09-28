@@ -96,10 +96,12 @@ impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant
             ack: Some(ack),
             settle: self.settle.lock().unwrap().take(),
         }) {
-            return Ack::Failed(error);
+            // Never delivered, so nothing ran: unlike a lost verdict below,
+            // this is a refusal.
+            return Ack::Rejected(error.to_string());
         }
         match verdict.await {
-            Ok(ack) => ack.into(),
+            Ok(ack) => ack,
             // The workflow dropped the verdict without sending one, so what the
             // Try did is unobserved. Never a rejection: a rejection claims the
             // runtime was left alone, and nothing here establishes that.

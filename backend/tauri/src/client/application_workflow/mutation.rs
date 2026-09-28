@@ -147,7 +147,7 @@ pub(crate) struct MutationRequest {
     /// Where the Try's verdict goes. `None` once it has been answered: exactly
     /// one verdict is ever sent, and a refusal before admission is one of them.
     /// The receiving end disappears when the whole prepare fan-out is dropped.
-    pub ack: Option<oneshot::Sender<TryAck>>,
+    pub ack: Option<oneshot::Sender<Ack>>,
     /// Where the settled attempt's receipt goes. The source waits for it once
     /// its transaction has returned; a request refused before its Try drops it
     /// unsent, which that wait reads as "the Runtime did nothing".
@@ -156,33 +156,9 @@ pub(crate) struct MutationRequest {
 
 impl MutationRequest {
     /// Answers the source transaction's prepare.
-    pub fn answer(&mut self, ack: TryAck) {
+    pub fn answer(&mut self, ack: Ack) {
         if let Some(channel) = self.ack.take() {
             let _ = channel.send(ack);
-        }
-    }
-}
-
-/// The workflow's verdict on the critical part of a mutation, in the shape the
-/// state transaction consumes (v2 §4.4).
-///
-/// The payloads are diagnostics. Control flow reads the structured
-/// [`RuntimePrepareOutcome`] kept in the operation receipt, never these strings.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TryAck {
-    Ok,
-    Degraded(String),
-    Rejected(String),
-    Failed(String),
-}
-
-impl From<TryAck> for Ack {
-    fn from(ack: TryAck) -> Self {
-        match ack {
-            TryAck::Ok => Ack::Ok,
-            TryAck::Degraded(message) => Ack::Degraded(message),
-            TryAck::Rejected(message) => Ack::Rejected(message),
-            TryAck::Failed(message) => Ack::Failed(anyhow::anyhow!(message)),
         }
     }
 }
@@ -308,13 +284,15 @@ pub(crate) enum RuntimePrepareOutcome {
 }
 
 impl RuntimePrepareOutcome {
-    /// The ACK this outcome owes the state transaction (v2 §4.4).
-    pub fn ack(&self) -> TryAck {
+    /// The ACK this outcome owes the state transaction (v2 §4.4). Its payloads
+    /// are diagnostics: control flow reads the structured outcome kept in the
+    /// operation receipt, never these strings.
+    pub fn ack(&self) -> Ack {
         match self {
-            Self::Applied(_) | Self::SavedInactive { .. } => TryAck::Ok,
-            Self::Deferred { cause, .. } => TryAck::Degraded(cause.message.clone()),
-            Self::Rejected { cause, .. } => TryAck::Rejected(cause.message.clone()),
-            Self::RecoveryRequired(error) => TryAck::Failed(error.clone()),
+            Self::Applied(_) | Self::SavedInactive { .. } => Ack::Ok,
+            Self::Deferred { cause, .. } => Ack::Degraded(cause.message.clone()),
+            Self::Rejected { cause, .. } => Ack::Rejected(cause.message.clone()),
+            Self::RecoveryRequired(error) => Ack::Failed(anyhow::anyhow!(error.clone())),
         }
     }
 

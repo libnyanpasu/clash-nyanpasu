@@ -66,15 +66,42 @@ impl DomainChange {
     }
 }
 
-/// Binds one source-config type to the workflow's domain protocol.
-///
-/// The participant is generic over the state type so it can be handed to the
-/// owning `PersistentStateManager` unchanged; this trait is what lets it erase
-/// that type into a [`DomainChange`] for the workflow, and what lets a source
-/// classify its own candidate.
-pub(crate) trait MutationDomain: Clone + Send + Sync + 'static {
-    fn domain_change(change: StateChange<Self>) -> DomainChange;
+// The participant is generic over the state type so it can be handed to the
+// owning `PersistentStateManager` unchanged; these erase that type for the
+// workflow.
+impl From<StateChange<NyanpasuAppConfig>> for DomainChange {
+    fn from(change: StateChange<NyanpasuAppConfig>) -> Self {
+        Self::Application {
+            previous: change
+                .previous
+                .map(|previous| Arc::new(previous.state.clone())),
+            candidate: change.current,
+        }
+    }
+}
 
+impl From<StateChange<ClashConfig>> for DomainChange {
+    fn from(change: StateChange<ClashConfig>) -> Self {
+        Self::Clash {
+            candidate: change.current,
+        }
+    }
+}
+
+impl From<StateChange<Profiles>> for DomainChange {
+    fn from(change: StateChange<Profiles>) -> Self {
+        Self::Profiles {
+            previous: change
+                .previous
+                .map(|previous| Arc::new(previous.state.clone())),
+            candidate: change.current,
+        }
+    }
+}
+
+/// Lets a source classify its own candidate, whichever source-config type it
+/// owns.
+pub(crate) trait MutationDomain {
     /// How far the candidate moves the runtime, read off the two documents.
     fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact;
 }
@@ -83,41 +110,17 @@ impl MutationDomain for NyanpasuAppConfig {
     fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
         impact::classify_application(previous, candidate)
     }
-
-    fn domain_change(change: StateChange<Self>) -> DomainChange {
-        DomainChange::Application {
-            previous: change
-                .previous
-                .map(|previous| Arc::new(previous.state.clone())),
-            candidate: change.current,
-        }
-    }
 }
 
 impl MutationDomain for ClashConfig {
     fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
         impact::classify_clash(previous, candidate)
     }
-
-    fn domain_change(change: StateChange<Self>) -> DomainChange {
-        DomainChange::Clash {
-            candidate: change.current,
-        }
-    }
 }
 
 impl MutationDomain for Profiles {
     fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact {
         impact::classify_profiles(previous, candidate, hints)
-    }
-
-    fn domain_change(change: StateChange<Self>) -> DomainChange {
-        DomainChange::Profiles {
-            previous: change
-                .previous
-                .map(|previous| Arc::new(previous.state.clone())),
-            candidate: change.current,
-        }
     }
 }
 

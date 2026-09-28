@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use nyanpasu_core::state::{
-    AckStatus, DecisionHandle, ReplaceIfVersionError, StateParticipant, error::StateChangedError,
+    AckStatus, DecisionHandle, ReplaceIfVersionError, StateChange, StateParticipant,
+    error::StateChangedError,
 };
 use nyanpasu_core_manager::OperationId;
 use tokio::sync::{oneshot, watch};
@@ -13,7 +14,7 @@ use crate::client::{
     application_workflow::{
         ApplicationWorkflowClient,
         impact::{MutationHints, RuntimeImpact},
-        mutation::{MutationConclusion, MutationDomain, MutationOutcomeKind, MutationReceipt},
+        mutation::{DomainChange, MutationConclusion, MutationOutcomeKind, MutationReceipt},
         participant::ApplicationMutationParticipant,
         policy::CommandClass,
     },
@@ -170,7 +171,7 @@ impl MutationCoordinator {
     /// The Runtime's participant for one mutation that reaches the runtime,
     /// with the impact its source classified, and the settlement it will send
     /// back.
-    pub fn participant<T: MutationDomain>(
+    pub fn participant<T>(
         &self,
         operation_id: OperationId,
         hints: MutationHints,
@@ -179,7 +180,11 @@ impl MutationCoordinator {
     ) -> anyhow::Result<(
         impl FnOnce(DecisionHandle) -> StateParticipant<T> + use<T>,
         Settlement,
-    )> {
+    )>
+    where
+        T: Clone + Send + Sync + 'static,
+        DomainChange: From<StateChange<T>>,
+    {
         let connection = self.0.borrow().clone();
         anyhow::ensure!(
             !matches!(connection, Connection::Pending),

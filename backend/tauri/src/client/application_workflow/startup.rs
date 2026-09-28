@@ -210,21 +210,21 @@ pub(super) enum Reestablished {
     RecoveryRequired(String),
 }
 
-impl From<&Reestablished> for StartupOutcome {
-    fn from(reestablished: &Reestablished) -> Self {
-        match reestablished {
-            Reestablished::Applied(_) | Reestablished::Accepted | Reestablished::Stopped => {
-                Self::Ready
-            }
-            Reestablished::Degraded { health, reason, .. } => Self::ReadyDegraded {
+impl Reestablished {
+    /// What startup reports for this attempt. The report drops what the
+    /// attempt applied and whether it waits on a dependency.
+    fn outcome(&self) -> StartupOutcome {
+        match self {
+            Self::Applied(_) | Self::Accepted | Self::Stopped => StartupOutcome::Ready,
+            Self::Degraded { health, reason, .. } => StartupOutcome::ReadyDegraded {
                 health: *health,
                 reason: reason.clone(),
             },
-            Reestablished::StopUnsatisfied(reason) => Self::ReadyDegraded {
+            Self::StopUnsatisfied(reason) => StartupOutcome::ReadyDegraded {
                 health: ConvergenceHealth::Blocked,
                 reason: reason.clone(),
             },
-            Reestablished::RecoveryRequired(reason) => Self::RecoveryRequired {
+            Self::RecoveryRequired(reason) => StartupOutcome::RecoveryRequired {
                 reason: reason.clone(),
             },
         }
@@ -246,7 +246,7 @@ impl ApplicationWorkflow {
         self.live = Some(LiveAttempt::committed_target(operation_id, target));
         let (observation, reestablished) = self.reestablish(false).await;
         let outcome = match self.conclude_reestablish(&reestablished) {
-            Ok(()) => StartupOutcome::from(&reestablished),
+            Ok(()) => reestablished.outcome(),
             Err(reason) => StartupOutcome::RecoveryRequired { reason },
         };
         let report = StartupReport {

@@ -21,11 +21,11 @@ use tokio::sync::oneshot;
 use super::{
     ApplicationWorkflowClient,
     impact::{MutationHints, RuntimeImpact},
-    mutation::{MutationDomain, MutationReceipt, MutationRequest},
+    mutation::{DomainChange, MutationReceipt, MutationRequest},
     policy::CommandClass,
 };
 
-pub(crate) struct ApplicationMutationParticipant<T: MutationDomain> {
+pub(crate) struct ApplicationMutationParticipant<T> {
     operation_id: OperationId,
     hints: MutationHints,
     class: CommandClass,
@@ -39,7 +39,11 @@ pub(crate) struct ApplicationMutationParticipant<T: MutationDomain> {
     _state: PhantomData<T>,
 }
 
-impl<T: MutationDomain> ApplicationMutationParticipant<T> {
+impl<T> ApplicationMutationParticipant<T>
+where
+    T: Clone + Send + Sync + 'static,
+    DomainChange: From<StateChange<T>>,
+{
     /// Builds the participant of one attempt, ready to hand to the single-shot
     /// participant entry of the owning `PersistentStateManager`, which erases it
     /// to a [`StateParticipant`].
@@ -67,7 +71,11 @@ impl<T: MutationDomain> ApplicationMutationParticipant<T> {
 }
 
 #[async_trait::async_trait]
-impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant<T> {
+impl<T> StateAckSubscriber<T> for ApplicationMutationParticipant<T>
+where
+    T: Clone + Send + Sync + 'static,
+    DomainChange: From<StateChange<T>>,
+{
     fn name(&self) -> SubscriberName<'_> {
         SubscriberName(std::borrow::Cow::Borrowed(&self.name))
     }
@@ -83,7 +91,7 @@ impl<T: MutationDomain> StateAckSubscriber<T> for ApplicationMutationParticipant
         let (ack, verdict) = oneshot::channel();
         if let Err(error) = self.workflow.begin_mutation(MutationRequest {
             operation_id: self.operation_id,
-            change: T::domain_change(change),
+            change: change.into(),
             hints: self.hints.clone(),
             class: self.class,
             impact: self.impact,

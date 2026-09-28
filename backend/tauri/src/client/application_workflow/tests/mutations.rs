@@ -413,7 +413,15 @@ pub(super) async fn mutate<T>(
     + 'static,
 ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
 where
-    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+    T: super::super::mutation::MutationDomain
+        + Clone
+        + Send
+        + Sync
+        + 'static
+        + Serialize
+        + DeserializeOwned
+        + Default,
+    super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     mutate_settling(
         manager,
@@ -446,7 +454,15 @@ pub(super) async fn mutate_settling<T>(
     crate::state::mutation::Settlement,
 )
 where
-    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+    T: super::super::mutation::MutationDomain
+        + Clone
+        + Send
+        + Sync
+        + 'static
+        + Serialize
+        + DeserializeOwned
+        + Default,
+    super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let hints = MutationHints::default();
     let (version, impact) = {
@@ -498,7 +514,15 @@ pub(super) async fn mutate_with_hints<T>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
-    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+    T: super::super::mutation::MutationDomain
+        + Clone
+        + Send
+        + Sync
+        + 'static
+        + Serialize
+        + DeserializeOwned
+        + Default,
+    super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let operation_id = OperationId::generate();
     let (version, impact) = {
@@ -547,7 +571,15 @@ pub(super) async fn simple_mutate<T>(
     Result<ReplaceIfVersionResult, ReplaceIfVersionError>,
 )
 where
-    T: super::super::mutation::MutationDomain + Serialize + DeserializeOwned + Default,
+    T: super::super::mutation::MutationDomain
+        + Clone
+        + Send
+        + Sync
+        + 'static
+        + Serialize
+        + DeserializeOwned
+        + Default,
+    super::super::mutation::DomainChange: From<StateChange<T>>,
 {
     let operation_id = OperationId::generate();
     let result = mutate(

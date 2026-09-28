@@ -102,7 +102,7 @@ struct AppliedRevisions {
 }
 
 impl AppliedRevisions {
-    fn of(&self, kind: EffectKind) -> EffectRevision {
+    fn revision(&self, kind: EffectKind) -> EffectRevision {
         match kind {
             EffectKind::SystemProxy => self.proxy,
             EffectKind::ProxyGuard => self.guard,
@@ -299,7 +299,7 @@ impl State {
     /// Takes ownership of a capability for this revision, or reports that a
     /// newer one already owns it.
     fn claim(&mut self, kind: EffectKind, revision: EffectRevision) -> bool {
-        let applied = self.applied.of(kind);
+        let applied = self.applied.revision(kind);
         if revision <= applied {
             tracing::debug!(
                 requested = revision.get(),
@@ -758,7 +758,7 @@ impl State {
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied.of(kind),
+            applied_revision: self.applied.revision(kind),
             health: EffectHealth::Healthy,
         }
     }
@@ -769,7 +769,7 @@ impl State {
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied.of(kind),
+            applied_revision: self.applied.revision(kind),
             health: EffectHealth::Degraded {
                 code: "system_proxy_shut_down",
                 message: "the system proxy owner is shutting down and stopped accepting changes"
@@ -783,7 +783,7 @@ impl State {
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied.of(kind),
+            applied_revision: self.applied.revision(kind),
             health: EffectHealth::Superseded,
         }
     }
@@ -799,7 +799,7 @@ impl State {
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied.of(kind),
+            applied_revision: self.applied.revision(kind),
             health: EffectHealth::Degraded {
                 code,
                 message,

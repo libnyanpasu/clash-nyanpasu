@@ -299,7 +299,7 @@ impl Default for Setup {
             service_mode: false,
             daemon: DaemonState::NotInstalled,
             residual: false,
-            clash: ClashConfig::default(),
+            clash: crate::client::tests::test_clash_config(),
             version: "2.0.0",
             hold_update: false,
             command_timeout: Duration::from_secs(100),

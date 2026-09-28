@@ -998,6 +998,7 @@ pub(crate) mod tests {
     };
     use camino::Utf8PathBuf;
     use nyanpasu_config::{
+        clash::config::{ClashConfig, clash_strategy::PortStrategy},
         profile::{
             ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
             ProfileDefinition, ProfileMetadata, ProfileSource, SubscriptionInfo,
@@ -1838,6 +1839,21 @@ pub(crate) mod tests {
         }
     }
 
+    /// A clash config for tests that resolve ports. The default binds a fixed
+    /// mixed port, which parallel tests would contend for; port 0 never does.
+    pub(crate) fn test_clash_config() -> ClashConfig {
+        ClashConfig {
+            mixed_port: PortStrategy::new_allow_fallback(0),
+            ..ClashConfig::default()
+        }
+    }
+
+    /// Seeds `path` with [`test_clash_config`], which the clash config client
+    /// then loads instead of creating the default.
+    fn seed_test_clash_config(path: impl AsRef<std::path::Path>) {
+        std::fs::write(path, serde_yaml::to_string(&test_clash_config()).unwrap()).unwrap();
+    }
+
     pub(crate) async fn test_typed_config_clients(
         dir: &TempDir,
     ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
@@ -1857,6 +1873,7 @@ pub(crate) mod tests {
         )
         .await
         .expect("session state client should be created");
+        seed_test_clash_config(dir.path().join("clash-config.yaml"));
         let clash_config = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(dir, "clash-config.yaml"),
@@ -2158,6 +2175,7 @@ pub(crate) mod tests {
         )
         .await
         .expect("session state client should be created");
+        seed_test_clash_config(dir.path().join("clash-config.yaml"));
         let clash_config = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(&dir, "clash-config.yaml"),
@@ -2236,6 +2254,7 @@ pub(crate) mod tests {
         endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
     ) -> ClientSetupArgs {
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        seed_test_clash_config(paths.clash_config_path());
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         let (core_v2, service) = test_v2_clients_with_endpoint(endpoint);
         ClientSetupArgs {

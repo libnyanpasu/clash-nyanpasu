@@ -519,7 +519,7 @@ export type ClashConfig = {
   enable_tun_mode: boolean
   /**  web ui list */
   web_ui_list: string[]
-  /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真 */
+  /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认关闭 */
   enable_clash_fields: boolean
   /**  外部控制器端口策略 */
   external_controller: ExternalControllerStrategy

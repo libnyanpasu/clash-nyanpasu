@@ -27,7 +27,7 @@ pub enum ClashControlChannel {
 }
 
 /// Clash Related Config
-#[derive(Default, Debug, Clone, Deserialize, Serialize, Type, Patch)]
+#[derive(Debug, Clone, Deserialize, Serialize, Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, Type)))]
 #[patch(attribute(serde(default, rename_all = "snake_case")))]
@@ -42,7 +42,7 @@ pub struct ClashConfig {
     /// web ui list
     pub web_ui_list: Vec<String>,
 
-    /// 支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真
+    /// 支持关闭字段过滤，避免meta的新字段都被过滤掉，默认关闭
     pub enable_clash_fields: bool,
 
     /// 外部控制器端口策略
@@ -76,10 +76,48 @@ pub struct ClashConfig {
     pub tun_stack: TunStack,
 }
 
+/// The config of a fresh install.
+impl Default for ClashConfig {
+    fn default() -> Self {
+        Self {
+            overrides: ClashGuardOverrides::default(),
+            enable_tun_mode: false,
+            web_ui_list: Vec::new(),
+            enable_clash_fields: false,
+            external_controller: ExternalControllerStrategy::default(),
+            clash_control_channel: ClashControlChannel::default(),
+            clash_ipc_disable_http_controller: false,
+            mixed_port: PortStrategy {
+                kind: PortStrategyKind::Fixed,
+                start_port: DEFAULT_MIXED_PORT,
+            },
+            socks_port: None,
+            http_port: None,
+            break_connection: BreakConnectionStrategy::default(),
+            tun_stack: TunStack::default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod patch_tests {
     use super::*;
     use struct_patch::Patch;
+
+    #[test]
+    fn default_binds_the_default_mixed_port_as_is() {
+        let config = ClashConfig::default();
+        assert_eq!(
+            config.mixed_port,
+            PortStrategy {
+                kind: PortStrategyKind::Fixed,
+                start_port: DEFAULT_MIXED_PORT,
+            }
+        );
+        assert_eq!(config.socks_port, None);
+        assert_eq!(config.http_port, None);
+        assert!(!config.enable_clash_fields);
+    }
 
     #[test]
     fn old_clash_config_defaults_control_channel_without_application_fields() {

@@ -21,8 +21,6 @@ export const commands = {
     typedError<GetSysProxyResponse, string>(__TAURI_INVOKE('get_sys_proxy')),
   getClashInfo: () =>
     typedError<ClashInfo, string>(__TAURI_INVOKE('get_clash_info')),
-  getClashLogs: () =>
-    typedError<string[], string>(__TAURI_INVOKE('get_clash_logs')),
   /**  get the runtime config */
   getRuntimeConfig: () =>
     typedError<any | null, string>(__TAURI_INVOKE('get_runtime_config')),
@@ -279,11 +277,12 @@ export const commands = {
       __TAURI_INVOKE('import_profile', { url, name, option }),
     ),
   /**
-   *  Take and clear the pending cold-start deep link, if any. Called once by the
-   *  frontend during startup.
+   *  Take and clear the queued deep links, oldest first. The frontend calls it
+   *  once its [`SchemeRequestReceivedEvent`] listener is registered, and again on
+   *  every such event.
    */
-  getPendingDeepLink: () =>
-    typedError<string | null, string>(__TAURI_INVOKE('get_pending_deep_link')),
+  takePendingDeepLinks: () =>
+    typedError<string[], string>(__TAURI_INVOKE('take_pending_deep_links')),
   /**  create a new profile */
   createProfile: (
     request: NewProfileRequest_Deserialize,
@@ -2562,20 +2561,13 @@ export type RuntimeInspectionNode = {
 }
 
 /**
- *  Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
- *  link is received: either from a secondary instance while the app is already
- *  running, or on cold start once the window exists. The frontend listens for
- *  this to import the referenced `install-config` profile. On cold start the
- *  same URL is also stashed in [`PendingDeepLink`] and drained once via
- *  [`get_pending_deep_link`], covering the race where the event fires before the
- *  JS listener attaches.
+ *  Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
+ *  link joins [`PendingDeepLinks`]. It carries no URL: it only asks a listening
+ *  frontend to take the queue through [`take_pending_deep_links`].
  *
  *  Event name: `scheme-request-received-event` (derived by `tauri_specta`).
  */
-export type SchemeRequestReceivedEvent = {
-  /**  The raw deep-link URL as received from the OS. */
-  url: string
-}
+export type SchemeRequestReceivedEvent = null
 
 export type ScriptRuntime = 'javascript' | 'lua'
 
@@ -3015,11 +3007,6 @@ export const queries = {
       queryKey: ['getClashInfo', ...args],
       queryFn: () => commands.getClashInfo(...args),
     }),
-  getClashLogs: (...args: Parameters<typeof commands.getClashLogs>) =>
-    queryOptions({
-      queryKey: ['getClashLogs', ...args],
-      queryFn: () => commands.getClashLogs(...args),
-    }),
   getRuntimeConfig: (...args: Parameters<typeof commands.getRuntimeConfig>) =>
     queryOptions({
       queryKey: ['getRuntimeConfig', ...args],
@@ -3397,10 +3384,10 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.importProfile>) =>
       commands.importProfile(...input),
   }),
-  getPendingDeepLink: mutationOptions({
-    mutationKey: ['getPendingDeepLink'],
-    mutationFn: (input: Parameters<typeof commands.getPendingDeepLink>) =>
-      commands.getPendingDeepLink(...input),
+  takePendingDeepLinks: mutationOptions({
+    mutationKey: ['takePendingDeepLinks'],
+    mutationFn: (input: Parameters<typeof commands.takePendingDeepLinks>) =>
+      commands.takePendingDeepLinks(...input),
   }),
   createProfile: mutationOptions({
     mutationKey: ['createProfile'],

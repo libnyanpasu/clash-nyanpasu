@@ -285,7 +285,7 @@ mod tests {
     /// snapshot-file expansion is tracked as a T07 pre-flight follow-up.
     #[test]
     fn golden_selected_file_with_script_transform_end_to_end() {
-        use crate::enhance::{EnhanceScriptRunner, FsProfileContentSource};
+        use crate::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
         use nyanpasu_config::profile::{
             ConfigDefinition, FileConfig, LocalBinding, MaterializedFile, ProfileDefinition,
             ProfileItem, ProfileMetadata, ProfileSource, ScriptTransform, TransformDefinition,
@@ -351,7 +351,7 @@ mod tests {
         input.app.enable_builtin_enhanced = false; // isolate assembly + adapters
 
         let content = FsProfileContentSource::new(temp.path().to_path_buf());
-        let scripts = EnhanceScriptRunner::new().unwrap();
+        let scripts = EnhanceScriptRunner::new(ScriptDirs::under(temp.path())).unwrap();
         let artifact = RuntimeBuilder::build(&input, &content, &scripts).expect("end-to-end build");
 
         let yaml = serde_yaml::to_value(&*artifact.final_config).unwrap();

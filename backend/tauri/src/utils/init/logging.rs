@@ -1,14 +1,10 @@
 use crate::utils::dirs;
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use nyanpasu_config::application::LoggingLevel;
-use parking_lot::Mutex;
 use std::{
     fs,
     io::IsTerminal,
-    sync::{
-        OnceLock,
-        mpsc::{self, Sender},
-    },
+    sync::mpsc::{self, Sender},
     thread,
 };
 use tracing::error;
@@ -21,25 +17,6 @@ use tracing_subscriber::{EnvFilter, filter, fmt, layer::SubscriberExt, reload};
 
 pub type ReloadSignal = (Option<LoggingLevel>, Option<usize>);
 
-struct Channel(Option<Sender<ReloadSignal>>);
-impl Channel {
-    fn globals() -> &'static Mutex<Channel> {
-        static CHANNEL: OnceLock<Mutex<Channel>> = OnceLock::new();
-        CHANNEL.get_or_init(|| Mutex::new(Channel(None)))
-    }
-}
-
-pub fn refresh_logger(signal: ReloadSignal) -> Result<()> {
-    let channel = Channel::globals().lock();
-    match &channel.0 {
-        Some(sender) => {
-            let _ = sender.send(signal);
-            Ok(())
-        }
-        None => bail!("no logger channel"),
-    }
-}
-
 fn get_file_appender(max_files: usize) -> Result<(NonBlocking, WorkerGuard)> {
     let log_dir = dirs::app_logs_dir().unwrap();
     let file_appender = tracing_appender::rolling::Builder::new()
@@ -51,8 +28,8 @@ fn get_file_appender(max_files: usize) -> Result<(NonBlocking, WorkerGuard)> {
     Ok(tracing_appender::non_blocking(file_appender))
 }
 
-/// initial instance global logger
-pub fn init() -> Result<()> {
+/// initial instance global logger, returning the channel that reloads it
+pub fn init() -> Result<Sender<ReloadSignal>> {
     let log_dir = dirs::app_logs_dir().unwrap();
     if !log_dir.exists() {
         let _ = fs::create_dir_all(&log_dir);
@@ -80,15 +57,10 @@ pub fn init() -> Result<()> {
     );
 
     // spawn a thread to handle the reload signal
+    let (sender, receiver) = mpsc::channel::<ReloadSignal>();
     thread::spawn(move || {
         let mut _guard = _guard; // just hold here to keep the file open
-        let (sender, receiver) = mpsc::channel::<ReloadSignal>();
-        {
-            let mut channel = Channel::globals().lock();
-            channel.0 = Some(sender);
-        }
-        loop {
-            let signal = receiver.recv().unwrap();
+        while let Ok(signal) = receiver.recv() {
             if let Some(level) = signal.0 {
                 filter_handle
                     .reload(
@@ -118,6 +90,11 @@ pub fn init() -> Result<()> {
                 }
             }
         }
+        // Every sender is gone, so no reload can come, but the guard still has
+        // to outlive every log line the process writes.
+        loop {
+            thread::park();
+        }
     });
 
     // if debug build, log to stdout and stderr with all levels
@@ -137,5 +114,5 @@ pub fn init() -> Result<()> {
     log_tracer::LogTracer::init()?;
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|x| anyhow!("setup logging error: {}", x))?;
-    Ok(())
+    Ok(sender)
 }

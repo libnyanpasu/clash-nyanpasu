@@ -1,8 +1,7 @@
 use crate::{
     client::{MainWindowGeometry, NyanpasuClient, application_workflow::startup::StartupOutcome},
-    core::{storage::Storage, tray::proxies, *},
+    core::{storage::Storage, tray::proxies},
     log_err,
-    utils::init,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
 use anyhow::Result;
@@ -13,50 +12,89 @@ use nyanpasu_config::{
 use semver::Version;
 use std::{
     collections::HashMap,
-    sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
-use tauri::{App, AppHandle, Listener, Manager, async_runtime::block_on};
+use tauri::{App, AppHandle, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::Event;
 
-static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
-static TRAY_MENU_PERSISTENT: AtomicBool = AtomicBool::new(false);
-/// Set to true only after the window has received Focused(true) at least once.
-/// Prevents spurious Focused(false) events during window creation from triggering
-/// hide/close before the user has ever seen the window.
-static TRAY_MENU_READY: AtomicBool = AtomicBool::new(false);
-/// Ignore focus-loss events until this unix timestamp in milliseconds.
-///
-/// Windows can emit Focused(true) immediately followed by Focused(false) while
-/// the shell is still finishing the tray right-click interaction. Without a
-/// short guard window, the webview tray menu flashes and is hidden/closed
-/// before it can be used.
-static TRAY_MENU_IGNORE_BLUR_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
+const TRAY_MENU_SHOW_BLUR_GRACE: Duration = Duration::from_millis(750);
+const TRAY_MENU_FOCUS_BLUR_GRACE: Duration = Duration::from_millis(250);
 
-const TRAY_MENU_SHOW_BLUR_GRACE_MS: u64 = 750;
-const TRAY_MENU_FOCUS_BLUR_GRACE_MS: u64 = 250;
-
-pub fn is_window_opened() -> bool {
-    OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 // 0 means no window open or windows is initialized
+/// Decides when the webview tray menu is dismissed on focus loss. The caller
+/// passes the time in, so the rules hold without a window.
+#[derive(Debug, Default)]
+struct TrayMenuFocus {
+    /// Set for the debug menu window, which stays open on focus loss.
+    persistent: bool,
+    /// Set to true only after the window has received Focused(true) at least once.
+    /// Prevents spurious Focused(false) events during window creation from triggering
+    /// hide/close before the user has ever seen the window.
+    ready: bool,
+    /// Ignore focus-loss events until this instant.
+    ///
+    /// Windows can emit Focused(true) immediately followed by Focused(false) while
+    /// the shell is still finishing the tray right-click interaction. Without a
+    /// short guard window, the webview tray menu flashes and is hidden/closed
+    /// before it can be used.
+    ignore_blur_until: Option<Instant>,
 }
 
-pub fn reset_window_open_counter() {
-    OPEN_WINDOWS_COUNTER.store(0, Ordering::Release);
+impl TrayMenuFocus {
+    /// The menu was shown at the cursor.
+    fn shown(&mut self, now: Instant) {
+        self.persistent = false;
+        self.ready = false;
+        self.ignore_blur_until = Some(now + TRAY_MENU_SHOW_BLUR_GRACE);
+    }
+
+    /// The debug menu window was opened.
+    fn shown_persistent(&mut self, now: Instant) {
+        self.persistent = true;
+        self.ignore_blur_until = Some(now + TRAY_MENU_SHOW_BLUR_GRACE);
+    }
+
+    fn focused(&mut self, now: Instant) {
+        self.ready = true;
+        self.ignore_blur_until = Some(now + TRAY_MENU_FOCUS_BLUR_GRACE);
+    }
+
+    /// Whether this focus loss dismisses the menu.
+    fn blurred(&mut self, now: Instant) -> bool {
+        if self.ignore_blur_until.is_some_and(|until| now < until) {
+            return false;
+        }
+        if !self.persistent && self.ready {
+            self.ready = false;
+            return true;
+        }
+        false
+    }
 }
 
-fn unix_time_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
-        .unwrap_or(0)
+/// The tray menu window's focus state, managed as Tauri state by the
+/// composition root.
+#[derive(Debug, Default)]
+pub struct TrayMenuWindowController {
+    focus: parking_lot::Mutex<TrayMenuFocus>,
 }
 
-fn ignore_tray_menu_blur_for(duration_ms: u64) {
-    TRAY_MENU_IGNORE_BLUR_UNTIL_MS.store(
-        unix_time_millis().saturating_add(duration_ms),
-        Ordering::Release,
-    );
+impl TrayMenuWindowController {
+    fn shown(&self) {
+        self.focus.lock().shown(Instant::now());
+    }
+
+    fn shown_persistent(&self) {
+        self.focus.lock().shown_persistent(Instant::now());
+    }
+
+    fn focused(&self) {
+        self.focus.lock().focused(Instant::now());
+    }
+
+    fn blurred(&self) -> bool {
+        self.focus.lock().blurred(Instant::now())
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -117,37 +155,18 @@ pub fn resolve_setup(app: &mut App) {
     WindowReadyEvent::listen(app, move |event| {
         let label = &event.payload.label;
         tracing::debug!("Window '{}' is ready", label);
+        #[cfg(target_os = "macos")]
         if label == crate::consts::MAIN_WINDOW_LABEL {
-            reset_window_open_counter();
-            #[cfg(target_os = "macos")]
             log_err!(ready_app_handle.run_on_main_thread(|| {
                 crate::utils::dock::macos::show_dock_icon();
             }));
         }
     });
 
-    handle::Handle::global().init(app.app_handle().clone());
-    crate::consts::setup_app_handle(app.app_handle().clone());
-
-    log_err!(init::init_resources());
-
     #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");
     #[cfg(any(windows, target_os = "linux"))]
-    tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
-    // Installed before StartupReconcile: its full publish is what builds the
-    // tray, through this listener.
-    let app_handle = app.app_handle().clone();
-    app.listen("update_systray", move |_| {
-        // Fix the GTK should run on main thread issue
-        let app_handle_clone = app_handle.clone();
-        log_err!(app_handle.run_on_main_thread(move || {
-            log_err!(
-                tray::Tray::update_systray(&app_handle_clone),
-                "failed to update systray"
-            );
-        }));
-    });
+    crate::core::tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
 
     {
         let client = app.state::<crate::client::NyanpasuClient>();
@@ -475,27 +494,15 @@ impl AppWindow for TrayMenuWindow {
 }
 
 /// Register a window event handler that hides or closes the tray menu window on
-/// focus loss, unless TRAY_MENU_PERSISTENT is set to true.
-///
-/// TRAY_MENU_READY guards against spurious Focused(false) events that fire
-/// during window creation / OS tray interaction before the user sees the window.
+/// focus loss, as [`TrayMenuFocus`] decides.
 fn setup_tray_menu_focus_handler(win: &tauri::WebviewWindow<tauri::Wry>) {
     let win_clone = win.clone();
     win.on_window_event(move |event| match event {
         tauri::WindowEvent::Focused(true) => {
-            TRAY_MENU_READY.store(true, Ordering::Release);
-            ignore_tray_menu_blur_for(TRAY_MENU_FOCUS_BLUR_GRACE_MS);
+            win_clone.state::<TrayMenuWindowController>().focused();
         }
         tauri::WindowEvent::Focused(false) => {
-            let ignore_blur_until = TRAY_MENU_IGNORE_BLUR_UNTIL_MS.load(Ordering::Acquire);
-            if unix_time_millis() < ignore_blur_until {
-                return;
-            }
-
-            if !TRAY_MENU_PERSISTENT.load(Ordering::Acquire)
-                && TRAY_MENU_READY.load(Ordering::Acquire)
-            {
-                TRAY_MENU_READY.store(false, Ordering::Release);
+            if win_clone.state::<TrayMenuWindowController>().blurred() {
                 let close_behavior = win_clone
                     .try_state::<NyanpasuClient>()
                     .map(|client| client.app_config_snapshot().tray_menu_close_behavior)
@@ -516,8 +523,9 @@ fn setup_tray_menu_focus_handler(win: &tauri::WebviewWindow<tauri::Wry>) {
 
 /// Create a persistent tray menu window for debugging.
 pub fn create_debug_tray_menu_window(app_handle: &AppHandle) -> Result<()> {
-    TRAY_MENU_PERSISTENT.store(true, Ordering::Release);
-    ignore_tray_menu_blur_for(TRAY_MENU_SHOW_BLUR_GRACE_MS);
+    app_handle
+        .state::<TrayMenuWindowController>()
+        .shown_persistent();
 
     let params = WindowParamsBuilder::new()
         .param("persistent", "true")
@@ -545,9 +553,7 @@ pub fn show_tray_menu_window(
 ) -> Result<()> {
     use tauri::{Manager, PhysicalPosition};
 
-    TRAY_MENU_PERSISTENT.store(false, Ordering::Release);
-    TRAY_MENU_READY.store(false, Ordering::Release);
-    ignore_tray_menu_blur_for(TRAY_MENU_SHOW_BLUR_GRACE_MS);
+    app_handle.state::<TrayMenuWindowController>().shown();
 
     let win = match app_handle.get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL) {
         Some(existing) => existing,
@@ -741,4 +747,75 @@ pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore)
         }
     }
     Err(anyhow::anyhow!("failed to get core version"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ms(millis: u64) -> Duration {
+        Duration::from_millis(millis)
+    }
+
+    #[test]
+    fn a_blur_before_the_first_focus_keeps_the_menu() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown(t0);
+        assert!(!focus.blurred(t0 + ms(10)), "within the show grace");
+        assert!(!focus.blurred(t0 + ms(1000)), "never focused");
+    }
+
+    #[test]
+    fn a_blur_right_after_focus_is_ignored_until_the_grace_ends() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown(t0);
+        focus.focused(t0 + ms(5));
+        assert!(!focus.blurred(t0 + ms(6)), "the shell's focus flicker");
+        assert!(!focus.blurred(t0 + ms(254)));
+        assert!(focus.blurred(t0 + ms(255)));
+    }
+
+    #[test]
+    fn a_focus_shortly_after_showing_shortens_the_grace() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown(t0);
+        focus.focused(t0 + ms(100));
+        assert!(
+            focus.blurred(t0 + ms(400)),
+            "the focus grace replaces the show grace"
+        );
+    }
+
+    #[test]
+    fn a_dismissal_waits_for_the_next_focus() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown(t0);
+        focus.focused(t0 + ms(10));
+        assert!(focus.blurred(t0 + ms(1000)));
+        assert!(!focus.blurred(t0 + ms(1001)));
+
+        focus.focused(t0 + ms(2000));
+        assert!(focus.blurred(t0 + ms(3000)));
+    }
+
+    #[test]
+    fn the_debug_menu_stays_open_until_shown_normally() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown_persistent(t0);
+        focus.focused(t0 + ms(10));
+        assert!(!focus.blurred(t0 + ms(1000)));
+
+        focus.shown(t0 + ms(2000));
+        assert!(
+            !focus.blurred(t0 + ms(3000)),
+            "showing again waits for a new focus"
+        );
+        focus.focused(t0 + ms(3000));
+        assert!(focus.blurred(t0 + ms(4000)));
+    }
 }

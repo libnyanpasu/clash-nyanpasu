@@ -25,15 +25,11 @@ mod utils;
 mod widget;
 mod window;
 
-use crate::{
-    core::handle::Handle,
-    utils::{init, resolve},
-};
+use crate::utils::{init, resolve};
 use anyhow::Context;
 use specta_typescript::Typescript;
 use tauri::Manager;
 use tauri_specta::Event;
-use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("./locales");
 
@@ -60,6 +56,76 @@ fn deadlock_detection() {
             }
         }
     });
+}
+
+/// Shows a panic dialog and saves logs, then exits: through the app when a
+/// handle exists, so the ordered shutdown still runs, or the process otherwise.
+fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
+    std::panic::set_hook(Box::new(move |panic_info| {
+        use std::backtrace::{Backtrace, BacktraceStatus};
+        let payload = panic_info.payload();
+
+        #[allow(clippy::manual_map)]
+        let payload = if let Some(s) = payload.downcast_ref::<&str>() {
+            Some(&**s)
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            Some(s.as_str())
+        } else {
+            None
+        };
+
+        let location = panic_info.location().map(|l| l.to_string());
+        let (backtrace, note) = {
+            let backtrace = Backtrace::force_capture();
+            let note = (backtrace.status() == BacktraceStatus::Disabled)
+                .then_some("run with RUST_BACKTRACE=1 environment variable to display a backtrace");
+            (Some(backtrace), note)
+        };
+
+        tracing::error!(
+            panic.payload = payload,
+            panic.location = location,
+            panic.backtrace = backtrace.as_ref().map(tracing::field::display),
+            panic.note = note,
+            "A panic occurred",
+        );
+
+        // This is a workaround for the upstream issue: https://github.com/tauri-apps/tauri/issues/10546
+        if let Some(s) = payload.as_ref()
+            && s.contains("PostMessage failed ; is the messages queue full?")
+        {
+            return;
+        }
+
+        // FIXME: maybe move this logic to a util function?
+        let msg = format!(
+            "Oops, we encountered some issues and program will exit immediately.\n\npayload: {payload:#?}\nlocation: {location:?}\nbacktrace: {backtrace:#?}\n\n",
+        );
+        let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
+            .arg("panic-dialog")
+            .arg(msg.as_str())
+            .spawn();
+        // fallback to show a dialog directly
+        if child.is_err() {
+            utils::dialog::panic_dialog(msg.as_str());
+        }
+
+        match &app_handle {
+            Some(app_handle) => app_handle.exit(1),
+            None => std::process::exit(1),
+        }
+    }));
+}
+
+/// Queues a deep link for the frontend, then pokes any listening frontend to
+/// take it. With no frontend listening yet the poke is lost but the link is
+/// not: a frontend drains the queue once it has registered its listener.
+fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
+    app_handle.state::<crate::ipc::PendingDeepLinks>().push(url);
+    log_err!(
+        crate::ipc::SchemeRequestReceivedEvent.emit(app_handle),
+        "failed to emit scheme-request-received event"
+    );
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -123,68 +189,11 @@ pub fn run() -> std::io::Result<()> {
         std::process::exit(1);
     }
 
+    let logger_reload = init::logging::init().expect("failed to initialize logging");
     crate::log_err!(init::init_config());
 
-    // Panic Hook to show a panic dialog and save logs
-    std::panic::set_hook(Box::new(move |panic_info| {
-        use std::backtrace::{Backtrace, BacktraceStatus};
-        let payload = panic_info.payload();
-
-        #[allow(clippy::manual_map)]
-        let payload = if let Some(s) = payload.downcast_ref::<&str>() {
-            Some(&**s)
-        } else if let Some(s) = payload.downcast_ref::<String>() {
-            Some(s.as_str())
-        } else {
-            None
-        };
-
-        let location = panic_info.location().map(|l| l.to_string());
-        let (backtrace, note) = {
-            let backtrace = Backtrace::force_capture();
-            let note = (backtrace.status() == BacktraceStatus::Disabled)
-                .then_some("run with RUST_BACKTRACE=1 environment variable to display a backtrace");
-            (Some(backtrace), note)
-        };
-
-        tracing::error!(
-            panic.payload = payload,
-            panic.location = location,
-            panic.backtrace = backtrace.as_ref().map(tracing::field::display),
-            panic.note = note,
-            "A panic occurred",
-        );
-
-        // This is a workaround for the upstream issue: https://github.com/tauri-apps/tauri/issues/10546
-        if let Some(s) = payload.as_ref()
-            && s.contains("PostMessage failed ; is the messages queue full?")
-        {
-            return;
-        }
-
-        // FIXME: maybe move this logic to a util function?
-        let msg = format!(
-            "Oops, we encountered some issues and program will exit immediately.\n\npayload: {payload:#?}\nlocation: {location:?}\nbacktrace: {backtrace:#?}\n\n",
-        );
-        let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
-            .arg("panic-dialog")
-            .arg(msg.as_str())
-            .spawn();
-        // fallback to show a dialog directly
-        if child.is_err() {
-            utils::dialog::panic_dialog(msg.as_str());
-        }
-
-        match Handle::global().app_handle.lock().as_ref() {
-            Some(app_handle) => {
-                app_handle.exit(1);
-            }
-            None => {
-                log::error!("app handle is not initialized");
-                std::process::exit(1);
-            }
-        }
-    }));
+    // Until setup hands over an app handle, a panic can only end the process.
+    install_panic_hook(None);
 
     // setup specta
     let (query_bindings, specta_builder) = specta_export::build_specta_builder();
@@ -250,7 +259,7 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
         .setup(move |app| {
             specta_builder.mount_events(app);
-            setup::setup(app, metadata)
+            setup::setup(app, metadata, logger_reload)
                 .context("Failed to setup the app")
                 .inspect_err(|e| {
                     tracing::error!("Failed to setup the app: {:#?}", e);
@@ -274,34 +283,19 @@ pub fn run() -> std::io::Result<()> {
                 app.set_menu(menu).unwrap();
             }
 
+            install_panic_hook(Some(app.handle().clone()));
             resolve::resolve_setup(app);
 
             // setup custom scheme
             let handle = app.handle().clone();
-            // Pending deep-link store, drained once by the frontend on startup.
-            // Covers the cold-start race where `scheme-request-received` may be
-            // emitted before the JS listener is attached.
-            app.manage(crate::ipc::PendingDeepLink::default());
+            // Deep links wait here until a frontend takes them.
+            app.manage(crate::ipc::PendingDeepLinks::default());
             // For start new app from schema
             #[cfg(not(target_os = "macos"))]
             if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
-                *app.state::<crate::ipc::PendingDeepLink>().0.lock().unwrap() =
-                    Some(url.to_string());
+                queue_deep_link(&handle, url.to_string());
                 resolve::create_window(&handle.clone());
-                while !is_window_opened() {
-                    log::info!(target: "app", "waiting for window open");
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-                let event = crate::ipc::SchemeRequestReceivedEvent {
-                    url: url.to_string(),
-                };
-                if let Some(app_handle) = Handle::global().app_handle.lock().as_ref() {
-                    log_err!(
-                        event.emit(app_handle),
-                        "failed to emit scheme-request-received event"
-                    );
-                }
             }
             // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
             log_err!(tauri_plugin_deep_link::register(
@@ -309,20 +303,14 @@ pub fn run() -> std::io::Result<()> {
                 move |request| {
                     log::info!(target: "app", "scheme request received: {:?}", request);
                     resolve::create_window(&handle.clone()); // create window if not exists
-                    while !is_window_opened() {
-                        log::info!(target: "app", "waiting for window open");
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                    }
-                    log_err!(
-                        crate::ipc::SchemeRequestReceivedEvent { url: request }.emit(&handle),
-                        "failed to emit scheme-request-received event"
-                    );
+                    queue_deep_link(&handle, request);
                 }
             ));
             let client = app.state::<crate::client::NyanpasuClient>().inner().clone();
+            let server_port = app.state::<server::ServerPort>().0;
             std::thread::spawn(move || {
                 nyanpasu_utils::runtime::block_on(async move {
-                    server::run(*server::SERVER_PORT, client)
+                    server::run(server_port, client)
                         .await
                         .expect("failed to start server");
                 });
@@ -352,7 +340,6 @@ pub fn run() -> std::io::Result<()> {
             }
             tauri::WindowEvent::Destroyed => {
                 log::debug!(target: "app", "window destroyed");
-                reset_window_open_counter();
             }
             _ => {}
         },

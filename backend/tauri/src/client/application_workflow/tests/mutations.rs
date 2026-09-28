@@ -377,6 +377,7 @@ pub(super) async fn fixture_from(
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
+            scripts: crate::enhance::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
@@ -3786,8 +3787,9 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
         },
     };
     let old_content = crate::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
+    let script_dirs = f.builder.delegate.scripts.clone();
     let built = tokio::task::spawn_blocking(move || {
-        let scripts = crate::enhance::EnhanceScriptRunner::new().unwrap();
+        let scripts = crate::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
         crate::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
     })
     .await

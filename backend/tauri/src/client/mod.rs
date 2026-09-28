@@ -64,7 +64,7 @@ pub use clash_info::ClashInfo;
 pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
-pub use event_sink::{TauriUiEventSink, UiEventSink};
+pub use event_sink::{STATE_CHANGED_URI, StateChanged, TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 #[cfg(test)]
@@ -214,6 +214,7 @@ impl NyanpasuClient {
             shutdown_budgets,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
+        let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
@@ -271,6 +272,7 @@ impl NyanpasuClient {
             ports,
             profiles_dir,
             runtime_paths,
+            script_dirs,
             ui_sink,
             core_v2,
             service,
@@ -298,6 +300,7 @@ impl NyanpasuClient {
         ports: Arc<SessionPortResolver>,
         profiles_dir: PathBuf,
         runtime_paths: RuntimePaths,
+        script_dirs: crate::enhance::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
         core_v2: CoreClientV2,
         service: ServiceClient,
@@ -333,6 +336,7 @@ impl NyanpasuClient {
                 builder: Arc::new(application_workflow::adapters::FsRuntimeBuildAdapter {
                     profiles_dir: profiles_dir.clone(),
                     paths: runtime_paths.clone(),
+                    scripts: script_dirs,
                 }),
                 validator: Arc::new(application_workflow::adapters::CoreCheckValidator::new(
                     core_v2.clone(),
@@ -2141,6 +2145,7 @@ pub(crate) mod tests {
                 dir.path().join("data"),
             ))
             .unwrap(),
+            crate::enhance::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             core_v2,
             service,
@@ -2670,6 +2675,7 @@ pub(crate) mod tests {
             ports,
             paths.app_profiles_dir(),
             RuntimePaths::from_resolver(&paths).unwrap(),
+            crate::enhance::ScriptDirs::from_resolver(&paths),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             core_v2,
             service,
@@ -3797,6 +3803,7 @@ pub(crate) mod tests {
                     dir.path().join("data"),
                 ))
                 .unwrap(),
+                crate::enhance::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
                 core_v2,
                 service,

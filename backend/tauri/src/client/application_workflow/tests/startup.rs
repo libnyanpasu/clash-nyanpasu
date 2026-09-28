@@ -420,6 +420,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
+            scripts: crate::enhance::ScriptDirs::under(dir.path()),
         },
         panic: AtomicBool::new(false),
     });

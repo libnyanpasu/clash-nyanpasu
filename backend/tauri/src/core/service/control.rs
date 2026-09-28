@@ -1,8 +1,6 @@
 use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
 use runas::Command as RunasCommand;
-use std::ffi::OsString;
-
-use super::SERVICE_PATH;
+use std::{ffi::OsString, path::Path};
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
@@ -51,12 +49,13 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> 
     Ok(args)
 }
 
-pub async fn install_service() -> anyhow::Result<()> {
+pub async fn install_service(service_binary: &Path) -> anyhow::Result<()> {
     let args = get_service_install_args().await?;
+    let service_binary = service_binary.to_path_buf();
     let child = tokio::task::spawn_blocking(move || {
         #[cfg(not(target_os = "macos"))]
         {
-            RunasCommand::new(SERVICE_PATH.as_path())
+            RunasCommand::new(service_binary.as_path())
                 .args(&args)
                 .gui(true)
                 .show(true)
@@ -66,7 +65,7 @@ pub async fn install_service() -> anyhow::Result<()> {
         {
             use crate::utils::sudo::sudo;
             let args = args.iter().map(|s| s.to_string_lossy()).collect::<Vec<_>>();
-            match sudo(SERVICE_PATH.to_string_lossy(), &args) {
+            match sudo(service_binary.to_string_lossy(), &args) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -95,12 +94,13 @@ pub async fn install_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn update_service() -> anyhow::Result<()> {
+pub async fn update_service(service_binary: &Path) -> anyhow::Result<()> {
+    let service_binary = service_binary.to_path_buf();
     let child = tokio::task::spawn_blocking(move || {
         const ARGS: &[&str] = &["update"];
         #[cfg(not(target_os = "macos"))]
         {
-            RunasCommand::new(SERVICE_PATH.as_path())
+            RunasCommand::new(service_binary.as_path())
                 .args(ARGS)
                 .gui(true)
                 .show(true)
@@ -109,7 +109,7 @@ pub async fn update_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
+            match sudo(service_binary.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -138,12 +138,13 @@ pub async fn update_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn uninstall_service() -> anyhow::Result<()> {
+pub async fn uninstall_service(service_binary: &Path) -> anyhow::Result<()> {
+    let service_binary = service_binary.to_path_buf();
     let child = tokio::task::spawn_blocking(move || {
         const ARGS: &[&str] = &["uninstall"];
         #[cfg(not(target_os = "macos"))]
         {
-            RunasCommand::new(SERVICE_PATH.as_path())
+            RunasCommand::new(service_binary.as_path())
                 .args(ARGS)
                 .gui(true)
                 .show(true)
@@ -152,7 +153,7 @@ pub async fn uninstall_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
+            match sudo(service_binary.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -171,12 +172,13 @@ pub async fn uninstall_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn start_service() -> anyhow::Result<()> {
+pub async fn start_service(service_binary: &Path) -> anyhow::Result<()> {
+    let service_binary = service_binary.to_path_buf();
     let child = tokio::task::spawn_blocking(move || {
         const ARGS: &[&str] = &["start"];
         #[cfg(not(target_os = "macos"))]
         {
-            RunasCommand::new(SERVICE_PATH.as_path())
+            RunasCommand::new(service_binary.as_path())
                 .args(ARGS)
                 .gui(true)
                 .show(true)
@@ -185,7 +187,7 @@ pub async fn start_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
+            match sudo(service_binary.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -214,12 +216,13 @@ pub async fn start_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn stop_service() -> anyhow::Result<()> {
+pub async fn stop_service(service_binary: &Path) -> anyhow::Result<()> {
+    let service_binary = service_binary.to_path_buf();
     let child = tokio::task::spawn_blocking(move || {
         const ARGS: &[&str] = &["stop"];
         #[cfg(not(target_os = "macos"))]
         {
-            RunasCommand::new(SERVICE_PATH.as_path())
+            RunasCommand::new(service_binary.as_path())
                 .args(ARGS)
                 .gui(true)
                 .show(true)
@@ -228,7 +231,7 @@ pub async fn stop_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
+            match sudo(service_binary.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -257,12 +260,13 @@ pub async fn stop_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn restart_service() -> anyhow::Result<()> {
+pub async fn restart_service(service_binary: &Path) -> anyhow::Result<()> {
+    let service_binary = service_binary.to_path_buf();
     let child = tokio::task::spawn_blocking(move || {
         const ARGS: &[&str] = &["restart"];
         #[cfg(not(target_os = "macos"))]
         {
-            RunasCommand::new(SERVICE_PATH.as_path())
+            RunasCommand::new(service_binary.as_path())
                 .args(ARGS)
                 .gui(true)
                 .show(true)
@@ -271,7 +275,7 @@ pub async fn restart_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
+            match sudo(service_binary.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -301,8 +305,10 @@ pub async fn restart_service() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument]
-pub async fn status<'a>() -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>> {
-    let mut cmd = tokio::process::Command::new(SERVICE_PATH.as_path());
+pub async fn status<'a>(
+    service_binary: &Path,
+) -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>> {
+    let mut cmd = tokio::process::Command::new(service_binary);
     cmd.args(["status", "--json"]);
     #[cfg(windows)]
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW

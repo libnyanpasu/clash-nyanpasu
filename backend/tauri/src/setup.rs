@@ -26,7 +26,7 @@ use crate::{
             ports::LocaleSink,
         },
     },
-    utils::path::PathResolver,
+    utils::{init::logging::ReloadSignal, path::PathResolver},
 };
 use anyhow::Context;
 use camino::Utf8PathBuf;
@@ -40,6 +40,7 @@ const RESTART_BUDGET: u8 = 3;
 pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app: &M,
     bundle_metadata: crate::bundle::BundleMetadata,
+    logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     #[cfg(target_os = "windows")]
@@ -52,13 +53,29 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .context("Failed to setup the shutdown hook")?;
     }
 
-    let paths = PathResolver::from_env().context("Failed to resolve app paths")?;
+    // Only Tauri knows where the bundle is. Resources are copied best-effort,
+    // so a bundle that cannot be located does not stop the app.
+    let resources_dir = app
+        .path()
+        .resource_dir()
+        .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
+        .ok()
+        .map(|dir| dir.join("resources"));
+    let paths = PathResolver::from_env(resources_dir).context("Failed to resolve app paths")?;
     let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
         .context("Failed to setup config migrations")?;
     migrations
         .run_pending()
         .context("Failed to run config migrations before client setup")?;
+    crate::log_err!(crate::utils::init::init_resources(&paths));
+    // For commands that need a path, such as the Windows UWP loopback tool.
+    app.manage(paths.clone());
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
+    let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
+        .context("Failed to build the service IPC client")?;
+    let service_binary = paths
+        .service_binary_path()
+        .context("Failed to locate the service binary")?;
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
@@ -66,7 +83,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         let core = crate::core::actor_v2::CoreClient::spawn(local)
             .await
             .context("Failed to spawn core actor")?;
-        let adapter = Arc::new(crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter);
+        let adapter = Arc::new(
+            crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
+                service_ipc.clone(),
+                service_binary,
+            ),
+        );
         let service =
             crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
                 .await
@@ -76,7 +98,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // The sink end of the hotkey channel goes into the actor; the receiving end
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
     let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (effects, widget_controller) = build_application_effects(&app_handle, &paths, hotkey_tx)?;
+    let (effects, widget_controller) =
+        build_application_effects(&app_handle, &paths, hotkey_tx, logger_reload)?;
     let producers = ProducerTasks::default();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
@@ -86,9 +109,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 "clash-nyanpasu".into(),
             )),
             clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
-            service: Arc::new(crate::client::logs::IpcServiceLogs::new(
-                nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)?,
-            )),
+            service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
         },
         paths,
         runtime_paths: runtime_paths.clone(),
@@ -114,6 +135,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(crate::core::tray::TrayState::<tauri::Wry>::new(
         client.tray_view(),
     ));
+    app.manage(crate::window::WindowRegistry::default());
+    app.manage(crate::utils::resolve::TrayMenuWindowController::default());
     forward_actor_events(app_handle, client.clone(), &producers);
     tauri::async_runtime::spawn(producers.track(hotkey_action_pump(hotkey_rx, client.clone())));
     // The widget needs the client's connection stream and the client needs the
@@ -126,6 +149,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
+    // Picked last, so the server binds it soon after setup returns.
+    let server_port = port_scanner::request_open_port()
+        .context("Failed to find a free port for the internal server")?;
+    app.manage(crate::server::ServerPort(server_port));
     app.manage(client);
 
     Ok(())
@@ -155,6 +182,7 @@ fn build_application_effects(
     app_handle: &tauri::AppHandle,
     paths: &PathResolver,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
+    logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
 ) -> anyhow::Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>)> {
     // The AppImage path is read here, at the only place that legitimately has
     // the Tauri environment, and handed to the adapter as a plain value.
@@ -197,7 +225,7 @@ fn build_application_effects(
         hotkeys,
         Arc::new(PlatformAcceleratorValidator),
         Arc::new(RustI18nLocaleSink),
-        Arc::new(TracingLoggerRefresher),
+        Arc::new(TracingLoggerRefresher::new(logger_reload)),
         widget.clone(),
         Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
     ));

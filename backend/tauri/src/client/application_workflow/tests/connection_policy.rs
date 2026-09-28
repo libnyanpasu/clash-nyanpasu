@@ -962,6 +962,7 @@ impl RecordingBuilder {
             delegate: super::adapters::FsRuntimeBuildAdapter {
                 profiles_dir: f.client.inner.profiles_dir.clone(),
                 paths: f.client.inner.runtime_paths.clone(),
+                scripts: crate::enhance::ScriptDirs::under(f._dir.path()),
             },
             inputs: Mutex::new(Vec::new()),
             fail_build,

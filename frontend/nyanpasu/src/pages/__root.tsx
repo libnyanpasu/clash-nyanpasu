@@ -221,7 +221,8 @@ export default function App() {
                 <WindowReveal />
                 <MutationDegradationNotifier />
                 {appWindow.label === 'main' && <ConfigurationStatusPanel />}
-                <DeepLinkImport />
+                {/* Taking a link consumes it, and every link opens the main window. */}
+                {appWindow.label === 'main' && <DeepLinkImport />}
                 <Outlet />
               </TooltipProvider>
             </CustomCssProvider>

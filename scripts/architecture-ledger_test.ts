@@ -19,10 +19,15 @@ import {
   isLikelyFnDefinition,
   isTestCfgAttr,
   matchRealDirDenylist,
+  metricsFromBuckets,
   parseStableSnapshot,
   reportToStableSnapshot,
   scanFile,
   type StableSnapshot,
+  STATIC_ALLOWLIST,
+  STATIC_GATE_PREFIX,
+  staticAllowlistIssues,
+  staticAllowlistKey,
   testLineMask,
   toStableSnapshot,
 } from "./architecture-ledger.ts";
@@ -34,6 +39,7 @@ function emptyStable(overrides: Partial<StableSnapshot> = {}): StableSnapshot {
     migration_markers: { total: 0, byKey: {} },
     legacy_dto_refs: { total: 0, byKey: {} },
     test_real_dirs: { total: 0, byKey: {} },
+    mutable_statics: { total: 0, byKey: {} },
   };
   return {
     roots: overrides.roots ?? ["backend"],
@@ -707,4 +713,273 @@ Deno.test("collectRustFiles: a tmp ancestor does not exclude the worktree", asyn
   } finally {
     await Deno.remove(fixture, { recursive: true });
   }
+});
+
+Deno.test("scanFile: every non-const static counts until listed, whatever hides its type", () => {
+  const buckets = createBuckets();
+  const source = `
+use std::sync::Mutex as StdMutex;
+use parking_lot::RwLock as RW;
+type Slot = once_cell::sync::OnceCell<u16>;
+struct Wrapper(std::sync::OnceLock<u8>);
+pub const MAIN_WINDOW_LABEL: &str = "main";
+const LABEL: &'static str = "label";
+static RENAMED: StdMutex<u8> = StdMutex::new(0);
+pub(crate) static ALIASED: RW<u8> = RW::new(0);
+pub(in crate::client) static SLOT: Slot = Slot::new();
+static PREFIXED: parking_lot::ReentrantMutex<()> = parking_lot::ReentrantMutex::new(());
+static WRAPPED: Wrapper = Wrapper(std::sync::OnceLock::new());
+static ITEMS: Lazy<Box<dyn Iterator<Item = u8> + Send + Sync>> = Lazy::new(items);
+static PLAIN: &str = "static QUOTED: u8 = 0;";
+static mut COUNTER: u32 = 0;
+pub static
+    SPLIT: OnceLock<u8> = OnceLock::new();
+thread_local! {
+    pub static DEPTH: Cell<u32> = const { Cell::new(0) };
+}
+lazy_static! {
+    static ref TABLE: HashMap<u8, u8> = HashMap::new();
+}
+// static COMMENTED: u8 = 0;
+fn lifetimes(label: &'static str) -> Box<dyn Fn() + 'static> {
+    todo!()
+}
+`;
+  scanFile("backend/tauri/src/statics.rs", source, buckets);
+
+  const names = [...buckets.mutableStatics.byKey.keys()].map((key) =>
+    key.split("::").pop()
+  ).sort();
+  assertEquals(names, [
+    "ALIASED",
+    "COUNTER",
+    "DEPTH",
+    "ITEMS",
+    "PLAIN",
+    "PREFIXED",
+    "RENAMED",
+    "SLOT",
+    "SPLIT",
+    "TABLE",
+    "WRAPPED",
+  ]);
+  const split = buckets.mutableStatics.hits.find((hit) =>
+    hit.detail?.endsWith("::SPLIT")
+  );
+  assertEquals(split?.line, 16);
+  assertEquals(split?.text, "pub static");
+});
+
+Deno.test("scanFile: a static keyword whose item cannot be read still counts", () => {
+  const buckets = createBuckets();
+  const source = `
+macro_rules! declare {
+    ($name:ident, $ty:ty) => {
+        static $name: $ty = <$ty>::new();
+    };
+}
+`;
+  scanFile("backend/tauri/src/declare.rs", source, buckets);
+  assertEquals(buckets.mutableStatics.total, 1);
+  assertEquals(
+    buckets.mutableStatics.byKey.get("backend/tauri/src/declare.rs::static@4"),
+    1,
+  );
+});
+
+Deno.test("scanFile: a comment next to a static keyword hides no static from the metric", () => {
+  const buckets = createBuckets();
+  const source = `
+static/* owner */AFTER: Mutex<u8> = Mutex::new(0);
+pub/* visibility */static BETWEEN: Mutex<u8> = Mutex::new(0);
+pub/* a /* nested */ comment */static/* another /* nested */ one */NESTED: Mutex<u8> = Mutex::new(0);
+static/* before mut */mut COUNTER: u32 = 0;
+static mut/* before the name */TALLY: u32 = 0;
+pub /* spans
+    lines */static SPANNING: Mutex<u8> = Mutex::new(0);
+pub // ends the line before the static
+static LINE: Mutex<u8> = Mutex::new(0);
+`;
+  scanFile("backend/tauri/src/commented.rs", source, buckets);
+
+  const names = [...buckets.mutableStatics.byKey.keys()].map((key) =>
+    key.split("::").pop()
+  ).sort();
+  assertEquals(names, [
+    "AFTER",
+    "BETWEEN",
+    "COUNTER",
+    "LINE",
+    "NESTED",
+    "SPANNING",
+    "TALLY",
+  ]);
+  const current = toStableSnapshot(
+    ["backend"],
+    metricsFromBuckets(buckets),
+    [],
+  );
+  const result = evaluateGate(current, emptyStable());
+  assertFalse(result.ok);
+  assert(
+    result.issues.some((i) =>
+      i.kind === "metric_key" &&
+      i.message.includes("backend/tauri/src/commented.rs::BETWEEN")
+    ),
+  );
+});
+
+Deno.test("scanFile: the static allowlist counts statics written around comments", () => {
+  const path = "backend/tauri/src/consts.rs";
+  const key = staticAllowlistKey(path, "BUILD_INFO");
+
+  const listed = createBuckets();
+  scanFile(
+    path,
+    "pub/* visibility */static/* name */BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n",
+    listed,
+  );
+  assertEquals(listed.allowlistedStatics.byKey.get(key), 1);
+  assertEquals(listed.mutableStatics.total, 0);
+  assertFalse(
+    staticAllowlistIssues(listed).some((issue) => issue.startsWith(`${key} `)),
+  );
+
+  const doubled = createBuckets();
+  scanFile(
+    path,
+    `
+pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);
+fn shadow() {
+    static/* a /* nested */ comment */BUILD_INFO: Mutex<u8> = Mutex::new(0);
+}
+`,
+    doubled,
+  );
+  assertEquals(doubled.allowlistedStatics.byKey.get(key), undefined);
+  assertEquals(doubled.mutableStatics.byKey.get(key), 2);
+  assert(staticAllowlistIssues(doubled).includes(`${key} matches 2 statics`));
+});
+
+Deno.test("scanFile: the static allowlist matches path and name exactly, and only the app crate counts", () => {
+  const source =
+    "pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n";
+
+  const allowed = createBuckets();
+  scanFile("backend/tauri/src/consts.rs", source, allowed);
+  assertEquals(allowed.mutableStatics.total, 0);
+  assertEquals(
+    allowed.allowlistedStatics.byKey.get(
+      "backend/tauri/src/consts.rs::BUILD_INFO",
+    ),
+    1,
+  );
+
+  const elsewhere = createBuckets();
+  scanFile("backend/tauri/src/other.rs", source, elsewhere);
+  assertEquals(elsewhere.allowlistedStatics.total, 0);
+  assertEquals(
+    elsewhere.mutableStatics.byKey.get(
+      "backend/tauri/src/other.rs::BUILD_INFO",
+    ),
+    1,
+  );
+
+  const library = createBuckets();
+  scanFile("backend/nyanpasu-egui/src/widget/mod.rs", source, library);
+  assertEquals(library.mutableStatics.total, 0);
+  assertEquals(library.allowlistedStatics.total, 0);
+});
+
+Deno.test("scanFile: an entry covers no static once its name is declared twice in the file", () => {
+  const path = "backend/tauri/src/core/migration/modules/app_config.rs";
+  const key = staticAllowlistKey(path, "VERSION_2_0_0");
+  const buckets = createBuckets();
+  scanFile(
+    path,
+    `
+static VERSION_2_0_0: Lazy<Version> = Lazy::new(version);
+fn shadow() {
+    static VERSION_2_0_0: Mutex<u8> = Mutex::new(0);
+}
+`,
+    buckets,
+  );
+  assertEquals(buckets.allowlistedStatics.byKey.get(key), undefined);
+  assertEquals(buckets.mutableStatics.byKey.get(key), 2);
+  assert(staticAllowlistIssues(buckets).includes(`${key} matches 2 statics`));
+});
+
+Deno.test("STATIC_ALLOWLIST: each entry is unique, in the app crate, categorized and gives a reason", () => {
+  for (const entry of STATIC_ALLOWLIST) {
+    assert(entry.path.startsWith(STATIC_GATE_PREFIX), entry.path);
+    assert(/^[A-Za-z_][A-Za-z0-9_]*$/.test(entry.name), entry.name);
+    assert(
+      ["immutable", "external", "test"].includes(entry.category),
+      `${entry.name}: ${entry.category}`,
+    );
+    assert(entry.reason.trim().length > 0, `${entry.name} has no reason`);
+  }
+  const keys = STATIC_ALLOWLIST.map(({ path, name }) =>
+    staticAllowlistKey(path, name)
+  );
+  assertEquals(new Set(keys).size, keys.length);
+});
+
+Deno.test("evaluateGate: a new static fails against a zero snapshot", () => {
+  const buckets = createBuckets();
+  scanFile(
+    "backend/tauri/src/server/mod.rs",
+    "pub static SERVER_PORT: Lazy<u16> = Lazy::new(pick_port);\n",
+    buckets,
+  );
+  const current = toStableSnapshot(
+    ["backend"],
+    metricsFromBuckets(buckets),
+    [],
+  );
+  const result = evaluateGate(current, emptyStable());
+  assertFalse(result.ok);
+  assert(
+    result.issues.some((i) =>
+      i.kind === "metric_total" && i.message.includes("mutable_statics.total")
+    ),
+  );
+  assert(
+    result.issues.some((i) =>
+      i.kind === "metric_key" &&
+      i.message.includes("backend/tauri/src/server/mod.rs::SERVER_PORT")
+    ),
+  );
+});
+
+Deno.test("evaluateGate: an allowlist entry whose static is gone fails the gate", () => {
+  const buckets = createBuckets();
+  scanFile(
+    "backend/tauri/src/consts.rs",
+    "pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n",
+    buckets,
+  );
+  const issues = staticAllowlistIssues(buckets);
+  assertFalse(issues.some((issue) => issue.includes("::BUILD_INFO ")));
+  assert(
+    issues.includes(
+      "backend/tauri/src/consts.rs::IS_APPIMAGE matches no static",
+    ),
+  );
+  assertEquals(issues.length, STATIC_ALLOWLIST.length - 1);
+
+  const snap = emptyStable();
+  assert(evaluateGate(structuredClone(snap), structuredClone(snap)).ok);
+  const result = evaluateGate(
+    structuredClone(snap),
+    structuredClone(snap),
+    issues,
+  );
+  assertFalse(result.ok);
+  assert(
+    result.issues.some((i) =>
+      i.kind === "static_allowlist" && i.message.includes("IS_APPIMAGE")
+    ),
+  );
 });

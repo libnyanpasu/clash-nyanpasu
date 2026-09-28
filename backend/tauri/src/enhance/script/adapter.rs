@@ -13,19 +13,21 @@ use nyanpasu_config::{
 };
 use tracing::Instrument;
 
-use super::{RunnerManager, create_lua_context};
+use super::{RunnerManager, ScriptDirs, create_lua_context};
 use crate::enhance::{ScriptType, chain::ScriptWrapper, utils::LogSpan};
 
 pub struct EnhanceScriptRunner {
     runtime: tokio::runtime::Runtime,
+    dirs: ScriptDirs,
 }
 
 impl EnhanceScriptRunner {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(dirs: ScriptDirs) -> anyhow::Result<Self> {
         Ok(Self {
             runtime: tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?,
+            dirs,
         })
     }
 }
@@ -76,7 +78,7 @@ impl ScriptRunner for EnhanceScriptRunner {
         // TODO: make `ScriptRunner` async and remove the runtime block_on here, so that the whole pipeline can be async.
         let (result, logs) = self.runtime.block_on(
             async {
-                let mut manager = RunnerManager::new();
+                let mut manager = RunnerManager::new(self.dirs.clone());
                 manager.process_script(&wrapper, mapping).await
             }
             .in_current_span(),
@@ -138,7 +140,8 @@ mod tests {
 
     #[test]
     fn runs_javascript_transform_and_captures_logs() {
-        let runner = EnhanceScriptRunner::new().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
         let script = r#"
 function main(config) {
   console.log("hello from js");
@@ -161,7 +164,8 @@ function main(config) {
 
     #[test]
     fn failing_script_returns_error() {
-        let runner = EnhanceScriptRunner::new().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
         let outcome = runner.run(
             ScriptRuntime::JavaScript,
             "not valid js ][",
@@ -172,7 +176,8 @@ function main(config) {
 
     #[test]
     fn eval_item_predicate_and_expr_use_lua_item_global() {
-        let runner = EnhanceScriptRunner::new().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
         let item = value("name: test-node\ntype: ss\n");
         assert!(
             runner

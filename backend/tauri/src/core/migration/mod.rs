@@ -49,8 +49,9 @@ pub struct Ctx {
 
 impl Ctx {
     pub fn from_app_dirs() -> anyhow::Result<Self> {
+        // Migrations never read the bundled resources.
         Ok(Self {
-            paths: PathResolver::from_env()?,
+            paths: PathResolver::from_env(None)?,
         })
     }
 

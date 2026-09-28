@@ -25,32 +25,35 @@ export const useActiveProfile = (profile: ProfileItem_Serialize) => {
   const blockTask = useBlockTask(`active-profile-${profile.uid}`, async () => {
     try {
       await activate.mutateAsync(profile.uid)
-
-      // Legacy UX: unconditionally drop connections after activation. The
-      // backend also interrupts connections (opt-in, default off); when that
-      // option is enabled the double interruption is idempotent.
-      await deleteConnections.mutateAsync(null)
-
-      message(m.profile_active_title_success({ name: profile.name }), {
-        title: m.profile_active_title(),
-        kind: 'info',
-      })
     } catch (err) {
-      // This FetchError was triggered by the `DELETE /connections` API
-      const isFetchError = err instanceof Error && err.name === 'FetchError'
-
       message(
-        isFetchError
-          ? `Failed to delete connections: \n ${formatError(err)}`
-          : `${m.profile_active_title_error({
-              name: profile.name,
-            })} \n ${formatError(err)}`,
+        `${m.profile_active_title_error({
+          name: profile.name,
+        })} \n ${formatError(err)}`,
         {
           title: 'Error',
-          kind: isFetchError ? 'warning' : 'error',
+          kind: 'error',
         },
       )
+
+      return
     }
+
+    // Legacy UX: unconditionally drop connections after activation. The
+    // backend also interrupts connections (opt-in, default off); when that
+    // option is enabled the double interruption is idempotent. A core with
+    // no usable API (e.g. in an error state) has nothing to drop, so a
+    // failure here does not fail the activation.
+    try {
+      await deleteConnections.mutateAsync(null)
+    } catch (err) {
+      console.warn('[active-profile] failed to delete connections:', err)
+    }
+
+    message(m.profile_active_title_success({ name: profile.name }), {
+      title: m.profile_active_title(),
+      kind: 'info',
+    })
   })
 
   const handleClick = useLockFn(async () => {

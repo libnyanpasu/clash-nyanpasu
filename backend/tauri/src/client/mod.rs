@@ -225,6 +225,7 @@ impl NyanpasuClient {
             tasks,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
+        let instance_config_dir = paths.app_config_dir().to_path_buf();
         let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
@@ -285,6 +286,7 @@ impl NyanpasuClient {
             fs,
             ports,
             profiles_dir,
+            instance_config_dir,
             runtime_paths,
             script_dirs,
             ui_sink,
@@ -312,6 +314,7 @@ impl NyanpasuClient {
         fs: Arc<dyn ProfileFsPort>,
         ports: Arc<SessionPortResolver>,
         profiles_dir: PathBuf,
+        instance_config_dir: PathBuf,
         runtime_paths: RuntimePaths,
         script_dirs: crate::enhance::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
@@ -371,6 +374,7 @@ impl NyanpasuClient {
                 ports: ports.clone(),
                 installer: binary_installer,
                 ownership: core_lifecycle::Ownership::Unproven,
+                instance_config_dir,
                 shutdown: shutdown.child_token(),
                 tasks: tasks.clone(),
             },
@@ -1647,6 +1651,8 @@ pub(crate) mod tests {
         pub endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
         pub calls: Arc<StdMutex<Vec<&'static str>>>,
         pub stopped: std::sync::atomic::AtomicBool,
+        /// The config dir the daemon reports it was installed with.
+        pub installed_for: PathBuf,
     }
 
     #[async_trait::async_trait]
@@ -1686,7 +1692,7 @@ pub(crate) mod tests {
                     runtime_infos: nyanpasu_ipc::api::status::RuntimeInfos {
                         service_data_dir: std::borrow::Cow::Owned(Default::default()),
                         service_config_dir: std::borrow::Cow::Owned(Default::default()),
-                        nyanpasu_config_dir: std::borrow::Cow::Owned(Default::default()),
+                        nyanpasu_config_dir: std::borrow::Cow::Owned(self.installed_for.clone()),
                         nyanpasu_data_dir: std::borrow::Cow::Owned(Default::default()),
                     },
                     logs: None,
@@ -2030,6 +2036,7 @@ pub(crate) mod tests {
             Arc::new(MockProfileFsPort::new()),
             ports,
             dir.path().join("profiles"),
+            PathBuf::new(),
             RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
                 dir.path().into(),
                 dir.path().join("data"),
@@ -2353,6 +2360,7 @@ pub(crate) mod tests {
                 endpoint: service_endpoint,
                 calls: calls.clone(),
                 stopped: std::sync::atomic::AtomicBool::new(false),
+                installed_for: args.paths.app_config_dir().to_path_buf(),
             },
             application_config: args.paths.application_config_path(),
         });
@@ -2585,6 +2593,7 @@ pub(crate) mod tests {
             file_service.clone() as Arc<dyn ProfileFsPort>,
             ports,
             paths.app_profiles_dir(),
+            PathBuf::new(),
             RuntimePaths::from_resolver(&paths).unwrap(),
             crate::enhance::ScriptDirs::from_resolver(&paths),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -3636,6 +3645,7 @@ pub(crate) mod tests {
                 Arc::new(MockProfileFsPort::new()),
                 ports,
                 dir.path().join("profiles"),
+                PathBuf::new(),
                 RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
                     dir.path().into(),
                     dir.path().join("data"),

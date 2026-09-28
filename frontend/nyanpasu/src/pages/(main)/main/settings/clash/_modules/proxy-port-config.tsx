@@ -141,7 +141,7 @@ const PortStrategyDialog = ({
 
   return (
     <Modal open={open} onOpenChange={handleOpenChange}>
-      <ModalTrigger asChild>{children}</ModalTrigger>
+      {children}
 
       <ModalContent>
         <Card className="flex min-w-96 flex-col">
@@ -260,13 +260,15 @@ export function MixedPortConfig() {
           onApply={(next) => mixedPort.upsert(next)}
         >
           <SettingsCardContent asChild>
-            <Button className={ROW_BUTTON_CLASS}>
-              <ItemContainer>
-                {label}
+            <ModalTrigger asChild>
+              <Button className={ROW_BUTTON_CLASS}>
+                <ItemContainer>
+                  {label}
 
-                <ArrowForwardIosRounded />
-              </ItemContainer>
-            </Button>
+                  <ArrowForwardIosRounded />
+                </ItemContainer>
+              </Button>
+            </ModalTrigger>
           </SettingsCardContent>
         </PortStrategyDialog>
       ) : (
@@ -323,7 +325,9 @@ export function OptionalPortConfig({
             onApply={(next) => setting.upsert(next)}
           >
             <SettingsCardContent className="min-w-0 flex-1" asChild>
-              <Button className={ROW_BUTTON_CLASS}>{itemLabel}</Button>
+              <ModalTrigger asChild>
+                <Button className={ROW_BUTTON_CLASS}>{itemLabel}</Button>
+              </ModalTrigger>
             </SettingsCardContent>
           </PortStrategyDialog>
         ) : (

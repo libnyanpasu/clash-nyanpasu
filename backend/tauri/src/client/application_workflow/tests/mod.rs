@@ -331,6 +331,7 @@ async fn workflow_graph_with_clients(
             ports,
             installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
             ownership,
+            instance_config_dir: Default::default(),
             shutdown,
             tasks: tokio_util::task::TaskTracker::new(),
         },
@@ -626,6 +627,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
                 endpoint: endpoint.clone(),
                 calls: calls.clone(),
                 stopped: AtomicBool::new(false),
+                installed_for: dir.path().into(),
             }),
             0,
         )

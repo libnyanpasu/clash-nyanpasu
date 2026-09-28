@@ -1261,15 +1261,20 @@ impl ApplicationWorkflow {
     }
 
     /// Stops the daemon a confirmed move off service mode left behind, if it
-    /// still runs. A failure is kept as retryable maintenance, the way an
-    /// unpublished product is, until an explicit retry releases it.
+    /// still runs and serves this instance. A failure is kept as retryable
+    /// maintenance, the way an unpublished product is, until an explicit retry
+    /// releases it.
     async fn release_service(&mut self) -> Option<String> {
+        let service = self.lifecycle.core.service_status();
         let running = self.lifecycle.core.core_status().host == ExecutionHost::Local
             && !matches!(
-                self.lifecycle.core.service_status().phase,
+                service.phase,
                 crate::core::actor_v2::service_actor::ServicePhase::NotInstalled
                     | crate::core::actor_v2::service_actor::ServicePhase::DaemonStopped
-            );
+            )
+            && service.server.as_ref().is_some_and(|server| {
+                super::startup::serves_instance(server, &self.lifecycle.instance_config_dir)
+            });
         let failure = if running {
             self.lifecycle
                 .core

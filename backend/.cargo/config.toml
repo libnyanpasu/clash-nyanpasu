@@ -17,4 +17,4 @@
 # Rationale for the hardware-AES baseline itself lives in the repo-root copy.
 
 [target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "target-feature=+aes,+neon"]
+rustflags = ['-C', 'target-feature=+aes,+neon']

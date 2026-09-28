@@ -58,7 +58,7 @@ pub struct FetchedSubscription { content: String, filename: Option<String>, subs
 `backend/tauri/Cargo.toml` 的 `[dev-dependencies]` 段追加一行:
 
 ```toml
-mockall = "0.13"
+mockall = '0.13'
 ```
 
 - [ ] **Step 2: 写 `state/profiles/mod.rs`**

@@ -1,37 +1,37 @@
 [package]
-name = "nyanpasu-egui"
-version = "0.1.0"
-edition = "2024"
+name = 'nyanpasu-egui'
+version = '0.1.0'
+edition = '2024'
 
 [lib]
-name = "nyanpasu_egui"
-crate-type = ["staticlib", "cdylib", "rlib"]
+name = 'nyanpasu_egui'
+crate-type = ['staticlib', 'cdylib', 'rlib']
 
 [[bin]]
-name = "nyanpasu-network-statistic-widget-large"
-path = "./src/main.rs"
+name = 'nyanpasu-network-statistic-widget-large'
+path = './src/main.rs'
 
 [[bin]]
-name = "nyanpasu-network-statistic-widget-small"
-path = "./src/small.rs"
+name = 'nyanpasu-network-statistic-widget-small'
+path = './src/small.rs'
 
 [dependencies]
-eframe = { version = "0.36.1" }
-egui_extras = { version = "0.36.1", features = ["all_loaders"] }
-parking_lot = "0.12"
-image = { version = "0.25.6", features = ["jpeg", "png"] }
-humansize = "2"
+eframe = { version = '0.36.1' }
+egui_extras = { version = '0.36.1', features = ['all_loaders'] }
+parking_lot = '0.12'
+image = { version = '0.25.6', features = ['jpeg', 'png'] }
+humansize = '2'
 # for svg currentColor replacement
-resvg = "0.48.1"                                 # for svg rendering
-usvg = "0.48.1"                                  # for svg parsing
-csscolorparser = "0.9"                           # for color conversion
-ipc-channel = "0.23"                             # for IPC between the Widget process and the GUI process
-serde = { version = "1", features = ["derive"] }
-anyhow = "1"
-specta = { version = "^2.0.0-rc.25" }
-clap = { version = "4", features = ["derive"] }
+resvg = '0.48.1'  # for svg rendering
+usvg = '0.48.1'  # for svg parsing
+csscolorparser = '0.9'  # for color conversion
+ipc-channel = '0.23'  # for IPC between the Widget process and the GUI process
+serde = { version = '1', features = ['derive'] }
+anyhow = '1'
+specta = { version = '^2.0.0-rc.25' }
+clap = { version = '4', features = ['derive'] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6.1"
-objc2-foundation = "0.3.1"
-objc2-app-kit = "0.3.1"
+objc2 = '0.6.1'
+objc2-foundation = '0.3.1'
+objc2-app-kit = '0.3.1'

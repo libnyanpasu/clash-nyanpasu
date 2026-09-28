@@ -1507,6 +1507,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       enable_builtin_enhanced?: boolean | null
       proxy_layout_column?: number | null
       max_log_files?: number | null
+      max_log_file_size?: number | null
       enable_auto_check_update?: boolean | null
       release_channel?: ReleaseChannel | null
       always_on_top?: boolean | null
@@ -1556,6 +1557,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   enable_builtin_enhanced?: boolean | null
   proxy_layout_column?: number | null
   max_log_files?: number | null
+  max_log_file_size?: number | null
   enable_auto_check_update?: boolean | null
   release_channel?: ReleaseChannel | null
   tray_selector_mode?: ProxiesSelectorMode | null
@@ -1616,8 +1618,10 @@ export type NyanpasuAppConfig_Deserialize = {
   enable_builtin_enhanced: boolean
   /**  proxy 页面布局 列数 */
   proxy_layout_column: number
-  /**  日记轮转时间，单位：天 */
+  /**  最多保留的日志文件数 */
   max_log_files: number
+  /**  单个日志文件的大小上限，单位：MiB */
+  max_log_file_size: number
   /**  Check update when app launch */
   enable_auto_check_update: boolean
   /**  None in older configurations means the channel of the installed build. */
@@ -1705,8 +1709,10 @@ export type NyanpasuAppConfig_Serialize = {
   enable_builtin_enhanced: boolean
   /**  proxy 页面布局 列数 */
   proxy_layout_column: number
-  /**  日记轮转时间，单位：天 */
+  /**  最多保留的日志文件数 */
   max_log_files: number
+  /**  单个日志文件的大小上限，单位：MiB */
+  max_log_file_size: number
   /**  Check update when app launch */
   enable_auto_check_update: boolean
   /**  None in older configurations means the channel of the installed build. */

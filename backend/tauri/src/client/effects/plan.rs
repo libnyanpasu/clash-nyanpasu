@@ -38,6 +38,7 @@ pub struct ApplicationEffectFields {
     pub language: I18nLanguage,
     pub app_log_level: LoggingLevel,
     pub max_log_files: usize,
+    pub max_log_file_size: u64,
     pub tray_selector_mode: ProxiesSelectorMode,
     pub tray_menu_mode: TrayMenuMode,
     pub enable_tray_text: bool,
@@ -67,6 +68,7 @@ impl From<&NyanpasuAppConfig> for ApplicationEffectFields {
             language: app.language,
             app_log_level: app.app_log_level.clone(),
             max_log_files: app.max_log_files,
+            max_log_file_size: app.max_log_file_size,
             tray_selector_mode: app.tray_selector_mode,
             tray_menu_mode: app.tray_menu_mode,
             enable_tray_text: app.enable_tray_text,
@@ -113,6 +115,7 @@ impl ApplicationEffectInputs {
             logger: LoggerDesired {
                 level: app.app_log_level.clone(),
                 max_files: app.max_log_files,
+                max_file_size: app.max_log_file_size,
             },
             auto_launch: app.enable_auto_launch,
             system_proxy: SystemProxyDesired {
@@ -201,6 +204,7 @@ pub struct ProxyGuardDesired {
 pub struct LoggerDesired {
     pub level: LoggingLevel,
     pub max_files: usize,
+    pub max_file_size: u64,
 }
 
 /// What a [`TrayRefresh::Full`] rebuild renders.
@@ -406,6 +410,7 @@ mod tests {
                 language: I18nLanguage::English,
                 app_log_level: LoggingLevel::Info,
                 max_log_files: 7,
+                max_log_file_size: 10,
                 tray_selector_mode: ProxiesSelectorMode::Normal,
                 tray_menu_mode: TrayMenuMode::Native,
                 enable_tray_text: false,
@@ -614,6 +619,7 @@ mod tests {
             ApplicationEffect::Logger(LoggerDesired {
                 level: LoggingLevel::Debug,
                 max_files: 7,
+                max_file_size: 10,
             })
         );
     }
@@ -739,6 +745,18 @@ mod tests {
                 vec![ApplicationEffect::Logger(LoggerDesired {
                     level: LoggingLevel::Info,
                     max_files: 14,
+                    max_file_size: 10,
+                })]
+            },
+        );
+        assert_case(
+            "max_log_file_size",
+            |after| after.app.max_log_file_size = 20,
+            |_| {
+                vec![ApplicationEffect::Logger(LoggerDesired {
+                    level: LoggingLevel::Info,
+                    max_files: 7,
+                    max_file_size: 20,
                 })]
             },
         );
@@ -917,7 +935,10 @@ pub(crate) fn requested_owners(
     if patch.language.is_some() {
         kinds.push(EffectKind::Locale);
     }
-    if patch.app_log_level.is_some() || patch.max_log_files.is_some() {
+    if patch.app_log_level.is_some()
+        || patch.max_log_files.is_some()
+        || patch.max_log_file_size.is_some()
+    {
         kinds.push(EffectKind::Logger);
     }
     if patch.network_statistic_widget.is_some() {

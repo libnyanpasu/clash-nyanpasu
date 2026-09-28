@@ -1945,6 +1945,7 @@ dependencies = [
  "fake-core",
  "fast_image_resize",
  "flate2",
+ "flexi_logger",
  "fs-err",
  "fs_extra",
  "futures",
@@ -3684,6 +3685,17 @@ dependencies = [
  "crc32fast",
  "miniz_oxide 0.9.1",
  "zlib-rs",
+]
+
+[[package]]
+name = "flexi_logger"
+version = "0.31.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4945fa9cdfd7571192cf559c186d45ab36c8034482a2d217a19bdc566f190cc"
+dependencies = [
+ "chrono",
+ "log",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

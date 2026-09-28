@@ -7,8 +7,8 @@ use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticW
 use nyanpasu_egui::widget::StatisticWidgetVariant;
 
 use super::ports::{
-    LocaleSink, LoggerRefresher, TrayRefresher, WIDGET_STOP_BOUND, WidgetController, WidgetError,
-    WidgetRuntime,
+    LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WIDGET_STOP_BOUND, WidgetController,
+    WidgetError, WidgetRuntime,
 };
 use crate::{
     client::effects::plan::TrayView,
@@ -81,9 +81,13 @@ impl TracingLoggerRefresher {
 }
 
 impl LoggerRefresher for TracingLoggerRefresher {
-    fn refresh(&self, level: Option<LoggingLevel>, max_files: Option<usize>) -> anyhow::Result<()> {
+    fn refresh(
+        &self,
+        level: Option<LoggingLevel>,
+        rotation: Option<LogRotation>,
+    ) -> anyhow::Result<()> {
         self.reload
-            .send((level, max_files))
+            .send((level, rotation))
             .map_err(|_| anyhow::anyhow!("the logger reload thread has stopped"))
     }
 }

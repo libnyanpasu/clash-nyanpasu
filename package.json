@@ -82,7 +82,7 @@
     "postcss-scss": "4.0.9",
     "prettier": "3.9.9",
     "prettier-plugin-tailwindcss": "0.8.1",
-    "prettier-plugin-toml": "2.0.6",
+    "prettier-plugin-toml": "3.0.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "stylelint": "17.15.0",

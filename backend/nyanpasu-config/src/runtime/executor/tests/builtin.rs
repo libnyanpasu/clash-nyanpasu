@@ -207,7 +207,7 @@ fn tun_enabled_clash_rs_uses_device_branch_and_no_windows_filter() {
 }
 
 #[test]
-fn finalize_applies_include_all_cache_sort_and_stage2_filter() {
+fn finalize_applies_include_all_cache_and_stage2_filter_without_reordering() {
     let config = value(json!({
         "custom-unknown": 1,
         "proxies": [ { "name": "Proxy1" }, { "name": "Proxy2" } ],
@@ -241,9 +241,16 @@ fn finalize_applies_include_all_cache_sort_and_stage2_filter() {
         .keys()
         .map(String::as_str)
         .collect();
-    let pos = |k: &str| keys.iter().position(|x| *x == k).unwrap();
-    assert!(pos("mode") < pos("profile"));
-    assert!(pos("profile") < pos("proxies"));
+    assert_eq!(
+        keys,
+        vec![
+            "proxies",
+            "proxy-providers",
+            "proxy-groups",
+            "mode",
+            "profile"
+        ]
+    );
 
     let kept = finalize(&config, &tun_off(), false).to_json();
     assert_eq!(kept["custom-unknown"], json!(1));
@@ -253,7 +260,7 @@ fn finalize_applies_include_all_cache_sort_and_stage2_filter() {
         .keys()
         .map(String::as_str)
         .collect();
-    assert_eq!(*keys.last().unwrap(), "custom-unknown");
+    assert_eq!(*keys.first().unwrap(), "custom-unknown");
 }
 
 #[test]

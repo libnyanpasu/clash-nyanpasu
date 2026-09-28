@@ -10,6 +10,7 @@ import { SettingsTitle } from '../_modules/settings-title'
 import AllowLanSwitch from './_modules/allow-lan-switch'
 import ControlChannelSettings from './_modules/control-channel-settings'
 import CoreManagerCard from './_modules/core-manager-card'
+import ExpandIncludeAllSwitch from './_modules/expand-include-all-switch'
 import FieldFilterCard from './_modules/field-filter-card'
 import FieldFilterSwitch from './_modules/field-filter-switch'
 import IPv6Switch from './_modules/ipv6-switch'
@@ -45,6 +46,8 @@ const PatchSettings = () => {
         <TunStackSelector />
 
         <LogLevelSelector />
+
+        <ExpandIncludeAllSwitch />
       </SettingsGroup>
     </div>
   )

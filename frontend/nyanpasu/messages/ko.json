@@ -106,6 +106,8 @@
   "settings_clash_settings_core_secret_label_edit": "API 시크릿 편집",
   "settings_clash_settings_core_secret_copied": "시크릿이 클립보드에 복사되었습니다",
   "settings_clash_settings_field_filter_label": "Clash 필드 필터",
+  "settings_clash_settings_expand_include_all_label": "include-all 확장",
+  "settings_clash_settings_expand_include_all_description": "Nyanpasu에서 mihomo와 같은 방식으로 프록시 그룹의 include-all 필드를 확장합니다. 끄면 코어에 그대로 전달됩니다",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu 제어 필드",
   "settings_web_ui_title": "웹 UI",
   "settings_web_ui_add_button": "추가",

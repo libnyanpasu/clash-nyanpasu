@@ -149,6 +149,8 @@
   "settings_clash_settings_core_secret_label_edit": "編輯 API 訪問密鑰",
   "settings_clash_settings_core_secret_copied": "密鑰已複製到剪貼板",
   "settings_clash_settings_field_filter_label": "Clash 字段過濾",
+  "settings_clash_settings_expand_include_all_label": "展開 include-all",
+  "settings_clash_settings_expand_include_all_description": "在 Nyanpasu 中依 mihomo 語意展開代理組的 include-all 欄位；關閉後原樣交給核心處理",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu 覆寫控制字段",
   "settings_web_ui_title": "Web UI 設置",
   "settings_web_ui_add_button": "添加",

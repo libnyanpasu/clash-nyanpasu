@@ -149,6 +149,8 @@
   "settings_clash_settings_core_secret_label_edit": "Edit API Secret",
   "settings_clash_settings_core_secret_copied": "Secret copied to clipboard",
   "settings_clash_settings_field_filter_label": "Clash Field Filter",
+  "settings_clash_settings_expand_include_all_label": "Expand include-all",
+  "settings_clash_settings_expand_include_all_description": "Expand the include-all fields of proxy groups in Nyanpasu with mihomo semantics. When off, they are passed to the core as-is",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu Control Fields",
   "settings_web_ui_title": "Web UI",
   "settings_web_ui_add_button": "Add new",

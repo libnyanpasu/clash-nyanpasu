@@ -106,6 +106,8 @@
   "settings_clash_settings_core_secret_label_edit": "Изменить API ключ",
   "settings_clash_settings_core_secret_copied": "Ключ скопирован в буфер обмена",
   "settings_clash_settings_field_filter_label": "Фильтр полей Clash",
+  "settings_clash_settings_expand_include_all_label": "Раскрывать include-all",
+  "settings_clash_settings_expand_include_all_description": "Раскрывать поля include-all в группах прокси на стороне Nyanpasu по правилам mihomo. Если выключено, они передаются ядру без изменений",
   "settings_clash_settings_field_filter_nyanpasu_control_fields": "Управляющие поля Nyanpasu",
   "settings_web_ui_title": "Web UI",
   "settings_web_ui_add_button": "Добавить",

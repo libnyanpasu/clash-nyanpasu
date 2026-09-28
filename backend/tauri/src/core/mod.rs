@@ -13,7 +13,6 @@ pub mod updater;
 pub mod win_uwp;
 pub use self::clash::find_binary_path;
 pub mod migration;
-pub mod state;
 
 pub(crate) mod proxies;
 

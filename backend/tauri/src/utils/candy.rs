@@ -30,11 +30,11 @@ pub fn collect_logs(target_path: &Path) -> Result<()> {
 }
 
 // TODO: 添加自定义 User-Agent 等配置，说白了就是重构一下 prfitem 的那坨代码
-pub fn get_reqwest_client() -> Result<reqwest::Client> {
+pub fn get_reqwest_client(self_proxy_port: u16) -> Result<reqwest::Client> {
     let builder = reqwest::ClientBuilder::new();
     let app_version = super::dirs::get_app_version();
     let client = builder
-        .swift_set_nyanpasu_proxy()
+        .swift_set_nyanpasu_proxy(self_proxy_port)
         .user_agent(format!("clash-nyanpasu/{app_version}"))
         .build()?;
     Ok(client)

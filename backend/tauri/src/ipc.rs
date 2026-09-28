@@ -415,16 +415,22 @@ pub async fn get_core_status(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u64>> {
-    Ok(crate::utils::net::url_delay_test(url, expected_status).await)
+pub async fn url_delay_test(
+    client: State<'_, NyanpasuClient>,
+    url: &str,
+    expected_status: u16,
+) -> Result<Option<u64>> {
+    Ok(crate::utils::net::url_delay_test(url, expected_status, client.clash_info().port).await)
 }
 
 #[tauri::command]
 #[specta::specta]
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
 // Any<> to avoid infinite type expansion.
-pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>> {
-    let value = crate::utils::net::get_ipsb_asn().await?;
+pub async fn get_ipsb_asn(
+    client: State<'_, NyanpasuClient>,
+) -> Result<specta_typescript::Any<serde_json::Value>> {
+    let value = crate::utils::net::get_ipsb_asn(client.clash_info().port).await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
 }
@@ -613,7 +619,7 @@ pub async fn fetch_latest_core_versions(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
-    match resolve::resolve_core_version(&app_handle, &core_type.into()).await {
+    match resolve::resolve_core_version(&app_handle, &core_type).await {
         Ok(version) => Ok(version),
         Err(err) => Err(IpcError::from(err)),
     }
@@ -1247,9 +1253,11 @@ pub async fn check_update(
             crate::bundle::is_newer_release(channel, &local, &remote, build_time)
         });
     // apply proxy
-    if let Ok(proxy) = get_self_proxy() {
-        builder = builder.proxy(proxy.parse().context("failed to parse proxy")?);
-    }
+    builder = builder.proxy(
+        get_self_proxy(client.clash_info().port)
+            .parse()
+            .context("failed to parse proxy")?,
+    );
     if let Ok(Some(proxy)) = get_system_proxy() {
         builder = builder.proxy(proxy.parse().context("failed to parse system proxy")?);
     }
@@ -1314,8 +1322,12 @@ pub fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn copy_clash_env(app_handle: AppHandle, env_type: CopyEnvOption) {
-    feat::copy_clash_env(&app_handle, &env_type);
+pub fn copy_clash_env(
+    app_handle: AppHandle,
+    client: State<'_, NyanpasuClient>,
+    env_type: CopyEnvOption,
+) {
+    feat::copy_clash_env(&app_handle, client.clash_info().port, &env_type);
 }
 
 #[tauri::command]

@@ -1,11 +1,9 @@
 use super::super::{
-    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
+    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck,
+    fs::try_exists,
+    legacy_schema::{IClashTemp, IVerge, typed_config_from_legacy_parts},
 };
-use crate::{
-    bridge::typed_config_from_legacy_parts,
-    config::{IClashTemp, IVerge},
-    utils::help,
-};
+use crate::utils::help;
 use anyhow::Context as _;
 use once_cell::sync::Lazy;
 use semver::Version;
@@ -336,8 +334,9 @@ fn read_legacy_verge(path: &Path) -> anyhow::Result<IVerge> {
         return Ok(merged);
     }
 
-    let legacy: IVerge = read_yaml(path)
+    let mut legacy: IVerge = read_yaml(path)
         .with_context(|| format!("failed to read legacy config {}", path.display()))?;
+    legacy.migrate_auto_close_connection();
     merged.patch_config(legacy);
     Ok(merged)
 }
@@ -428,7 +427,7 @@ fn current_revision() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{IClashTemp, nyanpasu::WindowState as LegacyWindowState};
+    use crate::core::migration::legacy_schema::WindowState as LegacyWindowState;
     use nyanpasu_config::{
         application::NyanpasuAppConfig,
         clash::config::ClashConfig,
@@ -621,6 +620,34 @@ mod tests {
 
         let session: PersistentState = read_typed(&ctx.session_state_path());
         assert!(session.window_state.is_empty());
+    }
+
+    /// `auto_close_connection` predates `break_when_proxy_change`. A document
+    /// with only the old field migrates by it, although the template it is
+    /// merged onto carries the new one; the new field wins when both are
+    /// present, and a document with neither keeps the default.
+    #[test]
+    fn split_legacy_config_migrates_the_deprecated_proxy_change_policy() {
+        use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
+
+        let cases = [
+            ("auto_close_connection: false\n", ProxyChangeBreakMode::Off),
+            ("auto_close_connection: true\n", ProxyChangeBreakMode::All),
+            (
+                "auto_close_connection: true\nbreak_when_proxy_change: none\n",
+                ProxyChangeBreakMode::Off,
+            ),
+            ("{}\n", ProxyChangeBreakMode::All),
+        ];
+        for (verge, expected) in cases {
+            let (mut ctx, _temp) = test_ctx();
+            std::fs::write(ctx.nyanpasu_config_path(), verge).unwrap();
+
+            SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+            let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+            assert_eq!(clash.break_connection.on_proxy_change, expected, "{verge}");
+        }
     }
 
     #[test]

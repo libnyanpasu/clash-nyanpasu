@@ -596,7 +596,7 @@ impl CoreLifecycleWorkflow {
         artifact: PreparedCoreBinary,
         preparation: &mut dyn RuntimePreparationPort,
     ) -> Result<(), CoreError> {
-        let desired: crate::config::nyanpasu::ClashCore = self.application.load().state.core.into();
+        let desired = self.application.load().state.core;
         let status = self.core.refresh_status().await?;
         let (state, applied_kind) = status
             .snapshot

@@ -1,8 +1,4 @@
-use crate::{
-    config::*,
-    core::migration::modules::profiles::ProfilesFormat,
-    utils::{dirs, help},
-};
+use crate::{core::migration::modules::profiles::ProfilesFormat, utils::dirs};
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
 use nyanpasu_core::format::Format;
@@ -132,24 +128,6 @@ pub fn init_config() -> Result<()> {
         if !profiles_dir.exists() {
             let _ = fs::create_dir_all(&profiles_dir);
         }
-    }));
-
-    crate::log_err!(dirs::clash_guard_overrides_path().map(|path| {
-        if !path.exists() {
-            help::save_yaml(
-                &path,
-                &IClashTemp::template().0,
-                Some("# Clash Nyanpasuasu"),
-            )?;
-        }
-        <Result<()>>::Ok(())
-    }));
-
-    crate::log_err!(dirs::nyanpasu_config_path().map(|path| {
-        if !path.exists() {
-            help::save_yaml(&path, &IVerge::template(), Some("# Clash Nyanpasu"))?;
-        }
-        <Result<()>>::Ok(())
     }));
 
     crate::log_err!(dirs::profiles_path().map(|path| {

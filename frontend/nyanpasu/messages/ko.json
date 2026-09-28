@@ -253,7 +253,6 @@
   "mutation_degraded_title": "경고",
   "mutation_degraded_summary": "저장되었지만 경고가 있습니다: {items}",
   "mutation_degraded_item": "{phase}: {detail}",
-  "mutation_degradation_phase_legacy_mirror": "레거시 미러",
   "mutation_degradation_phase_profile_materialization": "프로필 구체화",
   "mutation_degradation_phase_runtime_build": "런타임 빌드",
   "mutation_degradation_phase_runtime_check": "런타임 검사",

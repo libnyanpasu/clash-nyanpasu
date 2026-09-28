@@ -10,6 +10,7 @@ use tauri::Emitter;
 use super::ports::{
     LocaleSink, LoggerRefresher, TrayRefresher, WidgetController, WidgetError, WidgetRuntime,
 };
+use crate::{client::effects::plan::TrayView, core::tray::Tray};
 
 /// The `rust_i18n` locale.
 ///
@@ -29,6 +30,10 @@ impl LocaleSink for RustI18nLocaleSink {
 }
 
 /// The system tray, through the handle that owns it.
+///
+/// Each refresh first stores its view in the tray's managed state: every build
+/// and repaint renders from that cached view, including the rebuilds the tray
+/// starts on its own when the proxy list changes.
 pub struct TauriTrayRefresher<R: tauri::Runtime = tauri::Wry> {
     app_handle: tauri::AppHandle<R>,
 }
@@ -41,7 +46,8 @@ impl<R: tauri::Runtime> TauriTrayRefresher<R> {
 
 #[async_trait::async_trait]
 impl<R: tauri::Runtime> TrayRefresher for TauriTrayRefresher<R> {
-    async fn refresh_full(&self) -> anyhow::Result<()> {
+    async fn refresh_full(&self, view: TrayView) -> anyhow::Result<()> {
+        Tray::store_view(&self.app_handle, view);
         // Rebuilding the menu has to happen on the main thread (GTK), so it
         // goes out as an event that the app's own listener runs there. The
         // hop is the adapter's business; the effect executor only asked for a
@@ -50,8 +56,9 @@ impl<R: tauri::Runtime> TrayRefresher for TauriTrayRefresher<R> {
         Ok(())
     }
 
-    async fn refresh_part(&self) -> anyhow::Result<()> {
-        crate::core::tray::Tray::update_part(&self.app_handle)
+    async fn refresh_part(&self, view: TrayView) -> anyhow::Result<()> {
+        Tray::store_view(&self.app_handle, view);
+        Tray::update_part(&self.app_handle)
     }
 }
 
@@ -61,22 +68,7 @@ pub struct TracingLoggerRefresher;
 
 impl LoggerRefresher for TracingLoggerRefresher {
     fn refresh(&self, level: Option<LoggingLevel>, max_files: Option<usize>) -> anyhow::Result<()> {
-        crate::utils::init::refresh_logger((level.map(legacy_logging_level), max_files))
-    }
-}
-
-/// The logger still speaks the legacy enum. Written out rather than derived so
-/// that adding a level to either side fails to compile instead of silently
-/// mapping to the wrong one.
-fn legacy_logging_level(level: LoggingLevel) -> crate::config::nyanpasu::LoggingLevel {
-    use crate::config::nyanpasu::LoggingLevel as Legacy;
-    match level {
-        LoggingLevel::Silent => Legacy::Silent,
-        LoggingLevel::Trace => Legacy::Trace,
-        LoggingLevel::Debug => Legacy::Debug,
-        LoggingLevel::Info => Legacy::Info,
-        LoggingLevel::Warn => Legacy::Warn,
-        LoggingLevel::Error => Legacy::Error,
+        crate::utils::init::refresh_logger((level, max_files))
     }
 }
 

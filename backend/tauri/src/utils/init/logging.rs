@@ -1,5 +1,6 @@
-use crate::{Config, config, utils::dirs};
+use crate::utils::dirs;
 use anyhow::{Result, anyhow, bail};
+use nyanpasu_config::application::LoggingLevel;
 use parking_lot::Mutex;
 use std::{
     fs,
@@ -18,9 +19,7 @@ use tracing_appender::{
 use tracing_log::log_tracer;
 use tracing_subscriber::{EnvFilter, filter, fmt, layer::SubscriberExt, reload};
 
-use super::nyanpasu::LoggingLevel;
-
-pub type ReloadSignal = (Option<config::nyanpasu::LoggingLevel>, Option<usize>);
+pub type ReloadSignal = (Option<LoggingLevel>, Option<usize>);
 
 struct Channel(Option<Sender<ReloadSignal>>);
 impl Channel {
@@ -138,12 +137,5 @@ pub fn init() -> Result<()> {
     log_tracer::LogTracer::init()?;
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|x| anyhow!("setup logging error: {}", x))?;
-    // reload the log level
-    std::thread::spawn(move || {
-        let config = Config::verge();
-        let log_level = config.latest().get_log_level();
-        let log_max_files = config.latest().max_log_files;
-        let _ = refresh_logger((Some(log_level), log_max_files));
-    });
     Ok(())
 }

@@ -7,6 +7,8 @@
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
 use nyanpasu_egui::widget::StatisticWidgetVariant;
 
+use crate::client::effects::plan::TrayView;
+
 /// The process-wide i18n locale that the tray menu labels are rendered from.
 #[cfg_attr(test, mockall::automock)]
 pub trait LocaleSink: Send + Sync + 'static {
@@ -14,13 +16,14 @@ pub trait LocaleSink: Send + Sync + 'static {
 }
 
 /// A tray rebuild (`refresh_full`) or a refresh of the parts that change with
-/// state (`refresh_part`). Async because the concrete implementation has to
-/// reach the main thread to touch the tray at all.
+/// state (`refresh_part`), both rendered from `view`. Async because the
+/// concrete implementation has to reach the main thread to touch the tray at
+/// all.
 #[async_trait::async_trait]
 #[cfg_attr(test, mockall::automock)]
 pub trait TrayRefresher: Send + Sync + 'static {
-    async fn refresh_full(&self) -> anyhow::Result<()>;
-    async fn refresh_part(&self) -> anyhow::Result<()>;
+    async fn refresh_full(&self, view: TrayView) -> anyhow::Result<()>;
+    async fn refresh_part(&self, view: TrayView) -> anyhow::Result<()>;
 }
 
 /// Reconfigures the running logger.

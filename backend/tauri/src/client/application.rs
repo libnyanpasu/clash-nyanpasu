@@ -7,12 +7,8 @@ use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_core::state::{PersistentStateManager, PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
-use crate::state::{
-    ConditionalReplaceResult,
-    application::{
-        ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
-    },
-    mirror::{PreparedTypedReplace, VergeLegacyBridge},
+use crate::state::application::{
+    ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
 };
 
 #[derive(Clone)]
@@ -33,9 +29,8 @@ impl ApplicationClient {
         mutations: MutationCoordinator,
         build_channel: crate::bundle::Channel,
         config_path: Utf8PathBuf,
-        mut seed: NyanpasuAppConfig,
-        bridge: Arc<dyn VergeLegacyBridge>,
     ) -> anyhow::Result<Self> {
+        let mut seed = NyanpasuAppConfig::default();
         seed.release_channel = Some(build_channel.resolve(seed.release_channel));
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
@@ -63,7 +58,7 @@ impl ApplicationClient {
                 .context("failed to persist release channel")?;
         }
 
-        Self::from_manager(mutations, manager, bridge).await
+        Self::from_manager(mutations, manager).await
     }
 
     /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
@@ -71,17 +66,12 @@ impl ApplicationClient {
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig>,
-        bridge: Arc<dyn VergeLegacyBridge>,
     ) -> anyhow::Result<Self> {
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
             ApplicationActor,
-            ApplicationActorArgs {
-                manager,
-                bridge,
-                mutations,
-            },
+            ApplicationActorArgs { manager, mutations },
         )
         .await
         .context("failed to spawn application actor")?
@@ -126,59 +116,6 @@ impl ApplicationClient {
         .await
     }
 
-    pub(crate) async fn replace_if_version(
-        &self,
-        expected_version: u64,
-        state: NyanpasuAppConfig,
-    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
-        let prepared = self.prepare_replace(state).await?;
-        self.replace_prepared_if_version(expected_version, prepared)
-            .await
-    }
-
-    pub(crate) async fn prepare_replace(
-        &self,
-        state: NyanpasuAppConfig,
-    ) -> anyhow::Result<PreparedTypedReplace<NyanpasuAppConfig>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ApplicationActorMessage::PrepareReplace { state, reply },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
-        }
-    }
-
-    pub(crate) async fn replace_prepared_if_version(
-        &self,
-        expected_version: u64,
-        prepared: PreparedTypedReplace<NyanpasuAppConfig>,
-    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ApplicationActorMessage::ReplacePreparedIfVersion {
-                    expected_version,
-                    prepared,
-                    reply,
-                },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
-        }
-    }
-
     async fn call<F>(
         &self,
         make: F,
@@ -204,24 +141,8 @@ impl Drop for ApplicationClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::mirror::{NoopPreparedLegacyMirror, PreparedLegacyMirror};
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
-
-    struct NoopVergeBridge;
-
-    impl VergeLegacyBridge for NoopVergeBridge {
-        fn prepare(
-            &self,
-            _snap: &NyanpasuAppConfig,
-        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(NoopPreparedLegacyMirror))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
-            Ok(NyanpasuAppConfig::default())
-        }
-    }
 
     fn temp_config_path(dir: &TempDir) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(dir.path().join("application.yaml"))
@@ -234,8 +155,6 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             crate::bundle::Channel::Stable,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
         )
         .await
         .expect("application client should be created");
@@ -264,23 +183,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_if_version_rejects_stale_snapshot() {
-        let (client, _dir) = test_client().await;
-        let current = client.snapshot();
-        let mut replacement = current.state.clone();
-        replacement.enable_silent_start = true;
-
-        let result = client
-            .replace_if_version(current.version + 1, replacement)
-            .await
-            .expect("stale replace should return a conflict");
-        assert!(matches!(
-            result,
-            ConditionalReplaceResult::Conflict { actual_version: 0 }
-        ));
-    }
-
-    #[tokio::test]
     async fn release_channel_persists_and_cannot_leave_nightly() {
         use crate::bundle::Channel;
         let (client, dir) = test_client().await;
@@ -298,8 +200,6 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Stable,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
         )
         .await
         .unwrap();
@@ -320,28 +220,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn release_channel_revalidates_prepared_changes_at_commit() {
-        use crate::bundle::Channel;
-        let (client, _dir) = test_client().await;
-        let mut next = client.snapshot().state;
-        next.release_channel = Some(Channel::Beta);
-        let prepared = client.prepare_replace(next).await.unwrap();
-        let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.release_channel = Some(Some(Channel::Nightly));
-        let current = client.patch(patch).await.unwrap();
-        assert!(
-            client
-                .replace_prepared_if_version(current.version, prepared)
-                .await
-                .is_err()
-        );
-        assert_eq!(
-            client.snapshot().state.release_channel,
-            Some(Channel::Nightly)
-        );
-    }
-
-    #[tokio::test]
     async fn release_channel_compiled_nightly_overrides_saved_stable() {
         use crate::bundle::Channel;
         let (client, dir) = test_client().await;
@@ -353,8 +231,6 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Nightly,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
         )
         .await
         .unwrap();
@@ -378,8 +254,6 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Beta,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
         )
         .await
         .unwrap();
@@ -392,8 +266,6 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Beta,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
         )
         .await
         .unwrap();

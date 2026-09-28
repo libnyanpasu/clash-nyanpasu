@@ -253,7 +253,6 @@
   "mutation_degraded_title": "Предупреждение",
   "mutation_degraded_summary": "Сохранено с предупреждениями: {items}",
   "mutation_degraded_item": "{phase}: {detail}",
-  "mutation_degradation_phase_legacy_mirror": "Устаревшее зеркало",
   "mutation_degradation_phase_profile_materialization": "Материализация профиля",
   "mutation_degradation_phase_runtime_build": "Сборка runtime",
   "mutation_degradation_phase_runtime_check": "Проверка runtime",

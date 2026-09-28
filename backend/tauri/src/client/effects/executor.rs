@@ -13,7 +13,7 @@ use std::sync::{
 use super::{
     plan::{
         ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
-        SystemProxyDesired, TrayRefresh,
+        SystemProxyDesired, TrayRefresh, TrayView,
     },
     ports::ApplicationEffectsPort,
     status::{EffectHealth, EffectRevision, EffectStatus},
@@ -130,7 +130,12 @@ impl ApplicationEffectExecutor {
         }
     }
 
-    async fn apply_tray(&self, revision: EffectRevision, refresh: TrayRefresh) -> EffectStatus {
+    async fn apply_tray(
+        &self,
+        revision: EffectRevision,
+        refresh: TrayRefresh,
+        view: TrayView,
+    ) -> EffectStatus {
         // Full dominates part. A partial refresh re-reads the values of a menu
         // that is already built; it cannot finish a rebuild an earlier full
         // refresh started and failed, so while one is outstanding every
@@ -140,8 +145,8 @@ impl ApplicationEffectExecutor {
             false => refresh,
         };
         let result = match refresh {
-            TrayRefresh::Full => self.tray.refresh_full().await,
-            TrayRefresh::Part => self.tray.refresh_part().await,
+            TrayRefresh::Full => self.tray.refresh_full(view).await,
+            TrayRefresh::Part => self.tray.refresh_part(view).await,
         };
         if refresh == TrayRefresh::Full {
             self.tray_full_pending
@@ -200,7 +205,9 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                 }
                 ApplicationEffect::Hotkeys(desired) => self.apply_hotkeys(revision, desired).await,
                 ApplicationEffect::Widget(config) => self.apply_widget(revision, *config).await,
-                ApplicationEffect::Tray(refresh) => self.apply_tray(revision, *refresh).await,
+                ApplicationEffect::Tray(refresh, view) => {
+                    self.apply_tray(revision, *refresh, *view).await
+                }
             };
             statuses.push(status);
         }

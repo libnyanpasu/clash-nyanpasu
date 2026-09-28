@@ -3,6 +3,7 @@ use semver::Version;
 use std::path::PathBuf;
 
 pub(crate) mod fs;
+mod legacy_schema;
 pub mod modules;
 pub mod registry;
 pub mod runner;

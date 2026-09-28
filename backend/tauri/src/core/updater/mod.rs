@@ -1,6 +1,6 @@
-use crate::config::nyanpasu::ClashCore;
 use anyhow::{Result, anyhow};
 use futures_util::FutureExt;
+use nyanpasu_config::application::ClashCore;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use serde::{Deserialize, Serialize};
 use shared::{CoreTypeMeta, get_arch};

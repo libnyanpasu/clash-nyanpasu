@@ -1,4 +1,3 @@
-use crate::config::nyanpasu::ExternalControllerPortStrategy;
 use anyhow::{Context, Result, anyhow, bail};
 use display_info::DisplayInfo;
 use fast_image_resize::{
@@ -8,7 +7,7 @@ use fast_image_resize::{
 use fs_err as fs;
 use image::{ColorType, ImageEncoder, ImageReader, codecs::png::PngEncoder};
 use nanoid::nanoid;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
 use serde_yaml::{Mapping, Value};
 use std::{
     io::{BufWriter, Cursor},
@@ -54,26 +53,6 @@ pub fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
             path.display()
         ))?
         .to_owned())
-}
-
-/// save the data to the file
-/// can set `prefix` string to add some comments
-pub fn save_yaml<T: Serialize, P: AsRef<Path>>(
-    path: P,
-    data: &T,
-    prefix: Option<&str>,
-) -> Result<()> {
-    let path = path.as_ref();
-    let data_str = serde_yaml::to_string(data)?;
-
-    let yaml_str = match prefix {
-        Some(prefix) => format!("{prefix}\n\n{data_str}"),
-        None => data_str,
-    };
-
-    let path_str = path.as_os_str().to_string_lossy().to_string();
-    fs::write(path, yaml_str.as_bytes())
-        .with_context(|| format!("failed to save file \"{path_str}\""))
 }
 
 const ALPHABET: [char; 62] = [
@@ -154,30 +133,6 @@ pub fn detect_system_i18n_key() -> &'static str {
     nyanpasu_config::application::default_i18n_language().as_str()
 }
 
-pub fn get_clash_external_port(
-    strategy: &ExternalControllerPortStrategy,
-    port: u16,
-) -> anyhow::Result<u16> {
-    match strategy {
-        ExternalControllerPortStrategy::Fixed => {
-            if !port_scanner::local_port_available(port) {
-                bail!("Port {} is not available", port);
-            }
-        }
-        ExternalControllerPortStrategy::Random | ExternalControllerPortStrategy::AllowFallback => {
-            if ExternalControllerPortStrategy::AllowFallback == *strategy
-                && port_scanner::local_port_available(port)
-            {
-                return Ok(port);
-            }
-            let new_port = port_scanner::request_open_port()
-                .ok_or_else(|| anyhow!("Can't find an open port"))?;
-            return Ok(new_port);
-        }
-    }
-    Ok(port)
-}
-
 pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
     let img = ImageReader::new(Cursor::new(img))
         .with_guessed_format()?
@@ -241,7 +196,7 @@ pub fn get_max_scale_factor() -> f64 {
 
 #[instrument(skip(app_handle))]
 pub fn cleanup_processes(app_handle: &AppHandle) {
-    let _ = super::resolve::save_window_state(app_handle, true);
+    let _ = super::resolve::save_window_state(app_handle);
     // Managed Tauri state — no process-global client lookup. The lifecycle
     // actor closes admission and drains active work before stopping the core,
     // so exit cannot race a background dirty rebuild. Tauri ExitRequested is already

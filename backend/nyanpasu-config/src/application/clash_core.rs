@@ -36,6 +36,21 @@ pub enum ClashCore {
     Meow,
 }
 
+impl ClashCore {
+    /// The core's sidecar and executable name, without the platform suffix.
+    /// Differs from `Display`, which renders `ClashPremium` as `clash-premium`.
+    pub fn binary_name(&self) -> &'static str {
+        match self {
+            ClashCore::ClashPremium => "clash",
+            ClashCore::ClashRs => "clash-rs",
+            ClashCore::Mihomo => "mihomo",
+            ClashCore::MihomoAlpha => "mihomo-alpha",
+            ClashCore::ClashRsAlpha => "clash-rs-alpha",
+            ClashCore::Meow => "meow",
+        }
+    }
+}
+
 impl Default for ClashCore {
     fn default() -> Self {
         match cfg!(feature = "default-meta") {
@@ -88,6 +103,29 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
                 nyanpasu_utils::core::ClashCoreType::Meow => Ok(ClashCore::Meow),
             },
             _ => Err(UnsupportedCoreTypeError(core.clone())),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The names mirror the `bundle.externalBin` sidecar list in
+    /// `backend/tauri/tauri.conf.json`; change both together.
+    #[test]
+    fn binary_name_is_the_sidecar_name_of_every_core() {
+        let cases = [
+            (ClashCore::ClashPremium, "clash"),
+            (ClashCore::ClashRs, "clash-rs"),
+            (ClashCore::Mihomo, "mihomo"),
+            (ClashCore::MihomoAlpha, "mihomo-alpha"),
+            (ClashCore::ClashRsAlpha, "clash-rs-alpha"),
+            (ClashCore::Meow, "meow"),
+        ];
+        assert_eq!(cases.len(), enumflags2::BitFlags::<ClashCore>::all().len());
+        for (core, name) in cases {
+            assert_eq!(core.binary_name(), name, "{core:?}");
         }
     }
 }

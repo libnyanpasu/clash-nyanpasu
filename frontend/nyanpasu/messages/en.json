@@ -288,7 +288,6 @@
   "mutation_degraded_title": "Warning",
   "mutation_degraded_summary": "Saved with warnings: {items}",
   "mutation_degraded_item": "{phase}: {detail}",
-  "mutation_degradation_phase_legacy_mirror": "Legacy mirror",
   "mutation_degradation_phase_profile_materialization": "Profile materialization",
   "mutation_degradation_phase_runtime_build": "Runtime build",
   "mutation_degradation_phase_runtime_check": "Runtime check",

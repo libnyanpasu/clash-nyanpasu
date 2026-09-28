@@ -4,39 +4,29 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 46,
-      "byKey": {
-        "Config::verge()": 31,
-        "Config::clash()": 15
-      }
+      "total": 0,
+      "byKey": {}
     },
     "service_globals": {
-      "total": 22,
+      "total": 20,
       "byKey": {
-        "Self::global()": 8,
         "WindowManager::global()": 8,
+        "Self::global()": 6,
         "Handle::global()": 5,
         "Logger::global()": 1
       }
     },
     "migration_markers": {
-      "total": 8,
+      "total": 1,
       "byKey": {
-        "TODO(actor-migration)": 6,
-        "FIXME(actor-migration)": 2
+        "TODO(actor-migration)": 1
       }
     },
     "legacy_dto_refs": {
-      "total": 156,
+      "total": 22,
       "byKey": {
-        "IVerge": 76,
-        "IClashTemp": 26,
-        "VergeLegacyBridge": 19,
-        "ClashLegacyBridge": 15,
-        "LegacyClashBridge": 8,
-        "LegacyWindowBridge": 6,
-        "LegacyVergeBridge": 5,
-        "IClash": 1
+        "IVerge": 18,
+        "IClashTemp": 4
       }
     },
     "test_real_dirs": {
@@ -44,12 +34,5 @@
       "byKey": {}
     }
   },
-  "bridgeFiles": [
-    "backend/tauri/src/bridge/clash.rs",
-    "backend/tauri/src/bridge/mapping.rs",
-    "backend/tauri/src/bridge/mod.rs",
-    "backend/tauri/src/bridge/verge.rs",
-    "backend/tauri/src/bridge/window.rs",
-    "backend/tauri/src/enhance/artifact_bridge.rs"
-  ]
+  "bridgeFiles": []
 }

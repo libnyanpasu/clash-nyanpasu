@@ -288,7 +288,6 @@
   "mutation_degraded_title": "警告",
   "mutation_degraded_summary": "已儲存，但存在警告：{items}",
   "mutation_degraded_item": "{phase}：{detail}",
-  "mutation_degradation_phase_legacy_mirror": "舊版鏡像",
   "mutation_degradation_phase_profile_materialization": "配置物化",
   "mutation_degradation_phase_runtime_build": "執行階段建置",
   "mutation_degradation_phase_runtime_check": "執行階段校驗",

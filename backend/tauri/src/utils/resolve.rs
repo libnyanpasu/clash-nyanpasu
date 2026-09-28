@@ -1,19 +1,18 @@
 use crate::{
-    config::{
-        Config, IVerge,
-        nyanpasu::{ClashCore, TrayMenuCloseBehavior, WindowState},
-    },
+    client::NyanpasuClient,
     core::{storage::Storage, tray::proxies, *},
     log_err,
     utils::init,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
 use anyhow::Result;
+use nyanpasu_config::{
+    application::{ClashCore, TrayMenuCloseBehavior},
+    state::window::WindowState,
+};
 use semver::Version;
-use serde_yaml::Mapping;
 use std::{
     collections::HashMap,
-    net::TcpListener,
     sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -109,24 +108,6 @@ fn set_window_controls_pos(
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn find_unused_port() -> Result<u16> {
-    match TcpListener::bind("127.0.0.1:0") {
-        Ok(listener) => {
-            let port = listener.local_addr()?.port();
-            Ok(port)
-        }
-        Err(_) => {
-            let port = Config::verge()
-                .latest()
-                .verge_mixed_port
-                .unwrap_or(Config::clash().data().get_mixed_port());
-            log::warn!(target: "app", "use default port: {port}");
-            Ok(port)
-        }
-    }
-}
-
 /// handle something when start app
 pub fn resolve_setup(app: &mut App) {
     #[cfg(target_os = "macos")]
@@ -164,28 +145,6 @@ pub fn resolve_setup(app: &mut App) {
         let client = app.state::<crate::client::NyanpasuClient>();
         log::trace!("init config");
         log_err!(tauri::async_runtime::block_on(client.reconcile_core()));
-
-        // FIXME(actor-migration): write the session ports back into the legacy
-        // mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
-        // observing the real ports during the BC window. The typed side is the
-        // single resolver (SessionPortResolver); prepare_external_controller_port
-        // double-resolution is removed. Remove after PR-4/PR-6 migrate those readers.
-        //
-        // After the reconcile, not before: the resolver only publishes a
-        // binding the core actually accepted, so mirroring earlier would
-        // either write nothing or advertise a port nothing is listening on.
-        if let Some(ports) = client.session_ports() {
-            Config::verge().data().patch_config(IVerge {
-                verge_mixed_port: Some(ports.mixed_port),
-                ..IVerge::default()
-            });
-            let mut mapping = Mapping::new();
-            mapping.insert("mixed-port".into(), ports.mixed_port.into());
-            if let Some(external_controller) = ports.external_controller.as_deref() {
-                mapping.insert("external-controller".into(), external_controller.into());
-            }
-            Config::clash().data().patch_config(mapping);
-        }
     }
 
     log::trace!("init storage");
@@ -216,8 +175,11 @@ pub fn resolve_setup(app: &mut App) {
     });
     log_err!(app.emit("update_systray", ()));
 
-    let silent_start = { Config::verge().data().enable_silent_start };
-    if !silent_start.unwrap_or(false) {
+    let silent_start = app
+        .state::<NyanpasuClient>()
+        .app_config_snapshot()
+        .enable_silent_start;
+    if !silent_start {
         create_window(app.app_handle());
         spawn_window_ready_timeout(app.app_handle().clone());
     }
@@ -306,15 +268,10 @@ impl AppWindow for MainWindow {
             .center(true)
     }
 
-    fn get_window_state(&self) -> Option<WindowState> {
-        Config::verge().latest().window_size_state.clone()
-    }
-
-    fn set_window_state(&self, state: Option<WindowState>) {
-        Config::verge().data().patch_config(IVerge {
-            window_size_state: state,
-            ..IVerge::default()
-        });
+    fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState> {
+        app_handle
+            .try_state::<NyanpasuClient>()?
+            .main_window_geometry()
     }
 }
 
@@ -420,13 +377,9 @@ impl AppWindow for EditorWindow {
             .center(true)
     }
 
-    fn get_window_state(&self) -> Option<WindowState> {
+    fn get_window_state(&self, _app_handle: &AppHandle) -> Option<WindowState> {
         // EditorWindow does not remember window state
         None
-    }
-
-    fn set_window_state(&self, _state: Option<WindowState>) {
-        // EditorWindow does not remember window state
     }
 }
 
@@ -446,13 +399,7 @@ pub fn is_main_window_open(app_handle: &AppHandle) -> bool {
     MainWindow.is_open(app_handle)
 }
 
-pub fn save_main_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    if !save_to_file {
-        // TODO(actor-migration): temporary window geometry projection for resize events.
-        // Reason: window restoration still reads IVerge until T11.
-        // Remove when: window restore reads SessionStateClient directly.
-        return MainWindow.save_state(app_handle, false);
-    }
+pub fn save_main_window_state(app_handle: &AppHandle) -> Result<()> {
     block_on(save_main_window_state_async(app_handle, true))
 }
 
@@ -461,7 +408,6 @@ pub async fn save_main_window_state_async(
     _save_to_file: bool,
 ) -> Result<()> {
     if let Some(geometry) = MainWindow.capture_state(app_handle)? {
-        let geometry = serde_json::from_value(serde_json::to_value(geometry)?)?;
         app_handle
             .state::<crate::client::NyanpasuClient>()
             .save_main_window_geometry(geometry)
@@ -488,8 +434,8 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
 }
 
 /// Save window state for the configured window type
-pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    save_main_window_state(app_handle, save_to_file)
+pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
+    save_main_window_state(app_handle)
 }
 
 /// Webview tray menu window
@@ -521,11 +467,9 @@ impl AppWindow for TrayMenuWindow {
             .decorations(false)
     }
 
-    fn get_window_state(&self) -> Option<WindowState> {
+    fn get_window_state(&self, _app_handle: &AppHandle) -> Option<WindowState> {
         None
     }
-
-    fn set_window_state(&self, _state: Option<WindowState>) {}
 }
 
 /// Register a window event handler that hides or closes the tray menu window on
@@ -550,9 +494,9 @@ fn setup_tray_menu_focus_handler(win: &tauri::WebviewWindow<tauri::Wry>) {
                 && TRAY_MENU_READY.load(Ordering::Acquire)
             {
                 TRAY_MENU_READY.store(false, Ordering::Release);
-                let close_behavior = Config::verge()
-                    .latest()
-                    .tray_menu_close_behavior
+                let close_behavior = win_clone
+                    .try_state::<NyanpasuClient>()
+                    .map(|client| client.app_config_snapshot().tray_menu_close_behavior)
                     .unwrap_or_default();
                 match close_behavior {
                     TrayMenuCloseBehavior::Close => {
@@ -766,7 +710,7 @@ pub fn is_editor_window_open(
 // TODO: use enum instead
 pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore) -> Result<String> {
     let shell = app_handle.shell();
-    let core = core_type.clone().to_string();
+    let core = core_type.binary_name();
     log::debug!(target: "app", "check config in `{core}`");
     let cmd = match core_type {
         ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha | ClashCore::Meow => {

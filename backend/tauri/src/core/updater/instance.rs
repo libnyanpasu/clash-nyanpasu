@@ -18,10 +18,10 @@ use super::{
 };
 use crate::{
     client::core_lifecycle::ports::PreparedCoreBinary,
-    config::nyanpasu::ClashCore,
     core::download::{DownloadSession, DownloadStatus},
     utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
+use nyanpasu_config::application::ClashCore;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -149,7 +149,11 @@ impl UpdaterBackend for HttpUpdaterBackend {
             }
         }
         progress.report(UpdaterState::Decompressing, None);
-        let filename = format!("{}{}", core_type, std::env::consts::EXE_SUFFIX);
+        let filename = format!(
+            "{}{}",
+            core_type.binary_name(),
+            std::env::consts::EXE_SUFFIX
+        );
         let prepared_dir = staging.path().join("prepared");
         tokio::fs::create_dir(&prepared_dir).await?;
         let source = prepared_dir.join(&filename);

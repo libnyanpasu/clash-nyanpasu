@@ -14,7 +14,6 @@ pub mod hotkey;
 pub mod logs;
 mod ports;
 pub mod profiles;
-pub mod rebuild;
 pub mod runtime;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
@@ -35,16 +34,9 @@ use crate::{
         service_actor::{ServiceClient, ServiceHostStatus},
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
-    state::{
-        mirror::{
-            ClashLegacyBridge as ClashLegacyBridgeTrait,
-            VergeLegacyBridge as VergeLegacyBridgeTrait,
-            WindowLegacyBridge as WindowLegacyBridgeTrait,
-        },
-        profiles::{
-            CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
-            ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
-        },
+    state::profiles::{
+        CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
+        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
     },
     utils::path::PathResolver,
 };
@@ -78,7 +70,6 @@ pub struct ClientSetupArgs {
     pub logging: logs::LoggingSetup,
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
-    pub bridges: LegacyBridgeSet,
     pub ui_sink: Arc<dyn UiEventSink>,
     pub core_v2: CoreClientV2,
     pub service: ServiceClient,
@@ -90,13 +81,6 @@ pub struct ClientSetupArgs {
 }
 
 #[derive(Clone)]
-pub struct LegacyBridgeSet {
-    pub verge: Arc<dyn VergeLegacyBridgeTrait>,
-    pub window: Arc<dyn WindowLegacyBridgeTrait>,
-    pub clash: Arc<dyn ClashLegacyBridgeTrait>,
-}
-
-#[derive(Clone)]
 pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
 }
@@ -105,64 +89,20 @@ async fn new_typed_config_clients(
     mutations: crate::state::mutation::MutationCoordinator,
     build_channel: crate::bundle::Channel,
     paths: PathResolver,
-    bridges: LegacyBridgeSet,
 ) -> anyhow::Result<(ApplicationClient, SessionStateClient, ClashConfigClient)> {
     let application = ApplicationClient::new(
         mutations.clone(),
         build_channel,
         utf8_path(paths.application_config_path())?,
-        bridges.verge.snapshot_legacy()?,
-        bridges.verge.clone(),
     )
     .await?;
 
-    let session_state = SessionStateClient::new(
-        utf8_path(paths.session_state_path())?,
-        bridges.window.snapshot_legacy()?,
-        bridges.window.clone(),
-    )
-    .await?;
+    let session_state = SessionStateClient::new(utf8_path(paths.session_state_path())?).await?;
 
-    let clash_config = ClashConfigClient::new(
-        mutations.clone(),
-        utf8_path(paths.clash_config_path())?,
-        bridges.clash.snapshot_legacy()?,
-        bridges.clash.clone(),
-    )
-    .await?;
+    let clash_config =
+        ClashConfigClient::new(mutations.clone(), utf8_path(paths.clash_config_path())?).await?;
 
-    sync_legacy_mirrors(&application, &session_state, &clash_config, &bridges).await?;
     Ok((application, session_state, clash_config))
-}
-
-async fn sync_legacy_mirrors(
-    application: &ApplicationClient,
-    session_state: &SessionStateClient,
-    clash_config: &ClashConfigClient,
-    bridges: &LegacyBridgeSet,
-) -> anyhow::Result<()> {
-    let application = application.snapshot().state;
-    bridges
-        .verge
-        .prepare(&application)
-        .context("failed to prepare loaded application config legacy mirror")?
-        .apply();
-
-    let session_state = session_state.snapshot().state;
-    bridges
-        .window
-        .prepare(&session_state)
-        .context("failed to prepare loaded session state legacy mirror")?
-        .apply();
-
-    let clash_config = clash_config.snapshot().state;
-    bridges
-        .clash
-        .prepare(&clash_config)
-        .context("failed to prepare loaded clash config legacy mirror")?
-        .apply();
-
-    Ok(())
 }
 
 fn client_error_from_core(error: nyanpasu_core_manager::CoreError) -> ClientError {
@@ -248,7 +188,6 @@ impl NyanpasuClient {
             logging,
             paths,
             runtime_paths,
-            bridges,
             ui_sink,
             core_v2,
             service,
@@ -273,7 +212,6 @@ impl NyanpasuClient {
                     mutations.clone(),
                     bundle_metadata.release_channel,
                     paths.clone(),
-                    bridges,
                 )
                 .await?;
 
@@ -463,6 +401,12 @@ impl NyanpasuClient {
         Ok(self.inner.application.snapshot().state)
     }
 
+    /// The committed application config, for boundary code that runs
+    /// synchronously (window creation, window event handlers) and cannot await.
+    pub fn app_config_snapshot(&self) -> NyanpasuAppConfig {
+        self.inner.application.snapshot().state
+    }
+
     pub async fn reconcile_core(
         &self,
     ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
@@ -575,7 +519,7 @@ impl NyanpasuClient {
         &self,
         core: nyanpasu_config::application::ClashCore,
     ) -> Result<usize> {
-        Ok(self.inner.updater.update(core.into()).await?)
+        Ok(self.inner.updater.update(core).await?)
     }
 
     pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {
@@ -661,6 +605,11 @@ impl NyanpasuClient {
                 },
             ),
         )
+    }
+
+    /// The geometry the main window reopens with, as last saved.
+    pub fn main_window_geometry(&self) -> Option<nyanpasu_config::state::window::WindowState> {
+        self.inner.session_state.main_window_geometry()
     }
 
     pub async fn get_session_state(&self) -> Result<PersistentState> {
@@ -1162,16 +1111,10 @@ impl crate::core::updater::ports::CoreUpdateInstaller
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::state::{
-        mirror::{
-            ClashLegacyBridge, NoopPreparedLegacyMirror, PreparedLegacyMirror, VergeLegacyBridge,
-            WindowLegacyBridge,
-        },
-        profiles::ports::{
-            CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
-            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-            PreparedMaterialization, ProfileMaterializationPort,
-        },
+    use crate::state::profiles::ports::{
+        CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
+        MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
+        PreparedMaterialization, ProfileMaterializationPort,
     };
     use camino::Utf8PathBuf;
     use nyanpasu_config::{
@@ -1871,35 +1814,6 @@ pub(crate) mod tests {
         }
     }
 
-    struct OrderingVergeBridge {
-        calls: Arc<StdMutex<Vec<&'static str>>>,
-    }
-
-    struct OrderingPreparedVergeBridge {
-        calls: Arc<StdMutex<Vec<&'static str>>>,
-    }
-
-    impl PreparedLegacyMirror for OrderingPreparedVergeBridge {
-        fn apply(self: Box<Self>) {
-            self.calls.lock().unwrap().push("commit");
-        }
-    }
-
-    impl VergeLegacyBridge for OrderingVergeBridge {
-        fn prepare(
-            &self,
-            _snap: &NyanpasuAppConfig,
-        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(OrderingPreparedVergeBridge {
-                calls: self.calls.clone(),
-            }))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
-            Ok(NyanpasuAppConfig::default())
-        }
-    }
-
     pub(crate) fn successful_reconcile(
         id: nyanpasu_core_manager::OperationId,
     ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
@@ -1991,82 +1905,6 @@ pub(crate) mod tests {
         .expect("test v2 client construction should not panic")
     }
 
-    struct NoopVergeBridge;
-
-    impl VergeLegacyBridge for NoopVergeBridge {
-        fn prepare(
-            &self,
-            _snap: &NyanpasuAppConfig,
-        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(NoopPreparedLegacyMirror))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
-            Ok(NyanpasuAppConfig::default())
-        }
-    }
-
-    struct RecordingVergeBridge {
-        mirrored_theme_color: Arc<StdMutex<Option<String>>>,
-    }
-
-    struct RecordingPreparedVergeMirror {
-        mirrored_theme_color: Arc<StdMutex<Option<String>>>,
-        theme_color: String,
-    }
-
-    impl PreparedLegacyMirror for RecordingPreparedVergeMirror {
-        fn apply(self: Box<Self>) {
-            *self
-                .mirrored_theme_color
-                .lock()
-                .expect("mirror capture should not poison") = Some(self.theme_color);
-        }
-    }
-
-    impl VergeLegacyBridge for RecordingVergeBridge {
-        fn prepare(
-            &self,
-            snap: &NyanpasuAppConfig,
-        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(RecordingPreparedVergeMirror {
-                mirrored_theme_color: Arc::clone(&self.mirrored_theme_color),
-                theme_color: snap.theme_color.to_string(),
-            }))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
-            Ok(NyanpasuAppConfig::default())
-        }
-    }
-
-    struct NoopWindowBridge;
-
-    impl WindowLegacyBridge for NoopWindowBridge {
-        fn prepare(
-            &self,
-            _snap: &PersistentState,
-        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(NoopPreparedLegacyMirror))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
-            Ok(PersistentState::default())
-        }
-    }
-
-    struct NoopClashBridge;
-
-    impl ClashLegacyBridge for NoopClashBridge {
-        fn prepare(&self, _snap: &ClashConfig) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(NoopPreparedLegacyMirror))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<ClashConfig> {
-            Ok(ClashConfig::default())
-        }
-    }
-
     fn temp_config_path(dir: &TempDir, file_name: &str) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(dir.path().join(file_name)).expect("temp path should be UTF-8")
     }
@@ -2095,23 +1933,15 @@ pub(crate) mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             crate::bundle::Channel::Stable,
             temp_config_path(dir, "application.yaml"),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
         )
         .await
         .expect("application client should be created");
-        let session_state = SessionStateClient::new(
-            temp_config_path(dir, "session-state.yaml"),
-            PersistentState::default(),
-            Arc::new(NoopWindowBridge),
-        )
-        .await
-        .expect("session state client should be created");
+        let session_state = SessionStateClient::new(temp_config_path(dir, "session-state.yaml"))
+            .await
+            .expect("session state client should be created");
         let clash_config = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(dir, "clash-config.yaml"),
-            ClashConfig::default(),
-            Arc::new(NoopClashBridge),
         )
         .await
         .expect("clash config client should be created");
@@ -2393,22 +2223,15 @@ pub(crate) mod tests {
         let application = ApplicationClient::from_manager(
             crate::state::mutation::MutationCoordinator::isolated(),
             manager,
-            Arc::new(NoopVergeBridge),
         )
         .await
         .expect("application client should be created");
-        let session_state = SessionStateClient::new(
-            temp_config_path(&dir, "session-state.yaml"),
-            PersistentState::default(),
-            Arc::new(NoopWindowBridge),
-        )
-        .await
-        .expect("session state client should be created");
+        let session_state = SessionStateClient::new(temp_config_path(&dir, "session-state.yaml"))
+            .await
+            .expect("session state client should be created");
         let clash_config = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(&dir, "clash-config.yaml"),
-            ClashConfig::default(),
-            Arc::new(NoopClashBridge),
         )
         .await
         .expect("clash config client should be created");
@@ -2493,11 +2316,6 @@ pub(crate) mod tests {
             logging: logs::test_setup(paths.app_logs_dir()),
             paths,
             runtime_paths,
-            bridges: LegacyBridgeSet {
-                verge: Arc::new(NoopVergeBridge),
-                window: Arc::new(NoopWindowBridge),
-                clash: Arc::new(NoopClashBridge),
-            },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core_v2,
             service,
@@ -2520,17 +2338,70 @@ pub(crate) mod tests {
         host_transition_client_seeded(dir, calls, false)
     }
 
+    /// Records "persisted" before every readiness probe that finds service
+    /// mode already saved, so a test can tell a probe taken before the commit
+    /// from one taken after it.
+    struct PersistedSwitchProbe {
+        delegate: HostTransitionServiceAdapter,
+        application_config: PathBuf,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::core::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
+        async fn probe(
+            &self,
+        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+            let persisted = std::fs::read(&self.application_config)
+                .ok()
+                .and_then(|bytes| serde_yaml::from_slice::<serde_yaml::Value>(&bytes).ok())
+                .and_then(|config| config.get("enable_service_mode")?.as_bool())
+                .unwrap_or(false);
+            if persisted {
+                self.delegate.calls.lock().unwrap().push("persisted");
+            }
+            self.delegate.probe().await
+        }
+
+        async fn install(&self) -> std::result::Result<(), String> {
+            self.delegate.install().await
+        }
+
+        async fn uninstall(&self) -> std::result::Result<(), String> {
+            self.delegate.uninstall().await
+        }
+
+        async fn start_daemon(&self) -> std::result::Result<(), String> {
+            self.delegate.start_daemon().await
+        }
+
+        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+            self.delegate.stop_daemon().await
+        }
+
+        async fn update(&self) -> std::result::Result<(), String> {
+            self.delegate.update().await
+        }
+
+        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+            self.delegate.endpoint()
+        }
+    }
+
     fn host_transition_client_seeded(
         dir: &TempDir,
         calls: Arc<StdMutex<Vec<&'static str>>>,
         service_seed: bool,
     ) -> NyanpasuClient {
+        let mut args = test_client_args_with_endpoint(dir, Arc::new(IdleEndpoint));
         let local = HostTransitionEndpoint::new(ExecutionHost::Local, calls.clone());
         let service_endpoint = HostTransitionEndpoint::new(ExecutionHost::Service, calls.clone());
-        let adapter = Arc::new(HostTransitionServiceAdapter {
-            endpoint: service_endpoint,
-            calls: calls.clone(),
-            stopped: std::sync::atomic::AtomicBool::new(false),
+        let adapter = Arc::new(PersistedSwitchProbe {
+            delegate: HostTransitionServiceAdapter {
+                endpoint: service_endpoint,
+                calls: calls.clone(),
+                stopped: std::sync::atomic::AtomicBool::new(false),
+            },
+            application_config: args.paths.application_config_path(),
         });
         let (core_v2, service) = std::thread::spawn(move || {
             tauri::async_runtime::block_on(async {
@@ -2541,10 +2412,6 @@ pub(crate) mod tests {
         })
         .join()
         .unwrap();
-        let mut args = test_client_args_with_endpoint(dir, Arc::new(IdleEndpoint));
-        args.bridges.verge = Arc::new(OrderingVergeBridge {
-            calls: calls.clone(),
-        });
         args.core_v2 = core_v2;
         args.service = service;
         if service_seed {
@@ -2582,12 +2449,17 @@ pub(crate) mod tests {
         });
 
         let calls = calls.lock().unwrap();
-        let commit = calls.iter().position(|call| *call == "commit").unwrap();
         let ensure = calls
             .iter()
             .position(|call| *call == "ensure_ready")
             .unwrap();
-        assert!(ensure < commit, "calls: {calls:?}");
+        assert!(
+            calls
+                .iter()
+                .position(|call| *call == "persisted")
+                .is_none_or(|persisted| ensure < persisted),
+            "service mode was saved before the daemon was ready: {calls:?}"
+        );
     }
 
     #[test]
@@ -2850,7 +2722,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn typed_setup_mirrors_loaded_state_to_legacy_bridges() {
+    fn typed_setup_loads_persisted_state() {
         let dir = tempdir().expect("tempdir should be created");
 
         tauri::async_runtime::block_on(async {
@@ -2865,32 +2737,16 @@ pub(crate) mod tests {
             drop(session_state);
             drop(clash_config);
 
-            let mirrored_theme_color = Arc::new(StdMutex::new(None));
             let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
-            let bridges = LegacyBridgeSet {
-                verge: Arc::new(RecordingVergeBridge {
-                    mirrored_theme_color: mirrored_theme_color.clone(),
-                }),
-                window: Arc::new(NoopWindowBridge),
-                clash: Arc::new(NoopClashBridge),
-            };
-
-            let _loaded = new_typed_config_clients(
+            let (loaded, _session_state, _clash_config) = new_typed_config_clients(
                 crate::state::mutation::MutationCoordinator::isolated(),
                 crate::bundle::Channel::Stable,
                 paths,
-                bridges,
             )
             .await
-            .expect("typed clients should load and mirror persisted state");
+            .expect("typed clients should load persisted state");
 
-            assert_eq!(
-                mirrored_theme_color
-                    .lock()
-                    .expect("mirror capture should not poison")
-                    .as_deref(),
-                Some("#123456")
-            );
+            assert_eq!(loaded.snapshot().state.theme_color.to_string(), "#123456");
         });
     }
 
@@ -2909,11 +2765,6 @@ pub(crate) mod tests {
             logging: logs::test_setup(paths.app_logs_dir()),
             paths,
             runtime_paths,
-            bridges: LegacyBridgeSet {
-                verge: Arc::new(NoopVergeBridge),
-                window: Arc::new(NoopWindowBridge),
-                clash: Arc::new(NoopClashBridge),
-            },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core_v2,
             service,
@@ -3022,6 +2873,68 @@ pub(crate) mod tests {
         client.reconcile_core().await.unwrap();
         let second = client.promoted_runtime().await.unwrap();
         assert!(second.revision > first.revision);
+    }
+
+    #[test]
+    fn repeated_core_updates_advance_the_runtime_revision() {
+        use nyanpasu_config::application::ClashCore;
+        let dir = tempdir().unwrap();
+        let endpoint = TestControlEndpoint::succeeding();
+        let client = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir,
+            endpoint.clone(),
+        ))
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            endpoint.prime(&client).await;
+            client.update_core(ClashCore::ClashRs).await.unwrap();
+            let first = client.promoted_runtime().await.unwrap();
+            client.update_core(ClashCore::Mihomo).await.unwrap();
+            let second = client.promoted_runtime().await.unwrap();
+            assert_eq!(first.target_core, ClashCore::ClashRs);
+            assert_eq!(second.target_core, ClashCore::Mihomo);
+            assert!(second.revision > first.revision);
+        });
+        assert_eq!(endpoint.submissions(), 2);
+    }
+
+    /// Each composition root builds its own graph: what one client commits
+    /// and submits never reaches another.
+    #[test]
+    fn two_client_graphs_are_independent() {
+        use nyanpasu_config::application::ClashCore;
+        let (dir_a, dir_b) = (tempdir().unwrap(), tempdir().unwrap());
+        let (endpoint_a, endpoint_b) = (
+            TestControlEndpoint::succeeding(),
+            TestControlEndpoint::succeeding(),
+        );
+        let client_a = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir_a,
+            endpoint_a.clone(),
+        ))
+        .unwrap();
+        let client_b = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
+            &dir_b,
+            endpoint_b.clone(),
+        ))
+        .unwrap();
+        let default_core = NyanpasuAppConfig::default().core;
+        tauri::async_runtime::block_on(async {
+            endpoint_a.prime(&client_a).await;
+            endpoint_b.prime(&client_b).await;
+            client_b.update_core(ClashCore::ClashRs).await.unwrap();
+            assert_eq!(client_a.get_app_config().await.unwrap().core, default_core);
+            assert_eq!(
+                client_a.promoted_runtime().await.unwrap().target_core,
+                default_core
+            );
+            assert_eq!(
+                client_b.get_app_config().await.unwrap().core,
+                ClashCore::ClashRs
+            );
+        });
+        assert_eq!(endpoint_a.submissions(), 0);
+        assert_eq!(endpoint_b.submissions(), 1);
     }
 
     #[tokio::test]
@@ -3203,20 +3116,6 @@ pub(crate) mod tests {
                 .await
                 .expect("a refused adoption must still allow local boot");
         });
-    }
-
-    #[test]
-    fn legacy_regeneration_path_still_errors_on_rebuild_failure() {
-        let dir = tempdir().unwrap();
-        let endpoint = TestControlEndpoint::failing();
-        let client =
-            NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint))
-                .unwrap();
-        let result = tauri::async_runtime::block_on(client.regenerate_runtime_for_legacy());
-        assert!(
-            result.is_err(),
-            "legacy callers rely on Err to discard their drafts"
-        );
     }
 
     #[test]

@@ -1,5 +1,8 @@
 //! Peripheral effects are queued after commit and never vote on source state.
-use self::{plan::ApplicationEffectInputs, status::degradation_of};
+use self::{
+    plan::{ApplicationEffectInputs, TrayView},
+    status::degradation_of,
+};
 use super::{NyanpasuClient, Result, runtime};
 
 pub(crate) mod actor;
@@ -15,6 +18,12 @@ impl NyanpasuClient {
             &self.inner.clash_config.snapshot().state,
             self.inner.ports.confirmed(),
         )
+    }
+
+    /// What the tray renders from the committed configuration, for the tray
+    /// to start from before the first tray effect reaches it.
+    pub fn tray_view(&self) -> TrayView {
+        self.effect_inputs().tray_view()
     }
 
     pub async fn reconcile_application_effects(&self) -> Result<runtime::MutationOutcome<()>> {

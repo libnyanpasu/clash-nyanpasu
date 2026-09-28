@@ -6,11 +6,9 @@
 //! - Inter-window communication
 //! - Configurable window properties (singleton, visibility, size, etc.)
 
-use crate::{
-    config::{Config, nyanpasu::WindowState},
-    log_err, trace_err,
-};
+use crate::{log_err, trace_err};
 use anyhow::Result;
+use nyanpasu_config::state::window::WindowState;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{
@@ -424,11 +422,8 @@ pub trait AppWindow {
         WindowConfig::default()
     }
 
-    /// Get window state from config
-    fn get_window_state(&self) -> Option<WindowState>;
-
-    /// Set window state to config
-    fn set_window_state(&self, state: Option<WindowState>);
+    /// The geometry to restore the window with, if it remembers one.
+    fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState>;
 
     fn reset_window_open_counter(&self) {
         OPEN_WINDOWS_COUNTER.fetch_sub(1, Ordering::Release);
@@ -486,11 +481,9 @@ pub trait AppWindow {
         }
 
         let always_on_top = config.always_on_top.unwrap_or_else(|| {
-            *Config::verge()
-                .latest()
-                .always_on_top
-                .as_ref()
-                .unwrap_or(&false)
+            app_handle
+                .try_state::<crate::client::NyanpasuClient>()
+                .is_some_and(|client| client.app_config_snapshot().always_on_top)
         });
 
         // Build URL with params
@@ -518,7 +511,7 @@ pub trait AppWindow {
             builder = builder.max_inner_size(w, h);
         }
 
-        let win_state = &self.get_window_state();
+        let win_state = &self.get_window_state(app_handle);
         match win_state {
             Some(_) => {
                 builder = builder.inner_size(800., 800.).position(0., 0.);
@@ -856,17 +849,6 @@ pub trait AppWindow {
         };
 
         Ok(state)
-    }
-
-    /// Legacy window adapters retain an in-memory projection for resize events.
-    fn save_state(&self, app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-        if let Some(state) = self.capture_state(app_handle)? {
-            self.set_window_state(Some(state));
-        }
-        if save_to_file {
-            Config::verge().data().save_file()?;
-        }
-        Ok(())
     }
 }
 

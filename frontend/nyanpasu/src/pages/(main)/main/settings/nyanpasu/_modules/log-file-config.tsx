@@ -6,11 +6,22 @@ import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 const MAX_LOG_FILES = 7
 
-export default function LogFileConfig() {
-  const { value, upsert } = useSetting('max_log_files')
+// MiB
+const MAX_LOG_FILE_SIZE = 100
 
-  const committedValue = value ?? 1
-
+function SliderRow({
+  label,
+  committedValue,
+  max,
+  unit,
+  onCommit,
+}: {
+  label: string
+  committedValue: number
+  max: number
+  unit?: string
+  onCommit: (value: number) => void
+}) {
   const [cachedValue, setCachedValue] = useState(committedValue)
 
   // sync the cached value with the committed value
@@ -19,30 +30,58 @@ export default function LogFileConfig() {
   }, [committedValue])
 
   return (
+    <>
+      <div className="flex items-center justify-between">
+        <span>{label}</span>
+
+        <span>
+          {cachedValue}
+          {unit}
+        </span>
+      </div>
+
+      <Slider
+        value={cachedValue}
+        min={1}
+        max={max}
+        step={1}
+        onValueChange={(value) => {
+          setCachedValue(value)
+        }}
+        onValueCommit={(value) => {
+          if (value !== committedValue) {
+            onCommit(value)
+          }
+        }}
+      />
+    </>
+  )
+}
+
+export default function LogFileConfig() {
+  const maxLogFiles = useSetting('max_log_files')
+
+  const maxLogFileSize = useSetting('max_log_file_size')
+
+  return (
     <SettingsCard data-slot="log-file-config-card">
       <SettingsCardContent
         data-slot="log-file-config-card-content"
         className="gap-4"
       >
-        <div className="flex items-center justify-between">
-          <span>{m.settings_nyanpasu_max_log_files_label()}</span>
-
-          <span>{cachedValue}</span>
-        </div>
-
-        <Slider
-          value={cachedValue}
-          min={1}
+        <SliderRow
+          label={m.settings_nyanpasu_max_log_files_label()}
+          committedValue={maxLogFiles.value ?? 1}
           max={MAX_LOG_FILES}
-          step={1}
-          onValueChange={(value) => {
-            setCachedValue(value)
-          }}
-          onValueCommit={(value) => {
-            if (value !== committedValue) {
-              upsert(value)
-            }
-          }}
+          onCommit={(value) => maxLogFiles.upsert(value)}
+        />
+
+        <SliderRow
+          label={m.settings_nyanpasu_max_log_file_size_label()}
+          committedValue={maxLogFileSize.value ?? 10}
+          max={MAX_LOG_FILE_SIZE}
+          unit=" MiB"
+          onCommit={(value) => maxLogFileSize.upsert(value)}
         />
       </SettingsCardContent>
     </SettingsCard>

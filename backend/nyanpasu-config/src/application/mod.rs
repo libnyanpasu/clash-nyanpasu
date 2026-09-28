@@ -154,6 +154,7 @@ pub struct NyanpasuAppConfig {
     pub max_log_files: usize,
 
     /// 单个日志文件的大小上限，单位：MiB
+    #[serde(default = "default_max_log_file_size")]
     pub max_log_file_size: u64,
 
     /// Check update when app launch
@@ -213,6 +214,10 @@ pub struct NyanpasuAppConfig {
     pub enable_macos_colored_icons: bool,
 }
 
+fn default_max_log_file_size() -> u64 {
+    10
+}
+
 impl Default for NyanpasuAppConfig {
     fn default() -> Self {
         Self {
@@ -237,7 +242,7 @@ impl Default for NyanpasuAppConfig {
             enable_builtin_enhanced: true,
             proxy_layout_column: 0,
             max_log_files: 7,
-            max_log_file_size: 10,
+            max_log_file_size: default_max_log_file_size(),
             enable_auto_check_update: true,
             release_channel: None,
             tray_selector_mode: ProxiesSelectorMode::default(),
@@ -269,6 +274,14 @@ mod patch_tests {
         let patch: NyanpasuAppConfigPatch =
             serde_json::from_str(r#"{"release_channel":"beta"}"#).unwrap();
         assert_eq!(patch.release_channel, Some(Some(ReleaseChannel::Beta)));
+    }
+
+    #[test]
+    fn max_log_file_size_defaults_for_existing_configurations() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("max_log_file_size");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.max_log_file_size, 10);
     }
 
     /// The legacy field aliases carried over from the former derive-builder

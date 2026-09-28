@@ -1621,7 +1621,7 @@ export type NyanpasuAppConfig_Deserialize = {
   /**  最多保留的日志文件数 */
   max_log_files: number
   /**  单个日志文件的大小上限，单位：MiB */
-  max_log_file_size: number
+  max_log_file_size?: number
   /**  Check update when app launch */
   enable_auto_check_update: boolean
   /**  None in older configurations means the channel of the installed build. */

@@ -888,7 +888,7 @@ pub(crate) mod tests {
             },
             binding: binding(),
             ports: crate::client::ports::SessionPortResolver::default()
-                .resolve_candidate(&nyanpasu_config::clash::config::ClashConfig::default())
+                .resolve_candidate(&crate::client::tests::test_clash_config())
                 .expect("default port strategies resolve"),
             target: None,
         }

@@ -201,7 +201,7 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
             generation: 0,
         },
         ports: SessionPortResolver::default()
-            .resolve_candidate(&ClashConfig::default())
+            .resolve_candidate(&crate::client::tests::test_clash_config())
             .expect("the default port strategies resolve"),
         target: None,
     }
@@ -312,7 +312,11 @@ pub(super) async fn fixture_from(
     let clash_path = temp_path(&dir, "clash-config.yaml");
     let app_path = temp_path(&dir, "application.yaml");
     let application = manager(app_path.clone(), NyanpasuAppConfig::default()).await;
-    let clash = manager(clash_path.clone(), ClashConfig::default()).await;
+    let clash = manager(
+        clash_path.clone(),
+        crate::client::tests::test_clash_config(),
+    )
+    .await;
     let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default()).await;
 
     let paths =
@@ -695,7 +699,7 @@ fn on_mixed_port(start_port: u16) -> ClashConfig {
 
 pub(super) fn overrides(value: serde_json::Value) -> ClashConfig {
     use struct_patch::Patch;
-    let mut config = ClashConfig::default();
+    let mut config = crate::client::tests::test_clash_config();
     config
         .overrides
         .apply(serde_json::from_value(value).unwrap());

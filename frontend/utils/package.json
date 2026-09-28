@@ -11,7 +11,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/api": "2.12.0",
     "clsx": "2.1.1",
     "react": "19.3.0",
     "react-use": "17.6.1",

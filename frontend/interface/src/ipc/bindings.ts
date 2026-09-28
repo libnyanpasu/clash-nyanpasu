@@ -493,6 +493,7 @@ export type BuildInfo = {
 export type BuiltinStepKind =
   | 'guard_overrides'
   | 'whitelist_field_filter'
+  | 'include_all_expansion'
   | 'finalizing'
   | 'core_controller'
 
@@ -521,6 +522,11 @@ export type ClashConfig = {
   web_ui_list: string[]
   /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认关闭 */
   enable_clash_fields: boolean
+  /**
+   *  在 Nyanpasu 侧按 mihomo 语义展开代理组的 `include-all*`，默认为真；
+   *  关闭时原样交给核心处理
+   */
+  expand_include_all?: boolean
   /**  外部控制器端口策略 */
   external_controller: ExternalControllerStrategy
   clash_control_channel?: ClashControlChannel
@@ -545,6 +551,7 @@ export type ClashConfigPatch_Deserialize = {
   enable_tun_mode?: boolean | null
   web_ui_list?: string[] | null
   enable_clash_fields?: boolean | null
+  expand_include_all?: boolean | null
   external_controller?: ExternalControllerStrategyPatch_Deserialize
   clash_control_channel?: ClashControlChannel | null
   clash_ipc_disable_http_controller?: boolean | null
@@ -560,6 +567,7 @@ export type ClashConfigPatch_Serialize = {
   enable_tun_mode?: boolean | null
   web_ui_list?: string[] | null
   enable_clash_fields?: boolean | null
+  expand_include_all?: boolean | null
   external_controller: ExternalControllerStrategyPatch_Serialize
   clash_control_channel?: ClashControlChannel | null
   clash_ipc_disable_http_controller?: boolean | null

@@ -173,6 +173,7 @@ impl RequestedRuntimeFields {
         Self {
             named: patch.overrides.is_some()
                 || patch.enable_clash_fields.is_some()
+                || patch.expand_include_all.is_some()
                 || patch.enable_tun_mode.is_some()
                 || patch.tun_stack.is_some()
                 || !patch.mixed_port.is_empty()
@@ -325,7 +326,7 @@ pub(crate) fn leaves_service_mode(
 ///
 /// Enumerated from the real consumers rather than from a field whitelist:
 /// `RuntimeBuilder::build` reads `overrides`, `enable_clash_fields`,
-/// `enable_tun_mode` and `tun_stack`; `SessionPortResolver::resolve` turns the
+/// `expand_include_all`, `enable_tun_mode` and `tun_stack`; `SessionPortResolver::resolve` turns the
 /// four port strategies into the bindings written into the generated config;
 /// and `RuntimePreparation::prepare` turns the two channel fields into the
 /// core's local-IPC settings.
@@ -338,6 +339,7 @@ pub(crate) fn leaves_service_mode(
 struct ClashRuntimeInputs<'a> {
     overrides: &'a ClashGuardOverrides,
     enable_clash_fields: bool,
+    expand_include_all: bool,
     enable_tun_mode: bool,
     tun_stack: TunStack,
     mixed_port: &'a PortStrategy,
@@ -353,6 +355,7 @@ fn clash_runtime_inputs(clash: &ClashConfig) -> ClashRuntimeInputs<'_> {
     ClashRuntimeInputs {
         overrides: &clash.overrides,
         enable_clash_fields: clash.enable_clash_fields,
+        expand_include_all: clash.expand_include_all,
         enable_tun_mode: clash.enable_tun_mode,
         tun_stack: clash.tun_stack,
         mixed_port: &clash.mixed_port,
@@ -1028,6 +1031,14 @@ mod tests {
             field: "enable_clash_fields",
             candidate: || ClashConfig {
                 enable_clash_fields: !base_clash().enable_clash_fields,
+                ..base_clash()
+            },
+            impact: RuntimeImpact::Reconcile,
+        },
+        ClashCase {
+            field: "expand_include_all",
+            candidate: || ClashConfig {
+                expand_include_all: !base_clash().expand_include_all,
                 ..base_clash()
             },
             impact: RuntimeImpact::Reconcile,

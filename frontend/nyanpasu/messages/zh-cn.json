@@ -458,6 +458,7 @@
   "inspect_builtin": "内置转换",
   "inspect_overrides": "应用覆盖设置",
   "inspect_filter": "过滤字段",
+  "inspect_include_all": "展开 include-all",
   "inspect_finalizing": "完成配置",
   "inspect_selected": "当前配置",
   "inspect_base": "组合基底",

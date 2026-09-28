@@ -133,6 +133,7 @@ impl RuntimeBuilder {
                 flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
                 windows_fake_ip_filter: cfg!(windows),
             },
+            expand_include_all: input.clash.expand_include_all,
             builtin_transforms: &builtin_transforms,
         };
         execute(&inputs, content, scripts).map_err(RuntimeBuildError::Pipeline)

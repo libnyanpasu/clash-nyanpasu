@@ -156,7 +156,7 @@ pub(super) fn apply_guard(
 }
 
 /// Finalizing composite node (spec 7.4): stage-2 filter, tun, include-all,
-/// cache, then sort. One recorded node; changed_fields shows the net effect.
+/// then cache. One recorded node; changed_fields shows the net effect.
 pub(super) fn finalize(
     config: &ConfigValue,
     tun: &TunParams,
@@ -167,7 +167,9 @@ pub(super) fn finalize(
     next = apply_tun(&next, tun);
     next = apply_include_all(&next);
     next = apply_cache(&next);
-    apply_sort(&next)
+    // TODO: 可选排序算法
+    // next = apply_sort(&next);
+    next
 }
 
 fn object_of(value: Option<&ConfigValue>) -> ConfigObject {
@@ -335,6 +337,7 @@ fn apply_cache(config: &ConfigValue) -> ConfigValue {
 
 /// Mirrors field.rs:115-147: known keys use HANDLE++OTHERS++DEFAULT order;
 /// unknown keys keep their original relative order at the end.
+#[allow(dead_code)] // Unwired from `finalize` until the ordering TODO there is decided.
 fn apply_sort(config: &ConfigValue) -> ConfigValue {
     let Some(map) = config.as_object_arc() else {
         return config.clone();

@@ -4,6 +4,7 @@
 )]
 // This lint was needed by ambassador
 #![allow(clippy::duplicated_attributes)]
+pub mod application_api;
 mod bridge;
 mod bundle;
 mod client;
@@ -222,6 +223,17 @@ pub fn run() -> std::io::Result<()> {
         };
     }
 
+    #[cfg(debug_assertions)]
+    {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("gen");
+        application_api::ApplicationApi::write_generated_artifacts(&directory)
+            .expect("Failed to export the application API catalog and Specta types");
+        log::debug!(
+            "Exported application API artifacts to {}",
+            directory.display()
+        );
+    }
+
     let verge = { Config::verge().latest().language.clone().unwrap() };
     rust_i18n::set_locale(verge.to_lowercase().as_str());
 
@@ -254,6 +266,7 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_notification::init())
         .plugin(updater.build())
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
+        .plugin(application_api::plugin())
         .setup(move |app| {
             specta_builder.mount_events(app);
             setup::setup(app, metadata)

@@ -51,6 +51,8 @@
     "publish": "deno run -A scripts/publish.ts",
     "portable": "deno run -A scripts/portable.ts",
     "generate:git-info": "deno run -A scripts/generate-git-info.ts",
+    "generate:application-api": "deno run --config scripts/deno.jsonc -A scripts/generate-application-plugin.ts && cargo run --manifest-path ./backend/Cargo.toml -p clash-nyanpasu --bin export-application-api && deno run --config scripts/deno.jsonc -A scripts/generate-application-api.ts",
+    "check:application-api": "deno run --config scripts/deno.jsonc -A scripts/generate-application-plugin.ts --check && cargo run --manifest-path ./backend/Cargo.toml -p clash-nyanpasu --bin export-application-api -- --check && deno run --config scripts/deno.jsonc -A scripts/generate-application-api.ts --check",
     "generate:data-slots": "deno run -A scripts/extract-data-slots.ts",
     "generate:manifest": "run-p generate:manifest:*",
     "generate:manifest:latest-version": "deno run -A scripts/generate-latest-version.ts",

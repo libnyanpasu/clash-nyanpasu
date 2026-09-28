@@ -123,6 +123,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
+    let application_api = crate::application_api::ApplicationApi::new(client.clone())
+        .context("Failed to register application API procedures")?;
+    app.manage(application_api);
     app.manage(client);
 
     Ok(())

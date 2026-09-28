@@ -10,6 +10,6 @@ authors.workspace = true
 proc-macro = true
 
 [dependencies]
-syn = "3"
+syn = { version = "3", features = ["full"] }
 quote = "1"
 proc-macro2 = "1.0.86"

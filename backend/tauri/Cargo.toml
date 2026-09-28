@@ -65,6 +65,8 @@ atomic_enum = "0.3.0"                                                     # for 
 enumflags2 = "0.7"                                                        # for enum flags
 backon = { version = "1.0.1", features = ["tokio-sleep"] }                # for backoff retry
 ractor = "0.16"
+inventory = "0.3"
+specta-serde = "0.0.12"
 
 # Data Structures
 dashmap = "6"
@@ -227,6 +229,7 @@ window-vibrancy = { version = "0.8.0" }
 # tauri-specta-query's current release line targets Specta rc26; this revision
 # is the compatible rc25 line used by the project today.
 specta-typescript = { version = "0.0.12", features = ["serde"] }
+specta-util = "0.0.12"
 tauri-specta = { git = "https://github.com/specta-rs/tauri-specta.git", rev = "373c25d080aa0ba909bd23b2b559947079e8dc75", version = "2.0.0-rc.25", features = [
   "derive",
   "typescript",
@@ -279,6 +282,8 @@ webview2-com = "0.38"
 
 [dev-dependencies]
 axum = { version = "0.8", features = ["ws"] }
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
 mockall = "0.15"
 # Test-only protocol helpers + binary discovery for later process-lifecycle
 # matrix tests. A dev-dependency does NOT build the fake-core binary and does

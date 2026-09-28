@@ -6,7 +6,9 @@ resources
 sidecar
 WebView2/
 tmp/
-gen/
+/gen/*
+!/gen/application-api.json
+!/gen/application-api.js
 
 !/tmp/.gitkeep
 !tmp/.gitkeep

@@ -1,5 +1,0 @@
-packages:
-  - .
-minimumReleaseAge: 0
-allowBuilds:
-  esbuild: true

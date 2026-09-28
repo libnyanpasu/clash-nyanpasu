@@ -3,6 +3,7 @@ use syn::{DeriveInput, parse_macro_input};
 
 mod builder_update;
 mod enum_wrapper_combined;
+mod rpc;
 mod verge_patch;
 
 #[proc_macro_derive(BuilderUpdate, attributes(builder_update))]
@@ -29,5 +30,15 @@ pub fn enum_wrapper_from(input: TokenStream) -> TokenStream {
     match enum_wrapper_combined::enum_combined_wrapper(input) {
         Ok(token_stream) => TokenStream::from(token_stream),
         Err(e) => TokenStream::from(e.to_compile_error()),
+    }
+}
+
+#[proc_macro_attribute]
+pub fn rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr = parse_macro_input!(attr as rpc::RpcArgs);
+    let item = parse_macro_input!(item as syn::ItemFn);
+    match rpc::expand(attr, item) {
+        Ok(tokens) => TokenStream::from(tokens),
+        Err(error) => TokenStream::from(error.to_compile_error()),
     }
 }

@@ -12,6 +12,9 @@ frontend/nyanpasu/src/paraglide/
 frontend/nyanpasu/project.inlang/
 scripts/
 backend/tauri/gen/schemas/
+backend/tauri/gen/application-api.js
+frontend/interface/src/application-api/generated.ts
+frontend/interface/src/application-api/types.ts
 backend/tauri/tmp/
 # upstream submodule — formatting is owned by libnyanpasu/nyanpasu-runtime
 backend/nyanpasu-runtime/

@@ -17,7 +17,8 @@ use super::{
     adapters::TauriWidgetController,
     ports::{
         LocaleSink, LoggerRefresher, MockLocaleSink, MockLoggerRefresher, MockTrayRefresher,
-        MockWidgetController, MockWidgetRuntime, TrayRefresher, WidgetController, WidgetError,
+        MockWidgetController, MockWidgetRuntime, TrayRefresher, WIDGET_STOP_BOUND,
+        WidgetController, WidgetError,
     },
 };
 use crate::client::{
@@ -28,7 +29,7 @@ use crate::client::{
             TrayRefresh,
         },
         ports::ApplicationEffectsPort,
-        status::{EffectHealth, EffectRevision},
+        status::{EffectHealth, EffectRevision, EffectStatus},
     },
     hotkey::{
         HotkeyArgs, HotkeyClient,
@@ -373,12 +374,9 @@ async fn widget_variant_change_restarts_the_widget() {
 async fn disabled_config_stops_a_running_widget() {
     let mut runtime = MockWidgetRuntime::new();
     runtime
-        .expect_is_running()
-        .returning(|| Box::pin(async { true }));
-    runtime
         .expect_stop()
         .times(1)
-        .returning(|| Box::pin(async { Ok(()) }));
+        .returning(|_| Box::pin(async { Ok(()) }));
     runtime.expect_start().never();
     let controller = controller_with(runtime);
 
@@ -388,13 +386,16 @@ async fn disabled_config_stops_a_running_widget() {
         .expect("disabling stops the widget");
 }
 
+/// Whether the widget runs is not asked: one that is owned without running
+/// has to be stopped too, and a stop with nothing owned is a no-op.
 #[tokio::test]
-async fn disabled_config_is_a_noop_when_nothing_runs() {
+async fn disabled_config_stops_without_asking_whether_the_widget_runs() {
     let mut runtime = MockWidgetRuntime::new();
+    runtime.expect_is_running().never();
     runtime
-        .expect_is_running()
-        .returning(|| Box::pin(async { false }));
-    runtime.expect_stop().never();
+        .expect_stop()
+        .times(1)
+        .returning(|_| Box::pin(async { Ok(()) }));
     runtime.expect_start().never();
     let controller = controller_with(runtime);
 
@@ -421,7 +422,10 @@ async fn widget_before_install_degrades() {
     );
     // The shutdown path treats the same state as nothing to do.
     assert!(matches!(
-        controller.stop().await.expect_err("still uninstalled"),
+        controller
+            .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
+            .await
+            .expect_err("still uninstalled"),
         WidgetError::Unavailable
     ));
 }
@@ -460,14 +464,111 @@ async fn widget_stop_clears_the_started_variant() {
     runtime
         .expect_stop()
         .times(1)
-        .returning(|| Box::pin(async { Ok(()) }));
+        .returning(|_| Box::pin(async { Ok(()) }));
     let controller = controller_with(runtime);
 
     let desired = NetworkStatisticWidgetConfig::Enabled(StatisticWidgetVariant::Small);
     controller.apply(desired).await.expect("start");
-    controller.stop().await.expect("stop");
+    controller
+        .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
+        .await
+        .expect("stop");
     // After a shutdown the same variant is no longer running, so it starts again.
     controller.apply(desired).await.expect("restart");
+}
+
+fn widget_health(statuses: Vec<EffectStatus>) -> EffectHealth {
+    let [status] = <[EffectStatus; 1]>::try_from(statuses).expect("a widget-only plan");
+    assert_eq!(status.kind, EffectKind::Widget);
+    status.health
+}
+
+/// A start whose cleanup could not release the handshake leaves the widget
+/// owned in `Starting`, which is not running. Every disable retries that
+/// cleanup and stays degraded until the worker is seen to end; once nothing
+/// is owned, a disable is a clean no-op.
+#[tokio::test(start_paused = true)]
+async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
+    let host = crate::widget::tests::FakeWidgetHost::blocking();
+    host.refuse_release();
+    let manager = crate::widget::WidgetManager::new(host.clone());
+    let controller = Arc::new(TauriWidgetController::default());
+    controller
+        .install(Arc::new(manager.clone()))
+        .expect("the runtime installs once");
+    let executor = executor(
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        controller,
+        Arc::new(MockTrayRefresher::new()),
+    )
+    .await;
+    let disabled = inputs(NyanpasuAppConfig::default());
+    let enabled = inputs(NyanpasuAppConfig {
+        network_statistic_widget: NetworkStatisticWidgetConfig::Enabled(
+            StatisticWidgetVariant::Small,
+        ),
+        ..NyanpasuAppConfig::default()
+    });
+    let disable = || ApplicationEffectPlan::diff(&enabled, &disabled);
+
+    // The child dies before it connects and the release reaches nothing, so
+    // the start fails and its cleanup runs out of time on the blocked worker.
+    // That worker also keeps the paused clock from moving on its own.
+    let mut starting = std::pin::pin!(executor.apply(
+        EffectRevision::new(1),
+        ApplicationEffectPlan::diff(&disabled, &enabled)
+    ));
+    tokio::select! {
+        statuses = &mut starting => panic!("the start ended before its spawn: {statuses:?}"),
+        () = host.spawned.notified() => {}
+    }
+    host.exit();
+    tokio::select! {
+        statuses = &mut starting => panic!("the start ended before its cleanup: {statuses:?}"),
+        () = host.released.notified() => {}
+    }
+    tokio::time::advance(WIDGET_STOP_BOUND).await;
+    assert!(
+        matches!(
+            widget_health(starting.await),
+            EffectHealth::Degraded { code: "widget_apply_failed", ref message, .. }
+                if message.contains("Widget process exited")
+        ),
+        "the start failed"
+    );
+    assert_eq!(manager.owned().await, Some("starting"));
+
+    let mut disabling = std::pin::pin!(executor.apply(EffectRevision::new(2), disable()));
+    tokio::select! {
+        statuses = &mut disabling => panic!("disabled without a cleanup: {statuses:?}"),
+        () = host.released.notified() => {}
+    }
+    tokio::time::advance(WIDGET_STOP_BOUND).await;
+    assert_eq!(
+        widget_health(disabling.await),
+        EffectHealth::Degraded {
+            code: "widget_apply_failed",
+            message: "widget handshake worker still blocked".into(),
+            retryable: true,
+        }
+    );
+    assert_eq!(manager.owned().await, Some("starting"));
+
+    // Once the handshake ends, the next disable sees the worker gone.
+    host.unblock();
+    assert_eq!(
+        widget_health(executor.apply(EffectRevision::new(3), disable()).await),
+        EffectHealth::Healthy
+    );
+    assert_eq!(manager.owned().await, None);
+
+    let before = host.events();
+    assert_eq!(
+        widget_health(executor.apply(EffectRevision::new(4), disable()).await),
+        EffectHealth::Healthy
+    );
+    assert_eq!(host.events(), before, "nothing was left to stop");
 }
 
 #[tokio::test]
@@ -663,5 +764,357 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
         .expect("the effects actor is alive");
     assert_eq!(proxy(&effects).attempts, 1);
     assert_eq!(pac.applies.load(Ordering::SeqCst), 1);
-    effects.shutdown().await;
+    effects
+        .shutdown(tokio::time::Instant::now() + std::time::Duration::from_secs(12))
+        .await;
+}
+
+// -- T10 §5.5: the independent cleanups ------------------------------------
+
+fn answered<T>(reply: crate::client::app_lifecycle::Reply<T>) -> T {
+    match reply {
+        crate::client::app_lifecycle::Reply::Answered(answer) => answer,
+        _ => panic!("the effects actor should answer"),
+    }
+}
+
+fn stopping_widget() -> MockWidgetController {
+    let mut widget = MockWidgetController::new();
+    widget
+        .expect_stop()
+        .returning(|_| Box::pin(async { Ok(()) }));
+    widget
+}
+
+fn quiet_tray() -> MockTrayRefresher {
+    let mut tray = MockTrayRefresher::new();
+    tray.expect_refresh_part()
+        .returning(|_| Box::pin(async { Ok(()) }));
+    tray.expect_refresh_full()
+        .returning(|_| Box::pin(async { Ok(()) }));
+    tray
+}
+
+/// Holds a PAC download until the shutdown token fires, logging both ends.
+struct CancelledPac {
+    log: CallLog,
+    started: tokio::sync::Notify,
+}
+
+#[async_trait::async_trait]
+impl PacPort for CancelledPac {
+    fn is_supported(&self) -> bool {
+        true
+    }
+
+    async fn apply(
+        &self,
+        _url: &url::Url,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> anyhow::Result<()> {
+        record(&self.log, "pac download started");
+        self.started.notify_one();
+        cancel.cancelled().await;
+        record(&self.log, "pac download cancelled");
+        anyhow::bail!("the PAC download was cancelled by the shutdown")
+    }
+
+    fn disable(&self) -> anyhow::Result<()> {
+        record(&self.log, "pac disabled");
+        Ok(())
+    }
+}
+
+/// X5 (V36): the owners are signalled before anything waits for them. The
+/// PAC download in flight ends because of that signal, the restore runs
+/// after it on the owner's mailbox, and nothing installs a proxy again.
+#[tokio::test]
+async fn the_shutdown_signal_ends_a_pac_download_before_the_restore_runs() {
+    use crate::client::{
+        NoopUiEventSink, StepOutcome,
+        effects::{
+            actor::{EffectsArgs, EffectsClient},
+            ports::CommitNotifications,
+        },
+    };
+
+    let log = CallLog::default();
+    let pac = Arc::new(CancelledPac {
+        log: log.clone(),
+        started: tokio::sync::Notify::new(),
+    });
+    let mut os = MockOsProxyPort::new();
+    os.expect_get()
+        .returning(|| Err(anyhow::anyhow!("no system proxy is set")));
+    os.expect_default_bypass().return_const("bypass");
+    let written = log.clone();
+    os.expect_set().returning(move |config: &OsProxyConfig| {
+        record(
+            &written,
+            match config.enable {
+                true => "os proxy enabled",
+                false => "os proxy disabled",
+            },
+        );
+        Ok(())
+    });
+    let executor = executor_with_ports(
+        os,
+        pac.clone(),
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        Arc::new(stopping_widget()),
+        Arc::new(quiet_tray()),
+    )
+    .await;
+    let effects = EffectsClient::spawn(EffectsArgs {
+        port: Arc::new(executor),
+        ui: Arc::new(NoopUiEventSink),
+        initial: proxied_inputs(NyanpasuAppConfig::default()),
+    })
+    .await
+    .expect("the effects actor should spawn");
+    effects.committed(
+        proxied_inputs(NyanpasuAppConfig {
+            enable_system_proxy: true,
+            ..NyanpasuAppConfig::default()
+        }),
+        false,
+        Vec::new(),
+    );
+    effects
+        .subscribe()
+        .wait_for(|snapshot| {
+            snapshot.effects.iter().any(|progress| {
+                progress.status.kind == EffectKind::SystemProxy
+                    && progress.status.health == EffectHealth::Healthy
+            })
+        })
+        .await
+        .expect("the effects actor is alive");
+    effects.committed(
+        proxied_inputs(NyanpasuAppConfig {
+            enable_system_proxy: true,
+            pac_url: Some(
+                "http://example.test/proxy.pac"
+                    .parse()
+                    .expect("a valid url"),
+            ),
+            ..NyanpasuAppConfig::default()
+        }),
+        false,
+        Vec::new(),
+    );
+    pac.started.notified().await;
+
+    let shutdown = answered(
+        effects
+            .shutdown(tokio::time::Instant::now() + std::time::Duration::from_secs(12))
+            .await,
+    );
+
+    assert_eq!(shutdown.system_proxy, StepOutcome::Done { detail: None });
+    assert_eq!(
+        calls(&log),
+        vec![
+            "os proxy enabled",
+            "pac download started",
+            "pac download cancelled",
+            "os proxy disabled",
+        ],
+        "the restore is the only write once the shutdown began"
+    );
+}
+
+/// X5: an OS call that ignores the token keeps the restore queued behind it
+/// past its bound. The restore is reported unconfirmed, and the write the
+/// stuck call resumes into never happens.
+#[tokio::test]
+async fn a_restore_stuck_behind_an_os_call_is_reported_unconfirmed() {
+    use crate::client::StepOutcome;
+
+    let reading = Arc::new(tokio::sync::Notify::new());
+    let (release, released) = std::sync::mpsc::channel::<()>();
+    let released = Mutex::new(released);
+    let mut os = MockOsProxyPort::new();
+    let entered = reading.clone();
+    os.expect_get().returning(move || {
+        entered.notify_one();
+        let _ = released.lock().expect("gate").recv();
+        Err(anyhow::anyhow!("no system proxy is set"))
+    });
+    os.expect_default_bypass().return_const("bypass");
+    os.expect_set().never();
+    let executor = Arc::new(
+        executor_with_os(
+            os,
+            Arc::new(MockLocaleSink::new()),
+            Arc::new(MockLoggerRefresher::new()),
+            Arc::new(stopping_widget()),
+            Arc::new(quiet_tray()),
+        )
+        .await,
+    );
+    let enabling = ApplicationEffectPlan::from_effects(
+        ApplicationEffectPlan::full(&proxied_inputs(NyanpasuAppConfig {
+            enable_system_proxy: true,
+            ..NyanpasuAppConfig::default()
+        }))
+        .effects()
+        .iter()
+        .filter(|effect| effect.kind() == EffectKind::SystemProxy)
+        .cloned()
+        .collect(),
+    );
+    let applying = tokio::spawn({
+        let executor = executor.clone();
+        async move { executor.apply(EffectRevision::new(1), enabling).await }
+    });
+    reading.notified().await;
+
+    executor.begin_shutdown();
+    let shutdown = executor
+        .shutdown(std::time::Duration::from_millis(200))
+        .await;
+
+    assert_eq!(
+        shutdown.system_proxy,
+        StepOutcome::incomplete("restore queued but not confirmed")
+    );
+    assert_eq!(shutdown.hotkeys, StepOutcome::Done { detail: None });
+    assert_eq!(shutdown.widget, StepOutcome::Done { detail: None });
+    release.send(()).expect("the capture is still parked");
+    let statuses = applying.await.expect("the apply task should finish");
+    assert!(
+        statuses.iter().all(|status| matches!(
+            status.health,
+            EffectHealth::Degraded {
+                code: "system_proxy_shut_down",
+                ..
+            }
+        )),
+        "{statuses:?}"
+    );
+}
+
+/// X5b: a widget stop that hangs holds back neither the restore nor the
+/// hotkey release, and is reported for what it is.
+#[tokio::test]
+async fn a_hanging_widget_stop_holds_back_no_other_cleanup() {
+    use crate::client::StepOutcome;
+
+    let mut widget = MockWidgetController::new();
+    widget
+        .expect_stop()
+        .returning(|_| Box::pin(std::future::pending::<Result<(), WidgetError>>()));
+    let executor = executor(
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        Arc::new(widget),
+        Arc::new(quiet_tray()),
+    )
+    .await;
+
+    let shutdown = executor
+        .shutdown(std::time::Duration::from_millis(200))
+        .await;
+
+    assert_eq!(shutdown.system_proxy, StepOutcome::Done { detail: None });
+    assert_eq!(shutdown.hotkeys, StepOutcome::Done { detail: None });
+    assert_eq!(
+        shutdown.widget,
+        StepOutcome::incomplete("widget process still owned, exit not confirmed")
+    );
+}
+
+/// The effects actor over a real widget controller and manager whose host
+/// is `host`, with the widget's start already parked in its handshake.
+async fn effects_with_a_widget_starting(
+    host: &Arc<crate::widget::tests::FakeWidgetHost>,
+) -> crate::client::effects::actor::EffectsClient {
+    use crate::client::{
+        NoopUiEventSink,
+        effects::{
+            actor::{EffectsArgs, EffectsClient},
+            ports::CommitNotifications,
+        },
+    };
+
+    let controller = Arc::new(TauriWidgetController::default());
+    controller
+        .install(Arc::new(crate::widget::WidgetManager::new(host.clone())))
+        .expect("the runtime installs once");
+    let executor = executor(
+        Arc::new(MockLocaleSink::new()),
+        Arc::new(MockLoggerRefresher::new()),
+        controller,
+        Arc::new(quiet_tray()),
+    )
+    .await;
+    let effects = EffectsClient::spawn(EffectsArgs {
+        port: Arc::new(executor),
+        ui: Arc::new(NoopUiEventSink),
+        initial: inputs(NyanpasuAppConfig::default()),
+    })
+    .await
+    .expect("the effects actor should spawn");
+    effects.committed(
+        inputs(NyanpasuAppConfig {
+            network_statistic_widget: NetworkStatisticWidgetConfig::Enabled(
+                StatisticWidgetVariant::Small,
+            ),
+            ..NyanpasuAppConfig::default()
+        }),
+        false,
+        Vec::new(),
+    );
+    host.spawned.notified().await;
+    effects
+}
+
+/// X5c: the widget group is aborted while its child waits in the handshake.
+/// The child stays owned, and the stop kills it, releases the handshake and
+/// sees the worker end before it reports the widget done.
+#[tokio::test]
+async fn a_widget_aborted_mid_handshake_is_reaped_by_the_shutdown() {
+    use crate::client::StepOutcome;
+
+    let host = crate::widget::tests::FakeWidgetHost::blocking();
+    let effects = effects_with_a_widget_starting(&host).await;
+
+    let shutdown = answered(
+        effects
+            .shutdown(tokio::time::Instant::now() + std::time::Duration::from_secs(12))
+            .await,
+    );
+
+    assert_eq!(shutdown.widget, StepOutcome::Done { detail: None });
+    assert_eq!(
+        host.events(),
+        vec!["spawn", "kill", "release", "handshake released"]
+    );
+}
+
+/// X5c: when the release reaches nothing, the worker is still blocked and
+/// the widget is reported so, not as gone with its child.
+#[tokio::test]
+async fn a_widget_whose_handshake_cannot_be_released_is_reported_blocked() {
+    use crate::client::StepOutcome;
+
+    let host = crate::widget::tests::FakeWidgetHost::blocking();
+    host.refuse_release();
+    let effects = effects_with_a_widget_starting(&host).await;
+
+    let shutdown = answered(
+        effects
+            .shutdown(tokio::time::Instant::now() + std::time::Duration::from_millis(300))
+            .await,
+    );
+
+    assert_eq!(
+        shutdown.widget,
+        StepOutcome::incomplete("widget handshake worker still blocked")
+    );
+    assert_eq!(host.events(), vec!["spawn", "kill", "release"]);
+    host.unblock();
 }

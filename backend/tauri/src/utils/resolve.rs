@@ -1,5 +1,5 @@
 use crate::{
-    client::NyanpasuClient,
+    client::{MainWindowGeometry, NyanpasuClient, application_workflow::startup::StartupOutcome},
     core::{storage::Storage, tray::proxies, *},
     log_err,
     utils::init,
@@ -16,7 +16,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{App, AppHandle, Emitter, Listener, Manager, async_runtime::block_on};
+use tauri::{App, AppHandle, Listener, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::Event;
 
@@ -130,21 +130,51 @@ pub fn resolve_setup(app: &mut App) {
     crate::consts::setup_app_handle(app.app_handle().clone());
 
     log_err!(init::init_resources());
-    {
-        let client = app.state::<crate::client::NyanpasuClient>();
-        log_err!(tauri::async_runtime::block_on(client.probe_service()));
-        // The core actor spawns on Local; persisted service mode only takes
-        // effect once the runtime is handed to the daemon, and that has to
-        // happen before the reconcile below picks a host to start the core on.
-        log_err!(tauri::async_runtime::block_on(
-            client.restore_execution_host()
-        ));
-    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    log::trace!("init system tray");
+    #[cfg(any(windows, target_os = "linux"))]
+    tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
+    // Installed before StartupReconcile: its full publish is what builds the
+    // tray, through this listener.
+    let app_handle = app.app_handle().clone();
+    app.listen("update_systray", move |_| {
+        // Fix the GTK should run on main thread issue
+        let app_handle_clone = app_handle.clone();
+        log_err!(app_handle.run_on_main_thread(move || {
+            log_err!(
+                tray::Tray::update_systray(&app_handle_clone),
+                "failed to update systray"
+            );
+        }));
+    });
 
     {
         let client = app.state::<crate::client::NyanpasuClient>();
-        log::trace!("init config");
-        log_err!(tauri::async_runtime::block_on(client.reconcile_core()));
+        let report = tauri::async_runtime::block_on(client.startup_reconcile());
+        if let Some(observation) = &report.observation {
+            log::info!(
+                target: "app",
+                "startup reconcile {} observed: desired {:?}, service {:?}, runtime {:?}",
+                report.operation_id,
+                observation.desired,
+                observation.service,
+                observation.runtime
+            );
+        }
+        match &report.outcome {
+            StartupOutcome::Ready => {
+                log::info!(target: "app", "startup reconcile {}: ready", report.operation_id)
+            }
+            outcome => log::warn!(
+                target: "app",
+                "startup reconcile {}: {outcome:?}",
+                report.operation_id
+            ),
+        }
+        // Even an unsettled startup lets them run: what they change queues
+        // behind the startup command.
+        log_err!(client.start_background_sources());
     }
 
     log::trace!("init storage");
@@ -158,23 +188,6 @@ pub fn resolve_setup(app: &mut App) {
             .start_clash_streams()
     ));
 
-    #[cfg(any(windows, target_os = "linux"))]
-    log::trace!("init system tray");
-    #[cfg(any(windows, target_os = "linux"))]
-    tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
-    let app_handle = app.app_handle().clone();
-    app.listen("update_systray", move |_| {
-        // Fix the GTK should run on main thread issue
-        let app_handle_clone = app_handle.clone();
-        log_err!(app_handle.run_on_main_thread(move || {
-            log_err!(
-                tray::Tray::update_systray(&app_handle_clone),
-                "failed to update systray"
-            );
-        }));
-    });
-    log_err!(app.emit("update_systray", ()));
-
     let silent_start = app
         .state::<NyanpasuClient>()
         .app_config_snapshot()
@@ -183,27 +196,6 @@ pub fn resolve_setup(app: &mut App) {
         create_window(app.app_handle());
         spawn_window_ready_timeout(app.app_handle().clone());
     }
-
-    // Minimal startup wiring: one full reconcile hands the system proxy, PAC
-    // and auto-launch their desired values. Ordering this against silent start,
-    // panel restore and the panic path belongs to the startup/exit task.
-    log_err!(tauri::async_runtime::block_on(async {
-        let outcome = app
-            .state::<crate::client::NyanpasuClient>()
-            .reconcile_application_effects()
-            .await?;
-        for degradation in outcome.degradations() {
-            log::warn!(
-                target: "app",
-                "startup effect reconcile degraded {}: {}",
-                degradation.code,
-                degradation.message
-            );
-        }
-        <anyhow::Result<()>>::Ok(())
-    }));
-
-    log_err!(handle::Handle::update_systray_part());
 
     // setup jobs
     log::trace!("setup jobs");
@@ -436,6 +428,16 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
 /// Save window state for the configured window type
 pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
     save_main_window_state(app_handle)
+}
+
+/// The main window's geometry as it is now, for the ordered shutdown to save
+/// last. Only a missing main window is a skip; a capture that fails is
+/// reported as such.
+pub fn capture_main_window_geometry(app_handle: &AppHandle) -> MainWindowGeometry {
+    if app_handle.get_webview_window(MainWindow.label()).is_none() {
+        return MainWindowGeometry::default();
+    }
+    MainWindowGeometry::from_capture(MainWindow.capture_state(app_handle))
 }
 
 /// Webview tray menu window

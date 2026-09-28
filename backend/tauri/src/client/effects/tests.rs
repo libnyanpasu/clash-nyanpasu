@@ -4,11 +4,11 @@ use super::{
     plan::{
         ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind, TrayRefresh,
     },
-    ports::{ApplicationEffectsPort, CommitNotifications},
+    ports::{ApplicationEffectsPort, CommitNotifications, EffectsShutdown},
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
-    NyanpasuClient, UiEventSink,
+    NyanpasuClient, ShutdownRequest, StepOutcome, UiEventSink,
     tests::{TestControlEndpoint, test_client_args_with_endpoint},
 };
 use nyanpasu_config::{
@@ -85,9 +85,19 @@ impl ApplicationEffectsPort for Port {
             })
             .collect()
     }
-    async fn shutdown(&self) -> Vec<EffectStatus> {
-        Vec::new()
+    fn begin_shutdown(&self) {}
+    async fn shutdown(&self, _: Duration) -> EffectsShutdown {
+        EffectsShutdown {
+            system_proxy: StepOutcome::Done { detail: None },
+            hotkeys: StepOutcome::Done { detail: None },
+            widget: StepOutcome::Done { detail: None },
+        }
     }
+}
+/// Generous: these tests are about what the actor does, not its bounds.
+const SHUTDOWN_BUDGET: Duration = Duration::from_secs(12);
+fn within(budget: Duration) -> tokio::time::Instant {
+    tokio::time::Instant::now() + budget
 }
 fn inputs() -> ApplicationEffectInputs {
     ApplicationEffectInputs::project(&NyanpasuAppConfig::default(), &ClashConfig::default(), None)
@@ -125,7 +135,7 @@ async fn blocked_pac_does_not_block_visual_or_hotkey_group() {
         ..Default::default()
     });
     let client = graph(port.clone()).await;
-    client.reconcile(inputs());
+    client.publish_full(inputs());
     port.entered.notified().await;
     let state = wait(&client, |s| {
         s.effects
@@ -156,7 +166,7 @@ async fn blocked_pac_does_not_block_visual_or_hotkey_group() {
             .all(|s| s.health == EffectHealth::Healthy)
     })
     .await;
-    client.shutdown().await;
+    client.shutdown(within(SHUTDOWN_BUDGET)).await;
 }
 
 #[tokio::test]
@@ -166,7 +176,7 @@ async fn blocked_gui_does_not_block_proxy_group() {
         ..Default::default()
     });
     let client = graph(port.clone()).await;
-    client.reconcile(inputs());
+    client.publish_full(inputs());
     port.entered.notified().await;
     wait(&client, |s| {
         s.effects
@@ -176,7 +186,7 @@ async fn blocked_gui_does_not_block_proxy_group() {
     })
     .await;
     port.release.notify_one();
-    client.shutdown().await;
+    client.shutdown(within(SHUTDOWN_BUDGET)).await;
 }
 
 #[tokio::test]
@@ -215,7 +225,7 @@ async fn queued_visual_targets_coalesce_and_full_subsumes_part() {
         ]
     );
     drop(calls);
-    client.shutdown().await;
+    client.shutdown(within(SHUTDOWN_BUDGET)).await;
 }
 
 #[tokio::test]
@@ -250,7 +260,7 @@ async fn stale_completion_does_not_publish_success_for_new_desired() {
     assert_eq!(status.desired_revision.get(), revision);
     assert_eq!(status.applied_revision.get(), 0);
     assert_eq!(port.calls.lock().unwrap().len(), 2);
-    client.shutdown().await;
+    client.shutdown(within(SHUTDOWN_BUDGET)).await;
 }
 
 #[tokio::test]
@@ -259,11 +269,11 @@ async fn independent_graphs_and_shutdown_admission() {
     let b = Arc::new(Port::default());
     let left = graph(a.clone()).await;
     let right = graph(b.clone()).await;
-    left.shutdown().await;
-    left.reconcile(inputs());
+    left.shutdown(within(SHUTDOWN_BUDGET)).await;
+    left.publish_full(inputs());
     left.barrier().await;
     assert!(a.calls.lock().unwrap().is_empty());
-    right.reconcile(inputs());
+    right.publish_full(inputs());
     wait(&right, |s| {
         s.effects.len() == 8
             && s.effects
@@ -273,7 +283,7 @@ async fn independent_graphs_and_shutdown_admission() {
     })
     .await;
     assert_eq!(b.calls.lock().unwrap().len(), 3);
-    right.shutdown().await;
+    right.shutdown(within(SHUTDOWN_BUDGET)).await;
 }
 
 #[test]
@@ -308,8 +318,7 @@ fn source_commit_and_second_save_do_not_wait_for_gui() {
             I18nLanguage::English
         );
         port.release.notify_one();
-        client.shutdown_application_effects().await;
-        client.shutdown_core().await;
+        client.shutdown(ShutdownRequest::default()).await;
     });
 }
 
@@ -347,8 +356,7 @@ fn asynchronous_failure_is_status_and_never_cancels_source() {
             client.get_app_config().await.unwrap().language,
             I18nLanguage::Korean
         );
-        client.shutdown_application_effects().await;
-        client.shutdown_core().await;
+        client.shutdown(ShutdownRequest::default()).await;
     });
 }
 
@@ -368,8 +376,7 @@ fn no_op_and_session_saves_do_not_dispatch() {
             .unwrap();
         client.inner.effects.barrier().await;
         assert!(port.calls.lock().unwrap().is_empty());
-        client.shutdown_application_effects().await;
-        client.shutdown_core().await;
+        client.shutdown(ShutdownRequest::default()).await;
     });
 }
 
@@ -398,8 +405,7 @@ fn rejected_source_never_dispatches() {
             client.get_app_config().await.unwrap().language,
             I18nLanguage::Korean
         );
-        client.shutdown_application_effects().await;
-        client.shutdown_core().await;
+        client.shutdown(ShutdownRequest::default()).await;
     });
 }
 
@@ -477,7 +483,7 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
             .automatic_remaining,
         0
     );
-    client.shutdown().await;
+    client.shutdown(within(SHUTDOWN_BUDGET)).await;
 }
 
 #[tokio::test]
@@ -521,7 +527,7 @@ async fn missing_binding_waits_without_spending_apply_budget() {
             .attempts,
         0
     );
-    client.shutdown().await;
+    client.shutdown(within(SHUTDOWN_BUDGET)).await;
 }
 
 #[tokio::test]
@@ -560,7 +566,7 @@ async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
         })
     })
     .await;
-    client.shutdown().await;
+    client.shutdown(within(SHUTDOWN_BUDGET)).await;
 }
 
 #[tokio::test]
@@ -607,5 +613,147 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
     })
     .await;
     assert!(client.configuration_status().event_seq > pending.event_seq);
-    client.shutdown_application_effects().await;
+    client.shutdown(ShutdownRequest::default()).await;
+}
+
+/// Parks the system proxy group and records, in order, the shutdown signal,
+/// the moment the parked group's waiter is dropped, and the cleanups.
+#[derive(Default)]
+struct OrderedPort {
+    events: Mutex<Vec<&'static str>>,
+    entered: Notify,
+    cleanups: std::sync::atomic::AtomicUsize,
+}
+
+impl OrderedPort {
+    fn record(&self, event: &'static str) {
+        self.events.lock().unwrap().push(event);
+    }
+
+    fn events(&self) -> Vec<&'static str> {
+        self.events.lock().unwrap().clone()
+    }
+}
+
+/// Records its drop, which is how an aborted group's waiter ends.
+struct DroppedWaiter(Arc<OrderedPort>);
+
+impl Drop for DroppedWaiter {
+    fn drop(&mut self) {
+        self.0.record("group waiter dropped");
+    }
+}
+
+#[async_trait::async_trait]
+impl ApplicationEffectsPort for Arc<OrderedPort> {
+    async fn apply(
+        &self,
+        revision: EffectRevision,
+        plan: ApplicationEffectPlan,
+    ) -> Vec<EffectStatus> {
+        if plan
+            .effects()
+            .iter()
+            .any(|effect| effect.kind() == EffectKind::SystemProxy)
+        {
+            let _waiter = DroppedWaiter(self.clone());
+            self.entered.notify_one();
+            std::future::pending::<()>().await;
+        }
+        plan.effects()
+            .iter()
+            .map(|effect| EffectStatus {
+                kind: effect.kind(),
+                desired_revision: revision,
+                applied_revision: revision,
+                health: EffectHealth::Healthy,
+            })
+            .collect()
+    }
+
+    fn begin_shutdown(&self) {
+        self.record("owners signalled");
+    }
+
+    async fn shutdown(&self, _: Duration) -> EffectsShutdown {
+        self.record("owners cleaned up");
+        self.cleanups.fetch_add(1, Ordering::SeqCst);
+        EffectsShutdown {
+            system_proxy: StepOutcome::Done { detail: None },
+            hotkeys: StepOutcome::incomplete("scripted"),
+            widget: StepOutcome::Done { detail: None },
+        }
+    }
+}
+
+fn answered<T>(reply: crate::client::app_lifecycle::Reply<T>) -> T {
+    match reply {
+        crate::client::app_lifecycle::Reply::Answered(answer) => answer,
+        _ => panic!("the effects actor should answer"),
+    }
+}
+
+/// X10 (T10 §5.5): the first shutdown seals, signals the owners, drops the
+/// group waiters and only then cleans up; a later one returns the same
+/// result and runs none of it again.
+#[tokio::test]
+async fn shutdown_signals_before_it_reaps_and_cleans_up_once() {
+    let port = Arc::new(OrderedPort::default());
+    let client = EffectsClient::spawn(EffectsArgs {
+        port: Arc::new(port.clone()),
+        ui: Arc::new(Ui),
+        initial: inputs(),
+    })
+    .await
+    .unwrap();
+    client.publish_full(inputs());
+    port.entered.notified().await;
+
+    let first = answered(client.shutdown(within(SHUTDOWN_BUDGET)).await);
+    let second = answered(client.shutdown(within(SHUTDOWN_BUDGET)).await);
+
+    assert_eq!(
+        port.events(),
+        [
+            "owners signalled",
+            "group waiter dropped",
+            "owners cleaned up"
+        ]
+    );
+    assert_eq!(first, second, "the cached result");
+    assert_eq!(port.cleanups.load(Ordering::SeqCst), 1);
+    assert_eq!(first.hotkeys, StepOutcome::incomplete("scripted"));
+}
+
+/// Held retries stay held, while a commit that settles afterwards still
+/// reaches its owners until the effects are sealed.
+#[tokio::test(start_paused = true)]
+async fn held_retries_never_run_but_later_commits_still_apply() {
+    use crate::client::convergence::ConvergenceHealth;
+    let port = Arc::new(Port {
+        fail: AtomicBool::new(true),
+        retryable: true,
+        ..Default::default()
+    });
+    let client = graph(port.clone()).await;
+    let mut desired = inputs();
+    desired.app.language = I18nLanguage::Korean;
+    client.committed(desired.clone(), false, Vec::new());
+    wait(&client, |s| {
+        s.effects.iter().any(|p| {
+            p.status.kind == EffectKind::Locale && p.health == ConvergenceHealth::RetryScheduled
+        })
+    })
+    .await;
+
+    answered(client.hold_retries().await);
+    let held = port.calls.lock().unwrap().len();
+    tokio::time::advance(Duration::from_secs(100)).await;
+    client.barrier().await;
+    assert_eq!(port.calls.lock().unwrap().len(), held, "no automatic retry");
+
+    desired.app.language = I18nLanguage::English;
+    client.committed(desired, false, Vec::new());
+    wait(&client, |_| port.calls.lock().unwrap().len() == held + 1).await;
+    client.shutdown(within(SHUTDOWN_BUDGET)).await;
 }

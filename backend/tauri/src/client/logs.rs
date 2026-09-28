@@ -118,9 +118,6 @@ impl NyanpasuClient {
             LogSource::Service => self.inner.service_logs.close(owner, session).await,
         }
     }
-    pub async fn shutdown_logs(&self) -> LogResult<()> {
-        self.inner.app_logs.shutdown().await
-    }
 }
 
 #[cfg(test)]

@@ -263,6 +263,7 @@ mod tests {
                 generation: 0,
             },
             ports: candidate,
+            target: None,
         }
     }
 

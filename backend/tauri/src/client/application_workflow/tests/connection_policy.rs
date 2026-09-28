@@ -735,7 +735,7 @@ fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
         .unwrap();
         let mut next = Box::pin(f.client.activate_profile(None));
         assert!(next.as_mut().now_or_never().is_none());
-        let mut shutdown = Box::pin(f.client.shutdown_core());
+        let mut shutdown = Box::pin(super::workflow_shutdown(&f.client));
         assert!(shutdown.as_mut().now_or_never().is_none());
         super::barrier(&f.client.inner.application_workflow).await;
         assert!(f.client.get_profiles().await.unwrap().current.is_some());
@@ -799,7 +799,7 @@ fn full_queue_rejects_a_source_patch_before_commit() {
                 .is_err()
         );
         assert_eq!(f.client.inner.clash_config.snapshot().version, before);
-        let mut shutdown = Box::pin(f.client.shutdown_core());
+        let mut shutdown = Box::pin(super::workflow_shutdown(&f.client));
         assert!(shutdown.as_mut().now_or_never().is_none());
         super::barrier(workflow).await;
         f.calls.hold_close.store(false, Ordering::SeqCst);

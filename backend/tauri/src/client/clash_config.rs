@@ -27,6 +27,12 @@ struct ClashConfigClientInner {
 
 #[allow(dead_code)]
 impl ClashConfigClient {
+    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
+    /// The request is sent before this returns; the handle only waits.
+    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
+        crate::client::Terminating::begin(self.inner.actor_ref.get_cell())
+    }
+
     pub(crate) async fn new(
         mutations: MutationCoordinator,
         config_path: Utf8PathBuf,

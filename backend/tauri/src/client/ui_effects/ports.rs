@@ -4,8 +4,11 @@
 //! depends on four task-shaped abstractions rather than on a window, a tray
 //! handle or a logging subsystem. Nothing here names Tauri.
 
+use std::time::Duration;
+
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
 use nyanpasu_egui::widget::StatisticWidgetVariant;
+use tokio::time::Instant;
 
 use crate::client::effects::plan::TrayView;
 
@@ -36,17 +39,26 @@ pub trait LoggerRefresher: Send + Sync + 'static {
     fn refresh(&self, level: Option<LoggingLevel>, max_files: Option<usize>) -> anyhow::Result<()>;
 }
 
+/// How long a widget stop may take before the shutdown reports it
+/// unconfirmed (T10 §5.5).
+pub const WIDGET_STOP_BOUND: Duration = Duration::from_secs(3);
+
 /// Why a widget effect could not be applied.
 ///
-/// Two variants rather than one opaque error because they degrade differently:
-/// a controller that has not been handed its runtime yet is a startup ordering
-/// fact the caller can retry, while a failed spawn is the widget itself.
+/// A controller that has not been handed its runtime yet is a startup
+/// ordering fact the caller can retry, while a failed spawn is the widget
+/// itself. The last two are a stop that ran out of time: the widget is still
+/// owned, and the caller must not report it gone.
 #[derive(Debug, thiserror::Error)]
 pub enum WidgetError {
     #[error("the network statistic widget is not available yet")]
     Unavailable,
     #[error(transparent)]
     Failed(#[from] anyhow::Error),
+    #[error("widget process still owned, exit not confirmed")]
+    StillOwned,
+    #[error("widget handshake worker still blocked")]
+    HandshakeBlocked,
 }
 
 /// Drives the network statistic widget towards a desired configuration.
@@ -54,7 +66,8 @@ pub enum WidgetError {
 #[cfg_attr(test, mockall::automock)]
 pub trait WidgetController: Send + Sync + 'static {
     async fn apply(&self, config: NetworkStatisticWidgetConfig) -> Result<(), WidgetError>;
-    async fn stop(&self) -> Result<(), WidgetError>;
+    /// Stops whatever widget is owned, spawned or running, by `deadline`.
+    async fn stop(&self, deadline: Instant) -> Result<(), WidgetError>;
 }
 
 /// The widget process itself, as the controller uses it.
@@ -66,6 +79,6 @@ pub trait WidgetController: Send + Sync + 'static {
 #[cfg_attr(test, mockall::automock)]
 pub trait WidgetRuntime: Send + Sync + 'static {
     async fn start(&self, variant: StatisticWidgetVariant) -> anyhow::Result<()>;
-    async fn stop(&self) -> anyhow::Result<()>;
+    async fn stop(&self, deadline: Instant) -> Result<(), WidgetError>;
     async fn is_running(&self) -> bool;
 }

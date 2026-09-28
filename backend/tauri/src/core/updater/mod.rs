@@ -412,6 +412,12 @@ impl Drop for ClientInner {
 #[derive(Clone)]
 pub(crate) struct UpdaterClient(Arc<ClientInner>);
 impl UpdaterClient {
+    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
+    /// The request is sent before this returns; the handle only waits.
+    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
+        crate::client::Terminating::begin(self.0.0.get_cell())
+    }
+
     pub async fn spawn(
         backend: Arc<dyn UpdaterBackend>,
         installer: Arc<dyn CoreUpdateInstaller>,

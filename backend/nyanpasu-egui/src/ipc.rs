@@ -54,6 +54,17 @@ pub fn create_ipc_server() -> anyhow::Result<(IPCServer, String)> {
     ))
 }
 
+/// Connects to a pending one-shot server as its client, the way the widget
+/// does, so a handshake blocked in `accept` returns. The sender it hands over
+/// leads nowhere: this is only for a parent that stopped waiting for a widget
+/// which never connected.
+pub fn release_server(name: &str) -> anyhow::Result<()> {
+    let oneshot_sender: IpcSender<IpcSender<Message>> = ipc::IpcSender::connect(name.to_string())?;
+    let (tx, _rx) = ipc::channel()?;
+    oneshot_sender.send(tx)?;
+    Ok(())
+}
+
 pub(crate) fn setup_ipc_receiver(name: &str) -> anyhow::Result<IpcReceiver<Message>> {
     let oneshot_sender: IpcSender<IpcSender<Message>> = ipc::IpcSender::connect(name.to_string())?;
     let (tx, rx) = ipc::channel()?;
@@ -64,4 +75,22 @@ pub(crate) fn setup_ipc_receiver(name: &str) -> anyhow::Result<IpcReceiver<Messa
 pub(crate) fn setup_ipc_receiver_with_env() -> anyhow::Result<IpcReceiver<Message>> {
     let name = std::env::var("NYANPASU_EGUI_IPC_SERVER")?;
     setup_ipc_receiver(&name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn release_server_unblocks_a_pending_accept() {
+        let (mut server, name) = create_ipc_server().unwrap();
+        let accept = std::thread::spawn(move || {
+            server.connect().unwrap();
+            server.is_connected()
+        });
+
+        release_server(&name).unwrap();
+
+        assert!(accept.join().unwrap(), "accept returned with a sender");
+    }
 }

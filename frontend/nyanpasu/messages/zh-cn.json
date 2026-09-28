@@ -527,5 +527,6 @@
   "configuration_committed_note": "配置保存与效果生效分别记录。重试只应用已保存值，不会再次保存。",
   "configuration_unconfirmed": "暂时无法确认结果。再次保存前请查看近期操作。",
   "configuration_hotkeys": "快捷键",
-  "configuration_tray": "系统托盘"
+  "configuration_tray": "系统托盘",
+  "configuration_sources": "配置来源"
 }

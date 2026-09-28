@@ -261,6 +261,7 @@ mod tests {
             ports: crate::client::ports::SessionPortResolver::default()
                 .resolve_candidate(&nyanpasu_config::clash::config::ClashConfig::default())
                 .expect("default port strategies resolve"),
+            target: None,
         }
     }
 

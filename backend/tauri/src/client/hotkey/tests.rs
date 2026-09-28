@@ -510,6 +510,31 @@ async fn exit_unregisters_all() {
     assert!(client.status().await.registered.is_empty());
 }
 
+/// A release that could not be sent says so, so the shutdown can tell it
+/// from one that was sent and not answered.
+#[tokio::test]
+async fn a_release_the_gone_actor_never_saw_is_reported_unreachable() {
+    let client = client_with(RecordingRegistrar::new()).await;
+    client
+        .actor
+        .stop_and_wait(None, Some(std::time::Duration::from_secs(5)))
+        .await
+        .expect("the actor stops");
+
+    let status = client.unregister_all().await;
+
+    assert!(
+        matches!(
+            status.health,
+            EffectHealth::Degraded {
+                code: "hotkey_unreachable",
+                ..
+            }
+        ),
+        "{status:?}"
+    );
+}
+
 #[tokio::test]
 async fn reconcile_after_unregister_all_is_rejected() {
     let registrar = RecordingRegistrar::new();

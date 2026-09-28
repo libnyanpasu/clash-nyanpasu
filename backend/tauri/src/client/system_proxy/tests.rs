@@ -545,10 +545,6 @@ async fn pac_unsupported_platform_reports_unsupported() {
             code: "pac_unsupported"
         }
     );
-    assert!(
-        crate::client::effects::status::degradation_of(&statuses[0]).is_none(),
-        "a platform fact is not a degradation"
-    );
     // Still proxied: an unsupported PAC must not leave the user with nothing.
     assert!(os.last_write().enable);
 }
@@ -874,6 +870,66 @@ async fn restore_cancels_an_in_flight_pac_download() {
         os.writes().is_empty(),
         "an exiting app must not install a proxy on its way out: {:?}",
         os.writes()
+    );
+}
+
+/// T10 §5.5 step 2: the shutdown signal alone releases a download in flight,
+/// before any restore is queued, and the reconcile it cut short writes
+/// nothing.
+#[tokio::test]
+async fn the_shutdown_signal_releases_a_pac_download_before_any_restore() {
+    let os = RecordingOsProxy::new();
+    let pac = BlockingPac::new();
+    let client = spawn(os.clone(), silent_auto_launch(), pac.clone()).await;
+    let reconciling = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .reconcile(
+                    rev(1),
+                    Some(pac_proxy("http://example.test/proxy.pac")),
+                    None,
+                    None,
+                )
+                .await
+        })
+    };
+    pac.started().await;
+
+    client.signal_shutdown();
+
+    let statuses = reconciling.await.expect("the reconcile task should finish");
+    assert_eq!(
+        code_of(&statuses, EffectKind::SystemProxy),
+        "system_proxy_shut_down"
+    );
+    assert!(os.writes().is_empty(), "{:?}", os.writes());
+    assert_eq!(client.restore().await.health, EffectHealth::Healthy);
+    assert!(os.writes().is_empty(), "{:?}", os.writes());
+}
+
+/// A restore that could not be sent says so, so the shutdown can tell it
+/// from one that was sent and not answered.
+#[tokio::test]
+async fn a_restore_the_gone_actor_never_saw_is_reported_unreachable() {
+    let client = spawn_with_os(RecordingOsProxy::new()).await;
+    client
+        .actor
+        .stop_and_wait(None, Some(Duration::from_secs(5)))
+        .await
+        .expect("the actor stops");
+
+    let status = client.restore().await;
+
+    assert!(
+        matches!(
+            status.health,
+            EffectHealth::Degraded {
+                code: "system_proxy_unreachable",
+                ..
+            }
+        ),
+        "{status:?}"
     );
 }
 

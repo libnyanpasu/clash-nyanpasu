@@ -12,7 +12,10 @@ use super::{
 use crate::core::actor_v2::{
     EndpointConnectivity, HandoffReport,
     endpoint::{ExecutionHost, wire_core_type_to_kind},
-    facade::{CoreFacade, ReconcileReport, ReconcileResult, RolledBackReport, UncertainReconcile},
+    facade::{
+        CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
+        StopReport, UncertainReconcile,
+    },
     service_actor::ServicePhase,
 };
 
@@ -27,10 +30,30 @@ pub(in crate::client) struct CoreLifecycleWorkflow {
     /// confirms a candidate when the core accepts it and ends the confirmed
     /// binding when the core stops.
     pub ports: Arc<SessionPortResolver>,
-    // A lost lower-level reply is not evidence its side effects have finished.
-    pub uncertain: bool,
     pub recovery: ServiceRecovery,
     pub closing: tokio_util::sync::CancellationToken,
+    /// Which host is proven to own the runtime. Only a reestablish attempt's
+    /// S2/S3, a completed host move and the constructor write it; a stop
+    /// never does (T10 §1.7).
+    pub ownership: Ownership,
+}
+
+/// Whether the application has proven which host owns the runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Ownership {
+    /// Nothing rules out a second instance on the other host.
+    Unproven,
+    /// `host` owns the runtime, and the other host is proven not to hold one.
+    Established { host: ExecutionHost },
+}
+
+/// The host `enable_service_mode` asks for.
+pub(in crate::client) fn desired_host(application: &NyanpasuAppConfig) -> ExecutionHost {
+    if application.enable_service_mode {
+        ExecutionHost::Service
+    } else {
+        ExecutionHost::Local
+    }
 }
 
 /// A connection retry budget, separate from the OS daemon restart budget the
@@ -142,26 +165,24 @@ impl CoreLifecycleWorkflow {
                     status.snapshot.and_then(|s| s.state),
                     Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
                 ) {
+                    self.permit_start()?;
                     self.reconcile(preparation).await?;
                 }
                 Ok(Output::Unit)
             }
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
             Command::RuntimeDirty => {
+                self.permit_start()?;
                 self.reconcile(preparation).await?;
                 Ok(Output::Unit)
             }
-            Command::ChangeHost(host) => {
-                let report = self
-                    .core
-                    .change_execution_host(host)
+            Command::ChangeHost(host) => Ok(Output::Handoff(
+                self.move_execution_host(host)
                     .await
-                    .map_err(|failure| failure.error)?;
-                self.follow_host();
-                self.note_interrupted_core(report.interrupted_running());
-                Ok(Output::Handoff(report))
-            }
+                    .map_err(|failure| failure.error)?,
+            )),
             Command::SetExecutionHost(service_mode) => {
+                self.permit_start()?;
                 let effect = self.set_host(service_mode, preparation).await;
                 let degradations = effect.err().map_or_else(Vec::new, |error| {
                     vec![runtime::Degradation {
@@ -176,17 +197,12 @@ impl CoreLifecycleWorkflow {
                     degradations,
                 )))
             }
-            Command::RestoreExecutionHost => {
-                if self.application.load().state.enable_service_mode {
-                    let report = self.core.adopt_service_host().await?;
-                    self.recovery.rearm();
-                    self.note_interrupted_core(report.interrupted_running());
-                }
-                Ok(Output::Unit)
-            }
             Command::ReplaceCoreBinary(artifact) => {
-                self.replace_binary(artifact, preparation).await?;
-                Ok(Output::Unit)
+                Ok(if self.replace_binary(artifact, preparation).await? {
+                    Output::RestartWithheld
+                } else {
+                    Output::Unit
+                })
             }
             Command::StopCore => {
                 // A stop the user asked for outlives both its own failure and
@@ -201,9 +217,6 @@ impl CoreLifecycleWorkflow {
                 Ok(Output::Stop(report))
             }
             Command::RecoverCore => Ok(Output::Recover(self.core.recover().await?)),
-            Command::ProbeService => {
-                Ok(Output::Service(Box::new(self.core.probe_service().await?)))
-            }
             Command::InstallService => {
                 self.core.install_service().await?;
                 Ok(Output::Unit)
@@ -313,6 +326,59 @@ impl CoreLifecycleWorkflow {
         self.recovery.intent == CoreIntent::Stopped
     }
 
+    /// An explicit start takes back the stop recorded before it (T10 §1.4).
+    /// A restoration still owed is not a stop, and stays owed; a stop asked
+    /// for after this is recorded, and honoured, again.
+    pub fn withdraw_stop_intent(&mut self) {
+        if self.recovery.intent == CoreIntent::Stopped {
+            self.recovery.intent = CoreIntent::Idle;
+        }
+    }
+
+    /// Whether a path that starts the core may do so (T10 §1.7): the proven
+    /// owner is both the host the router drives and the host the user asked
+    /// for.
+    pub fn start_permitted(&self) -> bool {
+        let desired = desired_host(&self.application.load().state);
+        self.ownership == Ownership::Established { host: desired }
+            && self.core.core_status().host == desired
+    }
+
+    fn permit_start(&self) -> Result<(), CoreError> {
+        if self.start_permitted() {
+            Ok(())
+        } else {
+            Err(CoreError::new(
+                CoreErrorKind::OperationConflict,
+                "no host is proven to own the runtime the configuration asks for; restart the \
+                 core to re-establish it",
+                false,
+            ))
+        }
+    }
+
+    /// Hands the runtime to a daemon that is already `Ready`, and never
+    /// converges one: no install, no daemon start, no elevation prompt
+    /// (T10 §1.3). Proving who owns the runtime afterwards is the caller's.
+    pub(in crate::client) async fn adopt_ready_service(
+        &mut self,
+    ) -> Result<HandoffReport, HostChangeFailure> {
+        let report = self.core.adopt_service_host().await?;
+        self.follow_host();
+        self.note_interrupted_core(report.interrupted_running());
+        Ok(report)
+    }
+
+    /// Stops a running core this session holds no receipt for, and ends the
+    /// binding it may be holding. The stop intent is left alone: retiring an
+    /// instance the application cannot vouch for is not the user asking for
+    /// a stop (T10 §1.4).
+    pub(in crate::client) async fn retire_unreceipted(&mut self) -> Result<StopReport, CoreError> {
+        let stopped = self.core.stop().await;
+        self.ports.invalidate();
+        stopped
+    }
+
     pub fn recovery_due(&self) -> bool {
         !self.recovery.suppressed
             && self.recovery.attempts < RECOVERY_BUDGET
@@ -375,8 +441,10 @@ impl CoreLifecycleWorkflow {
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. }) => {
                 self.recovery.intent = CoreIntent::Idle;
             }
+            // Restoring the interrupted core is a start, and only a proven
+            // owner of the desired host may make it (T10 §1.7 #6).
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
-                if !self.closing.is_cancelled() =>
+                if !self.closing.is_cancelled() && self.start_permitted() =>
             {
                 // Every phase boundary this workflow owns is checked, but a
                 // cancel landing inside the build or the submission still
@@ -434,6 +502,11 @@ impl CoreLifecycleWorkflow {
         host: ExecutionHost,
     ) -> Result<HandoffReport, crate::core::actor_v2::facade::HostChangeFailure> {
         let report = self.core.change_execution_host(host).await?;
+        // A completed handoff proved the source stopped before the target
+        // was adopted, which is the ownership proof itself.
+        if report.completed() {
+            self.ownership = Ownership::Established { host };
+        }
         // The host moved; whatever the caller does next is a follow-up effect
         // whose failure must not put the policy back on the old host.
         self.follow_host();
@@ -497,6 +570,7 @@ impl CoreLifecycleWorkflow {
             snapshot,
             intent,
             ports,
+            target,
         } = prepared;
         let spec = preparation
             .core_spec(&snapshot.target_core)
@@ -549,6 +623,7 @@ impl CoreLifecycleWorkflow {
             local_ipc: intent.local_ipc,
             binding: report.applied.clone(),
             ports,
+            target,
         });
         self.runtime
             .record_confirmed_apply(Some(snapshot.clone()), receipt.clone());
@@ -591,11 +666,14 @@ impl CoreLifecycleWorkflow {
         Ok(())
     }
 
+    /// Installs `artifact` and restarts the core when the replacement owes it
+    /// one. Returns whether that restart was withheld: it is a start, and
+    /// needs a proven owner of the desired host (T10 §1.7 #7).
     async fn replace_binary(
         &mut self,
         artifact: PreparedCoreBinary,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<(), CoreError> {
+    ) -> Result<bool, CoreError> {
         let desired = self.application.load().state.core;
         let status = self.core.refresh_status().await?;
         let (state, applied_kind) = status
@@ -624,9 +702,12 @@ impl CoreLifecycleWorkflow {
             .await
             .map_err(domain_error)?;
         if restart {
+            if !self.start_permitted() {
+                return Ok(true);
+            }
             artifact.progress.restarting();
             self.reconcile(preparation).await?;
         }
-        Ok(())
+        Ok(false)
     }
 }

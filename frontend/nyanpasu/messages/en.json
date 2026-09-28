@@ -527,5 +527,6 @@
   "configuration_committed_note": "Saved configuration and applied effects have separate status. Retry applies the saved value without saving it again.",
   "configuration_unconfirmed": "The result could not be confirmed. Check recent operations before saving again.",
   "configuration_hotkeys": "Keyboard shortcuts",
-  "configuration_tray": "Tray"
+  "configuration_tray": "Tray",
+  "configuration_sources": "Profile sources"
 }

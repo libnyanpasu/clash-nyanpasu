@@ -527,5 +527,6 @@
   "configuration_committed_note": "設定儲存與效果生效分別記錄。重試只套用已儲存值，不會再次儲存。",
   "configuration_unconfirmed": "暫時無法確認結果。再次儲存前請查看近期操作。",
   "configuration_hotkeys": "快捷鍵",
-  "configuration_tray": "系統匣"
+  "configuration_tray": "系統匣",
+  "configuration_sources": "配置來源"
 }

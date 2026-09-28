@@ -1,6 +1,7 @@
 //! Application workflow admission: serializes configuration commits, runtime application,
 //! connection interruption, host changes, binary installation, and shutdown.
 pub(crate) mod adapters;
+mod attempt;
 pub(crate) mod impact;
 pub(in crate::client) mod inputs;
 pub(crate) mod mutation;
@@ -9,13 +10,14 @@ pub(crate) mod policy;
 pub(in crate::client) mod ports;
 mod preparation;
 pub(in crate::client) mod profiles;
+pub(crate) mod startup;
 mod tcc;
 mod workflow;
 
 #[cfg(test)]
 mod tests;
 
-use std::{collections::VecDeque, panic::AssertUnwindSafe, sync::Arc, time::Duration};
+use std::{collections::VecDeque, fmt, panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
 use futures_util::FutureExt;
 use nyanpasu_core::state::{DecisionHandle, StateDecision, StateSnapshot};
@@ -24,9 +26,10 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult}
 use tokio::sync::{broadcast, watch};
 
 use super::{
+    app_lifecycle::Reply,
     core_lifecycle::{
-        Command as CoreCommand, CoreLifecycleWorkflow, Output, RECOVERY_INTERVAL, ServiceRecovery,
-        domain_error,
+        Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
+        ServiceRecovery, domain_error,
         ports::{BinaryInstaller, PreparedCoreBinary},
     },
     runtime,
@@ -40,6 +43,7 @@ use crate::{
     },
     state::profiles::ports::RebuildNotifier,
 };
+use attempt::AttemptStage;
 use mutation::{MutationBudgets, MutationCommand, MutationJournal, MutationRequest, TryAck};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
@@ -84,10 +88,74 @@ pub struct CoreLifecycleOperationResult {
     pub backend_operation_id: Option<OperationId>,
 }
 
+/// What closing admission found (T10 §5.4 step 1).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ClosingAck {
+    /// Queued requests refused by this close.
+    pub rejected: usize,
+    /// The operation left running: closing never touches it.
+    pub active: Option<OperationId>,
+}
+
+impl fmt::Display for ClosingAck {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "queued requests refused: {}", self.rejected)?;
+        match self.active {
+            Some(active) => write!(f, "; operation {active} left running"),
+            None => f.write_str("; nothing running"),
+        }
+    }
+}
+
+/// Whether a closing workflow's running work reached its own end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Settlement {
+    /// Closed, with nothing running. `isolated` says an attempt was left
+    /// unresolved for a later recovery, which shutdown does not run.
+    Settled { isolated: bool },
+    /// Still running when the wait ran out. `attempt` is the last stage the
+    /// running attempt reported, with the attempt it belongs to.
+    Unsettled {
+        operation: Option<OperationId>,
+        attempt: Option<(OperationId, AttemptStage)>,
+    },
+    /// The workflow actor stopped before anything settled.
+    Gone,
+}
+
+impl fmt::Display for Settlement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settled { isolated: false } => f.write_str("nothing running"),
+            Self::Settled { isolated: true } => {
+                f.write_str("nothing running; an unresolved attempt keeps the domain isolated")
+            }
+            Self::Unsettled {
+                operation: None, ..
+            } => f.write_str("closing was not confirmed"),
+            Self::Unsettled {
+                operation: Some(operation),
+                attempt: None,
+            } => write!(f, "operation {operation} still running"),
+            Self::Unsettled {
+                operation: Some(operation),
+                attempt: Some((attempt, stage)),
+            } => write!(
+                f,
+                "operation {operation} still running; attempt {attempt} at {stage:?}"
+            ),
+            Self::Gone => f.write_str("the application workflow stopped before settling"),
+        }
+    }
+}
+
 /// Work serialized by the execution domain. A source mutation runs as a
 /// participant of its owning domain's transaction, so the workflow never
 /// becomes a second commit point for a configuration domain.
 pub(super) enum Command {
+    /// Proves who owns the runtime and applies the committed configuration,
+    /// once per session (T10 §1).
+    StartupReconcile,
     Core(CoreCommand),
     /// One source-config mutation, running as a Required participant of the
     /// transaction that produced its candidate.
@@ -126,6 +194,10 @@ enum Message {
     DirtyTick,
     RecoveryTick,
     ConvergenceTick,
+    /// Closes admission for the ordered shutdown: refuses what is queued and
+    /// leaves the running operation alone. Unlike a shutdown request, it stops
+    /// nothing by itself (T10 §5.4 step 1).
+    BeginClosing(RpcReplyPort<ClosingAck>),
     Close,
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
@@ -134,6 +206,14 @@ enum Message {
     /// that outlives its attempt is unreachable, not visibly wrong.
     #[cfg(test)]
     LiveMutationContexts(RpcReplyPort<usize>),
+    /// Makes the next Confirm panic before it changes anything: a deferral's
+    /// Confirm calls no port a test could fail in its place.
+    #[cfg(test)]
+    PanicAtConfirm(RpcReplyPort<bool>),
+    /// Which owner the workflow holds proven; `None` while it is out on a
+    /// tracked task.
+    #[cfg(test)]
+    Ownership(RpcReplyPort<Option<Ownership>>),
 }
 
 struct ApplicationWorkflowActor;
@@ -188,7 +268,7 @@ struct PublishedView {
     uncertain: bool,
     last_completed: Option<OperationId>,
     maintenance: Option<String>,
-    recovery: Option<(OperationId, String)>,
+    recovery: Option<attempt::RecoveryView>,
     deferred: Option<(
         OperationId,
         super::convergence::ConvergenceHealth,
@@ -216,6 +296,9 @@ pub(super) struct ApplicationWorkflowArgs {
     pub dirty: watch::Receiver<()>,
     /// The separate budgets of one mutation (v2 §5.5).
     pub budgets: MutationBudgets,
+    /// Who owns the runtime when the workflow starts. Production starts
+    /// `Unproven` and lets StartupReconcile prove it (T10 §1.2).
+    pub ownership: Ownership,
 }
 
 struct ActorArgs {
@@ -334,10 +417,7 @@ impl ApplicationWorkflowState {
             self.publish();
             return;
         }
-        let uncertain = self
-            .workflow
-            .as_ref()
-            .is_some_and(|w| w.lifecycle.uncertain);
+        let uncertain = self.workflow.as_ref().is_some_and(|w| w.isolated());
         if uncertain {
             self.status.send_modify(|status| status.uncertain = true);
             self.dirty = false;
@@ -354,15 +434,33 @@ impl ApplicationWorkflowState {
                 // settlement this transaction is still going to make would find
                 // a context nobody will act on again.
                 let operation_id = request.response.id;
-                self.reject(request, CoreError::new(CoreErrorKind::OperationConflict, "previous core lifecycle operation has an uncertain outcome; inspect Configuration status and request runtime verification before further mutations", false));
+                let error = CoreError::new(
+                    CoreErrorKind::OperationConflict,
+                    "previous core lifecycle operation has an uncertain outcome; inspect Configuration status and request runtime verification before further mutations",
+                    false,
+                );
+                // A refused first startup still hands every owner its full
+                // desired value, once (T10 §1.9); the workflow is idle here.
+                if matches!(request.command, Command::StartupReconcile)
+                    && let Some(workflow) = self.workflow.as_mut()
+                    && std::panic::catch_unwind(AssertUnwindSafe(|| {
+                        workflow.startup_unsettled(operation_id, &error)
+                    }))
+                    .is_err()
+                {
+                    tracing::error!("the full effects publish panicked");
+                }
+                self.reject(request, error);
                 self.retire_mutation(operation_id);
             }
             self.pending = probes;
         }
         let request = if self.closing {
-            if self.shutdown.is_some() {
+            // Closing admission alone stops nothing: the core stops when a
+            // shutdown is asked for, or when every client is gone.
+            if self.shutdown.is_some() || (self.shutdown_waiters.is_empty() && !self.abandoned) {
                 self.publish();
-                if self.abandoned {
+                if self.shutdown.is_some() && self.abandoned {
                     myself.stop(None);
                 }
                 return;
@@ -443,6 +541,8 @@ impl ApplicationWorkflowState {
                 // only withdraw attempts that have not entered this domain.
                 context.admitted = true;
             }
+            // Whatever stage the task reports from here on is its own.
+            workflow.stage.send_replace(None);
             let actor = myself.clone();
             let shutdown = matches!(command, Command::Core(CoreCommand::Shutdown));
             // Ownership moves into exactly one tracked task, never a shared lock.
@@ -454,16 +554,31 @@ impl ApplicationWorkflowState {
                     }
                     _ => None,
                 };
-                let result = match AssertUnwindSafe(workflow.execute(command))
+                let startup = matches!(command, Command::StartupReconcile);
+                // A panic records nothing: the attempt and its pending action
+                // are fields of the workflow, and return with it holding
+                // exactly what they held when it unwound.
+                let result = match AssertUnwindSafe(workflow.execute(id, command))
                     .catch_unwind()
                     .await
                 {
                     Ok(result) => result,
                     Err(_) => {
-                        workflow.lifecycle.uncertain = true;
-                        Err(domain_error(
+                        let error = domain_error(
                             "core lifecycle workflow panicked; execution state is uncertain",
-                        ))
+                        );
+                        // Every owner is still handed its full desired value
+                        // once (T10 §1.9); a notifier must not keep the actor
+                        // from settling admission either.
+                        if startup
+                            && std::panic::catch_unwind(AssertUnwindSafe(|| {
+                                workflow.startup_unsettled(id, &error)
+                            }))
+                            .is_err()
+                        {
+                            tracing::error!("the full effects publish panicked");
+                        }
+                        Err(error)
                     }
                 };
                 if let Some(progress) = progress {
@@ -502,11 +617,11 @@ impl ApplicationWorkflowState {
     ///
     /// A mutation has to be answered while the workflow may be out on a tracked
     /// task, so the published flag is consulted too: it is the last value the
-    /// latch had before the tracked task started.
+    /// isolation had before the tracked task started.
     fn recovery_required(&self) -> bool {
         self.workflow
             .as_ref()
-            .is_some_and(|workflow| workflow.lifecycle.uncertain)
+            .is_some_and(|workflow| workflow.isolated())
             || self.status.borrow().uncertain
     }
 
@@ -617,12 +732,8 @@ impl ApplicationWorkflowState {
                 queued: status.queued.clone(),
                 uncertain: status.uncertain,
                 last_completed: status.completed.back().map(|result| result.id),
-                maintenance: workflow
-                    .and_then(|w| w.pending_product.as_ref())
-                    .map(|(_, error)| error.clone()),
-                recovery: workflow
-                    .and_then(|w| w.recovery.as_ref())
-                    .map(|r| (r.operation_id, r.error.clone())),
+                maintenance: workflow.and_then(|w| w.maintenance()),
+                recovery: workflow.and_then(|w| w.recovery_view()),
                 deferred: workflow.and_then(|w| w.deferred.as_ref()).map(|d| {
                     (
                         d.operation_id,
@@ -646,12 +757,9 @@ impl ApplicationWorkflowState {
                 journal.completed.push_back(receipt);
             }
             if let Some(workflow) = workflow {
-                journal.recovery = workflow.recovery.clone();
+                journal.recovery = workflow.recovery_view();
                 journal.deferred = workflow.deferred.clone();
-                journal.maintenance = workflow
-                    .pending_product
-                    .as_ref()
-                    .map(|(_, error)| error.clone());
+                journal.maintenance = workflow.maintenance();
             }
             changed
         });
@@ -737,7 +845,7 @@ impl Actor for ApplicationWorkflowActor {
                 let _ = active.task.await;
                 state.status.send_modify(|status| {
                     status.active = None;
-                    status.uncertain = workflow.lifecycle.uncertain;
+                    status.uncertain = workflow.isolated();
                 });
                 if active.shutdown
                     && let Err(error) = result
@@ -801,6 +909,17 @@ impl Actor for ApplicationWorkflowActor {
                     state.recovery_due = true;
                 }
             }
+            Message::BeginClosing(reply) => {
+                let rejected = state.pending.len();
+                state.close();
+                // Published before the reply: whoever sees the acknowledgement
+                // must already read the workflow as closing.
+                state.publish();
+                let _ = reply.send(ClosingAck {
+                    rejected,
+                    active: state.active.as_ref().map(|op| op.response.id),
+                });
+            }
             Message::Close => {
                 state.abandoned = true;
                 state.close();
@@ -812,6 +931,24 @@ impl Actor for ApplicationWorkflowActor {
             #[cfg(test)]
             Message::LiveMutationContexts(reply) => {
                 let _ = reply.send(state.mutations.len());
+            }
+            #[cfg(test)]
+            Message::PanicAtConfirm(reply) => {
+                let armed = state
+                    .workflow
+                    .as_mut()
+                    .map(|workflow| workflow.panic_at_confirm = true)
+                    .is_some();
+                let _ = reply.send(armed);
+            }
+            #[cfg(test)]
+            Message::Ownership(reply) => {
+                let _ = reply.send(
+                    state
+                        .workflow
+                        .as_ref()
+                        .map(|workflow| workflow.lifecycle.ownership),
+                );
             }
         }
         state.drive(&myself);
@@ -852,6 +989,7 @@ struct ClientInner {
     mutations: watch::Receiver<MutationJournal>,
     core: crate::core::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
+    stage: watch::Receiver<Option<(OperationId, AttemptStage)>>,
 }
 
 impl Drop for ClientInner {
@@ -889,6 +1027,7 @@ impl ApplicationWorkflowClient {
         let (journal_tx, mutations) = watch::channel(MutationJournal::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
+        let (stage_tx, stage) = watch::channel(None);
         let preparation = RuntimePreparation::new(
             args.application.clone(),
             args.clash.clone(),
@@ -905,16 +1044,21 @@ impl ApplicationWorkflowClient {
             budgets: args.budgets,
             deferred: None,
             pending_product: None,
-            recovery: None,
+            pending_release: None,
+            live: None,
+            startup: None,
+            stage: stage_tx,
+            #[cfg(test)]
+            panic_at_confirm: false,
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),
                 installer: args.installer,
                 runtime: runtime.clone(),
                 ports: args.ports,
-                uncertain: false,
                 recovery: ServiceRecovery::default(),
                 closing: tokio_util::sync::CancellationToken::new(),
+                ownership: args.ownership,
             },
         };
         let (actor, _) = Actor::spawn(
@@ -937,6 +1081,7 @@ impl ApplicationWorkflowClient {
             mutations,
             core,
             service_status,
+            stage,
         })))
     }
 
@@ -962,6 +1107,44 @@ impl ApplicationWorkflowClient {
         self.0.status.borrow().clone()
     }
 
+    /// Closes admission (T10 §5.4 step 1). The request is in the mailbox
+    /// once the returned future has been polled once.
+    pub(crate) async fn begin_closing(&self) -> Reply<ClosingAck> {
+        Reply::of(self.0.actor.call(Message::BeginClosing, None).await)
+    }
+
+    /// Waits up to `budget` for a closing workflow to have nothing running
+    /// (T10 §5.4 step 3). It only watches: the running operation keeps its
+    /// decision wait, and a Cancel runs to its real end.
+    pub(crate) async fn wait_settled(&self, budget: Duration) -> Settlement {
+        let mut status = self.0.status.clone();
+        let settled = tokio::time::timeout(
+            budget,
+            status.wait_for(|status| status.shutting_down && status.active.is_none()),
+        )
+        .await
+        .map(|settled| settled.map(|status| status.uncertain));
+        match settled {
+            Ok(Ok(isolated)) => Settlement::Settled { isolated },
+            Ok(Err(_)) => Settlement::Gone,
+            Err(_) => {
+                let operation = status.borrow().active;
+                Settlement::Unsettled {
+                    operation,
+                    // Cleared whenever a task starts, so only the running
+                    // operation's attempt can be here.
+                    attempt: operation.and(*self.0.stage.borrow()),
+                }
+            }
+        }
+    }
+
+    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
+    /// The request is sent before this returns; the handle only waits.
+    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
+        crate::client::Terminating::begin(self.0.actor.get_cell())
+    }
+
     /// Hands the workflow one mutation's Try. The verdict comes back on the
     /// request's own channel, so the caller — the source transaction's prepare
     /// — is the only thing waiting for it.
@@ -972,6 +1155,12 @@ impl ApplicationWorkflowClient {
             .map_err(|_| {
                 anyhow::anyhow!("the application workflow is unavailable; the mutation was not run")
             })
+    }
+
+    /// The status watch, for a test that has to see closing begin.
+    #[cfg(test)]
+    pub(in crate::client) fn subscribe_status(&self) -> watch::Receiver<CoreLifecycleStatus> {
+        self.0.status.clone()
     }
 
     #[cfg(test)]
@@ -1012,6 +1201,22 @@ impl ApplicationWorkflowClient {
             .iter()
             .find(|receipt| receipt.operation_id == operation_id)
             .cloned()
+    }
+
+    /// StartupReconcile (T10 §1.2): once per session, and its report on every
+    /// later call. A reply that never came is `Unsettled`, never a guess.
+    pub async fn startup_reconcile(&self) -> startup::StartupReport {
+        match self.call(Command::StartupReconcile).await {
+            Ok(Output::Startup(report)) => *report,
+            Ok(_) => unreachable!("StartupReconcile answers with its report"),
+            Err(error) => startup::StartupReport {
+                operation_id: error.operation_id.unwrap_or_else(OperationId::generate),
+                observation: None,
+                outcome: startup::StartupOutcome::Unsettled {
+                    reason: error.to_string(),
+                },
+            },
+        }
     }
 
     pub async fn retry_runtime(&self) -> Result<(), CoreError> {
@@ -1064,12 +1269,6 @@ impl ApplicationWorkflowClient {
         Recover,
         RecoverReport
     );
-    pub async fn probe_service(&self) -> Result<ServiceHostStatus, CoreError> {
-        match self.call(Command::Core(CoreCommand::ProbeService)).await? {
-            Output::Service(result) => Ok(*result),
-            _ => unreachable!(),
-        }
-    }
     method!(
         shutdown,
         Command::Core(CoreCommand::Shutdown),
@@ -1100,10 +1299,6 @@ impl ApplicationWorkflowClient {
     }
     pub async fn replace_binary(&self, artifact: PreparedCoreBinary) -> Result<(), CoreError> {
         self.unit(Command::Core(CoreCommand::ReplaceCoreBinary(artifact)))
-            .await
-    }
-    pub async fn restore_host(&self) -> Result<(), CoreError> {
-        self.unit(Command::Core(CoreCommand::RestoreExecutionHost))
             .await
     }
     pub async fn install_service(&self) -> Result<(), CoreError> {

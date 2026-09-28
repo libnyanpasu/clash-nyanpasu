@@ -720,7 +720,6 @@ impl StreamsClient {
     pub async fn start(&self) -> Result<()> {
         self.call(Message::Start).await
     }
-    #[allow(dead_code)]
     pub async fn stop(&self) -> Result<()> {
         self.call(Message::Stop).await
     }
@@ -743,6 +742,12 @@ impl StreamsClient {
     }
     pub fn subscribe_ws(&self) -> broadcast::Receiver<ClashWsEvent> {
         self.0.events.subscribe()
+    }
+
+    /// Asks the actor to finish what is queued and stop (T10 §5.4 step 7).
+    /// The request is sent before this returns; the handle only waits.
+    pub(crate) fn begin_terminate(&self) -> crate::client::Terminating {
+        crate::client::Terminating::begin(self.0.actor.get_cell())
     }
 }
 

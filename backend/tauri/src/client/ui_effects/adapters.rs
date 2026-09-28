@@ -8,7 +8,8 @@ use nyanpasu_egui::widget::StatisticWidgetVariant;
 use tauri::Emitter;
 
 use super::ports::{
-    LocaleSink, LoggerRefresher, TrayRefresher, WidgetController, WidgetError, WidgetRuntime,
+    LocaleSink, LoggerRefresher, TrayRefresher, WIDGET_STOP_BOUND, WidgetController, WidgetError,
+    WidgetRuntime,
 };
 use crate::{client::effects::plan::TrayView, core::tray::Tray};
 
@@ -108,9 +109,12 @@ impl WidgetController for TauriWidgetController {
         let mut started = self.started.lock().await;
         match config {
             NetworkStatisticWidgetConfig::Disabled => {
-                if runtime.is_running().await {
-                    runtime.stop().await?;
-                }
+                // Unconditional, as in `stop`: a start that failed and could
+                // not clean up keeps its widget owned without running. With
+                // nothing owned the stop is a no-op.
+                runtime
+                    .stop(tokio::time::Instant::now() + WIDGET_STOP_BOUND)
+                    .await?;
                 *started = None;
             }
             NetworkStatisticWidgetConfig::Enabled(variant) => {
@@ -128,12 +132,12 @@ impl WidgetController for TauriWidgetController {
         Ok(())
     }
 
-    async fn stop(&self) -> Result<(), WidgetError> {
+    async fn stop(&self, deadline: tokio::time::Instant) -> Result<(), WidgetError> {
         let runtime = self.runtime()?;
         let mut started = self.started.lock().await;
-        if runtime.is_running().await {
-            runtime.stop().await?;
-        }
+        // Unconditional: a widget whose start was cancelled mid-handshake is
+        // owned without running, and the shutdown still has to reap it.
+        runtime.stop(deadline).await?;
         *started = None;
         Ok(())
     }
@@ -145,8 +149,8 @@ impl WidgetRuntime for crate::widget::WidgetManager {
         crate::widget::WidgetManager::start(self, variant).await
     }
 
-    async fn stop(&self) -> anyhow::Result<()> {
-        crate::widget::WidgetManager::stop(self).await
+    async fn stop(&self, deadline: tokio::time::Instant) -> Result<(), WidgetError> {
+        crate::widget::WidgetManager::stop(self, deadline).await
     }
 
     async fn is_running(&self) -> bool {

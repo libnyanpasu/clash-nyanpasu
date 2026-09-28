@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::{
     client::{
-        ClientSetupArgs, NyanpasuClient, OsSystemDnsCache, RuntimePaths, TauriUiEventSink,
+        ClientSetupArgs, NyanpasuClient, OsSystemDnsCache, ProducerTasks, RuntimePaths,
+        ShutdownBudgets, TauriUiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -76,6 +77,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
     let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
     let (effects, widget_controller) = build_application_effects(&app_handle, &paths, hotkey_tx)?;
+    let producers = ProducerTasks::default();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         logging: crate::client::logs::LoggingSetup {
@@ -98,6 +100,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone())),
         accelerators: Arc::new(PlatformAcceleratorValidator),
+        producers: producers.clone(),
+        shutdown_budgets: ShutdownBudgets::default(),
     })
     .context("Failed to setup nyanpasu client")?;
     // The tray menu and the first window render with the process locale, so
@@ -110,8 +114,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(crate::core::tray::TrayState::<tauri::Wry>::new(
         client.tray_view(),
     ));
-    forward_actor_events(app_handle, client.clone());
-    tauri::async_runtime::spawn(hotkey_action_pump(hotkey_rx, client.clone()));
+    forward_actor_events(app_handle, client.clone(), &producers);
+    tauri::async_runtime::spawn(producers.track(hotkey_action_pump(hotkey_rx, client.clone())));
     // The widget needs the client's connection stream and the client needs the
     // widget controller, so the controller is built empty and filled here, in
     // the one place that has both. Its desired configuration arrives with the
@@ -200,13 +204,21 @@ fn build_application_effects(
     Ok((executor, widget))
 }
 
-fn forward_actor_events(app_handle: tauri::AppHandle, client: NyanpasuClient) {
-    let (mut mutations, mut effects) = client.subscribe_configuration_changes();
+fn forward_actor_events(
+    app_handle: tauri::AppHandle,
+    client: NyanpasuClient,
+    producers: &ProducerTasks,
+) {
+    let (mut mutations, mut effects, mut sources) = client.subscribe_configuration_changes();
     let configuration_client = client.clone();
     let configuration_handle = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
+    tauri::async_runtime::spawn(producers.track(async move {
         loop {
-            let changed = tokio::select! { result = mutations.changed() => result, result = effects.changed() => result };
+            let changed = tokio::select! {
+                result = mutations.changed() => result,
+                result = effects.changed() => result,
+                result = sources.changed() => result,
+            };
             if changed.is_err() {
                 break;
             }
@@ -214,10 +226,10 @@ fn forward_actor_events(app_handle: tauri::AppHandle, client: NyanpasuClient) {
                 crate::ipc::ConfigurationStatusChanged(configuration_client.configuration_status())
                     .emit(&configuration_handle);
         }
-    });
+    }));
     let mut core_events = client.subscribe_core_events();
     let core_handle = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
+    tauri::async_runtime::spawn(producers.track(async move {
         loop {
             match core_events.recv().await {
                 Ok(status) => {
@@ -228,15 +240,15 @@ fn forward_actor_events(app_handle: tauri::AppHandle, client: NyanpasuClient) {
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
         }
-    });
+    }));
 
     let mut service_events = client.subscribe_service_events();
-    tauri::async_runtime::spawn(async move {
+    tauri::async_runtime::spawn(producers.track(async move {
         while service_events.changed().await.is_ok() {
             let status = service_events.borrow_and_update().clone();
             let _ = crate::core::actor_v2::ServiceStatusChangedEvent(status).emit(&app_handle);
         }
-    });
+    }));
 }
 
 fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {

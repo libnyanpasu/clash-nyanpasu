@@ -1,8 +1,10 @@
 use crate::client::UiEventSink;
+mod closing;
 mod connection_policy;
 mod mutations;
 mod recovery;
 mod service_recovery;
+mod startup;
 mod validation;
 
 use super::{
@@ -59,6 +61,21 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
         self.delegate.publish(snapshot).await
     }
+}
+
+/// The workflow's own shutdown request: what the ordered shutdown's StopCore
+/// step sends once the transactions settled. A reply that never came is
+/// reported the way the core stop reports it, never as a stop.
+async fn workflow_shutdown(client: &NyanpasuClient) -> ShutdownReport {
+    client
+        .inner
+        .application_workflow
+        .shutdown()
+        .await
+        .unwrap_or_else(|error| ShutdownReport {
+            stop: Err(error),
+            final_status: client.core_status().snapshot,
+        })
 }
 
 async fn dirty_graph(
@@ -287,6 +304,11 @@ async fn dirty_graph_with_clients(
         .unwrap();
     let validator_paths = paths.clone();
     let core_for_validator = core.clone();
+    // The graph's router already drives the host it was built on, and these
+    // tests are not about proving that.
+    let ownership = super::super::core_lifecycle::Ownership::Established {
+        host: core.status().host,
+    };
     let builder = Arc::new(BlockingBuilder {
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
@@ -315,6 +337,7 @@ async fn dirty_graph_with_clients(
 
             dirty,
             budgets: mutation::MutationBudgets::default(),
+            ownership,
         },
         schedule_ticks,
     )
@@ -451,6 +474,201 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ParkedEndpoint {
     }
 }
 
+/// How [`ScriptedWaitEndpoint`] answers the wait for one operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WaitScript {
+    /// The real terminal result.
+    Deliver,
+    /// The registry answers nothing: an admitted operation whose result is
+    /// lost.
+    Missing,
+    /// The operation is admitted and still running.
+    Running,
+    /// The waiter itself panics while the operation runs on.
+    Panic,
+    /// The real terminal result, held until the test releases it.
+    Held,
+}
+
+/// A control endpoint whose operation waits are scripted per operation.
+///
+/// Each submission takes the next queued script (`Deliver` once the queue is
+/// empty) and keeps it until a test rescripts that operation, so the one
+/// operation a test cares about can be lost, left running or made to panic
+/// its waiter, and later delivered, while everything else is real.
+struct ScriptedWaitEndpoint {
+    delegate: Arc<TestControlEndpoint>,
+    queued: std::sync::Mutex<std::collections::VecDeque<WaitScript>>,
+    scripts: std::sync::Mutex<Vec<(OperationId, WaitScript)>>,
+    held: Notify,
+    release: Notify,
+}
+
+impl ScriptedWaitEndpoint {
+    fn new(delegate: Arc<TestControlEndpoint>) -> Arc<Self> {
+        Arc::new(Self {
+            delegate,
+            queued: std::sync::Mutex::new(std::collections::VecDeque::new()),
+            scripts: std::sync::Mutex::new(Vec::new()),
+            held: Notify::new(),
+            release: Notify::new(),
+        })
+    }
+
+    /// Resolves once a `Held` wait is holding its result.
+    async fn held(&self) {
+        self.held.notified().await;
+    }
+
+    /// Lets the held wait deliver.
+    fn release(&self) {
+        self.release.notify_one();
+    }
+
+    /// The script the next submission takes.
+    fn queue(&self, script: WaitScript) {
+        self.queued.lock().unwrap().push_back(script);
+    }
+
+    fn rescript(&self, operation: OperationId, script: WaitScript) {
+        let mut scripts = self.scripts.lock().unwrap();
+        let entry = scripts
+            .iter_mut()
+            .find(|(id, _)| *id == operation)
+            .expect("only a submitted operation is rescripted");
+        entry.1 = script;
+    }
+
+    fn submitted(&self) -> usize {
+        self.scripts.lock().unwrap().len()
+    }
+
+    /// Every submitted operation, in order.
+    fn operations(&self) -> Vec<OperationId> {
+        self.scripts
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(operation, _)| *operation)
+            .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
+    async fn effective_config(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
+        self.delegate.effective_config().await
+    }
+    async fn api_connection(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>, CoreError> {
+        self.delegate.api_connection().await
+    }
+    async fn api_changes(
+        &self,
+    ) -> Result<Option<crate::core::actor_v2::endpoint::ApiChanges>, CoreError> {
+        self.delegate.api_changes().await
+    }
+    fn host(&self) -> ExecutionHost {
+        self.delegate.host()
+    }
+    async fn check_config(
+        &self,
+        submission: crate::core::actor_v2::endpoint::CheckSubmission,
+    ) -> crate::core::actor_v2::endpoint::CheckSupport {
+        self.delegate.check_config(submission).await
+    }
+    async fn submit(
+        &self,
+        submission: crate::core::actor_v2::endpoint::CoreSubmission,
+    ) -> Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError> {
+        let operation = submission.envelope.operation_id;
+        let script = self
+            .queued
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(WaitScript::Deliver);
+        self.scripts.lock().unwrap().push((operation, script));
+        self.delegate.submit(submission).await
+    }
+    async fn wait_operation(
+        &self,
+        id: OperationId,
+        timeout: Duration,
+    ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
+        let script = self
+            .scripts
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(operation, _)| *operation == id)
+            .map_or(WaitScript::Deliver, |(_, script)| *script);
+        match script {
+            WaitScript::Deliver => self.delegate.wait_operation(id, timeout).await,
+            WaitScript::Missing => None,
+            WaitScript::Running => Some(nyanpasu_ipc::api::core::v2::OperationInfo {
+                id: id.to_string(),
+                phase: nyanpasu_ipc::api::core::v2::OperationPhase::Running,
+                output: None,
+                error: None,
+            }),
+            WaitScript::Panic => panic!("scripted panic while waiting for operation {id}"),
+            WaitScript::Held => {
+                self.held.notify_one();
+                self.release.notified().await;
+                self.delegate.wait_operation(id, timeout).await
+            }
+        }
+    }
+    async fn status(
+        &self,
+    ) -> Result<crate::core::actor_v2::endpoint::CoreStatusSnapshot, CoreError> {
+        self.delegate.status().await
+    }
+}
+
+/// Commit notifications that count what they were told, and can panic the
+/// next one: a notification is the step right after a Confirm, which is where
+/// an interruption leaves a committed mutation unsettled.
+#[derive(Default)]
+struct RecordingNotifications {
+    committed: AtomicUsize,
+    full: AtomicUsize,
+    panic_next: AtomicBool,
+}
+
+impl RecordingNotifications {
+    fn committed(&self) -> usize {
+        self.committed.load(Ordering::SeqCst)
+    }
+
+    fn full(&self) -> usize {
+        self.full.load(Ordering::SeqCst)
+    }
+}
+
+impl crate::client::effects::ports::CommitNotifications for RecordingNotifications {
+    fn committed(
+        &self,
+        _: crate::client::effects::plan::ApplicationEffectInputs,
+        _: bool,
+        _: Vec<crate::client::effects::plan::EffectKind>,
+    ) {
+        assert!(
+            !self.panic_next.swap(false, Ordering::SeqCst),
+            "scripted notification panic"
+        );
+        self.committed.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn publish_full(&self, _: crate::client::effects::plan::ApplicationEffectInputs) {
+        self.full.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 #[test]
 fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     use super::super::tests::{HostTransitionEndpoint, HostTransitionServiceAdapter};
@@ -462,7 +680,7 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
         release: Notify::new(),
     });
     let (core, service) = tauri::async_runtime::block_on(async {
-        let core = CoreClient::spawn(HostTransitionEndpoint::new(
+        let core = CoreClient::spawn(HostTransitionEndpoint::stopped(
             ExecutionHost::Local,
             calls.clone(),
         ))
@@ -485,7 +703,10 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
     args.service = service;
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
-        client.reconcile_core().await.unwrap();
+        assert_eq!(
+            client.startup_reconcile().await.outcome,
+            super::startup::StartupOutcome::Ready
+        );
         let switch = {
             let client = client.clone();
             tokio::spawn(async move { client.set_execution_host(true).await })
@@ -605,6 +826,20 @@ impl Fixture {
     }
 }
 
+/// Arms the one-shot panic at the next Confirm. The workflow is idle, so the
+/// fault lands on the next attempt.
+async fn panic_at_confirm(client: &ApplicationWorkflowClient) {
+    assert!(matches!(
+        client
+            .0
+            .actor
+            .call(Message::PanicAtConfirm, Some(Duration::from_secs(5)))
+            .await
+            .unwrap(),
+        CallResult::Success(true)
+    ));
+}
+
 /// How many attempts still own a control context inside the actor.
 async fn live_mutation_contexts(client: &ApplicationWorkflowClient) -> usize {
     match client
@@ -616,6 +851,20 @@ async fn live_mutation_contexts(client: &ApplicationWorkflowClient) -> usize {
     {
         CallResult::Success(live) => live,
         other => panic!("the workflow should answer: {other:?}"),
+    }
+}
+
+/// Which owner the idle workflow holds proven.
+async fn ownership(client: &ApplicationWorkflowClient) -> Ownership {
+    match client
+        .0
+        .actor
+        .call(Message::Ownership, Some(Duration::from_secs(5)))
+        .await
+        .unwrap()
+    {
+        CallResult::Success(Some(ownership)) => ownership,
+        other => panic!("the idle workflow should answer: {other:?}"),
     }
 }
 
@@ -650,6 +899,7 @@ async fn start_replacement(
 fn replacement_serializes_reconcile_and_retains_files_after_caller_cancellation() {
     let f = Fixture::new(true, false, false);
     tauri::async_runtime::block_on(async {
+        f.endpoint.prime(&f.client).await;
         let (task, staging) = start_replacement(&f).await;
         assert_eq!(
             f.endpoint.submissions(),
@@ -716,6 +966,7 @@ fn replacement_decisions_use_applied_identity_and_always_recover() {
     for (desired, kind, stopped, target, before_copy, restart) in cases {
         let f = Fixture::new(false, false, false);
         tauri::async_runtime::block_on(async {
+            f.endpoint.prime(&f.client).await;
             f.endpoint
                 .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
             let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
@@ -770,7 +1021,7 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         let (replace, _) = start_replacement(&f).await;
         let mut reconcile = Box::pin(f.client.reconcile_core());
         assert!(reconcile.as_mut().now_or_never().is_none());
-        let mut shutdown = Box::pin(f.client.shutdown_core());
+        let mut shutdown = Box::pin(workflow_shutdown(&f.client));
         assert!(shutdown.as_mut().now_or_never().is_none());
         barrier(&f.client.inner.application_workflow).await;
         assert!(f.client.core_lifecycle_status().shutting_down);
@@ -783,7 +1034,7 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         replace.await.unwrap().unwrap();
         assert!(shutdown.await.stop.is_ok());
         let before = f.endpoint.submissions();
-        assert!(f.client.shutdown_core().await.stop.is_ok());
+        assert!(workflow_shutdown(&f.client).await.stop.is_ok());
         assert!(f.client.reconcile_core().await.is_err());
         assert_eq!(f.endpoint.submissions(), before);
     });
@@ -826,7 +1077,7 @@ fn queue_is_bounded_and_caller_timeout_does_not_release_admission() {
         assert_eq!(outcomes.len(), 1);
         assert!(outcomes[0].as_ref().unwrap().contains("queue is full"));
         assert_eq!(f.endpoint.submissions(), 2);
-        let mut shutdown = Box::pin(f.client.shutdown_core());
+        let mut shutdown = Box::pin(workflow_shutdown(&f.client));
         assert!(shutdown.as_mut().now_or_never().is_none());
         barrier(core_lifecycle).await;
         for call in pending {
@@ -856,7 +1107,7 @@ fn failed_installation_does_not_restart_and_a_panic_fails_admission_closed() {
                     f.client.reconcile_core().await.unwrap_err().kind,
                     Some(CoreErrorKind::OperationConflict)
                 );
-                assert!(f.client.shutdown_core().await.stop.is_ok());
+                assert!(workflow_shutdown(&f.client).await.stop.is_ok());
             } else {
                 f.client.reconcile_core().await.unwrap();
             }
@@ -868,6 +1119,7 @@ fn failed_installation_does_not_restart_and_a_panic_fails_admission_closed() {
 fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product() {
     let f = Fixture::new(false, false, false);
     tauri::async_runtime::block_on(async {
+        f.endpoint.prime(&f.client).await;
         f.endpoint.set_result_missing(true);
         let error = f.client.reconcile_core().await.unwrap_err();
         assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
@@ -887,7 +1139,7 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
         );
         assert_eq!(f.endpoint.submissions(), 1);
         f.endpoint.set_result_missing(false);
-        assert!(f.client.shutdown_core().await.stop.is_ok());
+        assert!(workflow_shutdown(&f.client).await.stop.is_ok());
     });
 }
 
@@ -1163,6 +1415,7 @@ fn control_channel_reconcile_reads_committed_clash_config() {
 fn control_channel_application_does_not_start_a_stopped_core() {
     let f = Fixture::new(false, false, false);
     tauri::async_runtime::block_on(async {
+        f.endpoint.prime(&f.client).await;
         f.endpoint.set_status(
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
             None,
@@ -1216,7 +1469,7 @@ fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_i
                 barrier(client).await;
                 assert!(client.status().uncertain);
             } else {
-                let mut shutdown = Box::pin(f.client.shutdown_core());
+                let mut shutdown = Box::pin(workflow_shutdown(&f.client));
                 assert!(shutdown.as_mut().now_or_never().is_none());
                 barrier(client).await;
                 f.installer.release.notify_one();

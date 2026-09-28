@@ -122,6 +122,7 @@ impl RuntimePreparation {
             .resolve_candidate(&inputs.clash)
             .map_err(domain_error)?;
         let core_type: nyanpasu_utils::core::CoreType = (&inputs.app.core).into();
+        let target = inputs.target_key().ok();
         let snapshot = self
             .builder
             .build(
@@ -148,6 +149,7 @@ impl RuntimePreparation {
             snapshot,
             intent: Arc::new(intent),
             ports,
+            target,
         })
     }
 

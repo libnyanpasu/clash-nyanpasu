@@ -45,6 +45,11 @@ pub struct ClashConfig {
     /// 支持关闭字段过滤，避免meta的新字段都被过滤掉，默认关闭
     pub enable_clash_fields: bool,
 
+    /// 在 Nyanpasu 侧按 mihomo 语义展开代理组的 `include-all*`，默认为真；
+    /// 关闭时原样交给核心处理
+    #[serde(default = "default_expand_include_all")]
+    pub expand_include_all: bool,
+
     /// 外部控制器端口策略
     #[patch(nesting)]
     pub external_controller: ExternalControllerStrategy,
@@ -76,6 +81,10 @@ pub struct ClashConfig {
     pub tun_stack: TunStack,
 }
 
+fn default_expand_include_all() -> bool {
+    true
+}
+
 /// The config of a fresh install.
 impl Default for ClashConfig {
     fn default() -> Self {
@@ -84,6 +93,7 @@ impl Default for ClashConfig {
             enable_tun_mode: false,
             web_ui_list: Vec::new(),
             enable_clash_fields: false,
+            expand_include_all: default_expand_include_all(),
             external_controller: ExternalControllerStrategy::default(),
             clash_control_channel: ClashControlChannel::default(),
             clash_ipc_disable_http_controller: false,
@@ -132,6 +142,19 @@ mod patch_tests {
             serde_yaml_ng::to_value(crate::application::NyanpasuAppConfig::default()).unwrap();
         assert!(app.get("clash_control_channel").is_none());
         assert!(app.get("clash_ipc_disable_http_controller").is_none());
+    }
+
+    #[test]
+    fn include_all_expansion_defaults_on_for_new_and_old_configs() {
+        assert!(ClashConfig::default().expand_include_all);
+        let mut yaml = serde_yaml_ng::to_value(ClashConfig {
+            expand_include_all: false,
+            ..ClashConfig::default()
+        })
+        .unwrap();
+        yaml.as_mapping_mut().unwrap().remove("expand_include_all");
+        let config: ClashConfig = serde_yaml_ng::from_value(yaml).unwrap();
+        assert!(config.expand_include_all);
     }
 
     /// The composite fields take nested patches: a sub-field replaces only

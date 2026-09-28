@@ -56,6 +56,8 @@ function stepLabel(tag: OperatorTag): string {
           return m.inspect_overrides()
         case 'whitelist_field_filter':
           return m.inspect_filter()
+        case 'include_all_expansion':
+          return m.inspect_include_all()
         case 'core_controller':
           return m.inspect_core_controller()
         case 'finalizing':

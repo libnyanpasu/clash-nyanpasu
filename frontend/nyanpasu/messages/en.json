@@ -458,6 +458,7 @@
   "inspect_builtin": "Built-in transform",
   "inspect_overrides": "Apply overrides",
   "inspect_filter": "Filter fields",
+  "inspect_include_all": "Expand include-all",
   "inspect_finalizing": "Finalize configuration",
   "inspect_selected": "Selected profile",
   "inspect_base": "Composition base",

@@ -75,6 +75,7 @@ pub enum ConfigExecutionRole {
 pub enum BuiltinStepKind {
     GuardOverrides,
     WhitelistFieldFilter,
+    IncludeAllExpansion,
     Finalizing,
     CoreController,
 }

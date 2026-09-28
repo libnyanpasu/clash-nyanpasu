@@ -155,8 +155,8 @@ pub(super) fn apply_guard(
     Ok(next)
 }
 
-/// Finalizing composite node (spec 7.4): stage-2 filter, tun, include-all,
-/// then cache. One recorded node; changed_fields shows the net effect.
+/// Finalizing composite node (spec 7.4): stage-2 filter, tun, then cache.
+/// One recorded node; changed_fields shows the net effect.
 pub(super) fn finalize(
     config: &ConfigValue,
     tun: &TunParams,
@@ -165,7 +165,6 @@ pub(super) fn finalize(
     let full: Vec<String> = known_fields().map(str::to_string).collect();
     let mut next = whitelist_filter(config, &full, whitelist_enabled);
     next = apply_tun(&next, tun);
-    next = apply_include_all(&next);
     next = apply_cache(&next);
     // TODO: 可选排序算法
     // next = apply_sort(&next);
@@ -257,71 +256,6 @@ fn apply_tun_dns(config: &ConfigValue, windows_fake_ip_filter: bool) -> ConfigVa
         );
     }
     obj_insert(config, "dns", ConfigValue::Object(Arc::new(dns)))
-}
-
-/// Mirrors enhance/mod.rs:163-248.
-fn apply_include_all(config: &ConfigValue) -> ConfigValue {
-    let mut names: Vec<String> = Vec::new();
-    if let Some(proxies) = obj_get(config, "proxies").and_then(ConfigValue::as_array_arc) {
-        for proxy in proxies.iter() {
-            if let Some(ConfigValue::String(name)) =
-                proxy.as_object_arc().and_then(|map| map.get("name"))
-            {
-                names.push(name.to_string());
-            }
-        }
-    }
-    if let Some(providers) = obj_get(config, "proxy-providers").and_then(ConfigValue::as_object_arc)
-    {
-        names.extend(providers.keys().map(|key| key.to_string()));
-    }
-
-    let Some(groups) = obj_get(config, "proxy-groups").and_then(ConfigValue::as_array_arc) else {
-        return config.clone();
-    };
-    let rebuilt: Vec<ConfigValue> = groups
-        .iter()
-        .map(|group| {
-            let Some(map) = group.as_object_arc() else {
-                return group.clone();
-            };
-            let include_all = matches!(map.get("include-all"), Some(ConfigValue::Bool(true)));
-            if !include_all || !map.contains_key("name") {
-                return group.clone();
-            }
-            let existing: Vec<String> = map
-                .get("proxies")
-                .and_then(ConfigValue::as_array_arc)
-                .map(|seq| {
-                    seq.iter()
-                        .filter_map(|value| match value {
-                            ConfigValue::String(name) => Some(name.to_string()),
-                            _ => None,
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            let mut proxies: Vec<ConfigValue> =
-                names.iter().map(|name| string_value(name)).collect();
-            proxies.extend(
-                existing
-                    .iter()
-                    .filter(|name| !names.contains(name))
-                    .map(|name| string_value(name)),
-            );
-
-            let mut next = (**map).clone();
-            next.insert(Arc::from("proxies"), ConfigValue::Array(Arc::from(proxies)));
-            next.shift_remove("include-all");
-            ConfigValue::Object(Arc::new(next))
-        })
-        .collect();
-    obj_insert(
-        config,
-        "proxy-groups",
-        ConfigValue::Array(Arc::from(rebuilt)),
-    )
 }
 
 /// Mirrors enhance/mod.rs:250-261: existing `profile` keys are not merged.

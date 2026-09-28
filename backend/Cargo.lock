@@ -3562,6 +3562,17 @@ name = "fake-core"
 version = "0.1.0"
 
 [[package]]
+name = "fancy-regex"
+version = "0.19.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d301f5bf187b3c295fce6468d3875037a0bccc5f6b151c63cac2f85babf21912"
+dependencies = [
+ "bit-set 0.8.0",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "fast-float2"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6527,6 +6538,7 @@ dependencies = [
  "ciborium",
  "csscolorparser",
  "enumflags2",
+ "fancy-regex",
  "indexmap 2.14.2",
  "json-patch",
  "language-tags",

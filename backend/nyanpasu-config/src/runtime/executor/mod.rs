@@ -5,6 +5,7 @@ mod artifact;
 mod builtin;
 mod compose;
 mod error;
+mod include_all;
 mod overlay;
 mod ports;
 mod scoped;
@@ -43,6 +44,9 @@ pub struct RuntimePipelineInputs<'a> {
     /// `ClashConfig.enable_clash_fields`: gates both whitelist passes.
     pub whitelist_enabled: bool,
     pub tun: TunParams,
+    /// `ClashConfig.expand_include_all`: expand `include-all*` groups here
+    /// instead of leaving them to the core.
+    pub expand_include_all: bool,
     /// Pre-gated and ordered by the caller against `ClashCore` (spec D3).
     pub builtin_transforms: &'a [BuiltinTransform],
 }
@@ -257,7 +261,7 @@ pub fn execute(
     };
 
     // Shared tail (spec §7.1): global → sample → whitelist → guard →
-    // builtin×N → finalizing.
+    // builtin×N → include-all expansion → finalizing.
     for (index, transform_id) in inputs.profiles.global_transforms.iter().enumerate() {
         let (next, kind, entries, failed) =
             apply_transform(inputs.profiles, content, runner, transform_id, &working);
@@ -329,6 +333,17 @@ pub fn execute(
         logs.extend(tag.node_key(), entries);
         builder.push(tag, next.clone())?;
         working = next;
+    }
+
+    if inputs.expand_include_all {
+        let (next, entries) = include_all::expand_include_all(&working);
+        let tag = OperatorTag::BuiltinStep {
+            selected_profile_id: selected.clone(),
+            step: BuiltinStepKind::IncludeAllExpansion,
+        };
+        logs.extend(tag.node_key(), entries);
+        working = Arc::new(next);
+        builder.push(tag, working.clone())?;
     }
 
     working = Arc::new(builtin::finalize(

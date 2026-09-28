@@ -458,6 +458,7 @@
   "inspect_builtin": "內建轉換",
   "inspect_overrides": "套用覆寫設定",
   "inspect_filter": "篩選欄位",
+  "inspect_include_all": "展開 include-all",
   "inspect_finalizing": "完成設定",
   "inspect_selected": "目前設定",
   "inspect_base": "組合基底",

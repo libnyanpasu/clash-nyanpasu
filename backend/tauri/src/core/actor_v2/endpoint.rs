@@ -702,6 +702,10 @@ fn map_service_status(infos: &CoreInfos) -> CoreStatusSnapshot {
         // then, the service host's applied identity is always unknown, so
         // replacing a core while one is running on this host always takes
         // the conservative stop-and-restart path.
+        // TODO(service-applied-kind): publish the applied kind from the
+        // daemon's manager snapshot and map it here. Until then
+        // `verify_recovery_target` proves this host's core through the
+        // confirmed submission instead of the observation.
         applied_kind: None,
     }
 }

@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
-import { useClashConfig } from '@nyanpasu/interface'
+import { useClashConfig, type LogLevel } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -37,7 +37,7 @@ export default function LogLevelSelector() {
   const handleLogLevelChange = useCallback(
     async (value: string) => {
       await upsert.mutateAsync({
-        'log-level': value as string,
+        'log-level': value as LogLevel,
       })
     },
     [upsert],

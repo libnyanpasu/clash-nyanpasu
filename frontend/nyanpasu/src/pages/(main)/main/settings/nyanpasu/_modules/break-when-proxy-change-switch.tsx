@@ -3,7 +3,11 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useSetting } from '@nyanpasu/interface'
+import {
+  breaksOnProxyChange,
+  proxyChangeBreakMode,
+  useClashSetting,
+} from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -14,15 +18,17 @@ import {
 } from '../../_modules/settings-card'
 
 export default function BreakWhenProxyChangeSwitch() {
-  const breakWhenProxyChange = useSetting('break_when_proxy_change')
+  const breakConnection = useClashSetting('break_connection')
 
-  const checked = breakWhenProxyChange.value
-    ? breakWhenProxyChange.value !== 'none'
+  const checked = breakConnection.value
+    ? breaksOnProxyChange(breakConnection.value)
     : false
 
   const handleChange = useLockFn(async () => {
     try {
-      await breakWhenProxyChange.upsert(checked ? 'none' : 'all')
+      await breakConnection.upsert({
+        on_proxy_change: proxyChangeBreakMode(!checked),
+      })
     } catch (error) {
       message(
         `Update break when proxy change failed!\n Error: ${formatError(error)}`,
@@ -51,7 +57,7 @@ export default function BreakWhenProxyChangeSwitch() {
           <Switch
             checked={checked}
             onCheckedChange={handleChange}
-            loading={breakWhenProxyChange.isPending}
+            loading={breakConnection.isPending}
           />
         </ItemContainer>
       </SettingsCardContent>

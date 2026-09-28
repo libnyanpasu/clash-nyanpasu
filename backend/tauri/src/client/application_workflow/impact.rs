@@ -175,17 +175,19 @@ impl RequestedRuntimeFields {
         }
     }
 
-    /// The runtime-relevant fields a clash-config patch carries.
+    /// The runtime-relevant fields a clash-config patch carries. A composite
+    /// field takes a nested patch and is carried once any sub-field is.
     pub fn of_clash(patch: &ClashConfigPatch) -> Self {
+        use struct_patch::Status as _;
         Self {
             named: patch.overrides.is_some()
                 || patch.enable_clash_fields.is_some()
                 || patch.enable_tun_mode.is_some()
                 || patch.tun_stack.is_some()
-                || patch.mixed_port.is_some()
+                || !patch.mixed_port.is_empty()
                 || patch.socks_port.is_some()
                 || patch.http_port.is_some()
-                || patch.external_controller.is_some()
+                || !patch.external_controller.is_empty()
                 || patch.clash_control_channel.is_some()
                 || patch.clash_ipc_disable_http_controller.is_some(),
         }
@@ -560,7 +562,15 @@ mod tests {
         },
         clash::config::{
             ClashConfigPatch,
-            clash_strategy::{break_connection::ProxyChangeBreakMode, port::PortStrategy},
+            clash_strategy::{
+                break_connection::{
+                    BreakConnectionStrategy, BreakConnectionStrategyPatch, ProxyChangeBreakMode,
+                },
+                port::{
+                    ExternalControllerStrategyPatch, PortStrategy, PortStrategyKind,
+                    PortStrategyPatch,
+                },
+            },
             overrides::{ClashGuardOverridesPatch, LogLevel, Mode},
         },
         profile::{
@@ -1460,7 +1470,7 @@ mod tests {
         assert!(
             !RequestedRuntimeFields::of_clash(&ClashConfigPatch {
                 web_ui_list: Some(vec!["http://127.0.0.1:9090/ui".into()]),
-                break_connection: Some(Default::default()),
+                break_connection: BreakConnectionStrategy::default().into_patch(),
                 ..ClashConfigPatch::default()
             })
             .names_any()
@@ -1474,7 +1484,7 @@ mod tests {
         assert_eq!(
             RequestedRuntimeFields::of_clash(&ClashConfigPatch {
                 enable_tun_mode: Some(true),
-                mixed_port: Some(PortStrategy::default()),
+                mixed_port: PortStrategy::default().into_patch(),
                 web_ui_list: Some(Vec::new()),
                 ..ClashConfigPatch::default()
             }),
@@ -1500,6 +1510,63 @@ mod tests {
             !RequestedRuntimeFields::of_clash_overrides(&ClashGuardOverridesPatch::default())
                 .names_any()
         );
+    }
+
+    /// A composite clash field is patched one sub-field at a time. Carrying any
+    /// sub-field names the field as carrying the whole value did, and the
+    /// verdict still comes from the committed candidate alone.
+    #[test]
+    fn a_nested_clash_patch_classifies_like_the_whole_value() {
+        let cases = [
+            (
+                "mixed_port.start_port",
+                ClashConfigPatch {
+                    mixed_port: PortStrategyPatch {
+                        start_port: Some(7891),
+                        ..PortStrategyPatch::default()
+                    },
+                    ..ClashConfigPatch::default()
+                },
+                RuntimeImpact::Reconcile,
+            ),
+            (
+                "external_controller.port.kind",
+                ClashConfigPatch {
+                    external_controller: ExternalControllerStrategyPatch {
+                        port: PortStrategyPatch {
+                            kind: Some(PortStrategyKind::Fixed),
+                            ..PortStrategyPatch::default()
+                        },
+                        ..ExternalControllerStrategyPatch::default()
+                    },
+                    ..ClashConfigPatch::default()
+                },
+                RuntimeImpact::Reconcile,
+            ),
+            (
+                "break_connection.on_mode_change",
+                ClashConfigPatch {
+                    break_connection: BreakConnectionStrategyPatch {
+                        on_mode_change: Some(false),
+                        ..BreakConnectionStrategyPatch::default()
+                    },
+                    ..ClashConfigPatch::default()
+                },
+                RuntimeImpact::None,
+            ),
+        ];
+        for (field, patch, impact) in cases {
+            let previous = base_clash();
+            let mut candidate = base_clash();
+            let requested = RequestedRuntimeFields::of_clash(&patch);
+            candidate.apply(patch);
+            assert_eq!(classify_clash(&previous, &candidate), impact, "{field}");
+            assert_eq!(
+                requested.names_any(),
+                impact != RuntimeImpact::None,
+                "{field} names its runtime field"
+            );
+        }
     }
 
     /// The profiles selection has no patch field: a request expresses it as an

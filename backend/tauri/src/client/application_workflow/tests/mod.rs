@@ -923,7 +923,7 @@ async fn disable_mode_interruption(client: &NyanpasuClient) {
     let mut config = client.get_clash_config().await.unwrap();
     config.break_connection.on_mode_change = false;
     let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
-    patch.break_connection = Some(config.break_connection);
+    patch.break_connection = config.break_connection.into_patch();
     client.patch_clash_config(patch).await.unwrap();
 }
 

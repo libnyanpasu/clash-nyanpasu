@@ -137,6 +137,7 @@
   "settings_clash_settings_random_port_disabled": "Random port disabled, after restart to take effect.",
   "settings_clash_settings_external_controll_label": "External Controller",
   "settings_clash_settings_external_controll_label_edit": "Edit External Controller",
+  "settings_clash_settings_external_controll_invalid_address": "Enter an IP address and port, e.g. 127.0.0.1:9090 or [::1]:9090",
   "settings_clash_settings_port_strategy_label": "Port Strategy",
   "settings_clash_settings_allow_fallback_label": "Allow Fallback",
   "settings_clash_settings_fixed_label": "Fixed",

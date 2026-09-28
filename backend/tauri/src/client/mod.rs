@@ -2,6 +2,7 @@ mod application;
 pub mod application_workflow;
 mod clash_api;
 mod clash_config;
+mod clash_info;
 mod clash_streams;
 pub mod configuration_status;
 pub mod convergence;
@@ -35,8 +36,6 @@ use crate::{
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::{
-        application::ApplicationSnapshot,
-        clash_config::ClashConfigSnapshot,
         mirror::{
             ClashLegacyBridge as ClashLegacyBridgeTrait,
             VergeLegacyBridge as VergeLegacyBridgeTrait,
@@ -46,7 +45,6 @@ use crate::{
             CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
             ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
         },
-        session_state::SessionStateSnapshot,
     },
     utils::path::PathResolver,
 };
@@ -65,6 +63,7 @@ use nyanpasu_config::{
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
+pub use clash_info::ClashInfo;
 pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
@@ -100,12 +99,6 @@ pub struct LegacyBridgeSet {
 #[derive(Clone)]
 pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
-}
-
-pub(crate) struct TypedConfigSnapshots {
-    pub application: ApplicationSnapshot,
-    pub session: SessionStateSnapshot,
-    pub clash: ClashConfigSnapshot,
 }
 
 async fn new_typed_config_clients(
@@ -580,9 +573,9 @@ impl NyanpasuClient {
 
     pub async fn download_core_update(
         &self,
-        core: crate::config::nyanpasu::ClashCore,
+        core: nyanpasu_config::application::ClashCore,
     ) -> Result<usize> {
-        Ok(self.inner.updater.update(core).await?)
+        Ok(self.inner.updater.update(core.into()).await?)
     }
 
     pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {
@@ -714,6 +707,13 @@ impl NyanpasuClient {
         Ok(self.inner.clash_config.snapshot().state)
     }
 
+    pub fn clash_info(&self) -> ClashInfo {
+        ClashInfo::derive(
+            self.session_ports().as_ref(),
+            &self.inner.clash_config.snapshot().state,
+        )
+    }
+
     pub async fn patch_runtime_overrides(
         &self,
         patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
@@ -738,14 +738,6 @@ impl NyanpasuClient {
     ) -> Result<runtime::MutationOutcome<()>> {
         let client = self.inner.clash_config.clone();
         Ok(client.replace(state).await?.outcome())
-    }
-
-    pub(crate) fn typed_config_snapshots(&self) -> TypedConfigSnapshots {
-        TypedConfigSnapshots {
-            application: self.inner.application.snapshot(),
-            session: self.inner.session_state.snapshot(),
-            clash: self.inner.clash_config.snapshot(),
-        }
     }
 
     // ---- profiles domain (PR-3 T07) ----

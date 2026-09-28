@@ -4,10 +4,10 @@
   ],
   "metrics": {
     "config_calls": {
-      "total": 49,
+      "total": 46,
       "byKey": {
-        "Config::verge()": 32,
-        "Config::clash()": 17
+        "Config::verge()": 31,
+        "Config::clash()": 15
       }
     },
     "service_globals": {
@@ -27,17 +27,15 @@
       }
     },
     "legacy_dto_refs": {
-      "total": 233,
+      "total": 156,
       "byKey": {
-        "IVerge": 120,
-        "IClashTemp": 30,
-        "VergeLegacyBridge": 21,
-        "LegacyVergeBridge": 20,
-        "ClashLegacyBridge": 19,
+        "IVerge": 76,
+        "IClashTemp": 26,
+        "VergeLegacyBridge": 19,
+        "ClashLegacyBridge": 15,
         "LegacyClashBridge": 8,
         "LegacyWindowBridge": 6,
-        "legacy_iverge_from_typed": 4,
-        "typed_patches_from_legacy_patch": 4,
+        "LegacyVergeBridge": 5,
         "IClash": 1
       }
     },

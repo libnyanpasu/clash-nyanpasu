@@ -30,7 +30,7 @@ pub enum ClashControlChannel {
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, Type)))]
-#[patch(attribute(serde(rename_all = "snake_case")))]
+#[patch(attribute(serde(default, rename_all = "snake_case")))]
 #[serde(rename_all = "snake_case")]
 pub struct ClashConfig {
     /// Clash Overrides config, used to patch clash config directly
@@ -46,6 +46,7 @@ pub struct ClashConfig {
     pub enable_clash_fields: bool,
 
     /// 外部控制器端口策略
+    #[patch(nesting)]
     pub external_controller: ExternalControllerStrategy,
 
     #[serde(default)]
@@ -54,17 +55,21 @@ pub struct ClashConfig {
     pub clash_ipc_disable_http_controller: bool,
 
     /// Mixed Proxy(Socks5, HTTP) Port Strategy
+    #[patch(nesting)]
     pub mixed_port: PortStrategy,
 
     /// Socks5 Proxy Port
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<PortStrategy>>)))]
     pub socks_port: Option<PortStrategy>,
 
     /// HTTP Proxy Port
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<PortStrategy>>)))]
     pub http_port: Option<PortStrategy>,
 
     /// 断开连接策略
+    #[patch(nesting)]
     pub break_connection: BreakConnectionStrategy,
 
     /// Tun 堆栈选择
@@ -89,6 +94,60 @@ mod patch_tests {
             serde_yaml_ng::to_value(crate::application::NyanpasuAppConfig::default()).unwrap();
         assert!(app.get("clash_control_channel").is_none());
         assert!(app.get("clash_ipc_disable_http_controller").is_none());
+    }
+
+    /// The composite fields take nested patches: a sub-field replaces only
+    /// itself, and a composite the patch does not carry is left alone.
+    #[test]
+    fn nested_patches_apply_only_the_given_sub_fields() {
+        let mut cfg = ClashConfig {
+            mixed_port: PortStrategy {
+                kind: PortStrategyKind::Fixed,
+                start_port: 7890,
+            },
+            ..ClashConfig::default()
+        };
+        let controller = cfg.external_controller.clone();
+
+        let patch: ClashConfigPatch = serde_json::from_value(serde_json::json!({
+            "mixed_port": { "start_port": 7891 },
+            "external_controller": { "port": { "kind": "random" } },
+            "break_connection": { "on_mode_change": false },
+        }))
+        .expect("nested patch must deserialize");
+        cfg.apply(patch);
+
+        assert_eq!(
+            cfg.mixed_port,
+            PortStrategy {
+                kind: PortStrategyKind::Fixed,
+                start_port: 7891,
+            }
+        );
+        assert_eq!(cfg.external_controller.host, controller.host);
+        assert_eq!(
+            cfg.external_controller.port,
+            PortStrategy {
+                kind: PortStrategyKind::Random,
+                start_port: controller.port.start_port,
+            }
+        );
+        assert_eq!(
+            cfg.break_connection,
+            BreakConnectionStrategy {
+                on_mode_change: false,
+                ..BreakConnectionStrategy::default()
+            }
+        );
+
+        let before = cfg.clone();
+        let unrelated: ClashConfigPatch =
+            serde_json::from_value(serde_json::json!({ "enable_tun_mode": true }))
+                .expect("patch must deserialize");
+        cfg.apply(unrelated);
+        assert_eq!(cfg.mixed_port, before.mixed_port);
+        assert_eq!(cfg.external_controller, before.external_controller);
+        assert_eq!(cfg.break_connection, before.break_connection);
     }
 
     /// `socks_port`/`http_port` are `Option<PortStrategy>` originals under the

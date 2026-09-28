@@ -1,7 +1,5 @@
 use crate::{
-    bridge::verge::LegacyVergeBridge,
     client::{ClientError, NyanpasuClient},
-    config::*,
     core::{logger::Logger, storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat::{self, CopyEnvOption},
@@ -318,8 +316,8 @@ pub async fn save_profile_file(
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_clash_info() -> Result<ClashInfo> {
-    Ok(Config::clash().latest().get_client_info())
+pub fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<crate::client::ClashInfo> {
+    Ok(client.clash_info())
 }
 
 /// get the runtime config
@@ -431,46 +429,64 @@ pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>>
     Ok(wrapped)
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
-pub struct PatchRuntimeConfig {
-    #[serde(default, rename = "allow-lan", skip_serializing_if = "Option::is_none")]
-    pub allow_lan: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ipv6: Option<bool>,
-    #[serde(default, rename = "log-level", skip_serializing_if = "Option::is_none")]
-    pub log_level: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mode: Option<String>,
+// ---- typed configuration commands (thin adapters over NyanpasuClient) ----
+
+use nyanpasu_config::{
+    application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    clash::config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
+};
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_app_config(client: State<'_, NyanpasuClient>) -> Result<NyanpasuAppConfig> {
+    Ok(client.get_app_config().await?)
 }
 
-/// patch clash runtime config
+#[tauri::command]
+#[specta::specta]
+pub async fn patch_app_config(
+    client: State<'_, NyanpasuClient>,
+    patch: NyanpasuAppConfigPatch,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.patch_app_config(patch).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_clash_config(client: State<'_, NyanpasuClient>) -> Result<ClashConfig> {
+    Ok(client.get_clash_config().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn patch_clash_config(
+    client: State<'_, NyanpasuClient>,
+    patch: ClashConfigPatch,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.patch_clash_config(patch).await?)
+}
+
+/// patch the clash guard overrides (mode, log level, LAN, IPv6, secret...)
 #[tauri::command]
 #[specta::specta]
 #[tracing_attributes::instrument(skip_all)]
-pub async fn patch_clash_config(
+pub async fn patch_runtime_overrides(
     client: State<'_, NyanpasuClient>,
-    payload: PatchRuntimeConfig,
+    patch: ClashGuardOverridesPatch,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
-    // Explicit-field whitelist so future DTO fields never auto-leak into logs.
+    // Explicit-field whitelist so future patch fields never auto-leak into
+    // logs; the secret is reported by presence only.
     tracing::debug!(
-        allow_lan = ?payload.allow_lan,
-        ipv6 = ?payload.ipv6,
-        log_level = ?payload.log_level,
-        mode = ?payload.mode,
-        "patch_clash_config"
+        log_level = ?patch.log_level,
+        allow_lan = ?patch.allow_lan,
+        mode = ?patch.mode,
+        secret = patch.secret.is_some(),
+        unified_delay = ?patch.unified_delay,
+        tcp_concurrent = ?patch.tcp_concurrent,
+        ipv6 = ?patch.ipv6,
+        "patch_runtime_overrides"
     );
-
-    let overrides = serde_yaml::from_value::<
-        nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
-    >(serde_yaml::to_value(payload)?)?;
-    Ok(client.patch_runtime_overrides(overrides).await?)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn get_verge_config(legacy: State<'_, LegacyVergeBridge>) -> Result<IVerge> {
-    Ok(legacy.get_verge_config().await?)
+    Ok(client.patch_runtime_overrides(patch).await?)
 }
 
 #[tauri::command]
@@ -484,29 +500,12 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_verge_config(
-    legacy: State<'_, LegacyVergeBridge>,
-    payload: IVerge,
-) -> Result<crate::client::runtime::MutationOutcome<()>> {
-    Ok(legacy.patch_verge_config(payload).await?)
-}
-
-#[tauri::command]
-#[specta::specta]
 pub async fn change_clash_core(
     client: State<'_, NyanpasuClient>,
-    clash_core: Option<nyanpasu::ClashCore>,
+    clash_core: Option<ClashCore>,
 ) -> Result {
     let clash_core =
         clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
-    let clash_core = match clash_core {
-        nyanpasu::ClashCore::ClashPremium => nyanpasu_config::application::ClashCore::ClashPremium,
-        nyanpasu::ClashCore::ClashRs => nyanpasu_config::application::ClashCore::ClashRs,
-        nyanpasu::ClashCore::Mihomo => nyanpasu_config::application::ClashCore::Mihomo,
-        nyanpasu::ClashCore::MihomoAlpha => nyanpasu_config::application::ClashCore::MihomoAlpha,
-        nyanpasu::ClashCore::ClashRsAlpha => nyanpasu_config::application::ClashCore::ClashRsAlpha,
-        nyanpasu::ClashCore::Meow => nyanpasu_config::application::ClashCore::Meow,
-    };
     client.update_core(clash_core).await?;
     Ok(())
 }
@@ -613,11 +612,8 @@ pub async fn fetch_latest_core_versions(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_version(
-    app_handle: AppHandle,
-    core_type: nyanpasu::ClashCore,
-) -> Result<String> {
-    match resolve::resolve_core_version(&app_handle, &core_type).await {
+pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
+    match resolve::resolve_core_version(&app_handle, &core_type.into()).await {
         Ok(version) => Ok(version),
         Err(err) => Err(IpcError::from(err)),
     }
@@ -650,10 +646,7 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_core(
-    client: State<'_, NyanpasuClient>,
-    core_type: nyanpasu::ClashCore,
-) -> Result<usize> {
+pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore) -> Result<usize> {
     Ok(client.download_core_update(core_type).await?)
 }
 

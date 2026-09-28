@@ -111,7 +111,9 @@ const Viewer = ({ search }: { search: string }) => {
     () =>
       [
         {
-          header: 'Host',
+          // ids keep the former English headers so persisted column sizing still applies
+          id: 'Host',
+          header: () => m.connections_column_host(),
           accessorFn: ({ metadata }) => metadata.host || metadata.destinationIP,
           size: 320,
           cell: (info) => (
@@ -123,7 +125,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'Chains',
+          id: 'Chains',
+          header: () => m.connections_column_chains(),
           accessorFn: ({ chains }) => [...chains].reverse().join(' / '),
           size: 360,
           cell: (info) => (
@@ -134,7 +137,8 @@ const Viewer = ({ search }: { search: string }) => {
         },
 
         {
-          header: 'Downloaded',
+          id: 'Downloaded',
+          header: () => m.connections_column_downloaded(),
           accessorFn: ({ download }) => parseTraffic(download).join(' '),
           sortFn: (rowA, rowB) =>
             rowA.original.download - rowB.original.download,
@@ -146,7 +150,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'Uploaded',
+          id: 'Uploaded',
+          header: () => m.connections_column_uploaded(),
           accessorFn: ({ upload }) => parseTraffic(upload).join(' '),
           sortFn: (rowA, rowB) => rowA.original.upload - rowB.original.upload,
           size: 120,
@@ -155,7 +160,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'DL Speed',
+          id: 'DL Speed',
+          header: () => m.connections_column_download_speed(),
           accessorFn: ({ downloadSpeed }) =>
             parseTraffic(downloadSpeed).join(' ') + '/s',
           sortFn: (rowA, rowB) =>
@@ -168,7 +174,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'UL Speed',
+          id: 'UL Speed',
+          header: () => m.connections_column_upload_speed(),
           accessorFn: ({ uploadSpeed }) =>
             parseTraffic(uploadSpeed).join(' ') + '/s',
           sortFn: (rowA, rowB) =>
@@ -181,7 +188,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'Process',
+          id: 'Process',
+          header: () => m.connections_column_process(),
           accessorFn: ({ metadata }) => metadata.process,
           size: 160,
           cell: (info) => (
@@ -191,7 +199,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'Rule',
+          id: 'Rule',
+          header: () => m.connections_column_rule(),
           accessorFn: ({ rule, rulePayload }) =>
             rulePayload ? `${rule} (${rulePayload})` : rule,
           size: 200,
@@ -204,7 +213,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'Time',
+          id: 'Time',
+          header: () => m.connections_column_time(),
           accessorFn: ({ start }) => dayjs(start).fromNow(),
           sortFn: (rowA, rowB) =>
             dayjs(rowA.original.start).diff(rowB.original.start),
@@ -220,7 +230,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'Source',
+          id: 'Source',
+          header: () => m.connections_column_source(),
           accessorFn: ({ metadata: { sourceIP, sourcePort } }) =>
             `${sourceIP}:${sourcePort}`,
           size: 160,
@@ -231,7 +242,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'Destination IP',
+          id: 'Destination IP',
+          header: () => m.connections_column_destination(),
           accessorFn: ({ metadata: { destinationIP, destinationPort } }) =>
             `${destinationIP}:${destinationPort}`,
           size: 160,
@@ -242,7 +254,8 @@ const Viewer = ({ search }: { search: string }) => {
           ),
         },
         {
-          header: 'Type',
+          id: 'Type',
+          header: () => m.connections_column_type(),
           accessorFn: ({ metadata }) =>
             `${metadata.type} (${metadata.network})`,
           size: 120,

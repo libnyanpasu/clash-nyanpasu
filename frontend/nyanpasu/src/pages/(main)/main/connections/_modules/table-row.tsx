@@ -21,12 +21,61 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { useClashConnections } from '@nyanpasu/interface'
+import {
+  useClashConnections,
+  type ClashConnectionItem,
+  type ClashConnectionMetadata,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { ConnectionRow } from '..'
 
 // Keys added by ConnectionRow that should not be rendered in the dialog
 const INTERNAL_KEYS = new Set(['closed', 'downloadSpeed', 'uploadSpeed'])
+
+const FIELD_LABELS = {
+  id: m.connections_field_id,
+  upload: m.connections_field_upload,
+  download: m.connections_field_download,
+  start: m.connections_field_start,
+  chains: m.connections_field_chains,
+  rule: m.connections_field_rule,
+  rulePayload: m.connections_field_rule_payload,
+  network: m.connections_field_network,
+  type: m.connections_field_type,
+  host: m.connections_field_host,
+  sourceIP: m.connections_field_source_ip,
+  sourcePort: m.connections_field_source_port,
+  destinationIP: m.connections_field_destination_ip,
+  destinationPort: m.connections_field_destination_port,
+  destinationIPASN: m.connections_field_destination_ip_asn,
+  sourceGeoIP: m.connections_field_source_geo_ip,
+  destinationGeoIP: m.connections_field_destination_geo_ip,
+  process: m.connections_field_process,
+  processPath: m.connections_field_process_path,
+  dnsMode: m.connections_field_dns_mode,
+  dscp: m.connections_field_dscp,
+  inboundIP: m.connections_field_inbound_ip,
+  inboundName: m.connections_field_inbound_name,
+  inboundPort: m.connections_field_inbound_port,
+  inboundUser: m.connections_field_inbound_user,
+  remoteDestination: m.connections_field_remote_destination,
+  sniffHost: m.connections_field_sniff_host,
+  specialProxy: m.connections_field_special_proxy,
+  specialRules: m.connections_field_special_rules,
+} satisfies Partial<
+  Record<
+    | Exclude<keyof ClashConnectionItem, 'metadata'>
+    | keyof ClashConnectionMetadata,
+    () => string
+  >
+>
+
+// Fields the core adds later have no message yet, so show the key itself
+function fieldLabel(key: string) {
+  return Object.hasOwn(FIELD_LABELS, key)
+    ? FIELD_LABELS[key as keyof typeof FIELD_LABELS]()
+    : sentenceCase(key)
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatValue(key: string, value: any): React.ReactNode {
@@ -65,7 +114,7 @@ function RowRender({ label, value }: { label: string; value: any }) {
 
   return (
     <>
-      <div className="w-fit text-sm font-semibold">{sentenceCase(label)}</div>
+      <div className="w-fit text-sm font-semibold">{fieldLabel(label)}</div>
       <div
         className={cn(
           'text-sm break-all',
@@ -153,7 +202,7 @@ export default function TableRow({
                     ))}
 
                   <h3 className="col-span-2 pt-4 pb-1 text-base font-semibold">
-                    Metadata
+                    {m.connections_field_metadata()}
                   </h3>
 
                   {Object.entries(data.metadata)

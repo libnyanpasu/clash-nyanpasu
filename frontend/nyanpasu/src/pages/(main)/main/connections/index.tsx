@@ -1,7 +1,14 @@
 import BoxOutlineRounded from '~icons/material-symbols/box-outline-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -68,7 +75,9 @@ export const Route = createFileRoute('/(main)/main/connections/')({
   component: RouteComponent,
 })
 
-const Viewer = ({ search }: { search: string }) => {
+// Memoized so a keystroke's urgent render skips the table; it re-renders
+// with the deferred search term, or on its own stream and route updates.
+const Viewer = memo(function Viewer({ search }: { search: string }) {
   const { proxy } = IndexRoute.useSearch()
 
   const [columnSizing, setColumnSizing] = useLocalStorage<ColumnSizingState>(
@@ -477,10 +486,14 @@ const Viewer = ({ search }: { search: string }) => {
       {detailModal}
     </>
   )
-}
+})
 
 function RouteComponent() {
   const [search, setSearch] = useState('')
+
+  // Filtering, highlighting and re-sorting every connection is heavy; typing
+  // stays responsive while the table catches up with the latest term.
+  const deferredSearch = useDeferredValue(search)
 
   const deleteConnections = useDeleteClashConnections()
 
@@ -493,7 +506,7 @@ function RouteComponent() {
       <RegisterContextMenu>
         <RegisterContextMenuTrigger asChild>
           <ScrollArea className="min-h-0 flex-1" scrollbars="both" type="hover">
-            <Viewer search={search} />
+            <Viewer search={deferredSearch} />
           </ScrollArea>
         </RegisterContextMenuTrigger>
 

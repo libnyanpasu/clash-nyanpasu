@@ -1,7 +1,82 @@
+import { useEffect, useState, type CSSProperties } from 'react'
+import type { ThemedToken } from 'shiki'
 import { m } from '@/paraglide/messages'
 import type { SnapshotDiffHunk } from '@nyanpasu/interface'
 
+/** Highlighted tokens for each line of each hunk; undefined for markers. */
+type HunkTokens = (ThemedToken[] | undefined)[][]
+
+/**
+ * Each side of a hunk is tokenized as its own contiguous text, so a line is
+ * highlighted in the YAML context it has on its side of the change.
+ */
+async function tokenizeHunks(hunks: SnapshotDiffHunk[]): Promise<HunkTokens> {
+  const { tokenizeYaml } = await import('@/utils/shiki')
+  return Promise.all(
+    hunks.map(async (hunk) => {
+      const side = (sign: string) =>
+        hunk.lines
+          .filter((line) => line[0] === ' ' || line[0] === sign)
+          .map((line) => line.slice(1))
+          .join('\n')
+      const [oldTokens, newTokens] = await Promise.all([
+        tokenizeYaml(side('-')),
+        tokenizeYaml(side('+')),
+      ])
+      let oldIndex = 0
+      let newIndex = 0
+      return hunk.lines.map((line) => {
+        switch (line[0]) {
+          case '-':
+            return oldTokens[oldIndex++]
+          case '+':
+            return newTokens[newIndex++]
+          case ' ':
+            oldIndex++
+            return newTokens[newIndex++]
+          default:
+            return undefined
+        }
+      })
+    }),
+  )
+}
+
+/** Shiki's HTML style keys are CSS property names; React wants camelCase. */
+function tokenStyle(style: Record<string, string> | undefined) {
+  if (!style) return undefined
+  return Object.fromEntries(
+    Object.entries(style).map(([key, value]) => [
+      key.startsWith('--')
+        ? key
+        : key.replace(/-([a-z])/g, (_, char: string) => char.toUpperCase()),
+      value,
+    ]),
+  ) as CSSProperties
+}
+
 export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
+  const [highlighted, setHighlighted] = useState<{
+    hunks: SnapshotDiffHunk[]
+    tokens: HunkTokens
+  }>()
+
+  useEffect(() => {
+    let cancelled = false
+    tokenizeHunks(hunks)
+      .then((tokens) => {
+        if (!cancelled) setHighlighted({ hunks, tokens })
+      })
+      .catch(() => {
+        if (!cancelled) setHighlighted(undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [hunks])
+
+  const tokens = highlighted?.hunks === hunks ? highlighted.tokens : undefined
+
   if (hunks.length === 0) {
     return <p role="status">{m.inspect_unchanged()}</p>
   }
@@ -22,7 +97,7 @@ export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
             <th>YAML</th>
           </tr>
         </thead>
-        {hunks.map((hunk) => {
+        {hunks.map((hunk, hunkIndex) => {
           let oldLine = hunk.old_start
           let newLine = hunk.new_start
           return (
@@ -60,7 +135,16 @@ export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
                       {newNumber}
                     </td>
                     <td className="w-1 px-2 select-none">{sign}</td>
-                    <td className="pr-4 whitespace-pre">{line.slice(1)}</td>
+                    <td className="pr-4 whitespace-pre dark:[&>span]:text-(--shiki-dark)!">
+                      {tokens?.[hunkIndex][index]?.map((token, tokenIndex) => (
+                        <span
+                          key={tokenIndex}
+                          style={tokenStyle(token.htmlStyle)}
+                        >
+                          {token.content}
+                        </span>
+                      )) ?? line.slice(1)}
+                    </td>
                   </tr>
                 )
               })}

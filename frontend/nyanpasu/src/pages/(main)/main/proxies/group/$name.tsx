@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { useScrollAreaViewport } from '@/components/ui/scroll-area'
 import {
   ClashProxiesQueryGroupItem,
+  ClashProxiesQueryProxyItem,
   useClashProxies,
   useProxyMode,
 } from '@nyanpasu/interface'
@@ -59,6 +60,8 @@ function RouteComponent() {
 
   const {
     proxies: { data: proxies },
+    selectProxy,
+    updateProxiesDelay: { mutateAsync: mutateProxyDelay },
   } = useClashProxies()
 
   const { value: proxyMode } = useProxyMode()
@@ -70,6 +73,24 @@ function RouteComponent() {
 
     return proxies?.groups.find((group) => group.name === proxyGroupName)
   }, [proxies, proxyGroupName, proxyMode])
+
+  const groupName = currentGroup?.name
+
+  const handleSelectProxy = useCallback(
+    async (proxy: ClashProxiesQueryProxyItem) => {
+      if (groupName) {
+        await selectProxy(groupName, proxy.name)
+      }
+    },
+    [groupName, selectProxy],
+  )
+
+  const handleDelayTest = useCallback(
+    async (proxy: ClashProxiesQueryProxyItem) => {
+      await mutateProxyDelay([proxy.name, proxy.provider])
+    },
+    [mutateProxyDelay],
+  )
 
   const { viewportRef } = useScrollAreaViewport()
 
@@ -164,7 +185,11 @@ function RouteComponent() {
               data-slot="proxies-virtual-item"
               data-active={String(proxy.name === currentGroup?.now)}
             >
-              <ProxyNodeButton proxy={proxy} />
+              <ProxyNodeButton
+                proxy={proxy}
+                onSelect={handleSelectProxy}
+                onDelayTest={handleDelayTest}
+              />
             </div>
           )
         })}

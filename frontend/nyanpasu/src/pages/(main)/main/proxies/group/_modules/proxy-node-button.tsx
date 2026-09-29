@@ -1,5 +1,5 @@
 import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
-import { ComponentProps, MouseEvent, useMemo } from 'react'
+import { ComponentProps, memo, MouseEvent, useMemo } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
@@ -29,20 +29,26 @@ function FeatureChip({
   )
 }
 
-export default function ProxyNodeButton({
+// Memoized with stable actions: query data keeps unchanged nodes' identity
+// across refetches, so only nodes whose data changed re-render.
+export default memo(function ProxyNodeButton({
   proxy,
+  onSelect,
+  onDelayTest,
   ...props
-}: Omit<ComponentProps<typeof Button>, 'onClick' | 'children'> & {
+}: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'onSelect'> & {
   proxy: ClashProxiesQueryProxyItem
+  onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
+  onDelayTest: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
 }) {
   const handleSelectProxy = useLockFn(async () => {
-    await proxy.mutateSelect()
+    await onSelect(proxy)
   })
 
   const delayTask = useBlockTask(
     `proxy-delay-check-${proxy.name.toLowerCase()}`,
     async () => {
-      await proxy.mutateDelay()
+      await onDelayTest(proxy)
     },
   )
 
@@ -113,4 +119,4 @@ export default function ProxyNodeButton({
       </Button>
     </DelayHistory>
   )
-}
+})

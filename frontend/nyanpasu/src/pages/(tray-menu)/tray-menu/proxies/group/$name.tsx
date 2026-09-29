@@ -45,7 +45,13 @@ const DelayTestButton = () => {
   )
 }
 
-const ProxyButton = ({ proxy }: { proxy: ClashProxiesQueryProxyItem }) => {
+const ProxyButton = ({
+  proxy,
+  onSelect,
+}: {
+  proxy: ClashProxiesQueryProxyItem
+  onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
+}) => {
   const currentDelay = useMemo(() => {
     if (proxy.history.length > 0) {
       return proxy.history[proxy.history.length - 1].delay
@@ -55,7 +61,7 @@ const ProxyButton = ({ proxy }: { proxy: ClashProxiesQueryProxyItem }) => {
   }, [proxy.history])
 
   const handleClick = useLockFn(async () => {
-    await proxy.mutateSelect()
+    await onSelect(proxy)
   })
 
   return (
@@ -72,6 +78,7 @@ function RouteComponent() {
 
   const {
     proxies: { data: proxies },
+    selectProxy,
   } = useClashProxies()
 
   const { value: proxyMode } = useProxyMode()
@@ -83,6 +90,12 @@ function RouteComponent() {
 
     return proxies?.groups.find((group) => group.name === proxyGroupName)
   }, [proxies, proxyGroupName, proxyMode])
+
+  const handleSelectProxy = async (proxy: ClashProxiesQueryProxyItem) => {
+    if (currentGroup) {
+      await selectProxy(currentGroup.name, proxy.name)
+    }
+  }
 
   const { viewportRef } = useScrollAreaViewport()
 
@@ -135,7 +148,7 @@ function RouteComponent() {
               data-slot="proxies-virtual-item"
               data-active={String(proxy.name === currentGroup?.now)}
             >
-              <ProxyButton proxy={proxy} />
+              <ProxyButton proxy={proxy} onSelect={handleSelectProxy} />
             </div>
           )
         })}

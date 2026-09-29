@@ -28,8 +28,8 @@ import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
 import {
-  ClashConnectionItem,
-  useClashConnections,
+  ClashConnection_Serialize,
+  useClashConnectionDetails,
   useDeleteClashConnections,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
@@ -52,10 +52,8 @@ import { useLocalStorage } from '@uidotdev/usehooks'
 import TableRow, { ConnectionDetailModal } from './_modules/table-row'
 import { Route as IndexRoute } from './route'
 
-export type ConnectionRow = ClashConnectionItem & {
+export type ConnectionRow = ClashConnection_Serialize & {
   closed: boolean
-  downloadSpeed: number
-  uploadSpeed: number
   // Parsed once per sample: sorting by time compares numbers instead of
   // parsing both dates in every comparison.
   startMs: number
@@ -85,34 +83,22 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
     {},
   )
 
-  const { data: clashConnections } = useClashConnections()
+  const { data: details } = useClashConnectionDetails()
 
   const { viewportRef } = useScrollAreaViewport()
 
   const data = useMemo<ConnectionRow[]>(() => {
-    const allSnapshots = clashConnections ?? []
+    const connections = details?.connections ?? []
 
-    const latestConnections = allSnapshots.at(-1)?.connections ?? []
-    const prevConnections = allSnapshots.at(-2)?.connections ?? []
-
-    const prevMap = new Map(prevConnections.map((c) => [c.id, c]))
-
-    const all = latestConnections
+    return connections
       .filter((conn) => (proxy ? conn.chains?.includes(proxy) : true))
-      .map((conn) => {
-        const prev = prevMap.get(conn.id)
-        return {
-          ...conn,
-          closed: false,
-          downloadSpeed: prev ? conn.download - prev.download : 0,
-          uploadSpeed: prev ? conn.upload - prev.upload : 0,
-          startMs: Date.parse(conn.start),
-        }
-      })
+      .map((conn) => ({
+        ...conn,
+        closed: false,
+        startMs: Date.parse(conn.start),
+      }))
       .filter((c) => (search ? containsSearchTerm(c, search) : true))
-
-    return all
-  }, [clashConnections, search, proxy])
+  }, [details, search, proxy])
 
   const [detailId, setDetailId] = useState<string | null>(null)
 
@@ -139,12 +125,13 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
           // ids keep the former English headers so persisted column sizing still applies
           id: 'Host',
           header: () => m.connections_column_host(),
-          accessorFn: ({ metadata }) => metadata.host || metadata.destinationIP,
+          accessorFn: ({ metadata }) =>
+            metadata?.host || metadata?.destinationIP,
           size: 320,
           cell: (info) => (
             <HighlightText searchText={search}>
-              {info.row.original.metadata.host ||
-                info.row.original.metadata.destinationIP ||
+              {info.row.original.metadata?.host ||
+                info.row.original.metadata?.destinationIP ||
                 ''}
             </HighlightText>
           ),
@@ -215,11 +202,11 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
         {
           id: 'Process',
           header: () => m.connections_column_process(),
-          accessorFn: ({ metadata }) => metadata.process,
+          accessorFn: ({ metadata }) => metadata?.process,
           size: 160,
           cell: (info) => (
             <HighlightText searchText={search}>
-              {info.row.original.metadata.process || ''}
+              {info.row.original.metadata?.process || ''}
             </HighlightText>
           ),
         },
@@ -256,24 +243,24 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
         {
           id: 'Source',
           header: () => m.connections_column_source(),
-          accessorFn: ({ metadata: { sourceIP, sourcePort } }) =>
-            `${sourceIP}:${sourcePort}`,
+          accessorFn: ({ metadata }) =>
+            `${metadata?.sourceIP ?? ''}:${metadata?.sourcePort ?? ''}`,
           size: 160,
           cell: (info) => (
             <HighlightText searchText={search}>
-              {`${info.row.original.metadata.sourceIP}:${info.row.original.metadata.sourcePort}`}
+              {`${info.row.original.metadata?.sourceIP ?? ''}:${info.row.original.metadata?.sourcePort ?? ''}`}
             </HighlightText>
           ),
         },
         {
           id: 'Destination IP',
           header: () => m.connections_column_destination(),
-          accessorFn: ({ metadata: { destinationIP, destinationPort } }) =>
-            `${destinationIP}:${destinationPort}`,
+          accessorFn: ({ metadata }) =>
+            `${metadata?.destinationIP ?? ''}:${metadata?.destinationPort ?? ''}`,
           size: 160,
           cell: (info) => (
             <HighlightText searchText={search}>
-              {`${info.row.original.metadata.destinationIP || ''}:${info.row.original.metadata.destinationPort || ''}`}
+              {`${info.row.original.metadata?.destinationIP || ''}:${info.row.original.metadata?.destinationPort || ''}`}
             </HighlightText>
           ),
         },
@@ -281,11 +268,11 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
           id: 'Type',
           header: () => m.connections_column_type(),
           accessorFn: ({ metadata }) =>
-            `${metadata.type} (${metadata.network})`,
+            `${metadata?.type ?? ''} (${metadata?.network ?? ''})`,
           size: 120,
           cell: (info) => (
             <HighlightText searchText={search}>
-              {`${info.row.original.metadata.type} (${info.row.original.metadata.network})`}
+              {`${info.row.original.metadata?.type ?? ''} (${info.row.original.metadata?.network ?? ''})`}
             </HighlightText>
           ),
         },

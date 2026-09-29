@@ -11,7 +11,11 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
-import { useClashConnections, useClashRules } from '@nyanpasu/interface'
+import {
+  useClashConnectionDetails,
+  useClashRules,
+  useClashWSStatus,
+} from '@nyanpasu/interface'
 import { createFileRoute } from '@tanstack/react-router'
 import TopologyView from './_modules/topology-view'
 
@@ -24,7 +28,8 @@ function RouteComponent() {
   const [search, setSearch] = useState('')
   const { proxy } = Route.useSearch()
   const navigate = Route.useNavigate()
-  const { data, isLoading, error } = useClashConnections()
+  const { data, isLoading } = useClashConnectionDetails()
+  const { error } = useClashWSStatus()
   const { data: rules } = useClashRules()
   const proxies = useMemo(
     () => [
@@ -38,7 +43,7 @@ function RouteComponent() {
   )
   const connections = useMemo(
     () =>
-      (data.at(-1)?.connections ?? [])
+      (data?.connections ?? [])
         .filter((connection) => !proxy || connection.chains.includes(proxy))
         .filter(
           (connection) => !search || containsSearchTerm(connection, search),

@@ -32,11 +32,6 @@ export { commands, events } from './bindings'
 export { mutations, queries } from './bindings'
 export type * from './bindings'
 export type { ClashDelayOptions } from './use-clash-proxies'
-// `bindings.ts` now also exports a `ClashConnection` (the per-connection
-// detail Channel payload, added for the connection-detail subscription);
-// pin the name to the existing connection-history summary type until
-// callers migrate to the generated one.
-export type { ClashConnection } from './use-clash-connections'
 export {
   MutationUnconfirmedError,
   invokeMutation,

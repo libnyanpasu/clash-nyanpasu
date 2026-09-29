@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/segmented-button'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
-import type { ClashConnectionItem } from '@nyanpasu/interface'
+import type { ClashConnection_Serialize } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { connectionRegion } from './geography'
 import GeographyView, { geographicRegions, regionName } from './geography-view'
@@ -40,7 +40,7 @@ export default function TopologyView({
   isLoading,
   error,
 }: {
-  connections: ClashConnectionItem[]
+  connections: ClashConnection_Serialize[]
   filterKey?: string
   isLoading: boolean
   error: unknown
@@ -53,7 +53,7 @@ export default function TopologyView({
   const [mode, setMode] = useState('flow')
   const [country, setCountry] = useState<string>()
   const [metric, setMetric] = useState<TopologyMetric>('connections')
-  const [frozen, setFrozen] = useState<ClashConnectionItem[]>()
+  const [frozen, setFrozen] = useState<ClashConnection_Serialize[]>()
   const [selection, setSelection] = useState<string>()
   useEffect(() => {
     setFrozen(undefined)
@@ -407,7 +407,8 @@ export default function TopologyView({
                   className="truncate text-sm"
                   title={
                     connection.metadata?.host ||
-                    connection.metadata?.destinationIP
+                    connection.metadata?.destinationIP ||
+                    undefined
                   }
                 >
                   {connection.metadata?.host ||

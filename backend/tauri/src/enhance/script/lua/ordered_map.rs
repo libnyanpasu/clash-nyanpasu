@@ -306,6 +306,29 @@ fn new_map(lua: &Lua, entries: IndexMap<Key, LuaValue>) -> LuaResult<LuaTable> {
     Ok(proxy)
 }
 
+/// The entries of `table` in reading order: an ordered map's own order,
+/// otherwise sorted by key, which puts an array's items first and in index
+/// order. Keys no ordered map can hold, such as tables, come last.
+pub(super) fn entries(lua: &Lua, table: &LuaTable) -> LuaResult<Vec<(LuaValue, LuaValue)>> {
+    if let Some(store) = store_of(lua, table)? {
+        let store = store.borrow::<Store>()?;
+        return Ok(store
+            .0
+            .iter()
+            .map(|(k, v)| (k.to_lua(), v.clone()))
+            .collect());
+    }
+    let mut entries = table
+        .pairs::<LuaValue, LuaValue>()
+        .map(|pair| pair.map(|(key, value)| (Key::lookup(&key), key, value)))
+        .collect::<LuaResult<Vec<_>>>()?;
+    entries.sort_by(|a, b| (a.0.is_none(), &a.0).cmp(&(b.0.is_none(), &b.0)));
+    Ok(entries
+        .into_iter()
+        .map(|(_, key, value)| (key, value))
+        .collect())
+}
+
 /// The store behind `table`, or `None` when it is not an ordered map.
 fn store_of(lua: &Lua, table: &LuaTable) -> LuaResult<Option<LuaAnyUserData>> {
     lua.named_registry_value::<LuaTable>(STORES)?.raw_get(table)

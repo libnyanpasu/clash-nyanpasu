@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/segmented-button'
 import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
 import {
   events,
   queries,
@@ -74,7 +75,7 @@ function RouteComponent() {
       {inspection.isPending && <p role="status">{m.inspect_loading()}</p>}
       {inspection.isError && (
         <p role="alert">
-          {m.inspect_error()} {String(inspection.error)}
+          {m.inspect_error()} {formatError(inspection.error)}
         </p>
       )}
       {!inspection.isError && inspection.data === null && (
@@ -228,7 +229,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
             {content.isPending && <p role="status">{m.inspect_loading()}</p>}
             {content.isError && (
               <p role="alert">
-                {m.inspect_content_error()} {String(content.error)}
+                {m.inspect_content_error()} {formatError(content.error)}
               </p>
             )}
             {content.isSuccess && (

@@ -25,6 +25,7 @@ export default function AllowLanSwitch() {
       message(`Activation Allow LAN failed!\n Error: ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

@@ -58,6 +58,7 @@ export function useDeepLinkImport() {
         await message(m.deep_link_import_failed_message(), {
           title: m.deep_link_import_title(),
           kind: 'error',
+          error,
         })
       }
     }

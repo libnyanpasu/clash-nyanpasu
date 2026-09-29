@@ -18,16 +18,16 @@ export const commands = {
    *  server field is the combination of host and port
    */
   getSysProxy: () =>
-    typedError<GetSysProxyResponse, string>(__TAURI_INVOKE('get_sys_proxy')),
+    typedError<GetSysProxyResponse, IpcError>(__TAURI_INVOKE('get_sys_proxy')),
   getClashInfo: () =>
-    typedError<ClashInfo, string>(__TAURI_INVOKE('get_clash_info')),
+    typedError<ClashInfo, IpcError>(__TAURI_INVOKE('get_clash_info')),
   /**  get the runtime config */
   getRuntimeConfig: () =>
-    typedError<any | null, string>(__TAURI_INVOKE('get_runtime_config')),
+    typedError<any | null, IpcError>(__TAURI_INVOKE('get_runtime_config')),
   getRuntimeYaml: () =>
-    typedError<string, string>(__TAURI_INVOKE('get_runtime_yaml')),
+    typedError<string, IpcError>(__TAURI_INVOKE('get_runtime_yaml')),
   getRuntimeExists: () =>
-    typedError<string[], string>(__TAURI_INVOKE('get_runtime_exists')),
+    typedError<string[], IpcError>(__TAURI_INVOKE('get_runtime_exists')),
   inspectRuntime: () =>
     typedError<
       {
@@ -40,7 +40,7 @@ export const commands = {
         root_id: number
         nodes: RuntimeInspectionNode[]
       } | null,
-      string
+      IpcError
     >(__TAURI_INVOKE('inspect_runtime')),
   inspectAppliedRuntime: () =>
     typedError<
@@ -54,14 +54,14 @@ export const commands = {
         root_id: number
         nodes: RuntimeInspectionNode[]
       } | null,
-      string
+      IpcError
     >(__TAURI_INVOKE('inspect_applied_runtime')),
   inspectRuntimeNode: (snapshotId: string, nodeId: number) =>
-    typedError<RuntimeInspectionContent, string>(
+    typedError<RuntimeInspectionContent, IpcError>(
       __TAURI_INVOKE('inspect_runtime_node', { snapshotId, nodeId }),
     ),
   getPostprocessingOutput: () =>
-    typedError<PostProcessingOutput, string>(
+    typedError<PostProcessingOutput, IpcError>(
       __TAURI_INVOKE('get_postprocessing_output'),
     ),
   clashApiGetProxyDelay: (
@@ -69,79 +69,83 @@ export const commands = {
     provider: string | null,
     url: string | null,
   ) =>
-    typedError<DelayRes, string>(
+    typedError<DelayRes, IpcError>(
       __TAURI_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
     ),
   clashApiGetConfigs: () =>
-    typedError<ClashApiConfig, string>(__TAURI_INVOKE('clash_api_get_configs')),
+    typedError<ClashApiConfig, IpcError>(
+      __TAURI_INVOKE('clash_api_get_configs'),
+    ),
   clashApiGetVersion: () =>
-    typedError<ClashVersion, string>(__TAURI_INVOKE('clash_api_get_version')),
+    typedError<ClashVersion, IpcError>(__TAURI_INVOKE('clash_api_get_version')),
   clashApiGetRules: () =>
-    typedError<RulesRes, string>(__TAURI_INVOKE('clash_api_get_rules')),
+    typedError<RulesRes, IpcError>(__TAURI_INVOKE('clash_api_get_rules')),
   clashApiGetProvidersRules: () =>
-    typedError<ProvidersRulesRes, string>(
+    typedError<ProvidersRulesRes, IpcError>(
       __TAURI_INVOKE('clash_api_get_providers_rules'),
     ),
   clashApiGetGroupDelay: (group: string, url: string | null) =>
-    typedError<{ [key in string]: number }, string>(
+    typedError<{ [key in string]: number }, IpcError>(
       __TAURI_INVOKE('clash_api_get_group_delay', { group, url }),
     ),
   clashApiGetProvidersProxies: () =>
-    typedError<ProvidersProxiesRes_Serialize, string>(
+    typedError<ProvidersProxiesRes_Serialize, IpcError>(
       __TAURI_INVOKE('clash_api_get_providers_proxies'),
     ),
   fetchLatestCoreVersions: () =>
-    typedError<ManifestVersionLatest, string>(
+    typedError<ManifestVersionLatest, IpcError>(
       __TAURI_INVOKE('fetch_latest_core_versions'),
     ),
   inspectUpdater: (updaterId: number) =>
-    typedError<UpdaterSummary, string>(
+    typedError<UpdaterSummary, IpcError>(
       __TAURI_INVOKE('inspect_updater', { updaterId }),
     ),
   getCoreVersion: (coreType: ClashCore_Deserialize) =>
-    typedError<string, string>(
+    typedError<string, IpcError>(
       __TAURI_INVOKE('get_core_version', { coreType }),
     ),
   getAppConfig: () =>
-    typedError<NyanpasuAppConfig_Serialize, string>(
+    typedError<NyanpasuAppConfig_Serialize, IpcError>(
       __TAURI_INVOKE('get_app_config'),
     ),
   getClashConfig: () =>
-    typedError<ClashConfig, string>(__TAURI_INVOKE('get_clash_config')),
+    typedError<ClashConfig, IpcError>(__TAURI_INVOKE('get_clash_config')),
   getHotkeyFunctions: () => __TAURI_INVOKE<string[]>('get_hotkey_functions'),
   getProfiles: () =>
-    typedError<ProfileDocument_Serialize, string>(
+    typedError<ProfileDocument_Serialize, IpcError>(
       __TAURI_INVOKE('get_profiles'),
     ),
   readProfileFile: (uid: ProfileId) =>
-    typedError<string, string>(__TAURI_INVOKE('read_profile_file', { uid })),
+    typedError<string, IpcError>(__TAURI_INVOKE('read_profile_file', { uid })),
   getCustomAppDir: () =>
-    typedError<string | null, string>(__TAURI_INVOKE('get_custom_app_dir')),
+    typedError<string | null, IpcError>(__TAURI_INVOKE('get_custom_app_dir')),
   statusService: () =>
-    typedError<ServiceStatusInfo_Serialize, string>(
+    typedError<ServiceStatusInfo_Serialize, IpcError>(
       __TAURI_INVOKE('status_service'),
     ),
-  isPortable: () => typedError<boolean, string>(__TAURI_INVOKE('is_portable')),
+  isPortable: () =>
+    typedError<boolean, IpcError>(__TAURI_INVOKE('is_portable')),
   getProxies: () =>
-    typedError<Proxies_Serialize, string>(__TAURI_INVOKE('get_proxies')),
+    typedError<Proxies_Serialize, IpcError>(__TAURI_INVOKE('get_proxies')),
   collectEnvs: () =>
-    typedError<EnvInfo, string>(__TAURI_INVOKE('collect_envs')),
+    typedError<EnvInfo, IpcError>(__TAURI_INVOKE('collect_envs')),
   getServerPort: () =>
-    typedError<number, string>(__TAURI_INVOKE('get_server_port')),
+    typedError<number, IpcError>(__TAURI_INVOKE('get_server_port')),
   isTrayIconSet: (mode: TrayIcon) =>
-    typedError<boolean, string>(__TAURI_INVOKE('is_tray_icon_set', { mode })),
+    typedError<boolean, IpcError>(__TAURI_INVOKE('is_tray_icon_set', { mode })),
   getCoreStatus: () =>
-    typedError<CoreStatusInfo, string>(__TAURI_INVOKE('get_core_status')),
+    typedError<CoreStatusInfo, IpcError>(__TAURI_INVOKE('get_core_status')),
   urlDelayTest: (url: string, expectedStatus: number) =>
-    typedError<number | null, string>(
+    typedError<number | null, IpcError>(
       __TAURI_INVOKE('url_delay_test', { url, expectedStatus }),
     ),
-  getIpsbAsn: () => typedError<any, string>(__TAURI_INVOKE('get_ipsb_asn')),
-  isAppimage: () => typedError<boolean, string>(__TAURI_INVOKE('is_appimage')),
+  getIpsbAsn: () => typedError<any, IpcError>(__TAURI_INVOKE('get_ipsb_asn')),
+  isAppimage: () =>
+    typedError<boolean, IpcError>(__TAURI_INVOKE('is_appimage')),
   getServiceInstallPrompt: () =>
-    typedError<string, string>(__TAURI_INVOKE('get_service_install_prompt')),
+    typedError<string, IpcError>(__TAURI_INVOKE('get_service_install_prompt')),
   getStorageItem: (key: string) =>
-    typedError<string | null, string>(
+    typedError<string | null, IpcError>(
       __TAURI_INVOKE('get_storage_item', { key }),
     ),
   /**
@@ -149,11 +153,15 @@ export const commands = {
    *  Internal storage entries used by other subsystems are excluded.
    */
   getAllStorageItems: () =>
-    typedError<StorageEntry[], string>(__TAURI_INVOKE('get_all_storage_items')),
-  getHotkeys: () => typedError<string[], string>(__TAURI_INVOKE('get_hotkeys')),
-  getCoreDir: () => typedError<string, string>(__TAURI_INVOKE('get_core_dir')),
+    typedError<StorageEntry[], IpcError>(
+      __TAURI_INVOKE('get_all_storage_items'),
+    ),
+  getHotkeys: () =>
+    typedError<string[], IpcError>(__TAURI_INVOKE('get_hotkeys')),
+  getCoreDir: () =>
+    typedError<string, IpcError>(__TAURI_INVOKE('get_core_dir')),
   getClashWsSnapshot: () =>
-    typedError<ClashWsSnapshot, string>(
+    typedError<ClashWsSnapshot, IpcError>(
       __TAURI_INVOKE('get_clash_ws_snapshot'),
     ),
   checkUpdate: () =>
@@ -167,24 +175,24 @@ export const commands = {
         body: string | null
         raw_json: any
       } | null,
-      string
+      IpcError
     >(__TAURI_INVOKE('check_update')),
   getReleaseChannel: () =>
-    typedError<ReleaseChannel, string>(__TAURI_INVOKE('get_release_channel')),
+    typedError<ReleaseChannel, IpcError>(__TAURI_INVOKE('get_release_channel')),
   getSystemAccentColor: () =>
-    typedError<string | null, string>(
+    typedError<string | null, IpcError>(
       __TAURI_INVOKE('get_system_accent_color'),
     ),
   getConfigurationStatus: () =>
     __TAURI_INVOKE<ConfigurationStatus>('get_configuration_status'),
   retryConfigurationRuntime: () =>
-    typedError<null, string>(__TAURI_INVOKE('retry_configuration_runtime')),
+    typedError<null, IpcError>(__TAURI_INVOKE('retry_configuration_runtime')),
   retryConfigurationEffect: (kind: EffectKind) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('retry_configuration_effect', { kind }),
     ),
   setReleaseChannel: (channel: ReleaseChannel) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('set_release_channel', { channel }),
     ),
   openLogSession: (source: LogSource, request: OpenLogs) =>
@@ -200,29 +208,31 @@ export const commands = {
       __TAURI_INVOKE('close_log_session', { source, session }),
     ),
   flushSystemDnsCache: () =>
-    typedError<null, string>(__TAURI_INVOKE('flush_system_dns_cache')),
+    typedError<null, IpcError>(__TAURI_INVOKE('flush_system_dns_cache')),
   openAppConfigDir: () =>
-    typedError<null, string>(__TAURI_INVOKE('open_app_config_dir')),
+    typedError<null, IpcError>(__TAURI_INVOKE('open_app_config_dir')),
   openAppDataDir: () =>
-    typedError<null, string>(__TAURI_INVOKE('open_app_data_dir')),
-  openLogsDir: () => typedError<null, string>(__TAURI_INVOKE('open_logs_dir')),
+    typedError<null, IpcError>(__TAURI_INVOKE('open_app_data_dir')),
+  openLogsDir: () =>
+    typedError<null, IpcError>(__TAURI_INVOKE('open_logs_dir')),
   openWebUrl: (url: string) =>
-    typedError<null, string>(__TAURI_INVOKE('open_web_url', { url })),
-  openCoreDir: () => typedError<null, string>(__TAURI_INVOKE('open_core_dir')),
+    typedError<null, IpcError>(__TAURI_INVOKE('open_web_url', { url })),
+  openCoreDir: () =>
+    typedError<null, IpcError>(__TAURI_INVOKE('open_core_dir')),
   /**  restart the sidecar */
   restartSidecar: () =>
-    typedError<null, string>(__TAURI_INVOKE('restart_sidecar')),
+    typedError<null, IpcError>(__TAURI_INVOKE('restart_sidecar')),
   patchAppConfig: (patch: NyanpasuAppConfigPatch_Deserialize) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('patch_app_config', { patch }),
     ),
   patchClashConfig: (patch: ClashConfigPatch_Deserialize) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('patch_clash_config', { patch }),
     ),
   /**  patch the clash guard overrides (mode, log level, LAN, IPv6, secret...) */
   patchRuntimeOverrides: (patch: ClashGuardOverridesPatch_Deserialize) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('patch_runtime_overrides', { patch }),
     ),
   changeClashCore: (
@@ -237,28 +247,28 @@ export const commands = {
       | 'meow'
       | null,
   ) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('change_clash_core', { clashCore }),
     ),
   clashApiDeleteConnections: (id: string | null) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('clash_api_delete_connections', { id }),
     ),
   clashApiUpdateProvidersRules: (name: string) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('clash_api_update_providers_rules', { name }),
     ),
   invokeUwpTool: () =>
-    typedError<null, string>(__TAURI_INVOKE('invoke_uwp_tool')),
+    typedError<null, IpcError>(__TAURI_INVOKE('invoke_uwp_tool')),
   updateCore: (coreType: ClashCore_Deserialize) =>
-    typedError<number, string>(__TAURI_INVOKE('update_core', { coreType })),
-  collectLogs: () => typedError<null, string>(__TAURI_INVOKE('collect_logs')),
+    typedError<number, IpcError>(__TAURI_INVOKE('update_core', { coreType })),
+  collectLogs: () => typedError<null, IpcError>(__TAURI_INVOKE('collect_logs')),
   /**
    *  Rebuild-only command: there is no prior state commit, so a failure is a
    *  plain error — the committed/degraded model (spec §6.2) does not apply.
    */
   enhanceProfiles: () =>
-    typedError<null, string>(__TAURI_INVOKE('enhance_profiles')),
+    typedError<null, IpcError>(__TAURI_INVOKE('enhance_profiles')),
   importProfile: (
     url: string,
     name: string | null,
@@ -271,7 +281,7 @@ export const commands = {
     transform:
       { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
   ) =>
-    typedError<MutationOutcome<ProfileId>, string>(
+    typedError<MutationOutcome<ProfileId>, IpcError>(
       __TAURI_INVOKE('import_profile', { url, name, option, transform }),
     ),
   /**
@@ -280,21 +290,21 @@ export const commands = {
    *  every such event.
    */
   takePendingDeepLinks: () =>
-    typedError<string[], string>(__TAURI_INVOKE('take_pending_deep_links')),
+    typedError<string[], IpcError>(__TAURI_INVOKE('take_pending_deep_links')),
   /**  create a new profile */
   createProfile: (
     request: NewProfileRequest_Deserialize,
     fileData: string | null,
   ) =>
-    typedError<MutationOutcome<ProfileId>, string>(
+    typedError<MutationOutcome<ProfileId>, IpcError>(
       __TAURI_INVOKE('create_profile', { request, fileData }),
     ),
   reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('reorder_profile', { activeId, overId }),
     ),
   reorderProfilesByList: (list: ProfileId[]) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('reorder_profiles_by_list', { list }),
     ),
   updateProfile: (
@@ -306,125 +316,129 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('update_profile', { uid, option }),
     ),
   deleteProfile: (uid: ProfileId) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('delete_profile', { uid }),
     ),
   activateProfile: (uid: string | null) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('activate_profile', { uid }),
     ),
   setGlobalTransforms: (ids: ProfileId[]) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('set_global_transforms', { ids }),
     ),
   setProfileValidFields: (fields: string[]) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('set_profile_valid_fields', { fields }),
     ),
   patchProfileMetadata: (
     uid: ProfileId,
     patch: ProfileMetadataPatch_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('patch_profile_metadata', { uid, patch }),
     ),
   patchRemoteProfileOptions: (
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('patch_remote_profile_options', { uid, patch }),
     ),
   replaceProfileDefinition: (
     uid: ProfileId,
     definition: ProfileDefinition_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('replace_profile_definition', { uid, definition }),
     ),
   viewProfile: (uid: ProfileId) =>
-    typedError<null, string>(__TAURI_INVOKE('view_profile', { uid })),
+    typedError<null, IpcError>(__TAURI_INVOKE('view_profile', { uid })),
   saveProfileFile: (uid: ProfileId, fileData: string) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('save_profile_file', { uid, fileData }),
     ),
   setCustomAppDir: (path: string) =>
-    typedError<null, string>(__TAURI_INVOKE('set_custom_app_dir', { path })),
+    typedError<null, IpcError>(__TAURI_INVOKE('set_custom_app_dir', { path })),
   installService: () =>
-    typedError<null, string>(__TAURI_INVOKE('install_service')),
+    typedError<null, IpcError>(__TAURI_INVOKE('install_service')),
   uninstallService: () =>
-    typedError<null, string>(__TAURI_INVOKE('uninstall_service')),
-  startService: () => typedError<null, string>(__TAURI_INVOKE('start_service')),
-  stopService: () => typedError<null, string>(__TAURI_INVOKE('stop_service')),
+    typedError<null, IpcError>(__TAURI_INVOKE('uninstall_service')),
+  startService: () =>
+    typedError<null, IpcError>(__TAURI_INVOKE('start_service')),
+  stopService: () => typedError<null, IpcError>(__TAURI_INVOKE('stop_service')),
   restartService: () =>
-    typedError<null, string>(__TAURI_INVOKE('restart_service')),
+    typedError<null, IpcError>(__TAURI_INVOKE('restart_service')),
   selectProxy: (group: string, name: string) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('select_proxy', { group, name }),
     ),
   updateProxyProvider: (name: string) =>
-    typedError<null, string>(__TAURI_INVOKE('update_proxy_provider', { name })),
+    typedError<null, IpcError>(
+      __TAURI_INVOKE('update_proxy_provider', { name }),
+    ),
   restartApplication: () =>
-    typedError<null, string>(__TAURI_INVOKE('restart_application')),
+    typedError<null, IpcError>(__TAURI_INVOKE('restart_application')),
   setTrayIcon: (mode: TrayIcon, path: string | null) =>
-    typedError<null, string>(__TAURI_INVOKE('set_tray_icon', { mode, path })),
+    typedError<null, IpcError>(__TAURI_INVOKE('set_tray_icon', { mode, path })),
   openThat: (path: string) =>
-    typedError<null, string>(__TAURI_INVOKE('open_that', { path })),
+    typedError<null, IpcError>(__TAURI_INVOKE('open_that', { path })),
   /**
    *  Shuts every owner down and returns with the app still running; the caller
    *  then installs an update or relaunches.
    */
   cleanupProcesses: () =>
-    typedError<null, string>(__TAURI_INVOKE('cleanup_processes')),
+    typedError<null, IpcError>(__TAURI_INVOKE('cleanup_processes')),
   setStorageItem: (key: string, value: string) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('set_storage_item', { key, value }),
     ),
   removeStorageItem: (key: string) =>
-    typedError<null, string>(__TAURI_INVOKE('remove_storage_item', { key })),
+    typedError<null, IpcError>(__TAURI_INVOKE('remove_storage_item', { key })),
   /**
    *  Debug: clears all frontend KV entries (keys with the `web:` prefix).
    *  Internal storage entries used by other subsystems are left intact.
    */
-  clearStorage: () => typedError<null, string>(__TAURI_INVOKE('clear_storage')),
+  clearStorage: () =>
+    typedError<null, IpcError>(__TAURI_INVOKE('clear_storage')),
   setHotkeys: (hotkeys: string[]) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('set_hotkeys', { hotkeys }),
     ),
   mutateProxies: () =>
-    typedError<Proxies_Serialize, string>(__TAURI_INVOKE('mutate_proxies')),
+    typedError<Proxies_Serialize, IpcError>(__TAURI_INVOKE('mutate_proxies')),
   setClashWsRecording: (kind: ClashWsKind, enabled: boolean) =>
-    typedError<ClashWsRecording, string>(
+    typedError<ClashWsRecording, IpcError>(
       __TAURI_INVOKE('set_clash_ws_recording', { kind, enabled }),
     ),
   clearClashWsHistory: (kind: ClashWsKind) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('clear_clash_ws_history', { kind }),
     ),
   subscribeClashConnectionDetails: (
     onFrame: Channel<ClashConnectionDetails_Deserialize>,
   ) =>
-    typedError<SubscriptionId, string>(
+    typedError<SubscriptionId, IpcError>(
       __TAURI_INVOKE('subscribe_clash_connection_details', { onFrame }),
     ),
   unsubscribeClashConnectionDetails: (id: SubscriptionId) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('unsubscribe_clash_connection_details', { id }),
     ),
   saveWindowSizeState: (label: string) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('save_window_size_state', { label }),
     ),
   createMainWindow: () =>
-    typedError<null, string>(__TAURI_INVOKE('create_main_window')),
+    typedError<null, IpcError>(__TAURI_INVOKE('create_main_window')),
   createDebugTrayMenuWindow: () =>
-    typedError<null, string>(__TAURI_INVOKE('create_debug_tray_menu_window')),
+    typedError<null, IpcError>(__TAURI_INVOKE('create_debug_tray_menu_window')),
   createEditorWindow: (windowType: EditorWindowType, uid: string | null) =>
-    typedError<null, string>(
+    typedError<null, IpcError>(
       __TAURI_INVOKE('create_editor_window', { windowType, uid }),
     ),
   copyClashEnv: (envType: CopyEnvOption) =>
@@ -1490,6 +1504,21 @@ export type I18nLanguage_Deserialize =
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
+
+/**  A failed command as the frontend receives it. */
+export type IpcError = {
+  /**  The domain failure; the frontend localizes it. */
+  kind: IpcErrorKind
+  /**  The error's own message, shown when `kind` cannot be localized. */
+  message: string
+  /**  The original error, copied by the user for diagnosis. */
+  detail: string
+}
+
+/**  The domain a command failed in. A domain joins once its errors are typed. */
+export type IpcErrorKind =
+  /**  Not classified into a domain; only `message` describes it. */
+  { domain: 'unknown' }
 
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`

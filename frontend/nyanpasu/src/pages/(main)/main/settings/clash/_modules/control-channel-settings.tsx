@@ -31,7 +31,7 @@ export default function ControlChannelSettings() {
     http_only: m.settings_clash_control_channel_http_only(),
   }
   const reportError = (error: unknown) =>
-    message(formatError(error), { title: 'Error', kind: 'error' })
+    message(formatError(error), { title: 'Error', kind: 'error', error })
   return (
     <div>
       <SettingsLabel>{m.settings_clash_control_channel_label()}</SettingsLabel>

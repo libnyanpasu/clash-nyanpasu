@@ -55,8 +55,8 @@ function RouteComponent() {
       if (close) {
         await currentWindow.close()
       }
-    } catch {
-      await message(m.custom_css_save_error(), { kind: 'error' })
+    } catch (error) {
+      await message(m.custom_css_save_error(), { kind: 'error', error })
     }
   })
 

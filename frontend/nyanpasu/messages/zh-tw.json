@@ -456,6 +456,7 @@
   "common_validate": "驗證",
   "common_close": "關閉",
   "common_copy": "複製",
+  "common_copy_error_details": "複製錯誤詳情",
   "common_open": "開啟",
   "common_cut": "剪下",
   "common_paste": "貼上",

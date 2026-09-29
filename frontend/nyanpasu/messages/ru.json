@@ -413,6 +413,7 @@
   "common_validate": "Проверить",
   "common_close": "Закрыть",
   "common_copy": "Копировать",
+  "common_copy_error_details": "Копировать подробности ошибки",
   "common_open": "Открыть",
   "common_cut": "Вырезать",
   "common_paste": "Вставить",

@@ -70,6 +70,7 @@ export const SubscriptionCard = ({
         message(`Update failed: \n ${formatError(e)}`, {
           title: 'Error',
           kind: 'error',
+          error: e,
         })
       }
     },

@@ -21,6 +21,7 @@ export default function ProxyGuardSwitch() {
       message(`Activation Proxy Guard failed!\n Error: ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

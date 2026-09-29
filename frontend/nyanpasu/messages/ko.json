@@ -413,6 +413,7 @@
   "common_validate": "검증",
   "common_close": "닫기",
   "common_copy": "복사",
+  "common_copy_error_details": "오류 세부 정보 복사",
   "common_open": "열기",
   "common_cut": "잘라내기",
   "common_paste": "붙여넣기",

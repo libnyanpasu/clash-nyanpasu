@@ -45,6 +45,7 @@ export default function ProxyBypassConfig() {
       message(formatError(error), {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

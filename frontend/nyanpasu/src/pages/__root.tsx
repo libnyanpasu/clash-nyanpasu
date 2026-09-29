@@ -20,6 +20,7 @@ import { ExperimentalThemeProvider } from '@/components/providers/theme-provider
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDeepLinkImport } from '@/hooks/use-deep-link-import'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
   events,
@@ -54,7 +55,7 @@ export const Catch = ({ error }: ErrorComponentProps) => {
             {error.stack}
           </>
         ) : (
-          String(error)
+          formatError(error)
         )}
       </pre>
 

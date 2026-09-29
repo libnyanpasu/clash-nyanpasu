@@ -111,7 +111,7 @@ export default function CreateProfileModal({
           m.profile_import_rename_failed_message({
             error: formatError(error),
           }),
-          { title: 'Warning', kind: 'warning' },
+          { title: 'Warning', kind: 'warning', error },
         )
       }
     }
@@ -180,7 +180,7 @@ export default function CreateProfileModal({
       } catch (error) {
         message(
           m.profile_create_failed_message({ error: formatError(error) }),
-          { title: 'Error', kind: 'error' },
+          { title: 'Error', kind: 'error', error },
         )
       }
     }),

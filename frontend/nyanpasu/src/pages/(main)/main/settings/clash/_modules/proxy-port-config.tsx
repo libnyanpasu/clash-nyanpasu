@@ -79,7 +79,7 @@ const formSchema = z.object({
 })
 
 const reportError = (error: unknown) =>
-  message(formatError(error), { title: 'Error', kind: 'error' })
+  message(formatError(error), { title: 'Error', kind: 'error', error })
 
 /** The strategy, its start port, and the port the running core bound. */
 const describeStrategy = (

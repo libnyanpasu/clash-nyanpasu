@@ -1,5 +1,6 @@
 // oxlint-disable typescript/no-explicit-any
-import { EnvInfo } from '@nyanpasu/interface'
+import { EnvInfo, isIpcError } from '@nyanpasu/interface'
+import { ipcErrorMessage } from './ipc-error'
 
 /**
  * classNames filter out falsy values and join the rest with a space
@@ -30,8 +31,12 @@ export const containsSearchTerm = (obj: any, term: string): boolean => {
   return false
 }
 
+/** The simplest message for a caught error; the original goes to "copy error details". */
 export function formatError(err: unknown): string {
-  return `Error: ${err instanceof Error ? err.message : String(err)}`
+  if (isIpcError(err)) {
+    return ipcErrorMessage(err)
+  }
+  return err instanceof Error ? err.message : String(err)
 }
 
 export function formatEnvInfos(envs: EnvInfo) {

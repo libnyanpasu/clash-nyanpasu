@@ -25,6 +25,7 @@ export default function IPv6Switch() {
       message(`Activation IPv6 failed!\n Error: ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

@@ -74,7 +74,7 @@ const ReleaseChannelSelector = () => {
     try {
       await setReleaseChannel(channel)
     } catch (error) {
-      message(formatError(error), { kind: 'error' })
+      message(formatError(error), { kind: 'error', error })
     }
   })
   return (
@@ -205,6 +205,7 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
       console.error(e)
       message(formatError(e), {
         kind: 'error',
+        error: e,
         title: 'Error',
       })
     } finally {

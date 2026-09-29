@@ -334,6 +334,7 @@ export function TransformChainEditor({
       message(`Update failed: \n ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

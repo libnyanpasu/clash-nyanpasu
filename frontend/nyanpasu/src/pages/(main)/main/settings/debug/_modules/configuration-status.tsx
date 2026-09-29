@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
 import {
   acceptConfigurationStatus,
   attentionSources,
@@ -175,7 +176,7 @@ export default function ConfigurationStatus() {
   const error = retry.error
     ? retry.error instanceof MutationUnconfirmedError
       ? m.configuration_unconfirmed()
-      : String(retry.error)
+      : formatError(retry.error)
     : isError
       ? m.configuration_unconfirmed()
       : undefined

@@ -71,6 +71,7 @@ export default function TunStackSelector() {
         message(`Change Tun Stack failed ! \n Error: ${formatError(error)}`, {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
     },

@@ -135,6 +135,7 @@ const ServiceInstallButton = () => {
 
       message(errorMessage, {
         kind: 'error',
+        error: e,
       })
       // // If the installation fails, prompt the user to manually install the service
       // promptDialog.show(
@@ -165,6 +166,7 @@ const ServiceUninstallButton = () => {
         `${m.settings_system_proxy_system_service_ctrl_failed_uninstall()}: ${formatError(e)}`,
         {
           kind: 'error',
+          error: e,
         },
       )
     }
@@ -288,7 +290,7 @@ const ServiceControlButtons = () => {
           ? m.settings_system_proxy_system_service_ctrl_failed_stop()
           : m.settings_system_proxy_system_service_ctrl_failed_start()
 
-      message(`${errorTitle}: ${formatError(e)}`, { kind: 'error' })
+      message(`${errorTitle}: ${formatError(e)}`, { kind: 'error', error: e })
     }
   })
 

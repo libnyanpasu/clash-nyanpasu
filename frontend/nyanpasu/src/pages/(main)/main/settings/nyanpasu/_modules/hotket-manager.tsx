@@ -55,6 +55,7 @@ const HotkeyItem = ({
 
       message(formatError(err), {
         kind: 'error',
+        error: err,
       })
       return false
     }

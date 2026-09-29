@@ -25,6 +25,7 @@ export default function EnableBuiltinEnhancedSwitch() {
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }

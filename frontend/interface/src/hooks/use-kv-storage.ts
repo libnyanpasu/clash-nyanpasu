@@ -201,7 +201,7 @@ export const kvStorageDebug = {
     const result = await invokeQuery(queries.getAllStorageItems())
 
     if (result.status === 'error') {
-      throw new Error(result.error)
+      throw result.error
     }
 
     return Object.fromEntries(
@@ -220,7 +220,7 @@ export const kvStorageDebug = {
     const result = await invokeMutation(mutations.clearStorage, [])
 
     if (result.status === 'error') {
-      throw new Error(result.error)
+      throw result.error
     }
   },
 }

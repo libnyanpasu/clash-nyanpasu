@@ -1,3 +1,6 @@
+import { m } from '@/paraglide/messages'
+import { isIpcError } from '@nyanpasu/interface'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   MessageDialogOptions,
   message as tauriMessage,
@@ -58,17 +61,30 @@ export const notification = async ({
   sendNotification(options)
 }
 
+export type MessageOptions = MessageDialogOptions & {
+  /** The caught error; a failed command adds a "copy error details" button. */
+  error?: unknown
+}
+
 export const message = async (
   value: string,
-  options?: string | MessageDialogOptions | undefined,
+  options?: string | MessageOptions | undefined,
 ) => {
   if (typeof options === 'object') {
-    await tauriMessage(value, {
-      ...options,
-      title: options.title
-        ? `Clash Nyanpasu - ${options.title}`
+    const { error, ...dialog } = options
+    const copyLabel = m.common_copy_error_details()
+    const result = await tauriMessage(value, {
+      ...dialog,
+      ...(isIpcError(error) && {
+        buttons: { ok: copyLabel, cancel: m.common_close() },
+      }),
+      title: dialog.title
+        ? `Clash Nyanpasu - ${dialog.title}`
         : 'Clash Nyanpasu',
     })
+    if (isIpcError(error) && result === copyLabel) {
+      await writeText(error.detail)
+    }
   } else {
     await tauriMessage(value, options)
   }

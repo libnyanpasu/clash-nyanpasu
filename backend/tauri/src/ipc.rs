@@ -23,63 +23,61 @@ use tray::icon::TrayIcon;
 
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 
-#[derive(Debug, thiserror::Error)]
-pub enum IpcError {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    SerdeYaml(#[from] serde_yaml::Error),
-    #[error(transparent)]
-    SerdeJson(#[from] serde_json::Error),
-    #[error(transparent)]
-    Tauri(#[from] tauri::Error),
-    #[error(transparent)]
-    Storage(#[from] StorageOperationError),
-    #[error(transparent)]
-    Anyhow(#[from] anyhow::Error),
-    #[error(transparent)]
-    Profiles(#[from] crate::state::profiles::actor::ProfilesError),
-    #[error(transparent)]
-    Core(#[from] nyanpasu_core_manager::CoreError),
-    #[error("{0}")]
-    Custom(String),
+/// A failed command as the frontend receives it.
+#[derive(Debug, Serialize, specta::Type)]
+pub struct IpcError {
+    /// The domain failure; the frontend localizes it.
+    kind: IpcErrorKind,
+    /// The error's own message, shown when `kind` cannot be localized.
+    message: String,
+    /// The original error, copied by the user for diagnosis.
+    detail: String,
 }
 
-impl From<String> for IpcError {
-    fn from(s: String) -> Self {
-        IpcError::Custom(s)
-    }
+/// The domain a command failed in. A domain joins once its errors are typed.
+#[derive(Debug, Serialize, specta::Type)]
+#[serde(tag = "domain", content = "error", rename_all = "snake_case")]
+pub enum IpcErrorKind {
+    /// Not classified into a domain; only `message` describes it.
+    Unknown,
 }
 
-impl From<ClientError> for IpcError {
-    fn from(err: ClientError) -> Self {
-        match err {
-            ClientError::Io(err) => IpcError::Io(err),
-            ClientError::SerdeYaml(err) => IpcError::SerdeYaml(err),
-            ClientError::SerdeJson(err) => IpcError::SerdeJson(err),
-            ClientError::Storage(err) => IpcError::Storage(err),
-            ClientError::Anyhow(err) => IpcError::Anyhow(err),
-            ClientError::Profiles(err) => IpcError::Profiles(err),
-            ClientError::Custom(err) => IpcError::Custom(err),
+impl<E> From<E> for IpcError
+where
+    E: std::fmt::Display + std::fmt::Debug,
+    IpcErrorKind: From<E>,
+{
+    fn from(error: E) -> Self {
+        Self {
+            message: error.to_string(),
+            detail: format!("{error:?}"),
+            kind: error.into(),
         }
     }
 }
 
-impl serde::Serialize for IpcError {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        serializer.serialize_str(format!("{self:#?}").as_str())
-    }
+macro_rules! unknown_domain {
+    ($($error:ty),* $(,)?) => {$(
+        impl From<$error> for IpcErrorKind {
+            fn from(_: $error) -> Self {
+                Self::Unknown
+            }
+        }
+    )*};
 }
 
-impl specta::Type for IpcError {
-    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
-        let _ = types;
-        specta::datatype::DataType::Primitive(specta::datatype::Primitive::str)
-    }
-}
+unknown_domain!(
+    String,
+    std::io::Error,
+    serde_yaml::Error,
+    serde_json::Error,
+    tauri::Error,
+    StorageOperationError,
+    anyhow::Error,
+    crate::state::profiles::actor::ProfilesError,
+    nyanpasu_core_manager::CoreError,
+    ClientError,
+);
 
 type Result<T = ()> = StdResult<T, IpcError>;
 
@@ -300,7 +298,7 @@ pub async fn view_profile(
 ) -> Result {
     let path = client.get_profile_materialized_path(uid).await?;
     if !path.exists() {
-        return Err(IpcError::Custom("profile file not found".into()));
+        return Err(IpcError::from("profile file not found".to_string()));
     }
     help::open_file(app_handle, path)?;
     Ok(())
@@ -521,8 +519,7 @@ pub async fn change_clash_core(
     client: State<'_, NyanpasuClient>,
     clash_core: Option<ClashCore>,
 ) -> Result {
-    let clash_core =
-        clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
+    let clash_core = clash_core.ok_or_else(|| IpcError::from("clash core is null".to_string()))?;
     client.update_core(clash_core).await?;
     Ok(())
 }
@@ -1424,7 +1421,21 @@ pub fn retry_configuration_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::PendingDeepLinks;
+    use super::{IpcError, PendingDeepLinks};
+
+    #[test]
+    fn unclassified_error_serializes_message_and_original_error() {
+        let error = anyhow::anyhow!("disk full").context("failed to save the profile");
+        let wire = serde_json::to_value(IpcError::from(error)).unwrap();
+
+        assert_eq!(wire["kind"], serde_json::json!({ "domain": "unknown" }));
+        assert_eq!(wire["message"], "failed to save the profile");
+        let detail = wire["detail"].as_str().unwrap();
+        assert!(
+            detail.contains("failed to save the profile") && detail.contains("disk full"),
+            "detail keeps the whole source chain: {detail}"
+        );
+    }
 
     #[test]
     fn deep_links_queued_while_no_frontend_listens_are_taken_oldest_first() {

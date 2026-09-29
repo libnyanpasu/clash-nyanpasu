@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "bench": "vitest run --config perf/vitest.perf.config.ts --silent=false",
     "bundle:visualize": "vite-bundle-visualizer",
     "dev": "vite",
     "serve": "vite preview"

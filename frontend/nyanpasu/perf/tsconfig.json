@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": [
+      "node",
+      "vitest/browser",
+      "unplugin-icons/types/react",
+      "vite-plugin-svgr/client",
+    ],
+  },
+  "include": [".", "../src", "../auto-imports.d.ts"],
+  "references": [],
+}

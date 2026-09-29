@@ -2,7 +2,7 @@ import ArrowDownwardAltRounded from '~icons/material-symbols/arrow-downward-alt-
 import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-rounded'
 import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useDeferredValue, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { useScrollAreaViewport } from '@/components/ui/scroll-area'
 import {
@@ -22,6 +22,11 @@ import ProxyNodeButton from './_modules/proxy-node-button'
 export const Route = createFileRoute('/(main)/main/proxies/group/$name')({
   component: RouteComponent,
 })
+
+// Every node card is as tall as the fab button's fixed h-14 plus the item's
+// p-1. A fixed size spares the virtualizer measuring each mounted card, which
+// forced a layout and a second render every time a group opened.
+const NODE_ITEM_HEIGHT = 64
 
 // Subscribes to connection samples on its own so each sample re-renders only
 // this label, not the node grid.
@@ -110,13 +115,18 @@ function RouteComponent() {
   const virtualizer = useVirtualizer({
     count: currentGroup?.all?.length || 0,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => 60,
+    estimateSize: () => NODE_ITEM_HEIGHT,
     overscan: 5,
     lanes,
-    measureElement: (element) => element?.getBoundingClientRect().height,
   })
 
   const virtualItems = virtualizer.getVirtualItems()
+
+  // Mounting the node cards is the bulk of opening a group. Router updates
+  // render synchronously, so the cards mount in a deferred render instead:
+  // the page commits and starts its transition at once, and React renders
+  // the cards in interruptible chunks right after.
+  const showNodes = useDeferredValue(true, false)
 
   const handleScrollToCurrentNode = useCallback(() => {
     const index = currentGroup?.all?.findIndex(
@@ -164,36 +174,37 @@ function RouteComponent() {
           height: `${virtualizer.getTotalSize()}px`,
         }}
       >
-        {virtualItems.map((virtualItem) => {
-          const name = currentGroup?.all?.[virtualItem.index]
-          const proxy = name ? proxies?.nodes[name] : undefined
+        {showNodes &&
+          virtualItems.map((virtualItem) => {
+            const name = currentGroup?.all?.[virtualItem.index]
+            const proxy = name ? proxies?.nodes[name] : undefined
 
-          if (!proxy) {
-            return null
-          }
+            if (!proxy) {
+              return null
+            }
 
-          return (
-            <div
-              key={virtualItem.index}
-              ref={virtualizer.measureElement}
-              className="group absolute top-0 left-0 p-1"
-              style={{
-                transform: `translateY(${virtualItem.start}px)`,
-                width: `${100 / lanes}%`,
-                left: `${virtualItem.lane * (100 / lanes)}%`,
-              }}
-              data-index={virtualItem.index}
-              data-slot="proxies-virtual-item"
-              data-active={String(name === currentGroup?.now)}
-            >
-              <ProxyNodeButton
-                proxy={proxy}
-                onSelect={handleSelectProxy}
-                onDelayTest={handleDelayTest}
-              />
-            </div>
-          )
-        })}
+            return (
+              <div
+                key={virtualItem.index}
+                className="group absolute top-0 left-0 p-1"
+                style={{
+                  height: `${virtualItem.size}px`,
+                  transform: `translateY(${virtualItem.start}px)`,
+                  width: `${100 / lanes}%`,
+                  left: `${virtualItem.lane * (100 / lanes)}%`,
+                }}
+                data-index={virtualItem.index}
+                data-slot="proxies-virtual-item"
+                data-active={String(name === currentGroup?.now)}
+              >
+                <ProxyNodeButton
+                  proxy={proxy}
+                  onSelect={handleSelectProxy}
+                  onDelayTest={handleDelayTest}
+                />
+              </div>
+            )
+          })}
       </div>
 
       <DelayTestButton />

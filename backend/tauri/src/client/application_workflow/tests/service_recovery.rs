@@ -65,23 +65,27 @@ struct RecoveringDaemon {
 
 #[async_trait::async_trait]
 impl ServiceHostAdapter for RecoveringDaemon {
-    async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError> {
         self.probes.fetch_add(1, Ordering::SeqCst);
         if self.probe_fails.load(Ordering::SeqCst) {
-            return Err("unknown OS status".into());
+            return Err(crate::core::service::control::ServiceCommandError::mock(
+                "unknown OS status",
+            ));
         }
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), String> {
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         panic!("recovery must not install")
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         panic!("recovery must not update")
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.start_entered.notify_one();
         if self.block_start.load(Ordering::SeqCst) {
             self.start_release.notified().await;
@@ -90,7 +94,7 @@ impl ServiceHostAdapter for RecoveringDaemon {
         self.endpoint.unavailable.store(false, Ordering::SeqCst);
         Ok(())
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.stop_daemon().await?;
         self.endpoint.unavailable.store(true, Ordering::SeqCst);
         Ok(())

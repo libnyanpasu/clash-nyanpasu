@@ -613,26 +613,31 @@ struct ParkedStop {
 
 #[async_trait::async_trait]
 impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
-    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<
+        nyanpasu_ipc::types::StatusInfo<'static>,
+        crate::core::service::control::ServiceCommandError,
+    > {
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), String> {
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.install().await
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.start_daemon().await
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         if self.park.swap(false, Ordering::SeqCst) {
             self.parked.notify_one();
             self.release.notified().await;
         }
         self.delegate.stop_daemon().await
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
     fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
@@ -755,24 +760,29 @@ struct ParkedInstall {
 
 #[async_trait::async_trait]
 impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall {
-    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<
+        nyanpasu_ipc::types::StatusInfo<'static>,
+        crate::core::service::control::ServiceCommandError,
+    > {
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), String> {
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.parked.notify_one();
         self.release.notified().await;
         self.delegate.install().await
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.start_daemon().await
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.stop_daemon().await
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
     fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {

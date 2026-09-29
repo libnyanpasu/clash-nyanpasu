@@ -3619,22 +3619,29 @@ struct RefusedInstall;
 
 #[async_trait::async_trait]
 impl ServiceHostAdapter for RefusedInstall {
-    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<
+        nyanpasu_ipc::types::StatusInfo<'static>,
+        crate::core::service::control::ServiceCommandError,
+    > {
         crate::client::tests::IdleServiceAdapter.probe().await
     }
-    async fn install(&self) -> Result<(), String> {
-        Err("the user cancelled the elevation prompt".into())
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+        Err(crate::core::service::control::ServiceCommandError::mock(
+            "the user cancelled the elevation prompt",
+        ))
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
     fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {

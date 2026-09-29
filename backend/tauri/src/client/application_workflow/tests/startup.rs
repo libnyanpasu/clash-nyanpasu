@@ -198,10 +198,14 @@ impl FakeDaemon {
 
 #[async_trait::async_trait]
 impl ServiceHostAdapter for FakeDaemon {
-    async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError> {
         self.probes.fetch_add(1, Ordering::SeqCst);
         if self.unreadable.load(Ordering::SeqCst) {
-            return Err("scripted: the daemon's status cannot be read".into());
+            return Err(crate::core::service::control::ServiceCommandError::mock(
+                "scripted: the daemon's status cannot be read",
+            ));
         }
         let state = *self.state.lock().unwrap();
         let server = match state {
@@ -246,7 +250,7 @@ impl ServiceHostAdapter for FakeDaemon {
             server,
         })
     }
-    async fn install(&self) -> Result<(), String> {
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         if self.hold_install.load(Ordering::SeqCst) {
             self.held.notify_one();
             self.release.notified().await;
@@ -254,19 +258,19 @@ impl ServiceHostAdapter for FakeDaemon {
         self.installs.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         *self.state.lock().unwrap() = DaemonState::NotInstalled;
         Ok(())
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.starts.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         *self.state.lock().unwrap() = DaemonState::Stopped;
         Ok(())
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         if self.hold_update.load(Ordering::SeqCst) {
             self.held.notify_one();
             self.release.notified().await;

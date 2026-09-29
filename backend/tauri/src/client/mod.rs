@@ -1658,7 +1658,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
                 return Ok(nyanpasu_ipc::types::StatusInfo {
                     name: "test-service".into(),
@@ -1699,31 +1702,41 @@ pub(crate) mod tests {
             })
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("install");
             Ok(())
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("uninstall");
             Ok(())
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.stopped
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("start_daemon");
             Ok(())
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.stopped
                 .store(true, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("stop_daemon");
             Ok(())
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
@@ -1763,7 +1776,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             Ok(nyanpasu_ipc::types::StatusInfo {
                 name: std::borrow::Cow::Borrowed("test-service"),
                 version: std::borrow::Cow::Borrowed("test"),
@@ -1772,23 +1788,33 @@ pub(crate) mod tests {
             })
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
@@ -2308,7 +2334,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             let persisted = std::fs::read(&self.application_config)
                 .ok()
                 .and_then(|bytes| serde_yaml::from_slice::<serde_yaml::Value>(&bytes).ok())
@@ -2320,23 +2349,33 @@ pub(crate) mod tests {
             self.delegate.probe().await
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.install().await
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.uninstall().await
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.start_daemon().await
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.stop_daemon().await
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.update().await
         }
 

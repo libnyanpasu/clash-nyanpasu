@@ -13,7 +13,7 @@ use crate::{
         core_lifecycle::ports::InstallCoreBinaryError, ports::PortResolveError,
         runtime::PublishRuntimeError,
     },
-    core::actor_v2::local_host::CoreSpecError,
+    core::{actor_v2::local_host::CoreSpecError, service::control::ServiceCommandError},
     enhance::RuntimeBuildError,
 };
 
@@ -144,6 +144,8 @@ pub enum RuntimeError {
     ResolveCoreBinary { source: CoreSpecError },
     #[snafu(display("could not install the core binary: {source}"))]
     InstallCoreBinary { source: InstallCoreBinaryError },
+    #[snafu(display("could not prepare the service install command: {source}"))]
+    PrepareServiceInstallPrompt { source: ServiceCommandError },
     #[snafu(display("could not render the runtime configuration"))]
     SerializeRuntimeConfig {
         #[serde(skip)]
@@ -176,6 +178,7 @@ impl RuntimeError {
             | Self::ResolvePort { .. }
             | Self::ResolveCoreBinary { .. }
             | Self::InstallCoreBinary { .. }
+            | Self::PrepareServiceInstallPrompt { .. }
             | Self::SerializeRuntimeConfig { .. } => None,
         }
     }

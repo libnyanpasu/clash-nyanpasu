@@ -3,12 +3,7 @@ import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { ProxyItemHistory } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '../ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import DelayChip from './delay-chip'
 
 const HISTORY_LIMIT = 10
@@ -34,13 +29,9 @@ export function DelayHistoryBar({ history }: { history: ProxyItemHistory[] }) {
   )
 }
 
-export default function DelayHistory({
-  history = [],
-  children,
-}: {
-  history?: ProxyItemHistory[]
-  children: ReactElement
-}) {
+// Rendered only while the tooltip is open, so closed tooltips on a node grid
+// do no history formatting when their node re-renders.
+function DelayHistoryContent({ history }: { history: ProxyItemHistory[] }) {
   const recent = history.slice(-HISTORY_LIMIT).reverse()
   const formatTime = (time: string) => {
     const date = new Date(time)
@@ -50,46 +41,56 @@ export default function DelayHistory({
   }
 
   return (
-    <TooltipProvider openDelay={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
-
-        <TooltipContent
-          sideOffset={8}
-          className="bg-surface text-on-surface z-50 max-w-[calc(100vw-2rem)] rounded-xl px-3 py-2 text-xs shadow-lg"
-          data-slot="proxy-delay-history"
-        >
-          <div className="space-y-2 py-1">
-            <div className="font-medium">{m.proxies_delay_history_title()}</div>
-            {recent.length === 0 ? (
-              <div>{m.proxies_delay_history_empty()}</div>
-            ) : (
-              <>
-                <div className="text-on-surface-variant">
-                  {m.proxies_delay_history_recent({ count: recent.length })}
-                </div>
-                <ol className="space-y-1">
-                  {recent.map(({ time, delay }, index) => (
-                    <li
-                      key={`${time}-${index}`}
-                      className="flex items-center justify-between gap-4 tabular-nums"
-                    >
-                      <time dateTime={time}>{formatTime(time)}</time>
-                      {delay > 0 ? (
-                        <DelayChip delay={delay} />
-                      ) : (
-                        <span className="text-red-500">
-                          {m.proxies_delay_history_failed()}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </>
-            )}
+    <div className="space-y-2 py-1">
+      <div className="font-medium">{m.proxies_delay_history_title()}</div>
+      {recent.length === 0 ? (
+        <div>{m.proxies_delay_history_empty()}</div>
+      ) : (
+        <>
+          <div className="text-on-surface-variant">
+            {m.proxies_delay_history_recent({ count: recent.length })}
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          <ol className="space-y-1">
+            {recent.map(({ time, delay }, index) => (
+              <li
+                key={`${time}-${index}`}
+                className="flex items-center justify-between gap-4 tabular-nums"
+              >
+                <time dateTime={time}>{formatTime(time)}</time>
+                {delay > 0 ? (
+                  <DelayChip delay={delay} />
+                ) : (
+                  <span className="text-red-500">
+                    {m.proxies_delay_history_failed()}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function DelayHistory({
+  history = [],
+  children,
+}: {
+  history?: ProxyItemHistory[]
+  children: ReactElement
+}) {
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+
+      <TooltipContent
+        sideOffset={8}
+        className="bg-surface text-on-surface z-50 max-w-[calc(100vw-2rem)] rounded-xl px-3 py-2 text-xs shadow-lg"
+        data-slot="proxy-delay-history"
+      >
+        <DelayHistoryContent history={history} />
+      </TooltipContent>
+    </Tooltip>
   )
 }

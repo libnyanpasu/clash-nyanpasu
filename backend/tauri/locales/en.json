@@ -7,14 +7,14 @@
       "sh": "Copy Env (Shell)"
     },
     "no_proxies": "No Proxies",
-    "select_proxies": "Select Proxies",
-    "dashboard": "Dashboard",
+    "select_proxy": "Select Proxy",
+    "dashboard": "Show Clash Nyanpasu",
     "direct_mode": "Direct Mode",
     "global_mode": "Global Mode",
     "more": {
       "menu": "More",
-      "restart_app": "Restart Nyanpasu",
-      "restart_core": "Restart Core"
+      "restart_app": "Restart Clash Nyanpasu",
+      "restart_core": "Restart Clash Core"
     },
     "open_dir": {
       "menu": "Open Dir",
@@ -24,8 +24,8 @@
       "log_dir": "Log Dir"
     },
     "proxy_action": {
-      "on": "On",
-      "off": "Off"
+      "enabled": "Enabled",
+      "disabled": "Disabled"
     },
     "quit": "Quit",
     "rule_mode": "Rule Mode",

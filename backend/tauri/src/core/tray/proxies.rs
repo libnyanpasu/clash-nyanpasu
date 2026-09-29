@@ -275,8 +275,8 @@ mod platform_impl {
             ProxiesSelectorMode::Submenu => {
                 let mut submenu = SubmenuBuilder::with_id(
                     app_handle,
-                    "select_proxies",
-                    t!("tray.select_proxies"),
+                    "select_proxy",
+                    t!("tray.select_proxy"),
                 );
                 for item in items {
                     submenu = submenu.item(&item);
@@ -383,11 +383,11 @@ mod platform_impl {
                 menu.items()
                     .ok()
                     .and_then(|items| {
-                        items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group) || submenu.id() == "select_proxies"))
+                        items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group) || submenu.id() == "select_proxy"))
                     })
                     .and_then(|submenu| {
                         let submenu = submenu.as_submenu_unchecked();
-                        if submenu.id() == "select_proxies" {
+                        if submenu.id() == "select_proxy" {
                             submenu.items().ok().and_then(|items| {
                                 items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group)))
                             })

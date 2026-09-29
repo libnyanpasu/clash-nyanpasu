@@ -7,7 +7,7 @@
       "sh": "複製環境變數 (Shell)"
     },
     "no_proxies": "無代理",
-    "select_proxies": "選取代理",
+    "select_proxy": "選取代理",
     "dashboard": "顯示 Clash Nyanpasu",
     "direct_mode": "直連模式",
     "global_mode": "全域模式",
@@ -24,10 +24,10 @@
       "log_dir": "日誌目錄"
     },
     "proxy_action": {
-      "on": "開",
-      "off": "關"
+      "enabled": "已啟用",
+      "disabled": "已停用"
     },
-    "quit": "退出",
+    "quit": "結束",
     "rule_mode": "規則模式",
     "script_mode": "腳本模式",
     "system_proxy": "系統代理",

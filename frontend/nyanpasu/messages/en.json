@@ -707,5 +707,21 @@
   "profile_remote_name_hint": "Leave empty to use the name from the subscription",
   "profile_global_transform_title": "Global transforms",
   "profile_global_transform_hint": "Applied to the active config, in order, after the config's own transforms",
-  "profile_global_label": "Global"
+  "profile_global_label": "Global",
+  "error_config_leave_nightly_channel": "A nightly build cannot switch to another release channel",
+  "error_config_hotkey_malformed_entry": "Malformed shortcut entry: {entry}",
+  "error_config_hotkey_unknown_function": "Unknown shortcut action: {function}",
+  "error_config_hotkey_empty_key_segment": "Invalid shortcut: {accelerator}",
+  "error_config_hotkey_unsupported_accelerator": "The shortcut {accelerator} is not supported",
+  "error_config_hotkey_missing_super_key": "The shortcut {accelerator} needs a modifier key (Ctrl, Alt, Shift or Win/Cmd)",
+  "error_config_hotkey_duplicate_accelerator": "The shortcut {accelerator} is assigned to both {first} and {second}",
+  "error_config_workflow_not_ready": "The app is still starting, please try again in a moment",
+  "error_config_shutting_down": "The app is shutting down",
+  "error_config_owner_stopped": "The settings service is not running",
+  "error_config_version_conflict": "The settings changed in the meantime, please try again",
+  "error_config_persist_session_state": "Could not save the window state",
+  "error_config_session_state_stopped": "The window state service is not running",
+  "error_storage_open": "Could not open the app's stored data",
+  "error_storage_access": "Could not access the app's stored data",
+  "error_storage_invalid_value": "The app's stored data is invalid"
 }

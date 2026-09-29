@@ -1,7 +1,13 @@
 import { expect, test } from 'vitest'
 import { m } from '@/paraglide/messages'
 import { degradationReasonMessage, ipcErrorMessage } from '@/utils/ipc-error'
-import type { IpcError, ProfilesError, RuntimeError } from '@nyanpasu/interface'
+import type {
+  ConfigError,
+  IpcError,
+  ProfilesError,
+  RuntimeError,
+  StorageOperationError,
+} from '@nyanpasu/interface'
 
 const profiles = (error: ProfilesError): IpcError => ({
   kind: { domain: 'profiles', error },
@@ -11,6 +17,18 @@ const profiles = (error: ProfilesError): IpcError => ({
 
 const runtime = (error: RuntimeError): IpcError => ({
   kind: { domain: 'runtime', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const config = (error: ConfigError): IpcError => ({
+  kind: { domain: 'config', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const storage = (error: StorageOperationError): IpcError => ({
+  kind: { domain: 'storage', error },
   message: 'the backend text',
   detail: 'the backend text: caused by',
 })
@@ -354,4 +372,70 @@ test('a degradation localizes its reason, and a runtime cause through the runtim
       reason: m.error_profiles_shutting_down(),
     }),
   )
+})
+
+test('a rejected hotkey list names the shortcut that was wrong', () => {
+  const rejected = (
+    source: Extract<ConfigError, { kind: 'validate_hotkeys' }>['source'],
+  ) => ipcErrorMessage(config({ kind: 'validate_hotkeys', source }))
+
+  expect(rejected({ kind: 'malformed_entry', entry: 'toggle_tun_mode' })).toBe(
+    m.error_config_hotkey_malformed_entry({ entry: 'toggle_tun_mode' }),
+  )
+  expect(rejected({ kind: 'missing_super_key', accelerator: 'Q' })).toBe(
+    m.error_config_hotkey_missing_super_key({ accelerator: 'Q' }),
+  )
+  expect(
+    rejected({
+      kind: 'duplicate_accelerator',
+      accelerator: 'Control+Q',
+      first: 'enable_tun_mode',
+      second: 'disable_tun_mode',
+    }),
+  ).toBe(
+    m.error_config_hotkey_duplicate_accelerator({
+      accelerator: 'Control+Q',
+      first: m.settings_nyanpasu_hotkey_enable_tun_mode(),
+      second: m.settings_nyanpasu_hotkey_disable_tun_mode(),
+    }),
+  )
+})
+
+test('a configuration change that was not committed says what became of the core', () => {
+  expect(
+    ipcErrorMessage(
+      config({
+        kind: 'commit',
+        domain: 'clash',
+        source: { kind: 'write_config', runtime: { kind: 'rolled_back' } },
+      }),
+    ),
+  ).toBe(
+    `${m.error_commit_write_config()} (${m.error_commit_runtime_rolled_back()})`,
+  )
+  expect(
+    ipcErrorMessage(
+      config({
+        kind: 'version_conflict',
+        domain: 'application',
+        expected: 1,
+        actual: 2,
+      }),
+    ),
+  ).toBe(m.error_config_version_conflict())
+  expect(
+    ipcErrorMessage(config({ kind: 'leave_nightly_channel', to: 'stable' })),
+  ).toBe(m.error_config_leave_nightly_channel())
+})
+
+test('a storage failure tells an unopenable database from unreadable data', () => {
+  expect(
+    ipcErrorMessage(storage({ kind: 'open_database', path: 'storage.redb' })),
+  ).toBe(m.error_storage_open())
+  expect(
+    ipcErrorMessage(storage({ kind: 'read_item', key: 'web:theme' })),
+  ).toBe(m.error_storage_access())
+  expect(
+    ipcErrorMessage(storage({ kind: 'decode_value', key: 'web:theme' })),
+  ).toBe(m.error_storage_invalid_value())
 })

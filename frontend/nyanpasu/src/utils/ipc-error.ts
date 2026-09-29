@@ -1,11 +1,14 @@
 import { m } from '@/paraglide/messages'
 import type {
   CommitAborted,
+  ConfigError,
   CoreErrorKind,
   CoreFailure,
   DegradationReason,
   EvidenceGap,
   ExecutionHost,
+  HotkeyAction,
+  HotkeyParseError,
   InstallCoreBinaryError,
   IpcError,
   PickPortError,
@@ -17,6 +20,7 @@ import type {
   RuntimeBuildError,
   RuntimeError,
   RuntimePipelineError,
+  StorageOperationError,
 } from '@nyanpasu/interface'
 
 /** The simplest message for a failed command, localized by its domain. */
@@ -28,6 +32,10 @@ export function ipcErrorMessage(error: IpcError): string {
       return profilesErrorMessage(error.kind.error)
     case 'runtime':
       return runtimeErrorMessage(error.kind.error)
+    case 'config':
+      return configErrorMessage(error.kind.error)
+    case 'storage':
+      return storageErrorMessage(error.kind.error)
   }
 }
 
@@ -162,6 +170,102 @@ export function profilesErrorMessage(error: ProfilesError): string {
       return m.error_profiles_service_stopped()
     case 'shutting_down':
       return m.error_profiles_shutting_down()
+  }
+}
+
+export function configErrorMessage(error: ConfigError): string {
+  switch (error.kind) {
+    case 'leave_nightly_channel':
+      return m.error_config_leave_nightly_channel()
+    case 'validate_hotkeys':
+      return hotkeyParseMessage(error.source)
+    case 'workflow_not_ready':
+      return m.error_config_workflow_not_ready()
+    case 'shutting_down':
+      return m.error_config_shutting_down()
+    case 'owner_stopped':
+    case 'session_state_stopped':
+      return m.error_config_owner_stopped()
+    case 'version_conflict':
+      return m.error_config_version_conflict()
+    case 'commit':
+      return commitAbortedMessage(error.source)
+    case 'persist_session_state':
+      return m.error_config_persist_session_state()
+  }
+}
+
+function hotkeyParseMessage(error: HotkeyParseError): string {
+  switch (error.kind) {
+    case 'malformed_entry':
+      return m.error_config_hotkey_malformed_entry({ entry: error.entry })
+    case 'unknown_function':
+      return m.error_config_hotkey_unknown_function({
+        function: error.function,
+      })
+    case 'empty_key_segment':
+      return m.error_config_hotkey_empty_key_segment({
+        accelerator: error.accelerator,
+      })
+    case 'unsupported_accelerator':
+      return m.error_config_hotkey_unsupported_accelerator({
+        accelerator: error.accelerator,
+      })
+    case 'missing_super_key':
+      return m.error_config_hotkey_missing_super_key({
+        accelerator: error.accelerator,
+      })
+    case 'duplicate_accelerator':
+      return m.error_config_hotkey_duplicate_accelerator({
+        accelerator: error.accelerator,
+        first: hotkeyActionName(error.first),
+        second: hotkeyActionName(error.second),
+      })
+  }
+}
+
+function hotkeyActionName(action: HotkeyAction): string {
+  switch (action) {
+    case 'open_or_close_dashboard':
+      return m.settings_nyanpasu_hotkey_open_or_close_dashboard()
+    case 'clash_mode_rule':
+      return m.settings_nyanpasu_hotkey_clash_mode_rule()
+    case 'clash_mode_global':
+      return m.settings_nyanpasu_hotkey_clash_mode_global()
+    case 'clash_mode_direct':
+      return m.settings_nyanpasu_hotkey_clash_mode_direct()
+    case 'clash_mode_script':
+      return m.settings_nyanpasu_hotkey_clash_mode_script()
+    case 'toggle_system_proxy':
+      return m.settings_nyanpasu_hotkey_toggle_system_proxy()
+    case 'enable_system_proxy':
+      return m.settings_nyanpasu_hotkey_enable_system_proxy()
+    case 'disable_system_proxy':
+      return m.settings_nyanpasu_hotkey_disable_system_proxy()
+    case 'toggle_tun_mode':
+      return m.settings_nyanpasu_hotkey_toggle_tun_mode()
+    case 'enable_tun_mode':
+      return m.settings_nyanpasu_hotkey_enable_tun_mode()
+    case 'disable_tun_mode':
+      return m.settings_nyanpasu_hotkey_disable_tun_mode()
+  }
+}
+
+export function storageErrorMessage(error: StorageOperationError): string {
+  switch (error.kind) {
+    case 'open_database':
+      return m.error_storage_open()
+    case 'begin_transaction':
+    case 'open_table':
+    case 'read_item':
+    case 'write_item':
+    case 'remove_item':
+    case 'list_items':
+    case 'commit_transaction':
+      return m.error_storage_access()
+    case 'decode_value':
+    case 'encode_value':
+      return m.error_storage_invalid_value()
   }
 }
 

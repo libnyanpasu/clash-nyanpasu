@@ -610,5 +610,21 @@
   "profile_remote_name_hint": "Оставьте пустым, чтобы использовать имя из подписки",
   "profile_global_transform_title": "Глобальные преобразования",
   "profile_global_transform_hint": "Применяются к активной конфигурации по порядку после её собственных преобразований",
-  "profile_global_label": "Глобальное"
+  "profile_global_label": "Глобальное",
+  "error_config_leave_nightly_channel": "Ночная сборка не может переключиться на другой канал выпуска",
+  "error_config_hotkey_malformed_entry": "Некорректная запись сочетания клавиш: {entry}",
+  "error_config_hotkey_unknown_function": "Неизвестное действие сочетания клавиш: {function}",
+  "error_config_hotkey_empty_key_segment": "Недопустимое сочетание клавиш: {accelerator}",
+  "error_config_hotkey_unsupported_accelerator": "Сочетание {accelerator} не поддерживается",
+  "error_config_hotkey_missing_super_key": "Сочетанию {accelerator} нужна клавиша-модификатор (Ctrl, Alt, Shift или Win/Cmd)",
+  "error_config_hotkey_duplicate_accelerator": "Сочетание {accelerator} назначено сразу для «{first}» и «{second}»",
+  "error_config_workflow_not_ready": "Приложение ещё запускается, попробуйте чуть позже",
+  "error_config_shutting_down": "Приложение завершает работу",
+  "error_config_owner_stopped": "Служба настроек не запущена",
+  "error_config_version_conflict": "Настройки изменились, попробуйте ещё раз",
+  "error_config_persist_session_state": "Не удалось сохранить состояние окна",
+  "error_config_session_state_stopped": "Служба состояния окна не запущена",
+  "error_storage_open": "Не удалось открыть сохранённые данные приложения",
+  "error_storage_access": "Не удалось получить доступ к сохранённым данным приложения",
+  "error_storage_invalid_value": "Сохранённые данные приложения повреждены"
 }

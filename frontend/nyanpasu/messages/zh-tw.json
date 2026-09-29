@@ -707,5 +707,21 @@
   "profile_remote_name_hint": "留空則使用訂閱提供的名稱",
   "profile_global_transform_title": "全域轉換",
   "profile_global_transform_hint": "作用於目前啟用的配置，在配置自身的轉換之後依序執行",
-  "profile_global_label": "全域"
+  "profile_global_label": "全域",
+  "error_config_leave_nightly_channel": "每夜建置版無法切換到其他發佈通道",
+  "error_config_hotkey_malformed_entry": "快捷鍵項目格式錯誤：{entry}",
+  "error_config_hotkey_unknown_function": "未知的快捷鍵操作：{function}",
+  "error_config_hotkey_empty_key_segment": "無效的快捷鍵：{accelerator}",
+  "error_config_hotkey_unsupported_accelerator": "不支援快捷鍵 {accelerator}",
+  "error_config_hotkey_missing_super_key": "快捷鍵 {accelerator} 需要包含修飾鍵（Ctrl、Alt、Shift 或 Win/Cmd）",
+  "error_config_hotkey_duplicate_accelerator": "快捷鍵 {accelerator} 同時被指派給了「{first}」和「{second}」",
+  "error_config_workflow_not_ready": "應用程式仍在啟動，請稍後重試",
+  "error_config_shutting_down": "應用程式正在關閉",
+  "error_config_owner_stopped": "設定服務未執行",
+  "error_config_version_conflict": "設定在此期間已發生變化，請重試",
+  "error_config_persist_session_state": "無法儲存視窗狀態",
+  "error_config_session_state_stopped": "視窗狀態服務未執行",
+  "error_storage_open": "無法開啟應用程式的儲存資料",
+  "error_storage_access": "無法存取應用程式的儲存資料",
+  "error_storage_invalid_value": "應用程式的儲存資料無效"
 }

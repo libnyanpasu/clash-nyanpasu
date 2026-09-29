@@ -819,7 +819,7 @@ impl ApplicationWorkflow {
             }
             RuntimePrepareOutcome::RecoveryRequired(error) => {
                 self.lifecycle.ownership = Ownership::Unproven;
-                Reestablished::RecoveryRequired(error)
+                Reestablished::RecoveryRequired(error.to_string())
             }
             RuntimePrepareOutcome::Deferred { cause, .. } if waiting => {
                 self.wait_for_dependency(ConvergenceHealth::WaitingDependency, cause.message)
@@ -828,25 +828,25 @@ impl ApplicationWorkflow {
                 cause:
                     ApplyFailure {
                         cause: RefusalCause::Evidence(_),
-                        message,
+                        error,
                         ..
                     },
                 ..
-            } => self.wait_for_dependency(ConvergenceHealth::WaitingDependency, message),
+            } => self.wait_for_dependency(ConvergenceHealth::WaitingDependency, error.to_string()),
             RuntimePrepareOutcome::Deferred { cause, .. } => self.schedule_retry(cause.message),
             RuntimePrepareOutcome::Rejected {
                 cause:
                     ApplyFailure {
                         cause: RefusalCause::Try(TryCauseKind::Transient),
-                        message,
+                        error,
                         ..
                     },
                 ..
-            } => self.schedule_retry(message),
+            } => self.schedule_retry(error.to_string()),
             RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure { message, .. },
+                cause: ApplyFailure { error, .. },
                 ..
-            } => self.block_applied(message),
+            } => self.block_applied(error.to_string()),
             RuntimePrepareOutcome::SavedInactive { .. } => {
                 unreachable!("a reestablish attempt owes a Try")
             }

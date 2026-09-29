@@ -144,15 +144,25 @@ test('an aborted commit says what became of the core', () => {
   expect(
     commit({
       kind: 'runtime_refused',
-      reasons: ['port 7890 is in use', 'second'],
+      errors: [
+        { kind: 'unsettled_baseline', gap: 'core_transitioning' },
+        { kind: 'isolated' },
+      ],
       runtime: { kind: 'untouched' },
     }),
-  ).toBe(m.error_commit_runtime_refused({ reason: 'port 7890 is in use' }))
+  ).toBe(
+    m.error_commit_runtime_refused({
+      reason: m.error_runtime_unsettled_baseline_core_transitioning(),
+    }),
+  )
   expect(
     commit({
       kind: 'runtime_failed',
-      reasons: [],
-      runtime: { kind: 'unknown', detail: 'no answer' },
+      errors: [],
+      runtime: {
+        kind: 'unknown',
+        detail: { kind: 'owner_unresponsive', operation_id: 'op1' },
+      },
     }),
   ).toBe(
     `${m.error_commit_runtime_failed({ reason: '' })} (${m.error_commit_runtime_unknown()})`,
@@ -161,6 +171,13 @@ test('an aborted commit says what became of the core', () => {
     m.error_commit_validate_state(),
   )
 })
+
+const coreFailure = {
+  kind: null,
+  message: 'unreachable',
+  retryable: true,
+  operation_id: null,
+}
 
 test('a core operation names what failed and why the core refused it', () => {
   expect(
@@ -200,6 +217,30 @@ test('a refused admission is told apart from a failed operation', () => {
   expect(ipcErrorMessage(runtime({ kind: 'shutting_down' }))).toBe(
     m.error_runtime_shutting_down(),
   )
+})
+
+test('a refused mutation says what the runtime lacked or rejected', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({ kind: 'unsettled_baseline', gap: 'no_restorable_baseline' }),
+    ),
+  ).toBe(m.error_runtime_unsettled_baseline_no_restorable_baseline())
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'core_rejected_config',
+        core_kind: 'config_check_failed',
+        message: 'unknown proxy type',
+      }),
+    ),
+  ).toBe(
+    `${m.error_runtime_core_rejected_config()} (${m.error_runtime_core_reason_config_check_failed()})`,
+  )
+  expect(
+    ipcErrorMessage(
+      runtime({ kind: 'move_host', host: 'service', failure: coreFailure }),
+    ),
+  ).toBe(m.error_runtime_move_host({ host: m.error_runtime_host_service() }))
 })
 
 test('a failed build names the profile or the transform', () => {

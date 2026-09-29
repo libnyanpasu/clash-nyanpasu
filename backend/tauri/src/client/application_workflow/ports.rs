@@ -40,8 +40,9 @@ pub(in crate::client) struct RuntimeCheckRequest<'a> {
 
 /// Why no check ran. Every variant is a reason, never a verdict: an absent
 /// check must not be reported as a passing one (v2 §2.4).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::client) enum RuntimeCheckUnavailable {
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(tag = "cause", rename_all = "snake_case")]
+pub enum RuntimeCheckUnavailable {
     /// No host owns the runtime, so there is nothing to check against.
     NoEndpoint { reason: String },
     /// The host owning the runtime exposes no check for this request.

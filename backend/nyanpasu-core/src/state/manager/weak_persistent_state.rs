@@ -293,7 +293,7 @@ mod tests {
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
             if self.should_fail.load(Ordering::SeqCst) {
-                return Ack::Failed(anyhow::anyhow!("mock ACK failure"));
+                return Ack::Failed(crate::state::ack::test_ack_error("mock ACK failure"));
             }
             Ack::Ok
         }

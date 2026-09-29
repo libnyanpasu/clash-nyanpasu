@@ -22,6 +22,7 @@ use std::sync::Arc;
 use nyanpasu_core::state::{Ack, StateDecision, StateSnapshot};
 use nyanpasu_core_manager::OperationId;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
+use snafu::OptionExt;
 use tokio::sync::{broadcast, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -32,7 +33,7 @@ use super::{
         ports::{BinaryInstaller, PreparedCoreBinary},
     },
     runtime,
-    runtime_error::{OwnerUnresponsiveSnafu, RuntimeError},
+    runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},
 };
 use crate::core::actor_v2::{
     CoreClient, CoreStatusProjection,
@@ -223,16 +224,16 @@ impl ApplicationWorkflowState {
     /// to apply one that is already committed.
     async fn begin_mutation(&mut self, mut request: MutationRequest) {
         let refusal = if self.closing() {
-            Some("the application workflow is shutting down")
+            Some(RuntimeError::ShuttingDown)
         } else if self.workflow.isolated() {
-            Some("a previous operation left the execution domain isolated; recover first")
+            Some(RuntimeError::Isolated)
         } else if request.decision.decision() != StateDecision::Undecided {
-            Some("the source transaction settled before its Try ran")
+            Some(RuntimeError::SourceSettled)
         } else {
             None
         };
         if let Some(refusal) = refusal {
-            request.answer(Ack::Rejected(refusal.to_owned()));
+            request.answer(Ack::Rejected(ack_of(Arc::new(refusal))));
             return;
         }
         // The caller is the source transaction, answered with the Try's
@@ -595,11 +596,15 @@ impl ApplicationWorkflowClient {
     /// Hands the workflow one mutation's Try. The verdict comes back on the
     /// request's own channel, so the caller — the source transaction's prepare
     /// — is the only thing waiting for it.
-    pub(in crate::client) fn begin_mutation(&self, request: MutationRequest) -> anyhow::Result<()> {
+    pub(in crate::client) fn begin_mutation(
+        &self,
+        request: MutationRequest,
+    ) -> Result<(), RuntimeError> {
         self.0
             .actor
             .cast(Message::BeginMutation(Box::new(request)))
-            .map_err(|_| anyhow::anyhow!("the runtime owner is unavailable; nothing was committed"))
+            .ok()
+            .context(OwnerUnavailableSnafu)
     }
 
     /// The status watch, for a test that has to see closing begin.

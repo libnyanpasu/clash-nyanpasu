@@ -1436,9 +1436,12 @@ mod tests {
     use serde_json::json;
     use snafu::IntoError;
 
-    use crate::state::{
-        mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
-        profiles::{ProfileFileError, SubscriptionFetchError},
+    use crate::{
+        client::runtime_error::RuntimeError,
+        state::{
+            mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
+            profiles::{ProfileFileError, SubscriptionFetchError},
+        },
     };
 
     fn wire(error: impl Into<ClientError>) -> serde_json::Value {
@@ -1545,7 +1548,9 @@ mod tests {
         let cause = ReplaceIfVersionError::WriteConfig(anyhow::anyhow!("disk full"));
         let aborted = WriteConfigSnafu {
             runtime: RuntimeAftermath::RollbackFailed {
-                detail: "the core did not answer".into(),
+                detail: std::sync::Arc::new(RuntimeError::OwnerUnresponsive {
+                    operation_id: "op1".into(),
+                }),
             },
         }
         .into_error(cause);
@@ -1561,7 +1566,10 @@ mod tests {
                 "kind": "commit",
                 "source": {
                     "kind": "write_config",
-                    "runtime": { "kind": "rollback_failed", "detail": "the core did not answer" },
+                    "runtime": {
+                        "kind": "rollback_failed",
+                        "detail": { "kind": "owner_unresponsive", "operation_id": "op1" },
+                    },
                 },
             })
         );

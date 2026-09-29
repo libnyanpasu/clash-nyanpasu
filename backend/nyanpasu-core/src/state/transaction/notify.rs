@@ -29,7 +29,7 @@ where
         let status = match subscriber.on_prepare(change.clone()).await {
             Ack::Ok => AckStatus::Acked,
 
-            Ack::Degraded(message) => AckStatus::Degraded { message },
+            Ack::Degraded(error) => AckStatus::Degraded { error },
 
             Ack::Rejected(reason) => {
                 tracing::warn!(
@@ -45,9 +45,7 @@ where
                     subscriber = %subscriber.name(),
                     "subscriber ACK failed: {error}"
                 );
-                AckStatus::Failed {
-                    error: error.into(),
-                }
+                AckStatus::Failed { error }
             }
         };
         SubscriberAck {
@@ -66,10 +64,10 @@ where
     async fn notify_one(change: &StateChange<T>, subscriber: ArcStateSubscriber<T>) {
         match subscriber.on_committed(change.clone()).await {
             Ack::Ok => {}
-            Ack::Degraded(message) => {
+            Ack::Degraded(error) => {
                 tracing::warn!(
                     subscriber = %subscriber.name(),
-                    message = %message,
+                    message = %error,
                     "subscriber post-commit notification degraded"
                 );
             }

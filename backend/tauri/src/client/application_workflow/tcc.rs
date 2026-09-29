@@ -19,6 +19,7 @@ use std::sync::Arc;
 use nyanpasu_core::state::StateDecision;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use nyanpasu_ipc::api::status::CoreStateDetail;
+use snafu::{IntoError, ResultExt};
 
 use super::{
     attempt::{AppliedVerdict, AttemptStage, LiveAttempt},
@@ -40,7 +41,14 @@ use crate::{
     client::{
         convergence::{OutcomeClass, next_wait},
         core_lifecycle::{RuntimeSubmission, desired_host, ports::RuntimePreparationPort},
-        runtime_error::RuntimeError,
+        runtime_error::{
+            ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
+            CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
+            HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
+            ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu, RestoreFailedSnafu,
+            RestoreFailure, RuntimeError, SubmissionUnobservedSnafu, UnobservedSnafu,
+            UnsettledBaselineSnafu, UnverifiedSnafu,
+        },
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
     core::actor_v2::{
@@ -76,18 +84,6 @@ pub(super) struct RestorableBaseline {
     /// The build the confirmed receipt describes. A cancelled Try has to put
     /// this back, because it is what the runtime inspection reports.
     pub(super) confirmed_build: Option<Arc<crate::client::runtime::RuntimeSnapshot>>,
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("{message}")]
-struct RestoreFailure {
-    message: String,
-}
-
-impl From<String> for RestoreFailure {
-    fn from(message: String) -> Self {
-        Self { message }
-    }
 }
 
 /// How the decision phase ended.
@@ -143,34 +139,25 @@ impl ApplicationWorkflow {
         };
         let impact = request.impact;
         let inputs = self.capture_candidate(&request).await;
-        let target = inputs.target_key();
+        let target = inputs
+            .target_key()
+            .expect("the identity of a runtime candidate serializes");
         let baseline = self.observe_baseline().await;
         self.record_baseline(&baseline);
         let policy = policy_for(request.class, impact, baseline.run_intent);
 
         let mut check = CheckRecord::NotOwed;
         self.advance(AttemptStage::TryingCritical);
-        let outcome = match target {
-            None => RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure {
-                    stage: MutationStage::Preparing,
-                    cause: RefusalCause::Try(TryCauseKind::Deterministic),
-                    message: "the runtime identity of this candidate cannot be serialized".into(),
-                },
-                restored: baseline.state.clone(),
-            },
-            Some(target) => {
-                self.try_critical(
-                    policy,
-                    &baseline,
-                    Some(target),
-                    Some(inputs),
-                    &mut check,
-                    AttemptCharge::None,
-                )
-                .await
-            }
-        };
+        let outcome = self
+            .try_critical(
+                policy,
+                &baseline,
+                Some(target),
+                Some(inputs),
+                &mut check,
+                AttemptCharge::None,
+            )
+            .await;
         if !matches!(
             outcome,
             RuntimePrepareOutcome::Applied(_) | RuntimePrepareOutcome::RecoveryRequired(_)
@@ -201,16 +188,18 @@ impl ApplicationWorkflow {
             outcome: outcome.kind(),
             conclusion: MutationConclusion::Withdrawn,
             detail: None,
+            cause: None,
         };
 
         if let RuntimePrepareOutcome::RecoveryRequired(error) = outcome {
-            receipt.detail = Some(error.clone());
+            receipt.detail = Some(error.to_string());
             receipt.conclusion = MutationConclusion::RecoveryRequired;
-            self.conclude_attempt(Some(error));
+            self.conclude_attempt(Some(error.to_string()));
+            receipt.cause = Some(error);
             return receipt;
         }
 
-        let (conclusion, detail) = match self.await_decision(&request).await {
+        let (conclusion, detail, cause) = match self.await_decision(&request).await {
             DecisionOutcome::Committed => {
                 self.advance(AttemptStage::Confirming);
                 let result = self
@@ -228,6 +217,7 @@ impl ApplicationWorkflow {
         };
         receipt.conclusion = conclusion;
         receipt.detail = detail;
+        receipt.cause = cause;
         if let Some(deferred) = &mut self.deferred
             && deferred.operation_id == receipt.operation_id
         {
@@ -418,7 +408,7 @@ impl ApplicationWorkflow {
             // The target stays inside the attempt as its charge left it:
             // recovery either puts it back so or re-establishes the runtime.
             RuntimePrepareOutcome::RecoveryRequired(error) => {
-                self.conclude_attempt(Some(error));
+                self.conclude_attempt(Some(error.to_string()));
                 return;
             }
             RuntimePrepareOutcome::Deferred { cause, .. } => {
@@ -441,7 +431,7 @@ impl ApplicationWorkflow {
                 };
             }
             RuntimePrepareOutcome::Rejected { cause, .. } => {
-                target.cause.message = cause.message;
+                target.cause.message = cause.error.to_string();
                 target.health = if waiting {
                     ConvergenceHealth::WaitingDependency
                 } else {
@@ -681,11 +671,7 @@ impl ApplicationWorkflow {
                 cause: ApplyFailure {
                     stage: MutationStage::Preparing,
                     cause: RefusalCause::Evidence(gap),
-                    message: format!(
-                        "the execution host reports no settled runtime state ({:?}), so this \
-                         mutation has no baseline to apply against; retry once it settles",
-                        baseline.observed
-                    ),
+                    error: Arc::new(UnsettledBaselineSnafu { gap }.build()),
                 },
                 restored: baseline.state.clone(),
             };
@@ -707,10 +693,12 @@ impl ApplicationWorkflow {
                 cause: ApplyFailure {
                     stage: MutationStage::Preparing,
                     cause: RefusalCause::Evidence(EvidenceGap::NoRestorableBaseline),
-                    message: "a core is running that this session has not applied to, so no \
-                              recorded configuration could be restored if this mutation had to \
-                              be undone"
-                        .to_owned(),
+                    error: Arc::new(
+                        UnsettledBaselineSnafu {
+                            gap: EvidenceGap::NoRestorableBaseline,
+                        }
+                        .build(),
+                    ),
                 },
                 restored: baseline.state.clone(),
             };
@@ -743,7 +731,7 @@ impl ApplicationWorkflow {
                         availability: BaselineAvailability::Known,
                         invalid_item: true,
                         target_digest: target.clone(),
-                        message: format!("the runtime candidate could not be built: {error}"),
+                        error,
                     },
                 );
             }
@@ -760,7 +748,7 @@ impl ApplicationWorkflow {
                         availability: BaselineAvailability::Known,
                         invalid_item: false,
                         target_digest: target.clone(),
-                        message: format!("no core binary for this candidate: {error}"),
+                        error: ResolveCoreBinarySnafu.into_error(error),
                     },
                 );
             }
@@ -782,7 +770,7 @@ impl ApplicationWorkflow {
             .await
         {
             RuntimeCheckOutcome::Passed => *check = CheckRecord::Passed,
-            RuntimeCheckOutcome::Rejected { message, .. } => {
+            RuntimeCheckOutcome::Rejected { kind, message } => {
                 return self.dispose(
                     policy,
                     baseline,
@@ -792,7 +780,11 @@ impl ApplicationWorkflow {
                         availability: BaselineAvailability::Known,
                         invalid_item: true,
                         target_digest: target.clone(),
-                        message: format!("the core rejected this configuration: {message}"),
+                        error: CoreRejectedConfigSnafu {
+                            core_kind: kind,
+                            message,
+                        }
+                        .build(),
                     },
                 );
             }
@@ -817,7 +809,7 @@ impl ApplicationWorkflow {
                         availability: BaselineAvailability::Known,
                         invalid_item: false,
                         target_digest: target.clone(),
-                        message: format!("the configuration could not be checked: {reason:?}"),
+                        error: CheckUnavailableSnafu { reason }.build(),
                     },
                 );
             }
@@ -875,7 +867,9 @@ impl ApplicationWorkflow {
                                                 cause: RefusalCause::Try(not_submitted_cause(
                                                     error.kind,
                                                 )),
-                                                message: error.to_string(),
+                                                error: Arc::new(
+                                                    RefreshStatusSnafu.into_error(error),
+                                                ),
                                             },
                                             restored: baseline.state.clone(),
                                         },
@@ -890,9 +884,12 @@ impl ApplicationWorkflow {
                             crate::core::actor_v2::HandoffReport::NoChange => unreachable!(),
                         };
                         if expected.host != target_host || expected.generation != generation {
-                            return RuntimePrepareOutcome::RecoveryRequired(
-                                "handoff did not provide a matching target owner".into(),
-                            );
+                            return RuntimePrepareOutcome::RecoveryRequired(Arc::new(
+                                HandoffOwnerMismatchSnafu {
+                                    expected: target_host,
+                                }
+                                .build(),
+                            ));
                         }
                     }
                 }
@@ -923,11 +920,7 @@ impl ApplicationWorkflow {
                             },
                             invalid_item: false,
                             target_digest: target.clone(),
-                            message: format!(
-                                "the runtime could not be moved to the {target_host:?} execution \
-                                host: {}",
-                                error.error
-                            ),
+                            error: MoveHostSnafu { host: target_host }.into_error(error.error),
                         },
                     );
                 }
@@ -967,21 +960,20 @@ impl ApplicationWorkflow {
                     availability: BaselineAvailability::Known,
                     invalid_item: false,
                     target_digest: target.clone(),
-                    message: format!(
-                        "the core would not start this configuration and kept the previous \
-                         one: {}",
-                        report.failed_apply.as_deref().unwrap_or("unknown reason")
-                    ),
+                    error: CoreRolledBackSnafu {
+                        reason: report.failed_apply,
+                    }
+                    .build(),
                 },
             ),
             Ok(RuntimeSubmission::Unknown(uncertain)) => RuntimePrepareOutcome::RecoveryRequired(
-                format!("runtime submission is unobserved: {}", uncertain.error),
+                Arc::new(SubmissionUnobservedSnafu.into_error(uncertain.error)),
             ),
             Ok(RuntimeSubmission::NotSubmitted(error)) => RuntimePrepareOutcome::Rejected {
                 cause: ApplyFailure {
                     stage: MutationStage::TryingCritical,
                     cause: RefusalCause::Try(not_submitted_cause(error.kind)),
-                    message: error.to_string(),
+                    error: Arc::new(ApplyRuntimeSnafu.into_error(error)),
                 },
                 restored: baseline.state.clone(),
             },
@@ -989,7 +981,7 @@ impl ApplicationWorkflow {
                 cause: ApplyFailure {
                     stage: MutationStage::TryingCritical,
                     cause: RefusalCause::Try(not_submitted_cause(error.core_kind())),
-                    message: error.to_string(),
+                    error: Arc::new(error),
                 },
                 restored: baseline.state.clone(),
             },
@@ -1008,7 +1000,7 @@ impl ApplicationWorkflow {
                         },
                         invalid_item: cause == TryCauseKind::Deterministic,
                         target_digest: target.clone(),
-                        message: format!("the configuration was not applied: {error}"),
+                        error: ApplyRuntimeSnafu.into_error(error),
                     },
                 )
             }
@@ -1055,10 +1047,8 @@ impl ApplicationWorkflow {
         }
         match self.restore(baseline).await {
             Ok(()) => outcome,
-            Err(error) => RuntimePrepareOutcome::RecoveryRequired(format!(
-                "this mutation moved execution to the other host and its candidate was not \
-                 applied there; restoring the original host and runtime could not be verified: \
-                 {error}"
+            Err(failure) => RuntimePrepareOutcome::RecoveryRequired(Arc::new(
+                HandoffNotRestoredSnafu { failure }.build(),
             )),
         }
     }
@@ -1100,6 +1090,7 @@ impl ApplicationWorkflow {
             policy,
             candidate_has_invalid_item: facts.invalid_item,
         });
+        let error = Arc::new(facts.error);
         match decision {
             FailureDisposition::Deferrable => RuntimePrepareOutcome::Deferred {
                 digest: facts
@@ -1107,20 +1098,19 @@ impl ApplicationWorkflow {
                     .expect("deferral requires a serialized complete runtime target"),
                 cause: RetryableCause {
                     stage: facts.stage,
-                    message: facts.message,
+                    message: error.to_string(),
                 },
+                error,
             },
             FailureDisposition::Reject => RuntimePrepareOutcome::Rejected {
                 cause: ApplyFailure {
                     stage: facts.stage,
                     cause: RefusalCause::Try(facts.cause),
-                    message: facts.message,
+                    error,
                 },
                 restored: baseline.state.clone(),
             },
-            FailureDisposition::RecoveryRequired => {
-                RuntimePrepareOutcome::RecoveryRequired(facts.message)
-            }
+            FailureDisposition::RecoveryRequired => RuntimePrepareOutcome::RecoveryRequired(error),
         }
     }
 
@@ -1145,7 +1135,11 @@ impl ApplicationWorkflow {
         request: &MutationRequest,
         interruption: Option<crate::client::core_lifecycle::apply::RuntimeApplyContext>,
         degradations: &mut Vec<crate::client::runtime::Degradation>,
-    ) -> (MutationConclusion, Option<String>) {
+    ) -> (
+        MutationConclusion,
+        Option<String>,
+        Option<Arc<RuntimeError>>,
+    ) {
         match outcome {
             RuntimePrepareOutcome::Applied(candidate) => {
                 let applied = AppliedVerdict::new(&candidate, leaves_service_mode(&request.change));
@@ -1176,27 +1170,40 @@ impl ApplicationWorkflow {
                             }));
                     }
                 }
-                (MutationConclusion::Confirmed, detail)
+                (MutationConclusion::Confirmed, detail, None)
             }
-            RuntimePrepareOutcome::Deferred { digest, cause } => {
+            RuntimePrepareOutcome::Deferred {
+                digest,
+                cause,
+                error,
+            } => {
                 let message = cause.message.clone();
                 self.install_mutation_target(request.operation_id, digest, cause);
-                (MutationConclusion::Confirmed, Some(message))
+                (MutationConclusion::Confirmed, Some(message), Some(error))
             }
             RuntimePrepareOutcome::SavedInactive { identity } => {
                 self.confirm_saved_inactive(identity);
-                (MutationConclusion::Confirmed, None)
+                (MutationConclusion::Confirmed, None, None)
             }
             // A Required rejection aborts the transaction, so a commit on top of
             // one means the store and this workflow disagree about what was
             // decided. Nothing here may assume which is right.
-            RuntimePrepareOutcome::Rejected { cause, .. } => (
-                MutationConclusion::RecoveryRequired,
-                Some(format!(
-                    "operation {} was committed after its runtime target was refused: {}",
-                    request.operation_id, cause.message
-                )),
-            ),
+            RuntimePrepareOutcome::Rejected { cause, .. } => {
+                let error = CommittedAfterRefusalSnafu {
+                    operation_id: request.operation_id.to_string(),
+                }
+                .build();
+                tracing::error!(
+                    operation_id = %request.operation_id,
+                    refusal = %cause.error,
+                    "{error}"
+                );
+                (
+                    MutationConclusion::RecoveryRequired,
+                    Some(format!("{error}: {}", cause.error)),
+                    Some(Arc::new(error)),
+                )
+            }
             RuntimePrepareOutcome::RecoveryRequired(_) => {
                 unreachable!("a recovery-required outcome never reaches the decision phase")
             }
@@ -1284,20 +1291,28 @@ impl ApplicationWorkflow {
         &mut self,
         outcome: RuntimePrepareOutcome,
         baseline: &RestorableBaseline,
-    ) -> (MutationConclusion, Option<String>) {
+    ) -> (
+        MutationConclusion,
+        Option<String>,
+        Option<Arc<RuntimeError>>,
+    ) {
         let RuntimePrepareOutcome::Applied(_) = outcome else {
             // Nothing reached the runtime, so there is nothing to put back.
-            return (MutationConclusion::Withdrawn, None);
+            return (MutationConclusion::Withdrawn, None, None);
         };
         match self.restore(baseline).await {
             Ok(()) => {
                 self.lifecycle.runtime.accept_transition();
-                (MutationConclusion::Cancelled, None)
+                (MutationConclusion::Cancelled, None, None)
             }
-            Err(error) => (
-                MutationConclusion::RecoveryRequired,
-                Some(error.to_string()),
-            ),
+            Err(failure) => {
+                let error = RestoreFailedSnafu { failure }.build();
+                (
+                    MutationConclusion::RecoveryRequired,
+                    Some(error.to_string()),
+                    Some(Arc::new(error)),
+                )
+            }
         }
     }
 
@@ -1358,18 +1373,14 @@ impl ApplicationWorkflow {
                     // Ownership is where the failure left it, which is not a
                     // fact about who is holding the candidate's ports.
                     self.invalidate_unproven_ports();
-                    return Err(format!(
-                        "the runtime could not be moved back to the {:?} execution host: {}",
-                        receipt.host, error.error
-                    )
-                    .into());
+                    return Err(MoveHostBackSnafu { host: receipt.host }.into_error(error.error));
                 }
                 let expected = self
                     .lifecycle
                     .core
                     .refresh_status()
                     .await
-                    .map_err(|error| error.to_string())?;
+                    .context(ReadStatusSnafu)?;
                 let submitted = self
                     .lifecycle
                     .core
@@ -1414,12 +1425,10 @@ impl ApplicationWorkflow {
                 // back (C4/D10).
                 let Some(observed) = self.observe_runtime().await else {
                     self.invalidate_unproven_ports();
-                    return Err(RestoreFailure {
-                        message: format!(
-                            "the runtime could not be read after the restore; the restore request answered {}",
-                            describe_submission(&submitted)
-                        ),
-                    });
+                    return Err(UnobservedSnafu {
+                        failure: submission_failure(&submitted),
+                    }
+                    .build());
                 };
                 match verify_recovery_target(
                     receipt,
@@ -1465,12 +1474,15 @@ impl ApplicationWorkflow {
                     }
                     RecoveryVerification::Mismatch { reasons } => {
                         self.invalidate_unproven_ports();
-                        Err(RestoreFailure {
-                            message: format!(
-                                "restoring the runtime baseline could not be verified ({reasons:?}); the restore request answered {}",
-                                describe_submission(&submitted)
-                            ),
-                        })
+                        tracing::warn!(
+                            ?reasons,
+                            answer = %describe_submission(&submitted),
+                            "the restored runtime does not match its baseline"
+                        );
+                        Err(UnverifiedSnafu {
+                            failure: submission_failure(&submitted),
+                        }
+                        .build())
                     }
                 }
             }
@@ -1483,12 +1495,9 @@ impl ApplicationWorkflow {
             // so no Try runs against one and no Cancel ever has to take a
             // candidate away. Should that change, an honest refusal is the
             // right thing to inherit rather than a stop nobody requested.
-            KnownRuntimeState::Stopped | KnownRuntimeState::NeverApplied => Err(
-                "the configuration the core was running before this mutation is not recorded, \
-                 so it cannot be restored"
-                    .to_owned()
-                    .into(),
-            ),
+            KnownRuntimeState::Stopped | KnownRuntimeState::NeverApplied => {
+                Err(NotRecordedSnafu.build())
+            }
         }
     }
 
@@ -1556,7 +1565,7 @@ struct TryOutcomeFacts {
     /// The document this attempt wanted running, when it got far enough to
     /// build one. It is the identity a convergence budget is kept against.
     target_digest: Option<String>,
-    message: String,
+    error: RuntimeError,
 }
 
 /// Whether committing `change` leaves service mode, which is what makes
@@ -1648,6 +1657,19 @@ fn core_error_cause(kind: Option<CoreErrorKind>) -> TryCauseKind {
             | CoreErrorKind::Internal,
         )
         | None => TryCauseKind::Unknown,
+    }
+}
+
+/// The failure a restore request answered with, when it had one.
+fn submission_failure(
+    submitted: &Result<crate::core::actor_v2::facade::ReconcileResult, CoreError>,
+) -> Option<CoreFailure> {
+    use crate::core::actor_v2::facade::ReconcileResult;
+    match submitted {
+        Ok(ReconcileResult::NotSubmitted(error) | ReconcileResult::Unchanged(error))
+        | Err(error) => Some(error.clone().into()),
+        Ok(ReconcileResult::Unknown(uncertain)) => Some(uncertain.error.clone().into()),
+        Ok(ReconcileResult::Reconciled(_) | ReconcileResult::RolledBack(_)) => None,
     }
 }
 

@@ -4,16 +4,24 @@
 //! recognise it. Failures of the core itself keep their machine-readable kind
 //! in [`CoreFailure`]; the frontend localizes both.
 
+use std::sync::Arc;
+
+use nyanpasu_core::state::AckError;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use serde::Serialize;
 use snafu::Snafu;
 
 use crate::{
     client::{
-        core_lifecycle::ports::InstallCoreBinaryError, ports::PortResolveError,
+        application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
+        core_lifecycle::ports::InstallCoreBinaryError,
+        ports::PortResolveError,
         runtime::PublishRuntimeError,
     },
-    core::{actor_v2::local_host::CoreSpecError, service::control::ServiceCommandError},
+    core::{
+        actor_v2::{endpoint::ExecutionHost, local_host::CoreSpecError},
+        service::control::ServiceCommandError,
+    },
     enhance::RuntimeBuildError,
     utils::resolve::CoreVersionError,
 };
@@ -70,6 +78,12 @@ pub enum RuntimeError {
         "the runtime owner did not answer; the outcome of operation {operation_id} is unknown"
     ))]
     OwnerUnresponsive { operation_id: String },
+    /// Refused at admission: the runtime owner is gone, so nothing ran.
+    #[snafu(display("the runtime owner is unavailable; nothing was committed"))]
+    OwnerUnavailable,
+    /// Refused at admission: the source transaction had already been decided.
+    #[snafu(display("the source transaction settled before its Try ran"))]
+    SourceSettled,
 
     #[snafu(display("could not apply the runtime configuration: {failure}"))]
     ApplyRuntime {
@@ -121,6 +135,12 @@ pub enum RuntimeError {
         #[snafu(source(from(CoreError, CoreFailure::from)))]
         failure: CoreFailure,
     },
+    #[snafu(display("could not move the runtime to the {host:?} execution host: {failure}"))]
+    MoveHost {
+        host: ExecutionHost,
+        #[snafu(source(from(CoreError, CoreFailure::from)))]
+        failure: CoreFailure,
+    },
     /// The service hosts the runtime; the local host must take it over first.
     #[snafu(display(
         "the service still hosts the core; hand it to the local host before uninstalling the service"
@@ -150,6 +170,42 @@ pub enum RuntimeError {
     #[snafu(display("could not read the version of the core: {source}"))]
     ReadCoreVersion { source: CoreVersionError },
 
+    /// A candidate was refused before anything was submitted, for want of a
+    /// baseline to apply against.
+    #[snafu(display("the runtime has no settled baseline to apply against ({gap:?})"))]
+    UnsettledBaseline { gap: EvidenceGap },
+    #[snafu(display("the core rejected the configuration: {message}"))]
+    CoreRejectedConfig {
+        core_kind: Option<CoreErrorKind>,
+        message: String,
+    },
+    #[snafu(display("the configuration could not be checked: {reason:?}"))]
+    CheckUnavailable { reason: RuntimeCheckUnavailable },
+    /// The core restored its own previous configuration.
+    #[snafu(display("the core would not start this configuration and kept the previous one"))]
+    CoreRolledBack { reason: Option<String> },
+    /// The submission ended unobserved, so it may have taken effect.
+    #[snafu(display("the runtime submission is unobserved: {failure}"))]
+    SubmissionUnobserved {
+        #[snafu(source(from(CoreError, CoreFailure::from)))]
+        failure: CoreFailure,
+    },
+    #[snafu(display("the handoff did not leave the {expected:?} host as the owner"))]
+    HandoffOwnerMismatch { expected: ExecutionHost },
+    /// A mutation that moved the runtime to the other host and failed there
+    /// could not put it back.
+    #[snafu(display("the runtime could not be put back on its original host: {failure}"))]
+    HandoffNotRestored { failure: RestoreFailure },
+    /// A cancelled mutation could not put the runtime back.
+    #[snafu(display("the runtime baseline could not be restored: {failure}"))]
+    RestoreFailed { failure: RestoreFailure },
+    /// The store committed a mutation whose runtime target the workflow had
+    /// refused.
+    #[snafu(display(
+        "operation {operation_id} was committed after its runtime target was refused"
+    ))]
+    CommittedAfterRefusal { operation_id: String },
+
     /// No runtime configuration has been built yet.
     #[snafu(display("there is no runtime configuration yet"))]
     NoRuntimeConfig,
@@ -170,6 +226,61 @@ pub enum RuntimeError {
     RuntimeNodeNotFound { node_id: u32 },
 }
 
+/// Why the runtime baseline could not be put back.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[snafu(visibility(pub(crate)))]
+pub enum RestoreFailure {
+    #[snafu(display("could not move the runtime back to the {host:?} execution host: {failure}"))]
+    MoveHostBack {
+        host: ExecutionHost,
+        #[snafu(source(from(CoreError, CoreFailure::from)))]
+        failure: CoreFailure,
+    },
+    #[snafu(display("could not read the runtime: {failure}"))]
+    ReadStatus {
+        #[snafu(source(from(CoreError, CoreFailure::from)))]
+        failure: CoreFailure,
+    },
+    /// The runtime could not be read once the restore request had answered;
+    /// `failure` is that request's own failure, if it had one.
+    #[snafu(display("the runtime could not be read after the restore"))]
+    Unobserved { failure: Option<CoreFailure> },
+    #[snafu(display("the restored runtime does not match the baseline"))]
+    Unverified { failure: Option<CoreFailure> },
+    /// The configuration the core ran before was never recorded.
+    #[snafu(display("the previous configuration is not recorded"))]
+    NotRecorded,
+}
+
+/// What a workflow subscriber answers a source transaction with: the error
+/// the workflow keeps, shared. [`refusal_of`] is the one place that recovers it.
+#[derive(Debug)]
+struct AckPayload(Arc<RuntimeError>);
+
+impl std::fmt::Display for AckPayload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for AckPayload {}
+
+/// The ack carrying `error` to the source transaction.
+pub(crate) fn ack_of(error: Arc<RuntimeError>) -> AckError {
+    Arc::new(AckPayload(error))
+}
+
+/// The runtime error a required subscriber answered with. The only required
+/// subscriber of a source transaction is the workflow's participant, so any
+/// other payload is a bug.
+pub(crate) fn refusal_of(subscriber: &str, ack: &AckError) -> Arc<RuntimeError> {
+    ack.downcast_ref::<AckPayload>()
+        .unwrap_or_else(|| panic!("subscriber {subscriber} answered with a non-runtime error"))
+        .0
+        .clone()
+}
+
 impl RuntimeError {
     /// The core's own failure this error carries, if the core produced it.
     pub(crate) fn core_failure(&self) -> Option<&CoreFailure> {
@@ -183,10 +294,22 @@ impl RuntimeError {
             | Self::StartService { failure }
             | Self::StopService { failure }
             | Self::RestartService { failure }
-            | Self::UninstallService { failure } => Some(failure),
+            | Self::UninstallService { failure }
+            | Self::MoveHost { failure, .. }
+            | Self::SubmissionUnobserved { failure } => Some(failure),
             Self::ShuttingDown
             | Self::Isolated
             | Self::OwnerUnresponsive { .. }
+            | Self::OwnerUnavailable
+            | Self::SourceSettled
+            | Self::UnsettledBaseline { .. }
+            | Self::CoreRejectedConfig { .. }
+            | Self::CheckUnavailable { .. }
+            | Self::CoreRolledBack { .. }
+            | Self::HandoffOwnerMismatch { .. }
+            | Self::HandoffNotRestored { .. }
+            | Self::RestoreFailed { .. }
+            | Self::CommittedAfterRefusal { .. }
             | Self::ServiceHostsCore
             | Self::CoreNotStarted { .. }
             | Self::RecoveryUnresolved { .. }

@@ -109,7 +109,7 @@ port_scanner = '0.1.5'
 sysproxy = { workspace = true }
 
 # Serialization
-serde = { version = '1.0', features = ['derive'] }
+serde = { version = '1.0', features = ['derive', 'rc'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }
 # Kept as a direct dependency rather than inherited: Cargo's workspace
 # inheritance does not allow `package` renames at the member site.

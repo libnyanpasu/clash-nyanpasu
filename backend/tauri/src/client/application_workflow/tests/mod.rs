@@ -36,10 +36,12 @@ fn classify(
     crate::state::mutation::CommitAborted::classify(error, Some(receipt))
 }
 
-/// The reasons a required participant gave for refusing a candidate.
-fn refusal_reasons(aborted: &crate::state::mutation::CommitAborted) -> String {
+/// The errors a required participant gave for refusing a candidate.
+fn refusals(
+    aborted: &crate::state::mutation::CommitAborted,
+) -> Vec<std::sync::Arc<crate::client::runtime_error::RuntimeError>> {
     match aborted {
-        crate::state::mutation::CommitAborted::RuntimeRefused { reasons, .. } => reasons.join("; "),
+        crate::state::mutation::CommitAborted::RuntimeRefused { errors, .. } => errors.clone(),
         other => panic!("expected a refusal, got {other:?}"),
     }
 }

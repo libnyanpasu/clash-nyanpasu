@@ -24,6 +24,7 @@ use super::{
     mutation::{DomainChange, MutationReceipt, MutationRequest},
     policy::CommandClass,
 };
+use crate::client::runtime_error::{OwnerUnresponsiveSnafu, ack_of};
 
 pub(crate) struct ApplicationMutationParticipant<T> {
     operation_id: OperationId,
@@ -101,18 +102,19 @@ where
         }) {
             // Never delivered, so nothing ran: unlike a lost verdict below,
             // this is a refusal.
-            return Ack::Rejected(error.to_string());
+            return Ack::Rejected(ack_of(Arc::new(error)));
         }
         match verdict.await {
             Ok(ack) => ack,
             // The workflow dropped the verdict without sending one, so what the
             // Try did is unobserved. Never a rejection: a rejection claims the
             // runtime was left alone, and nothing here establishes that.
-            Err(_) => Ack::Failed(anyhow::anyhow!(
-                "the application workflow abandoned the verdict of operation {}; \
-                 its outcome is unknown",
-                self.operation_id
-            )),
+            Err(_) => Ack::Failed(ack_of(Arc::new(
+                OwnerUnresponsiveSnafu {
+                    operation_id: self.operation_id.to_string(),
+                }
+                .build(),
+            ))),
         }
     }
 }

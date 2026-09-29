@@ -3,6 +3,8 @@ import type {
   CommitAborted,
   CoreErrorKind,
   CoreFailure,
+  EvidenceGap,
+  ExecutionHost,
   InstallCoreBinaryError,
   IpcError,
   PickPortError,
@@ -41,11 +43,11 @@ export function commitAbortedMessage(error: CommitAborted): string {
         return m.error_commit_recover_after_write_failure()
       case 'runtime_refused':
         return m.error_commit_runtime_refused({
-          reason: error.reasons[0] ?? '',
+          reason: firstRuntimeError(error.errors),
         })
       case 'runtime_failed':
         return m.error_commit_runtime_failed({
-          reason: error.reasons[0] ?? '',
+          reason: firstRuntimeError(error.errors),
         })
       case 'validate_state':
         return m.error_commit_validate_state()
@@ -56,6 +58,10 @@ export function commitAbortedMessage(error: CommitAborted): string {
       ? undefined
       : runtimeAftermathMessage(error.runtime)
   return aftermath ? `${message} (${aftermath})` : message
+}
+
+function firstRuntimeError(errors: RuntimeError[]) {
+  return errors[0] ? runtimeErrorMessage(errors[0]) : ''
 }
 
 function runtimeAftermathMessage(runtime: RuntimeAftermath) {
@@ -193,6 +199,10 @@ function runtimeErrorMessage(error: RuntimeError): string {
       return m.error_runtime_isolated()
     case 'owner_unresponsive':
       return m.error_runtime_owner_unresponsive()
+    case 'owner_unavailable':
+      return m.error_runtime_owner_unavailable()
+    case 'source_settled':
+      return m.error_runtime_source_settled()
     case 'apply_runtime':
       return coreOperationMessage(
         m.error_runtime_apply_runtime(),
@@ -237,6 +247,11 @@ function runtimeErrorMessage(error: RuntimeError): string {
         m.error_runtime_uninstall_service(),
         error.failure,
       )
+    case 'move_host':
+      return coreOperationMessage(
+        m.error_runtime_move_host({ host: hostName(error.host) }),
+        error.failure,
+      )
     case 'service_hosts_core':
       return m.error_runtime_service_hosts_core()
     case 'core_not_started':
@@ -259,6 +274,30 @@ function runtimeErrorMessage(error: RuntimeError): string {
       return m.error_runtime_prepare_service_install_prompt()
     case 'read_core_version':
       return m.error_runtime_read_core_version({ core: error.source.core })
+    case 'unsettled_baseline':
+      return unsettledBaselineMessage(error.gap)
+    case 'core_rejected_config':
+      return withCoreReason(
+        m.error_runtime_core_rejected_config(),
+        error.core_kind,
+      )
+    case 'check_unavailable':
+      return m.error_runtime_check_unavailable()
+    case 'core_rolled_back':
+      return m.error_runtime_core_rolled_back()
+    case 'submission_unobserved':
+      return coreOperationMessage(
+        m.error_runtime_submission_unobserved(),
+        error.failure,
+      )
+    case 'handoff_owner_mismatch':
+      return m.error_runtime_handoff_owner_mismatch()
+    case 'handoff_not_restored':
+      return m.error_runtime_handoff_not_restored()
+    case 'restore_failed':
+      return m.error_runtime_restore_failed()
+    case 'committed_after_refusal':
+      return m.error_runtime_committed_after_refusal()
     case 'no_runtime_config':
       return m.error_runtime_no_runtime_config()
     case 'serialize_runtime_config':
@@ -273,8 +312,31 @@ function runtimeErrorMessage(error: RuntimeError): string {
 
 /** What the core operation was, and why the core refused it when it said. */
 function coreOperationMessage(action: string, failure: CoreFailure): string {
-  const reason = failure.kind ? coreReasonMessage(failure.kind) : undefined
-  return reason ? `${action} (${reason})` : action
+  return withCoreReason(action, failure.kind)
+}
+
+function withCoreReason(action: string, kind: CoreErrorKind | null): string {
+  return kind ? `${action} (${coreReasonMessage(kind)})` : action
+}
+
+function hostName(host: ExecutionHost): string {
+  switch (host) {
+    case 'local':
+      return m.error_runtime_host_local()
+    case 'service':
+      return m.error_runtime_host_service()
+  }
+}
+
+function unsettledBaselineMessage(gap: EvidenceGap): string {
+  switch (gap) {
+    case 'core_transitioning':
+      return m.error_runtime_unsettled_baseline_core_transitioning()
+    case 'baseline_unconfirmed':
+      return m.error_runtime_unsettled_baseline_baseline_unconfirmed()
+    case 'no_restorable_baseline':
+      return m.error_runtime_unsettled_baseline_no_restorable_baseline()
+  }
 }
 
 function coreReasonMessage(kind: CoreErrorKind): string {

@@ -22,6 +22,7 @@ use crate::client::{
     },
     effects::ports::CommitNotifications,
     runtime::{CommitReceipt, Degradation, DegradationPhase, RuntimeCommitStatus},
+    runtime_error::{RuntimeError, refusal_of},
 };
 
 #[derive(Clone)]
@@ -240,9 +241,9 @@ pub enum CommitAborted {
         source: ReplaceIfVersionError,
     },
     /// A required participant refused the candidate.
-    #[snafu(display("the runtime refused the change: {}{runtime}", joined(reasons)))]
+    #[snafu(display("the runtime refused the change: {}{runtime}", joined(errors)))]
     RuntimeRefused {
-        reasons: Vec<String>,
+        errors: Vec<Arc<RuntimeError>>,
         runtime: RuntimeAftermath,
         #[serde(skip)]
         source: ReplaceIfVersionError,
@@ -250,10 +251,10 @@ pub enum CommitAborted {
     /// A required participant could not decide.
     #[snafu(display(
         "the runtime failed while applying the change: {}{runtime}",
-        joined(reasons)
+        joined(errors)
     ))]
     RuntimeFailed {
-        reasons: Vec<String>,
+        errors: Vec<Arc<RuntimeError>>,
         runtime: RuntimeAftermath,
         #[serde(skip)]
         source: ReplaceIfVersionError,
@@ -267,14 +268,18 @@ pub enum CommitAborted {
     },
 }
 
-fn joined(reasons: &[String]) -> String {
-    reasons.join("; ")
+fn joined(errors: &[Arc<RuntimeError>]) -> String {
+    errors
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// What became of the runtime after an aborted commit, from the receipt's
 /// structured fields. `detail` is the receipt's operator diagnostics, never an
 /// input to a decision.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RuntimeAftermath {
     /// The runtime took no part, or the transaction withdrew before it did.
@@ -282,9 +287,9 @@ pub enum RuntimeAftermath {
     /// The runtime went back to the previous configuration.
     RolledBack,
     /// Rolling the runtime back failed; recovery is required.
-    RollbackFailed { detail: String },
+    RollbackFailed { detail: Arc<RuntimeError> },
     /// What the runtime is running is unknown and needs recovery.
-    Unknown { detail: String },
+    Unknown { detail: Arc<RuntimeError> },
 }
 
 impl RuntimeAftermath {
@@ -292,7 +297,12 @@ impl RuntimeAftermath {
         let Some(receipt) = settlement else {
             return Self::Untouched;
         };
-        let detail = || receipt.detail.clone().unwrap_or_default();
+        let detail = || {
+            receipt
+                .cause
+                .clone()
+                .expect("a receipt that needs recovery names its cause")
+        };
         match (receipt.outcome, receipt.conclusion) {
             (MutationOutcomeKind::RecoveryRequired, _) => Self::Unknown { detail: detail() },
             (_, MutationConclusion::Cancelled) => Self::RolledBack,
@@ -339,7 +349,7 @@ impl CommitAborted {
             }
             ReplaceIfVersionError::State(StateChangedError::PrepareAck(refusal)) => {
                 let mut refused = false;
-                let reasons: Vec<String> = refusal
+                let errors: Vec<Arc<RuntimeError>> = refusal
                     .report
                     .subscriber_acks
                     .iter()
@@ -347,18 +357,18 @@ impl CommitAborted {
                     .map(|ack| match &ack.status {
                         AckStatus::Rejected { reason } => {
                             refused = true;
-                            reason.clone()
+                            refusal_of(&ack.name.0, reason)
                         }
-                        AckStatus::Failed { error } => format!("{error:#}"),
+                        AckStatus::Failed { error } => refusal_of(&ack.name.0, error),
                         AckStatus::Acked | AckStatus::Degraded { .. } => {
                             unreachable!("only a refusal or a failure fails a required ACK")
                         }
                     })
                     .collect();
                 if refused {
-                    RuntimeRefusedSnafu { reasons, runtime }.into_error(error)
+                    RuntimeRefusedSnafu { errors, runtime }.into_error(error)
                 } else {
-                    RuntimeFailedSnafu { reasons, runtime }.into_error(error)
+                    RuntimeFailedSnafu { errors, runtime }.into_error(error)
                 }
             }
             ReplaceIfVersionError::State(

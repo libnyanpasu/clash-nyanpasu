@@ -44,19 +44,20 @@ use super::{
             TouchedContent, runtime_impact,
         },
         mutation::{
-            CheckRecord, DEFERRED_RETRY_BUDGET, MutationConclusion, MutationOutcomeKind,
-            MutationReceipt,
+            CheckRecord, DEFERRED_RETRY_BUDGET, EvidenceGap, MutationConclusion,
+            MutationOutcomeKind, MutationReceipt,
         },
         participant::ApplicationMutationParticipant,
         policy::CommandClass,
     },
-    RecordingNotifications, ScriptedWaitEndpoint, classify, refusal_reasons,
+    RecordingNotifications, ScriptedWaitEndpoint, classify, refusals,
 };
 use crate::{
     client::{
         SessionPortResolver,
         core_lifecycle::Ownership,
         runtime,
+        runtime_error::{RuntimeError, refusal_of},
         tests::{TestCheckAnswer, TestControlEndpoint},
     },
     core::actor_v2::{
@@ -727,7 +728,7 @@ impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for Rejector {
         "rejector".into()
     }
     async fn on_prepare(&self, _change: StateChange<T>) -> Ack {
-        Ack::Rejected("scripted domain veto".to_string())
+        Ack::Rejected(Arc::new(std::io::Error::other("scripted domain veto")))
     }
 }
 
@@ -1300,7 +1301,10 @@ async fn a_failed_save_restores_the_verified_runtime_baseline() {
     let CommitAborted::WriteConfig { runtime, source } = &aborted else {
         panic!("{aborted:?}");
     };
-    assert_eq!(*runtime, RuntimeAftermath::RolledBack);
+    assert!(
+        matches!(runtime, RuntimeAftermath::RolledBack),
+        "{runtime:?}"
+    );
     assert!(
         source.to_string().contains("failed to write config"),
         "{source}"
@@ -1580,7 +1584,10 @@ async fn an_abort_that_owes_a_resource_recovery_still_rolls_the_runtime_back() {
         panic!("{aborted:?}");
     };
     // Both failures reach the caller with their causes.
-    assert_eq!(*runtime, RuntimeAftermath::RolledBack);
+    assert!(
+        matches!(runtime, RuntimeAftermath::RolledBack),
+        "{runtime:?}"
+    );
     assert!(
         format!("{cause:#}").contains("resource write failed: disk full"),
         "{cause:#}"
@@ -1627,10 +1634,18 @@ async fn a_running_core_with_no_confirmed_apply_refuses_a_critical_mutation() {
     );
     let receipt = settled(&client, operation_id).await;
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    let reasons = refusal_reasons(&classify(result.unwrap_err(), &receipt));
+    let refused = refusals(&classify(result.unwrap_err(), &receipt));
     assert!(
-        reasons.contains("a core is running that this session has not applied to"),
-        "{reasons}"
+        matches!(
+            refused.as_slice(),
+            [error] if matches!(
+                error.as_ref(),
+                RuntimeError::UnsettledBaseline {
+                    gap: EvidenceGap::NoRestorableBaseline
+                }
+            )
+        ),
+        "{refused:?}"
     );
     assert!(
         !client.status().uncertain,
@@ -1726,15 +1741,18 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
     assert_eq!(receipt.conclusion, MutationConclusion::Withdrawn);
     // V07: the caller is told why.
-    let reasons = refusal_reasons(&classify(result.unwrap_err(), &receipt));
-    assert!(
-        reasons.contains("the core will not run this document"),
-        "{reasons}"
-    );
     // A Try that ran and was refused, not an evidence gap.
+    let refused = refusals(&classify(result.unwrap_err(), &receipt));
     assert!(
-        reasons.contains("the core rejected this configuration"),
-        "{reasons}"
+        matches!(
+            refused.as_slice(),
+            [error] if matches!(
+                error.as_ref(),
+                RuntimeError::CoreRejectedConfig { message, .. }
+                    if message.contains("the core will not run this document")
+            )
+        ),
+        "{refused:?}"
     );
     assert!(!f.client.status().uncertain);
 }
@@ -1801,10 +1819,18 @@ async fn a_host_that_publishes_nothing_refuses_a_critical_mutation() {
     let receipt = settled(&f.client, operation_id).await;
     assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    let reasons = refusal_reasons(&classify(result.unwrap_err(), &receipt));
+    let refused = refusals(&classify(result.unwrap_err(), &receipt));
     assert!(
-        reasons.contains("reports no settled runtime state (None)"),
-        "{reasons}"
+        matches!(
+            refused.as_slice(),
+            [error] if matches!(
+                error.as_ref(),
+                RuntimeError::UnsettledBaseline {
+                    gap: EvidenceGap::BaselineUnconfirmed
+                }
+            )
+        ),
+        "{refused:?}"
     );
     assert!(
         !f.client.status().uncertain,
@@ -1907,10 +1933,18 @@ async fn a_transitional_core_state_refuses_a_mutation_without_isolating_the_doma
         );
         assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
         assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-        let reasons = refusal_reasons(&classify(result.unwrap_err(), &receipt));
+        let refused = refusals(&classify(result.unwrap_err(), &receipt));
         assert!(
-            reasons.contains("reports no settled runtime state (Some("),
-            "{state:?}: {reasons}"
+            matches!(
+                refused.as_slice(),
+                [error] if matches!(
+                    error.as_ref(),
+                    RuntimeError::UnsettledBaseline {
+                        gap: EvidenceGap::CoreTransitioning
+                    }
+                )
+            ),
+            "{state:?}: {refused:?}"
         );
         assert!(
             !f.client.status().uncertain,
@@ -2181,21 +2215,26 @@ fn the_ack_of_an_outcome_follows_the_failure_matrix() {
                 stage: super::super::mutation::MutationStage::TryingCritical,
                 message: "briefly unreachable".into(),
             },
+            error: Arc::new(RuntimeError::ShuttingDown),
         }
         .ack(),
-        Ack::Degraded(message) if message == "briefly unreachable"
+        Ack::Degraded(error) if refusal_of("test", &error).to_string()
+            == RuntimeError::ShuttingDown.to_string()
     ));
     assert!(matches!(
         RuntimePrepareOutcome::Rejected {
             cause: ApplyFailure {
                 stage: super::super::mutation::MutationStage::TryingCritical,
                 cause: RefusalCause::Try(TryCauseKind::Deterministic),
-                message: "the core rejected it".into(),
+                error: Arc::new(RuntimeError::Isolated),
             },
             restored: super::super::mutation::KnownRuntimeState::Stopped,
         }
         .ack(),
-        Ack::Rejected(message) if message == "the core rejected it"
+        Ack::Rejected(error) if matches!(
+            refusal_of("test", &error).as_ref(),
+            RuntimeError::Isolated
+        )
     ));
 }
 
@@ -4258,7 +4297,7 @@ async fn a_try_the_workflow_never_received_is_refused_as_not_run() {
         matches!(
             refusal.report.subscriber_acks.as_slice(),
             [ack] if matches!(&ack.status, AckStatus::Rejected { reason }
-                if reason.contains("nothing was committed"))
+                if matches!(refusal_of("test", reason).as_ref(), RuntimeError::OwnerUnavailable))
         ),
         "{:?}",
         refusal.report

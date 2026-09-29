@@ -949,11 +949,11 @@ impl NyanpasuClient {
             .inner
             .fs
             .read(&source.materialized().file)
-            .map_err(ClientError::Anyhow)?;
+            .map_err(anyhow::Error::from)?;
         match &item.definition {
             ProfileDefinition::Config { .. } => {
-                crate::service::profile_file::normalize_yaml_document(&raw)
-                    .map_err(ClientError::Anyhow)
+                Ok(crate::service::profile_file::normalize_yaml_document(&raw)
+                    .map_err(anyhow::Error::from)?)
             }
             ProfileDefinition::Transform { .. } => Ok(raw),
         }
@@ -1001,10 +1001,13 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         core::actor_v2::endpoint::ExecutionHost,
-        state::profiles::ports::{
-            CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
-            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-            PreparedMaterialization, ProfileMaterializationPort,
+        state::profiles::{
+            error::SubscriptionFetchError,
+            ports::{
+                CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
+                MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
+                PreparedMaterialization, ProfileMaterializationPort,
+            },
         },
     };
     use camino::Utf8PathBuf;
@@ -3344,7 +3347,7 @@ pub(crate) mod tests {
                     suggested_update_interval_minutes: None,
                 })
             } else {
-                anyhow::bail!("dns exploded")
+                Err(SubscriptionFetchError::mock())
             }
         });
         tauri::async_runtime::block_on(async {
@@ -3502,7 +3505,7 @@ pub(crate) mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
             .expect_fetch()
-            .returning(|_, _| anyhow::bail!("dns exploded"));
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
         // A failed import never reaches core apply, so the bridge expects nothing.
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;

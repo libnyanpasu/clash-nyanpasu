@@ -333,11 +333,14 @@ mod tests {
     use super::*;
     use crate::{
         service::profile_file::{ProfileFileService, SelfProxyPortSource},
-        state::profiles::ports::{
-            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport, MockProfileFsPort,
-            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-            PreparedMaterialization, ProfileDegradationCode, ProfileDegradationPhase,
-            ProfileFsPort, ProfileMaterializationPort,
+        state::profiles::{
+            error::{ProfileFileError, SubscriptionFetchError},
+            ports::{
+                CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+                MockProfileFsPort, MockProfileMaterializationPort, MockSubscriptionFetcher,
+                PreparedCleanup, PreparedMaterialization, ProfileDegradationCode,
+                ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
+            },
         },
         utils::path::PathResolver,
     };
@@ -401,7 +404,7 @@ mod tests {
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         materialization.expect_compensate().returning(|_| Ok(()));
         Arc::new(materialization)
     }
@@ -419,7 +422,7 @@ mod tests {
             .returning(|_| Ok(()));
         materialization
             .expect_retry_cleanup()
-            .returning(|_, _| Err(anyhow::anyhow!("disk on fire")));
+            .returning(|_, _| Err(ProfileFileError::mock("disk on fire")));
         Arc::new(materialization)
     }
 
@@ -759,7 +762,7 @@ mod tests {
             &self,
             _url: &url::Url,
             _options: &RemoteProfileOptions,
-        ) -> anyhow::Result<FetchedSubscription> {
+        ) -> Result<FetchedSubscription, SubscriptionFetchError> {
             if let Some(started) = self.started.lock().unwrap().take() {
                 let _ = started.send(());
             }
@@ -1022,7 +1025,7 @@ mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
             .expect_fetch()
-            .returning(|_, _| anyhow::bail!("dns exploded"));
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
         let (client, _dir) = remote_seeded_client(MockProfileFsPort::new(), fetcher).await;
         let err = client
             .refresh(ProfileId("r1".into()), None)
@@ -1295,7 +1298,7 @@ mod tests {
         let counter = std::sync::Arc::clone(&fetch_count);
         fetcher.expect_fetch().returning(move |_, _| {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            anyhow::bail!("count only")
+            Err(SubscriptionFetchError::mock())
         });
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
@@ -1343,7 +1346,7 @@ mod tests {
         let counter = std::sync::Arc::clone(&fetch_count);
         fetcher.expect_fetch().returning(move |_, _| {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            anyhow::bail!("count only")
+            Err(SubscriptionFetchError::mock())
         });
         let dir = tempdir().unwrap();
         {
@@ -1803,7 +1806,7 @@ mod tests {
             // Simulate losing the config directory before the source CAS.
             std::fs::rename(&live_for_promote, &dead_for_promote)
                 .expect("move profiles parent aside before source CAS");
-            Err(anyhow::anyhow!("disk full"))
+            Err(ProfileFileError::mock("disk full"))
         });
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
@@ -1852,7 +1855,7 @@ mod tests {
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         materialization
             .expect_prepare_file_first()
-            .returning(|_, _, _| Err(anyhow::anyhow!("staging refused")));
+            .returning(|_, _, _| Err(ProfileFileError::mock("staging refused")));
         {
             let promote_calls = Arc::clone(&promote_calls);
             materialization.expect_promote().returning(move |_| {
@@ -1910,13 +1913,13 @@ mod tests {
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let compensate_calls = Arc::clone(&compensate_calls);
             materialization.expect_compensate().returning(move |_| {
                 compensate_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Err(anyhow::anyhow!("cannot restore"))
+                Err(ProfileFileError::mock("cannot restore"))
             });
         }
 
@@ -1961,7 +1964,7 @@ mod tests {
         materialization.expect_promote().returning(|_| Ok(()));
         materialization
             .expect_complete()
-            .returning(|_| Err(anyhow::anyhow!("journal stuck")));
+            .returning(|_| Err(ProfileFileError::mock("journal stuck")));
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
@@ -2010,7 +2013,7 @@ mod tests {
             .returning(|_, _, _| Ok(PreparedMaterialization::new("new".into())));
         materialization
             .expect_prepare_cleanup()
-            .returning(|_, _| Err(anyhow::anyhow!("cleanup journal refused")));
+            .returning(|_, _| Err(ProfileFileError::mock("cleanup journal refused")));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let compensate_calls = Arc::clone(&compensate_calls);
@@ -2072,7 +2075,7 @@ mod tests {
             .returning(|_, _| Ok(PreparedCleanup::new("old".into())));
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         let cancel_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
@@ -2140,7 +2143,7 @@ mod tests {
             .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let compensate_calls = Arc::clone(&compensate_calls);
@@ -2195,7 +2198,7 @@ mod tests {
         materialization.expect_promote().returning(|_| Ok(()));
         materialization
             .expect_complete()
-            .returning(|_| Err(anyhow::anyhow!("journal stuck")));
+            .returning(|_| Err(ProfileFileError::mock("journal stuck")));
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
@@ -2246,7 +2249,7 @@ mod tests {
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         materialization
             .expect_prepare_cleanup()
-            .returning(|_, _| Err(anyhow::anyhow!("cleanup journal refused")));
+            .returning(|_, _| Err(ProfileFileError::mock("cleanup journal refused")));
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
@@ -2286,7 +2289,7 @@ mod tests {
             .returning(|_, _| Ok(PreparedCleanup::new("cleanup".into())));
         materialization
             .expect_activate_cleanup()
-            .returning(|_| Err(anyhow::anyhow!("activate refused")));
+            .returning(|_| Err(ProfileFileError::mock("activate refused")));
         let retry_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let retry_calls = Arc::clone(&retry_calls);
@@ -2351,7 +2354,7 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 let should_hold = self
                     .holds_remaining
                     .fetch_update(
@@ -3128,7 +3131,7 @@ mod tests {
         fetcher
             .expect_fetch()
             .times(1)
-            .returning(|_, _| anyhow::bail!("dns exploded"));
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
         let mut materialization = MockProfileMaterializationPort::new();
         materialization
             .expect_reconcile()
@@ -3178,7 +3181,7 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 if call == 1 {
                     if let Some(started) = self.started.lock().unwrap().take() {
@@ -3258,12 +3261,12 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 if let Some(started) = self.started.lock().unwrap().take() {
                     let _ = started.send(());
                 }
                 self.release.notified().await;
-                anyhow::bail!("dns exploded after cancel")
+                Err(SubscriptionFetchError::mock())
             }
         }
 
@@ -3660,7 +3663,7 @@ mod tests {
             &self,
             _url: &url::Url,
             _options: &RemoteProfileOptions,
-        ) -> anyhow::Result<FetchedSubscription> {
+        ) -> Result<FetchedSubscription, SubscriptionFetchError> {
             let mut parked = Parked(Some(Arc::clone(&self.dropped)));
             let _ = self.started.send(());
             self.release.notified().await;
@@ -3682,7 +3685,7 @@ mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             fetches.send_modify(|calls| *calls += 1);
-            anyhow::bail!("count only")
+            Err(SubscriptionFetchError::mock())
         });
         let (reconciles, mut reconciled) = tokio::sync::watch::channel(0usize);
         let mut materialization = MockProfileMaterializationPort::new();
@@ -3872,7 +3875,7 @@ mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             fetches.send_modify(|calls| *calls += 1);
-            anyhow::bail!("count only")
+            Err(SubscriptionFetchError::mock())
         });
         let dir = tempdir().unwrap();
         // Only an external event that got through would read the Mirror
@@ -3882,7 +3885,9 @@ mod tests {
         let mut fs = MockProfileFsPort::new();
         fs.expect_read_external().returning(move |_| {
             counter.fetch_add(1, Ordering::SeqCst);
-            anyhow::bail!("a stopped actor reads no external file")
+            Err(ProfileFileError::mock(
+                "a stopped actor reads no external file",
+            ))
         });
         let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
         let client = ProfilesClient::new(
@@ -4036,7 +4041,7 @@ mod tests {
                     suggested_update_interval_minutes: None,
                 })
             } else {
-                anyhow::bail!("dns exploded")
+                Err(SubscriptionFetchError::mock())
             }
         });
         let dir = tempdir().unwrap();
@@ -4066,7 +4071,7 @@ mod tests {
         .await;
         assert!(matches!(
             &failed.outcome,
-            SourceOutcome::Failed { message } if message.contains("dns exploded")
+            SourceOutcome::Failed { message } if message.contains("HTTP 500")
         ));
         assert_eq!(failed.health, ConvergenceHealth::Blocked);
         assert_eq!(client.sources().entries.len(), 1, "one row per profile");
@@ -4125,10 +4130,10 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 let _ = self.started.send(());
                 self.release.notified().await;
-                anyhow::bail!("dns exploded")
+                Err(SubscriptionFetchError::mock())
             }
         }
         let (started, mut started_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -4185,9 +4190,9 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
-                    anyhow::bail!("dns exploded");
+                    return Err(SubscriptionFetchError::mock());
                 }
                 let _ = self.started.send(());
                 self.release.notified().await;
@@ -4336,7 +4341,7 @@ mod tests {
             });
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         materialization.expect_compensate().returning(|_| Ok(()));
         Arc::new(materialization)
     }

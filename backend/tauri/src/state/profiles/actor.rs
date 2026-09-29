@@ -30,6 +30,7 @@ use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use super::{
+    error::ProfileFileError,
     ports::{
         MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
         ProfileDegradation, ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
@@ -636,7 +637,7 @@ impl ProfilesActor {
                 Ok(panic) => std::panic::resume_unwind(panic),
                 Err(error) => anyhow::anyhow!("mirror source read task failed: {error}"),
             })
-            .and_then(|content| content);
+            .and_then(|content| Ok(content?));
         let content = match content {
             Ok(content) => content,
             Err(error) => {
@@ -829,15 +830,16 @@ impl ProfilesActor {
     ) -> anyhow::Result<T>
     where
         T: Send + 'static,
-        F: FnOnce(&dyn ProfileMaterializationPort) -> anyhow::Result<T> + Send + 'static,
+        F: FnOnce(&dyn ProfileMaterializationPort) -> Result<T, ProfileFileError> + Send + 'static,
     {
         let materialization = Arc::clone(&state.materialization);
-        tokio::task::spawn_blocking(move || operation(materialization.as_ref()))
+        let result = tokio::task::spawn_blocking(move || operation(materialization.as_ref()))
             .await
             .map_err(|error| match error.try_into_panic() {
                 Ok(panic) => std::panic::resume_unwind(panic),
                 Err(error) => anyhow::anyhow!("materialization task failed: {error}"),
-            })?
+            })?;
+        Ok(result?)
     }
 
     fn materialization_error(context: &str, error: impl std::fmt::Display) -> ProfilesError {
@@ -1326,12 +1328,13 @@ impl ProfilesActor {
     ) -> anyhow::Result<MaterializationReconcileReport> {
         let snapshot = Self::current_state(state);
         let materialization = Arc::clone(&state.materialization);
-        tokio::task::spawn_blocking(move || materialization.reconcile(&snapshot))
+        let report = tokio::task::spawn_blocking(move || materialization.reconcile(&snapshot))
             .await
             .map_err(|error| match error.try_into_panic() {
                 Ok(panic) => std::panic::resume_unwind(panic),
                 Err(error) => anyhow::anyhow!("materialization reconcile join failed: {error}"),
-            })?
+            })?;
+        Ok(report?)
     }
 
     fn log_reconcile_report(report: &MaterializationReconcileReport) {

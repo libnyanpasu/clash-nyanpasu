@@ -30,8 +30,9 @@ use crate::client::{
 };
 
 /// Which source domain a mutation belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConfigDomain {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigDomain {
     Application,
     Clash,
     Profiles,

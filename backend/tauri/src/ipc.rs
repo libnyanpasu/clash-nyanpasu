@@ -2,7 +2,10 @@ use crate::{
     client::{ClientError, NyanpasuClient, RuntimeError},
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
-    state::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
+    state::{
+        config_error::ConfigError,
+        profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
+    },
     utils::{
         candy,
         collect::EnvInfo,
@@ -43,6 +46,13 @@ pub enum IpcErrorKind {
     Unknown,
     Profiles(Box<ProfilesError>),
     Runtime(Box<RuntimeError>),
+    Config(Box<ConfigError>),
+}
+
+impl From<ConfigError> for IpcErrorKind {
+    fn from(error: ConfigError) -> Self {
+        Self::Config(Box::new(error))
+    }
 }
 
 impl From<RuntimeError> for IpcErrorKind {
@@ -62,6 +72,7 @@ impl From<ClientError> for IpcErrorKind {
         match error {
             ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
             ClientError::Runtime(error) => Self::Runtime(Box::new(error)),
+            ClientError::Config(error) => Self::Config(Box::new(error)),
             _ => Self::Unknown,
         }
     }

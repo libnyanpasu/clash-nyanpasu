@@ -1249,29 +1249,50 @@ fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
             let error = client
                 .patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"})))
                 .await
-                .expect_err("the save failed")
-                .to_string();
+                .expect_err("the save failed");
             let after = client.inner.clash_config.snapshot();
             assert_eq!(after.version, before.version);
             assert_eq!(
                 serde_json::to_value(after.state).unwrap(),
                 serde_json::to_value(before.state).unwrap()
             );
-            assert!(error.contains("failed to persist clash config"), "{error}");
-            assert!(error.contains("failed to write config"), "{error}");
+            let crate::client::ClientError::Config(
+                crate::state::config_error::ConfigError::Commit {
+                    domain: super::mutation::ConfigDomain::Clash,
+                    source: aborted,
+                },
+            ) = &error
+            else {
+                panic!("{error:?}");
+            };
+            let crate::state::mutation::CommitAborted::WriteConfig { source, .. } = aborted else {
+                panic!("{aborted:?}");
+            };
+            assert!(
+                source.to_string().contains("failed to write config"),
+                "{source}"
+            );
             assert_eq!(
                 endpoint.submissions(),
                 2,
                 "Try applied and Cancel resubmitted the baseline"
             );
             if restore_lost {
-                assert!(error.contains("rolling the runtime back failed"), "{error}");
-                assert!(error.contains("recovery required"), "{error}");
+                assert!(
+                    matches!(
+                        aftermath(aborted),
+                        crate::state::mutation::RuntimeAftermath::RollbackFailed { .. }
+                    ),
+                    "{aborted:?}"
+                );
                 assert!(client.inner.application_workflow.status().uncertain);
             } else {
                 assert!(
-                    error.contains("the runtime was rolled back to the previous configuration"),
-                    "{error}"
+                    matches!(
+                        aftermath(aborted),
+                        crate::state::mutation::RuntimeAftermath::RolledBack
+                    ),
+                    "{aborted:?}"
                 );
                 assert!(!client.inner.application_workflow.status().uncertain);
             }

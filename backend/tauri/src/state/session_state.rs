@@ -1,8 +1,10 @@
-use anyhow::Context as _;
 use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
 use nyanpasu_core::state::{PersistentStateManager, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use snafu::ResultExt as _;
 use struct_patch::Patch;
+
+use crate::state::config_error::{ConfigError, PersistSessionStateSnafu};
 
 #[derive(Debug, Clone)]
 pub struct SessionStateSnapshot {
@@ -33,15 +35,15 @@ pub enum SessionStateActorMessage {
     SaveMainWindow {
         geometry: nyanpasu_config::state::window::WindowState,
         /// `None` for a queued save: nobody waits, so a failure is logged.
-        reply: Option<RpcReplyPort<anyhow::Result<SessionStateSnapshot>>>,
+        reply: Option<RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>>,
     },
     Patch {
         patch: PersistentStatePatch,
-        reply: RpcReplyPort<anyhow::Result<SessionStateSnapshot>>,
+        reply: RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>,
     },
     Replace {
         state: PersistentState,
-        reply: RpcReplyPort<anyhow::Result<SessionStateSnapshot>>,
+        reply: RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>,
     },
 }
 
@@ -55,12 +57,12 @@ impl SessionStateActor {
     async fn commit(
         state: &mut SessionStateActorState,
         next: PersistentState,
-    ) -> anyhow::Result<SessionStateSnapshot> {
+    ) -> Result<SessionStateSnapshot, ConfigError> {
         state
             .manager
             .upsert(next)
             .await
-            .context("failed to persist session state")?;
+            .context(PersistSessionStateSnafu)?;
         Ok(Self::snapshot(state))
     }
 }
@@ -100,7 +102,10 @@ impl Actor for SessionStateActor {
                     }
                     None => {
                         if let Err(error) = result {
-                            tracing::warn!("failed to save the main window geometry: {error:#}");
+                            tracing::warn!(
+                                "failed to save the main window geometry: {}",
+                                snafu::Report::from_error(error)
+                            );
                         }
                     }
                 }

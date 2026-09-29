@@ -622,11 +622,14 @@ mod facade {
     use nyanpasu_config::application::NyanpasuAppConfig;
     use tempfile::{TempDir, tempdir};
 
-    use super::super::ports::{HotkeyAction, MockWindowControl};
-    use crate::client::{
-        NyanpasuClient,
-        effects::ports::MockApplicationEffectsPort,
-        tests::{test_client_args_with_endpoint, test_idle_endpoint},
+    use super::super::ports::{HotkeyAction, HotkeyParseError, MockWindowControl};
+    use crate::{
+        client::{
+            ClientError, NyanpasuClient,
+            effects::ports::MockApplicationEffectsPort,
+            tests::{test_client_args_with_endpoint, test_idle_endpoint},
+        },
+        state::config_error::ConfigError,
     };
 
     fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
@@ -774,8 +777,13 @@ mod facade {
                 .await
                 .expect_err("an accelerator the platform cannot parse must not be persisted");
             assert!(
-                error.to_string().contains("DefinitelyNotAKey"),
-                "unexpected error: {error}"
+                matches!(
+                    &error,
+                    ClientError::Config(ConfigError::ValidateHotkeys {
+                        source: HotkeyParseError::UnsupportedAccelerator { accelerator, .. },
+                    }) if accelerator == "Control+DefinitelyNotAKey"
+                ),
+                "unexpected error: {error:?}"
             );
             assert!(
                 client.get_app_config().await.unwrap().hotkeys.is_empty(),
@@ -798,8 +806,13 @@ mod facade {
                 .await
                 .expect_err("a hotkey without a modifier must not be persisted");
             assert!(
-                error.to_string().contains("modifier key"),
-                "unexpected error: {error}"
+                matches!(
+                    &error,
+                    ClientError::Config(ConfigError::ValidateHotkeys {
+                        source: HotkeyParseError::MissingSuperKey { accelerator },
+                    }) if accelerator == "Q"
+                ),
+                "unexpected error: {error:?}"
             );
             assert!(
                 client.get_app_config().await.unwrap().hotkeys.is_empty(),

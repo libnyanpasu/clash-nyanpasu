@@ -23,12 +23,15 @@ use nyanpasu_config::{
     },
 };
 use ractor::{Actor, ActorRef, rpc::CallResult};
+use snafu::ResultExt as _;
 use tokio_util::task::TaskTracker;
 
 use self::{
     actor::{HotkeyActor, Message},
     ports::{HotkeyAction, HotkeyBindings},
 };
+use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
+
 use super::{
     NyanpasuClient, Result,
     effects::{
@@ -132,9 +135,8 @@ fn stopped_health() -> EffectHealth {
 pub(crate) fn validate_bindings(
     raw: &[String],
     accelerators: &dyn ports::AcceleratorValidator,
-) -> Result<()> {
-    HotkeyBindings::parse(raw, accelerators)
-        .map_err(|error| super::ClientError::Anyhow(error.into()))?;
+) -> std::result::Result<(), ConfigError> {
+    HotkeyBindings::parse(raw, accelerators).context(ValidateHotkeysSnafu)?;
     Ok(())
 }
 

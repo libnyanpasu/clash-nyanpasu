@@ -88,11 +88,15 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
-    ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
+    ) -> super::super::inputs::FrozenProfileContent {
         self.delegate.capture_content(profiles).await
     }
 
-    fn core_spec(&self, core: &ClashCore) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+    fn core_spec(
+        &self,
+        core: &ClashCore,
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -101,7 +105,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -111,11 +115,13 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
             .build(revision, inputs, ports, strict_transforms)
             .await
     }
-    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            !self.fail_publish.load(Ordering::SeqCst),
-            "scripted product publication failure"
-        );
+    async fn publish(
+        &self,
+        snapshot: &runtime::RuntimeSnapshot,
+    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+        if self.fail_publish.load(Ordering::SeqCst) {
+            return Err(super::scripted_publish_failure());
+        }
         self.delegate.publish(snapshot).await
     }
 }
@@ -2619,9 +2625,9 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
     assert!(client.status().uncertain);
     let error = client.retry_runtime().await.unwrap_err();
     assert!(
-        error.message.contains("core operation"),
+        error.to_string().contains("core operation"),
         "an unknown restore retains its lower operation identity: {}",
-        error.message
+        error
     );
     assert!(
         ports.confirmed().is_none(),
@@ -3613,22 +3619,29 @@ struct RefusedInstall;
 
 #[async_trait::async_trait]
 impl ServiceHostAdapter for RefusedInstall {
-    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<
+        nyanpasu_ipc::types::StatusInfo<'static>,
+        crate::core::service::control::ServiceCommandError,
+    > {
         crate::client::tests::IdleServiceAdapter.probe().await
     }
-    async fn install(&self) -> Result<(), String> {
-        Err("the user cancelled the elevation prompt".into())
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+        Err(crate::core::service::control::ServiceCommandError::mock(
+            "the user cancelled the elevation prompt",
+        ))
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
     fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
@@ -3719,7 +3732,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     .await
     .unwrap();
     assert!(built.is_ok());
-    let captured = f.builder.capture_content(&profiles).await.unwrap();
+    let captured = f.builder.capture_content(&profiles).await;
     let mut revisions = runtime::RuntimeRevisionAllocator::new();
     let build = |revision, strict| {
         f.builder.build(
@@ -3738,11 +3751,11 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
         )
     };
     assert!(
-        build(revisions.allocate().unwrap(), false).await.is_ok(),
+        build(revisions.allocate(), false).await.is_ok(),
         "ordinary build keeps D7 passthrough"
     );
     assert!(
-        build(revisions.allocate().unwrap(), true).await.is_err(),
+        build(revisions.allocate(), true).await.is_err(),
         "TCC candidate rejects missing transform"
     );
 }

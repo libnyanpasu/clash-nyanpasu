@@ -198,10 +198,14 @@ impl FakeDaemon {
 
 #[async_trait::async_trait]
 impl ServiceHostAdapter for FakeDaemon {
-    async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError> {
         self.probes.fetch_add(1, Ordering::SeqCst);
         if self.unreadable.load(Ordering::SeqCst) {
-            return Err("scripted: the daemon's status cannot be read".into());
+            return Err(crate::core::service::control::ServiceCommandError::mock(
+                "scripted: the daemon's status cannot be read",
+            ));
         }
         let state = *self.state.lock().unwrap();
         let server = match state {
@@ -246,7 +250,7 @@ impl ServiceHostAdapter for FakeDaemon {
             server,
         })
     }
-    async fn install(&self) -> Result<(), String> {
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         if self.hold_install.load(Ordering::SeqCst) {
             self.held.notify_one();
             self.release.notified().await;
@@ -254,19 +258,19 @@ impl ServiceHostAdapter for FakeDaemon {
         self.installs.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         *self.state.lock().unwrap() = DaemonState::NotInstalled;
         Ok(())
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.starts.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         *self.state.lock().unwrap() = DaemonState::Stopped;
         Ok(())
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         if self.hold_update.load(Ordering::SeqCst) {
             self.held.notify_one();
             self.release.notified().await;
@@ -997,11 +1001,14 @@ async fn an_unobserved_startup_submission_isolates_until_its_operation_ends() {
     assert!(g.isolated());
     assert_eq!(g.notifications.full(), 1);
     let error = g.client.retry_runtime().await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(matches!(
+        error,
+        crate::client::RuntimeError::RecoveryUnresolved { .. }
+    ));
     assert!(
-        error.message.contains("core operation"),
+        error.to_string().contains("core operation"),
         "the slot names the lost submission: {}",
-        error.message
+        error
     );
     assert_eq!(g.log(), ["local:reconcile"], "nothing is resent blind");
 
@@ -1346,8 +1353,16 @@ async fn a_dependency_wait_on_a_spent_budget_blocks_at_once() {
 
     let error = g.client.reconcile().await.unwrap_err();
 
-    assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
-    assert!(error.retryable, "{error}");
+    assert!(
+        matches!(
+            error,
+            crate::client::RuntimeError::CoreNotStarted {
+                retryable: true,
+                ..
+            }
+        ),
+        "{error}"
+    );
     let target = g.target();
     assert_eq!(
         (target.health, target.next_attempt),
@@ -1624,8 +1639,16 @@ async fn an_explicit_start_re_establishes_an_owner_for_the_host_now_asked_for() 
 
     let error = g.client.reconcile().await.unwrap_err();
 
-    assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
-    assert!(error.retryable);
+    assert!(
+        matches!(
+            error,
+            crate::client::RuntimeError::CoreNotStarted {
+                retryable: true,
+                ..
+            }
+        ),
+        "{error}"
+    );
     let target = g.target();
     assert_eq!(
         target.origin,

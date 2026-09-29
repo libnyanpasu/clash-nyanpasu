@@ -38,6 +38,7 @@ use crate::{
         convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
         core_lifecycle::{Ownership, desired_host},
         runtime::ConfirmedRuntime,
+        runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
     core::actor_v2::{
@@ -295,7 +296,7 @@ impl ApplicationWorkflow {
     /// refused it. Whatever keeps the domain isolated stays as it is, but
     /// every owner is still handed its full desired value, once, and later
     /// calls get this report rather than a run of their own (§1.9).
-    pub(super) fn startup_unsettled(&mut self, operation_id: OperationId, error: &CoreError) {
+    pub(super) fn startup_unsettled(&mut self, operation_id: OperationId, error: &RuntimeError) {
         if self.startup.is_some() {
             return;
         }
@@ -315,7 +316,7 @@ impl ApplicationWorkflow {
     pub(super) async fn explicit_start(
         &mut self,
         operation_id: OperationId,
-    ) -> Result<Output, CoreError> {
+    ) -> Result<Output, RuntimeError> {
         debug_assert!(
             self.live.is_none(),
             "an unresolved attempt is never replaced"
@@ -327,7 +328,7 @@ impl ApplicationWorkflow {
         self.live = Some(LiveAttempt::committed_target(operation_id, target));
         let (_, reestablished) = self.reestablish(false).await;
         if let Err(reason) = self.conclude_reestablish(&reestablished) {
-            return Err(CoreError::new(CoreErrorKind::Internal, reason, false));
+            return RecoveryUnresolvedSnafu { reason }.fail();
         }
         match reestablished {
             Reestablished::Applied(report) => Ok(Output::Reconcile(*report)),
@@ -345,18 +346,11 @@ impl ApplicationWorkflow {
                 health,
                 reason,
                 dependency,
-            } => {
-                let retryable = dependency || health != ConvergenceHealth::Blocked;
-                Err(CoreError::new(
-                    if retryable {
-                        CoreErrorKind::BackendUnavailable
-                    } else {
-                        CoreErrorKind::ApplyFailed
-                    },
-                    format!("the core was not started: {reason}"),
-                    retryable,
-                ))
+            } => CoreNotStartedSnafu {
+                reason,
+                retryable: dependency || health != ConvergenceHealth::Blocked,
             }
+            .fail(),
             Reestablished::RecoveryRequired(_) => {
                 unreachable!("an unknown result keeps the attempt, and was returned above")
             }
@@ -675,7 +669,7 @@ impl ApplicationWorkflow {
                 )
                 .is_verified()
         })?;
-        let committed = self.capture_committed().await.ok()?.target_key().ok()?;
+        let committed = self.capture_committed().await.target_key()?;
         (confirmed.receipt.target.as_ref() == Some(&committed)).then_some(confirmed)
     }
 
@@ -748,21 +742,9 @@ impl ApplicationWorkflow {
                 ),
             );
         }
-        let inputs = match self.capture_committed().await {
-            Ok(inputs) => inputs,
-            Err(error) => {
-                return self.block(format!(
-                    "the committed configuration could not be read: {error}"
-                ));
-            }
-        };
-        let identity = match inputs.target_key() {
-            Ok(identity) => identity,
-            Err(error) => {
-                return self.block(format!(
-                    "the committed configuration has no runtime identity: {error}"
-                ));
-            }
+        let inputs = self.capture_committed().await;
+        let Some(identity) = inputs.target_key() else {
+            return self.block("the committed configuration has no runtime identity".to_owned());
         };
         let target = self.committed_target();
         if target.identity != identity {

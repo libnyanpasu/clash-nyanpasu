@@ -10,6 +10,7 @@ use super::{
     endpoint::{EndpointHandle, ServiceEndpoint},
     service_actor::ServiceHostAdapter,
 };
+use crate::core::service::control::ServiceCommandError;
 
 pub struct OsServiceHostAdapter {
     client: nyanpasu_ipc::client::Client,
@@ -27,40 +28,28 @@ impl OsServiceHostAdapter {
 
 #[async_trait::async_trait]
 impl ServiceHostAdapter for OsServiceHostAdapter {
-    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
-        crate::core::service::control::status(&self.service_binary)
-            .await
-            .map_err(|e| e.to_string())
+    async fn probe(&self) -> Result<nyanpasu_ipc::types::StatusInfo<'static>, ServiceCommandError> {
+        crate::core::service::control::status(&self.service_binary).await
     }
 
-    async fn install(&self) -> Result<(), String> {
-        crate::core::service::control::install_service(&self.service_binary)
-            .await
-            .map_err(|e| e.to_string())
+    async fn install(&self) -> Result<(), ServiceCommandError> {
+        crate::core::service::control::install_service(&self.service_binary).await
     }
 
-    async fn uninstall(&self) -> Result<(), String> {
-        crate::core::service::control::uninstall_service(&self.service_binary)
-            .await
-            .map_err(|e| e.to_string())
+    async fn uninstall(&self) -> Result<(), ServiceCommandError> {
+        crate::core::service::control::uninstall_service(&self.service_binary).await
     }
 
-    async fn start_daemon(&self) -> Result<(), String> {
-        crate::core::service::control::start_service(&self.service_binary)
-            .await
-            .map_err(|e| e.to_string())
+    async fn start_daemon(&self) -> Result<(), ServiceCommandError> {
+        crate::core::service::control::start_service(&self.service_binary).await
     }
 
-    async fn stop_daemon(&self) -> Result<(), String> {
-        crate::core::service::control::stop_service(&self.service_binary)
-            .await
-            .map_err(|e| e.to_string())
+    async fn stop_daemon(&self) -> Result<(), ServiceCommandError> {
+        crate::core::service::control::stop_service(&self.service_binary).await
     }
 
-    async fn update(&self) -> Result<(), String> {
-        crate::core::service::control::update_service(&self.service_binary)
-            .await
-            .map_err(|e| e.to_string())
+    async fn update(&self) -> Result<(), ServiceCommandError> {
+        crate::core::service::control::update_service(&self.service_binary).await
     }
 
     fn endpoint(&self) -> EndpointHandle {

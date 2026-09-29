@@ -15,8 +15,9 @@ use nyanpasu_config::application::ClashCore;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
+use snafu::{ResultExt, Snafu};
 
-use crate::{enhance::PostProcessingOutput, utils::path::PathResolver};
+use crate::{enhance::PostProcessingOutput, state::profiles::ErrorPath, utils::path::PathResolver};
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
@@ -37,12 +38,12 @@ impl RuntimeRevisionAllocator {
         Self(0)
     }
 
-    pub(crate) fn allocate(&mut self) -> anyhow::Result<RuntimeRevision> {
+    pub(crate) fn allocate(&mut self) -> RuntimeRevision {
         self.0 = self
             .0
             .checked_add(1)
-            .ok_or_else(|| anyhow::anyhow!("runtime revision space exhausted"))?;
-        Ok(RuntimeRevision(self.0))
+            .expect("a session cannot exhaust the u64 runtime revision space");
+        RuntimeRevision(self.0)
     }
 }
 
@@ -322,19 +323,41 @@ impl RuntimeSnapshotStore {
     }
 }
 
-pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+/// A failure of publishing the derived runtime config file.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[snafu(visibility(pub(crate)))]
+pub enum PublishRuntimeError {
+    #[snafu(display("could not create the runtime directory {path}"))]
+    CreateRuntimeDirectory {
+        path: ErrorPath,
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("could not write the runtime config {path}"))]
+    WriteRuntimeConfig {
+        path: ErrorPath,
+        #[serde(skip)]
+        source: atomicwrites::Error<std::io::Error>,
+    },
+}
+
+pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> Result<(), PublishRuntimeError> {
     if let Some(parent) = product.parent() {
-        tokio::fs::create_dir_all(parent).await?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .context(CreateRuntimeDirectorySnafu { path: parent })?;
     }
-    let product = product.to_path_buf();
+    let path = product.to_path_buf();
     let bytes = bytes.to_vec();
-    tokio::task::spawn_blocking(move || {
-        atomicwrites::AtomicFile::new(&product, atomicwrites::OverwriteBehavior::AllowOverwrite)
-            .write(|file| std::io::Write::write_all(file, &bytes))
-    })
-    .await?
-    .map_err(|error| anyhow::anyhow!("failed to promote runtime config: {error}"))?;
-    Ok(())
+    let written = crate::utils::blocking::join(
+        tokio::task::spawn_blocking(move || {
+            atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite)
+                .write(|file| std::io::Write::write_all(file, &bytes))
+        })
+        .await,
+    );
+    written.context(WriteRuntimeConfigSnafu { path: product })
 }
 
 #[derive(Debug, Clone)]
@@ -678,8 +701,8 @@ pub(crate) mod tests {
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
         let mut allocator = RuntimeRevisionAllocator::new();
-        let first = allocator.allocate().expect("first revision");
-        let second = allocator.allocate().expect("second revision");
+        let first = allocator.allocate();
+        let second = allocator.allocate();
 
         assert_eq!(first.get(), 1);
         assert_eq!(second.get(), 2);

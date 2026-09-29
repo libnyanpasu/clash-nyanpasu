@@ -65,23 +65,27 @@ struct RecoveringDaemon {
 
 #[async_trait::async_trait]
 impl ServiceHostAdapter for RecoveringDaemon {
-    async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+    async fn probe(
+        &self,
+    ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError> {
         self.probes.fetch_add(1, Ordering::SeqCst);
         if self.probe_fails.load(Ordering::SeqCst) {
-            return Err("unknown OS status".into());
+            return Err(crate::core::service::control::ServiceCommandError::mock(
+                "unknown OS status",
+            ));
         }
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), String> {
+    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         panic!("recovery must not install")
     }
-    async fn update(&self) -> Result<(), String> {
+    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         panic!("recovery must not update")
     }
-    async fn uninstall(&self) -> Result<(), String> {
+    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), String> {
+    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.start_entered.notify_one();
         if self.block_start.load(Ordering::SeqCst) {
             self.start_release.notified().await;
@@ -90,7 +94,7 @@ impl ServiceHostAdapter for RecoveringDaemon {
         self.endpoint.unavailable.store(false, Ordering::SeqCst);
         Ok(())
     }
-    async fn stop_daemon(&self) -> Result<(), String> {
+    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.stop_daemon().await?;
         self.endpoint.unavailable.store(true, Ordering::SeqCst);
         Ok(())
@@ -337,10 +341,10 @@ async fn explicit_service_stop_suppresses_recovery() {
 async fn a_rejected_uninstall_leaves_recovery_armed() {
     let graph = RecoveryGraph::new(true).await;
     graph.outage(true).await;
-    assert_eq!(
-        graph.client.uninstall_service().await.unwrap_err().kind,
-        Some(CoreErrorKind::OperationConflict)
-    );
+    assert!(matches!(
+        graph.client.uninstall_service().await.unwrap_err(),
+        RuntimeError::ServiceHostsCore
+    ));
     graph.attempt().await;
     assert_eq!(graph.starts(), 1);
     assert_eq!(
@@ -363,7 +367,7 @@ async fn a_failed_local_handoff_leaves_recovery_armed_on_the_service_host() {
             .change_host(ExecutionHost::Local)
             .await
             .unwrap_err()
-            .kind,
+            .core_kind(),
         Some(CoreErrorKind::StopUnconfirmed)
     );
     assert_eq!(graph.client.core_status().host, ExecutionHost::Service);
@@ -498,7 +502,7 @@ async fn a_failed_local_handoff_preserves_an_explicit_suppression() {
             .change_host(ExecutionHost::Local)
             .await
             .unwrap_err()
-            .kind,
+            .core_kind(),
         Some(CoreErrorKind::StopUnconfirmed)
     );
     let probes = graph.daemon.probes.load(Ordering::SeqCst);

@@ -29,7 +29,10 @@ use nyanpasu_ipc::{
 };
 
 use super::endpoint::EndpointHandle;
-use crate::core::service::compat::ServiceCompat;
+use crate::core::service::{
+    compat::ServiceCompat,
+    control::{ServiceCommandError, StillRunningSnafu, TaskCancelledSnafu, TimedOutSnafu},
+};
 
 /// Elevated daemon mechanics behind one narrow boundary. `probe` reports
 /// what it actually knows: `Ok` is a real answer, `Err` is "unreachable or
@@ -39,12 +42,12 @@ use crate::core::service::compat::ServiceCompat;
 /// `ServicePhase::Unknown`, not as evidence of anything.
 #[async_trait::async_trait]
 pub trait ServiceHostAdapter: Send + Sync {
-    async fn probe(&self) -> Result<StatusInfo<'static>, String>;
-    async fn install(&self) -> Result<(), String>;
-    async fn uninstall(&self) -> Result<(), String>;
-    async fn start_daemon(&self) -> Result<(), String>;
-    async fn stop_daemon(&self) -> Result<(), String>;
-    async fn update(&self) -> Result<(), String>;
+    async fn probe(&self) -> Result<StatusInfo<'static>, ServiceCommandError>;
+    async fn install(&self) -> Result<(), ServiceCommandError>;
+    async fn uninstall(&self) -> Result<(), ServiceCommandError>;
+    async fn start_daemon(&self) -> Result<(), ServiceCommandError>;
+    async fn stop_daemon(&self) -> Result<(), ServiceCommandError>;
+    async fn update(&self) -> Result<(), ServiceCommandError>;
     /// The v2 control endpoint for a daemon that passed the version gate.
     fn endpoint(&self) -> EndpointHandle;
 }
@@ -185,7 +188,7 @@ pub struct ServiceActorState {
     /// hands out the endpoint, and no other mutating command, is served.
     outstanding: Option<(
         ServiceCommandKind,
-        tokio::task::JoinHandle<Result<(), String>>,
+        tokio::task::JoinHandle<Result<(), ServiceCommandError>>,
     )>,
 }
 
@@ -221,7 +224,7 @@ impl ServiceActorState {
         });
     }
 
-    fn command_error(what: &str, error: String) -> CoreError {
+    fn command_error(what: &str, error: ServiceCommandError) -> CoreError {
         CoreError::new(
             CoreErrorKind::BackendUnavailable,
             format!("service {what} failed: {error}"),
@@ -230,12 +233,19 @@ impl ServiceActorState {
     }
 
     /// Bounds one adapter call (F6). An elapsed bound becomes the same
-    /// `Err(String)` shape an adapter-reported failure would, so every
-    /// existing call site's error handling covers both alike.
-    async fn bounded<T>(&self, call: BoxFuture<'_, Result<T, String>>) -> Result<T, String> {
-        tokio::time::timeout(self.command_timeout, call)
-            .await
-            .unwrap_or_else(|_| Err(format!("timed out after {:?}", self.command_timeout)))
+    /// `Err` shape an adapter-reported failure would, so every existing call
+    /// site's error handling covers both alike.
+    async fn bounded<T>(
+        &self,
+        call: BoxFuture<'_, Result<T, ServiceCommandError>>,
+    ) -> Result<T, ServiceCommandError> {
+        match tokio::time::timeout(self.command_timeout, call).await {
+            Ok(result) => result,
+            Err(_) => TimedOutSnafu {
+                limit_ms: self.command_timeout.as_millis() as u64,
+            }
+            .fail(),
+        }
     }
 
     /// Bounds one mutating adapter call without abandoning it. The call runs
@@ -245,8 +255,10 @@ impl ServiceActorState {
     async fn tracked(
         &mut self,
         command: ServiceCommandKind,
-        call: impl FnOnce(Arc<dyn ServiceHostAdapter>) -> BoxFuture<'static, Result<(), String>>,
-    ) -> Result<(), String> {
+        call: impl FnOnce(
+            Arc<dyn ServiceHostAdapter>,
+        ) -> BoxFuture<'static, Result<(), ServiceCommandError>>,
+    ) -> Result<(), ServiceCommandError> {
         debug_assert!(
             self.outstanding.is_none(),
             "a mutating call only starts once no helper is outstanding"
@@ -254,13 +266,16 @@ impl ServiceActorState {
         let mut helper = tokio::spawn(call(self.adapter.clone()));
         match tokio::time::timeout(self.command_timeout, &mut helper).await {
             Ok(Ok(result)) => result,
-            Ok(Err(error)) => Err(format!("the command's task ended abnormally: {error}")),
+            Ok(Err(error)) => match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(_) => TaskCancelledSnafu.fail(),
+            },
             Err(_) => {
                 self.outstanding = Some((command, helper));
-                Err(format!(
-                    "timed out after {:?}; the command is still running",
-                    self.command_timeout
-                ))
+                StillRunningSnafu {
+                    limit_ms: self.command_timeout.as_millis() as u64,
+                }
+                .fail()
             }
         }
     }
@@ -282,9 +297,12 @@ impl ServiceActorState {
             Ok(Err(error)) => {
                 tracing::warn!("the service {command:?} command failed after its bound: {error}")
             }
-            Err(error) => {
-                tracing::warn!("the service {command:?} command's task ended abnormally: {error}")
-            }
+            Err(error) => match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => {
+                    tracing::warn!("the service {command:?} command's task was cancelled: {error}")
+                }
+            },
         }
         true
     }
@@ -327,7 +345,7 @@ impl ServiceActorState {
     /// is `ServicePhase::Unknown`: it must never be read as `DaemonStopped`,
     /// which is what let a hung probe wave the uninstall guard through (F5).
     fn classify_probe(
-        result: &Result<StatusInfo<'static>, String>,
+        result: &Result<StatusInfo<'static>, ServiceCommandError>,
     ) -> (ServiceCompat, ServicePhase) {
         match result {
             Ok(info) => {
@@ -354,7 +372,7 @@ impl ServiceActorState {
     async fn probe_and_publish(
         &self,
     ) -> (
-        Result<StatusInfo<'static>, String>,
+        Result<StatusInfo<'static>, ServiceCommandError>,
         ServiceCompat,
         ServicePhase,
     ) {
@@ -1092,10 +1110,15 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ServiceHostAdapter for FakeDaemon {
-        async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+        async fn probe(
+            &self,
+        ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError>
+        {
             self.calls.lock().unwrap().push("probe");
             if self.probe_fail.load(Ordering::SeqCst) {
-                return Err("probe unreachable".to_owned());
+                return Err(crate::core::service::control::ServiceCommandError::mock(
+                    "probe unreachable",
+                ));
             }
             let (installed, running, version) = self.state.lock().unwrap().clone();
             let status = match (installed, running) {
@@ -1142,11 +1165,14 @@ mod tests {
                 server,
             })
         }
-        async fn install(&self) -> Result<(), String> {
+        async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
             if self.hang_install.load(Ordering::SeqCst) {
                 // Never resolves: only the actor's own `command_timeout`
                 // bound (F6) can end this call.
-                return std::future::pending::<Result<(), String>>().await;
+                return std::future::pending::<
+                    Result<(), crate::core::service::control::ServiceCommandError>,
+                >()
+                .await;
             }
             if self.park_install.load(Ordering::SeqCst) {
                 self.parked.notify_one();
@@ -1155,38 +1181,48 @@ mod tests {
 
             self.installs.fetch_add(1, Ordering::SeqCst);
             if self.fail_install.load(Ordering::SeqCst) {
-                return Err("install refused".to_owned());
+                return Err(crate::core::service::control::ServiceCommandError::mock(
+                    "install refused",
+                ));
             }
             let mut state = self.state.lock().unwrap();
             state.0 = true;
             state.1 = true; // install auto-starts, like most platforms
             Ok(())
         }
-        async fn uninstall(&self) -> Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("uninstall");
             self.uninstalls.fetch_add(1, Ordering::SeqCst);
             *self.state.lock().unwrap() = (false, false, String::new());
             Ok(())
         }
-        async fn start_daemon(&self) -> Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
             self.starts.fetch_add(1, Ordering::SeqCst);
             if self.hang_start.load(Ordering::SeqCst) {
                 return std::future::pending().await;
             }
             if self.fail_start.load(Ordering::SeqCst) {
-                return Err("start refused".to_owned());
+                return Err(crate::core::service::control::ServiceCommandError::mock(
+                    "start refused",
+                ));
             }
             self.state.lock().unwrap().1 = true;
             Ok(())
         }
-        async fn stop_daemon(&self) -> Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("stop_daemon");
             if self.stop_succeeds.load(Ordering::SeqCst) {
                 self.state.lock().unwrap().1 = false;
             }
             Ok(())
         }
-        async fn update(&self) -> Result<(), String> {
+        async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
             if self.park_update.load(Ordering::SeqCst) {
                 self.parked.notify_one();
                 self.release.notified().await;
@@ -1407,23 +1443,38 @@ mod tests {
         struct StubbornDaemon(Arc<FakeDaemon>);
         #[async_trait::async_trait]
         impl ServiceHostAdapter for StubbornDaemon {
-            async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+            async fn probe(
+                &self,
+            ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError>
+            {
                 self.0.probe().await
             }
-            async fn install(&self) -> Result<(), String> {
+            async fn install(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 self.0.install().await
             }
-            async fn uninstall(&self) -> Result<(), String> {
+            async fn uninstall(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 self.0.uninstall().await
             }
-            async fn start_daemon(&self) -> Result<(), String> {
+            async fn start_daemon(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 self.0.start_daemon().await
             }
-            async fn stop_daemon(&self) -> Result<(), String> {
+            async fn stop_daemon(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 self.0.stop_daemon().await
             }
-            async fn update(&self) -> Result<(), String> {
-                Err("service upgrade failed".into())
+            async fn update(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
+                Err(crate::core::service::control::ServiceCommandError::mock(
+                    "service upgrade failed",
+                ))
             }
             fn endpoint(&self) -> EndpointHandle {
                 self.0.endpoint()
@@ -1838,22 +1889,35 @@ mod tests {
         struct StubbornDaemon(Arc<FakeDaemon>);
         #[async_trait::async_trait]
         impl ServiceHostAdapter for StubbornDaemon {
-            async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+            async fn probe(
+                &self,
+            ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError>
+            {
                 self.0.probe().await
             }
-            async fn install(&self) -> Result<(), String> {
+            async fn install(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 self.0.install().await
             }
-            async fn uninstall(&self) -> Result<(), String> {
+            async fn uninstall(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 self.0.uninstall().await
             }
-            async fn start_daemon(&self) -> Result<(), String> {
+            async fn start_daemon(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 self.0.start_daemon().await
             }
-            async fn stop_daemon(&self) -> Result<(), String> {
+            async fn stop_daemon(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 self.0.stop_daemon().await
             }
-            async fn update(&self) -> Result<(), String> {
+            async fn update(
+                &self,
+            ) -> Result<(), crate::core::service::control::ServiceCommandError> {
                 Ok(()) // succeeds without changing anything
             }
             fn endpoint(&self) -> EndpointHandle {

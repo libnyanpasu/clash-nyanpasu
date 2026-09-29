@@ -3,7 +3,6 @@
 //! Postprocessing layout mirrors legacy PostProcessingOutput: scoped logs keyed
 //! by (host profile, transform uid), global/builtin logs keyed by uid/name.
 
-use anyhow::Context as _;
 use nyanpasu_config::{
     application::ClashCore,
     profile::{ConfigDefinition, ProfileDefinition, ProfileId, Profiles},
@@ -13,8 +12,12 @@ use nyanpasu_config::{
     },
 };
 use serde_yaml::Mapping;
+use snafu::{OptionExt, ResultExt};
 
-use crate::enhance::{Logs, PostProcessingOutput, builtin_transforms_for};
+use crate::enhance::{
+    ConfigNotMappingSnafu, Logs, PostProcessingOutput, RuntimeBuildError,
+    SerializeFinalConfigSnafu, builtin_transforms_for,
+};
 
 fn span(level: StepLogLevel) -> crate::enhance::utils::LogSpan {
     use crate::enhance::utils::LogSpan;
@@ -94,13 +97,9 @@ pub fn runtime_snapshot_data_from_artifact(
     profiles: &Profiles,
     core: ClashCore,
     builtin_enabled: bool,
-) -> anyhow::Result<crate::client::runtime::RuntimeSnapshotData> {
-    let value = serde_yaml::to_value(&*artifact.final_config)
-        .context("failed to serialize final config")?;
-    let config: Mapping = value
-        .as_mapping()
-        .cloned()
-        .context("final config is not a mapping")?;
+) -> Result<crate::client::runtime::RuntimeSnapshotData, RuntimeBuildError> {
+    let value = serde_yaml::to_value(&*artifact.final_config).context(SerializeFinalConfigSnafu)?;
+    let config: Mapping = value.as_mapping().cloned().context(ConfigNotMappingSnafu)?;
     let exists_keys: Vec<String> = artifact.applied_fields.iter().cloned().collect();
     let builtin_names: Vec<String> = if builtin_enabled {
         builtin_transforms_for(core)

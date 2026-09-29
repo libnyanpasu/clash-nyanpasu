@@ -235,18 +235,7 @@ export const commands = {
     typedError<MutationOutcome<null>, IpcError>(
       __TAURI_INVOKE('patch_runtime_overrides', { patch }),
     ),
-  changeClashCore: (
-    clashCore:
-      | 'clash'
-      | 'clash-premium'
-      | 'clash-rs'
-      | 'mihomo'
-      | 'clash-meta'
-      | 'mihomo-alpha'
-      | 'clash-rs-alpha'
-      | 'meow'
-      | null,
-  ) =>
+  changeClashCore: (clashCore: ClashCore_Deserialize) =>
     typedError<null, IpcError>(
       __TAURI_INVOKE('change_clash_core', { clashCore }),
     ),
@@ -1170,6 +1159,71 @@ export type CoreControllerInfo =
   /**  Normalized base URL with any credentials removed. */
   | ({ Http: string } & { NamedPipe?: never; UnixSocket?: never })
 
+export type CoreErrorKind =
+  /**  The operation needs a running core and there is none. */
+  | 'not_started'
+  /**  The operation needs a stopped core and one is running. */
+  | 'already_running'
+  /**
+   *  `expected_revision` did not match the running revision. Nothing was
+   *  applied; re-read `/status` for the current one and retry.
+   */
+  | 'revision_conflict'
+  /**
+   *  An epoch whose death could not be confirmed has latched the manager.
+   *  Every lifecycle operation is refused until a `Recover` submission clears it.
+   */
+  | 'quarantined'
+  /**  The core itself rejected the config in a dry run. */
+  | 'config_check_failed'
+  | 'config_not_found'
+  | 'binary_not_found'
+  /**  The config could not be parsed or canonicalized. */
+  | 'invalid_config'
+  /**
+   *  The config declares no external controller, so the core cannot be
+   *  health-probed.
+   */
+  | 'controller_missing'
+  /**  The apply failed and the previous revision was restored. */
+  | 'apply_failed'
+  /**  The apply failed and so did the rollback: no epoch is running. */
+  | 'apply_rollback_failed'
+  /**  A core process could not be proven dead; the manager is now quarantined. */
+  | 'stop_unconfirmed'
+  /**  The control plane is shutting down and admits no new operations. */
+  | 'shutting_down'
+  /**  The bounded operation queue is full; retry after in-flight work drains. */
+  | 'queue_full'
+  /**
+   *  The `OperationId` was already used with a different payload, or the
+   *  operation cannot run concurrently with one that owns the endpoint
+   *  (for example a host handoff in progress).
+   */
+  | 'operation_conflict'
+  /**
+   *  The control endpoint cannot be reached: transport failure, daemon not
+   *  running, or the endpoint is reconnecting. Retryable by definition.
+   */
+  | 'backend_unavailable'
+  /**
+   *  The control plane itself failed — an executor died or a reply channel
+   *  broke. Not retryable; the host must treat this as fatal.
+   */
+  | 'internal'
+
+/**
+ *  The wire mirror of a [`CoreError`], which is a foreign type without serde.
+ *  It is the only place a `CoreError` is unpacked for the frontend.
+ */
+export type CoreFailure = {
+  /**  `None` when the core manager did not classify the failure. */
+  kind: CoreErrorKind | null
+  message: string
+  retryable: boolean
+  operation_id: string | null
+}
+
 /**
  *  The manager's health observation for the active core. Absent while the
  *  core is stopping or stopped.
@@ -1221,6 +1275,11 @@ export type CoreInfos_Serialize = {
   revision?: ConfigRevisionInfo | null
   detail?: CoreStateDetail | null
 }
+
+/**  A failure of locating the binary a core is started from. */
+export type CoreSpecError =
+  | { kind: 'find_core_binary'; core: string }
+  | { kind: 'core_binary_path_not_utf8'; core: string; path: string }
 
 export type CoreState = 'Running' | { Stopped: string | null }
 
@@ -1317,6 +1376,12 @@ export type CoreStatusInfo = {
 }
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
+
+/**  A failure of asking a core binary for its version. */
+export type CoreVersionError =
+  | { kind: 'run_core_version'; core: string }
+  | { kind: 'core_version_exit'; core: string }
+  | { kind: 'core_version_not_reported'; core: string }
 
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = {
@@ -1544,6 +1609,17 @@ export type I18nLanguage_Deserialize =
  */
 export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
 
+/**  A failure of installing a downloaded core binary over the installed one. */
+export type InstallCoreBinaryError =
+  | { kind: 'start_elevated_copy'; core: string; destination: ErrorPath }
+  | {
+      kind: 'elevated_copy_failed'
+      core: string
+      destination: ErrorPath
+      exit_code: number | null
+    }
+  | { kind: 'path_not_utf8'; path: ErrorPath }
+
 /**  A failed command as the frontend receives it. */
 export type IpcError = {
   /**  The domain failure; the frontend localizes it. */
@@ -1557,7 +1633,9 @@ export type IpcError = {
 /**  The domain a command failed in. A domain joins once its errors are typed. */
 export type IpcErrorKind =
   /**  Not classified into a domain; only `message` describes it. */
-  { domain: 'unknown' } | { domain: 'profiles'; error: ProfilesError }
+  | { domain: 'unknown' }
+  | { domain: 'profiles'; error: ProfilesError }
+  | { domain: 'runtime'; error: RuntimeError }
 
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`
@@ -2187,6 +2265,19 @@ export type OverlayTransform_Deserialize = {
 
 export type OverlayTransform_Serialize = {
   source: ProfileSource_Serialize
+}
+
+export type PickPortError =
+  { kind: 'port_not_available'; port: number } | { kind: 'no_open_port' }
+
+/**  The port a resolution was picking for. */
+export type PortField = 'mixed' | 'http' | 'socks' | 'external_controller'
+
+/**  A failure of resolving the ports a candidate runtime would bind. */
+export type PortResolveError = {
+  kind: 'resolve_port'
+  field: PortField
+  source: PickPortError
 }
 
 export type PortStrategy = {
@@ -2936,6 +3027,11 @@ export type ProxyProviderItem_Serialize = {
   expectedStatus?: string | null
 }
 
+/**  A failure of publishing the derived runtime config file. */
+export type PublishRuntimeError =
+  | { kind: 'create_runtime_directory'; path: ErrorPath }
+  | { kind: 'write_runtime_config'; path: ErrorPath }
+
 export type QueryLogs = {
   session: string
   filter: Filter
@@ -3005,6 +3101,16 @@ export type RuntimeAftermath =
   /**  What the runtime is running is unknown and needs recovery. */
   | { kind: 'unknown'; detail: string }
 
+/**  A failure of building a runtime candidate from source config. */
+export type RuntimeBuildError =
+  | { kind: 'start_script_runner' }
+  | { kind: 'validate_profiles'; errors: ProfileValidationError[] }
+  | { kind: 'run_pipeline'; source: RuntimePipelineError }
+  | { kind: 'transforms_failed'; failures: TransformFailure[] }
+  | { kind: 'serialize_final_config' }
+  | { kind: 'config_not_mapping' }
+  | { kind: 'serialize_runtime_config' }
+
 export type RuntimeCommitStatus =
   'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
 
@@ -3015,6 +3121,48 @@ export type RuntimeConvergence = {
   automatic_remaining: number
   message: string | null
 }
+
+/**  A failure of an operation on the running core or the runtime workflow. */
+export type RuntimeError =
+  /**  Refused at admission: nothing ran. */
+  | { kind: 'shutting_down' }
+  /**  Refused at admission: nothing ran. */
+  | { kind: 'isolated' }
+  /**  The workflow took the command and never answered, so it may have run. */
+  | { kind: 'owner_unresponsive'; operation_id: string }
+  | { kind: 'apply_runtime'; failure: CoreFailure }
+  | { kind: 'stop_core'; failure: CoreFailure }
+  | { kind: 'recover_runtime'; failure: CoreFailure }
+  | { kind: 'recover_service_endpoint'; failure: CoreFailure }
+  | { kind: 'refresh_status'; failure: CoreFailure }
+  | { kind: 'install_service'; failure: CoreFailure }
+  | { kind: 'start_service'; failure: CoreFailure }
+  | { kind: 'stop_service'; failure: CoreFailure }
+  | { kind: 'restart_service'; failure: CoreFailure }
+  | { kind: 'uninstall_service'; failure: CoreFailure }
+  /**  The service hosts the runtime; the local host must take it over first. */
+  | { kind: 'service_hosts_core' }
+  /**
+   *  An explicit start that could not put the core on its host; `reason` is
+   *  the diagnostic text of the convergence that gave up.
+   */
+  | { kind: 'core_not_started'; reason: string; retryable: boolean }
+  /**  An explicit recovery that could not settle the runtime. */
+  | { kind: 'recovery_unresolved'; reason: string }
+  | { kind: 'build_runtime'; source: RuntimeBuildError }
+  | { kind: 'publish_runtime'; source: PublishRuntimeError }
+  | { kind: 'resolve_port'; source: PortResolveError }
+  | { kind: 'resolve_core_binary'; source: CoreSpecError }
+  | { kind: 'install_core_binary'; source: InstallCoreBinaryError }
+  | { kind: 'prepare_service_install_prompt'; source: ServiceCommandError }
+  | { kind: 'read_core_version'; source: CoreVersionError }
+  /**  No runtime configuration has been built yet. */
+  | { kind: 'no_runtime_config' }
+  | { kind: 'serialize_runtime_config' }
+  | { kind: 'convert_runtime_config' }
+  /**  A newer build replaced the snapshot the inspection was opened on. */
+  | { kind: 'runtime_snapshot_changed' }
+  | { kind: 'runtime_node_not_found'; node_id: number }
 
 export type RuntimeInfos = {
   service_data_dir: string
@@ -3055,6 +3203,25 @@ export type RuntimeInspectionNode = {
 }
 
 /**
+ *  Wire shape for the app's error channel: library sources are skipped and
+ *  reach the user only through the error's `Debug` detail.
+ */
+export type RuntimePipelineError =
+  | { kind: 'selected_profile_not_found'; profile: ProfileId }
+  | { kind: 'selected_profile_not_config'; profile: ProfileId }
+  | {
+      kind: 'composition_member_invalid'
+      composition: ProfileId
+      member: ProfileId
+      reason: string
+    }
+  | { kind: 'content_source'; profile: ProfileId; path: ManagedProfilePath }
+  | { kind: 'parse_profile'; profile: ProfileId; message: string }
+  | { kind: 'snapshot' }
+  /**  Theoretically unreachable invariant breaks (e.g. guard serialization). */
+  | { kind: 'internal'; message: string }
+
+/**
  *  Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
  *  link joins [`PendingDeepLinks`]. It carries no URL: it only asks a listening
  *  frontend to take the queue through [`take_pending_deep_links`].
@@ -3077,6 +3244,36 @@ export type ScriptTransform_Serialize = {
   source: ProfileSource_Serialize
   runtime: ScriptRuntime
 }
+
+/**  The elevated operations `nyanpasu-service` is asked to perform. */
+export type ServiceCommand =
+  'install' | 'update' | 'uninstall' | 'start' | 'stop' | 'restart'
+
+/**
+ *  A failure of running or querying the system service, including the bounds
+ *  the service actor puts on every call.
+ */
+export type ServiceCommandError =
+  | { kind: 'resolve_service_user' }
+  | { kind: 'resolve_service_dirs' }
+  | { kind: 'run_elevated'; command: ServiceCommand }
+  | {
+      kind: 'service_command_exit'
+      command: ServiceCommand
+      exit_code: number | null
+      signal: number | null
+    }
+  | { kind: 'run_service_status' }
+  | {
+      kind: 'service_status_exit'
+      exit_code: number | null
+      signal: number | null
+    }
+  | { kind: 'service_status_not_utf8' }
+  | { kind: 'parse_service_status' }
+  | { kind: 'timed_out'; limit_ms: number }
+  | { kind: 'still_running'; limit_ms: number }
+  | { kind: 'task_cancelled' }
 
 export type ServiceCompat =
   /**  daemon 未安装 / 未运行 / 未上报 server 信息，没有可判定的版本。 */
@@ -3382,6 +3579,9 @@ export type TransformDefinition_Serialize =
   | ({ type: 'overlay'; source: ProfileSource_Serialize } & { runtime?: never })
   /**  Imperative JS/Lua transform. */
   | { type: 'script'; source: ProfileSource_Serialize; runtime: ScriptRuntime }
+
+export type TransformFailure =
+  { kind: 'profile'; id: string } | { kind: 'builtin'; name: string }
 
 export type TransformKind =
   { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime }

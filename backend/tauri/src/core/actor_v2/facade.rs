@@ -1041,7 +1041,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ServiceHostAdapter for ReadyService {
-        async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+        async fn probe(
+            &self,
+        ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError>
+        {
             self.calls.lock().unwrap().push("ensure_ready");
             Ok(StatusInfo {
                 name: Cow::Borrowed("nyanpasu-service"),
@@ -1072,19 +1075,25 @@ mod tests {
             })
         }
 
-        async fn install(&self) -> Result<(), String> {
+        async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn uninstall(&self) -> Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn start_daemon(&self) -> Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn stop_daemon(&self) -> Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
-        async fn update(&self) -> Result<(), String> {
+        async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
         fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {

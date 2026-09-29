@@ -1,10 +1,16 @@
 import { expect, test } from 'vitest'
 import { m } from '@/paraglide/messages'
 import { ipcErrorMessage } from '@/utils/ipc-error'
-import type { IpcError, ProfilesError } from '@nyanpasu/interface'
+import type { IpcError, ProfilesError, RuntimeError } from '@nyanpasu/interface'
 
 const profiles = (error: ProfilesError): IpcError => ({
   kind: { domain: 'profiles', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const runtime = (error: RuntimeError): IpcError => ({
+  kind: { domain: 'runtime', error },
   message: 'the backend text',
   detail: 'the backend text: caused by',
 })
@@ -154,4 +160,114 @@ test('an aborted commit says what became of the core', () => {
   expect(commit({ kind: 'validate_state' })).toBe(
     m.error_commit_validate_state(),
   )
+})
+
+test('a core operation names what failed and why the core refused it', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'apply_runtime',
+        failure: {
+          kind: 'apply_failed',
+          message: 'kept the previous revision',
+          retryable: false,
+          operation_id: null,
+        },
+      }),
+    ),
+  ).toBe(
+    `${m.error_runtime_apply_runtime()} (${m.error_runtime_core_reason_apply_failed()})`,
+  )
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'stop_service',
+        failure: {
+          kind: null,
+          message: 'service stop failed',
+          retryable: true,
+          operation_id: null,
+        },
+      }),
+    ),
+  ).toBe(m.error_runtime_stop_service())
+})
+
+test('a refused admission is told apart from a failed operation', () => {
+  expect(ipcErrorMessage(runtime({ kind: 'isolated' }))).toBe(
+    m.error_runtime_isolated(),
+  )
+  expect(ipcErrorMessage(runtime({ kind: 'shutting_down' }))).toBe(
+    m.error_runtime_shutting_down(),
+  )
+})
+
+test('a failed build names the profile or the transform', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'build_runtime',
+        source: {
+          kind: 'run_pipeline',
+          source: { kind: 'selected_profile_not_found', profile: 'p1' },
+        },
+      }),
+    ),
+  ).toBe(m.error_runtime_build_selected_profile_not_found({ profile: 'p1' }))
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'build_runtime',
+        source: {
+          kind: 'transforms_failed',
+          failures: [
+            { kind: 'profile', id: 't1' },
+            { kind: 'builtin', name: 'config_fixer' },
+          ],
+        },
+      }),
+    ),
+  ).toBe(m.error_runtime_build_transforms_failed({ names: 't1, config_fixer' }))
+})
+
+test('a port in use names the port, and a missing one names the field', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'resolve_port',
+        source: {
+          kind: 'resolve_port',
+          field: 'mixed',
+          source: { kind: 'port_not_available', port: 7890 },
+        },
+      }),
+    ),
+  ).toBe(m.error_runtime_port_in_use({ port: 7890 }))
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'resolve_port',
+        source: {
+          kind: 'resolve_port',
+          field: 'external_controller',
+          source: { kind: 'no_open_port' },
+        },
+      }),
+    ),
+  ).toBe(
+    m.error_runtime_no_open_port({
+      field: m.error_runtime_port_field_external_controller(),
+    }),
+  )
+})
+
+test('a missing core binary names the core', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'resolve_core_binary',
+        source: { kind: 'find_core_binary', core: 'mihomo' },
+      }),
+    ),
+  ).toBe(m.error_runtime_find_core_binary({ core: 'mihomo' }))
 })

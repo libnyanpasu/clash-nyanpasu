@@ -20,7 +20,7 @@ mod tests;
 use std::sync::Arc;
 
 use nyanpasu_core::state::{Ack, StateDecision, StateSnapshot};
-use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
+use nyanpasu_core_manager::OperationId;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::{broadcast, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -28,10 +28,11 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     core_lifecycle::{
         Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
-        ServiceRecovery, domain_error,
+        ServiceRecovery,
         ports::{BinaryInstaller, PreparedCoreBinary},
     },
     runtime,
+    runtime_error::{OwnerUnresponsiveSnafu, RuntimeError},
 };
 use crate::core::actor_v2::{
     CoreClient, CoreStatusProjection,
@@ -70,7 +71,7 @@ pub(super) enum Command {
 
 /// Settles a command that was refused before it ran. An installation owes
 /// its progress observer the same terminal answer as its caller.
-fn refuse(command: Command, error: &CoreError) {
+fn refuse(command: Command, error: &RuntimeError) {
     if let Command::Core(CoreCommand::ReplaceCoreBinary(artifact)) = command {
         artifact.progress.finished(Some(&error.to_string()));
     }
@@ -78,7 +79,7 @@ fn refuse(command: Command, error: &CoreError) {
 
 struct Response {
     id: OperationId,
-    reply: Option<RpcReplyPort<Result<Output, CoreError>>>,
+    reply: Option<RpcReplyPort<Result<Output, RuntimeError>>>,
 }
 
 impl Response {
@@ -182,10 +183,6 @@ struct ActorArgs {
     schedule_ticks: bool,
 }
 
-fn conflict(message: &str) -> CoreError {
-    CoreError::new(CoreErrorKind::OperationConflict, message, true)
-}
-
 impl ApplicationWorkflowState {
     /// Admission is closed once the shutdown token is cancelled. The token is
     /// read directly, so a command queued behind the running one is refused
@@ -201,19 +198,11 @@ impl ApplicationWorkflowState {
 
     async fn request(&mut self, Request { command, response }: Request) {
         if self.closing() {
-            self.reject(
-                command,
-                response,
-                conflict("core lifecycle is shutting down"),
-            );
+            self.reject(command, response, RuntimeError::ShuttingDown);
         } else if self.workflow.isolated()
             && !matches!(command, Command::RetryRuntime { explicit: true })
         {
-            let error = CoreError::new(
-                CoreErrorKind::OperationConflict,
-                "previous core lifecycle operation has an uncertain outcome; inspect Configuration status and request runtime verification before further mutations",
-                false,
-            );
+            let error = RuntimeError::Isolated;
             // A refused first startup still hands every owner its full
             // desired value, once (T10 §1.9).
             if matches!(command, Command::StartupReconcile) {
@@ -279,7 +268,7 @@ impl ApplicationWorkflowState {
 
     /// Refuses a command before it runs. Nothing was tried, so the runtime is
     /// where it was.
-    fn reject(&mut self, command: Command, response: Response, error: CoreError) {
+    fn reject(&mut self, command: Command, response: Response, error: RuntimeError) {
         refuse(command, &error);
         self.settle(response, Err(error));
     }
@@ -291,10 +280,10 @@ impl ApplicationWorkflowState {
 
     /// Publishes that the operation ended, then answers. Published first: a
     /// caller that observes its own reply must not read itself as running.
-    fn settle(&mut self, response: Response, result: Result<Output, CoreError>) {
+    fn settle(&mut self, response: Response, result: Result<Output, RuntimeError>) {
         self.record(None);
         if let Some(reply) = response.reply {
-            let _ = reply.send(result.map_err(|error| error.with_operation(response.id)));
+            let _ = reply.send(result);
         } else if let Err(error) = result {
             tracing::warn!(%error, "background core lifecycle operation failed");
         }
@@ -484,10 +473,10 @@ pub(crate) struct ApplicationWorkflowClient(Arc<ClientInner>);
 
 macro_rules! method {
     ($name:ident, $command:expr, $variant:ident, $output:ty) => {
-        pub async fn $name(&self) -> Result<$output, CoreError> {
+        pub async fn $name(&self) -> Result<$output, RuntimeError> {
             match self.call($command).await? {
                 Output::$variant(result) => Ok(result),
-                _ => Err(domain_error("unexpected core lifecycle reply")),
+                _ => unreachable!("a core lifecycle command answers with its own output"),
             }
         }
     };
@@ -563,8 +552,11 @@ impl ApplicationWorkflowClient {
     /// Waits for the command's own answer, however long it runs. Only a
     /// request that could not be sent or a reply that was dropped says the
     /// workflow is gone.
-    async fn call(&self, command: Command) -> Result<Output, CoreError> {
-        let id = OperationId::generate();
+    async fn call(&self, command: Command) -> Result<Output, RuntimeError> {
+        self.call_as(OperationId::generate(), command).await
+    }
+
+    async fn call_as(&self, id: OperationId, command: Command) -> Result<Output, RuntimeError> {
         match self
             .0
             .actor
@@ -585,21 +577,14 @@ impl ApplicationWorkflowClient {
             Ok(CallResult::Success(result)) => result,
             // Never delivered, so it certainly did not run.
             Err(ractor::MessagingErr::SendErr(Message::Request(Request { command, .. }))) => {
-                let error = CoreError::new(
-                    CoreErrorKind::OperationConflict,
-                    "the application workflow is closed; the command was not run",
-                    false,
-                )
-                .with_operation(id);
+                let error = RuntimeError::ShuttingDown;
                 refuse(command, &error);
                 Err(error)
             }
-            _ => Err(CoreError::new(
-                CoreErrorKind::Internal,
-                "application workflow actor is unavailable; operation outcome is unknown",
-                false,
-            )
-            .with_operation(id)),
+            _ => OwnerUnresponsiveSnafu {
+                operation_id: id.to_string(),
+            }
+            .fail(),
         }
     }
 
@@ -637,11 +622,12 @@ impl ApplicationWorkflowClient {
     /// later call. The call waits for the report itself, so `Unsettled` here
     /// means the workflow refused the command or is gone, never a guess.
     pub async fn startup_reconcile(&self) -> startup::StartupReport {
-        match self.call(Command::StartupReconcile).await {
+        let operation_id = OperationId::generate();
+        match self.call_as(operation_id, Command::StartupReconcile).await {
             Ok(Output::Startup(report)) => *report,
             Ok(_) => unreachable!("StartupReconcile answers with its report"),
             Err(error) => startup::StartupReport {
-                operation_id: error.operation_id.unwrap_or_else(OperationId::generate),
+                operation_id,
                 observation: None,
                 outcome: startup::StartupOutcome::Unsettled {
                     reason: error.to_string(),
@@ -650,7 +636,7 @@ impl ApplicationWorkflowClient {
         }
     }
 
-    pub async fn retry_runtime(&self) -> Result<(), CoreError> {
+    pub async fn retry_runtime(&self) -> Result<(), RuntimeError> {
         self.call(Command::RetryRuntime { explicit: true })
             .await
             .map(|_| ())
@@ -690,7 +676,7 @@ impl ApplicationWorkflowClient {
     );
 
     #[cfg(test)]
-    pub async fn change_host(&self, host: ExecutionHost) -> Result<HandoffReport, CoreError> {
+    pub async fn change_host(&self, host: ExecutionHost) -> Result<HandoffReport, RuntimeError> {
         match self
             .call(Command::Core(CoreCommand::ChangeHost(host)))
             .await?
@@ -699,27 +685,27 @@ impl ApplicationWorkflowClient {
             _ => unreachable!(),
         }
     }
-    pub async fn replace_binary(&self, artifact: PreparedCoreBinary) -> Result<(), CoreError> {
+    pub async fn replace_binary(&self, artifact: PreparedCoreBinary) -> Result<(), RuntimeError> {
         self.unit(Command::Core(CoreCommand::ReplaceCoreBinary(artifact)))
             .await
     }
-    pub async fn install_service(&self) -> Result<(), CoreError> {
+    pub async fn install_service(&self) -> Result<(), RuntimeError> {
         self.unit(Command::Core(CoreCommand::InstallService)).await
     }
-    pub async fn start_service(&self) -> Result<(), CoreError> {
+    pub async fn start_service(&self) -> Result<(), RuntimeError> {
         self.unit(Command::Core(CoreCommand::StartService)).await
     }
-    pub async fn stop_service(&self) -> Result<(), CoreError> {
+    pub async fn stop_service(&self) -> Result<(), RuntimeError> {
         self.unit(Command::Core(CoreCommand::StopService)).await
     }
-    pub async fn restart_service(&self) -> Result<(), CoreError> {
+    pub async fn restart_service(&self) -> Result<(), RuntimeError> {
         self.unit(Command::Core(CoreCommand::RestartService)).await
     }
-    pub async fn uninstall_service(&self) -> Result<(), CoreError> {
+    pub async fn uninstall_service(&self) -> Result<(), RuntimeError> {
         self.unit(Command::Core(CoreCommand::UninstallService))
             .await
     }
-    async fn unit(&self, command: Command) -> Result<(), CoreError> {
+    async fn unit(&self, command: Command) -> Result<(), RuntimeError> {
         match self.call(command).await? {
             Output::Unit => Ok(()),
             _ => unreachable!(),

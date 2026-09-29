@@ -1,11 +1,19 @@
 import { m } from '@/paraglide/messages'
 import type {
   CommitAborted,
+  CoreErrorKind,
+  CoreFailure,
+  InstallCoreBinaryError,
   IpcError,
+  PickPortError,
+  PortField,
   ProfileContentError,
   ProfileFileError,
   ProfilesError,
   RuntimeAftermath,
+  RuntimeBuildError,
+  RuntimeError,
+  RuntimePipelineError,
 } from '@nyanpasu/interface'
 
 /** The simplest message for a failed command, localized by its domain. */
@@ -15,6 +23,8 @@ export function ipcErrorMessage(error: IpcError): string {
       return error.message
     case 'profiles':
       return profilesErrorMessage(error.kind.error)
+    case 'runtime':
+      return runtimeErrorMessage(error.kind.error)
   }
 }
 
@@ -172,5 +182,218 @@ function profileFileMessage(error: ProfileFileError, fallback: string): string {
       return m.error_profiles_storage_unsafe_path()
     default:
       return fallback
+  }
+}
+
+function runtimeErrorMessage(error: RuntimeError): string {
+  switch (error.kind) {
+    case 'shutting_down':
+      return m.error_runtime_shutting_down()
+    case 'isolated':
+      return m.error_runtime_isolated()
+    case 'owner_unresponsive':
+      return m.error_runtime_owner_unresponsive()
+    case 'apply_runtime':
+      return coreOperationMessage(
+        m.error_runtime_apply_runtime(),
+        error.failure,
+      )
+    case 'stop_core':
+      return coreOperationMessage(m.error_runtime_stop_core(), error.failure)
+    case 'recover_runtime':
+      return coreOperationMessage(
+        m.error_runtime_recover_runtime(),
+        error.failure,
+      )
+    case 'recover_service_endpoint':
+      return coreOperationMessage(
+        m.error_runtime_recover_service_endpoint(),
+        error.failure,
+      )
+    case 'refresh_status':
+      return coreOperationMessage(
+        m.error_runtime_refresh_status(),
+        error.failure,
+      )
+    case 'install_service':
+      return coreOperationMessage(
+        m.error_runtime_install_service(),
+        error.failure,
+      )
+    case 'start_service':
+      return coreOperationMessage(
+        m.error_runtime_start_service(),
+        error.failure,
+      )
+    case 'stop_service':
+      return coreOperationMessage(m.error_runtime_stop_service(), error.failure)
+    case 'restart_service':
+      return coreOperationMessage(
+        m.error_runtime_restart_service(),
+        error.failure,
+      )
+    case 'uninstall_service':
+      return coreOperationMessage(
+        m.error_runtime_uninstall_service(),
+        error.failure,
+      )
+    case 'service_hosts_core':
+      return m.error_runtime_service_hosts_core()
+    case 'core_not_started':
+      return m.error_runtime_core_not_started()
+    case 'recovery_unresolved':
+      return m.error_runtime_recovery_unresolved()
+    case 'build_runtime':
+      return buildRuntimeMessage(error.source)
+    case 'publish_runtime':
+      return m.error_runtime_publish_runtime({ path: error.source.path })
+    case 'resolve_port':
+      return portMessage(error.source.field, error.source.source)
+    case 'resolve_core_binary':
+      return error.source.kind === 'find_core_binary'
+        ? m.error_runtime_find_core_binary({ core: error.source.core })
+        : m.error_runtime_path_not_utf8({ path: error.source.path })
+    case 'install_core_binary':
+      return installCoreBinaryMessage(error.source)
+    case 'prepare_service_install_prompt':
+      return m.error_runtime_prepare_service_install_prompt()
+    case 'read_core_version':
+      return m.error_runtime_read_core_version({ core: error.source.core })
+    case 'no_runtime_config':
+      return m.error_runtime_no_runtime_config()
+    case 'serialize_runtime_config':
+    case 'convert_runtime_config':
+      return m.error_runtime_render_runtime_config()
+    case 'runtime_snapshot_changed':
+      return m.error_runtime_runtime_snapshot_changed()
+    case 'runtime_node_not_found':
+      return m.error_runtime_runtime_node_not_found()
+  }
+}
+
+/** What the core operation was, and why the core refused it when it said. */
+function coreOperationMessage(action: string, failure: CoreFailure): string {
+  const reason = failure.kind ? coreReasonMessage(failure.kind) : undefined
+  return reason ? `${action} (${reason})` : action
+}
+
+function coreReasonMessage(kind: CoreErrorKind): string {
+  switch (kind) {
+    case 'not_started':
+      return m.error_runtime_core_reason_not_started()
+    case 'already_running':
+      return m.error_runtime_core_reason_already_running()
+    case 'revision_conflict':
+      return m.error_runtime_core_reason_revision_conflict()
+    case 'quarantined':
+      return m.error_runtime_core_reason_quarantined()
+    case 'config_check_failed':
+      return m.error_runtime_core_reason_config_check_failed()
+    case 'config_not_found':
+      return m.error_runtime_core_reason_config_not_found()
+    case 'binary_not_found':
+      return m.error_runtime_core_reason_binary_not_found()
+    case 'invalid_config':
+      return m.error_runtime_core_reason_invalid_config()
+    case 'controller_missing':
+      return m.error_runtime_core_reason_controller_missing()
+    case 'apply_failed':
+      return m.error_runtime_core_reason_apply_failed()
+    case 'apply_rollback_failed':
+      return m.error_runtime_core_reason_apply_rollback_failed()
+    case 'stop_unconfirmed':
+      return m.error_runtime_core_reason_stop_unconfirmed()
+    case 'shutting_down':
+      return m.error_runtime_core_reason_shutting_down()
+    case 'queue_full':
+      return m.error_runtime_core_reason_queue_full()
+    case 'operation_conflict':
+      return m.error_runtime_core_reason_operation_conflict()
+    case 'backend_unavailable':
+      return m.error_runtime_core_reason_backend_unavailable()
+    case 'internal':
+      return m.error_runtime_core_reason_internal()
+  }
+}
+
+function buildRuntimeMessage(error: RuntimeBuildError): string {
+  switch (error.kind) {
+    case 'start_script_runner':
+      return m.error_runtime_build_start_script_runner()
+    case 'validate_profiles':
+      return m.error_runtime_build_validate_profiles()
+    case 'run_pipeline':
+      return pipelineMessage(error.source)
+    case 'transforms_failed':
+      return m.error_runtime_build_transforms_failed({
+        names: error.failures
+          .map((failure) =>
+            failure.kind === 'profile' ? failure.id : failure.name,
+          )
+          .join(', '),
+      })
+    case 'serialize_final_config':
+    case 'config_not_mapping':
+    case 'serialize_runtime_config':
+      return m.error_runtime_render_runtime_config()
+  }
+}
+
+function pipelineMessage(error: RuntimePipelineError): string {
+  switch (error.kind) {
+    case 'selected_profile_not_found':
+      return m.error_runtime_build_selected_profile_not_found({
+        profile: error.profile,
+      })
+    case 'selected_profile_not_config':
+      return m.error_runtime_build_selected_profile_not_config({
+        profile: error.profile,
+      })
+    case 'composition_member_invalid':
+      return m.error_runtime_build_composition_member_invalid({
+        composition: error.composition,
+      })
+    case 'content_source':
+      return m.error_runtime_build_content_source({ profile: error.profile })
+    case 'parse_profile':
+      return m.error_runtime_build_parse_profile({ profile: error.profile })
+    case 'snapshot':
+    case 'internal':
+      return m.error_runtime_build_runtime()
+  }
+}
+
+function portMessage(field: PortField, error: PickPortError): string {
+  switch (error.kind) {
+    case 'port_not_available':
+      return m.error_runtime_port_in_use({ port: error.port })
+    case 'no_open_port':
+      return m.error_runtime_no_open_port({ field: portFieldName(field) })
+  }
+}
+
+function portFieldName(field: PortField): string {
+  switch (field) {
+    case 'mixed':
+      return m.error_runtime_port_field_mixed()
+    case 'http':
+      return m.error_runtime_port_field_http()
+    case 'socks':
+      return m.error_runtime_port_field_socks()
+    case 'external_controller':
+      return m.error_runtime_port_field_external_controller()
+  }
+}
+
+function installCoreBinaryMessage(error: InstallCoreBinaryError): string {
+  switch (error.kind) {
+    case 'start_elevated_copy':
+      return m.error_runtime_install_core_binary_elevation({
+        core: error.core,
+      })
+    case 'elevated_copy_failed':
+      return m.error_runtime_install_core_binary_copy({ core: error.core })
+    case 'path_not_utf8':
+      return m.error_runtime_path_not_utf8({ path: error.path })
   }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientError, NyanpasuClient},
+    client::{ClientError, NyanpasuClient, RuntimeError},
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     state::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
@@ -42,6 +42,13 @@ pub enum IpcErrorKind {
     /// Not classified into a domain; only `message` describes it.
     Unknown,
     Profiles(Box<ProfilesError>),
+    Runtime(Box<RuntimeError>),
+}
+
+impl From<RuntimeError> for IpcErrorKind {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(Box::new(error))
+    }
 }
 
 impl From<ProfilesError> for IpcErrorKind {
@@ -54,6 +61,7 @@ impl From<ClientError> for IpcErrorKind {
     fn from(error: ClientError) -> Self {
         match error {
             ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
+            ClientError::Runtime(error) => Self::Runtime(Box::new(error)),
             _ => Self::Unknown,
         }
     }
@@ -91,7 +99,6 @@ unknown_domain!(
     tauri::Error,
     StorageOperationError,
     anyhow::Error,
-    nyanpasu_core_manager::CoreError,
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;
@@ -355,31 +362,16 @@ pub fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<crate::client
 pub async fn get_runtime_config(
     client: State<'_, NyanpasuClient>,
 ) -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
-    let state = client.promoted_runtime().await;
-    match state.as_ref() {
-        Some(state) => {
-            let yaml_value = serde_yaml::to_value(&state.config)?;
-            let json_value = serde_json::to_value(&yaml_value)?;
-            let wrapped: specta_typescript::Any<serde_json::Value> =
-                serde_json::from_value(json_value)?;
-            Ok(Some(wrapped))
-        }
-        None => Ok(None),
-    }
+    Ok(client
+        .runtime_config()
+        .await?
+        .map(|config| serde_json::from_value(config).expect("a JSON value deserializes as itself")))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
-    let state = client.promoted_runtime().await;
-    let mapping = (state
-        .as_ref()
-        .map(|state| &state.config)
-        .ok_or(anyhow::anyhow!("failed to parse config to yaml file"))
-        .and_then(|config| {
-            serde_yaml::to_string(config).context("failed to convert config to yaml")
-        }))?;
-    Ok(mapping)
+    Ok(client.runtime_yaml().await?)
 }
 
 #[tauri::command]
@@ -533,11 +525,7 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn change_clash_core(
-    client: State<'_, NyanpasuClient>,
-    clash_core: Option<ClashCore>,
-) -> Result {
-    let clash_core = clash_core.ok_or_else(|| IpcError::from("clash core is null".to_string()))?;
+pub async fn change_clash_core(client: State<'_, NyanpasuClient>, clash_core: ClashCore) -> Result {
     client.update_core(clash_core).await?;
     Ok(())
 }
@@ -639,10 +627,10 @@ pub async fn fetch_latest_core_versions(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
-    match resolve::resolve_core_version(&app_handle, &core_type).await {
-        Ok(version) => Ok(version),
-        Err(err) => Err(IpcError::from(err)),
-    }
+    Ok(snafu::ResultExt::context(
+        resolve::resolve_core_version(&app_handle, &core_type).await,
+        crate::client::runtime_error::ReadCoreVersionSnafu,
+    )?)
 }
 
 #[tauri::command]
@@ -1013,11 +1001,14 @@ pub mod uwp {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt() -> Result<String> {
-    let args = (crate::core::service::control::get_service_install_args().await)?
-        .into_iter()
-        .map(|arg| arg.to_string_lossy().to_string())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let args = snafu::ResultExt::context(
+        crate::core::service::control::get_service_install_args().await,
+        crate::client::runtime_error::PrepareServiceInstallPromptSnafu,
+    )?
+    .into_iter()
+    .map(|arg| arg.to_string_lossy().to_string())
+    .collect::<Vec<_>>()
+    .join(" ");
     let mut prompt = format!("./nyanpasu-service {args}");
     if cfg!(not(windows)) {
         prompt = format!("sudo {prompt}");
@@ -1468,6 +1459,38 @@ mod tests {
             })
         );
         assert_eq!(wire["message"], "profile not found: p1");
+    }
+
+    #[test]
+    fn a_runtime_error_reaches_the_frontend_with_the_cores_own_kind() {
+        let failure = crate::client::runtime_error::ApplyRuntimeSnafu.into_error(
+            nyanpasu_core_manager::CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ApplyFailed,
+                "the core kept the previous configuration",
+                false,
+            ),
+        );
+        let wire = wire(failure);
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "runtime",
+                "error": {
+                    "kind": "apply_runtime",
+                    "failure": {
+                        "kind": "apply_failed",
+                        "message": "the core kept the previous configuration",
+                        "retryable": false,
+                        "operation_id": null,
+                    },
+                },
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(IpcError::from(super::RuntimeError::Isolated)).unwrap()["kind"],
+            json!({ "domain": "runtime", "error": { "kind": "isolated" } })
+        );
     }
 
     #[test]

@@ -17,6 +17,7 @@ mod main_thread;
 mod ports;
 pub mod profiles;
 pub mod runtime;
+pub mod runtime_error;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
 mod session_state;
@@ -69,6 +70,7 @@ pub use event_sink::{
 pub use main_thread::MainThreadExecutor;
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
+pub use runtime_error::RuntimeError;
 #[cfg(test)]
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
@@ -131,21 +133,23 @@ async fn new_typed_config_clients(
     Ok((application, session_state, clash_config))
 }
 
-fn client_error_from_core(error: nyanpasu_core_manager::CoreError) -> ClientError {
-    ClientError::Anyhow(anyhow::anyhow!(error))
-}
-
 #[cfg(not(test))]
 fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
-) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    crate::core::actor_v2::local_host::CoreSpecError,
+> {
     crate::core::actor_v2::local_host::core_spec(core)
 }
 
 #[cfg(test)]
 fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
-) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    crate::core::actor_v2::local_host::CoreSpecError,
+> {
     use nyanpasu_core_manager::CoreKind;
     let kind = match core {
         nyanpasu_config::application::ClashCore::ClashPremium => CoreKind::ClashPremium,
@@ -468,18 +472,14 @@ impl NyanpasuClient {
         self.inner.application.snapshot().state
     }
 
-    pub async fn reconcile_core(
-        &self,
-    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
+    pub async fn reconcile_core(&self) -> std::result::Result<ReconcileReport, RuntimeError> {
         self.inner.application_workflow.reconcile().await
     }
 
     // No UI entry issues an explicit stop yet; this is the facade entry to the
     // explicit stop intent the workflow honours (TCC V11, T10 S18 / §1.4).
     #[allow(dead_code)]
-    pub async fn stop_core(
-        &self,
-    ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
+    pub async fn stop_core(&self) -> std::result::Result<StopReport, RuntimeError> {
         self.inner.application_workflow.stop_core().await
     }
 
@@ -504,29 +504,23 @@ impl NyanpasuClient {
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
         self.inner.application_workflow.service_events()
     }
-    pub async fn install_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn install_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.install_service().await
     }
 
-    pub async fn start_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn start_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.start_service().await
     }
 
-    pub async fn stop_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn stop_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.stop_service().await
     }
 
-    pub async fn restart_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn restart_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.restart_service().await
     }
 
-    pub async fn uninstall_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn uninstall_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.uninstall_service().await
     }
 
@@ -566,12 +560,8 @@ impl NyanpasuClient {
         Ok(client.patch(patch).await?.outcome())
     }
 
-    pub async fn retry_runtime_now(&self) -> Result<()> {
-        self.inner
-            .application_workflow
-            .retry_runtime()
-            .await
-            .map_err(client_error_from_core)
+    pub async fn retry_runtime_now(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.retry_runtime().await
     }
 
     pub fn retry_effect_now(&self, kind: effects::plan::EffectKind) -> Result<()> {
@@ -1668,7 +1658,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
                 return Ok(nyanpasu_ipc::types::StatusInfo {
                     name: "test-service".into(),
@@ -1709,31 +1702,41 @@ pub(crate) mod tests {
             })
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("install");
             Ok(())
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("uninstall");
             Ok(())
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.stopped
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("start_daemon");
             Ok(())
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.stopped
                 .store(true, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("stop_daemon");
             Ok(())
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
@@ -1773,7 +1776,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             Ok(nyanpasu_ipc::types::StatusInfo {
                 name: std::borrow::Cow::Borrowed("test-service"),
                 version: std::borrow::Cow::Borrowed("test"),
@@ -1782,23 +1788,33 @@ pub(crate) mod tests {
             })
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
 
@@ -2318,7 +2334,10 @@ pub(crate) mod tests {
     impl crate::core::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
         async fn probe(
             &self,
-        ) -> std::result::Result<nyanpasu_ipc::types::StatusInfo<'static>, String> {
+        ) -> std::result::Result<
+            nyanpasu_ipc::types::StatusInfo<'static>,
+            crate::core::service::control::ServiceCommandError,
+        > {
             let persisted = std::fs::read(&self.application_config)
                 .ok()
                 .and_then(|bytes| serde_yaml::from_slice::<serde_yaml::Value>(&bytes).ok())
@@ -2330,23 +2349,33 @@ pub(crate) mod tests {
             self.delegate.probe().await
         }
 
-        async fn install(&self) -> std::result::Result<(), String> {
+        async fn install(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.install().await
         }
 
-        async fn uninstall(&self) -> std::result::Result<(), String> {
+        async fn uninstall(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.uninstall().await
         }
 
-        async fn start_daemon(&self) -> std::result::Result<(), String> {
+        async fn start_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.start_daemon().await
         }
 
-        async fn stop_daemon(&self) -> std::result::Result<(), String> {
+        async fn stop_daemon(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.stop_daemon().await
         }
 
-        async fn update(&self) -> std::result::Result<(), String> {
+        async fn update(
+            &self,
+        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
             self.delegate.update().await
         }
 
@@ -2780,7 +2809,15 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let client = test_client(&dir).await;
         assert!(client.inspect_runtime().await.is_none());
-        assert!(client.inspect_runtime_node("missing", 0).await.is_err());
+        assert!(matches!(
+            client.runtime_yaml().await,
+            Err(RuntimeError::NoRuntimeConfig)
+        ));
+        assert!(client.runtime_config().await.unwrap().is_none());
+        assert!(matches!(
+            client.inspect_runtime_node("missing", 0).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
         client.reconcile_core().await.unwrap();
         let first = client.inspect_runtime().await.unwrap();
         assert!(!first.nodes.is_empty());
@@ -2812,12 +2849,18 @@ pub(crate) mod tests {
         client.reconcile_core().await.unwrap();
         let second = client.inspect_runtime().await.unwrap();
         assert_ne!(first.snapshot_id, second.snapshot_id);
-        assert!(
+        assert!(matches!(
             client
                 .inspect_runtime_node(&first.snapshot_id, first.root_id)
-                .await
-                .is_err()
-        );
+                .await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        assert!(matches!(
+            client
+                .inspect_runtime_node(&second.snapshot_id, u32::MAX)
+                .await,
+            Err(RuntimeError::RuntimeNodeNotFound { node_id: u32::MAX })
+        ));
         assert!(
             client
                 .inspect_runtime_node(&second.snapshot_id, second.root_id)

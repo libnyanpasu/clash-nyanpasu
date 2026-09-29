@@ -20,6 +20,7 @@ nyanpasu-helper = { path = '../nyanpasu-helper' }
 nyanpasu-egui = { path = '../nyanpasu-egui' }
 nyanpasu-utils.workspace = true
 
+snafu.workspace = true
 thiserror.workspace = true
 specta = { version = '^2.0.0-rc.25', features = [
   'serde_json',

@@ -10,6 +10,8 @@ use nyanpasu_config::{
     state::window::WindowState,
 };
 use semver::Version;
+use serde::Serialize;
+use snafu::{ResultExt, Snafu, ensure};
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
@@ -709,22 +711,59 @@ pub fn is_editor_window_open(
     app_handle.get_webview_window(window.label()).is_some()
 }
 
+/// A failure of asking a core binary for its version.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CoreVersionError {
+    #[snafu(display("could not run the {core} core to read its version: {source}"))]
+    RunCoreVersion {
+        #[specta(type = String)]
+        core: ClashCore,
+        #[serde(skip)]
+        source: tauri_plugin_shell::Error,
+    },
+    #[snafu(display("the {core} core failed when asked for its version"))]
+    CoreVersionExit {
+        #[specta(type = String)]
+        core: ClashCore,
+    },
+    #[snafu(display("the {core} core did not report a version"))]
+    CoreVersionNotReported {
+        #[specta(type = String)]
+        core: ClashCore,
+    },
+}
+
 /// resolve core version
 // TODO: use enum instead
-pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore) -> Result<String> {
+pub async fn resolve_core_version(
+    app_handle: &AppHandle,
+    core_type: &ClashCore,
+) -> Result<String, CoreVersionError> {
     let shell = app_handle.shell();
     let core = core_type.binary_name();
+    let core_type = *core_type;
     log::debug!(target: "app", "check config in `{core}`");
     let cmd = match core_type {
         ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha | ClashCore::Meow => {
-            shell.sidecar(core)?.args(["-v"])
+            shell
+                .sidecar(core)
+                .context(RunCoreVersionSnafu { core: core_type })?
+                .args(["-v"])
         }
-        ClashCore::ClashRs | ClashCore::ClashRsAlpha => shell.sidecar(core)?.args(["-V"]),
+        ClashCore::ClashRs | ClashCore::ClashRsAlpha => shell
+            .sidecar(core)
+            .context(RunCoreVersionSnafu { core: core_type })?
+            .args(["-V"]),
     };
-    let out = cmd.output().await?;
-    if !out.status.success() {
-        return Err(anyhow::anyhow!("failed to get core version"));
-    }
+    let out = cmd
+        .output()
+        .await
+        .context(RunCoreVersionSnafu { core: core_type })?;
+    ensure!(
+        out.status.success(),
+        CoreVersionExitSnafu { core: core_type }
+    );
     let out = String::from_utf8_lossy(&out.stdout);
     log::trace!(target: "app", "get core version: {out:?}");
     let out = out.trim().split(' ').collect::<Vec<&str>>();
@@ -741,7 +780,7 @@ pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore)
             }
         }
     }
-    Err(anyhow::anyhow!("failed to get core version"))
+    CoreVersionNotReportedSnafu { core: core_type }.fail()
 }
 
 #[cfg(test)]

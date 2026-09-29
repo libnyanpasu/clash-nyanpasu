@@ -49,6 +49,9 @@ export type ConnectionRow = ClashConnectionItem & {
   closed: boolean
   downloadSpeed: number
   uploadSpeed: number
+  // Parsed once per sample: sorting by time compares numbers instead of
+  // parsing both dates in every comparison.
+  startMs: number
 }
 
 const features = tableFeatures({
@@ -94,6 +97,7 @@ const Viewer = ({ search }: { search: string }) => {
           closed: false,
           downloadSpeed: prev ? conn.download - prev.download : 0,
           uploadSpeed: prev ? conn.upload - prev.upload : 0,
+          startMs: Date.parse(conn.start),
         }
       })
       .filter((c) => (search ? containsSearchTerm(c, search) : true))
@@ -228,8 +232,7 @@ const Viewer = ({ search }: { search: string }) => {
           id: 'Time',
           header: () => m.connections_column_time(),
           accessorFn: ({ start }) => dayjs(start).fromNow(),
-          sortFn: (rowA, rowB) =>
-            dayjs(rowA.original.start).diff(rowB.original.start),
+          sortFn: (rowA, rowB) => rowA.original.startMs - rowB.original.startMs,
           size: 120,
           cell: (info) => (
             <span

@@ -30,7 +30,12 @@ import { cn } from '@nyanpasu/utils'
 import { ConnectionRow } from '..'
 
 // Keys added by ConnectionRow that should not be rendered in the dialog
-const INTERNAL_KEYS = new Set(['closed', 'downloadSpeed', 'uploadSpeed'])
+const INTERNAL_KEYS = new Set([
+  'closed',
+  'downloadSpeed',
+  'uploadSpeed',
+  'startMs',
+])
 
 const FIELD_LABELS = {
   id: m.connections_field_id,

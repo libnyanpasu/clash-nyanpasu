@@ -20,7 +20,7 @@ use indexmap::{IndexMap, IndexSet};
 
 pub use artifact::{RuntimeArtifact, StepLog, StepLogEntry, StepLogLevel, TransformFailure};
 pub use error::RuntimePipelineError;
-pub use ports::{PortError, ProfileContentSource, ScriptRunOutcome, ScriptRunner};
+pub use ports::{PortError, ProfileContentSource, ScriptRunner};
 
 use error::{SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu};
 
@@ -194,9 +194,7 @@ pub(crate) fn apply_transform(
             }
         },
         TransformDefinition::Script(script) => {
-            let outcome = runner.run(script.runtime, &text, current);
-            entries.extend(outcome.logs);
-            match outcome.result {
+            match runner.run(script.runtime, &text, current, &mut entries) {
                 Ok(next) => (Arc::new(next), kind, entries, false),
                 Err(error) => {
                     // Parity: enhance/utils.rs:118 — error log + passthrough.
@@ -314,18 +312,19 @@ pub fn execute(
     )?;
 
     for (index, builtin_transform) in inputs.builtin_transforms.iter().enumerate() {
-        let outcome = runner.run(
+        let mut entries = Vec::new();
+        let result = runner.run(
             builtin_transform.runtime,
             &builtin_transform.source,
             &working,
+            &mut entries,
         );
         let tag = OperatorTag::BuiltinTransform {
             selected_profile_id: selected.clone(),
             name: builtin_transform.name.clone(),
             step_index: index as u32,
         };
-        let mut entries = outcome.logs;
-        let next = match outcome.result {
+        let next = match result {
             Ok(value) => Arc::new(value),
             Err(error) => {
                 // Parity: builtin errors are swallowed with a log (mod.rs:136-141),

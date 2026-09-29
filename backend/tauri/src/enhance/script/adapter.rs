@@ -7,14 +7,14 @@ use mlua::LuaSerdeExt as _;
 use nyanpasu_config::{
     profile::ScriptRuntime,
     runtime::{
-        executor::{PortError, ScriptRunOutcome, ScriptRunner, StepLogEntry, StepLogLevel},
+        executor::{PortError, ScriptRunner, StepLogEntry},
         value::ConfigValue,
     },
 };
 use tracing::Instrument;
 
 use super::{RunnerManager, ScriptDirs, create_lua_context};
-use crate::enhance::{ScriptType, chain::ScriptWrapper, utils::LogSpan};
+use crate::enhance::{ScriptType, chain::ScriptWrapper};
 
 pub struct EnhanceScriptRunner {
     runtime: tokio::runtime::Runtime,
@@ -32,20 +32,6 @@ impl EnhanceScriptRunner {
     }
 }
 
-fn to_step_logs(logs: Vec<(LogSpan, String)>) -> Vec<StepLogEntry> {
-    logs.into_iter()
-        .map(|(span, message)| {
-            let level = match span {
-                LogSpan::Log => StepLogLevel::Log,
-                LogSpan::Info => StepLogLevel::Info,
-                LogSpan::Warn => StepLogLevel::Warn,
-                LogSpan::Error => StepLogLevel::Error,
-            };
-            StepLogEntry::new(level, message)
-        })
-        .collect()
-}
-
 fn config_to_mapping(config: &ConfigValue) -> Result<serde_yaml::Mapping, PortError> {
     let value = serde_yaml::to_value(config).map_err(|e| format!("config to yaml: {e}"))?;
     value
@@ -60,35 +46,31 @@ fn mapping_to_config(mapping: serde_yaml::Mapping) -> Result<ConfigValue, PortEr
 }
 
 impl ScriptRunner for EnhanceScriptRunner {
-    fn run(&self, runtime: ScriptRuntime, source: &str, config: &ConfigValue) -> ScriptRunOutcome {
+    fn run(
+        &self,
+        runtime: ScriptRuntime,
+        source: &str,
+        config: &ConfigValue,
+        logs: &mut Vec<StepLogEntry>,
+    ) -> Result<ConfigValue, PortError> {
         let script_type = match runtime {
             ScriptRuntime::JavaScript => ScriptType::JavaScript,
             ScriptRuntime::Lua => ScriptType::Lua,
         };
-        let mapping = match config_to_mapping(config) {
-            Ok(mapping) => mapping,
-            Err(error) => {
-                return ScriptRunOutcome {
-                    result: Err(error),
-                    logs: Vec::new(),
-                };
-            }
-        };
+        let mapping = config_to_mapping(config)?;
         let wrapper = ScriptWrapper(script_type, source.to_string());
         // TODO: make `ScriptRunner` async and remove the runtime block_on here, so that the whole pipeline can be async.
-        let (result, logs) = self.runtime.block_on(
-            async {
-                let mut manager = RunnerManager::new(self.dirs.clone());
-                manager.process_script(&wrapper, mapping).await
-            }
-            .in_current_span(),
-        );
-        ScriptRunOutcome {
-            result: result
-                .map_err(|e| PortError::from(e.to_string()))
-                .and_then(mapping_to_config),
-            logs: to_step_logs(logs),
-        }
+        let mapping = self
+            .runtime
+            .block_on(
+                async {
+                    let mut manager = RunnerManager::new(self.dirs.clone());
+                    manager.process_script(&wrapper, mapping, logs).await
+                }
+                .in_current_span(),
+            )
+            .map_err(|e| PortError::from(e.to_string()))?;
+        mapping_to_config(mapping)
     }
 
     fn eval_item_predicate(&self, expr: &str, item: &ConfigValue) -> Result<bool, PortError> {
@@ -149,29 +131,30 @@ function main(config) {
   return config;
 }
 "#;
-        let outcome = runner.run(
-            ScriptRuntime::JavaScript,
-            script,
-            &value("mixed-port: 7890\n"),
-        );
-        let result = outcome.result.expect("script should succeed");
+        let mut logs = Vec::new();
+        let result = runner
+            .run(
+                ScriptRuntime::JavaScript,
+                script,
+                &value("mixed-port: 7890\n"),
+                &mut logs,
+            )
+            .expect("script should succeed");
         assert_eq!(to_yaml(&result)["mode"], serde_yaml::Value::from("rule"));
-        assert!(
-            !outcome.logs.is_empty(),
-            "console.log must surface as step log"
-        );
+        assert!(!logs.is_empty(), "console.log must surface as step log");
     }
 
     #[test]
     fn failing_script_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
-        let outcome = runner.run(
+        let result = runner.run(
             ScriptRuntime::JavaScript,
             "not valid js ][",
             &value("a: 1\n"),
+            &mut Vec::new(),
         );
-        assert!(outcome.result.is_err());
+        assert!(result.is_err());
     }
 
     #[test]

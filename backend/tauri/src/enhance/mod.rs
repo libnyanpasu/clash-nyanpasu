@@ -22,4 +22,4 @@ pub use runtime_builder::{
 pub use script::{ScriptDirs, adapter::EnhanceScriptRunner};
 
 pub use chain::{PostProcessingOutput, ScriptType, ScriptWrapper};
-pub use utils::{Logs, LogsExt};
+pub use utils::Logs;

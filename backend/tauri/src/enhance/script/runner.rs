@@ -1,42 +1,48 @@
 use async_trait::async_trait;
+use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
 use serde_yaml::Mapping;
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use super::{ScriptDirs, js, lua};
-use crate::enhance::{Logs, ScriptType, ScriptWrapper};
+use crate::enhance::{ScriptType, ScriptWrapper};
 
-/// The output of the process function is a tuple of the mapping and the logs.
-/// Although the process fails, the logs should be returned.
-pub type ProcessOutput = (Result<Mapping, anyhow::Error>, Logs);
+/// Collects the console output of one run. The engine's console callbacks
+/// hold clones; the runner drains it into the caller's logs once the run
+/// ends, whether the script succeeded or not.
+#[derive(Debug, Clone, Default)]
+pub struct ConsoleSink(Rc<RefCell<Vec<StepLogEntry>>>);
 
-/// warp a result and return the ProcessOutput
-macro_rules! wrap_result {
-    ($result:expr) => {
-        match $result {
-            Ok(inner) => inner,
-            Err(e) => return (Err(e.into()), Vec::new()),
-        }
-    };
+impl ConsoleSink {
+    pub fn push(&self, level: StepLogLevel, message: String) {
+        self.0.borrow_mut().push(StepLogEntry::new(level, message));
+    }
 
-    ($result:expr, $logs:expr) => {
-        match $result {
-            Ok(inner) => inner,
-            Err(e) => return (Err(e.into()), $logs),
-        }
-    };
+    pub fn take(&self) -> Vec<StepLogEntry> {
+        std::mem::take(&mut self.0.borrow_mut())
+    }
 }
 
-pub(super) use wrap_result;
-
+/// Everything a script logs goes to `logs`, including what it logged before
+/// failing.
 #[async_trait]
 pub trait Runner: Send + Sync {
     #[allow(dead_code)]
     /// Process profiles by script file path
-    async fn process(&self, mapping: Mapping, path: &str) -> ProcessOutput;
+    async fn process(
+        &self,
+        mapping: Mapping,
+        path: &str,
+        logs: &mut Vec<StepLogEntry>,
+    ) -> anyhow::Result<Mapping>;
 
     /// Honey replacement - use in memory code str to load module and exec it!
     /// It might not be implemented - due to some embeded engine is not support.
-    async fn process_honey(&self, mapping: Mapping, script: &str) -> ProcessOutput {
+    async fn process_honey(
+        &self,
+        mapping: Mapping,
+        script: &str,
+        _logs: &mut Vec<StepLogEntry>,
+    ) -> anyhow::Result<Mapping> {
         tracing::debug!("mapping: {:?}\nscript:{}", mapping, script);
         unimplemented!()
     }
@@ -68,14 +74,15 @@ impl RunnerManager {
         Ok(self.runners.get(script_type).unwrap().as_ref())
     }
 
-    #[tracing::instrument(skip(self, script, config), fields(script_kind = ?script.0))]
+    #[tracing::instrument(skip(self, script, config, logs), fields(script_kind = ?script.0))]
     pub async fn process_script(
         &mut self,
         script: &ScriptWrapper,
         config: Mapping,
-    ) -> ProcessOutput {
-        let runner = wrap_result!(self.get_or_init_runner(&script.0));
+        logs: &mut Vec<StepLogEntry>,
+    ) -> anyhow::Result<Mapping> {
+        let runner = self.get_or_init_runner(&script.0)?;
         tracing::trace!(script_kind = ?script.0, script_code = script.1.as_str(), "process config with script");
-        runner.process_honey(config, script.1.as_str()).await
+        runner.process_honey(config, script.1.as_str(), logs).await
     }
 }

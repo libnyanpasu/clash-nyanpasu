@@ -10,9 +10,7 @@ authors.workspace = true
 doctest = false
 
 [dependencies]
-rustc-hash = { version = '2', features = ['std'] }
 boa_engine = { workspace = true, features = ['annex-b'] }
-boa_gc = { version = '0.22' }
 boa_parser = { version = '0.22', features = ['annex-b'] }
 tokio = { workspace = true }
 nyanpasu-utils = { workspace = true }
@@ -38,7 +36,5 @@ serde_json = { version = '1.0', features = ['preserve_order'] }
 brotli = '9.0.0'
 
 [dev-dependencies]
-indoc = '2'
-textwrap = '0.16'
 test-log = { workspace = true }
 tempfile = '3.17'

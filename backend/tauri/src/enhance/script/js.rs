@@ -1,26 +1,22 @@
-use super::runner::{ProcessOutput, Runner, wrap_result};
-use crate::enhance::utils::{LogSpan, Logs, LogsExt};
+use super::runner::{ConsoleSink, Runner};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use boa_engine::{
-    Context, JsError, JsNativeError, JsValue, Source,
+    Context, JsError, JsNativeError, JsResult, JsValue, Source,
     builtins::promise::PromiseState,
+    gc::{Finalize, Trace},
     job::SimpleJobExecutor,
     js_string,
     module::{Module, SimpleModuleLoader},
-    property::Attribute,
 };
-use boa_utils::{
-    Console,
-    module::{combine::CombineModuleLoader, http::HttpModuleLoader},
-};
-use once_cell::sync::Lazy;
+use boa_runtime::console::{Console, ConsoleState, Logger};
+use boa_utils::module::{combine::CombineModuleLoader, http::HttpModuleLoader};
+use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
 use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Mutex,
     time::Duration,
 };
 use utils::wrap_script_if_not_esm;
@@ -56,11 +52,6 @@ impl ScriptDirs {
     }
 }
 
-// boa_utils stores the console logger in a process-global slot (see
-// setup_console below); serialize whole runs so parallel executions
-// (e.g. concurrent tests) cannot steal or drain each other's logs.
-static BOA_LOGGER_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
-
 // define a JsRunnerError due to boa engine error is not Send
 #[derive(Debug, thiserror::Error)]
 pub enum JsRunnerError {
@@ -76,49 +67,33 @@ pub enum JsRunnerError {
     Other(String),
 }
 
-pub struct BoaConsoleLogger(Logs);
-impl boa_utils::Logger for BoaConsoleLogger {
-    type Item = boa_utils::LogMessage;
-    fn log(&mut self, msg: boa_utils::LogMessage, _: &Console) {
-        match msg {
-            boa_utils::LogMessage::Log(msg) => self.0.log(msg),
-            boa_utils::LogMessage::Info(msg) => self.0.info(msg),
-            boa_utils::LogMessage::Warn(msg) => self.0.warn(msg),
-            boa_utils::LogMessage::Error(msg) => self.0.error(msg),
-        }
-    }
+impl Finalize for ConsoleSink {}
 
-    #[inline]
-    fn take(&mut self) -> Vec<Self::Item> {
-        std::mem::take(&mut self.0)
-            .into_iter()
-            .map(|(span, msg)| match span {
-                LogSpan::Log => boa_utils::LogMessage::Log(msg),
-                LogSpan::Info => boa_utils::LogMessage::Info(msg),
-                LogSpan::Warn => boa_utils::LogMessage::Warn(msg),
-                LogSpan::Error => boa_utils::LogMessage::Error(msg),
-            })
-            .collect()
-    }
+// SAFETY: the sink holds no `Gc` pointers.
+unsafe impl Trace for ConsoleSink {
+    boa_engine::gc::empty_trace!();
 }
 
-impl BoaConsoleLogger {
-    pub fn take(&mut self) -> Logs {
-        std::mem::take(&mut self.0)
+impl Logger for ConsoleSink {
+    fn log(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+        self.push(StepLogLevel::Log, msg);
+        Ok(())
     }
-}
 
-#[inline]
-fn take_console_logs() -> Logs {
-    let logs = boa_utils::inspect_logger(|logger| logger.take());
-    logs.into_iter()
-        .map(|msg| match msg {
-            boa_utils::LogMessage::Log(msg) => (LogSpan::Log, msg),
-            boa_utils::LogMessage::Info(msg) => (LogSpan::Info, msg),
-            boa_utils::LogMessage::Warn(msg) => (LogSpan::Warn, msg),
-            boa_utils::LogMessage::Error(msg) => (LogSpan::Error, msg),
-        })
-        .collect()
+    fn info(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+        self.push(StepLogLevel::Info, msg);
+        Ok(())
+    }
+
+    fn warn(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+        self.push(StepLogLevel::Warn, msg);
+        Ok(())
+    }
+
+    fn error(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+        self.push(StepLogLevel::Error, msg);
+        Ok(())
+    }
 }
 
 pub struct JSRunner {
@@ -142,6 +117,17 @@ impl JSRunner {
     }
 }
 
+/// Registers the Web APIs scripts may use. Only pure ones: timers, fetch and
+/// other time- or IO-bound APIs would make a transform's output depend on
+/// more than its input.
+fn register_web_apis(context: &mut Context) -> JsResult<()> {
+    boa_runtime::base64::register(None, context)?;
+    boa_runtime::clone::register(None, context)?;
+    boa_runtime::text::register(None, context)?;
+    boa_runtime::url::Url::register(None, context)?;
+    Ok(())
+}
+
 // boa engine is single-thread runner so that we can not define it in runner trait directly
 pub struct BoaRunner {
     ctx: Rc<RefCell<Context>>,
@@ -157,10 +143,11 @@ impl BoaRunner {
         ));
         let simple_loader = loader.clone_simple();
         let queue = Rc::new(SimpleJobExecutor::new());
-        let context = Context::builder()
+        let mut context = Context::builder()
             .job_executor(queue)
             .module_loader(loader.clone())
             .build()?;
+        register_web_apis(&mut context)?;
         Ok(Self {
             ctx: Rc::new(RefCell::new(context)),
             simple_loader,
@@ -168,12 +155,8 @@ impl BoaRunner {
         })
     }
 
-    pub fn setup_console(&self, logger: BoaConsoleLogger) -> Result<()> {
-        let ctx = &mut self.ctx.borrow_mut();
-        // it not concurrency safe. we should move to new boa_runtime console when it is ready for custom logger
-        boa_utils::set_logger(Box::new(logger) as Box<dyn boa_utils::LoggerBox>);
-        let console = Console::init(ctx);
-        ctx.register_global_property(js_string!(Console::NAME), console, Attribute::all())?;
+    pub fn setup_console(&self, logger: impl Logger + 'static) -> Result<()> {
+        Console::register_with_logger(logger, &mut self.ctx.borrow_mut())?;
         Ok(())
     }
 
@@ -227,97 +210,84 @@ impl BoaRunner {
     }
 }
 
-#[async_trait]
-impl Runner for JSRunner {
-    async fn process(&self, mapping: Mapping, path: &str) -> ProcessOutput {
-        let content = wrap_result!(
-            tokio::fs::read_to_string(path)
-                .await
-                .context("failed to read the script file")
-        );
-        self.process_honey(mapping, &content).await
-    }
-
-    async fn process_honey(&self, mapping: Mapping, script: &str) -> ProcessOutput {
-        let script = wrap_result!(wrap_script_if_not_esm(script));
-        let hash = crate::utils::help::get_uid("script");
-        let path = self.scripts_dir.join(format!("{hash}.mjs"));
-        wrap_result!(
-            tokio::fs::write(&path, script.as_bytes())
-                .await
-                .context("failed to write the script file")
-        );
-        // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
-        let (scripts_dir, cache_dir) = (self.scripts_dir.clone(), self.cache_dir.clone());
-        let res = tokio::task::spawn_blocking(move || {
-            let _logger_guard = BOA_LOGGER_LOCK
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let wrapped_fn = move || {
-                let mut logger = BoaConsoleLogger(Logs::new());
-                let boa_runner =
-                    wrap_result!(BoaRunner::try_new(scripts_dir, cache_dir), logger.take());
-                wrap_result!(boa_runner.setup_console(logger), take_console_logs());
-                let config = wrap_result!(
-                    serde_json::to_string(&mapping)
-                        .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    take_console_logs()
-                );
-                let config = serde_json::to_string(&config).unwrap(); // escape the string
-                let execute_module = format!(
-                    r#"import process from "./{hash}.mjs";
+/// Runs the script module `./{hash}.mjs` against `mapping` on the current
+/// thread. Everything the script logs goes to `console`.
+fn run_module(
+    scripts_dir: PathBuf,
+    cache_dir: PathBuf,
+    hash: &str,
+    mapping: Mapping,
+    console: ConsoleSink,
+) -> Result<Mapping> {
+    let boa_runner = BoaRunner::try_new(scripts_dir, cache_dir)?;
+    boa_runner.setup_console(console)?;
+    let config = serde_json::to_string(&mapping)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let config = serde_json::to_string(&config).unwrap(); // escape the string
+    let execute_module = format!(
+        r#"import process from "./{hash}.mjs";
         let config = JSON.parse({config});
         export let result = JSON.stringify(await process(config));
         "#
-                );
-                // let process_module = wrap_result!(
-                //     boa_runner.parse_module(&script, "process").map_err(|e| {
-                //         logs.error(format!("failed to parse the process module: {:?}", e));
-                //         e
-                //     }),
-                //     logs
-                // );
-                // wrap_result!(boa_runner.execute_module(&process_module));
-                let main_module = wrap_result!(
-                    boa_runner.parse_module(&execute_module, "main"),
-                    take_console_logs()
-                );
-                wrap_result!(boa_runner.execute_module(&main_module));
-                let ctx = boa_runner.get_ctx();
-                let namespace = main_module.namespace(&mut ctx.borrow_mut());
-                let result = wrap_result!(
-                    namespace.get(js_string!("result"), &mut ctx.borrow_mut()),
-                    take_console_logs()
-                );
-                let result = wrap_result!(
-                    result
-                        .as_string()
-                        .ok_or_else(|| JsNativeError::typ().with_message("Expected string"))
-                        .map(|str| str.to_std_string_escaped()),
-                    take_console_logs()
-                );
-                let mapping = wrap_result!(
-                    serde_json::from_str(&result)
-                        .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    take_console_logs()
-                );
-                (Ok::<Mapping, JsRunnerError>(mapping), take_console_logs())
-            };
-            let (res, logs) = wrapped_fn();
-            match res {
-                Ok(mapping) => (Ok(mapping), logs),
-                Err(e) => {
+    );
+    let main_module = boa_runner.parse_module(&execute_module, "main")?;
+    boa_runner.execute_module(&main_module)?;
+    let ctx = boa_runner.get_ctx();
+    let namespace = main_module.namespace(&mut ctx.borrow_mut());
+    let result = namespace.get(js_string!("result"), &mut ctx.borrow_mut())?;
+    let result = result
+        .as_string()
+        .ok_or_else(|| JsNativeError::typ().with_message("Expected string"))
+        .map(|str| str.to_std_string_escaped())?;
+    let mapping = serde_json::from_str(&result)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    Ok(mapping)
+}
+
+#[async_trait]
+impl Runner for JSRunner {
+    async fn process(
+        &self,
+        mapping: Mapping,
+        path: &str,
+        logs: &mut Vec<StepLogEntry>,
+    ) -> anyhow::Result<Mapping> {
+        let content = tokio::fs::read_to_string(path)
+            .await
+            .context("failed to read the script file")?;
+        self.process_honey(mapping, &content, logs).await
+    }
+
+    async fn process_honey(
+        &self,
+        mapping: Mapping,
+        script: &str,
+        logs: &mut Vec<StepLogEntry>,
+    ) -> anyhow::Result<Mapping> {
+        let script = wrap_script_if_not_esm(script)?;
+        let hash = crate::utils::help::get_uid("script");
+        let path = self.scripts_dir.join(format!("{hash}.mjs"));
+        tokio::fs::write(&path, script.as_bytes())
+            .await
+            .context("failed to write the script file")?;
+        // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
+        let (scripts_dir, cache_dir) = (self.scripts_dir.clone(), self.cache_dir.clone());
+        let res = tokio::task::spawn_blocking(move || {
+            // The sink is not Send, so it lives on this thread with the boa
+            // context and only its entries cross back.
+            let console = ConsoleSink::default();
+            let result = run_module(scripts_dir, cache_dir, &hash, mapping, console.clone())
+                .map_err(|e| {
                     tracing::error!("error: {:?}", e);
-                    (Err(anyhow::anyhow!("{:?}", e)), logs)
-                }
-            }
+                    anyhow::anyhow!("{:?}", e)
+                });
+            (result, console.take())
         })
         .await;
         let _ = tokio::fs::remove_file(&path).await;
-        match res {
-            Ok(output) => output,
-            Err(e) => (Err(e.into()), vec![]),
-        }
+        let (result, run_logs) = res?;
+        logs.extend(run_logs);
+        result
     }
 }
 
@@ -435,6 +405,8 @@ mod utils {
 
 #[cfg(test)]
 mod test {
+    use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+
     /// The runner creates its scripts dir where it is told, runs the script
     /// from there and leaves nothing behind.
     #[tokio::test]
@@ -446,10 +418,11 @@ mod test {
         let runner = JSRunner::new(&dirs).unwrap();
         assert!(dirs.scripts.is_dir());
 
-        let (result, _) = runner
+        let result = runner
             .process_honey(
                 serde_yaml::from_str("a: 1").unwrap(),
                 "export default function main(config) { return config; }",
+                &mut Vec::new(),
             )
             .await;
         let expected: serde_yaml::Mapping = serde_yaml::from_str("a: 1").unwrap();
@@ -474,10 +447,118 @@ mod test {
                 return config;
             }
         "#;
-        let (result, _) = runner.process_honey(input, script).await;
+        let result = runner.process_honey(input, script, &mut Vec::new()).await;
         let expected: serde_yaml::Mapping =
             serde_yaml::from_str("existing: true\na:\n  b: 1\n  c: 2\n").unwrap();
         assert_eq!(result.unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn logs_written_before_a_throw_survive_the_failure() {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let mut logs = Vec::new();
+        let result = runner
+            .process_honey(
+                serde_yaml::Mapping::new(),
+                "export default function main(config) { console.log('before'); throw new Error('boom'); }",
+                &mut logs,
+            )
+            .await;
+        assert!(result.is_err());
+        assert_eq!(logs, vec![StepLogEntry::new(StepLogLevel::Log, "before")]);
+    }
+
+    async fn run_js(script: &str, input: &str) -> serde_yaml::Mapping {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let mut logs = Vec::new();
+        runner
+            .process_honey(serde_yaml::from_str(input).unwrap(), script, &mut logs)
+            .await
+            .unwrap_or_else(|e| panic!("{e:?}\nlogs: {logs:?}"))
+    }
+
+    fn yaml(text: &str) -> serde_yaml::Mapping {
+        serde_yaml::from_str(text).unwrap()
+    }
+
+    #[tokio::test]
+    async fn scripts_can_deep_copy_with_structured_clone() {
+        let output = run_js(
+            "export default function main(config) { const copy = structuredClone(config); copy.a.b = 2; config.copied = copy.a.b; return config; }",
+            "a:\n  b: 1\n",
+        )
+        .await;
+        assert_eq!(output, yaml("a:\n  b: 1\ncopied: 2\n"));
+    }
+
+    #[tokio::test]
+    async fn scripts_can_use_atob_and_btoa() {
+        let output = run_js(
+            "export default function main(config) { config.encoded = btoa('hello'); config.decoded = atob('aGVsbG8='); return config; }",
+            "{}",
+        )
+        .await;
+        assert_eq!(output, yaml("encoded: aGVsbG8=\ndecoded: hello\n"));
+    }
+
+    #[tokio::test]
+    async fn scripts_can_use_text_encoder_and_decoder() {
+        let output = run_js(
+            "export default function main(config) { const bytes = new TextEncoder().encode('你好'); config.length = bytes.length; config.text = new TextDecoder().decode(bytes); return config; }",
+            "{}",
+        )
+        .await;
+        assert_eq!(output, yaml("length: 6\ntext: 你好\n"));
+    }
+
+    #[tokio::test]
+    async fn scripts_can_parse_share_links_with_url() {
+        let output = run_js(
+            "export default function main(config) { const url = new URL('trojan://secret@example.com:443?sni=a.com#Node%201'); config.user = url.username; config.host = url.hostname; config.port = url.port; config.search = url.search; config.name = decodeURIComponent(url.hash.slice(1)); return config; }",
+            "{}",
+        )
+        .await;
+        assert_eq!(
+            output,
+            yaml(
+                "user: secret\nhost: example.com\nport: '443'\nsearch: ?sni=a.com\nname: Node 1\n"
+            )
+        );
+    }
+
+    /// Each run owns its console sink, so runs executing at the same time
+    /// never see each other's logs.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_runs_keep_their_logs_apart() {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let script = |tag: &str| {
+            format!(
+                "export default function main(config) {{ for (let i = 0; i < 50; i++) console.log('{tag}'); return config; }}"
+            )
+        };
+        let (script_a, script_b) = (script("a"), script("b"));
+        let (mut logs_a, mut logs_b) = (Vec::new(), Vec::new());
+        let (a, b) = tokio::join!(
+            runner.process_honey(serde_yaml::Mapping::new(), &script_a, &mut logs_a),
+            runner.process_honey(serde_yaml::Mapping::new(), &script_b, &mut logs_b),
+        );
+        for (tag, result, logs) in [("a", a, logs_a), ("b", b, logs_b)] {
+            result.unwrap();
+            assert_eq!(logs.len(), 50);
+            assert!(
+                logs.iter().all(|entry| entry.message == tag),
+                "{tag}: {logs:?}"
+            );
+        }
     }
 
     #[test]
@@ -584,7 +665,8 @@ const foreignNameservers = [
             .build()
             .unwrap()
             .block_on(async move {
-                let (res, logs) = runner.process_honey(mapping, script).await;
+                let mut logs = Vec::new();
+                let res = runner.process_honey(mapping, script, &mut logs).await;
                 eprintln!("logs: {logs:?}");
                 let mapping = res.unwrap();
                 assert_eq!(
@@ -602,10 +684,13 @@ const foreignNameservers = [
                         "Test".to_string()
                     ),])
                 );
-                let outs = serde_json::to_string(&logs).unwrap();
                 assert_eq!(
-                    outs,
-                    r#"[["log","Test console log"],["warn","Test console log"],["error","Test console log"]]"#
+                    logs,
+                    vec![
+                        StepLogEntry::new(StepLogLevel::Log, "Test console log"),
+                        StepLogEntry::new(StepLogLevel::Warn, "Test console log"),
+                        StepLogEntry::new(StepLogLevel::Error, "Test console log"),
+                    ]
                 );
             });
     }
@@ -657,7 +742,8 @@ const foreignNameservers = [
             .build()
             .unwrap()
             .block_on(async move {
-                let (res, logs) = runner.process_honey(mapping, script).await;
+                let mut logs = Vec::new();
+                let res = runner.process_honey(mapping, script, &mut logs).await;
                 eprintln!("logs: {logs:?}");
                 let mapping = res.unwrap();
                 assert_eq!(
@@ -670,8 +756,7 @@ const foreignNameservers = [
                         serde_yaml::Value::String("d29ybGQ=".to_string()),
                     ])
                 );
-                let outs = serde_json::to_string(&logs).unwrap();
-                assert_eq!(outs, r#"[]"#);
+                assert_eq!(logs, vec![]);
             });
     }
 
@@ -721,7 +806,8 @@ const foreignNameservers = [
             .build()
             .unwrap()
             .block_on(async move {
-                let (res, logs) = runner.process_honey(mapping, script).await;
+                let mut logs = Vec::new();
+                let res = runner.process_honey(mapping, script, &mut logs).await;
                 eprintln!("logs: {logs:?}");
                 let mapping = res.unwrap();
                 assert_eq!(
@@ -734,8 +820,7 @@ const foreignNameservers = [
                         serde_yaml::Value::String("d29ybGQ=".to_string()),
                     ])
                 );
-                let outs = serde_json::to_string(&logs).unwrap();
-                assert_eq!(outs, r#"[]"#);
+                assert_eq!(logs, vec![]);
             });
     }
 }

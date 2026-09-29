@@ -72,14 +72,18 @@ export const useClashProxies = () => {
     },
   })
 
-  const { refetch: refetchProxies } = proxies
-
+  // Refetch through the client: reading any property of `proxies` during
+  // render makes it a tracked property, and the query then re-renders this
+  // hook only when a tracked property changes.
   const selectProxy = useCallback(
     async (group: string, name: string) => {
       await mutateSelectProxy({ group, name })
-      await refetchProxies()
+      await queryClient.refetchQueries({
+        queryKey: queries.getProxies().queryKey,
+        exact: true,
+      })
     },
-    [mutateSelectProxy, refetchProxies],
+    [mutateSelectProxy, queryClient],
   )
 
   const getQueryData = () => {

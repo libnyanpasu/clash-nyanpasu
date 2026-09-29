@@ -7,3 +7,4 @@ mod scheduler;
 pub mod sources;
 
 pub use actor::*;
+pub use error::*;

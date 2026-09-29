@@ -394,15 +394,15 @@ mod utils {
     pub fn wrap_script_if_not_esm(script: &str) -> Result<Cow<'_, str>, anyhow::Error> {
         let allocator = Allocator::default();
         let source_type = SourceType::default().with_module(true);
-        let source_text = script.trim_matches(['\t', '\n', '\r', ' ']);
-        let result = Parser::new(&allocator, source_text, source_type).parse();
+        // Parse the script as given: the spans below are inserted back into it.
+        let result = Parser::new(&allocator, script, source_type).parse();
 
         if !result.diagnostics.is_empty() {
             let mut errors = String::new();
             for error in result.diagnostics {
                 errors.push_str(&format!(
                     "{:?}\n",
-                    error.with_source_code(source_text.to_string())
+                    error.with_source_code(script.to_string())
                 ));
             }
             return Err(anyhow::anyhow!("parse error: {}", errors));
@@ -420,7 +420,7 @@ mod utils {
         match visitor
             .declared_functions
             .iter()
-            .find(|(name, _)| name.contains("main"))
+            .find(|(name, _)| name == "main")
         {
             Some((_, span)) => {
                 // just insert `export default` before the function
@@ -500,6 +500,29 @@ mod test {
         assert_eq!(
             script,
             "export default function main(config) {\n            return config\n        };"
+        );
+    }
+
+    /// Leading blank lines are part of the script, so the insert offset
+    /// must be taken from the script itself, not from a trimmed copy.
+    #[test]
+    fn wrap_inserts_export_before_main_after_leading_blank_lines() {
+        let script =
+            "\n\n// helper\nconst answer = 42;\nfunction main(config) {\n  return config;\n}\n";
+        let script = super::utils::wrap_script_if_not_esm(script).unwrap();
+        assert_eq!(
+            script,
+            "\n\n// helper\nconst answer = 42;\nexport default function main(config) {\n  return config;\n}\n"
+        );
+    }
+
+    #[test]
+    fn wrap_exports_main_rather_than_a_function_whose_name_contains_main() {
+        let script = "function mainHelper(config) {\n  return config;\n}\nfunction main(config) {\n  return mainHelper(config);\n}\n";
+        let script = super::utils::wrap_script_if_not_esm(script).unwrap();
+        assert_eq!(
+            script,
+            "function mainHelper(config) {\n  return config;\n}\nexport default function main(config) {\n  return mainHelper(config);\n}\n"
         );
     }
 

@@ -258,7 +258,7 @@ export default function ChainGraph({
 
   return (
     <div
-      className="bg-surface h-[65vh] overflow-auto rounded-lg"
+      className="bg-surface h-[65vh] overflow-auto rounded-lg @[40rem]:h-auto @[40rem]:min-h-0 @[40rem]:flex-1"
       onScroll={() => setHovered(undefined)}
     >
       <div

@@ -11,7 +11,7 @@ export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
       role="region"
       aria-label={m.inspect_diff()}
       tabIndex={0}
-      className="bg-surface text-on-surface focus-visible:outline-primary h-[55vh] min-h-64 overflow-auto rounded-lg text-xs focus-visible:outline-2"
+      className="bg-surface text-on-surface focus-visible:outline-primary h-[55vh] min-h-64 overflow-auto rounded-lg text-xs focus-visible:outline-2 @[40rem]:h-auto @[40rem]:min-h-48 @[40rem]:flex-1"
     >
       <table className="min-w-full border-collapse font-mono">
         <thead className="sr-only">

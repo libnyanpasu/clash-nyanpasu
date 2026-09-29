@@ -34,6 +34,7 @@
     "lint:ts:interface": "tsc --noEmit --project ./frontend/interface/tsconfig.json",
     "lint:ts:nyanpasu": "tsc --noEmit --project ./frontend/nyanpasu/tsconfig.json",
     "lint:ts:utils": "tsc --noEmit --project ./frontend/utils/tsconfig.json",
+    "lint:ts:perf": "tsc --noEmit --project ./frontend/nyanpasu/perf/tsconfig.json",
     "lint:ts:tests": "tsc --noEmit --project tsconfig.test.json",
     "lint:clippy": "cargo clippy --manifest-path ./backend/Cargo.toml --all-targets --all-features",
     "lint:rustfmt": "cargo fmt --manifest-path ./backend/Cargo.toml --all -- --check",

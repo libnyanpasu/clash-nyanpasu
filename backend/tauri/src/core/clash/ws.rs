@@ -9,9 +9,12 @@ use tauri_specta::Event;
 use tokio::{sync::broadcast, task::JoinHandle};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::core::actor_v2::{
-    CoreClient,
-    api::{ApiClient, ApiError},
+use crate::core::{
+    actor_v2::{
+        CoreClient,
+        api::{ApiClient, ApiError},
+    },
+    clash::connection_rates::{ConnectionCounters, ConnectionRates},
 };
 
 const MAX_CONNECTIONS_HISTORY: usize = 32;
@@ -255,7 +258,7 @@ struct State {
     sequence: u64,
     history: ClashWsHistory,
     recording: ClashWsRecording,
-    baseline: Option<(u64, u64, tokio::time::Instant)>,
+    previous: Option<ConnectionCounters>,
 }
 impl Drop for State {
     fn drop(&mut self) {
@@ -290,7 +293,7 @@ impl State {
     fn reset(&mut self) {
         self.api = None;
         self.history = ClashWsHistory::default();
-        self.baseline = None;
+        self.previous = None;
         self.status(ClashConnectionsConnectorState::Disconnected);
         let _ = self
             .args
@@ -318,32 +321,19 @@ impl State {
     fn update(&mut self, sample: Sample) {
         match sample {
             Sample::Connections(sample) => {
-                let (Ok(download_total), Ok(upload_total)) = (
-                    u64::try_from(sample.download_total),
-                    u64::try_from(sample.upload_total),
-                ) else {
+                let now = tokio::time::Instant::now();
+                let Some(derived) =
+                    ConnectionRates::derive(self.previous.as_ref(), &sample, now, false)
+                else {
                     return;
                 };
-                let now = tokio::time::Instant::now();
-                let (download_speed, upload_speed) = self
-                    .baseline
-                    .map(|(down, up, then)| {
-                        let seconds = now.duration_since(then).as_secs_f64();
-                        if seconds == 0.0 {
-                            return (0, 0);
-                        }
-                        (
-                            (download_total.saturating_sub(down) as f64 / seconds) as u64,
-                            (upload_total.saturating_sub(up) as f64 / seconds) as u64,
-                        )
-                    })
-                    .unwrap_or_default();
-                self.baseline = Some((download_total, upload_total, now));
+                let summary = derived.summary;
+                self.previous = Some(derived.counters);
                 let info = ClashConnectionsInfo {
-                    download_total,
-                    upload_total,
-                    download_speed,
-                    upload_speed,
+                    download_total: summary.download_total,
+                    upload_total: summary.upload_total,
+                    download_speed: summary.download_speed,
+                    upload_speed: summary.upload_speed,
                 };
                 let _ = self
                     .args
@@ -351,10 +341,10 @@ impl State {
                     .send(ClashConnectionsConnectorEvent::Update(info));
                 // The UI keeps its existing extensible JSON DTO at the IPC boundary.
                 let snapshot = ClashWsConnectionSnapshot {
-                    download_total,
-                    upload_total,
-                    download_speed,
-                    upload_speed,
+                    download_total: summary.download_total,
+                    upload_total: summary.upload_total,
+                    download_speed: summary.download_speed,
+                    upload_speed: summary.upload_speed,
                     memory: sample.memory,
                     connections: sample.connections.map(|connections| {
                         connections
@@ -585,7 +575,7 @@ impl Actor for StreamsActor {
             sequence: 0,
             history: Default::default(),
             recording: Default::default(),
-            baseline: None,
+            previous: None,
         })
     }
     async fn handle(
@@ -639,7 +629,7 @@ impl Actor for StreamsActor {
                             accepted = state.accepts(&api);
                             if accepted {
                                 if status != ClashConnectionsConnectorState::Connected {
-                                    state.baseline = None;
+                                    state.previous = None;
                                 }
                                 state.status(status);
                             }

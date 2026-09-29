@@ -1,4 +1,7 @@
-import { useClashWSContext } from '@interface/provider/clash-ws-provider'
+import {
+  useClashWSHistory,
+  useClashWSStatus,
+} from '@interface/provider/clash-ws-provider'
 
 export type ClashTraffic = {
   up: number
@@ -6,7 +9,8 @@ export type ClashTraffic = {
 }
 
 export const useClashTraffic = () => {
-  const { traffic, isLoading, error } = useClashWSContext()
+  const traffic = useClashWSHistory('traffic')
+  const { isLoading, error } = useClashWSStatus()
 
   return {
     data: traffic,

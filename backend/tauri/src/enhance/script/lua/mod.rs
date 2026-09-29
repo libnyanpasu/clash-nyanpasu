@@ -1,9 +1,10 @@
 use mlua::prelude::*;
-use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+use nyanpasu_config::runtime::executor::StepLogEntry;
 use serde_yaml::{Mapping, Value};
 
 use super::runner::{ConsoleSink, Runner};
 
+mod console;
 pub mod ordered_map;
 
 pub fn create_lua_context() -> Result<Lua, anyhow::Error> {
@@ -13,30 +14,11 @@ pub fn create_lua_context() -> Result<Lua, anyhow::Error> {
     Ok(lua)
 }
 
-fn create_console(lua: &Lua, console: &ConsoleSink) -> Result<(), anyhow::Error> {
-    let table = lua.create_table()?;
-    for (name, level) in [
-        ("log", StepLogLevel::Log),
-        ("info", StepLogLevel::Info),
-        ("warn", StepLogLevel::Warn),
-        ("error", StepLogLevel::Error),
-    ] {
-        let console = console.clone();
-        let function = lua.create_function(move |_, msg: String| {
-            console.push(level, msg);
-            Ok(())
-        })?;
-        table.set(name, function)?;
-    }
-    lua.globals().set("console", table)?;
-    Ok(())
-}
-
 /// Runs `script` against `mapping`. Everything the script logs goes to
 /// `console`.
 fn run_script(mapping: Mapping, script: &str, console: &ConsoleSink) -> anyhow::Result<Mapping> {
     let lua = create_lua_context()?;
-    create_console(&lua, console)?;
+    console::register(&lua, console)?;
     let config = ordered_map::to_lua(&lua, &Value::Mapping(mapping))
         .context("Failed to convert mapping to value")?;
     lua.globals()
@@ -127,6 +109,7 @@ mod tests {
     async fn logs_written_before_an_error_survive_the_failure() {
         use super::*;
         use crate::enhance::script::runner::Runner;
+        use nyanpasu_config::runtime::executor::StepLogLevel;
 
         let mut logs = Vec::new();
         let result = LuaRunner

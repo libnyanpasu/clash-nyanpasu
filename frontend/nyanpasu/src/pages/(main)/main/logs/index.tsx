@@ -6,7 +6,11 @@ import {
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
 import { ContextMenuItem } from '@/components/ui/context-menu'
-import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
+import {
+  ScrollArea,
+  useScrollArea,
+  useScrollAreaViewport,
+} from '@/components/ui/scroll-area'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { useClashLogs } from '@nyanpasu/interface'
@@ -48,7 +52,8 @@ const Viewer = ({
         level.replace('warning', 'warn'),
     )
   }, [logs, level])
-  const { isBottom, viewportRef, scrollDirection } = useScrollArea()
+  const { isBottom, scrollDirection } = useScrollArea()
+  const { viewportRef } = useScrollAreaViewport()
   const rowVirtualizer = useVirtualizer({
     count: filteredLogs.length,
     getScrollElement: () => viewportRef.current,

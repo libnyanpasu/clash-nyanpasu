@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import HighlightText from '@/components/ui/highlight-text'
-import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea, useScrollAreaViewport } from '@/components/ui/scroll-area'
 import {
   Tooltip,
   TooltipContent,
@@ -71,7 +71,7 @@ const Viewer = ({ search }: { search: string }) => {
 
   const { data: clashConnections } = useClashConnections()
 
-  const { viewportRef } = useScrollArea()
+  const { viewportRef } = useScrollAreaViewport()
 
   const data = useMemo<ConnectionRow[]>(() => {
     const allSnapshots = clashConnections ?? []

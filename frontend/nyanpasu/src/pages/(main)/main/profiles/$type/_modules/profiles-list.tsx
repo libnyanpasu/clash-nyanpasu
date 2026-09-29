@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import { LinearProgress } from '@/components/ui/progress'
-import { useScrollArea } from '@/components/ui/scroll-area'
+import { useScrollAreaViewport } from '@/components/ui/scroll-area'
 import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import { move } from '@dnd-kit/helpers'
@@ -225,7 +225,7 @@ const useListOverflows = (
   listRef: RefObject<HTMLElement | null>,
   itemCount: number,
 ) => {
-  const { viewportRef } = useScrollArea()
+  const { viewportRef } = useScrollAreaViewport()
 
   const [overflows, setOverflows] = useState(false)
 

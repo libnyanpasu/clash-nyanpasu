@@ -4,7 +4,7 @@ import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
 import { useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { useScrollArea } from '@/components/ui/scroll-area'
+import { useScrollAreaViewport } from '@/components/ui/scroll-area'
 import {
   ClashProxiesQueryGroupItem,
   useClashProxies,
@@ -71,7 +71,7 @@ function RouteComponent() {
     return proxies?.groups.find((group) => group.name === proxyGroupName)
   }, [proxies, proxyGroupName, proxyMode])
 
-  const { viewportRef } = useScrollArea()
+  const { viewportRef } = useScrollAreaViewport()
 
   // define the number of lanes based on the container breakpoint
   const lanes = useContainerBreakpointValue(

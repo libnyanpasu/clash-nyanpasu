@@ -8,7 +8,7 @@ import {
 } from '@nyanpasu/interface/ipc'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
-import { useScrollArea } from '@/components/ui/scroll-area'
+import { useScrollAreaViewport } from '@/components/ui/scroll-area'
 import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
@@ -84,7 +84,7 @@ function RouteComponent() {
     return proxies?.groups.find((group) => group.name === proxyGroupName)
   }, [proxies, proxyGroupName, proxyMode])
 
-  const { viewportRef } = useScrollArea()
+  const { viewportRef } = useScrollAreaViewport()
 
   const virtualizer = useVirtualizer({
     count: currentGroup?.all?.length || 0,

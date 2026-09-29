@@ -52,7 +52,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_all_storage_items,
             ipc::get_hotkeys,
             ipc::get_core_dir,
-            ipc::get_clash_ws_connections_state,
             ipc::get_clash_ws_snapshot,
             ipc::check_update,
             ipc::get_release_channel,
@@ -129,7 +128,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ],
     )
     .events(collect_events![
-        core::clash::ClashConnectionsEvent,
         core::clash::ws::ClashWsEvent,
         window::WindowMessageEvent,
         window::WindowReadyEvent,

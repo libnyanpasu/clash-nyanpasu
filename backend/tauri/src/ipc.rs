@@ -1121,14 +1121,6 @@ pub fn clear_storage(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_clash_ws_connections_state(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::ws::ClashConnectionsConnectorState> {
-    Ok(client.clash_ws_snapshot().await?.state)
-}
-
-#[tauri::command]
-#[specta::specta]
 pub async fn get_clash_ws_snapshot(
     client: tauri::State<'_, NyanpasuClient>,
 ) -> Result<crate::core::clash::ws::ClashWsSnapshot> {

@@ -152,10 +152,6 @@ export const commands = {
     typedError<StorageEntry[], string>(__TAURI_INVOKE('get_all_storage_items')),
   getHotkeys: () => typedError<string[], string>(__TAURI_INVOKE('get_hotkeys')),
   getCoreDir: () => typedError<string, string>(__TAURI_INVOKE('get_core_dir')),
-  getClashWsConnectionsState: () =>
-    typedError<ClashConnectionsConnectorState, string>(
-      __TAURI_INVOKE('get_clash_ws_connections_state'),
-    ),
   getClashWsSnapshot: () =>
     typedError<ClashWsSnapshot, string>(
       __TAURI_INVOKE('get_clash_ws_snapshot'),
@@ -438,9 +434,6 @@ export const commands = {
 
 /** Events */
 export const events = {
-  clashConnectionsEvent: makeEvent<ClashConnectionsEvent>(
-    'clash-connections-event',
-  ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
@@ -651,21 +644,8 @@ export type ClashConnection_Serialize = {
   uploadSpeed: number
 } & Connection_Serialize
 
-export type ClashConnectionsConnectorEvent =
-  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'update'; data: ClashConnectionsInfo }
-
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'
-
-export type ClashConnectionsEvent = ClashConnectionsConnectorEvent
-
-export type ClashConnectionsInfo = {
-  downloadTotal: number
-  uploadTotal: number
-  downloadSpeed: number
-  uploadSpeed: number
-}
 
 /**  Pushed on every connection sample; size is independent of connection count. */
 export type ClashConnectionsSummary = {
@@ -3533,13 +3513,6 @@ export const queries = {
     queryOptions({
       queryKey: ['getCoreDir', ...args],
       queryFn: () => commands.getCoreDir(...args),
-    }),
-  getClashWsConnectionsState: (
-    ...args: Parameters<typeof commands.getClashWsConnectionsState>
-  ) =>
-    queryOptions({
-      queryKey: ['getClashWsConnectionsState', ...args],
-      queryFn: () => commands.getClashWsConnectionsState(...args),
     }),
   getClashWsSnapshot: (
     ...args: Parameters<typeof commands.getClashWsSnapshot>

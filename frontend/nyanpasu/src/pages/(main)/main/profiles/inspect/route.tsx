@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   SegmentedButton,
@@ -7,6 +7,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
 import {
+  events,
   queries,
   unwrapQueryOptions,
   type ConfigExecutionRole,
@@ -14,8 +15,10 @@ import {
   type RuntimeInspection,
   type RuntimeInspectionContent,
 } from '@nyanpasu/interface'
-import { skipToken, useQuery } from '@tanstack/react-query'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import LogLevelBadge from '../../logs/_modules/log-level-badge'
+import ChangedFields from './_modules/changed-fields'
 import DiffViewer from './_modules/diff-viewer'
 import YamlViewer from './_modules/yaml-viewer'
 
@@ -67,6 +70,7 @@ function stepLabel(tag: OperatorTag): string {
 }
 
 function RouteComponent() {
+  const queryClient = useQueryClient()
   const [appliedView, setAppliedView] = useState(false)
   const inspectionQuery = appliedView
     ? queries.inspectAppliedRuntime()
@@ -77,27 +81,33 @@ function RouteComponent() {
     retry: false,
   })
 
+  // Every rebuild or apply publishes a configuration status change, so the
+  // snapshots are refetched on it instead of by hand.
+  useEffect(() => {
+    const listener = events.configurationStatusChanged
+      .listen(() => {
+        for (const query of [
+          queries.inspectRuntime(),
+          queries.inspectAppliedRuntime(),
+        ]) {
+          queryClient.invalidateQueries({ queryKey: query.queryKey })
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      listener.then((unlisten) => unlisten?.())
+    }
+  }, [queryClient])
+
   return (
-    <section className="@container flex min-w-0 flex-1 flex-col gap-4 p-4 md:p-6">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">{m.inspect_title()}</h1>
-          <p className="text-on-surface-variant mt-1 text-sm">
-            {m.inspect_description()}
-          </p>
-        </div>
-        <Button
-          className="shrink-0"
-          onClick={() => inspection.refetch()}
-          loading={inspection.isFetching}
-        >
-          {m.inspect_refresh()}
-        </Button>
+    <section className="@container flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0">
+      <header className="bg-mixed-background sticky top-0 z-50 flex items-center justify-between gap-4 py-4">
+        <h1 className="text-lg font-bold">{m.inspect_title()}</h1>
+        <label className="flex items-center gap-2 text-sm">
+          {m.inspect_last_applied()}
+          <Switch checked={appliedView} onCheckedChange={setAppliedView} />
+        </label>
       </header>
-      <label className="flex items-center gap-2 text-sm">
-        <Switch checked={appliedView} onCheckedChange={setAppliedView} />
-        {m.inspect_last_applied()}
-      </label>
       {inspection.isPending && <p role="status">{m.inspect_loading()}</p>}
       {inspection.isError && (
         <p role="alert">
@@ -190,14 +200,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
             <h2 className="font-medium">
               #{selected.id + 1} {stepLabel(selected.tag)}
             </h2>
-            <div className="text-on-surface-variant text-sm">
-              {m.inspect_fields()}:{' '}
-              {selected.changed_fields === null
-                ? m.inspect_no_baseline()
-                : selected.changed_fields.length === 0
-                  ? m.inspect_unchanged()
-                  : selected.changed_fields.join(', ')}
-            </div>
+            <ChangedFields key={selected.id} fields={selected.changed_fields} />
             {showAll && selected.next.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span>{m.inspect_next()}</span>
@@ -248,18 +251,28 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                     {m.inspect_diff_independent()}
                   </p>
                 )}
-                <h3 className="text-sm font-medium">{m.inspect_logs()}</h3>
-                {content.data.logs.length === 0 ? (
-                  <p className="text-on-surface-variant text-sm">
-                    {m.inspect_no_logs()}
-                  </p>
-                ) : (
-                  <pre className="bg-surface max-h-48 overflow-auto rounded-lg p-3 text-xs break-words whitespace-pre-wrap">
-                    {content.data.logs
-                      .map((log) => `[${log.level}] ${log.message}`)
-                      .join('\n')}
-                  </pre>
-                )}
+                <section className="mt-3 flex flex-col gap-2">
+                  <h3 className="text-sm font-medium">{m.inspect_logs()}</h3>
+                  {content.data.logs.length === 0 ? (
+                    <p className="text-on-surface-variant text-sm">
+                      {m.inspect_no_logs()}
+                    </p>
+                  ) : (
+                    <ol className="bg-surface divide-outline-variant/50 max-h-64 divide-y overflow-auto rounded-lg">
+                      {content.data.logs.map((log, index) => (
+                        <li
+                          key={index}
+                          className="flex items-start gap-3 px-3 py-2"
+                        >
+                          <LogLevelBadge>{log.level}</LogLevelBadge>
+                          <span className="text-on-surface min-w-0 flex-1 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
+                            {log.message}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
               </>
             )}
           </div>

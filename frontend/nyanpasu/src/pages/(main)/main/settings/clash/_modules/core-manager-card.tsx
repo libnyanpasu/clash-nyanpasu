@@ -23,8 +23,8 @@ import {
   ClashCore,
   ClashCoresDetail,
   UpdaterSummary,
-  useClashConnections,
   useClashCores,
+  useDeleteClashConnections,
   useSetting,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
@@ -274,7 +274,7 @@ export default function CoreManagerCard() {
     fetchRemote,
   } = useClashCores()
 
-  const { deleteConnections } = useClashConnections()
+  const deleteConnections = useDeleteClashConnections()
 
   const { value: currentCoreKey } = useSetting('core')
 

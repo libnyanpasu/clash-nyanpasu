@@ -52,14 +52,14 @@ export type ClashConnectionMetadata = {
   specialRules?: string
 }
 
-export const useClashConnections = () => {
-  const connections = useClashWSHistory('connections')
-  const { isLoading, error } = useClashWSStatus()
+// Deleting does not read the connection history, so callers that only close
+// connections do not re-render on every connection sample.
+export const useDeleteClashConnections = () => {
   const deleteConnectionsCommand = mutations.clashApiDeleteConnections
   const [deleteError, setDeleteError] = useState<unknown>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const deleteConnections = {
+  return {
     mutationKey: deleteConnectionsCommand.mutationKey,
     isPending: isDeleting,
     error: deleteError,
@@ -79,11 +79,15 @@ export const useClashConnections = () => {
       }
     },
   }
+}
+
+export const useClashConnections = () => {
+  const connections = useClashWSHistory('connections')
+  const { isLoading, error } = useClashWSStatus()
 
   return {
     data: connections,
     isLoading,
     error,
-    deleteConnections,
   }
 }

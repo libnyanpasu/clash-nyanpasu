@@ -22,7 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import {
-  useClashConnections,
+  useDeleteClashConnections,
   type ClashConnectionItem,
   type ClashConnectionMetadata,
 } from '@nyanpasu/interface'
@@ -139,7 +139,7 @@ export default function TableRow({
 }: ComponentProps<'tr'> & {
   data: ConnectionRow
 }) {
-  const { deleteConnections } = useClashConnections()
+  const deleteConnections = useDeleteClashConnections()
 
   const [open, setOpen] = useState(false)
 

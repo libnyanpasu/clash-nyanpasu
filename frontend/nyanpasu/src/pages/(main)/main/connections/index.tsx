@@ -20,7 +20,11 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
-import { ClashConnectionItem, useClashConnections } from '@nyanpasu/interface'
+import {
+  ClashConnectionItem,
+  useClashConnections,
+  useDeleteClashConnections,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -448,7 +452,7 @@ const Viewer = ({ search }: { search: string }) => {
 function RouteComponent() {
   const [search, setSearch] = useState('')
 
-  const { deleteConnections } = useClashConnections()
+  const deleteConnections = useDeleteClashConnections()
 
   const handleCloseAllConnections = useLockFn(async () => {
     await deleteConnections.mutateAsync(null)

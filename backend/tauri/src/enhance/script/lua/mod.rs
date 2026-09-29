@@ -82,10 +82,9 @@ fn run_script(mapping: Mapping, script: &str, console: &ConsoleSink) -> anyhow::
     lua.globals()
         .set("config", config)
         .context("Failed to set config")?;
-    let output = lua
-        .load(script)
-        .eval::<mlua::Value>()
-        .context("Failed to load script")?;
+    // Without a name mlua labels the chunk with this Rust call site, so
+    // errors and tracebacks would point at Rust source instead of the script.
+    let output = lua.load(script).set_name("=script").eval::<mlua::Value>()?;
     if !output.is_table() {
         anyhow::bail!("Script must return a table, data: {:?}", output);
     }
@@ -187,6 +186,25 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert_eq!(logs, vec![StepLogEntry::new(StepLogLevel::Log, "before")]);
+    }
+
+    #[tokio::test]
+    async fn errors_name_the_script_and_carry_the_traceback() {
+        use super::*;
+        use crate::enhance::script::runner::Runner;
+
+        let script = "local function helper()\n  error('boom')\nend\nhelper()\n";
+        let error = LuaRunner
+            .process_honey(Mapping::new(), script, &mut Vec::new())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.starts_with("runtime error: script:2: boom"),
+            "{error}"
+        );
+        assert!(error.contains("script:4: in main chunk"), "{error}");
+        assert!(!error.contains(".rs:"), "{error}");
     }
 
     #[test]

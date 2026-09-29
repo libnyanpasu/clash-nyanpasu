@@ -15,6 +15,7 @@ use crate::{
     },
     core::{actor_v2::local_host::CoreSpecError, service::control::ServiceCommandError},
     enhance::RuntimeBuildError,
+    utils::resolve::CoreVersionError,
 };
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.
@@ -146,11 +147,27 @@ pub enum RuntimeError {
     InstallCoreBinary { source: InstallCoreBinaryError },
     #[snafu(display("could not prepare the service install command: {source}"))]
     PrepareServiceInstallPrompt { source: ServiceCommandError },
+    #[snafu(display("could not read the version of the core: {source}"))]
+    ReadCoreVersion { source: CoreVersionError },
+
+    /// No runtime configuration has been built yet.
+    #[snafu(display("there is no runtime configuration yet"))]
+    NoRuntimeConfig,
     #[snafu(display("could not render the runtime configuration"))]
     SerializeRuntimeConfig {
         #[serde(skip)]
         source: serde_yaml::Error,
     },
+    #[snafu(display("could not convert the runtime configuration"))]
+    ConvertRuntimeConfig {
+        #[serde(skip)]
+        source: serde_json::Error,
+    },
+    /// A newer build replaced the snapshot the inspection was opened on.
+    #[snafu(display("the runtime snapshot changed; refresh the inspection"))]
+    RuntimeSnapshotChanged,
+    #[snafu(display("the runtime snapshot has no node {node_id}"))]
+    RuntimeNodeNotFound { node_id: u32 },
 }
 
 impl RuntimeError {
@@ -179,7 +196,12 @@ impl RuntimeError {
             | Self::ResolveCoreBinary { .. }
             | Self::InstallCoreBinary { .. }
             | Self::PrepareServiceInstallPrompt { .. }
-            | Self::SerializeRuntimeConfig { .. } => None,
+            | Self::ReadCoreVersion { .. }
+            | Self::NoRuntimeConfig
+            | Self::SerializeRuntimeConfig { .. }
+            | Self::ConvertRuntimeConfig { .. }
+            | Self::RuntimeSnapshotChanged
+            | Self::RuntimeNodeNotFound { .. } => None,
         }
     }
 

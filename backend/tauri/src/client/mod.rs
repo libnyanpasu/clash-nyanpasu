@@ -2809,7 +2809,15 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let client = test_client(&dir).await;
         assert!(client.inspect_runtime().await.is_none());
-        assert!(client.inspect_runtime_node("missing", 0).await.is_err());
+        assert!(matches!(
+            client.runtime_yaml().await,
+            Err(RuntimeError::NoRuntimeConfig)
+        ));
+        assert!(client.runtime_config().await.unwrap().is_none());
+        assert!(matches!(
+            client.inspect_runtime_node("missing", 0).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
         client.reconcile_core().await.unwrap();
         let first = client.inspect_runtime().await.unwrap();
         assert!(!first.nodes.is_empty());
@@ -2841,12 +2849,18 @@ pub(crate) mod tests {
         client.reconcile_core().await.unwrap();
         let second = client.inspect_runtime().await.unwrap();
         assert_ne!(first.snapshot_id, second.snapshot_id);
-        assert!(
+        assert!(matches!(
             client
                 .inspect_runtime_node(&first.snapshot_id, first.root_id)
-                .await
-                .is_err()
-        );
+                .await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        assert!(matches!(
+            client
+                .inspect_runtime_node(&second.snapshot_id, u32::MAX)
+                .await,
+            Err(RuntimeError::RuntimeNodeNotFound { node_id: u32::MAX })
+        ));
         assert!(
             client
                 .inspect_runtime_node(&second.snapshot_id, second.root_id)

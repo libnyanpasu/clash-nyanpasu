@@ -4,7 +4,7 @@
 
 /** Tanstack Query */
 import { mutationOptions, queryOptions } from '@tanstack/react-query'
-import { invoke as __TAURI_INVOKE } from '@tauri-apps/api/core'
+import { invoke as __TAURI_INVOKE, Channel } from '@tauri-apps/api/core'
 import * as __TAURI_EVENT from '@tauri-apps/api/event'
 
 /** Commands */
@@ -152,10 +152,6 @@ export const commands = {
     typedError<StorageEntry[], string>(__TAURI_INVOKE('get_all_storage_items')),
   getHotkeys: () => typedError<string[], string>(__TAURI_INVOKE('get_hotkeys')),
   getCoreDir: () => typedError<string, string>(__TAURI_INVOKE('get_core_dir')),
-  getClashWsConnectionsState: () =>
-    typedError<ClashConnectionsConnectorState, string>(
-      __TAURI_INVOKE('get_clash_ws_connections_state'),
-    ),
   getClashWsSnapshot: () =>
     typedError<ClashWsSnapshot, string>(
       __TAURI_INVOKE('get_clash_ws_snapshot'),
@@ -409,6 +405,16 @@ export const commands = {
     typedError<null, string>(
       __TAURI_INVOKE('clear_clash_ws_history', { kind }),
     ),
+  subscribeClashConnectionDetails: (
+    onFrame: Channel<ClashConnectionDetails_Deserialize>,
+  ) =>
+    typedError<SubscriptionId, string>(
+      __TAURI_INVOKE('subscribe_clash_connection_details', { onFrame }),
+    ),
+  unsubscribeClashConnectionDetails: (id: SubscriptionId) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('unsubscribe_clash_connection_details', { id }),
+    ),
   saveWindowSizeState: (label: string) =>
     typedError<null, string>(
       __TAURI_INVOKE('save_window_size_state', { label }),
@@ -428,9 +434,6 @@ export const commands = {
 
 /** Events */
 export const events = {
-  clashConnectionsEvent: makeEvent<ClashConnectionsEvent>(
-    'clash-connections-event',
-  ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
@@ -580,20 +583,83 @@ export type ClashConfigPatch_Serialize = {
   tun_stack?: TunStack | null
 }
 
-export type ClashConnectionsConnectorEvent =
-  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'update'; data: ClashConnectionsInfo }
+/**
+ *  One connection plus its derived rates, for IPC consumers that need the
+ *  per-connection detail (only built when `with_details` is set).
+ */
+export type ClashConnection =
+  ClashConnection_Serialize | ClashConnection_Deserialize
+
+/**
+ *  Latest per-connection detail frame, pushed only while at least one
+ *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
+ *  only the newest frame is kept, never a history.
+ */
+export type ClashConnectionDetails =
+  ClashConnectionDetails_Serialize | ClashConnectionDetails_Deserialize
+
+/**
+ *  Latest per-connection detail frame, pushed only while at least one
+ *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
+ *  only the newest frame is kept, never a history.
+ */
+export type ClashConnectionDetails_Deserialize = {
+  /**
+   *  Equal to the sequence of the `ConnectionsUpdated` event emitted for
+   *  the same sample, so a subscriber can align the two.
+   */
+  sequence: number
+  connections: ClashConnection_Deserialize[]
+}
+
+/**
+ *  Latest per-connection detail frame, pushed only while at least one
+ *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
+ *  only the newest frame is kept, never a history.
+ */
+export type ClashConnectionDetails_Serialize = {
+  /**
+   *  Equal to the sequence of the `ConnectionsUpdated` event emitted for
+   *  the same sample, so a subscriber can align the two.
+   */
+  sequence: number
+  connections: ClashConnection_Serialize[]
+}
+
+/**
+ *  One connection plus its derived rates, for IPC consumers that need the
+ *  per-connection detail (only built when `with_details` is set).
+ */
+export type ClashConnection_Deserialize = {
+  downloadSpeed: number
+  uploadSpeed: number
+} & Connection_Deserialize
+
+/**
+ *  One connection plus its derived rates, for IPC consumers that need the
+ *  per-connection detail (only built when `with_details` is set).
+ */
+export type ClashConnection_Serialize = {
+  downloadSpeed: number
+  uploadSpeed: number
+} & Connection_Serialize
 
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'
 
-export type ClashConnectionsEvent = ClashConnectionsConnectorEvent
-
-export type ClashConnectionsInfo = {
+/**  Pushed on every connection sample; size is independent of connection count. */
+export type ClashConnectionsSummary = {
   downloadTotal: number
   uploadTotal: number
   downloadSpeed: number
   uploadSpeed: number
+  memory: number | null
+  connectionCount: number
+  /**
+   *  Keyed by chain member name (group or node); summed over every
+   *  connection whose `chains` contains that name.
+   */
+  memberRates: { [key in string]: TrafficRate }
 }
 
 export type ClashControlChannel = 'prefer_ipc' | 'http_only'
@@ -670,15 +736,6 @@ export type ClashVersion = {
   meta: boolean | null
 }
 
-export type ClashWsConnectionSnapshot = {
-  downloadTotal: number
-  uploadTotal: number
-  downloadSpeed: number
-  uploadSpeed: number
-  memory: number | null
-  connections: any | null
-}
-
 export type ClashWsEvent = {
   sequence: number
   update: ClashWsUpdate
@@ -708,7 +765,7 @@ export type ClashWsSnapshot = {
   sequence: number
   state: ClashConnectionsConnectorState
   recording: ClashWsRecording
-  connections: ClashWsConnectionSnapshot[]
+  connections: ClashConnectionsSummary[]
   logs: ClashWsLog[]
   traffic: ClashWsTraffic[]
   memory: ClashWsMemory[]
@@ -722,7 +779,7 @@ export type ClashWsTraffic = {
 export type ClashWsUpdate =
   | { kind: 'reset'; data: ClashWsSnapshot }
   | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'connections_updated'; data: ClashWsConnectionSnapshot }
+  | { kind: 'connections_updated'; data: ClashConnectionsSummary }
   | { kind: 'log_appended'; data: ClashWsLog }
   | { kind: 'traffic_updated'; data: ClashWsTraffic }
   | { kind: 'memory_updated'; data: ClashWsMemory }
@@ -808,6 +865,9 @@ export type ConfigDefinition_Serialize =
       transforms?: ProfileId[]
     } & { source?: never })
 
+/**  Open response value; mutation and subscription enums remain closed. */
+export type ConfigEnum<T> = T | string
+
 /**  Why a config pipeline is being executed. */
 export type ConfigExecutionRole =
   /**  The final config selected by `Profiles.current`. */
@@ -859,6 +919,197 @@ export type ConfigurationStatus = {
 }
 
 export type ConfigurationStatusChanged = ConfigurationStatus
+
+export type Connection = Connection_Serialize | Connection_Deserialize
+
+export type ConnectionMetadata =
+  ConnectionMetadata_Serialize | ConnectionMetadata_Deserialize
+
+/**
+ *  Known `ConnectionMetadata` fields. Flattened into both [`ConnectionMetadata`]
+ *  (serialize) and [`ConnectionMetadataWire`] (deserialize) so they are only
+ *  defined once; see [`ConnectionMetadata::extra`] for the unknown-field split.
+ */
+export type ConnectionMetadataFields =
+  ConnectionMetadataFields_Serialize | ConnectionMetadataFields_Deserialize
+
+/**
+ *  Known `ConnectionMetadata` fields. Flattened into both [`ConnectionMetadata`]
+ *  (serialize) and [`ConnectionMetadataWire`] (deserialize) so they are only
+ *  defined once; see [`ConnectionMetadata::extra`] for the unknown-field split.
+ */
+export type ConnectionMetadataFields_Deserialize = {
+  network?: ConfigEnum<ConnectionNetwork> | null
+  type?: ConfigEnum<ConnectionType> | null
+  sourceIP?: string | null
+  destinationIP?: string | null
+  sourceGeoIP?: string[] | null
+  destinationGeoIP?: string[] | null
+  sourceIPASN?: string | null
+  destinationIPASN?: string | null
+  sourcePort?: string | null
+  destinationPort?: string | null
+  inboundIP?: string | null
+  inboundPort?: string | null
+  inboundName?: string | null
+  inboundUser?: string | null
+  rematchName?: string | null
+  host?: string | null
+  dnsMode?: ConfigEnum<DnsMode> | null
+  uid?: number | null
+  process?: string | null
+  processPath?: string | null
+  specialProxy?: string | null
+  specialRules?: string | null
+  remoteDestination?: string | null
+  dscp?: number | null
+  sniffHost?: string | null
+}
+
+/**
+ *  Known `ConnectionMetadata` fields. Flattened into both [`ConnectionMetadata`]
+ *  (serialize) and [`ConnectionMetadataWire`] (deserialize) so they are only
+ *  defined once; see [`ConnectionMetadata::extra`] for the unknown-field split.
+ */
+export type ConnectionMetadataFields_Serialize = {
+  network?: ConfigEnum<ConnectionNetwork> | null
+  type?: ConfigEnum<ConnectionType> | null
+  sourceIP?: string | null
+  destinationIP?: string | null
+  sourceGeoIP?: string[] | null
+  destinationGeoIP?: string[] | null
+  sourceIPASN?: string | null
+  destinationIPASN?: string | null
+  sourcePort?: string | null
+  destinationPort?: string | null
+  inboundIP?: string | null
+  inboundPort?: string | null
+  inboundName?: string | null
+  inboundUser?: string | null
+  rematchName?: string | null
+  host?: string | null
+  dnsMode?: ConfigEnum<DnsMode> | null
+  uid?: number | null
+  process?: string | null
+  processPath?: string | null
+  specialProxy?: string | null
+  specialRules?: string | null
+  remoteDestination?: string | null
+  dscp?: number | null
+  sniffHost?: string | null
+}
+
+/**  Deserialize-only mirror of [`ConnectionMetadata`]; see [`ConnectionWire`]. */
+export type ConnectionMetadataWire =
+  ConnectionMetadataWire_Serialize | ConnectionMetadataWire_Deserialize
+
+/**  Deserialize-only mirror of [`ConnectionMetadata`]; see [`ConnectionWire`]. */
+export type ConnectionMetadataWire_Deserialize =
+  ConnectionMetadataFields_Deserialize & { [key in string]: JsonValue | null }
+
+/**  Deserialize-only mirror of [`ConnectionMetadata`]; see [`ConnectionWire`]. */
+export type ConnectionMetadataWire_Serialize =
+  ConnectionMetadataFields_Serialize & { [key in string]: JsonValue | null }
+
+export type ConnectionMetadata_Deserialize = ConnectionMetadataWire_Deserialize
+
+export type ConnectionMetadata_Serialize = {
+  /**  See [`Connection::extra`]. */
+  _extra: { [key in string]: JsonValue | null }
+} & ConnectionMetadataFields_Serialize
+
+export type ConnectionNetwork = 'tcp' | 'udp' | 'all' | 'invalid'
+
+export type ConnectionType =
+  | 'HTTP'
+  | 'HTTPS'
+  | 'Socks4'
+  | 'Socks5'
+  | 'ShadowSocks'
+  | 'Snell'
+  | 'Vmess'
+  | 'Vless'
+  | 'Redir'
+  | 'TProxy'
+  | 'Trojan'
+  | 'Tunnel'
+  | 'Tun'
+  | 'Tuic'
+  | 'Hysteria2'
+  | 'AnyTLS'
+  | 'Mieru'
+  | 'Sudoku'
+  | 'TrustTunnel'
+  | 'ShadowQuic'
+  | 'Inner'
+  | 'Unknown'
+
+/**
+ *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
+ *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
+ *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
+ *  different, named shape for `extra` (see [`Connection::extra`]).
+ */
+export type ConnectionWire =
+  ConnectionWire_Serialize | ConnectionWire_Deserialize
+
+/**
+ *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
+ *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
+ *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
+ *  different, named shape for `extra` (see [`Connection::extra`]).
+ */
+export type ConnectionWire_Deserialize = {
+  id: string
+  metadata: ConnectionMetadata_Deserialize | null
+  upload: number
+  download: number
+  start: string
+  chains: string[]
+  providerChains?: string[] | null
+  rule: string
+  rulePayload: string
+} & { [key in string]: JsonValue | null }
+
+/**
+ *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
+ *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
+ *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
+ *  different, named shape for `extra` (see [`Connection::extra`]).
+ */
+export type ConnectionWire_Serialize = {
+  id: string
+  metadata: ConnectionMetadata_Serialize | null
+  upload: number
+  download: number
+  start: string
+  chains: string[]
+  providerChains: string[] | null
+  rule: string
+  rulePayload: string
+} & { [key in string]: JsonValue | null }
+
+export type Connection_Deserialize = ConnectionWire_Deserialize
+
+export type Connection_Serialize = {
+  id: string
+  metadata: ConnectionMetadata_Serialize | null
+  upload: number
+  download: number
+  start: string
+  chains: string[]
+  providerChains?: string[] | null
+  rule: string
+  rulePayload: string
+  /**
+   *  Fields Mihomo returns that this type does not yet model. Deserializing
+   *  (from Mihomo) collects unknown keys here regardless of direction;
+   *  serializing (for our own IPC) emits them under this named key instead
+   *  of flattening them, so a future Mihomo field literally named `extra`
+   *  cannot collide with it.
+   */
+  _extra: { [key in string]: JsonValue | null }
+}
 
 export type ConvergenceHealth =
   | 'healthy'
@@ -1070,6 +1321,8 @@ export type DeviceInfo = {
 
 export type Direction = 'latest' | 'before' | 'after'
 
+export type DnsMode = 'normal' | 'fake-ip' | 'redir-host' | 'hosts' | 'Unknown'
+
 /**  A snapshot of a download session's progress, polled by IPC. */
 export type DownloadStatus = {
   state: DownloaderState
@@ -1237,6 +1490,20 @@ export type I18nLanguage_Deserialize =
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
+
+/**
+ *  Type-only description of an arbitrary JSON value, used to give the `extra`
+ *  maps below (see [`Connection::extra`], [`ConnectionMetadata::extra`]) a
+ *  named, exportable specta shape. Never constructed or serialized itself;
+ *  the actual runtime data stays `serde_json::Value`.
+ */
+export type JsonValue =
+  | boolean
+  | number
+  | null
+  | string
+  | (JsonValue | null)[]
+  | { [key in string]: JsonValue | null }
 
 export type Level =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'unknown'
@@ -2823,6 +3090,12 @@ export type StorageValueChangedEvent = {
   value: string | null
 }
 
+/**
+ *  Identifies one `subscribe_clash_connection_details` call, for a later
+ *  `unsubscribe_clash_connection_details`.
+ */
+export type SubscriptionId = number
+
 export type SubscriptionInfo =
   SubscriptionInfo_Serialize | SubscriptionInfo_Deserialize
 
@@ -2857,6 +3130,11 @@ export type SubscriptionInfo_Serialize = {
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
+
+export type TrafficRate = {
+  download: number
+  upload: number
+}
 
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition =
@@ -3236,13 +3514,6 @@ export const queries = {
       queryKey: ['getCoreDir', ...args],
       queryFn: () => commands.getCoreDir(...args),
     }),
-  getClashWsConnectionsState: (
-    ...args: Parameters<typeof commands.getClashWsConnectionsState>
-  ) =>
-    queryOptions({
-      queryKey: ['getClashWsConnectionsState', ...args],
-      queryFn: () => commands.getClashWsConnectionsState(...args),
-    }),
   getClashWsSnapshot: (
     ...args: Parameters<typeof commands.getClashWsSnapshot>
   ) =>
@@ -3562,6 +3833,18 @@ export const mutations = {
     mutationKey: ['clearClashWsHistory'],
     mutationFn: (input: Parameters<typeof commands.clearClashWsHistory>) =>
       commands.clearClashWsHistory(...input),
+  }),
+  subscribeClashConnectionDetails: mutationOptions({
+    mutationKey: ['subscribeClashConnectionDetails'],
+    mutationFn: (
+      input: Parameters<typeof commands.subscribeClashConnectionDetails>,
+    ) => commands.subscribeClashConnectionDetails(...input),
+  }),
+  unsubscribeClashConnectionDetails: mutationOptions({
+    mutationKey: ['unsubscribeClashConnectionDetails'],
+    mutationFn: (
+      input: Parameters<typeof commands.unsubscribeClashConnectionDetails>,
+    ) => commands.unsubscribeClashConnectionDetails(...input),
   }),
   saveWindowSizeState: mutationOptions({
     mutationKey: ['saveWindowSizeState'],

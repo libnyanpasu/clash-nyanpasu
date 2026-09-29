@@ -1,6 +1,9 @@
 import { AnimatePresence, motion, useIsPresent, Variants } from 'motion/react'
 import { ComponentProps, useRef } from 'react'
-import { ClashWSFreezeBoundary } from '@nyanpasu/interface'
+import {
+  ClashConnectionDetailsFreezeBoundary,
+  ClashWSFreezeBoundary,
+} from '@nyanpasu/interface'
 import {
   Outlet,
   RouterContextProvider,
@@ -167,7 +170,9 @@ export function AnimatedOutlet({
         {/* The exiting page keeps the stream samples it had when it started
             leaving, so live updates do not re-render it during the slide. */}
         <ClashWSFreezeBoundary frozen={!isPresent}>
-          <Outlet />
+          <ClashConnectionDetailsFreezeBoundary frozen={!isPresent}>
+            <Outlet />
+          </ClashConnectionDetailsFreezeBoundary>
         </ClashWSFreezeBoundary>
       </RouterContextProvider>
     </motion.div>

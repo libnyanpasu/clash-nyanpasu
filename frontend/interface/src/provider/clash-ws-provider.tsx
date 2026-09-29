@@ -11,18 +11,19 @@ import {
 import {
   commands,
   events,
+  type ClashConnectionsConnectorState,
+  type ClashConnectionsSummary,
   type ClashWsEvent,
   type ClashWsKind,
   type ClashWsSnapshot,
 } from '../ipc/bindings'
-import type { ClashConnection } from '../ipc/use-clash-connections'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
 import { applyClashWsEvent } from './clash-ws-state'
 
 type ClashWSHistory = {
-  connections: ClashConnection[]
+  connections: ClashConnectionsSummary[]
   logs: ClashLog[]
   traffic: ClashTraffic[]
   memory: ClashMemory[]
@@ -31,6 +32,7 @@ type ClashWSHistory = {
 type ClashWSStatus = {
   isLoading: boolean
   error: unknown
+  state: ClashConnectionsConnectorState
   clearHistory: (kind: ClashWsKind) => Promise<void>
 }
 
@@ -39,7 +41,7 @@ type ClashWSStatus = {
 const ClashWSHistoryContexts: {
   [K in ClashWsKind]: Context<ClashWSHistory[K] | null>
 } = {
-  connections: createContext<ClashConnection[] | null>(null),
+  connections: createContext<ClashConnectionsSummary[] | null>(null),
   logs: createContext<ClashLog[] | null>(null),
   traffic: createContext<ClashTraffic[] | null>(null),
   memory: createContext<ClashMemory[] | null>(null),
@@ -214,15 +216,8 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
   const trafficSnapshots = snapshot?.traffic
   const memorySnapshots = snapshot?.memory
 
-  const connections = useMemo<ClashConnection[]>(
-    () =>
-      (connectionSnapshots ?? []).map((connection) => ({
-        ...connection,
-        memory: connection.memory ?? undefined,
-        connections:
-          (connection.connections as ClashConnection['connections']) ??
-          undefined,
-      })),
+  const connections = useMemo(
+    () => connectionSnapshots ?? [],
     [connectionSnapshots],
   )
   const logs = useMemo(() => (logSnapshots ?? []) as ClashLog[], [logSnapshots])
@@ -235,9 +230,10 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
     [memorySnapshots],
   )
 
+  const state = snapshot?.state ?? 'disconnected'
   const status = useMemo(
-    () => ({ isLoading, error, clearHistory }),
-    [isLoading, error, clearHistory],
+    () => ({ isLoading, error, state, clearHistory }),
+    [isLoading, error, state, clearHistory],
   )
 
   const values = useMemo(

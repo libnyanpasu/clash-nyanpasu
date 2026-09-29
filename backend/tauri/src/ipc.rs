@@ -1121,14 +1121,6 @@ pub fn clear_storage(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_clash_ws_connections_state(
-    client: tauri::State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::ws::ClashConnectionsConnectorState> {
-    Ok(client.clash_ws_snapshot().await?.state)
-}
-
-#[tauri::command]
-#[specta::specta]
 pub async fn get_clash_ws_snapshot(
     client: tauri::State<'_, NyanpasuClient>,
 ) -> Result<crate::core::clash::ws::ClashWsSnapshot> {
@@ -1152,6 +1144,40 @@ pub async fn clear_clash_ws_history(
     kind: crate::core::clash::ws::ClashWsKind,
 ) -> Result {
     client.clear_clash_ws_history(kind).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn subscribe_clash_connection_details(
+    webview: tauri::Webview,
+    client: tauri::State<'_, NyanpasuClient>,
+    subscriptions: tauri::State<
+        '_,
+        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    >,
+    on_frame: tauri::ipc::Channel<crate::core::clash::ws::ClashConnectionDetails>,
+) -> Result<crate::core::clash::connection_details::SubscriptionId> {
+    let receiver = client.subscribe_clash_connection_details();
+    let parent = client.shutdown_child_token();
+    let (id, cancel) = subscriptions.register(&parent, webview.label().to_string());
+    client.spawn_tracked(
+        &cancel,
+        crate::core::clash::connection_details::forward_details(receiver, on_frame),
+    );
+    Ok(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn unsubscribe_clash_connection_details(
+    subscriptions: tauri::State<
+        '_,
+        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    >,
+    id: crate::core::clash::connection_details::SubscriptionId,
+) -> Result {
+    subscriptions.unsubscribe(id);
     Ok(())
 }
 

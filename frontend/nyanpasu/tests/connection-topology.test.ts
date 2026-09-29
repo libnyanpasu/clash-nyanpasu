@@ -1,16 +1,16 @@
 import { expect, test } from 'vitest'
 import type {
-  ClashConnectionItem,
-  ClashConnectionMetadata,
-} from '../../interface/src/ipc/use-clash-connections'
+  ClashConnection_Serialize,
+  ConnectionMetadataFields_Serialize,
+} from '../../interface/src/ipc/bindings'
 import { buildTopology } from '../src/pages/(main)/main/topology/_modules/topology.ts'
 
 const connection = (
   id: string,
-  overrides: Omit<Partial<ClashConnectionItem>, 'metadata'> & {
-    metadata?: Partial<ClashConnectionMetadata> | null
+  overrides: Omit<Partial<ClashConnection_Serialize>, 'metadata'> & {
+    metadata?: Partial<ConnectionMetadataFields_Serialize> | null
   } = {},
-): ClashConnectionItem => ({
+): ClashConnection_Serialize => ({
   id,
   start: '',
   upload: 20,
@@ -18,8 +18,11 @@ const connection = (
   chains: ['Exit', 'Nested', 'Select'],
   rule: 'Domain',
   rulePayload: 'example.com',
+  downloadSpeed: 0,
+  uploadSpeed: 0,
+  _extra: {},
   ...overrides,
-  // The null case exercises malformed runtime data despite the wire type.
+  // The null case exercises the core reporting no metadata for a connection.
   metadata: (overrides.metadata === null
     ? null
     : {
@@ -30,8 +33,9 @@ const connection = (
         destinationPort: '',
         process: 'Browser',
         sourceIP: '127.0.0.1',
+        _extra: {},
         ...overrides.metadata,
-      }) as ClashConnectionMetadata,
+      }) as ClashConnection_Serialize['metadata'],
 })
 
 test('preserves logical chain order and isolates identical names across layers', () => {

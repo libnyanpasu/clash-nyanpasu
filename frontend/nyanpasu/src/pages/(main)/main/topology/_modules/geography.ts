@@ -1,4 +1,4 @@
-import type { ClashConnectionItem } from '@nyanpasu/interface'
+import type { ClashConnection_Serialize } from '@nyanpasu/interface'
 
 export type GeographicRegion = {
   code: string
@@ -13,7 +13,7 @@ export type GeographicRoute = GeographicRegion & {
 // Only an unambiguous region reported by the core can be placed on the map.
 // Multiple GeoIP tags must not duplicate a connection's bytes across countries.
 export function connectionRegion(
-  connection: ClashConnectionItem,
+  connection: ClashConnection_Serialize,
   endpoint: 'source' | 'destination',
   knownRegions: ReadonlySet<string>,
 ): string {
@@ -30,7 +30,7 @@ export function connectionRegion(
 }
 
 export function buildGeography(
-  connections: ClashConnectionItem[],
+  connections: ClashConnection_Serialize[],
   knownRegions: ReadonlySet<string>,
 ) {
   const regions = new Map<string, GeographicRegion>()

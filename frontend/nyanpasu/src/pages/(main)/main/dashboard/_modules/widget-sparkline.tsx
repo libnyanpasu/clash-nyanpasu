@@ -187,7 +187,7 @@ export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
     <SparklineCard
       id={id}
       data={padData(
-        clashConnections?.map((item) => item.connections?.length ?? 0),
+        clashConnections?.map((item) => item.connectionCount),
         MAX_CONNECTIONS_HISTORY,
       )}
       onCloseClick={onCloseClick}
@@ -197,7 +197,7 @@ export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        {clashConnections?.at(-1)?.connections?.length ?? 0}
+        {clashConnections?.at(-1)?.connectionCount ?? 0}
       </SparklineCardContent>
 
       <SparklineCardBottom />

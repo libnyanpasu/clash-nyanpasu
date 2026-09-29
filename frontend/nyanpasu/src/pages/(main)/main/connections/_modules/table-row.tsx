@@ -23,18 +23,22 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import {
   useDeleteClashConnections,
-  type ClashConnectionItem,
-  type ClashConnectionMetadata,
+  type Connection_Serialize,
+  type ConnectionMetadataFields_Serialize,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { ConnectionRow } from '..'
 
-// Keys added by ConnectionRow that should not be rendered in the dialog
+// Keys added by ConnectionRow, plus the two wrapper fields, that should not
+// be rendered as their own dialog row: `metadata` and `_extra` get their own
+// sections below.
 const INTERNAL_KEYS = new Set([
   'closed',
   'downloadSpeed',
   'uploadSpeed',
   'startMs',
+  'metadata',
+  '_extra',
 ])
 
 const FIELD_LABELS = {
@@ -69,8 +73,8 @@ const FIELD_LABELS = {
   specialRules: m.connections_field_special_rules,
 } satisfies Partial<
   Record<
-    | Exclude<keyof ClashConnectionItem, 'metadata'>
-    | keyof ClashConnectionMetadata,
+    | Exclude<keyof Connection_Serialize, 'metadata' | '_extra'>
+    | keyof ConnectionMetadataFields_Serialize,
     () => string
   >
 >
@@ -108,6 +112,11 @@ function formatValue(key: string, value: any): React.ReactNode {
     return (
       <span title={date.format('YYYY-MM-DD HH:mm:ss')}>{date.fromNow()}</span>
     )
+  }
+
+  // An unknown (`_extra`) field's value can itself be a nested JSON object.
+  if (value !== null && typeof value === 'object') {
+    return <span>{JSON.stringify(value)}</span>
   }
 
   return <span>{String(value)}</span>
@@ -182,7 +191,6 @@ export function ConnectionDetailModal({
                   {Object.entries(data)
                     .filter(
                       ([key, value]) =>
-                        key !== 'metadata' &&
                         !INTERNAL_KEYS.has(key) &&
                         value !== undefined &&
                         value !== null &&
@@ -192,14 +200,33 @@ export function ConnectionDetailModal({
                       <RowRender key={key} label={key} value={value} />
                     ))}
 
+                  {Object.entries(data._extra)
+                    .filter(
+                      ([, value]) => value !== undefined && value !== null,
+                    )
+                    .map(([key, value]) => (
+                      <RowRender key={key} label={key} value={value} />
+                    ))}
+
                   <h3 className="col-span-2 pt-4 pb-1 text-base font-semibold">
                     {m.connections_field_metadata()}
                   </h3>
 
-                  {Object.entries(data.metadata)
+                  {Object.entries(data.metadata ?? {})
                     .filter(
-                      ([, value]) =>
-                        value !== undefined && value !== null && value !== '',
+                      ([key, value]) =>
+                        key !== '_extra' &&
+                        value !== undefined &&
+                        value !== null &&
+                        value !== '',
+                    )
+                    .map(([key, value]) => (
+                      <RowRender key={key} label={key} value={value} />
+                    ))}
+
+                  {Object.entries(data.metadata?._extra ?? {})
+                    .filter(
+                      ([, value]) => value !== undefined && value !== null,
                     )
                     .map(([key, value]) => (
                       <RowRender key={key} label={key} value={value} />

@@ -61,12 +61,5 @@
   },
   "break_when_proxy_change": "當代理切換時打斷連線",
   "break_when_profile_change": "當設定檔切換時打斷連線",
-  "break_when_mode_change": "當模式切換時打斷連線",
-  "hotkey_error": {
-    "invalid_hotkey": "無效的快速鍵：%{hotkey}",
-    "missing_super_key": "快速鍵必須包含修飾鍵 (Cmd/Ctrl/Win/Meta)",
-    "malformed_entry": "快速鍵條目格式錯誤：%{entry}",
-    "unknown_function": "未知的快速鍵功能：%{function}",
-    "duplicate_accelerator": "快速鍵 %{hotkey} 已指派給其他功能"
-  }
+  "break_when_mode_change": "當模式切換時打斷連線"
 }

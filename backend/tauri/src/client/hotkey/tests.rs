@@ -58,51 +58,65 @@ fn parse_accepts_the_legacy_func_comma_key_format() {
 
 #[test]
 fn parse_rejects_malformed_unknown_invalid_and_missing_super() {
-    assert_eq!(
-        HotkeyBindings::parse(&entries(&["open_or_close_dashboard"]), &AnyAccelerator),
-        Err(HotkeyParseError::MalformedEntry(
-            "open_or_close_dashboard".to_owned()
-        ))
+    let error =
+        HotkeyBindings::parse(&entries(&["open_or_close_dashboard"]), &AnyAccelerator).unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::MalformedEntry { entry } if entry == "open_or_close_dashboard"),
+        "{error:?}"
     );
-    assert_eq!(
-        HotkeyBindings::parse(&entries(&["make_coffee,Control+Q"]), &AnyAccelerator),
-        Err(HotkeyParseError::UnknownFunction("make_coffee".to_owned()))
+    let error =
+        HotkeyBindings::parse(&entries(&["make_coffee,Control+Q"]), &AnyAccelerator).unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::UnknownFunction { function } if function == "make_coffee"),
+        "{error:?}"
     );
-    assert_eq!(
-        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Control++"]), &AnyAccelerator),
-        Err(HotkeyParseError::InvalidAccelerator("Control++".to_owned()))
+    let error = HotkeyBindings::parse(&entries(&["toggle_tun_mode,Control++"]), &AnyAccelerator)
+        .unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::EmptyKeySegment { accelerator } if accelerator == "Control++"),
+        "{error:?}"
     );
-    assert_eq!(
-        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Q"]), &AnyAccelerator),
-        Err(HotkeyParseError::MissingSuperKey("Q".to_owned())),
-        "a bare key would swallow ordinary typing"
+    let error =
+        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Q"]), &AnyAccelerator).unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::MissingSuperKey { accelerator } if accelerator == "Q"),
+        "a bare key would swallow ordinary typing: {error:?}"
     );
 }
 
 #[test]
 fn parse_rejects_duplicate_accelerator() {
-    assert_eq!(
-        HotkeyBindings::parse(
-            &entries(&["enable_tun_mode,Control+Q", "disable_tun_mode,Control+Q"]),
-            &AnyAccelerator,
+    let error = HotkeyBindings::parse(
+        &entries(&["enable_tun_mode,Control+Q", "disable_tun_mode,Control+Q"]),
+        &AnyAccelerator,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            HotkeyParseError::DuplicateAccelerator { accelerator, first, second }
+                if accelerator == "Control+Q"
+                    && *first == HotkeyAction::EnableTunMode
+                    && *second == HotkeyAction::DisableTunMode
         ),
-        Err(HotkeyParseError::DuplicateAccelerator(
-            "Control+Q".to_owned()
-        ))
+        "{error:?}"
     );
 }
 
 #[test]
 fn parse_rejects_what_the_platform_parser_refuses() {
-    assert_eq!(
-        HotkeyBindings::parse(
-            &entries(&["toggle_tun_mode,Control+DefinitelyNotAKey"]),
-            &PlatformAcceleratorValidator,
+    let error = HotkeyBindings::parse(
+        &entries(&["toggle_tun_mode,Control+DefinitelyNotAKey"]),
+        &PlatformAcceleratorValidator,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            HotkeyParseError::UnsupportedAccelerator { accelerator, .. }
+                if accelerator == "Control+DefinitelyNotAKey"
         ),
-        Err(HotkeyParseError::InvalidAccelerator(
-            "Control+DefinitelyNotAKey".to_owned()
-        )),
-        "the shape rules alone cannot tell a key name from a typo"
+        "the shape rules alone cannot tell a key name from a typo: {error:?}"
     );
     assert!(
         HotkeyBindings::parse(
@@ -134,15 +148,14 @@ fn equivalent_spellings_are_the_same_binding() {
         abbreviated.diff(&spelled_out).is_empty(),
         "rewriting a binding into the other spelling must not touch the OS"
     );
-    assert_eq!(
-        HotkeyBindings::parse(
-            &entries(&["enable_tun_mode,Ctrl+Q", "disable_tun_mode,Control+Q"]),
-            &PlatformAcceleratorValidator,
-        ),
-        Err(HotkeyParseError::DuplicateAccelerator(
-            "Control+Q".to_owned()
-        )),
-        "one grab cannot run two functions"
+    let error = HotkeyBindings::parse(
+        &entries(&["enable_tun_mode,Ctrl+Q", "disable_tun_mode,Control+Q"]),
+        &PlatformAcceleratorValidator,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::DuplicateAccelerator { accelerator, .. } if accelerator == "Control+Q"),
+        "one grab cannot run two functions: {error:?}"
     );
 }
 
@@ -235,7 +248,9 @@ impl ShortcutRegistrar for RecordingRegistrar {
             .iter()
             .any(|refused| refused == accelerator)
         {
-            return Err(HotkeyParseError::InvalidAccelerator(accelerator.to_owned()));
+            return Err(HotkeyParseError::EmptyKeySegment {
+                accelerator: accelerator.to_owned(),
+            });
         }
         Ok(())
     }
@@ -783,7 +798,7 @@ mod facade {
                 .await
                 .expect_err("a hotkey without a modifier must not be persisted");
             assert!(
-                error.to_string().contains("super key"),
+                error.to_string().contains("modifier key"),
                 "unexpected error: {error}"
             );
             assert!(

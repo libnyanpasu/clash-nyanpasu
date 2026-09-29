@@ -626,5 +626,8 @@
   "error_config_session_state_stopped": "Служба состояния окна не запущена",
   "error_storage_open": "Не удалось открыть сохранённые данные приложения",
   "error_storage_access": "Не удалось получить доступ к сохранённым данным приложения",
-  "error_storage_invalid_value": "Сохранённые данные приложения повреждены"
+  "error_storage_invalid_value": "Сохранённые данные приложения повреждены",
+  "error_system_dns_run_flush_command": "Не получено разрешение на запуск {command}",
+  "error_system_dns_flush_rejected": "{command} завершилась с ошибкой (код выхода {code})",
+  "error_system_dns_unsupported": "Очистка кэша DNS не поддерживается в этой системе"
 }

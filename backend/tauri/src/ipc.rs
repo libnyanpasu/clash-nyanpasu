@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientError, NyanpasuClient, RuntimeError},
+    client::{ClientError, NyanpasuClient, RuntimeError, SystemDnsError},
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     state::{
@@ -48,6 +48,13 @@ pub enum IpcErrorKind {
     Runtime(Box<RuntimeError>),
     Config(Box<ConfigError>),
     Storage(Box<StorageOperationError>),
+    SystemDns(Box<SystemDnsError>),
+}
+
+impl From<SystemDnsError> for IpcErrorKind {
+    fn from(error: SystemDnsError) -> Self {
+        Self::SystemDns(Box::new(error))
+    }
 }
 
 impl From<StorageOperationError> for IpcErrorKind {
@@ -1448,7 +1455,7 @@ pub fn retry_configuration_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError};
+    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
     use nyanpasu_config::profile::ProfileId;
     use nyanpasu_core::state::ReplaceIfVersionError;
     use serde_json::json;
@@ -1511,6 +1518,23 @@ mod tests {
         assert_eq!(
             serde_json::to_value(IpcError::from(super::RuntimeError::Isolated)).unwrap()["kind"],
             json!({ "domain": "runtime", "error": { "kind": "isolated" } })
+        );
+    }
+
+    #[test]
+    fn a_dns_flush_failure_names_the_command_and_its_exit_code() {
+        let wire = serde_json::to_value(IpcError::from(SystemDnsError::FlushRejected {
+            command: "ipconfig.exe",
+            code: Some(5),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "system_dns",
+                "error": { "kind": "flush_rejected", "command": "ipconfig.exe", "code": 5 },
+            })
         );
     }
 

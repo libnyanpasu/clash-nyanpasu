@@ -723,5 +723,8 @@
   "error_config_session_state_stopped": "窗口状态服务未运行",
   "error_storage_open": "无法打开应用的存储数据",
   "error_storage_access": "无法访问应用的存储数据",
-  "error_storage_invalid_value": "应用的存储数据无效"
+  "error_storage_invalid_value": "应用的存储数据无效",
+  "error_system_dns_run_flush_command": "未获得运行 {command} 的权限",
+  "error_system_dns_flush_rejected": "{command} 执行失败（退出码 {code}）",
+  "error_system_dns_unsupported": "当前系统不支持清除 DNS 缓存"
 }

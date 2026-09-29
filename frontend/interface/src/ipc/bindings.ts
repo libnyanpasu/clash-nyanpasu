@@ -1775,6 +1775,7 @@ export type IpcErrorKind =
   | { domain: 'runtime'; error: RuntimeError }
   | { domain: 'config'; error: ConfigError }
   | { domain: 'storage'; error: StorageOperationError }
+  | { domain: 'system_dns'; error: SystemDnsError }
 
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`
@@ -3769,6 +3770,23 @@ export type SubscriptionInfo_Serialize = {
   total: number
   expire: number
 }
+
+/**
+ *  Why the system DNS cache could not be flushed. No variant is compiled out
+ *  per platform, so the generated bindings do not depend on the build host.
+ */
+export type SystemDnsError =
+  /**
+   *  The elevated flush could not be started: the user declined the prompt,
+   *  or the platform has no way to ask for elevation.
+   */
+  | { kind: 'run_flush_command'; command: string }
+  /**
+   *  The flush ran and reported failure; declining the macOS authorization
+   *  dialog lands here too.
+   */
+  | { kind: 'flush_rejected'; command: string; code: number | null }
+  | { kind: 'unsupported' }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 

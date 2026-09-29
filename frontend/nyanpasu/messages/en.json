@@ -723,5 +723,8 @@
   "error_config_session_state_stopped": "The window state service is not running",
   "error_storage_open": "Could not open the app's stored data",
   "error_storage_access": "Could not access the app's stored data",
-  "error_storage_invalid_value": "The app's stored data is invalid"
+  "error_storage_invalid_value": "The app's stored data is invalid",
+  "error_system_dns_run_flush_command": "Permission to run {command} was not granted",
+  "error_system_dns_flush_rejected": "{command} did not succeed (exit code {code})",
+  "error_system_dns_unsupported": "Flushing the DNS cache is not supported on this system"
 }

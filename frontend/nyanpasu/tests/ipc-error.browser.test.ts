@@ -7,6 +7,7 @@ import type {
   ProfilesError,
   RuntimeError,
   StorageOperationError,
+  SystemDnsError,
 } from '@nyanpasu/interface'
 
 const profiles = (error: ProfilesError): IpcError => ({
@@ -29,6 +30,12 @@ const config = (error: ConfigError): IpcError => ({
 
 const storage = (error: StorageOperationError): IpcError => ({
   kind: { domain: 'storage', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const systemDns = (error: SystemDnsError): IpcError => ({
+  kind: { domain: 'system_dns', error },
   message: 'the backend text',
   detail: 'the backend text: caused by',
 })
@@ -438,4 +445,25 @@ test('a storage failure tells an unopenable database from unreadable data', () =
   expect(
     ipcErrorMessage(storage({ kind: 'decode_value', key: 'web:theme' })),
   ).toBe(m.error_storage_invalid_value())
+})
+
+test('a failed DNS flush names the command and its exit code', () => {
+  expect(
+    ipcErrorMessage(
+      systemDns({ kind: 'flush_rejected', command: 'ipconfig.exe', code: 5 }),
+    ),
+  ).toBe(
+    m.error_system_dns_flush_rejected({ command: 'ipconfig.exe', code: 5 }),
+  )
+  expect(
+    ipcErrorMessage(
+      systemDns({
+        kind: 'flush_rejected',
+        command: 'ipconfig.exe',
+        code: null,
+      }),
+    ),
+  ).toBe(
+    m.error_system_dns_flush_rejected({ command: 'ipconfig.exe', code: '-' }),
+  )
 })

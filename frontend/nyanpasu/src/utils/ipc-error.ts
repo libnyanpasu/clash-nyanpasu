@@ -21,6 +21,7 @@ import type {
   RuntimeError,
   RuntimePipelineError,
   StorageOperationError,
+  SystemDnsError,
 } from '@nyanpasu/interface'
 
 /** The simplest message for a failed command, localized by its domain. */
@@ -36,6 +37,8 @@ export function ipcErrorMessage(error: IpcError): string {
       return configErrorMessage(error.kind.error)
     case 'storage':
       return storageErrorMessage(error.kind.error)
+    case 'system_dns':
+      return systemDnsErrorMessage(error.kind.error)
   }
 }
 
@@ -266,6 +269,20 @@ export function storageErrorMessage(error: StorageOperationError): string {
     case 'decode_value':
     case 'encode_value':
       return m.error_storage_invalid_value()
+  }
+}
+
+function systemDnsErrorMessage(error: SystemDnsError): string {
+  switch (error.kind) {
+    case 'run_flush_command':
+      return m.error_system_dns_run_flush_command({ command: error.command })
+    case 'flush_rejected':
+      return m.error_system_dns_flush_rejected({
+        command: error.command,
+        code: error.code ?? '-',
+      })
+    case 'unsupported':
+      return m.error_system_dns_unsupported()
   }
 }
 

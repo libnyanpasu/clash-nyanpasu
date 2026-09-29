@@ -73,7 +73,7 @@ pub use runtime::RuntimePaths;
 pub use runtime_error::RuntimeError;
 #[cfg(test)]
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
-pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
+pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
     pub bundle_metadata: crate::bundle::BundleMetadata,
     pub logging: logs::LoggingSetup,
@@ -541,12 +541,9 @@ impl NyanpasuClient {
         Ok(self.inner.updater.inspect(id).await?)
     }
 
-    pub async fn flush_system_dns_cache(&self) -> Result<()> {
+    pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
         let system_dns = self.inner.system_dns.clone();
-        tokio::task::spawn_blocking(move || system_dns.flush())
-            .await
-            .context("system DNS cache flush task failed")??;
-        Ok(())
+        crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
     }
 
     pub async fn patch_app_config(
@@ -2277,14 +2274,22 @@ pub(crate) mod tests {
     async fn flush_system_dns_cache_propagates_adapter_failure() {
         let dir = tempdir().expect("tempdir should be created");
         let mut system_dns = MockSystemDnsCache::new();
-        system_dns
-            .expect_flush()
-            .times(1)
-            .returning(|| anyhow::bail!("dns flush exploded"));
+        system_dns.expect_flush().times(1).returning(|| {
+            Err(SystemDnsError::FlushRejected {
+                command: "ipconfig.exe",
+                code: Some(5),
+            })
+        });
         let client = test_client_with_system_dns(&dir, Arc::new(system_dns)).await;
 
         let error = client.flush_system_dns_cache().await.unwrap_err();
-        assert!(error.to_string().contains("dns flush exploded"));
+        assert!(matches!(
+            error,
+            SystemDnsError::FlushRejected {
+                command: "ipconfig.exe",
+                code: Some(5)
+            }
+        ));
     }
 
     pub(crate) fn test_client_args_with_endpoint(

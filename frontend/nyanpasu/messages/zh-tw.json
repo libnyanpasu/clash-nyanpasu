@@ -723,5 +723,8 @@
   "error_config_session_state_stopped": "視窗狀態服務未執行",
   "error_storage_open": "無法開啟應用程式的儲存資料",
   "error_storage_access": "無法存取應用程式的儲存資料",
-  "error_storage_invalid_value": "應用程式的儲存資料無效"
+  "error_storage_invalid_value": "應用程式的儲存資料無效",
+  "error_system_dns_run_flush_command": "未取得執行 {command} 的權限",
+  "error_system_dns_flush_rejected": "{command} 執行失敗（結束代碼 {code}）",
+  "error_system_dns_unsupported": "目前系統不支援清除 DNS 快取"
 }

@@ -622,5 +622,8 @@
   "error_config_session_state_stopped": "창 상태 서비스가 실행 중이 아닙니다",
   "error_storage_open": "앱의 저장 데이터를 열 수 없습니다",
   "error_storage_access": "앱의 저장 데이터에 접근할 수 없습니다",
-  "error_storage_invalid_value": "앱의 저장 데이터가 올바르지 않습니다"
+  "error_storage_invalid_value": "앱의 저장 데이터가 올바르지 않습니다",
+  "error_system_dns_run_flush_command": "{command} 실행 권한을 얻지 못했습니다",
+  "error_system_dns_flush_rejected": "{command} 실행에 실패했습니다 (종료 코드 {code})",
+  "error_system_dns_unsupported": "이 시스템에서는 DNS 캐시 지우기를 지원하지 않습니다"
 }

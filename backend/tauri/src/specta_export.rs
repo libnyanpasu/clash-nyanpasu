@@ -259,6 +259,7 @@ mod tests {
             "MutationOutcome",
             "Degradation",
             "DegradationPhase",
+            "DegradationReason",
             "NyanpasuAppConfig",
             "NyanpasuAppConfigPatch",
             "ClashConfig",
@@ -409,7 +410,19 @@ mod tests {
         assert_contains_all(
             degradation,
             "Degradation",
-            &["phase: DegradationPhase", "code:", "message:", "retryable:"],
+            &[
+                "phase: DegradationPhase",
+                "reason: DegradationReason",
+                "message:",
+                "retryable:",
+            ],
+        );
+
+        let reason = exported_type(&generated, "DegradationReason");
+        assert_contains_all(
+            reason,
+            "DegradationReason",
+            &["code: 'runtime_deferred'", "code: 'cleanup_deferred'"],
         );
 
         let phase = exported_type(&generated, "DegradationPhase");

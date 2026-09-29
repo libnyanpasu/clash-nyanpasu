@@ -1394,8 +1394,11 @@ export type CoreVersionError =
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = {
   phase: DegradationPhase
-  /**  Stable snake_case code string (not a free-form English phrase). */
-  code: string
+  reason: DegradationReason
+  /**
+   *  The diagnostic text, for logs and the copied details; the frontend
+   *  localizes `reason`.
+   */
   message: string
   retryable: boolean
 }
@@ -1411,6 +1414,34 @@ export type DegradationPhase =
   | 'core_rollback'
   | 'system_effect'
   | 'ui_effect'
+
+/**  Why a committed mutation is degraded. The frontend localizes each variant. */
+export type DegradationReason =
+  /**
+   *  The runtime owner stopped before the mutation settled, or settled it as
+   *  needing recovery.
+   */
+  | {
+      code: 'runtime_recovery_required'
+      operation_id: string | null
+      cause: RuntimeError | null
+    }
+  /**  The runtime will apply the committed mutation later. */
+  | { code: 'runtime_deferred'; cause: RuntimeError }
+  | { code: 'runtime_product_publish_failed'; cause: RuntimeError }
+  | { code: 'service_stop_failed'; cause: RuntimeError }
+  | { code: 'mode_interruption_failed'; cause: InterruptFailure }
+  | { code: 'profile_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_cache_refresh_failed' }
+  | { code: 'journal_invalid' }
+  | { code: 'materialization_deferred' }
+  | { code: 'cleanup_deferred' }
+  | {
+      code: 'profile_auto_activation_failed'
+      profile: ProfileId
+      cause: ProfilesError
+    }
 
 export type DelayRes = {
   delay: number
@@ -1657,6 +1688,11 @@ export type InstallCoreBinaryError =
       exit_code: number | null
     }
   | { kind: 'path_not_utf8'; path: ErrorPath }
+
+/**  How closing the source instance's connections failed. */
+export type InterruptFailure =
+  /**  The Clash API belongs to a core instance that has since been retired. */
+  'stale' | 'unavailable' | 'timeout' | 'protocol'
 
 /**  A failed command as the frontend receives it. */
 export type IpcError = {

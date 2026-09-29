@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { m } from '@/paraglide/messages'
-import { ipcErrorMessage } from '@/utils/ipc-error'
+import { degradationReasonMessage, ipcErrorMessage } from '@/utils/ipc-error'
 import type { IpcError, ProfilesError, RuntimeError } from '@nyanpasu/interface'
 
 const profiles = (error: ProfilesError): IpcError => ({
@@ -311,4 +311,47 @@ test('a missing core binary names the core', () => {
       }),
     ),
   ).toBe(m.error_runtime_find_core_binary({ core: 'mihomo' }))
+})
+
+test('a degradation localizes its reason, and a runtime cause through the runtime message', () => {
+  expect(
+    degradationReasonMessage({
+      code: 'service_stop_failed',
+      cause: { kind: 'shutting_down' },
+    }),
+  ).toBe(m.error_runtime_shutting_down())
+  expect(
+    degradationReasonMessage({
+      code: 'runtime_deferred',
+      cause: { kind: 'isolated' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_runtime_deferred({
+      reason: m.error_runtime_isolated(),
+    }),
+  )
+  expect(
+    degradationReasonMessage({
+      code: 'runtime_recovery_required',
+      operation_id: 'op1',
+      cause: null,
+    }),
+  ).toBe(m.mutation_degradation_reason_runtime_recovery_required())
+  expect(
+    degradationReasonMessage({
+      code: 'proxy_interruption_failed',
+      cause: 'timeout',
+    }),
+  ).toBe(m.mutation_degradation_reason_interruption_failed())
+  expect(
+    degradationReasonMessage({
+      code: 'profile_auto_activation_failed',
+      profile: uid,
+      cause: { kind: 'shutting_down' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_profile_auto_activation_failed({
+      reason: m.error_profiles_shutting_down(),
+    }),
+  )
 })

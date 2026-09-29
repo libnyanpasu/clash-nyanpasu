@@ -1154,7 +1154,10 @@ fn config_reconcile_failure_reports_committed_state_without_replaying() {
             .await
             .unwrap();
         assert_eq!(outcome.degradations().len(), 1);
-        assert_eq!(outcome.degradations()[0].code, "runtime_deferred");
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
+        ));
         assert_eq!(
             client.configuration_status().runtime.health,
             crate::client::convergence::ConvergenceHealth::RetryScheduled

@@ -41,13 +41,14 @@ use crate::{
     client::{
         convergence::{OutcomeClass, next_wait},
         core_lifecycle::{RuntimeSubmission, desired_host, ports::RuntimePreparationPort},
+        runtime::{DegradationReason, InterruptFailure},
         runtime_error::{
             ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
             CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
             HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
-            ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu, RestoreFailedSnafu,
-            RestoreFailure, RuntimeError, SubmissionUnobservedSnafu, UnobservedSnafu,
-            UnsettledBaselineSnafu, UnverifiedSnafu,
+            PublishRuntimeSnafu, ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
+            RestoreFailedSnafu, RestoreFailure, RuntimeError, StopServiceSnafu,
+            SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
         },
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
@@ -247,7 +248,7 @@ impl ApplicationWorkflow {
     pub(super) async fn publish_committed_product(
         &mut self,
         product: Arc<crate::client::runtime::RuntimeSnapshot>,
-    ) -> Option<String> {
+    ) -> Option<Arc<RuntimeError>> {
         match self
             .lifecycle
             .publish_applied_product(product.clone(), &self.preparation)
@@ -259,8 +260,8 @@ impl ApplicationWorkflow {
             }
             Err(error) => {
                 let message = format!("runtime_product_publish_failed: {error}");
-                self.pending_product = Some((product, message.clone()));
-                Some(message)
+                self.pending_product = Some((product, message));
+                Some(Arc::new(PublishRuntimeSnafu.into_error(error)))
             }
         }
     }
@@ -1152,14 +1153,14 @@ impl ApplicationWorkflow {
                         )
                         .await
                     {
+                        let cause = InterruptFailure::from(&error);
                         degradations.push(crate::client::runtime::Degradation {
                             phase: crate::client::runtime::DegradationPhase::SystemEffect,
-                            code: if request.hints.mode_requested {
-                                "mode_interruption_failed"
+                            reason: if request.hints.mode_requested {
+                                DegradationReason::ModeInterruptionFailed { cause }
                             } else {
-                                "profile_interruption_failed"
-                            }
-                            .into(),
+                                DegradationReason::ProfileInterruptionFailed { cause }
+                            },
                             message: error.to_string(),
                             retryable: false,
                         });
@@ -1227,38 +1228,40 @@ impl ApplicationWorkflow {
         // would announce a document the transaction could still abort, and a
         // failure here never undoes either the committed source or the
         // running runtime (v2 §5.6).
-        let detail = self
+        let failure = self
             .publish_committed_product(applied.product.clone())
             .await;
         self.lifecycle.runtime.accept_transition();
-        if let Some(message) = &detail {
+        if let Some(cause) = &failure {
             degradations.push(crate::client::runtime::Degradation {
                 phase: crate::client::runtime::DegradationPhase::RuntimeBuild,
-                code: "runtime_product_publish_failed".into(),
-                message: message.clone(),
+                message: cause.to_string(),
+                reason: DegradationReason::RuntimeProductPublishFailed {
+                    cause: cause.clone(),
+                },
                 retryable: true,
             });
         }
         // Only a confirmed move releases the old daemon. Cancel must still be
         // able to restore it while the source transaction is undecided.
         if applied.releases_service
-            && let Some(message) = self.release_service().await
+            && let Some(cause) = self.release_service().await
         {
             degradations.push(crate::client::runtime::Degradation {
                 phase: crate::client::runtime::DegradationPhase::SystemEffect,
-                code: "service_stop_failed".into(),
-                message,
+                message: cause.to_string(),
+                reason: DegradationReason::ServiceStopFailed { cause },
                 retryable: true,
             });
         }
-        detail
+        failure.map(|cause| cause.to_string())
     }
 
     /// Stops the daemon a confirmed move off service mode left behind, if it
     /// still runs and serves this instance. A failure is kept as retryable
     /// maintenance, the way an unpublished product is, until an explicit retry
     /// releases it.
-    async fn release_service(&mut self) -> Option<String> {
+    async fn release_service(&mut self) -> Option<Arc<RuntimeError>> {
         let service = self.lifecycle.core.service_status();
         let running = self.lifecycle.core.core_status().host == ExecutionHost::Local
             && !matches!(
@@ -1270,19 +1273,14 @@ impl ApplicationWorkflow {
                 super::startup::serves_instance(server, &self.lifecycle.instance_config_dir)
             });
         let failure = if running {
-            self.lifecycle
-                .core
-                .stop_service()
-                .await
-                .err()
-                .map(|error| error.to_string())
+            self.lifecycle.core.stop_service().await.err()
         } else {
             None
         };
         self.pending_release = failure
             .as_ref()
             .map(|error| format!("service_stop_failed: {error}"));
-        failure
+        failure.map(|error| Arc::new(StopServiceSnafu.into_error(error)))
     }
 
     // -- Cancelling --------------------------------------------------------

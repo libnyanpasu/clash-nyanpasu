@@ -21,7 +21,9 @@ use crate::client::{
         policy::CommandClass,
     },
     effects::ports::CommitNotifications,
-    runtime::{CommitReceipt, Degradation, DegradationPhase, RuntimeCommitStatus},
+    runtime::{
+        CommitReceipt, Degradation, DegradationPhase, DegradationReason, RuntimeCommitStatus,
+    },
     runtime_error::{RuntimeError, refusal_of},
 };
 
@@ -100,7 +102,10 @@ impl MutationCoordinator {
                 commit,
                 vec![Degradation {
                     phase: DegradationPhase::RuntimeApply,
-                    code: "runtime_recovery_required".into(),
+                    reason: DegradationReason::RuntimeRecoveryRequired {
+                        operation_id: Some(operation_id.to_string()),
+                        cause: None,
+                    },
                     message: format!(
                         "configuration saved; the runtime owner stopped before operation \
                          {operation_id} settled"
@@ -123,27 +128,29 @@ impl MutationCoordinator {
                 }
             }
         };
-        let (code, message, retryable) = if receipt.outcome == MutationOutcomeKind::Deferred {
-            ("runtime_deferred", receipt.detail.unwrap_or_default(), true)
+        let (reason, retryable) = if receipt.outcome == MutationOutcomeKind::Deferred {
+            let cause = receipt
+                .cause
+                .expect("a deferred mutation names why it was deferred");
+            (DegradationReason::RuntimeDeferred { cause }, true)
         } else if receipt.conclusion == MutationConclusion::RecoveryRequired {
             (
-                "runtime_recovery_required",
-                receipt.detail.unwrap_or_default(),
+                DegradationReason::RuntimeRecoveryRequired {
+                    operation_id: Some(operation_id.to_string()),
+                    cause: receipt.cause,
+                },
                 false,
             )
-        } else if !receipt.degradations.is_empty() {
-            return (commit, receipt.degradations);
-        } else if let Some(message) = receipt.detail {
-            ("mutation_completion_warning", message, false)
         } else {
-            return (commit, Vec::new());
+            // What Confirm could not finish is already in `degradations`.
+            return (commit, receipt.degradations);
         };
         (
             commit,
             vec![Degradation {
                 phase: DegradationPhase::RuntimeApply,
-                code: code.into(),
-                message,
+                reason,
+                message: receipt.detail.unwrap_or_default(),
                 retryable,
             }],
         )

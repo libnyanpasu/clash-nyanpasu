@@ -3,6 +3,7 @@ import type {
   CommitAborted,
   CoreErrorKind,
   CoreFailure,
+  DegradationReason,
   EvidenceGap,
   ExecutionHost,
   InstallCoreBinaryError,
@@ -85,7 +86,7 @@ function hostOf(url: string) {
   }
 }
 
-function profilesErrorMessage(error: ProfilesError): string {
+export function profilesErrorMessage(error: ProfilesError): string {
   switch (error.kind) {
     case 'profile_not_found':
       return m.error_profiles_profile_not_found()
@@ -191,7 +192,7 @@ function profileFileMessage(error: ProfileFileError, fallback: string): string {
   }
 }
 
-function runtimeErrorMessage(error: RuntimeError): string {
+export function runtimeErrorMessage(error: RuntimeError): string {
   switch (error.kind) {
     case 'shutting_down':
       return m.error_runtime_shutting_down()
@@ -457,5 +458,44 @@ function installCoreBinaryMessage(error: InstallCoreBinaryError): string {
       return m.error_runtime_install_core_binary_copy({ core: error.core })
     case 'path_not_utf8':
       return m.error_runtime_path_not_utf8({ path: error.path })
+  }
+}
+
+/** The simplest message for one degradation of a committed mutation. */
+export function degradationReasonMessage(reason: DegradationReason): string {
+  switch (reason.code) {
+    case 'runtime_recovery_required': {
+      const summary = m.mutation_degradation_reason_runtime_recovery_required()
+      return reason.cause
+        ? `${summary} (${runtimeErrorMessage(reason.cause)})`
+        : summary
+    }
+    case 'runtime_deferred':
+      return m.mutation_degradation_reason_runtime_deferred({
+        reason: runtimeErrorMessage(reason.cause),
+      })
+    case 'runtime_product_publish_failed':
+    case 'service_stop_failed':
+      return runtimeErrorMessage(reason.cause)
+    case 'mode_interruption_failed':
+    case 'profile_interruption_failed':
+    case 'proxy_interruption_failed':
+      return m.mutation_degradation_reason_interruption_failed()
+    case 'proxy_cache_refresh_failed':
+      return m.mutation_degradation_reason_proxy_cache_refresh_failed()
+    case 'journal_invalid':
+      return m.mutation_degradation_reason_journal_invalid()
+    case 'materialization_deferred':
+      return m.mutation_degradation_reason_materialization_deferred()
+    case 'cleanup_deferred':
+      return m.mutation_degradation_reason_cleanup_deferred()
+    case 'profile_auto_activation_failed':
+      return m.mutation_degradation_reason_profile_auto_activation_failed({
+        reason: profilesErrorMessage(reason.cause),
+      })
+    default: {
+      const _exhaustive: never = reason
+      return String(_exhaustive)
+    }
   }
 }

@@ -21,6 +21,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDeepLinkImport } from '@/hooks/use-deep-link-import'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
+import { degradationReasonMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
 import {
   events,
@@ -154,27 +155,10 @@ function localizeDegradationPhase(phase: DegradationPhase): string {
   }
 }
 
-function localizeDegradationCode(code: string): string {
-  switch (code) {
-    case 'journal_invalid':
-      return m.mutation_degradation_code_journal_invalid()
-    case 'materialization_deferred':
-      return m.mutation_degradation_code_materialization_deferred()
-    case 'cleanup_deferred':
-      return m.mutation_degradation_code_cleanup_deferred()
-    case 'runtime_rebuild_failed':
-      return m.mutation_degradation_code_runtime_rebuild_failed()
-    case 'profile_auto_activation_failed':
-      return m.mutation_degradation_code_profile_auto_activation_failed()
-    default:
-      return m.mutation_degradation_code_unknown({ code })
-  }
-}
-
 function formatDegradationItem(degradation: Degradation): string {
   return m.mutation_degraded_item({
     phase: localizeDegradationPhase(degradation.phase),
-    detail: localizeDegradationCode(degradation.code),
+    detail: degradationReasonMessage(degradation.reason),
   })
 }
 
@@ -188,11 +172,11 @@ function MutationDegradationNotifier() {
           return
         }
 
-        // Backend `message` is diagnostic-only; primary copy is phase + code.
+        // Backend `message` is diagnostic-only; primary copy is phase + reason.
         for (const degradation of degradations) {
           console.warn('[mutation-degradation]', {
             phase: degradation.phase,
-            code: degradation.code,
+            reason: degradation.reason,
             retryable: degradation.retryable,
             message: degradation.message,
           })

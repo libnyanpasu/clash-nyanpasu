@@ -4454,5 +4454,8 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
         crate::client::runtime::RuntimeCommitStatus::RecoveryRequired
     );
     assert_eq!(degradations.len(), 1);
-    assert_eq!(degradations[0].code, "runtime_recovery_required");
+    assert!(matches!(
+        degradations[0].reason,
+        crate::client::runtime::DegradationReason::RuntimeRecoveryRequired { .. }
+    ));
 }

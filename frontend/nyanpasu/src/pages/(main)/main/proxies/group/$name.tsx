@@ -120,7 +120,7 @@ function RouteComponent() {
 
   const handleScrollToCurrentNode = useCallback(() => {
     const index = currentGroup?.all?.findIndex(
-      (proxy) => proxy.name === currentGroup?.now,
+      (name) => name === currentGroup?.now,
     )
 
     // unwarp undefined index
@@ -165,7 +165,8 @@ function RouteComponent() {
         }}
       >
         {virtualItems.map((virtualItem) => {
-          const proxy = currentGroup?.all?.[virtualItem.index]
+          const name = currentGroup?.all?.[virtualItem.index]
+          const proxy = name ? proxies?.nodes[name] : undefined
 
           if (!proxy) {
             return null
@@ -183,7 +184,7 @@ function RouteComponent() {
               }}
               data-index={virtualItem.index}
               data-slot="proxies-virtual-item"
-              data-active={String(proxy.name === currentGroup?.now)}
+              data-active={String(name === currentGroup?.now)}
             >
               <ProxyNodeButton
                 proxy={proxy}

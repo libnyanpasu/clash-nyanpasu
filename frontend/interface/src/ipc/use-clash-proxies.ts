@@ -30,20 +30,17 @@ export type ClashProxiesQueryGroupItem = ProxyGroupItem_Serialize
 
 export type ClashProxiesQuery = Proxies_Serialize
 
-// Create a new proxy item with updated history
-const createUpdatedProxy = (
-  proxy: ClashProxiesQueryProxyItem,
-  { name, delay }: { name: string; delay: number },
-) => {
-  if (proxy.name !== name) return proxy
-
-  const newHistory = [
-    ...proxy.history,
+// Append a delay sample to a node's history, returning a new node object.
+const withDelaySample = (
+  node: ClashProxiesQueryProxyItem,
+  delay: number,
+): ClashProxiesQueryProxyItem => ({
+  ...node,
+  history: [
+    ...node.history,
     { time: new Date().toISOString(), delay },
-  ] satisfies ProxyItemHistory[]
-
-  return { ...proxy, history: newHistory }
-}
+  ] satisfies ProxyItemHistory[],
+})
 
 export const useClashProxies = () => {
   const queryClient = useQueryClient()
@@ -113,26 +110,15 @@ export const useClashProxies = () => {
     },
     onSuccess: ({ name, delay }) => {
       const oldData = getQueryData()
+      const node = oldData?.nodes[name]
 
-      if (!oldData) {
+      if (!oldData || !node) {
         return
       }
 
-      // Create new data structure with updated proxies
       const newData = {
         ...oldData,
-        global: {
-          ...oldData.global,
-          all: oldData.global.all.map((proxy) =>
-            createUpdatedProxy(proxy, { name, delay }),
-          ),
-        },
-        groups: oldData.groups.map((group) => ({
-          ...group,
-          all: group.all.map((proxy) =>
-            createUpdatedProxy(proxy, { name, delay }),
-          ),
-        })),
+        nodes: { ...oldData.nodes, [name]: withDelaySample(node, delay) },
       } satisfies ClashProxiesQuery
 
       setQueryData(newData)
@@ -170,32 +156,15 @@ export const useClashProxies = () => {
         return
       }
 
-      // Create new data structure with updated proxies
-      const newData = {
-        ...oldData,
-        global: {
-          ...oldData.global,
-          all: oldData.global.all.map((proxy) =>
-            Object.prototype.hasOwnProperty.call(data, proxy.name)
-              ? createUpdatedProxy(proxy, {
-                  name: proxy.name,
-                  delay: data[proxy.name],
-                })
-              : proxy,
-          ),
-        },
-        groups: oldData.groups.map((group) => ({
-          ...group,
-          all: group.all.map((proxy) =>
-            Object.prototype.hasOwnProperty.call(data, proxy.name)
-              ? createUpdatedProxy(proxy, {
-                  name: proxy.name,
-                  delay: data[proxy.name],
-                })
-              : proxy,
-          ),
-        })),
-      } satisfies ClashProxiesQuery
+      const nodes = { ...oldData.nodes }
+      for (const [name, delay] of Object.entries(data)) {
+        const node = nodes[name]
+        if (node) {
+          nodes[name] = withDelaySample(node, delay)
+        }
+      }
+
+      const newData = { ...oldData, nodes } satisfies ClashProxiesQuery
 
       setQueryData(newData)
     },

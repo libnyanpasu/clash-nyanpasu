@@ -2622,18 +2622,24 @@ export type ProxiesSelectorMode = 'hidden' | 'normal' | 'submenu'
 
 export type Proxies_Deserialize = {
   global: ProxyGroupItem_Deserialize
-  direct: ProxyItem_Deserialize
   groups: ProxyGroupItem_Deserialize[]
-  records: { [key in string]: ProxyItem_Deserialize }
-  proxies: ProxyItem_Deserialize[]
+  /**
+   *  Every `/proxies` entry plus every provider-owned node referenced by a
+   *  group, keyed by name. A node that belongs to several groups still has
+   *  exactly one entry here; groups reference it by name in `all`.
+   */
+  nodes: { [key in string]: ProxyItem_Deserialize }
 }
 
 export type Proxies_Serialize = {
   global: ProxyGroupItem_Serialize
-  direct: ProxyItem_Serialize
   groups: ProxyGroupItem_Serialize[]
-  records: { [key in string]: ProxyItem_Serialize }
-  proxies: ProxyItem_Serialize[]
+  /**
+   *  Every `/proxies` entry plus every provider-owned node referenced by a
+   *  group, keyed by name. A node that belongs to several groups still has
+   *  exactly one entry here; groups reference it by name in `all`.
+   */
+  nodes: { [key in string]: ProxyItem_Serialize }
 }
 
 export type ProxyChangeBreakMode =
@@ -2651,7 +2657,7 @@ export type ProxyGroupItem_Deserialize = {
   type: string
   udp: boolean
   history: ProxyItemHistory[]
-  all: ProxyItem_Deserialize[]
+  all: string[]
   now: string | null
   provider: string | null
   alive: boolean | null
@@ -2666,7 +2672,7 @@ export type ProxyGroupItem_Serialize = {
   type: string
   udp: boolean
   history: ProxyItemHistory[]
-  all: ProxyItem_Serialize[]
+  all: string[]
   now: string | null
   provider: string | null
   alive: boolean | null

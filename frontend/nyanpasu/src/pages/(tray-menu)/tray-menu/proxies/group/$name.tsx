@@ -127,7 +127,8 @@ function RouteComponent() {
         }}
       >
         {virtualItems.map((virtualItem) => {
-          const proxy = currentGroup?.all?.[virtualItem.index]
+          const name = currentGroup?.all?.[virtualItem.index]
+          const proxy = name ? proxies?.nodes[name] : undefined
 
           if (!proxy) {
             return null
@@ -146,7 +147,7 @@ function RouteComponent() {
               }}
               data-index={virtualItem.index}
               data-slot="proxies-virtual-item"
-              data-active={String(proxy.name === currentGroup?.now)}
+              data-active={String(name === currentGroup?.now)}
             >
               <ProxyButton proxy={proxy} onSelect={handleSelectProxy} />
             </div>

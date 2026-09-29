@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import {
   ClashProxiesQueryGroupItem,
+  ClashProxiesQueryProxyItem,
   useClashProxies,
 } from '@nyanpasu/interface/ipc'
 import DelayChip from '@/components/proxies/delay-chip'
@@ -16,16 +17,20 @@ export const Route = createFileRoute('/(tray-menu)/tray-menu/proxies/')({
   component: RouteComponent,
 })
 
-const ProxyButton = ({ proxy }: { proxy: ClashProxiesQueryGroupItem }) => {
+const ProxyButton = ({
+  proxy,
+  nodes,
+}: {
+  proxy: ClashProxiesQueryGroupItem
+  nodes: Record<string, ClashProxiesQueryProxyItem>
+}) => {
   const currentDelay = useMemo(() => {
     if (proxy.history.length > 0) {
       return proxy.history[proxy.history.length - 1].delay
     }
 
     if (proxy.now) {
-      const nodeDelay = proxy.all
-        .find((item) => item.name === proxy.now)
-        ?.history.at(-1)?.delay
+      const nodeDelay = nodes[proxy.now]?.history.at(-1)?.delay
 
       if (nodeDelay !== undefined) {
         return nodeDelay
@@ -33,7 +38,7 @@ const ProxyButton = ({ proxy }: { proxy: ClashProxiesQueryGroupItem }) => {
     }
 
     return -1
-  }, [proxy.history, proxy.now, proxy.all])
+  }, [proxy.history, proxy.now, nodes])
 
   return (
     <ActionButton disableClose asChild>
@@ -72,7 +77,7 @@ function RouteComponent() {
         </BackButton>
 
         {proxies?.groups.map((group) => (
-          <ProxyButton key={group.name} proxy={group} />
+          <ProxyButton key={group.name} proxy={group} nodes={proxies.nodes} />
         ))}
       </div>
     </ScrollArea>

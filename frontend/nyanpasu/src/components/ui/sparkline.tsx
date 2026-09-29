@@ -20,6 +20,20 @@ const STABLE_TOP_FACTOR = 2 / 3
 /** When the series has a wide range, use most of the available height. */
 const ACTIVE_TOP_FACTOR = 0.35
 
+/** Vertical mapping of the chart: y = 0 at the bottom, y = yMax at topFactor. */
+type Scale = { yMax: number; topFactor: number }
+
+const computeScale = (points: number[]): Scale => {
+  const mean = d3.mean(points) ?? 0
+  const std = d3.deviation(points) ?? 0
+  const cv = mean > 0 ? std / mean : 0
+
+  return {
+    yMax: Math.max(d3.max(points) ?? 0, 1),
+    topFactor: cv < STABLE_CV_THRESHOLD ? STABLE_TOP_FACTOR : ACTIVE_TOP_FACTOR,
+  }
+}
+
 /**
  * Number of samples `next` has advanced past `prev` in a fixed-size sliding
  * window, or 0 when `next` is not a continuation of `prev`.
@@ -58,6 +72,8 @@ export const Sparkline = ({
   // The point just before bufRef[0], so the curve shape at the left edge stays
   // the same when scrolled-off points are dropped from the buffer.
   const leftGuardRef = useRef<number | null>(null)
+  // The scale currently drawn, which may be mid-transition.
+  const scaleRef = useRef<Scale | null>(null)
   const animRef = useRef<ReturnType<typeof animate> | null>(null)
 
   useEffect(() => {
@@ -74,18 +90,8 @@ export const Sparkline = ({
     const makePaths = (
       points: number[],
       xRange: [number, number],
-      yMax: number,
+      { yMax, topFactor }: Scale,
     ) => {
-      const mean = d3.mean(points) ?? 0
-      const std = d3.deviation(points) ?? 0
-      const cv = mean > 0 ? std / mean : 0
-      const topFactor =
-        yMax === 0
-          ? 1
-          : cv < STABLE_CV_THRESHOLD
-            ? STABLE_TOP_FACTOR
-            : ACTIVE_TOP_FACTOR
-
       const x = d3
         .scaleLinear()
         .domain([0, points.length - 1])
@@ -120,7 +126,7 @@ export const Sparkline = ({
     const buildPaths = (
       points: number[],
       xRange: [number, number],
-      yMax: number,
+      scale: Scale,
       step: number,
       leftGuard?: number,
     ) => {
@@ -134,7 +140,7 @@ export const Sparkline = ({
 
       if (n === 1) {
         // Single point: render a degenerate path without guard extension.
-        return makePaths(points, xRange, yMax)
+        return makePaths(points, xRange, scale)
       }
 
       const lGuard = leftGuard ?? 2 * points[0] - points[1]
@@ -143,7 +149,7 @@ export const Sparkline = ({
       return makePaths(
         [lGuard, ...points, rGuard],
         [xRange[0] - step, xRange[1] + step],
-        yMax,
+        scale,
       )
     }
 
@@ -167,6 +173,7 @@ export const Sparkline = ({
       bufRef.current = null
       offsetRef.current = 0
       leftGuardRef.current = null
+      scaleRef.current = null
       return
     }
 
@@ -174,18 +181,20 @@ export const Sparkline = ({
     const prevBuf = bufRef.current
     const shift = prevData && prevBuf ? findShift(prevData, data) : 0
 
+    const toScale = computeScale(data)
+
     if (!shift || !prevBuf) {
-      const yMax = Math.max(d3.max(data) ?? 0, 1)
       const { line, area } = buildPaths(
         data,
         [0, width],
-        yMax,
+        toScale,
         stepWidth,
         leftGuardRef.current ?? undefined,
       )
 
       bufRef.current = data.slice()
       offsetRef.current = 0
+      scaleRef.current = toScale
 
       g.selectAll('*').remove()
       g.attr('transform', 'translate(0,0)')
@@ -215,9 +224,10 @@ export const Sparkline = ({
     const toOffset = buf.length - data.length
     const bufRange: [number, number] = [0, stepWidth * (buf.length - 1)]
 
-    const fromYMax = Math.max(d3.max(buf) ?? 0, 1)
-    const toYMax = Math.max(d3.max(data) ?? 0, 1)
-    const yMaxChanges = Math.abs(fromYMax - toYMax) > 1
+    // Start from the scale actually on screen (possibly mid-transition) so a
+    // new peak or a stability change never rescales the chart in one frame.
+    const fromScale = scaleRef.current ?? toScale
+    const scaleChanges = !isEqual(fromScale, toScale)
 
     const setOffset = (offset: number) => {
       offsetRef.current = offset
@@ -228,7 +238,7 @@ export const Sparkline = ({
     const { line: initLine, area: initArea } = buildPaths(
       buf,
       bufRange,
-      fromYMax,
+      fromScale,
       stepWidth,
       leftGuard,
     )
@@ -244,17 +254,23 @@ export const Sparkline = ({
         // X-axis: pure linear translation — the scroll must feel constant-speed.
         setOffset(fromOffset + (toOffset - fromOffset) * t)
 
-        // Y-axis: non-linear easing for the yMax interpolation so the height
+        // Y-axis: non-linear easing for the scale interpolation so the height
         // change feels more natural (slow start/end, faster in the middle).
         // Because x is driven by the translation and y is driven independently
-        // by yMax, the two axes never couple — no wobble.
-        if (yMaxChanges) {
+        // by the scale, the two axes never couple — no wobble.
+        if (scaleChanges) {
           const easedT = d3.easeCubicInOut(t)
-          const currentYMax = fromYMax + (toYMax - fromYMax) * easedT
+          const currentScale = {
+            yMax: fromScale.yMax + (toScale.yMax - fromScale.yMax) * easedT,
+            topFactor:
+              fromScale.topFactor +
+              (toScale.topFactor - fromScale.topFactor) * easedT,
+          }
+          scaleRef.current = currentScale
           const { line, area } = buildPaths(
             buf,
             bufRange,
-            currentYMax,
+            currentScale,
             stepWidth,
             leftGuard,
           )
@@ -272,6 +288,7 @@ export const Sparkline = ({
         // so the curve shape at x=0 stays consistent across animation boundaries.
         leftGuardRef.current = buf[toOffset - 1]
         bufRef.current = data.slice()
+        scaleRef.current = toScale
 
         // At the end of the scroll the buffer path at -toOffset steps and the
         // N-point path at x=0 occupy identical visual coordinates, so the swap
@@ -279,7 +296,7 @@ export const Sparkline = ({
         const { line, area } = buildPaths(
           data,
           [0, width],
-          toYMax,
+          toScale,
           stepWidth,
           leftGuardRef.current,
         )

@@ -47,6 +47,13 @@ pub enum IpcErrorKind {
     Profiles(Box<ProfilesError>),
     Runtime(Box<RuntimeError>),
     Config(Box<ConfigError>),
+    Storage(Box<StorageOperationError>),
+}
+
+impl From<StorageOperationError> for IpcErrorKind {
+    fn from(error: StorageOperationError) -> Self {
+        Self::Storage(Box::new(error))
+    }
 }
 
 impl From<ConfigError> for IpcErrorKind {
@@ -73,6 +80,7 @@ impl From<ClientError> for IpcErrorKind {
             ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
             ClientError::Runtime(error) => Self::Runtime(Box::new(error)),
             ClientError::Config(error) => Self::Config(Box::new(error)),
+            ClientError::Storage(error) => Self::Storage(Box::new(error)),
             _ => Self::Unknown,
         }
     }
@@ -108,7 +116,6 @@ unknown_domain!(
     serde_yaml::Error,
     serde_json::Error,
     tauri::Error,
-    StorageOperationError,
     anyhow::Error,
 );
 

@@ -100,6 +100,17 @@ const ROUTES = {
   }
 >
 
+const GROUPS = [
+  {
+    label: () => m.profile_group_config(),
+    types: [ProfileType.Profile],
+  },
+  {
+    label: () => m.profile_group_transform(),
+    types: [ProfileType.JavaScript, ProfileType.Lua, ProfileType.Merge],
+  },
+]
+
 export default function ProfilesNavigate({
   className,
   ...props
@@ -120,20 +131,32 @@ export default function ProfilesNavigate({
 
   return (
     <div className={cn('flex flex-col gap-2', className)} {...props}>
-      {Object.entries(ROUTES).map(([profileType, route]) => (
-        <LinkButton key={route.href} href={route.href}>
-          <div className="size-8">{route.icon()}</div>
+      {GROUPS.map((group) => (
+        <div key={group.types[0]} className="flex flex-col gap-1">
+          <p className="text-on-surface-variant px-4 pt-2 pb-1 text-xs font-medium">
+            {group.label()}
+          </p>
 
-          <div className="text-sm font-medium">
-            <p>{route.label}</p>
+          {group.types.map((profileType) => {
+            const route = ROUTES[profileType]
 
-            <p className="text-xs text-zinc-500">
-              {m.profile_profile_label_count({
-                count: counts[profileType as ProfileType] ?? 0,
-              })}
-            </p>
-          </div>
-        </LinkButton>
+            return (
+              <LinkButton key={route.href} href={route.href}>
+                <div className="size-8">{route.icon()}</div>
+
+                <div className="text-sm font-medium">
+                  <p>{route.label}</p>
+
+                  <p className="text-xs text-zinc-500">
+                    {m.profile_profile_label_count({
+                      count: counts[profileType],
+                    })}
+                  </p>
+                </div>
+              </LinkButton>
+            )
+          })}
+        </div>
       ))}
 
       <Separator />

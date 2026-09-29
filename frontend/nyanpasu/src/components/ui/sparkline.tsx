@@ -1,5 +1,5 @@
 import * as d3 from 'd3'
-import { cloneDeep } from 'lodash-es'
+import { isEqual } from 'lodash-es'
 import { animate } from 'motion/react'
 import { ComponentPropsWithoutRef, useEffect, useRef } from 'react'
 import { cn } from '@nyanpasu/utils'
@@ -125,10 +125,17 @@ export const Sparkline = ({
     }
 
     const prevData = prevDataRef.current
-    prevDataRef.current = cloneDeep(data)
+    // Widgets re-render on every clash ws event and pass a freshly built array,
+    // so only a change in content means a new sample arrived. Leave the running
+    // animation untouched otherwise.
+    if (prevData && isEqual(prevData, data)) {
+      return
+    }
+    prevDataRef.current = data.slice()
 
-    animRef.current?.stop()
+    const running = animRef.current
     animRef.current = null
+    running?.stop()
 
     // Handle short series early to avoid division by zero and invalid indexing.
     if (data.length < 2) {
@@ -186,8 +193,6 @@ export const Sparkline = ({
     g.select('.area').attr('d', initArea)
     g.select('.line').attr('d', initLine)
 
-    let cancelled = false
-
     const anim = animate(0, 1, {
       duration: animationDuration,
       ease: 'linear',
@@ -215,7 +220,7 @@ export const Sparkline = ({
         }
       },
       onComplete() {
-        if (cancelled) {
+        if (animRef.current !== anim) {
           return
         }
 
@@ -240,12 +245,9 @@ export const Sparkline = ({
     })
 
     animRef.current = anim
-
-    return () => {
-      cancelled = true
-      anim.stop()
-    }
   }, [data, animationDuration])
+
+  useEffect(() => () => animRef.current?.stop(), [])
 
   return (
     <svg

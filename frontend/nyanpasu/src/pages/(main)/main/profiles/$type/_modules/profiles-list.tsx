@@ -1,6 +1,6 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
 import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
-import { isEqual } from 'lodash-es'
+import { isEqual } from 'es-toolkit'
 import { AnimatePresence, motion } from 'motion/react'
 import { ComponentProps, RefObject, useEffect, useRef, useState } from 'react'
 import {

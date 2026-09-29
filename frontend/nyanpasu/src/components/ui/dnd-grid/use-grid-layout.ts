@@ -1,4 +1,4 @@
-import { isEqual } from 'lodash-es'
+import { isEqual } from 'es-toolkit'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DndGridItemType, GridLayout, GridSize, ItemRect } from './types'
 

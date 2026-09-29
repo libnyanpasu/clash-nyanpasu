@@ -1,5 +1,5 @@
 import * as d3 from 'd3'
-import { isEqual } from 'lodash-es'
+import { isEqual } from 'es-toolkit'
 import { animate } from 'motion/react'
 import { ComponentPropsWithoutRef, useEffect, useRef } from 'react'
 import { cn } from '@nyanpasu/utils'

@@ -5,10 +5,12 @@ use nyanpasu_config::runtime::executor::ResolvedPortBindings;
 #[cfg(test)]
 use ractor::RpcReplyPort;
 use ractor::{Actor, ActorProcessingErr, ActorRef};
+use snafu::OptionExt as _;
 use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
+    error::{EffectsError, EffectsStoppedSnafu},
     plan::{
         ApplicationEffect, ApplicationEffectFields, ApplicationEffectInputs, ApplicationEffectPlan,
         ClashEffectFields, EffectKind, TrayRefresh,
@@ -376,13 +378,7 @@ impl Actor for EffectsActor {
                     entry.status.health = status.health.clone();
                     entry.health = match &entry.status.health {
                         EffectHealth::Healthy => ConvergenceHealth::Healthy,
-                        EffectHealth::Degraded {
-                            code:
-                                "widget_unavailable"
-                                | "system_proxy_port_unresolved"
-                                | "proxy_guard_waiting_dependency",
-                            ..
-                        } => {
+                        EffectHealth::Degraded { code, .. } if code.waits_for_dependency() => {
                             entry.budget.attempts = entry.budget.attempts.saturating_sub(1);
                             if entry.automatic {
                                 entry.budget.remaining += 1;
@@ -484,10 +480,11 @@ impl EffectsClient {
         })
     }
 
-    pub fn retry_now(&self, kind: EffectKind) -> anyhow::Result<()> {
+    pub fn retry_now(&self, kind: EffectKind) -> Result<(), EffectsError> {
         self.actor
             .cast(Message::RetryNow(kind))
-            .map_err(|error| anyhow::anyhow!("{error}"))
+            .ok()
+            .context(EffectsStoppedSnafu)
     }
     pub fn snapshot(&self) -> EffectsSnapshot {
         self.status.borrow().clone()

@@ -1,6 +1,8 @@
 //! Result protocol for applied effects: per-effect health plus the revision
 //! bookkeeping that lets an owner drop a superseded reconcile.
 
+use serde::Serialize;
+
 use super::plan::EffectKind;
 
 /// Monotonic counter over committed desired configurations, allocated by the
@@ -24,6 +26,61 @@ impl EffectRevision {
     }
 }
 
+/// Why an effect is not in its desired state, in the terms the UI localizes.
+///
+/// One value per kind of failure, named after the effect that failed. The
+/// owner that classifies a failure is the one that picks the code; the
+/// message beside it is only the diagnostic text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectFailureCode {
+    HotkeyInvalidBindings,
+    HotkeyPartialRegistration,
+    HotkeyShutDown,
+    HotkeyStopped,
+    LoggerRefreshFailed,
+    WidgetUnavailable,
+    WidgetApplyFailed,
+    TrayRefreshFailed,
+    EffectOwnerSilent,
+    ProxyGuardWaitingDependency,
+    AutoLaunchFailed,
+    PacDisableFailed,
+    PacApplyFailed,
+    PacUnsupported,
+    SystemProxyApplyFailed,
+    SystemProxyPortUnresolved,
+    SystemProxyRestoreFailed,
+    SystemProxyShutDown,
+    SystemProxyStopped,
+}
+
+impl EffectFailureCode {
+    /// The failure is a startup-ordering fact rather than a fault: the
+    /// effect is waiting for something that has not been resolved yet.
+    pub const fn waits_for_dependency(self) -> bool {
+        matches!(
+            self,
+            Self::WidgetUnavailable
+                | Self::SystemProxyPortUnresolved
+                | Self::ProxyGuardWaitingDependency
+        )
+    }
+}
+
+/// The diagnostic text of a failure: its message, then each cause down the
+/// chain. Unlike `Display` it keeps what the library underneath reported.
+pub fn failure_text(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut text = error.to_string();
+    let mut cause = error.source();
+    while let Some(next) = cause {
+        text.push_str(": ");
+        text.push_str(&next.to_string());
+        cause = next.source();
+    }
+    text
+}
+
 // Every variant but `Healthy` is constructed by the effect owners, which are
 // added one task at a time.
 #[allow(dead_code)]
@@ -32,8 +89,7 @@ pub enum EffectHealth {
     Pending,
     Healthy,
     Degraded {
-        /// Stable snake_case code, not a free-form phrase.
-        code: &'static str,
+        code: EffectFailureCode,
         message: String,
         retryable: bool,
     },
@@ -41,7 +97,7 @@ pub enum EffectHealth {
     Superseded,
     /// The platform or a dependency cannot provide the effect at all.
     Unsupported {
-        code: &'static str,
+        code: EffectFailureCode,
     },
 }
 
@@ -57,6 +113,20 @@ pub struct EffectStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failure_text_joins_the_whole_chain() {
+        #[derive(Debug, snafu::Snafu)]
+        #[snafu(display("outer"))]
+        struct Outer {
+            source: std::io::Error,
+        }
+        let error = Outer {
+            source: std::io::Error::other("inner"),
+        };
+
+        assert_eq!(failure_text(&error), "outer: inner");
+    }
 
     #[test]
     fn revision_is_monotonically_comparable() {

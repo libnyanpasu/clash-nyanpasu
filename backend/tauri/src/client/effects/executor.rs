@@ -16,16 +16,17 @@ use super::{
         SystemProxyDesired, TrayRefresh, TrayView,
     },
     ports::ApplicationEffectsPort,
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
 use crate::client::{
     hotkey::{
         HotkeyClient,
+        error::InvalidBindingsSnafu,
         ports::{AcceleratorValidator, HotkeyBindings},
     },
     system_proxy::SystemProxyClient,
     ui_effects::ports::{
-        LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController, WidgetError,
+        LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController,
     },
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
@@ -75,38 +76,47 @@ impl ApplicationEffectExecutor {
     async fn apply_hotkeys(&self, revision: EffectRevision, raw: &[String]) -> EffectStatus {
         match HotkeyBindings::parse(raw, self.accelerators.as_ref()) {
             Ok(desired) => self.hotkeys.reconcile(revision, desired).await,
-            Err(error) => degraded(
-                EffectKind::Hotkeys,
-                revision,
-                "hotkey_invalid_bindings",
-                error.to_string(),
-                false,
-            ),
+            Err(error) => {
+                let error = InvalidBindingsSnafu {
+                    rejected: vec![error],
+                }
+                .build();
+                degraded(
+                    EffectKind::Hotkeys,
+                    revision,
+                    error.code(),
+                    failure_text(&error),
+                    error.retryable(),
+                )
+            }
         }
     }
 
     fn apply_locale(&self, revision: EffectRevision, language: I18nLanguage) -> EffectStatus {
-        report(
-            EffectKind::Locale,
-            revision,
-            "locale_apply_failed",
-            self.locale.set_locale(language),
-        )
+        self.locale.set_locale(language);
+        healthy(EffectKind::Locale, revision)
     }
 
     fn apply_logger(&self, revision: EffectRevision, desired: &LoggerDesired) -> EffectStatus {
-        report(
-            EffectKind::Logger,
-            revision,
-            "logger_refresh_failed",
-            self.logger.refresh(
-                Some(desired.level.clone()),
-                Some(LogRotation {
-                    max_files: desired.max_files,
-                    max_file_size: desired.max_file_size,
-                }),
+        let refreshed = self.logger.refresh(
+            Some(desired.level.clone()),
+            Some(LogRotation {
+                max_files: desired.max_files,
+                max_file_size: desired.max_file_size,
+            }),
+        );
+        match refreshed {
+            Ok(()) => healthy(EffectKind::Logger, revision),
+            // Retryable: the configuration is committed, so the next reconcile
+            // hands the same desired value to the same adapter again.
+            Err(error) => degraded(
+                EffectKind::Logger,
+                revision,
+                error.code(),
+                failure_text(&error),
+                true,
             ),
-        )
+        }
     }
 
     async fn apply_widget(
@@ -117,28 +127,14 @@ impl ApplicationEffectExecutor {
         match self.widget.apply(config).await {
             Ok(()) => healthy(EffectKind::Widget, revision),
             // Not yet installed is a startup-ordering fact rather than a widget
-            // failure, and it gets its own code so a caller can tell them apart.
-            Err(error @ WidgetError::Unavailable) => degraded(
+            // failure, and its code lets a caller tell them apart. A disable
+            // whose stop ran out of time leaves the old widget owned, and the
+            // next reconcile stops it again: every failure is worth a retry.
+            Err(error) => degraded(
                 EffectKind::Widget,
                 revision,
-                "widget_unavailable",
-                error.to_string(),
-                true,
-            ),
-            Err(WidgetError::Failed(error)) => degraded(
-                EffectKind::Widget,
-                revision,
-                "widget_apply_failed",
-                format!("{error:#}"),
-                true,
-            ),
-            // A disable whose stop ran out of time: the old widget is still
-            // owned, and the next reconcile stops it again.
-            Err(error @ (WidgetError::StillOwned | WidgetError::HandshakeBlocked)) => degraded(
-                EffectKind::Widget,
-                revision,
-                "widget_apply_failed",
-                error.to_string(),
+                error.code(),
+                failure_text(&error),
                 true,
             ),
         }
@@ -166,7 +162,16 @@ impl ApplicationEffectExecutor {
             self.tray_full_pending
                 .store(result.is_err(), Ordering::SeqCst);
         }
-        report(EffectKind::Tray, revision, "tray_refresh_failed", result)
+        match result {
+            Ok(()) => healthy(EffectKind::Tray, revision),
+            Err(error) => degraded(
+                EffectKind::Tray,
+                revision,
+                error.code(),
+                failure_text(&error),
+                true,
+            ),
+        }
     }
 }
 
@@ -211,7 +216,7 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                             degraded(
                                 kind,
                                 revision,
-                                "effect_owner_silent",
+                                EffectFailureCode::EffectOwnerSilent,
                                 format!("the owner of {kind:?} reported no status"),
                                 true,
                             )
@@ -251,20 +256,6 @@ fn system_proxy_desires(
     (proxy, guard, auto_launch)
 }
 
-fn report(
-    kind: EffectKind,
-    revision: EffectRevision,
-    code: &'static str,
-    result: anyhow::Result<()>,
-) -> EffectStatus {
-    match result {
-        Ok(()) => healthy(kind, revision),
-        // Retryable: the configuration is committed, so the next reconcile
-        // hands the same desired value to the same adapter again.
-        Err(error) => degraded(kind, revision, code, format!("{error:#}"), true),
-    }
-}
-
 fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
     EffectStatus {
         kind,
@@ -277,7 +268,7 @@ fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
 fn degraded(
     kind: EffectKind,
     revision: EffectRevision,
-    code: &'static str,
+    code: EffectFailureCode,
     message: String,
     retryable: bool,
 ) -> EffectStatus {

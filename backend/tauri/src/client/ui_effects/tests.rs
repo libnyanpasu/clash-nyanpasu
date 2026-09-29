@@ -17,8 +17,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     adapters::TauriWidgetController,
     ports::{
-        LocaleSink, LogRotation, LoggerRefresher, MockLocaleSink, MockLoggerRefresher,
-        MockTrayRefresher, MockWidgetController, MockWidgetRuntime, TrayRefresher,
+        LocaleSink, LogRotation, LoggerError, LoggerRefresher, MockLocaleSink, MockLoggerRefresher,
+        MockTrayRefresher, MockWidgetController, MockWidgetRuntime, TrayError, TrayRefresher,
         WIDGET_STOP_BOUND, WidgetController, WidgetError,
     },
 };
@@ -30,20 +30,21 @@ use crate::client::{
             TrayRefresh,
         },
         ports::ApplicationEffectsPort,
-        status::{EffectHealth, EffectRevision, EffectStatus},
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     },
     hotkey::{
         HotkeyArgs, HotkeyClient,
         adapters::PlatformAcceleratorValidator,
         ports::{
             HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-            MockShortcutRegistrar, ShortcutRegistrar,
+            MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
         },
     },
     system_proxy::{
         SystemProxyArgs, SystemProxyClient,
         ports::{
-            MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyPort, PacPort,
+            MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
+            OsProxyPort, PacError, PacPort,
         },
     },
 };
@@ -233,7 +234,6 @@ async fn locale_is_applied_before_tray_refresh() {
     let locale_log = log.clone();
     locale.expect_set_locale().times(1).returning(move |_| {
         record(&locale_log, "set_locale");
-        Ok(())
     });
 
     let mut tray = MockTrayRefresher::new();
@@ -277,20 +277,23 @@ async fn locale_is_applied_before_tray_refresh() {
 #[tokio::test]
 async fn each_ui_failure_gets_its_own_code() {
     let mut locale = MockLocaleSink::new();
-    locale
-        .expect_set_locale()
-        .returning(|_| Err(anyhow::anyhow!("locale refused")));
+    locale.expect_set_locale().returning(|_| ());
     let mut logger = MockLoggerRefresher::new();
     logger
         .expect_refresh()
-        .returning(|_, _| Err(anyhow::anyhow!("logger refused")));
+        .returning(|_, _| Err(LoggerError::ReloadThreadStopped));
     let mut widget = MockWidgetController::new();
-    widget.expect_apply().returning(|_| {
-        Box::pin(async { Err(WidgetError::Failed(anyhow::anyhow!("widget refused"))) })
-    });
+    widget
+        .expect_apply()
+        .returning(|_| Box::pin(async { Err(spawn_refused("widget refused")) }));
     let mut tray = MockTrayRefresher::new();
-    tray.expect_refresh_full()
-        .returning(|_| Box::pin(async { Err(anyhow::anyhow!("tray refused")) }));
+    tray.expect_refresh_full().returning(|_| {
+        Box::pin(async {
+            Err(TrayError::ScheduleTrayWork {
+                source: "tray refused".into(),
+            })
+        })
+    });
 
     let executor = executor(
         Arc::new(locale),
@@ -301,6 +304,7 @@ async fn each_ui_failure_gets_its_own_code() {
     .await;
 
     // One patch that touches all four: the language rebuilds the tray as well.
+    // Setting the locale cannot fail, so the other three degrade beside it.
     let app = NyanpasuAppConfig {
         language: I18nLanguage::Russian,
         app_log_level: LoggingLevel::Error,
@@ -313,8 +317,9 @@ async fn each_ui_failure_gets_its_own_code() {
     assert_eq!(plan.effects().len(), 4, "{:?}", plan.effects());
     let statuses = executor.apply(EffectRevision::new(4), plan).await;
 
-    let codes: Vec<(EffectKind, &str)> = statuses
+    let codes: Vec<(EffectKind, EffectFailureCode)> = statuses
         .iter()
+        .filter(|status| status.kind != EffectKind::Locale)
         .map(|status| match &status.health {
             EffectHealth::Degraded { code, .. } => (status.kind, *code),
             other => panic!("{:?} should have degraded, got {other:?}", status.kind),
@@ -323,10 +328,9 @@ async fn each_ui_failure_gets_its_own_code() {
     assert_eq!(
         codes,
         vec![
-            (EffectKind::Locale, "locale_apply_failed"),
-            (EffectKind::Logger, "logger_refresh_failed"),
-            (EffectKind::Widget, "widget_apply_failed"),
-            (EffectKind::Tray, "tray_refresh_failed"),
+            (EffectKind::Logger, EffectFailureCode::LoggerRefreshFailed),
+            (EffectKind::Widget, EffectFailureCode::WidgetApplyFailed),
+            (EffectKind::Tray, EffectFailureCode::TrayRefreshFailed),
         ],
         "one failure must not mask another"
     );
@@ -510,7 +514,7 @@ async fn widget_start_failure_surfaces_as_a_widget_failure() {
         .expect_is_running()
         .returning(|| Box::pin(async { false }));
     runtime.expect_start().times(1).returning(|_| {
-        Box::pin(async { Err(anyhow::anyhow!("the widget process refused to start")) })
+        Box::pin(async { Err(spawn_refused("the widget process refused to start")) })
     });
     let controller = controller_with(runtime);
 
@@ -521,7 +525,17 @@ async fn widget_start_failure_surfaces_as_a_widget_failure() {
         .await
         .expect_err("a failing spawn is a failure");
 
-    assert!(matches!(error, WidgetError::Failed(_)), "{error:?}");
+    assert!(
+        matches!(error, WidgetError::SpawnWidget { .. }),
+        "{error:?}"
+    );
+}
+
+fn spawn_refused(reason: &str) -> WidgetError {
+    WidgetError::SpawnWidget {
+        variant: "small".into(),
+        source: std::io::Error::other(reason.to_owned()),
+    }
 }
 
 fn widget_health(statuses: Vec<EffectStatus>) -> EffectHealth {
@@ -583,8 +597,8 @@ async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
     assert!(
         matches!(
             widget_health(starting.await),
-            EffectHealth::Degraded { code: "widget_apply_failed", ref message, .. }
-                if message.contains("Widget process exited")
+            EffectHealth::Degraded { code: EffectFailureCode::WidgetApplyFailed, ref message, .. }
+                if message.contains("exited before it connected")
         ),
         "the start failed"
     );
@@ -599,7 +613,7 @@ async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
     assert_eq!(
         widget_health(disabling.await),
         EffectHealth::Degraded {
-            code: "widget_apply_failed",
+            code: EffectFailureCode::WidgetApplyFailed,
             message: "widget handshake worker still blocked".into(),
             retryable: true,
         }
@@ -632,7 +646,6 @@ async fn late_full_tray_refresh_still_runs_after_a_newer_part_refresh() {
     let locale_log = log.clone();
     locale.expect_set_locale().times(1).returning(move |_| {
         record(&locale_log, "set_locale");
-        Ok(())
     });
     let mut tray = MockTrayRefresher::new();
     let part_log = log.clone();
@@ -719,14 +732,14 @@ impl PacPort for HeldPac {
         &self,
         _url: &url::Url,
         _cancel: tokio_util::sync::CancellationToken,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PacError> {
         self.applies.fetch_add(1, Ordering::SeqCst);
         self.started.notify_one();
         self.release.notified().await;
         Ok(())
     }
 
-    fn disable(&self) -> anyhow::Result<()> {
+    fn disable(&self) -> Result<(), PacError> {
         Ok(())
     }
 }
@@ -746,7 +759,7 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     let shutdown = Shutdown::new();
     let mut os = MockOsProxyPort::new();
     os.expect_get()
-        .returning(|| Err(anyhow::anyhow!("no system proxy is set")));
+        .returning(|| Err(OsProxyError::unreadable("no system proxy is set")));
     os.expect_default_bypass().return_const("bypass");
     os.expect_set().returning(|_: &OsProxyConfig| Ok(()));
     let mut tray = MockTrayRefresher::new();
@@ -854,15 +867,15 @@ impl PacPort for CancelledPac {
         &self,
         _url: &url::Url,
         cancel: tokio_util::sync::CancellationToken,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PacError> {
         record(&self.log, "pac download started");
         self.started.notify_one();
         cancel.cancelled().await;
         record(&self.log, "pac download cancelled");
-        anyhow::bail!("the PAC download was cancelled by the shutdown")
+        Err(PacError::DownloadCancelled)
     }
 
-    fn disable(&self) -> anyhow::Result<()> {
+    fn disable(&self) -> Result<(), PacError> {
         record(&self.log, "pac disabled");
         Ok(())
     }
@@ -888,7 +901,7 @@ async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
     });
     let mut os = MockOsProxyPort::new();
     os.expect_get()
-        .returning(|| Err(anyhow::anyhow!("no system proxy is set")));
+        .returning(|| Err(OsProxyError::unreadable("no system proxy is set")));
     os.expect_default_bypass().return_const("bypass");
     let written = log.clone();
     os.expect_set().returning(move |config: &OsProxyConfig| {
@@ -988,7 +1001,7 @@ async fn the_restore_waits_for_an_os_call_the_token_cannot_interrupt() {
     os.expect_get().returning(move || {
         entered.notify_one();
         let _ = released.lock().expect("gate").recv();
-        Err(anyhow::anyhow!("no system proxy is set"))
+        Err(OsProxyError::unreadable("no system proxy is set"))
     });
     os.expect_default_bypass().return_const("bypass");
     os.expect_set().never();
@@ -1035,7 +1048,7 @@ async fn the_restore_waits_for_an_os_call_the_token_cannot_interrupt() {
         statuses.iter().all(|status| matches!(
             status.health,
             EffectHealth::Degraded {
-                code: "system_proxy_shut_down",
+                code: EffectFailureCode::SystemProxyShutDown,
                 ..
             }
         )),
@@ -1066,15 +1079,15 @@ impl ShortcutRegistrar for HeldRegistrar {
         _: &str,
         _: HotkeyAction,
         _: Arc<dyn HotkeyActionSink>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ShortcutError> {
         Ok(())
     }
 
-    async fn unregister(&self, _: &str) -> anyhow::Result<()> {
+    async fn unregister(&self, _: &str) -> Result<(), ShortcutError> {
         Ok(())
     }
 
-    async fn unregister_all(&self) -> anyhow::Result<()> {
+    async fn unregister_all(&self) -> Result<(), ShortcutError> {
         self.releasing.notify_one();
         self.release.notified().await;
         Ok(())
@@ -1090,11 +1103,11 @@ struct HeldOsProxy {
 }
 
 impl OsProxyPort for HeldOsProxy {
-    fn get(&self) -> anyhow::Result<OsProxyConfig> {
-        anyhow::bail!("no system proxy is set")
+    fn get(&self) -> Result<OsProxyConfig, OsProxyError> {
+        Err(OsProxyError::unreadable("no system proxy is set"))
     }
 
-    fn set(&self, _: &OsProxyConfig) -> anyhow::Result<()> {
+    fn set(&self, _: &OsProxyConfig) -> Result<(), OsProxyError> {
         if self.writes.fetch_add(1, Ordering::SeqCst) > 0 {
             self.writing.notify_one();
             let _ = self.release.lock().expect("gate").recv();

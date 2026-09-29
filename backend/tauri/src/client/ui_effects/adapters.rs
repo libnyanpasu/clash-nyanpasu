@@ -5,9 +5,11 @@ use std::sync::Arc;
 
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
 use nyanpasu_egui::widget::StatisticWidgetVariant;
+use snafu::{OptionExt as _, ResultExt as _};
 
 use super::ports::{
-    LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WIDGET_STOP_BOUND, WidgetController,
+    LocaleSink, LogRotation, LoggerError, LoggerRefresher, ReloadThreadStoppedSnafu,
+    ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WIDGET_STOP_BOUND, WidgetController,
     WidgetError, WidgetRuntime,
 };
 use crate::{
@@ -20,16 +22,13 @@ use crate::{
 ///
 /// It is a crate-level process global with no injection point of its own, so
 /// the honest thing is to name it once, here, and let every caller depend on
-/// the port instead. The call cannot fail today; the `Result` is what the
-/// caller already handles, and keeps a different i18n backend from changing
-/// every call site.
+/// the port instead.
 #[derive(Debug, Default)]
 pub struct RustI18nLocaleSink;
 
 impl LocaleSink for RustI18nLocaleSink {
-    fn set_locale(&self, language: I18nLanguage) -> anyhow::Result<()> {
+    fn set_locale(&self, language: I18nLanguage) {
         rust_i18n::set_locale(language.as_str());
-        Ok(())
     }
 }
 
@@ -56,14 +55,18 @@ impl<R: tauri::Runtime> TauriTrayRefresher<R> {
 // the next request of any kind rebuilds it.
 #[async_trait::async_trait]
 impl TrayRefresher for TauriTrayRefresher<tauri::Wry> {
-    async fn refresh_full(&self, view: TrayView) -> anyhow::Result<()> {
+    async fn refresh_full(&self, view: TrayView) -> Result<(), TrayError> {
         Tray::store_view(&self.app_handle, view);
         Tray::request(&self.app_handle, TrayWork::REBUILD)
+            .boxed()
+            .context(ScheduleTrayWorkSnafu)
     }
 
-    async fn refresh_part(&self, view: TrayView) -> anyhow::Result<()> {
+    async fn refresh_part(&self, view: TrayView) -> Result<(), TrayError> {
         Tray::store_view(&self.app_handle, view);
         Tray::request(&self.app_handle, TrayWork::PART)
+            .boxed()
+            .context(ScheduleTrayWorkSnafu)
     }
 }
 
@@ -85,10 +88,11 @@ impl LoggerRefresher for TracingLoggerRefresher {
         &self,
         level: Option<LoggingLevel>,
         rotation: Option<LogRotation>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), LoggerError> {
         self.reload
             .send((level, rotation))
-            .map_err(|_| anyhow::anyhow!("the logger reload thread has stopped"))
+            .ok()
+            .context(ReloadThreadStoppedSnafu)
     }
 }
 
@@ -154,7 +158,7 @@ impl WidgetController for TauriWidgetController {
 
 #[async_trait::async_trait]
 impl WidgetRuntime for crate::widget::WidgetManager {
-    async fn start(&self, variant: StatisticWidgetVariant) -> anyhow::Result<()> {
+    async fn start(&self, variant: StatisticWidgetVariant) -> Result<(), WidgetError> {
         crate::widget::WidgetManager::start(self, variant).await
     }
 

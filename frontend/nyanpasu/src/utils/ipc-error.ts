@@ -5,12 +5,15 @@ import type {
   CoreErrorKind,
   CoreFailure,
   DegradationReason,
+  EffectFailureCode,
+  EffectsError,
   EvidenceGap,
   ExecutionHost,
   HotkeyAction,
   HotkeyParseError,
   InstallCoreBinaryError,
   IpcError,
+  OsProxyError,
   PickPortError,
   PortField,
   ProfileContentError,
@@ -21,6 +24,7 @@ import type {
   RuntimeError,
   RuntimePipelineError,
   StorageOperationError,
+  SystemDnsError,
 } from '@nyanpasu/interface'
 
 /** The simplest message for a failed command, localized by its domain. */
@@ -36,6 +40,12 @@ export function ipcErrorMessage(error: IpcError): string {
       return configErrorMessage(error.kind.error)
     case 'storage':
       return storageErrorMessage(error.kind.error)
+    case 'system_dns':
+      return systemDnsErrorMessage(error.kind.error)
+    case 'system_proxy':
+      return osProxyErrorMessage(error.kind.error)
+    case 'effects':
+      return effectsErrorMessage(error.kind.error)
   }
 }
 
@@ -266,6 +276,39 @@ export function storageErrorMessage(error: StorageOperationError): string {
     case 'decode_value':
     case 'encode_value':
       return m.error_storage_invalid_value()
+  }
+}
+
+function effectsErrorMessage(error: EffectsError): string {
+  switch (error.kind) {
+    case 'effects_stopped':
+      return m.error_effects_stopped()
+  }
+}
+
+function osProxyErrorMessage(error: OsProxyError): string {
+  switch (error.kind) {
+    case 'read_os_proxy':
+      return m.error_system_proxy_read_os_proxy()
+    case 'write_os_proxy':
+      return m.error_system_proxy_write_os_proxy({
+        host: error.host,
+        port: error.port,
+      })
+  }
+}
+
+function systemDnsErrorMessage(error: SystemDnsError): string {
+  switch (error.kind) {
+    case 'run_flush_command':
+      return m.error_system_dns_run_flush_command({ command: error.command })
+    case 'flush_rejected':
+      return m.error_system_dns_flush_rejected({
+        command: error.command,
+        code: error.code ?? '-',
+      })
+    case 'unsupported':
+      return m.error_system_dns_unsupported()
   }
 }
 
@@ -562,6 +605,50 @@ function installCoreBinaryMessage(error: InstallCoreBinaryError): string {
       return m.error_runtime_install_core_binary_copy({ core: error.core })
     case 'path_not_utf8':
       return m.error_runtime_path_not_utf8({ path: error.path })
+  }
+}
+
+/** Why a committed setting has not taken effect yet, localized by its code. */
+export function effectFailureMessage(code: EffectFailureCode): string {
+  switch (code) {
+    case 'hotkey_invalid_bindings':
+      return m.effect_failure_hotkey_invalid_bindings()
+    case 'hotkey_partial_registration':
+      return m.effect_failure_hotkey_partial_registration()
+    case 'hotkey_shut_down':
+      return m.effect_failure_hotkey_shut_down()
+    case 'hotkey_stopped':
+      return m.effect_failure_hotkey_stopped()
+    case 'logger_refresh_failed':
+      return m.effect_failure_logger_refresh_failed()
+    case 'widget_unavailable':
+      return m.effect_failure_widget_unavailable()
+    case 'widget_apply_failed':
+      return m.effect_failure_widget_apply_failed()
+    case 'tray_refresh_failed':
+      return m.effect_failure_tray_refresh_failed()
+    case 'effect_owner_silent':
+      return m.effect_failure_effect_owner_silent()
+    case 'proxy_guard_waiting_dependency':
+      return m.effect_failure_proxy_guard_waiting_dependency()
+    case 'auto_launch_failed':
+      return m.effect_failure_auto_launch_failed()
+    case 'pac_disable_failed':
+      return m.effect_failure_pac_disable_failed()
+    case 'pac_apply_failed':
+      return m.effect_failure_pac_apply_failed()
+    case 'pac_unsupported':
+      return m.effect_failure_pac_unsupported()
+    case 'system_proxy_apply_failed':
+      return m.effect_failure_system_proxy_apply_failed()
+    case 'system_proxy_port_unresolved':
+      return m.effect_failure_system_proxy_port_unresolved()
+    case 'system_proxy_restore_failed':
+      return m.effect_failure_system_proxy_restore_failed()
+    case 'system_proxy_shut_down':
+      return m.effect_failure_system_proxy_shut_down()
+    case 'system_proxy_stopped':
+      return m.effect_failure_system_proxy_stopped()
   }
 }
 

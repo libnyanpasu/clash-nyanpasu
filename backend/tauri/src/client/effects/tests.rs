@@ -6,7 +6,7 @@ use super::{
         SystemProxyDesired, TrayRefresh,
     },
     ports::{ApplicationEffectsPort, CommitNotifications},
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
     NyanpasuClient, UiEventSink,
@@ -68,10 +68,10 @@ impl ApplicationEffectsPort for Port {
                 desired_revision: revision,
                 applied_revision: revision,
                 health: if matches!(e, ApplicationEffect::SystemProxy(desired) if desired.enabled && desired.port.is_none()) {
-                    EffectHealth::Degraded { code: "system_proxy_port_unresolved", message: "no binding".into(), retryable: true }
+                    EffectHealth::Degraded { code: EffectFailureCode::SystemProxyPortUnresolved, message: "no binding".into(), retryable: true }
                 } else if self.fail.load(Ordering::SeqCst) {
                     EffectHealth::Degraded {
-                        code: "injected_failure",
+                        code: EffectFailureCode::LoggerRefreshFailed,
                         message: "failed".into(),
                         retryable: self.retryable,
                     }

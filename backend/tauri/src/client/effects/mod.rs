@@ -3,6 +3,7 @@ use self::plan::{ApplicationEffectInputs, TrayView};
 use super::NyanpasuClient;
 
 pub(crate) mod actor;
+pub(crate) mod error;
 pub mod executor;
 pub mod plan;
 pub mod ports;

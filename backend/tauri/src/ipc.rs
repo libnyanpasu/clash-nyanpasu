@@ -1,5 +1,8 @@
 use crate::{
-    client::{ClientError, NyanpasuClient, RuntimeError},
+    client::{
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
+        system_proxy::ports::OsProxyError,
+    },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     state::{
@@ -21,7 +24,6 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
 
@@ -48,6 +50,27 @@ pub enum IpcErrorKind {
     Runtime(Box<RuntimeError>),
     Config(Box<ConfigError>),
     Storage(Box<StorageOperationError>),
+    SystemDns(Box<SystemDnsError>),
+    SystemProxy(Box<OsProxyError>),
+    Effects(Box<EffectsError>),
+}
+
+impl From<EffectsError> for IpcErrorKind {
+    fn from(error: EffectsError) -> Self {
+        Self::Effects(Box::new(error))
+    }
+}
+
+impl From<OsProxyError> for IpcErrorKind {
+    fn from(error: OsProxyError) -> Self {
+        Self::SystemProxy(Box::new(error))
+    }
+}
+
+impl From<SystemDnsError> for IpcErrorKind {
+    fn from(error: SystemDnsError) -> Self {
+        Self::SystemDns(Box::new(error))
+    }
 }
 
 impl From<StorageOperationError> for IpcErrorKind {
@@ -560,8 +583,8 @@ pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
 /// server field is the combination of host and port
 #[tauri::command]
 #[specta::specta]
-pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
-    let current = (Sysproxy::get_system_proxy()).context("failed to get system proxy")?;
+pub async fn get_sys_proxy(client: State<'_, NyanpasuClient>) -> Result<GetSysProxyResponse> {
+    let current = client.get_os_proxy().await?;
 
     let server = format!("{}:{}", current.host, current.port);
 
@@ -1448,14 +1471,17 @@ pub fn retry_configuration_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError};
+    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
     use nyanpasu_config::profile::ProfileId;
     use nyanpasu_core::state::ReplaceIfVersionError;
     use serde_json::json;
     use snafu::IntoError;
 
     use crate::{
-        client::runtime_error::RuntimeError,
+        client::{
+            effects::error::EffectsError, runtime_error::RuntimeError,
+            system_proxy::ports::OsProxyError,
+        },
         state::{
             mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
             profiles::{ProfileFileError, SubscriptionFetchError},
@@ -1512,6 +1538,58 @@ mod tests {
             serde_json::to_value(IpcError::from(super::RuntimeError::Isolated)).unwrap()["kind"],
             json!({ "domain": "runtime", "error": { "kind": "isolated" } })
         );
+    }
+
+    #[test]
+    fn a_dns_flush_failure_names_the_command_and_its_exit_code() {
+        let wire = serde_json::to_value(IpcError::from(SystemDnsError::FlushRejected {
+            command: "ipconfig.exe",
+            code: Some(5),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "system_dns",
+                "error": { "kind": "flush_rejected", "command": "ipconfig.exe", "code": 5 },
+            })
+        );
+    }
+
+    #[test]
+    fn a_stopped_effects_owner_reaches_the_frontend_as_its_own_domain() {
+        let wire = serde_json::to_value(IpcError::from(EffectsError::EffectsStopped)).unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({ "domain": "effects", "error": { "kind": "effects_stopped" } })
+        );
+    }
+
+    #[test]
+    fn a_failed_os_proxy_write_names_where_it_was_going() {
+        let wire = serde_json::to_value(IpcError::from(OsProxyError::WriteOsProxy {
+            enable: true,
+            host: "127.0.0.1".into(),
+            port: 7890,
+            source: "access denied".into(),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "system_proxy",
+                "error": {
+                    "kind": "write_os_proxy",
+                    "enable": true,
+                    "host": "127.0.0.1",
+                    "port": 7890,
+                },
+            })
+        );
+        assert!(wire["detail"].as_str().unwrap().contains("access denied"));
     }
 
     #[test]

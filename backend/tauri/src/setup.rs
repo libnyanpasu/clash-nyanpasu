@@ -17,6 +17,7 @@ use crate::{
         system_proxy::{
             SystemProxyArgs, SystemProxyClient,
             adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
+            ports::OsProxyPort,
         },
         track_until_shutdown,
         ui_effects::{
@@ -108,9 +109,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // The sink end of the hotkey channel goes into the actor; the receiving end
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
     let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
+    // One instance behind both the system proxy actor and the client's own
+    // read of the OS settings.
+    let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
     let (effects, widget_controller) = build_application_effects(
         &app_handle,
         main_thread.clone(),
+        os_proxy.clone(),
         &paths,
         hotkey_tx,
         logger_reload,
@@ -133,6 +138,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
+        os_proxy: os_proxy.clone(),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone(), main_thread)),
@@ -143,9 +149,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     .context("Failed to setup nyanpasu client")?;
     // The tray menu and the first window render with the process locale, so
     // the configured language replaces the system default before either exists.
-    RustI18nLocaleSink
-        .set_locale(client.app_config_snapshot().language)
-        .context("Failed to apply the configured locale")?;
+    RustI18nLocaleSink.set_locale(client.app_config_snapshot().language);
     // Seeded before anything can build the tray, so the first menu is rendered
     // from the committed configuration rather than from defaults.
     app.manage(crate::core::tray::TrayState::<tauri::Wry>::new(
@@ -201,9 +205,11 @@ async fn hotkey_action_pump(
 /// Assembled here rather than inside the client so that `ClientSetupArgs` keeps
 /// exposing one effect dependency: the composition root owns the concrete
 /// adapters, and a test still injects a single port.
+#[allow(clippy::too_many_arguments)]
 fn build_application_effects(
     app_handle: &tauri::AppHandle,
     main_thread: Arc<dyn MainThreadExecutor>,
+    os_proxy: Arc<dyn OsProxyPort>,
     paths: &PathResolver,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
@@ -234,7 +240,7 @@ fn build_application_effects(
 
     let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(
         SystemProxyArgs {
-            os: Arc::new(SysproxyOsProxy),
+            os: os_proxy,
             auto_launch: Arc::new(auto_launch),
             pac: Arc::new(pac),
             schedule_guard_ticks: true,

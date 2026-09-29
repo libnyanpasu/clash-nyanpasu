@@ -11,10 +11,10 @@ use super::{
     adapters::PlatformAcceleratorValidator,
     ports::{
         AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp,
-        HotkeyParseError, MockHotkeyActionSink, ShortcutRegistrar,
+        HotkeyParseError, MockHotkeyActionSink, ShortcutError, ShortcutRegistrar,
     },
 };
-use crate::client::effects::status::{EffectHealth, EffectRevision};
+use crate::client::effects::status::{EffectFailureCode, EffectHealth, EffectRevision};
 
 fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()
@@ -260,7 +260,7 @@ impl ShortcutRegistrar for RecordingRegistrar {
         accelerator: &str,
         action: HotkeyAction,
         sink: Arc<dyn HotkeyActionSink>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")
@@ -272,14 +272,17 @@ impl ShortcutRegistrar for RecordingRegistrar {
             .iter()
             .any(|failing| failing == accelerator)
         {
-            anyhow::bail!("the os refused the shortcut");
+            return Err(ShortcutError::RegisterShortcut {
+                accelerator: accelerator.to_owned(),
+                source: "the os refused the shortcut".into(),
+            });
         }
         *self.last_sink.lock().expect("sink") = Some(sink);
         *self.last_action.lock().expect("action") = Some(action);
         Ok(())
     }
 
-    async fn unregister(&self, accelerator: &str) -> anyhow::Result<()> {
+    async fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")
@@ -291,12 +294,15 @@ impl ShortcutRegistrar for RecordingRegistrar {
             .iter()
             .any(|failing| failing == accelerator)
         {
-            anyhow::bail!("the os kept the shortcut");
+            return Err(ShortcutError::ReleaseShortcut {
+                accelerator: accelerator.to_owned(),
+                source: "the os kept the shortcut".into(),
+            });
         }
         Ok(())
     }
 
-    async fn unregister_all(&self) -> anyhow::Result<()> {
+    async fn unregister_all(&self) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")
@@ -406,7 +412,7 @@ async fn partial_registration_failure_degrades_and_keeps_successes() {
             ref message,
             retryable,
         } => {
-            assert_eq!(code, "hotkey_partial_registration");
+            assert_eq!(code, EffectFailureCode::HotkeyPartialRegistration);
             assert!(message.contains("1 of 2"), "{message}");
             assert!(message.contains("Control+B"), "{message}");
             assert!(retryable);
@@ -476,7 +482,7 @@ async fn reconcile_validates_every_binding_before_releasing_any() {
             ref message,
             retryable,
         } => {
-            assert_eq!(code, "hotkey_invalid_bindings");
+            assert_eq!(code, EffectFailureCode::HotkeyInvalidBindings);
             assert!(message.contains("Control+DefinitelyNotAKey"), "{message}");
             assert!(!retryable, "the list has to change before a retry can help");
         }
@@ -569,7 +575,7 @@ async fn reconcile_after_the_cancel_is_rejected() {
     assert_eq!(
         status.health,
         EffectHealth::Degraded {
-            code: "hotkey_shut_down",
+            code: EffectFailureCode::HotkeyShutDown,
             message: "the hotkey owner is shutting down and stopped accepting changes".to_owned(),
             retryable: false,
         }

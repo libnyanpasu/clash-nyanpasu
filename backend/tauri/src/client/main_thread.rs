@@ -1,12 +1,27 @@
 //! The UI-thread port. Owners that must touch the window server get it
 //! injected, so neither they nor the facade name the Tauri event loop.
 
-use anyhow::Context as _;
+use snafu::{ResultExt as _, Snafu};
+
+/// Why work could not be run on the UI thread. The event loop's own error is
+/// boxed because this module does not name the Tauri runtime.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum MainThreadError {
+    #[snafu(display("the event loop refused the task"))]
+    HandOffToEventLoop {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    #[snafu(display("the event loop dropped the task before it finished"))]
+    AwaitTaskResult {
+        source: tokio::sync::oneshot::error::RecvError,
+    },
+}
 
 /// Runs work on the UI thread. An implementation may run `task` before
 /// returning when it is already on that thread (Tauri does).
 pub trait MainThreadExecutor: Send + Sync + 'static {
-    fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> anyhow::Result<()>;
+    fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), MainThreadError>;
 }
 
 impl dyn MainThreadExecutor {
@@ -15,14 +30,12 @@ impl dyn MainThreadExecutor {
     pub async fn run<T: Send + 'static>(
         &self,
         task: impl FnOnce() -> T + Send + 'static,
-    ) -> anyhow::Result<T> {
+    ) -> Result<T, MainThreadError> {
         let (done, result) = tokio::sync::oneshot::channel();
         self.execute(Box::new(move || {
             let _ = done.send(task());
         }))?;
-        result
-            .await
-            .context("the event loop dropped the task before it finished")
+        result.await.context(AwaitTaskResultSnafu)
     }
 }
 
@@ -33,7 +46,7 @@ pub struct InlineMainThread;
 
 #[cfg(test)]
 impl MainThreadExecutor for InlineMainThread {
-    fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> anyhow::Result<()> {
+    fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), MainThreadError> {
         task();
         Ok(())
     }
@@ -43,14 +56,14 @@ impl MainThreadExecutor for InlineMainThread {
 mod tests {
     use std::sync::Arc;
 
-    use super::{InlineMainThread, MainThreadExecutor};
+    use super::{InlineMainThread, MainThreadError, MainThreadExecutor};
 
     /// Accepts a task and never runs it, like an event loop that shut down
     /// between the hand-off and its next turn.
     struct DroppingMainThread;
 
     impl MainThreadExecutor for DroppingMainThread {
-        fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> anyhow::Result<()> {
+        fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), MainThreadError> {
             drop(task);
             Ok(())
         }
@@ -72,6 +85,9 @@ mod tests {
             .await
             .expect_err("a task that never ran has no result");
 
-        assert!(error.to_string().contains("dropped"), "{error}");
+        assert!(
+            matches!(error, MainThreadError::AwaitTaskResult { .. }),
+            "{error}"
+        );
     }
 }

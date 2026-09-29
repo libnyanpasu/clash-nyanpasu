@@ -1507,8 +1507,39 @@ export type EffectConvergence = {
   applied_revision: number
   attempts: number
   automatic_remaining: number
+  /**  What kind of failure the effect is in, for the UI to localize. */
+  code: EffectFailureCode | null
+  /**  The failure's diagnostic text, as the owner reported it. */
   message: string | null
 }
+
+/**
+ *  Why an effect is not in its desired state, in the terms the UI localizes.
+ *
+ *  One value per kind of failure, named after the effect that failed. The
+ *  owner that classifies a failure is the one that picks the code; the
+ *  message beside it is only the diagnostic text.
+ */
+export type EffectFailureCode =
+  | 'hotkey_invalid_bindings'
+  | 'hotkey_partial_registration'
+  | 'hotkey_shut_down'
+  | 'hotkey_stopped'
+  | 'logger_refresh_failed'
+  | 'widget_unavailable'
+  | 'widget_apply_failed'
+  | 'tray_refresh_failed'
+  | 'effect_owner_silent'
+  | 'proxy_guard_waiting_dependency'
+  | 'auto_launch_failed'
+  | 'pac_disable_failed'
+  | 'pac_apply_failed'
+  | 'pac_unsupported'
+  | 'system_proxy_apply_failed'
+  | 'system_proxy_port_unresolved'
+  | 'system_proxy_restore_failed'
+  | 'system_proxy_shut_down'
+  | 'system_proxy_stopped'
 
 /**
  *  Execution order of a plan. The ordering is load-bearing: the tray menu is
@@ -1524,6 +1555,10 @@ export type EffectKind =
   | 'hotkeys'
   | 'widget'
   | 'tray'
+
+export type EffectsError =
+  /**  The owner's mailbox is closed: the app is exiting, or the owner died. */
+  { kind: 'effects_stopped' }
 
 export type EndpointConnectivity =
   | { kind: 'connected' }
@@ -1775,6 +1810,9 @@ export type IpcErrorKind =
   | { domain: 'runtime'; error: RuntimeError }
   | { domain: 'config'; error: ConfigError }
   | { domain: 'storage'; error: StorageOperationError }
+  | { domain: 'system_dns'; error: SystemDnsError }
+  | { domain: 'system_proxy'; error: OsProxyError }
+  | { domain: 'effects'; error: EffectsError }
 
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`
@@ -2394,6 +2432,15 @@ export type OperatorTag =
         step_index: number
       }
     }
+
+/**
+ *  Why the platform proxy settings could not be read or written. The platform's
+ *  own error stays in `source`, boxed because this module does not name the
+ *  crate that produced it; it reaches the user through the copied detail.
+ */
+export type OsProxyError =
+  | { kind: 'read_os_proxy' }
+  | { kind: 'write_os_proxy'; enable: boolean; host: string; port: number }
 
 export type OverlayTransform =
   OverlayTransform_Serialize | OverlayTransform_Deserialize
@@ -3769,6 +3816,23 @@ export type SubscriptionInfo_Serialize = {
   total: number
   expire: number
 }
+
+/**
+ *  Why the system DNS cache could not be flushed. No variant is compiled out
+ *  per platform, so the generated bindings do not depend on the build host.
+ */
+export type SystemDnsError =
+  /**
+   *  The elevated flush could not be started: the user declined the prompt,
+   *  or the platform has no way to ask for elevation.
+   */
+  | { kind: 'run_flush_command'; command: string }
+  /**
+   *  The flush ran and reported failure; declining the macOS authorization
+   *  dialog lands here too.
+   */
+  | { kind: 'flush_rejected'; command: string; code: number | null }
+  | { kind: 'unsupported' }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 

@@ -5,6 +5,7 @@
 
 mod actor;
 pub mod adapters;
+mod error;
 pub mod ports;
 
 #[cfg(test)]
@@ -17,6 +18,7 @@ use tokio_util::task::TaskTracker;
 
 use self::{
     actor::{Message, SystemProxyActor, requested_kinds},
+    error::SystemProxyError,
     ports::OsProxyConfig,
 };
 use crate::client::effects::{
@@ -103,11 +105,7 @@ impl SystemProxyClient {
                         kind,
                         desired_revision: revision,
                         applied_revision: EffectRevision::default(),
-                        health: EffectHealth::Degraded {
-                            code: "system_proxy_stopped",
-                            message: "the system proxy actor stopped before answering".to_owned(),
-                            retryable: false,
-                        },
+                        health: SystemProxyError::Stopped.health(),
                     })
                     .collect()
             }
@@ -122,11 +120,7 @@ impl SystemProxyClient {
                 tracing::warn!("the system proxy actor did not report its status: {other:?}");
                 SystemProxyStatus {
                     applied_revision: EffectRevision::default(),
-                    health: EffectHealth::Degraded {
-                        code: "system_proxy_stopped",
-                        message: "the system proxy actor stopped before answering".to_owned(),
-                        retryable: false,
-                    },
+                    health: SystemProxyError::Stopped.health(),
                     desired: None,
                     applied_os_proxy: None,
                     guard_active: false,

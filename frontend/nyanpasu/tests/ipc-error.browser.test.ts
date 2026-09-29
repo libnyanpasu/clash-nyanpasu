@@ -1,12 +1,19 @@
 import { expect, test } from 'vitest'
 import { m } from '@/paraglide/messages'
-import { degradationReasonMessage, ipcErrorMessage } from '@/utils/ipc-error'
+import {
+  degradationReasonMessage,
+  effectFailureMessage,
+  ipcErrorMessage,
+} from '@/utils/ipc-error'
 import type {
   ConfigError,
+  EffectsError,
   IpcError,
+  OsProxyError,
   ProfilesError,
   RuntimeError,
   StorageOperationError,
+  SystemDnsError,
 } from '@nyanpasu/interface'
 
 const profiles = (error: ProfilesError): IpcError => ({
@@ -29,6 +36,24 @@ const config = (error: ConfigError): IpcError => ({
 
 const storage = (error: StorageOperationError): IpcError => ({
   kind: { domain: 'storage', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const systemDns = (error: SystemDnsError): IpcError => ({
+  kind: { domain: 'system_dns', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const systemProxy = (error: OsProxyError): IpcError => ({
+  kind: { domain: 'system_proxy', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const effects = (error: EffectsError): IpcError => ({
+  kind: { domain: 'effects', error },
   message: 'the backend text',
   detail: 'the backend text: caused by',
 })
@@ -438,4 +463,56 @@ test('a storage failure tells an unopenable database from unreadable data', () =
   expect(
     ipcErrorMessage(storage({ kind: 'decode_value', key: 'web:theme' })),
   ).toBe(m.error_storage_invalid_value())
+})
+
+test('a failed DNS flush names the command and its exit code', () => {
+  expect(
+    ipcErrorMessage(
+      systemDns({ kind: 'flush_rejected', command: 'ipconfig.exe', code: 5 }),
+    ),
+  ).toBe(
+    m.error_system_dns_flush_rejected({ command: 'ipconfig.exe', code: 5 }),
+  )
+  expect(
+    ipcErrorMessage(
+      systemDns({
+        kind: 'flush_rejected',
+        command: 'ipconfig.exe',
+        code: null,
+      }),
+    ),
+  ).toBe(
+    m.error_system_dns_flush_rejected({ command: 'ipconfig.exe', code: '-' }),
+  )
+})
+
+test('an effect failure is localized by its code', () => {
+  expect(effectFailureMessage('system_proxy_apply_failed')).toBe(
+    m.effect_failure_system_proxy_apply_failed(),
+  )
+  expect(effectFailureMessage('hotkey_partial_registration')).toBe(
+    m.effect_failure_hotkey_partial_registration(),
+  )
+})
+
+test('a failed system proxy write names the address it was going to', () => {
+  expect(
+    ipcErrorMessage(
+      systemProxy({
+        kind: 'write_os_proxy',
+        enable: true,
+        host: '127.0.0.1',
+        port: 7890,
+      }),
+    ),
+  ).toBe(m.error_system_proxy_write_os_proxy({ host: '127.0.0.1', port: 7890 }))
+  expect(ipcErrorMessage(systemProxy({ kind: 'read_os_proxy' }))).toBe(
+    m.error_system_proxy_read_os_proxy(),
+  )
+})
+
+test('a retry that cannot reach the effects owner says it is not running', () => {
+  expect(ipcErrorMessage(effects({ kind: 'effects_stopped' }))).toBe(
+    m.error_effects_stopped(),
+  )
 })

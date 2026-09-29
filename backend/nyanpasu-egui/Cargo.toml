@@ -28,6 +28,7 @@ csscolorparser = '0.9'  # for color conversion
 ipc-channel = '0.23'  # for IPC between the Widget process and the GUI process
 serde = { version = '1', features = ['derive'] }
 anyhow = '1'
+snafu = { workspace = true }
 specta = { version = '^2.0.0-rc.25' }
 clap = { version = '4', features = ['derive'] }
 

@@ -211,14 +211,14 @@ impl Tray {
     /// schedules there at once. Nothing is locked by then, and a running drain
     /// keeps the queue scheduled, so a request from inside one never starts
     /// another.
-    pub fn request(app_handle: &AppHandle<tauri::Wry>, work: TrayWork) -> Result<()> {
+    pub fn request(app_handle: &AppHandle<tauri::Wry>, work: TrayWork) -> tauri::Result<()> {
         let Some(state) = app_handle.try_state::<TrayState<tauri::Wry>>() else {
             tracing::warn!("the tray state is not seeded yet, dropping the tray work");
             return Ok(());
         };
         executor::request(&state.queue, work, || {
             let handle = app_handle.clone();
-            Ok(app_handle.run_on_main_thread(move || Tray::drain(&handle))?)
+            app_handle.run_on_main_thread(move || Tray::drain(&handle))
         })
     }
 

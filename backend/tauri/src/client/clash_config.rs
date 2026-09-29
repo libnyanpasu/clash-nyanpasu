@@ -10,8 +10,14 @@ use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::clash_config::{
-    ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
+use crate::{
+    client::application_workflow::mutation::ConfigDomain,
+    state::{
+        clash_config::{
+            ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
+        },
+        config_error::{ConfigError, OwnerStoppedSnafu},
+    },
 };
 
 #[derive(Clone)]
@@ -85,7 +91,7 @@ impl ClashConfigClient {
         self.inner.snapshot.clone()
     }
 
-    pub async fn patch(&self, patch: ClashConfigPatch) -> anyhow::Result<ClashConfigSnapshot> {
+    pub async fn patch(&self, patch: ClashConfigPatch) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
             |reply| ClashConfigActorMessage::Patch { patch, reply },
             None,
@@ -96,7 +102,7 @@ impl ClashConfigClient {
     pub async fn patch_overrides(
         &self,
         patch: ClashGuardOverridesPatch,
-    ) -> anyhow::Result<ClashConfigSnapshot> {
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
             |reply| ClashConfigActorMessage::PatchOverrides { patch, reply },
             None,
@@ -104,7 +110,7 @@ impl ClashConfigClient {
         .await
     }
 
-    pub async fn replace(&self, state: ClashConfig) -> anyhow::Result<ClashConfigSnapshot> {
+    pub async fn replace(&self, state: ClashConfig) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
             |reply| ClashConfigActorMessage::Replace { state, reply },
             None,
@@ -116,14 +122,21 @@ impl ClashConfigClient {
         &self,
         make: F,
         timeout: Option<std::time::Duration>,
-    ) -> anyhow::Result<ClashConfigSnapshot>
+    ) -> Result<ClashConfigSnapshot, ConfigError>
     where
-        F: FnOnce(RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>) -> ClashConfigActorMessage,
+        F: FnOnce(
+            RpcReplyPort<Result<ClashConfigSnapshot, ConfigError>>,
+        ) -> ClashConfigActorMessage,
     {
-        match self.inner.actor_ref.call(make, timeout).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash config actor call timed out"),
+        match self.inner.actor_ref.call(make, timeout).await {
+            Ok(CallResult::Success(result)) => result,
+            Ok(CallResult::SenderError) | Err(_) => OwnerStoppedSnafu {
+                domain: ConfigDomain::Clash,
+            }
+            .fail(),
+            Ok(CallResult::Timeout) => {
+                unreachable!("clash config calls are made without a timeout")
+            }
         }
     }
 }

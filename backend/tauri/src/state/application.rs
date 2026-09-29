@@ -1,15 +1,22 @@
 use crate::{
     client::application_workflow::{
         impact::{self, MutationHints, RequestedRuntimeFields},
+        mutation::ConfigDomain,
         policy::CommandClass,
     },
-    state::mutation::{self, MutationCoordinator},
+    state::{
+        config_error::{
+            ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
+        },
+        mutation::MutationCoordinator,
+    },
 };
 use nyanpasu_core_manager::OperationId;
 
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use snafu::ensure;
 use struct_patch::Patch;
 use tokio_util::sync::CancellationToken;
 
@@ -58,11 +65,11 @@ pub struct ApplicationActorState {
 pub enum ApplicationActorMessage {
     Patch {
         patch: NyanpasuAppConfigPatch,
-        reply: RpcReplyPort<anyhow::Result<ApplicationSnapshot>>,
+        reply: RpcReplyPort<Result<ApplicationSnapshot, ConfigError>>,
     },
     Replace {
         state: NyanpasuAppConfig,
-        reply: RpcReplyPort<anyhow::Result<ApplicationSnapshot>>,
+        reply: RpcReplyPort<Result<ApplicationSnapshot, ConfigError>>,
     },
 }
 
@@ -72,7 +79,7 @@ impl ApplicationActor {
     async fn patch(
         state: &mut ApplicationActorState,
         patch: NyanpasuAppConfigPatch,
-    ) -> anyhow::Result<ApplicationSnapshot> {
+    ) -> Result<ApplicationSnapshot, ConfigError> {
         let mut next = state.manager.snapshot_handle().load().state.clone();
         let hints = MutationHints {
             requested: RequestedRuntimeFields::of_application(&patch),
@@ -95,15 +102,15 @@ impl ApplicationActor {
     fn validate_channel(
         state: &ApplicationActorState,
         next: &mut NyanpasuAppConfig,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ConfigError> {
         use nyanpasu_config::application::ReleaseChannel as Channel;
         let current = state.manager.snapshot_handle().load();
         next.release_channel = next.release_channel.or(current.state.release_channel);
-        anyhow::ensure!(
-            current.state.release_channel != Some(Channel::Nightly)
-                || next.release_channel == Some(Channel::Nightly),
-            "cannot leave the nightly release channel"
-        );
+        if let (Some(Channel::Nightly), Some(to)) =
+            (current.state.release_channel, next.release_channel)
+        {
+            ensure!(to == Channel::Nightly, LeaveNightlyChannelSnafu { to });
+        }
         Ok(())
     }
 
@@ -112,7 +119,7 @@ impl ApplicationActor {
         mut next: NyanpasuAppConfig,
         hints: MutationHints,
         class: CommandClass,
-    ) -> anyhow::Result<ApplicationSnapshot> {
+    ) -> Result<ApplicationSnapshot, ConfigError> {
         state.mutations.ensure_ready()?;
         Self::validate_channel(state, &mut next)?;
         let (version, impact) = {
@@ -164,17 +171,16 @@ impl ApplicationActor {
                 snapshot.degradations = degradations;
                 Ok(snapshot)
             }
-            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => Err(anyhow::anyhow!(
-                "application config version conflict: expected {}, actual {}",
-                version.as_ref(),
-                actual_version.as_ref()
-            )),
-            Err(error) => Err(anyhow::anyhow!(
-                "failed to persist application config: {}",
-                snafu::Report::from_error(mutation::CommitAborted::classify(
-                    error,
-                    settlement.as_ref()
-                ))
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
+                domain: ConfigDomain::Application,
+                expected: *version.as_ref(),
+                actual: *actual_version.as_ref(),
+            }
+            .fail(),
+            Err(error) => Err(ConfigError::commit_failure(
+                ConfigDomain::Application,
+                error,
+                settlement.as_ref(),
             )),
         }
     }
@@ -208,9 +214,12 @@ impl Actor for ApplicationActor {
             | ApplicationActorMessage::Replace { reply, .. }
                 if state.shutdown.is_cancelled() =>
             {
-                let _ = reply.send(Err(anyhow::anyhow!(
-                    "the application config is closed: the app is shutting down"
-                )));
+                let _ = reply.send(
+                    ShuttingDownSnafu {
+                        domain: ConfigDomain::Application,
+                    }
+                    .fail(),
+                );
             }
             ApplicationActorMessage::Patch { patch, reply } => {
                 let _ = reply.send(Self::patch(state, patch).await);

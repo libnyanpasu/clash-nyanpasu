@@ -6,8 +6,8 @@
 
 use std::{collections::BTreeMap, str::FromStr, sync::Arc};
 
-use rust_i18n::t;
 use serde::{Deserialize, Serialize};
+use snafu::{OptionExt, Snafu, ensure};
 
 /// Modifiers that make an accelerator safe to grab globally. Matched as a
 /// lowercase substring, which is what the shipped validation did; a stricter
@@ -92,26 +92,42 @@ impl FromStr for HotkeyAction {
             .iter()
             .copied()
             .find(|action| action.as_str() == value)
-            .ok_or_else(|| HotkeyParseError::UnknownFunction(value.to_owned()))
+            .context(UnknownFunctionSnafu { function: value })
     }
 }
 
 /// Why a hotkey list could not be accepted. Rejected before anything is
-/// committed, so every variant is a message the user has to be able to act on.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+/// committed, so every variant names the entry the user has to fix.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[snafu(visibility(pub(crate)))]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HotkeyParseError {
     /// Not the `"<function>,<accelerator>"` shape.
-    #[error("{}", t!("hotkey_error.malformed_entry", entry = .0))]
-    MalformedEntry(String),
-    #[error("{}", t!("hotkey_error.unknown_function", function = .0))]
-    UnknownFunction(String),
-    #[error("{}", t!("hotkey_error.invalid_hotkey", hotkey = .0))]
-    InvalidAccelerator(String),
-    #[error("{}", t!("hotkey_error.missing_super_key"))]
-    MissingSuperKey(String),
+    #[snafu(display("malformed hotkey entry {entry:?}"))]
+    MalformedEntry { entry: String },
+    #[snafu(display("unknown hotkey function {function:?}"))]
+    UnknownFunction { function: String },
+    /// A `+` separated accelerator with an empty segment.
+    #[snafu(display("hotkey {accelerator:?} has an empty key segment"))]
+    EmptyKeySegment { accelerator: String },
+    /// The platform's parser refused it; its text, which names the offending
+    /// key, reaches the user only through the copied detail. Boxed because
+    /// this module does not name the plugin.
+    #[snafu(display("hotkey {accelerator:?} is not recognized"))]
+    UnsupportedAccelerator {
+        accelerator: String,
+        #[serde(skip)]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    #[snafu(display("hotkey {accelerator:?} needs a modifier key"))]
+    MissingSuperKey { accelerator: String },
     /// The same accelerator was bound to two functions.
-    #[error("{}", t!("hotkey_error.duplicate_accelerator", hotkey = .0))]
-    DuplicateAccelerator(String),
+    #[snafu(display("hotkey {accelerator:?} is bound to both {first} and {second}"))]
+    DuplicateAccelerator {
+        accelerator: String,
+        first: HotkeyAction,
+        second: HotkeyAction,
+    },
 }
 
 /// What has to change at the OS level to go from one binding set to another.
@@ -153,25 +169,26 @@ impl HotkeyBindings {
         for entry in raw {
             let (function, accelerator) = entry
                 .split_once(',')
-                .ok_or_else(|| HotkeyParseError::MalformedEntry(entry.clone()))?;
+                .context(MalformedEntrySnafu { entry })?;
             let function = function.trim();
             let accelerator = accelerator.trim();
-            if function.is_empty() || accelerator.is_empty() {
-                return Err(HotkeyParseError::MalformedEntry(entry.clone()));
-            }
+            ensure!(
+                !function.is_empty() && !accelerator.is_empty(),
+                MalformedEntrySnafu { entry }
+            );
 
             let action = function.parse::<HotkeyAction>()?;
             validate_accelerator_shape(accelerator)?;
             validator.validate(accelerator)?;
             // Keyed by the canonical form but reported by what the user wrote,
             // so a clash between two spellings names the entry they can find.
-            if bindings
-                .insert(validator.canonical(accelerator)?, action)
-                .is_some()
-            {
-                return Err(HotkeyParseError::DuplicateAccelerator(
-                    accelerator.to_owned(),
-                ));
+            if let Some(first) = bindings.insert(validator.canonical(accelerator)?, action) {
+                return DuplicateAcceleratorSnafu {
+                    accelerator,
+                    first,
+                    second: action,
+                }
+                .fail();
             }
         }
         Ok(Self(bindings))
@@ -235,15 +252,16 @@ impl From<BTreeMap<String, HotkeyAction>> for HotkeyBindings {
 
 /// A super key is required so a global grab cannot swallow ordinary typing.
 fn validate_accelerator_shape(accelerator: &str) -> Result<(), HotkeyParseError> {
-    if accelerator
-        .split('+')
-        .any(|segment| segment.trim().is_empty())
-    {
-        return Err(HotkeyParseError::InvalidAccelerator(accelerator.to_owned()));
-    }
-    if !has_super_key(accelerator) {
-        return Err(HotkeyParseError::MissingSuperKey(accelerator.to_owned()));
-    }
+    ensure!(
+        accelerator
+            .split('+')
+            .all(|segment| !segment.trim().is_empty()),
+        EmptyKeySegmentSnafu { accelerator }
+    );
+    ensure!(
+        has_super_key(accelerator),
+        MissingSuperKeySnafu { accelerator }
+    );
     Ok(())
 }
 

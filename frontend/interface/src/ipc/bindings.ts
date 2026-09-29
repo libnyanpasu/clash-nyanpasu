@@ -896,8 +896,29 @@ export type ConfigDefinition_Serialize =
       transforms?: ProfileId[]
     } & { source?: never })
 
+/**  Which source domain a mutation belongs to. */
+export type ConfigDomain = 'application' | 'clash' | 'profiles'
+
 /**  Open response value; mutation and subscription enums remain closed. */
 export type ConfigEnum<T> = T | string
+
+export type ConfigError =
+  /**  A nightly build keeps its channel. */
+  | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
+  | { kind: 'validate_hotkeys'; source: HotkeyParseError }
+  | { kind: 'workflow_not_ready' }
+  | { kind: 'shutting_down'; domain: ConfigDomain }
+  /**  The owner's mailbox is closed, or it dropped the reply. */
+  | { kind: 'owner_stopped'; domain: ConfigDomain }
+  | {
+      kind: 'version_conflict'
+      domain: ConfigDomain
+      expected: number
+      actual: number
+    }
+  | { kind: 'commit'; domain: ConfigDomain; source: CommitAborted }
+  | { kind: 'persist_session_state' }
+  | { kind: 'session_state_stopped' }
 
 /**  Why a config pipeline is being executed. */
 export type ConfigExecutionRole =
@@ -1645,6 +1666,48 @@ export type GetSysProxyResponse = {
 }
 
 /**
+ *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
+ *  they are fixed by the configurations users already have.
+ */
+export type HotkeyAction =
+  | 'open_or_close_dashboard'
+  | 'clash_mode_rule'
+  | 'clash_mode_global'
+  | 'clash_mode_direct'
+  | 'clash_mode_script'
+  | 'toggle_system_proxy'
+  | 'enable_system_proxy'
+  | 'disable_system_proxy'
+  | 'toggle_tun_mode'
+  | 'enable_tun_mode'
+  | 'disable_tun_mode'
+
+/**
+ *  Why a hotkey list could not be accepted. Rejected before anything is
+ *  committed, so every variant names the entry the user has to fix.
+ */
+export type HotkeyParseError =
+  /**  Not the `"<function>,<accelerator>"` shape. */
+  | { kind: 'malformed_entry'; entry: string }
+  | { kind: 'unknown_function'; function: string }
+  /**  A `+` separated accelerator with an empty segment. */
+  | { kind: 'empty_key_segment'; accelerator: string }
+  /**
+   *  The platform's parser refused it; its text, which names the offending
+   *  key, reaches the user only through the copied detail. Boxed because
+   *  this module does not name the plugin.
+   */
+  | { kind: 'unsupported_accelerator'; accelerator: string }
+  | { kind: 'missing_super_key'; accelerator: string }
+  /**  The same accelerator was bound to two functions. */
+  | {
+      kind: 'duplicate_accelerator'
+      accelerator: string
+      first: HotkeyAction
+      second: HotkeyAction
+    }
+
+/**
  *  UI language of the application.
  *
  *  The serialized form is the canonical i18n key shared by every layer that
@@ -1710,6 +1773,8 @@ export type IpcErrorKind =
   | { domain: 'unknown' }
   | { domain: 'profiles'; error: ProfilesError }
   | { domain: 'runtime'; error: RuntimeError }
+  | { domain: 'config'; error: ConfigError }
+  | { domain: 'storage'; error: StorageOperationError }
 
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`
@@ -3628,6 +3693,23 @@ export type StorageEntry = {
   /**  Raw JSON-encoded value string. */
   value: string
 }
+
+/**
+ *  What a storage operation failed with. Library causes stay in `source`
+ *  (skipped on the wire); they reach the user only through the copied detail.
+ *  A `key` is the storage key, which the web layer prefixes.
+ */
+export type StorageOperationError =
+  | { kind: 'open_database'; path: string }
+  | { kind: 'begin_transaction' }
+  | { kind: 'open_table' }
+  | { kind: 'read_item'; key: string }
+  | { kind: 'write_item'; key: string }
+  | { kind: 'remove_item'; key: string }
+  | { kind: 'list_items' }
+  | { kind: 'commit_transaction' }
+  | { kind: 'decode_value'; key: string }
+  | { kind: 'encode_value'; key: string }
 
 /**
  *  Event emitted to all windows when a storage value changes.

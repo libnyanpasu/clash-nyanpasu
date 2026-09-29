@@ -1,9 +1,13 @@
 use crate::{
     client::application_workflow::{
         impact::{self, MutationHints, RequestedRuntimeFields},
+        mutation::ConfigDomain,
         policy::CommandClass,
     },
-    state::mutation::{self, MutationCoordinator},
+    state::{
+        config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
+        mutation::MutationCoordinator,
+    },
 };
 use nyanpasu_core_manager::OperationId;
 
@@ -61,15 +65,15 @@ pub struct ClashConfigActorState {
 pub enum ClashConfigActorMessage {
     Patch {
         patch: ClashConfigPatch,
-        reply: RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>,
+        reply: RpcReplyPort<Result<ClashConfigSnapshot, ConfigError>>,
     },
     PatchOverrides {
         patch: ClashGuardOverridesPatch,
-        reply: RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>,
+        reply: RpcReplyPort<Result<ClashConfigSnapshot, ConfigError>>,
     },
     Replace {
         state: ClashConfig,
-        reply: RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>,
+        reply: RpcReplyPort<Result<ClashConfigSnapshot, ConfigError>>,
     },
 }
 
@@ -80,7 +84,7 @@ impl ClashConfigActor {
     async fn patch(
         state: &mut ClashConfigActorState,
         patch: ClashConfigPatch,
-    ) -> anyhow::Result<ClashConfigSnapshot> {
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
         let mut next = state.manager.snapshot_handle().load().state.clone();
         let hints = MutationHints {
             requested: RequestedRuntimeFields::of_clash(&patch),
@@ -100,7 +104,7 @@ impl ClashConfigActor {
         next: ClashConfig,
         hints: MutationHints,
         class: CommandClass,
-    ) -> anyhow::Result<ClashConfigSnapshot> {
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
         state.mutations.ensure_ready()?;
         let (version, impact) = {
             let current = state.manager.snapshot_handle().load();
@@ -148,17 +152,16 @@ impl ClashConfigActor {
                 snapshot.degradations = degradations;
                 Ok(snapshot)
             }
-            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => Err(anyhow::anyhow!(
-                "clash config version conflict: expected {}, actual {}",
-                version.as_ref(),
-                actual_version.as_ref()
-            )),
-            Err(error) => Err(anyhow::anyhow!(
-                "failed to persist clash config: {}",
-                snafu::Report::from_error(mutation::CommitAborted::classify(
-                    error,
-                    settlement.as_ref()
-                ))
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
+                domain: ConfigDomain::Clash,
+                expected: *version.as_ref(),
+                actual: *actual_version.as_ref(),
+            }
+            .fail(),
+            Err(error) => Err(ConfigError::commit_failure(
+                ConfigDomain::Clash,
+                error,
+                settlement.as_ref(),
             )),
         }
     }
@@ -193,9 +196,12 @@ impl Actor for ClashConfigActor {
             | ClashConfigActorMessage::Replace { reply, .. }
                 if state.shutdown.is_cancelled() =>
             {
-                let _ = reply.send(Err(anyhow::anyhow!(
-                    "the clash config is closed: the app is shutting down"
-                )));
+                let _ = reply.send(
+                    ShuttingDownSnafu {
+                        domain: ConfigDomain::Clash,
+                    }
+                    .fail(),
+                );
             }
             ClashConfigActorMessage::Patch { patch, reply } => {
                 let _ = reply.send(Self::patch(state, patch).await);

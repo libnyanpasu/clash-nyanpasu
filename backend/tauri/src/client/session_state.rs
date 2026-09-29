@@ -10,8 +10,11 @@ use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::session_state::{
-    SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
+use crate::state::{
+    config_error::{ConfigError, SessionStateStoppedSnafu},
+    session_state::{
+        SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
+    },
 };
 
 #[derive(Clone)]
@@ -81,7 +84,7 @@ impl SessionStateClient {
     pub async fn save_main_window(
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
-    ) -> anyhow::Result<SessionStateSnapshot> {
+    ) -> Result<SessionStateSnapshot, ConfigError> {
         self.call(|reply| SessionStateActorMessage::SaveMainWindow {
             geometry,
             reply: Some(reply),
@@ -94,33 +97,47 @@ impl SessionStateClient {
     pub fn queue_main_window_save(
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
-    ) -> anyhow::Result<()> {
-        self.inner
+    ) -> Result<(), ConfigError> {
+        match self
+            .inner
             .actor_ref
             .cast(SessionStateActorMessage::SaveMainWindow {
                 geometry,
                 reply: None,
-            })
-            .context("the session state actor is gone")
+            }) {
+            Ok(()) => Ok(()),
+            Err(_) => SessionStateStoppedSnafu.fail(),
+        }
     }
 
-    pub async fn patch(&self, patch: PersistentStatePatch) -> anyhow::Result<SessionStateSnapshot> {
+    pub async fn patch(
+        &self,
+        patch: PersistentStatePatch,
+    ) -> Result<SessionStateSnapshot, ConfigError> {
         self.call(|reply| SessionStateActorMessage::Patch { patch, reply })
             .await
     }
 
-    pub async fn replace(&self, state: PersistentState) -> anyhow::Result<SessionStateSnapshot> {
+    pub async fn replace(
+        &self,
+        state: PersistentState,
+    ) -> Result<SessionStateSnapshot, ConfigError> {
         self.call(|reply| SessionStateActorMessage::Replace { state, reply })
             .await
     }
 
-    async fn call<F>(&self, make: F) -> anyhow::Result<SessionStateSnapshot>
+    async fn call<F>(&self, make: F) -> Result<SessionStateSnapshot, ConfigError>
     where
-        F: FnOnce(RpcReplyPort<anyhow::Result<SessionStateSnapshot>>) -> SessionStateActorMessage,
+        F: FnOnce(
+            RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>,
+        ) -> SessionStateActorMessage,
     {
-        match self.inner.actor_ref.call(make, None).await? {
-            CallResult::Success(result) => result,
-            _ => anyhow::bail!("session state actor reply dropped"),
+        match self.inner.actor_ref.call(make, None).await {
+            Ok(CallResult::Success(result)) => result,
+            Ok(CallResult::SenderError) | Err(_) => SessionStateStoppedSnafu.fail(),
+            Ok(CallResult::Timeout) => {
+                unreachable!("session state calls are made without a timeout")
+            }
         }
     }
 }

@@ -707,5 +707,21 @@
   "profile_remote_name_hint": "留空则使用订阅提供的名称",
   "profile_global_transform_title": "全局转换",
   "profile_global_transform_hint": "作用于当前启用的配置，在配置自身的转换之后按顺序执行",
-  "profile_global_label": "全局"
+  "profile_global_label": "全局",
+  "error_config_leave_nightly_channel": "每夜构建版无法切换到其他发布通道",
+  "error_config_hotkey_malformed_entry": "快捷键条目格式错误：{entry}",
+  "error_config_hotkey_unknown_function": "未知的快捷键操作：{function}",
+  "error_config_hotkey_empty_key_segment": "无效的快捷键：{accelerator}",
+  "error_config_hotkey_unsupported_accelerator": "不支持快捷键 {accelerator}",
+  "error_config_hotkey_missing_super_key": "快捷键 {accelerator} 需要包含修饰键（Ctrl、Alt、Shift 或 Win/Cmd）",
+  "error_config_hotkey_duplicate_accelerator": "快捷键 {accelerator} 同时被分配给了「{first}」和「{second}」",
+  "error_config_workflow_not_ready": "应用仍在启动，请稍后重试",
+  "error_config_shutting_down": "应用正在关闭",
+  "error_config_owner_stopped": "设置服务未运行",
+  "error_config_version_conflict": "设置在此期间已发生变化，请重试",
+  "error_config_persist_session_state": "无法保存窗口状态",
+  "error_config_session_state_stopped": "窗口状态服务未运行",
+  "error_storage_open": "无法打开应用的存储数据",
+  "error_storage_access": "无法访问应用的存储数据",
+  "error_storage_invalid_value": "应用的存储数据无效"
 }

@@ -8,8 +8,14 @@ use nyanpasu_core::state::{PersistentStateManager, PersistentStateManagerSetup, 
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::application::{
-    ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
+use crate::{
+    client::application_workflow::mutation::ConfigDomain,
+    state::{
+        application::{
+            ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
+        },
+        config_error::{ConfigError, OwnerStoppedSnafu},
+    },
 };
 
 #[derive(Clone)]
@@ -110,7 +116,7 @@ impl ApplicationClient {
     pub async fn patch(
         &self,
         patch: NyanpasuAppConfigPatch,
-    ) -> anyhow::Result<ApplicationSnapshot> {
+    ) -> Result<ApplicationSnapshot, ConfigError> {
         self.call(
             |reply| ApplicationActorMessage::Patch { patch, reply },
             None,
@@ -118,7 +124,10 @@ impl ApplicationClient {
         .await
     }
 
-    pub async fn replace(&self, state: NyanpasuAppConfig) -> anyhow::Result<ApplicationSnapshot> {
+    pub async fn replace(
+        &self,
+        state: NyanpasuAppConfig,
+    ) -> Result<ApplicationSnapshot, ConfigError> {
         self.call(
             |reply| ApplicationActorMessage::Replace { state, reply },
             None,
@@ -130,14 +139,21 @@ impl ApplicationClient {
         &self,
         make: F,
         timeout: Option<std::time::Duration>,
-    ) -> anyhow::Result<ApplicationSnapshot>
+    ) -> Result<ApplicationSnapshot, ConfigError>
     where
-        F: FnOnce(RpcReplyPort<anyhow::Result<ApplicationSnapshot>>) -> ApplicationActorMessage,
+        F: FnOnce(
+            RpcReplyPort<Result<ApplicationSnapshot, ConfigError>>,
+        ) -> ApplicationActorMessage,
     {
-        match self.inner.actor_ref.call(make, timeout).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
+        match self.inner.actor_ref.call(make, timeout).await {
+            Ok(CallResult::Success(result)) => result,
+            Ok(CallResult::SenderError) | Err(_) => OwnerStoppedSnafu {
+                domain: ConfigDomain::Application,
+            }
+            .fail(),
+            Ok(CallResult::Timeout) => {
+                unreachable!("application config calls are made without a timeout")
+            }
         }
     }
 }
@@ -195,6 +211,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_write_after_shutdown_is_refused_as_shutting_down() {
+        let dir = tempdir().expect("tempdir should be created");
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let client = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            crate::bundle::Channel::Stable,
+            temp_config_path(&dir),
+            shutdown.clone(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("application client should be created");
+        shutdown.cancel();
+
+        assert!(matches!(
+            client.patch(NyanpasuAppConfig::new_empty_patch()).await,
+            Err(ConfigError::ShuttingDown {
+                domain: ConfigDomain::Application
+            })
+        ));
+    }
+
+    #[tokio::test]
     async fn release_channel_persists_and_cannot_leave_nightly() {
         use crate::bundle::Channel;
         let (client, dir) = test_client().await;
@@ -220,10 +259,16 @@ mod tests {
         for channel in [Channel::Stable, Channel::Beta] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.release_channel = Some(Some(channel));
-            assert!(reloaded.patch(patch).await.is_err());
+            assert!(matches!(
+                reloaded.patch(patch).await,
+                Err(ConfigError::LeaveNightlyChannel { to }) if to == channel
+            ));
             let mut replacement = NyanpasuAppConfig::default();
             replacement.release_channel = Some(channel);
-            assert!(reloaded.replace(replacement).await.is_err());
+            assert!(matches!(
+                reloaded.replace(replacement).await,
+                Err(ConfigError::LeaveNightlyChannel { to }) if to == channel
+            ));
         }
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(None);

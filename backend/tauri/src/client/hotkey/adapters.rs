@@ -4,11 +4,12 @@
 use std::{str::FromStr, sync::Arc};
 
 use anyhow::Context;
+use snafu::ensure;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use super::ports::{
-    AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError, ShortcutRegistrar,
-    WindowControl, has_super_key,
+    AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError, MissingSuperKeySnafu,
+    ShortcutRegistrar, UnsupportedAcceleratorSnafu, WindowControl, has_super_key,
 };
 use crate::client::MainThreadExecutor;
 
@@ -26,16 +27,20 @@ impl AcceleratorValidator for PlatformAcceleratorValidator {
     }
 
     fn canonical(&self, accelerator: &str) -> Result<String, HotkeyParseError> {
+        // Local: this file's registrar uses anyhow's `context` too.
+        use snafu::ResultExt as _;
         // The plugin's own parse panics inside `register`, so an accelerator it
         // cannot read has to be rejected before it gets there (issue #287).
         let shortcut = Shortcut::from_str(accelerator)
-            .map_err(|_| HotkeyParseError::InvalidAccelerator(accelerator.to_owned()))?;
+            .boxed()
+            .context(UnsupportedAcceleratorSnafu { accelerator })?;
         // Asked of what the user wrote, not of the canonical form: the
         // canonical spelling of a modifier-less accelerator would still have to
         // be rejected, and the message has to name what they typed.
-        if !has_super_key(accelerator) {
-            return Err(HotkeyParseError::MissingSuperKey(accelerator.to_owned()));
-        }
+        ensure!(
+            has_super_key(accelerator),
+            MissingSuperKeySnafu { accelerator }
+        );
         // Round-trips: the plugin's parser reads its own output back to the
         // same shortcut, so this is what gets handed to the OS.
         Ok(shortcut.into_string())

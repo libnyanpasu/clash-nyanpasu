@@ -5,10 +5,11 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
-    ManagedProfilePath, MaterializedFile, ProfileDefinition, ProfileDependencyIndex, ProfileId,
-    ProfileItem, ProfileMetadata, ProfileMetadataPatch, ProfileRevisionError, ProfileSource,
-    ProfileValidationError, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch,
-    ScriptRuntime, SubscriptionInfo, TransformDefinition,
+    ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition,
+    ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata, ProfileMetadataPatch,
+    ProfileRevisionError, ProfileSource, ProfileValidationError, Profiles, RemoteProfileOptions,
+    RemoteProfileOptionsPatch, ScriptRuntime, ScriptTransform, SubscriptionInfo,
+    TransformDefinition, TransformKind,
 };
 use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
@@ -194,6 +195,7 @@ struct PendingImport {
     reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     metadata: ProfileMetadata,
     url: url::Url,
+    transform: Option<TransformKind>,
     option: RemoteProfileOptions,
     update_interval_explicit: bool,
     task: JoinHandle<()>,
@@ -326,6 +328,8 @@ pub enum ProfilesActorMessage {
     /// until download + validation succeed and the caller is still live.
     ImportRemote {
         url: url::Url,
+        /// `None` imports a Config File; `Some` imports a Transform of that kind.
+        transform: Option<TransformKind>,
         metadata: ProfileMetadata,
         option: RemoteProfileOptions,
         update_interval_explicit: bool,
@@ -903,21 +907,31 @@ impl ProfilesActor {
 
     fn remote_import_definition(
         url: url::Url,
+        transform: Option<TransformKind>,
         option: RemoteProfileOptions,
         file: ManagedProfilePath,
         subscription: SubscriptionInfo,
         updated_at: Option<time::OffsetDateTime>,
     ) -> ProfileDefinition {
-        ProfileDefinition::Config {
-            config: ConfigDefinition::File(FileConfig {
-                source: ProfileSource::Remote {
-                    materialized: MaterializedFile { file, updated_at },
-                    url,
-                    option,
-                    subscription,
-                },
-                transforms: vec![],
-            }),
+        let source = ProfileSource::Remote {
+            materialized: MaterializedFile { file, updated_at },
+            url,
+            option,
+            subscription,
+        };
+        match transform {
+            None => ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source,
+                    transforms: vec![],
+                }),
+            },
+            Some(TransformKind::Overlay) => ProfileDefinition::Transform {
+                transform: TransformDefinition::Overlay(OverlayTransform { source }),
+            },
+            Some(TransformKind::Script { runtime }) => ProfileDefinition::Transform {
+                transform: TransformDefinition::Script(ScriptTransform { source, runtime }),
+            },
         }
     }
 
@@ -926,10 +940,12 @@ impl ProfilesActor {
         before: &Profiles,
         metadata: &ProfileMetadata,
         url: url::Url,
+        transform: Option<TransformKind>,
         option: RemoteProfileOptions,
     ) -> Result<(), ProfilesError> {
         let definition = Self::remote_import_definition(
             url,
+            transform,
             option,
             ManagedProfilePath::new("pending.yaml").expect("static managed path is valid"),
             SubscriptionInfo::default(),
@@ -1978,15 +1994,20 @@ impl Actor for ProfilesActor {
             }
             ProfilesActorMessage::ImportRemote {
                 url,
+                transform,
                 metadata,
                 option,
                 update_interval_explicit,
                 reply,
             } => {
                 let before = Self::current_state(state);
-                if let Err(error) =
-                    Self::validate_import_request(&before, &metadata, url.clone(), option.clone())
-                {
+                if let Err(error) = Self::validate_import_request(
+                    &before,
+                    &metadata,
+                    url.clone(),
+                    transform,
+                    option.clone(),
+                ) {
                     let _ = reply.send(Err(error));
                     return Ok(());
                 }
@@ -1994,10 +2015,9 @@ impl Actor for ProfilesActor {
                 let token = ImportOperationToken(state.next_import_token);
                 state.next_import_token = state.next_import_token.wrapping_add(1).max(1);
                 let actor = myself.clone();
-                // Content validation uses a Config definition shape; import is
-                // always a remote Config File profile.
                 let definition_for_validation = Self::remote_import_definition(
                     url.clone(),
+                    transform,
                     option.clone(),
                     ManagedProfilePath::new("pending.yaml").expect("static managed path is valid"),
                     SubscriptionInfo::default(),
@@ -2018,6 +2038,7 @@ impl Actor for ProfilesActor {
                         reply,
                         metadata,
                         url,
+                        transform,
                         option,
                         update_interval_explicit,
                         task,
@@ -2062,6 +2083,7 @@ impl Actor for ProfilesActor {
 
                         let mut definition = Self::remote_import_definition(
                             pending.url,
+                            pending.transform,
                             option,
                             ManagedProfilePath::new("pending.yaml")
                                 .expect("static managed path is valid"),
@@ -2354,6 +2376,7 @@ mod tests {
             metadata: metadata("remote"),
             definition: ProfilesActor::remote_import_definition(
                 "https://example.com/sub".parse().unwrap(),
+                None,
                 RemoteProfileOptions::default(),
                 ManagedProfilePath::new("remote.yaml").unwrap(),
                 SubscriptionInfo::default(),

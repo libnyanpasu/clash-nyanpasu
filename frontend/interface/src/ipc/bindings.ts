@@ -272,9 +272,11 @@ export const commands = {
       self_proxy: boolean | null
       update_interval_minutes: number | null
     } | null,
+    transform:
+      { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
   ) =>
     typedError<MutationOutcome<ProfileId>, string>(
-      __TAURI_INVOKE('import_profile', { url, name, option }),
+      __TAURI_INVOKE('import_profile', { url, name, option, transform }),
     ),
   /**
    *  Take and clear the queued deep links, oldest first. The frontend calls it

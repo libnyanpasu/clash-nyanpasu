@@ -1,5 +1,7 @@
 import DescriptionOutlineRounded from '~icons/material-symbols/description-outline-rounded'
+import DocumentSearchOutlineRounded from '~icons/material-symbols/document-search-outline-rounded'
 import JavascriptRounded from '~icons/material-symbols/javascript-rounded'
+import LanguageRounded from '~icons/material-symbols/language-rounded'
 import LuaIcon from '~icons/mdi/language-lua'
 import ChipLine from '~icons/mingcute/chip-line'
 import YamlIcon from '~icons/nonicons/yaml-16'
@@ -100,6 +102,17 @@ const ROUTES = {
   }
 >
 
+const GROUPS = [
+  {
+    label: () => m.profile_group_config(),
+    types: [ProfileType.Profile],
+  },
+  {
+    label: () => m.profile_group_transform(),
+    types: [ProfileType.JavaScript, ProfileType.Lua, ProfileType.Merge],
+  },
+]
+
 export default function ProfilesNavigate({
   className,
   ...props
@@ -120,25 +133,60 @@ export default function ProfilesNavigate({
 
   return (
     <div className={cn('flex flex-col gap-2', className)} {...props}>
-      {Object.entries(ROUTES).map(([profileType, route]) => (
-        <LinkButton key={route.href} href={route.href}>
-          <div className="size-8">{route.icon()}</div>
+      {GROUPS.map((group) => (
+        <div key={group.types[0]} className="flex flex-col gap-1">
+          <p className="text-on-surface-variant px-4 pt-2 pb-1 text-xs font-medium">
+            {group.label()}
+          </p>
 
-          <div className="text-sm font-medium">
-            <p>{route.label}</p>
+          {group.types.map((profileType) => {
+            const route = ROUTES[profileType]
 
-            <p className="text-xs text-zinc-500">
-              {m.profile_profile_label_count({
-                count: counts[profileType as ProfileType] ?? 0,
-              })}
-            </p>
-          </div>
-        </LinkButton>
+            return (
+              <LinkButton key={route.href} href={route.href}>
+                <div className="size-8">{route.icon()}</div>
+
+                <div className="text-sm font-medium">
+                  <p>{route.label}</p>
+
+                  <p className="text-xs text-zinc-500">
+                    {m.profile_profile_label_count({
+                      count: counts[profileType],
+                    })}
+                  </p>
+                </div>
+              </LinkButton>
+            )
+          })}
+        </div>
       ))}
 
       <Separator />
 
-      <LinkButton href="/main/profiles/inspect">{m.inspect_title()}</LinkButton>
+      {/* Both act on the active config's pipeline rather than on one profile. */}
+      <LinkButton href="/main/profiles/global">
+        <div className="flex size-8 items-center justify-center">
+          <LanguageRounded className="size-6" />
+        </div>
+
+        <div className="text-sm font-medium">
+          <p>{m.profile_global_transform_title()}</p>
+
+          <p className="text-xs text-zinc-500">
+            {m.profile_profile_label_count({
+              count: profiles?.global_transforms?.length ?? 0,
+            })}
+          </p>
+        </div>
+      </LinkButton>
+
+      <LinkButton href="/main/profiles/inspect">
+        <div className="flex size-8 items-center justify-center">
+          <DocumentSearchOutlineRounded className="size-6" />
+        </div>
+
+        <p className="text-sm font-medium">{m.inspect_title()}</p>
+      </LinkButton>
     </div>
   )
 }

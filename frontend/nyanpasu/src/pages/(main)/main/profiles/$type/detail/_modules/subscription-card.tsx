@@ -18,6 +18,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
   getRemoteSource,
+  isTransformItem,
   useProfile,
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
@@ -83,16 +84,21 @@ export const SubscriptionCard = ({
       <CardHeader>{m.profile_subscription_title()}</CardHeader>
 
       <CardContent>
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-bold">{progress.toFixed(2)}%</div>
+        {/* Transforms are plain remote files and carry no traffic quota. */}
+        {!isTransformItem(profile) && (
+          <>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-bold">{progress.toFixed(2)}%</div>
 
-          <div className="text-sm font-bold">
-            {filesize(used, { standard: 'iec' })} /
-            {filesize(total, { standard: 'iec' })}
-          </div>
-        </div>
+              <div className="text-sm font-bold">
+                {filesize(used, { standard: 'iec' })} /
+                {filesize(total, { standard: 'iec' })}
+              </div>
+            </div>
 
-        <LinearProgress value={progress} />
+            <LinearProgress value={progress} />
+          </>
+        )}
 
         <div className="flex items-center justify-between gap-2 text-sm font-bold">
           <Tooltip>

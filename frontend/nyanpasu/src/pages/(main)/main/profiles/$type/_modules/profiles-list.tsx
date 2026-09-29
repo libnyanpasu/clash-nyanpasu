@@ -2,7 +2,7 @@ import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-
 import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
 import { isEqual } from 'lodash-es'
 import { AnimatePresence, motion } from 'motion/react'
-import { ComponentProps, useRef } from 'react'
+import { ComponentProps, RefObject, useEffect, useRef, useState } from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import { LinearProgress } from '@/components/ui/progress'
+import { useScrollArea } from '@/components/ui/scroll-area'
 import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import { move } from '@dnd-kit/helpers'
@@ -20,17 +21,17 @@ import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
 import {
-  isRemoteItem,
+  getProfileSource,
   useProfile,
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
+import { ProfileType } from '../../_modules/consts'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
 import { Route as IndexRoute } from '../index'
-import CreateCompositionButton from './create-composition-button'
 import { categoryProfiles, isProxyProfile } from './utils'
 
 const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
@@ -47,12 +48,30 @@ const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
   )
 }
 
+const sourceLabelOf = (profile: ProfileItem_Serialize) => {
+  const source = getProfileSource(profile)
+
+  if (!source) {
+    return m.profile_kind_composition()
+  }
+
+  if (source.type === 'remote') {
+    return m.profile_source_remote()
+  }
+
+  return source.binding.type === 'external'
+    ? m.profile_source_external()
+    : m.profile_source_local()
+}
+
 const GridViewProfile = ({
   profile,
   index,
+  isGlobal,
 }: {
   profile: ProfileItem_Serialize
   index: number
+  isGlobal: boolean
 }) => {
   const { type } = IndexRoute.useParams()
 
@@ -60,8 +79,6 @@ const GridViewProfile = ({
   const deleteProfile = useDeleteProfile(profile)
 
   const isPending = activeProfile.isPending || deleteProfile.isPending
-
-  const isRemote = isRemoteItem(profile)
 
   const { themePalette } = useExperimentalThemeContext()
 
@@ -131,12 +148,10 @@ const GridViewProfile = ({
             </CardHeader>
 
             <CardContent>
-              <div className="z-10" data-slot="profile-card-type">
-                {isRemote ? (
-                  <Chip>{m.profile_remote_label()}</Chip>
-                ) : (
-                  <Chip>{m.profile_local_label()}</Chip>
-                )}
+              <div className="z-10 flex gap-1" data-slot="profile-card-type">
+                <Chip>{sourceLabelOf(profile)}</Chip>
+
+                {isGlobal && <Chip>{m.profile_global_label()}</Chip>}
               </div>
             </CardContent>
 
@@ -184,7 +199,7 @@ const EmptyList = () => {
   return (
     <div
       className={cn(
-        'flex min-h-full items-center justify-center text-center text-sm',
+        'flex flex-1 items-center justify-center text-center text-sm',
         'text-on-surface-variant',
         'dark:text-on-surface-variant-dark',
       )}
@@ -202,6 +217,47 @@ const NoMoreProfiles = () => {
   )
 }
 
+/**
+ * Whether the last item of `listRef` reaches past the scroll viewport. The
+ * footer is measured out on purpose: it would otherwise make its own room.
+ */
+const useListOverflows = (
+  listRef: RefObject<HTMLElement | null>,
+  itemCount: number,
+) => {
+  const { viewportRef } = useScrollArea()
+
+  const [overflows, setOverflows] = useState(false)
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    const list = listRef.current
+
+    if (!viewport || !list) {
+      setOverflows(false)
+      return
+    }
+
+    const update = () => {
+      const last = list.lastElementChild ?? list
+      const bottom =
+        last.getBoundingClientRect().bottom -
+        viewport.getBoundingClientRect().top +
+        viewport.scrollTop
+
+      setOverflows(bottom > viewport.clientHeight)
+    }
+
+    const observer = new ResizeObserver(update)
+    observer.observe(viewport)
+    observer.observe(list)
+
+    return () => observer.disconnect()
+  }, [viewportRef, listRef, itemCount])
+
+  return overflows
+}
+
 export default function ProfilesList({
   className,
   ...props
@@ -213,21 +269,18 @@ export default function ProfilesList({
     sort,
   } = useProfile()
 
-  // Filter by allowed types, fallback to no filtering if not found
-  const categorizedProfiles = profiles?.items
-    ? categoryProfiles(profiles.items)
-    : null
+  const filteredProfiles =
+    categoryProfiles(profiles?.items)[type as ProfileType] ?? []
 
-  // If no profiles are found, show the empty list message
-  if (
-    !categorizedProfiles?.profile ||
-    categorizedProfiles.profile.length === 0
-  ) {
+  const globalTransforms = new Set(profiles?.global_transforms)
+
+  const gridRef = useRef<HTMLDivElement>(null)
+
+  const overflows = useListOverflows(gridRef, filteredProfiles.length)
+
+  if (filteredProfiles.length === 0) {
     return <EmptyList />
   }
-
-  const filteredProfiles =
-    categorizedProfiles[type as keyof typeof categorizedProfiles]
 
   return (
     <>
@@ -236,14 +289,6 @@ export default function ProfilesList({
         data-slot="profiles-list"
         {...props}
       >
-        {type === 'profile' && (
-          <CreateCompositionButton>
-            <Button variant="stroked" className="self-start">
-              {m.profile_create_composition_title()}
-            </Button>
-          </CreateCompositionButton>
-        )}
-
         <DragDropProvider
           onDragEnd={(event) => {
             const filteredUids = filteredProfiles.map((profile) => profile.uid)
@@ -268,6 +313,7 @@ export default function ProfilesList({
           }}
         >
           <div
+            ref={gridRef}
             className={cn(
               'grid content-start gap-2',
               'md:grid-cols-2',
@@ -283,6 +329,7 @@ export default function ProfilesList({
                 key={profile.uid}
                 profile={profile}
                 index={index}
+                isGlobal={globalTransforms.has(profile.uid)}
               />
             ))}
           </div>
@@ -291,7 +338,7 @@ export default function ProfilesList({
         <div className="flex-1" />
       </div>
 
-      <NoMoreProfiles />
+      {overflows && <NoMoreProfiles />}
     </>
   )
 }

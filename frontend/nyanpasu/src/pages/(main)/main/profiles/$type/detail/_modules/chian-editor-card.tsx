@@ -197,15 +197,48 @@ export default function ChianEditorCard({
 }: {
   profile: ConfigProfile
 }) {
+  const { replaceDefinition } = useProfile()
+
+  // The edited config item's own scoped transforms (File or Composition).
+  const transforms = useMemo(() => scopedTransformsOf(profile), [profile])
+
   // Keyed per profile so a draft cannot leak into another config whose baseline
   // happens to be identical.
-  return <ChainEditorSession key={profile.uid} profile={profile} />
+  return (
+    <TransformChainEditor
+      key={profile.uid}
+      className="col-span-2 md:col-span-4"
+      taskKey={`update-chain-${profile.uid}`}
+      transforms={transforms}
+      onApply={async (next) => {
+        // Rebuild the config definition with the reordered scoped transforms,
+        // preserving every other field, and replace it atomically.
+        const definition: ProfileDefinition_Deserialize = {
+          type: 'config',
+          config: { ...profile.config, transforms: next },
+        }
+
+        await replaceDefinition.mutateAsync({ uid: profile.uid, definition })
+      }}
+    />
+  )
 }
 
-function ChainEditorSession({ profile }: { profile: ConfigProfile }) {
+/** Two-column editor for an ordered transform chain. */
+export function TransformChainEditor({
+  transforms: currentTransforms,
+  taskKey,
+  onApply,
+  className,
+}: {
+  /** The persisted chain, in order. */
+  transforms: string[]
+  taskKey: string
+  onApply: (transforms: string[]) => Promise<unknown>
+  className?: string
+}) {
   const {
     query: { data: profiles },
-    replaceDefinition,
   } = useProfile()
 
   const dataReady = profiles != null
@@ -219,12 +252,6 @@ function ChainEditorSession({ profile }: { profile: ConfigProfile }) {
   const candidateUids = useMemo(
     () => candidateProfiles.map((item) => item.uid),
     [candidateProfiles],
-  )
-
-  // The edited config item's own scoped transforms (File or Composition).
-  const currentTransforms = useMemo(
-    () => scopedTransformsOf(profile),
-    [profile],
   )
 
   const serverChains = useMemo(
@@ -300,26 +327,16 @@ function ChainEditorSession({ profile }: { profile: ConfigProfile }) {
     serverChains[ColumnType.Active],
   )
 
-  const blockTask = useBlockTask(
-    `update-chain-${profile.uid}`,
-    async (transforms: string[]) => {
-      try {
-        // Rebuild the config definition with the reordered scoped transforms,
-        // preserving every other field, and replace it atomically.
-        const definition: ProfileDefinition_Deserialize = {
-          type: 'config',
-          config: { ...profile.config, transforms },
-        }
-
-        await replaceDefinition.mutateAsync({ uid: profile.uid, definition })
-      } catch (error) {
-        message(`Update failed: \n ${formatError(error)}`, {
-          title: 'Error',
-          kind: 'error',
-        })
-      }
-    },
-  )
+  const blockTask = useBlockTask(taskKey, async (transforms: string[]) => {
+    try {
+      await onApply(transforms)
+    } catch (error) {
+      message(`Update failed: \n ${formatError(error)}`, {
+        title: 'Error',
+        kind: 'error',
+      })
+    }
+  })
 
   const saving = blockTask.isPending
   const editable = dataReady && !hasDuplicates
@@ -350,7 +367,7 @@ function ChainEditorSession({ profile }: { profile: ConfigProfile }) {
   const loadingMessage = m.profile_chain_editor_apply_message()
 
   return (
-    <Card className="relative col-span-2 md:col-span-4">
+    <Card className={cn('relative', className)}>
       <AnimatePresence initial={false}>
         {saving && (
           <motion.div

@@ -48,7 +48,7 @@ use nyanpasu_config::{
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
         ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
-        RemoteProfileOptions, RemoteProfileOptionsPatch,
+        RemoteProfileOptions, RemoteProfileOptionsPatch, TransformKind,
     },
     runtime::executor::ResolvedPortBindings,
 };
@@ -765,8 +765,10 @@ impl NyanpasuClient {
         Ok(outcome)
     }
 
-    /// Import a remote subscription via actor-owned fetch-before-commit, then
-    /// auto-activate when nothing is current.
+    /// Import a remote subscription via actor-owned fetch-before-commit. A
+    /// `None` `transform` imports a Config File and auto-activates it when
+    /// nothing is current; `Some` imports a Transform of that kind, which is
+    /// never activatable.
     ///
     /// Naming: a non-empty caller-provided `name` (e.g. a deep-link `name=`
     /// parameter) is user intent, so it is pinned (`custom_name = true`) and
@@ -783,6 +785,7 @@ impl NyanpasuClient {
         url: url::Url,
         name: Option<String>,
         options: Option<RemoteProfileOptionsPatch>,
+        transform: Option<TransformKind>,
     ) -> Result<runtime::MutationOutcome<ProfileId>> {
         let update_interval_explicit = options
             .as_ref()
@@ -801,6 +804,7 @@ impl NyanpasuClient {
             .profiles
             .import(
                 url,
+                transform,
                 ProfileMetadata {
                     name,
                     desc: None,
@@ -819,6 +823,9 @@ impl NyanpasuClient {
             self.collect_post_commit_degradations(&report).await,
         )
         .with_commit(report.receipt.clone());
+        if transform.is_some() {
+            return Ok(outcome);
+        }
         Ok(outcome.append_commit_result(self.try_auto_activate_if_none(created).await))
     }
 
@@ -3297,7 +3304,7 @@ pub(crate) mod tests {
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.with_proxy = Some(false);
             let uid = client
-                .import_profile(url, None, Some(patch))
+                .import_profile(url, None, Some(patch), None)
                 .await
                 .expect("import")
                 .into_value();
@@ -3349,12 +3356,14 @@ pub(crate) mod tests {
                     url::Url::parse("https://example.com/subs/current.yaml").unwrap(),
                     None,
                     None,
+                    None,
                 )
                 .await
                 .unwrap();
             let uid = client
                 .import_profile(
                     url::Url::parse("https://example.com/subs/other.yaml").unwrap(),
+                    None,
                     None,
                     None,
                 )
@@ -3406,7 +3415,7 @@ pub(crate) mod tests {
             patch.update_interval_minutes = Some(45);
             let url = url::Url::parse("https://example.com/subs/explicit.yaml").unwrap();
             let uid = client
-                .import_profile(url, None, Some(patch))
+                .import_profile(url, None, Some(patch), None)
                 .await
                 .expect("import")
                 .into_value();
@@ -3430,7 +3439,12 @@ pub(crate) mod tests {
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.update_interval_minutes = Some(0);
             let url = url::Url::parse("https://example.com/subs/invalid.yaml").unwrap();
-            assert!(client.import_profile(url, None, Some(patch)).await.is_err());
+            assert!(
+                client
+                    .import_profile(url, None, Some(patch), None)
+                    .await
+                    .is_err()
+            );
             assert!(client.get_profiles().await.unwrap().items.is_empty());
         });
     }
@@ -3493,7 +3507,7 @@ pub(crate) mod tests {
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
-            let result = client.import_profile(url, None, None).await;
+            let result = client.import_profile(url, None, None, None).await;
             assert!(
                 result.is_err(),
                 "import must fail when the first download fails"
@@ -3741,7 +3755,7 @@ pub(crate) mod tests {
             // Ok(None) from set_current_if_none remains non-degraded applied.
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
             let outcome = client
-                .import_profile(url, None, None)
+                .import_profile(url, None, None, None)
                 .await
                 .expect("import");
             assert!(
@@ -3870,7 +3884,7 @@ pub(crate) mod tests {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let uid = client
-                .import_profile(url, None, None)
+                .import_profile(url, None, None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -3890,7 +3904,7 @@ pub(crate) mod tests {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let uid = client
-                .import_profile(url, Some("My VPN".into()), None)
+                .import_profile(url, Some("My VPN".into()), None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -3902,6 +3916,30 @@ pub(crate) mod tests {
             );
         });
     }
+
+    #[test]
+    fn facade_import_transform_creates_remote_transform_without_activating_it() {
+        let dir = tempdir().unwrap();
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
+            let url = url::Url::parse("https://example.com/overlay.yaml").unwrap();
+            let uid = client
+                .import_profile(url, None, None, Some(TransformKind::Overlay))
+                .await
+                .expect("import")
+                .into_value();
+            let profiles = client.get_profiles().await.unwrap();
+            let item = &profiles.items[&uid];
+            assert!(matches!(
+                &item.definition,
+                ProfileDefinition::Transform { transform }
+                    if transform.kind() == TransformKind::Overlay
+                        && matches!(transform.source(), nyanpasu_config::profile::ProfileSource::Remote { .. })
+            ));
+            assert_eq!(profiles.current, None, "a transform is never activatable");
+        });
+    }
+
     #[test]
     fn managed_edit_uses_candidate_bytes_and_rejects_invalid_runtime_without_overwriting_source() {
         let dir = tempdir().unwrap();

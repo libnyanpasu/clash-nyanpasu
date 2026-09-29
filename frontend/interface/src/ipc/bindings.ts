@@ -667,6 +667,21 @@ export type ClashConnectionsInfo = {
   uploadSpeed: number
 }
 
+/**  Pushed on every connection sample; size is independent of connection count. */
+export type ClashConnectionsSummary = {
+  downloadTotal: number
+  uploadTotal: number
+  downloadSpeed: number
+  uploadSpeed: number
+  memory: number | null
+  connectionCount: number
+  /**
+   *  Keyed by chain member name (group or node); summed over every
+   *  connection whose `chains` contains that name.
+   */
+  memberRates: { [key in string]: TrafficRate }
+}
+
 export type ClashControlChannel = 'prefer_ipc' | 'http_only'
 
 export type ClashCore = ClashCore_Serialize | ClashCore_Deserialize
@@ -741,21 +756,6 @@ export type ClashVersion = {
   meta: boolean | null
 }
 
-export type ClashWsConnectionSnapshot = {
-  downloadTotal: number
-  uploadTotal: number
-  downloadSpeed: number
-  uploadSpeed: number
-  /**
-   *  Per chain member (group or node), summed over every connection whose
-   *  `chains` contains that name. Lets the proxies group header read a
-   *  rate without subscribing to connection detail.
-   */
-  memberRates: { [key in string]: TrafficRate }
-  memory: number | null
-  connections: any | null
-}
-
 export type ClashWsEvent = {
   sequence: number
   update: ClashWsUpdate
@@ -785,7 +785,7 @@ export type ClashWsSnapshot = {
   sequence: number
   state: ClashConnectionsConnectorState
   recording: ClashWsRecording
-  connections: ClashWsConnectionSnapshot[]
+  connections: ClashConnectionsSummary[]
   logs: ClashWsLog[]
   traffic: ClashWsTraffic[]
   memory: ClashWsMemory[]
@@ -799,7 +799,7 @@ export type ClashWsTraffic = {
 export type ClashWsUpdate =
   | { kind: 'reset'; data: ClashWsSnapshot }
   | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'connections_updated'; data: ClashWsConnectionSnapshot }
+  | { kind: 'connections_updated'; data: ClashConnectionsSummary }
   | { kind: 'log_appended'; data: ClashWsLog }
   | { kind: 'traffic_updated'; data: ClashWsTraffic }
   | { kind: 'memory_updated'; data: ClashWsMemory }

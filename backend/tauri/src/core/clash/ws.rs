@@ -2,7 +2,6 @@
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
-use indexmap::IndexMap;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -18,7 +17,9 @@ use crate::core::{
         CoreClient,
         api::{ApiClient, ApiError},
     },
-    clash::connection_rates::{ClashConnection, ConnectionCounters, ConnectionRates, TrafficRate},
+    clash::connection_rates::{
+        ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionRates,
+    },
 };
 
 const MAX_CONNECTIONS_HISTORY: usize = 32;
@@ -34,25 +35,6 @@ pub struct ClashConnectionsInfo {
     pub upload_total: u64,
     pub download_speed: u64,
     pub upload_speed: u64,
-}
-
-#[derive(Debug, Clone, Type, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClashWsConnectionSnapshot {
-    pub download_total: u64,
-    pub upload_total: u64,
-    pub download_speed: u64,
-    pub upload_speed: u64,
-    /// Per chain member (group or node), summed over every connection whose
-    /// `chains` contains that name. Lets the proxies group header read a
-    /// rate without subscribing to connection detail.
-    pub member_rates: IndexMap<String, TrafficRate>,
-    pub memory: Option<u64>,
-    // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value expands
-    // infinitely via Vec<Value>). Replace with a concrete ClashConnection struct once the specta
-    // bug is fixed or a proper named recursive JsonValue type is available.
-    #[specta(type = Option<specta_typescript::Any>)]
-    pub connections: Option<Vec<serde_json::Value>>,
 }
 
 /// Latest per-connection detail frame, pushed only while at least one
@@ -149,7 +131,7 @@ pub struct ClashWsSnapshot {
     pub sequence: u64,
     pub state: ClashConnectionsConnectorState,
     pub recording: ClashWsRecording,
-    pub connections: Vec<ClashWsConnectionSnapshot>,
+    pub connections: Vec<ClashConnectionsSummary>,
     pub logs: Vec<ClashWsLog>,
     pub traffic: Vec<ClashWsTraffic>,
     pub memory: Vec<ClashWsMemory>,
@@ -167,7 +149,7 @@ pub struct ClashWsEvent {
 pub enum ClashWsUpdate {
     Reset(Box<ClashWsSnapshot>),
     StateChanged(ClashConnectionsConnectorState),
-    ConnectionsUpdated(ClashWsConnectionSnapshot),
+    ConnectionsUpdated(ClashConnectionsSummary),
     LogAppended(ClashWsLog),
     TrafficUpdated(ClashWsTraffic),
     MemoryUpdated(ClashWsMemory),
@@ -177,7 +159,7 @@ pub enum ClashWsUpdate {
 
 #[derive(Default)]
 struct ClashWsHistory {
-    connections: VecDeque<ClashWsConnectionSnapshot>,
+    connections: VecDeque<ClashConnectionsSummary>,
     logs: VecDeque<ClashWsLog>,
     traffic: VecDeque<ClashWsTraffic>,
     memory: VecDeque<ClashWsMemory>,
@@ -362,32 +344,14 @@ impl State {
                     .args
                     .connections
                     .send(ClashConnectionsConnectorEvent::Update(info));
-                // The UI keeps its existing extensible JSON DTO at the IPC boundary.
-                let snapshot = ClashWsConnectionSnapshot {
-                    download_total: summary.download_total,
-                    upload_total: summary.upload_total,
-                    download_speed: summary.download_speed,
-                    upload_speed: summary.upload_speed,
-                    member_rates: summary.member_rates,
-                    memory: sample.memory,
-                    connections: sample.connections.map(|connections| {
-                        connections
-                            .into_iter()
-                            .map(|connection| {
-                                serde_json::to_value(connection)
-                                    .expect("connection contains JSON-safe values")
-                            })
-                            .collect()
-                    }),
-                };
                 if self.recording.connections {
                     push_limited(
                         &mut self.history.connections,
-                        snapshot.clone(),
+                        summary.clone(),
                         MAX_CONNECTIONS_HISTORY,
                     );
                 }
-                self.emit(ClashWsUpdate::ConnectionsUpdated(snapshot));
+                self.emit(ClashWsUpdate::ConnectionsUpdated(summary));
                 if let Some(connections) = derived.details {
                     let _ =
                         self.args
@@ -1074,5 +1038,84 @@ mod tests {
             .unwrap();
         assert!(details.borrow().is_none());
         server.abort();
+    }
+
+    /// `count` connections, all sharing one `chain` member, so `member_rates`
+    /// always has exactly one entry regardless of `count` (G1/G4).
+    fn connections_sample(count: usize, chain: &str) -> clash_api::ConnectionsSnapshot {
+        let connections: Vec<clash_api::Connection> = (0..count)
+            .map(|i| {
+                serde_json::from_value(serde_json::json!({
+                    "id": uuid::Uuid::from_u128(i as u128 + 1),
+                    "metadata": null,
+                    "upload": 1,
+                    "download": 1,
+                    "start": "2024-01-01T00:00:00Z",
+                    "chains": [chain],
+                    "rule": "MATCH",
+                    "rulePayload": "",
+                }))
+                .unwrap()
+            })
+            .collect();
+        clash_api::ConnectionsSnapshot {
+            // Fixed, N-independent totals: only `connectionCount`'s own
+            // digit width should differ between the two sample sizes below.
+            download_total: 12345,
+            upload_total: 12345,
+            connections: Some(connections),
+            memory: None,
+        }
+    }
+
+    #[test]
+    fn connections_updated_event_size_is_independent_of_connection_count() {
+        let now = tokio::time::Instant::now();
+        // A first-ever sample (no `previous`) keeps every rate at zero
+        // regardless of N, and same-digit-width counts (100 / 999) keep
+        // `connectionCount` itself from perturbing the byte count (G1).
+        let small = ConnectionRates::derive(None, &connections_sample(100, "Proxy"), now, false)
+            .unwrap()
+            .summary;
+        let large = ConnectionRates::derive(None, &connections_sample(999, "Proxy"), now, false)
+            .unwrap()
+            .summary;
+        let small_len = serde_json::to_vec(&ClashWsUpdate::ConnectionsUpdated(small))
+            .unwrap()
+            .len();
+        let large_len = serde_json::to_vec(&ClashWsUpdate::ConnectionsUpdated(large))
+            .unwrap()
+            .len();
+        assert_eq!(small_len, large_len);
+    }
+
+    #[test]
+    fn snapshot_size_is_independent_of_connection_count() {
+        let now = tokio::time::Instant::now();
+        let small = ConnectionRates::derive(None, &connections_sample(100, "Proxy"), now, false)
+            .unwrap()
+            .summary;
+        let large = ConnectionRates::derive(None, &connections_sample(999, "Proxy"), now, false)
+            .unwrap()
+            .summary;
+
+        let mut small_history = ClashWsHistory::default();
+        small_history.connections.push_back(small);
+        let mut large_history = ClashWsHistory::default();
+        large_history.connections.push_back(large);
+
+        let recording = ClashWsRecording::default();
+        let small_snapshot = small_history.snapshot(
+            ClashConnectionsConnectorState::Connected,
+            recording.clone(),
+            1,
+        );
+        let large_snapshot =
+            large_history.snapshot(ClashConnectionsConnectorState::Connected, recording, 1);
+
+        assert_eq!(
+            serde_json::to_vec(&small_snapshot).unwrap().len(),
+            serde_json::to_vec(&large_snapshot).unwrap().len(),
+        );
     }
 }

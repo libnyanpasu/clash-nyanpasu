@@ -12,11 +12,11 @@ import {
   commands,
   events,
   type ClashConnectionsConnectorState,
+  type ClashConnectionsSummary,
   type ClashWsEvent,
   type ClashWsKind,
   type ClashWsSnapshot,
 } from '../ipc/bindings'
-import type { ClashConnectionsSummary } from '../ipc/use-clash-connections'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'

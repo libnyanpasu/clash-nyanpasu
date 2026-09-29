@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import type { ClashConnectionsSummary } from '../../interface/src/ipc/use-clash-connections'
+import type { ClashConnectionsSummary } from '../../interface/src/ipc/bindings'
 import { latestGroupTrafficSpeed } from '../src/pages/(main)/main/proxies/_modules/group-traffic-speed.ts'
 
 const summary = (
@@ -11,7 +11,7 @@ const summary = (
   uploadSpeed: 0,
   memberRates,
   memory: null,
-  connections: null,
+  connectionCount: 0,
 })
 
 test('reads the latest sample only, and a group absent from it has no rate', () => {

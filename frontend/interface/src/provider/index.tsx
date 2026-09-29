@@ -5,7 +5,11 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query'
 import type { Degradation } from '../ipc/bindings'
-import { ClashWSProvider, useClashWSContext } from './clash-ws-provider'
+import {
+  ClashWSProvider,
+  useClashWSHistory,
+  useClashWSStatus,
+} from './clash-ws-provider'
 import { MutationProvider } from './mutation-provider'
 
 let mutationDegradationHandler: ((degradations: Degradation[]) => void) | null =
@@ -65,4 +69,4 @@ export const NyanpasuProvider = ({ children }: PropsWithChildren) => {
   )
 }
 
-export { useClashWSContext }
+export { useClashWSHistory, useClashWSStatus }

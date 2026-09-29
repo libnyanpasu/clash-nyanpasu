@@ -3,7 +3,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
+  type Context,
   type PropsWithChildren,
 } from 'react'
 import {
@@ -19,25 +21,46 @@ import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
 import { applyClashWsEvent } from './clash-ws-state'
 
-const ClashWSContext = createContext<{
+type ClashWSHistory = {
   connections: ClashConnection[]
   logs: ClashLog[]
   traffic: ClashTraffic[]
   memory: ClashMemory[]
+}
+
+type ClashWSStatus = {
   isLoading: boolean
   error: unknown
   clearHistory: (kind: ClashWsKind) => Promise<void>
-} | null>(null)
+}
 
-export const useClashWSContext = () => {
-  const context = useContext(ClashWSContext)
+// One context per history kind: every ws event replaces the snapshot, but a
+// consumer only re-renders when its own history or the status changes.
+const ClashWSHistoryContexts: {
+  [K in ClashWsKind]: Context<ClashWSHistory[K] | null>
+} = {
+  connections: createContext<ClashConnection[] | null>(null),
+  logs: createContext<ClashLog[] | null>(null),
+  traffic: createContext<ClashTraffic[] | null>(null),
+  memory: createContext<ClashMemory[] | null>(null),
+}
 
-  if (!context) {
-    throw new Error('useClashWSContext must be used in a ClashWSProvider')
+const ClashWSStatusContext = createContext<ClashWSStatus | null>(null)
+
+const useClashWSValue = <T,>(context: Context<T | null>) => {
+  const value = useContext(context)
+
+  if (value === null) {
+    throw new Error('Clash ws hooks must be used in a ClashWSProvider')
   }
 
-  return context
+  return value
 }
+
+export const useClashWSHistory = <K extends ClashWsKind>(kind: K) =>
+  useClashWSValue<ClashWSHistory[K]>(ClashWSHistoryContexts[kind])
+
+export const useClashWSStatus = () => useClashWSValue(ClashWSStatusContext)
 
 export const ClashWSProvider = ({ children }: PropsWithChildren) => {
   const [snapshot, setSnapshot] = useState<ClashWsSnapshot>()
@@ -130,28 +153,50 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
     // The sequenced history_cleared event orders this against later samples.
   }, [])
 
-  const connections: ClashConnection[] = (snapshot?.connections ?? []).map(
-    (connection) => ({
-      ...connection,
-      memory: connection.memory ?? undefined,
-      connections:
-        (connection.connections as ClashConnection['connections']) ?? undefined,
-    }),
+  // Snapshot updates keep the arrays of untouched kinds, so memoizing on them
+  // keeps each history context value stable across unrelated events.
+  const connectionSnapshots = snapshot?.connections
+  const logSnapshots = snapshot?.logs
+  const trafficSnapshots = snapshot?.traffic
+  const memorySnapshots = snapshot?.memory
+
+  const connections = useMemo<ClashConnection[]>(
+    () =>
+      (connectionSnapshots ?? []).map((connection) => ({
+        ...connection,
+        memory: connection.memory ?? undefined,
+        connections:
+          (connection.connections as ClashConnection['connections']) ??
+          undefined,
+      })),
+    [connectionSnapshots],
+  )
+  const logs = useMemo(() => (logSnapshots ?? []) as ClashLog[], [logSnapshots])
+  const traffic = useMemo(
+    () => (trafficSnapshots ?? []) as ClashTraffic[],
+    [trafficSnapshots],
+  )
+  const memory = useMemo(
+    () => (memorySnapshots ?? []) as ClashMemory[],
+    [memorySnapshots],
+  )
+
+  const status = useMemo(
+    () => ({ isLoading, error, clearHistory }),
+    [isLoading, error, clearHistory],
   )
 
   return (
-    <ClashWSContext.Provider
-      value={{
-        connections,
-        logs: (snapshot?.logs ?? []) as ClashLog[],
-        traffic: (snapshot?.traffic ?? []) as ClashTraffic[],
-        memory: (snapshot?.memory ?? []) as ClashMemory[],
-        isLoading,
-        error,
-        clearHistory,
-      }}
-    >
-      {children}
-    </ClashWSContext.Provider>
+    <ClashWSStatusContext.Provider value={status}>
+      <ClashWSHistoryContexts.connections.Provider value={connections}>
+        <ClashWSHistoryContexts.logs.Provider value={logs}>
+          <ClashWSHistoryContexts.traffic.Provider value={traffic}>
+            <ClashWSHistoryContexts.memory.Provider value={memory}>
+              {children}
+            </ClashWSHistoryContexts.memory.Provider>
+          </ClashWSHistoryContexts.traffic.Provider>
+        </ClashWSHistoryContexts.logs.Provider>
+      </ClashWSHistoryContexts.connections.Provider>
+    </ClashWSStatusContext.Provider>
   )
 }

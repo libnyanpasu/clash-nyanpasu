@@ -1155,6 +1155,40 @@ pub async fn clear_clash_ws_history(
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn subscribe_clash_connection_details(
+    webview: tauri::Webview,
+    client: tauri::State<'_, NyanpasuClient>,
+    subscriptions: tauri::State<
+        '_,
+        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    >,
+    on_frame: tauri::ipc::Channel<crate::core::clash::ws::ClashConnectionDetails>,
+) -> Result<crate::core::clash::connection_details::SubscriptionId> {
+    let receiver = client.subscribe_clash_connection_details();
+    let parent = client.shutdown_child_token();
+    let (id, cancel) = subscriptions.register(&parent, webview.label().to_string());
+    client.spawn_tracked(
+        &cancel,
+        crate::core::clash::connection_details::forward_details(receiver, on_frame),
+    );
+    Ok(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn unsubscribe_clash_connection_details(
+    subscriptions: tauri::State<
+        '_,
+        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    >,
+    id: crate::core::clash::connection_details::SubscriptionId,
+) -> Result {
+    subscriptions.unsubscribe(id);
+    Ok(())
+}
+
 // Updater block
 
 #[tauri::command]

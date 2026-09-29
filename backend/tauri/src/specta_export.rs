@@ -118,6 +118,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::mutate_proxies,
             ipc::set_clash_ws_recording,
             ipc::clear_clash_ws_history,
+            ipc::subscribe_clash_connection_details,
+            ipc::unsubscribe_clash_connection_details,
             ipc::save_window_size_state,
             ipc::create_main_window,
             ipc::create_debug_tray_menu_window,
@@ -442,6 +444,27 @@ mod tests {
         assert!(
             generated.contains("MutationOutcome<null>"),
             "unit profile mutations must return MutationOutcome<null>"
+        );
+
+        // A2: the connection-detail Channel payload wraps clash-api's
+        // strongly typed Connection with the two rate fields, and unknown
+        // Mihomo fields are named (`_extra`) rather than flattened, so the
+        // detail dialog can tell them apart from known fields (A0/A2).
+        let clash_connection = exported_type(&generated, "ClashConnection_Serialize");
+        assert_contains_all(
+            clash_connection,
+            "ClashConnection_Serialize",
+            &["downloadSpeed", "uploadSpeed", "Connection_Serialize"],
+        );
+        let connection = exported_type(&generated, "Connection_Serialize");
+        assert_contains_all(
+            connection,
+            "Connection_Serialize",
+            &[
+                "chains: string[]",
+                "metadata: ConnectionMetadata_Serialize",
+                "_extra:",
+            ],
         );
     }
 }

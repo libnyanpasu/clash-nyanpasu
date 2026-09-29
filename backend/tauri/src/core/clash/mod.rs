@@ -3,6 +3,7 @@ use specta::Type;
 use tauri_specta::Event;
 
 pub mod api;
+pub mod connection_details;
 pub mod connection_rates;
 pub mod proxies;
 pub mod ws;
@@ -80,6 +81,7 @@ impl Drop for StreamEventBridge {
 
 pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Result<()> {
     use tokio::sync::broadcast::error::RecvError;
+    manager.manage(connection_details::ConnectionDetailSubscriptions::new());
     let client = manager
         .state::<crate::client::NyanpasuClient>()
         .inner()

@@ -54,8 +54,6 @@ pub struct ConnectionCounters {
 
 pub struct DerivedConnections {
     pub summary: ClashConnectionsSummary,
-    // Wired into the actor's IPC output starting with A2; only tests read it here.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub details: Option<Vec<ClashConnection>>,
     pub counters: ConnectionCounters,
 }

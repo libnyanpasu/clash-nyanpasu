@@ -257,6 +257,13 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_notification::init())
         .plugin(updater.build())
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
+        .on_page_load(|webview, payload| {
+            // A reloaded page keeps the same webview, so `Channel::send`
+            // cannot tell its old connection-detail subscriptions are gone.
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                core::clash::connection_details::cancel_for_webview(webview, webview.label());
+            }
+        })
         .setup(move |app| {
             specta_builder.mount_events(app);
             setup::setup(app, metadata, logger_reload)
@@ -325,21 +332,30 @@ pub fn run() -> std::io::Result<()> {
         tauri::RunEvent::ExitRequested { api, code, .. } => {
             utils::exit::on_exit_requested(app_handle, code, &api);
         }
-        tauri::RunEvent::WindowEvent { label, event, .. } if label == "main" => match event {
-            tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                core::tray::on_scale_factor_changed(scale_factor);
+        tauri::RunEvent::WindowEvent { label, event, .. } => {
+            if label == "main" {
+                match &event {
+                    tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                        core::tray::on_scale_factor_changed(*scale_factor);
+                    }
+                    tauri::WindowEvent::CloseRequested { .. } => {
+                        log::debug!(target: "app", "window close requested");
+                        let _ = resolve::save_window_state(app_handle);
+                        #[cfg(target_os = "macos")]
+                        crate::utils::dock::macos::hide_dock_icon();
+                    }
+                    tauri::WindowEvent::Destroyed => {
+                        log::debug!(target: "app", "window destroyed");
+                    }
+                    _ => {}
+                }
             }
-            tauri::WindowEvent::CloseRequested { .. } => {
-                log::debug!(target: "app", "window close requested");
-                let _ = resolve::save_window_state(app_handle);
-                #[cfg(target_os = "macos")]
-                crate::utils::dock::macos::hide_dock_icon();
+            // Every webview's connection-detail subscriptions must end on
+            // destroy, not just "main"'s: `Channel::send` cannot detect it.
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                core::clash::connection_details::cancel_for_webview(app_handle, &label);
             }
-            tauri::WindowEvent::Destroyed => {
-                log::debug!(target: "app", "window destroyed");
-            }
-            _ => {}
-        },
+        }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
             resolve::create_window(app_handle);

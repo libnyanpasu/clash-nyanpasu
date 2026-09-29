@@ -2,11 +2,15 @@
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
+use indexmap::IndexMap;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri_specta::Event;
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::{
+    sync::{broadcast, watch},
+    task::JoinHandle,
+};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::core::{
@@ -14,7 +18,7 @@ use crate::core::{
         CoreClient,
         api::{ApiClient, ApiError},
     },
-    clash::connection_rates::{ConnectionCounters, ConnectionRates},
+    clash::connection_rates::{ClashConnection, ConnectionCounters, ConnectionRates, TrafficRate},
 };
 
 const MAX_CONNECTIONS_HISTORY: usize = 32;
@@ -39,12 +43,28 @@ pub struct ClashWsConnectionSnapshot {
     pub upload_total: u64,
     pub download_speed: u64,
     pub upload_speed: u64,
+    /// Per chain member (group or node), summed over every connection whose
+    /// `chains` contains that name. Lets the proxies group header read a
+    /// rate without subscribing to connection detail.
+    pub member_rates: IndexMap<String, TrafficRate>,
     pub memory: Option<u64>,
     // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value expands
     // infinitely via Vec<Value>). Replace with a concrete ClashConnection struct once the specta
     // bug is fixed or a proper named recursive JsonValue type is available.
     #[specta(type = Option<specta_typescript::Any>)]
     pub connections: Option<Vec<serde_json::Value>>,
+}
+
+/// Latest per-connection detail frame, pushed only while at least one
+/// subscriber exists (see `StreamsClient::subscribe_connection_details`);
+/// only the newest frame is kept, never a history.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ClashConnectionDetails {
+    /// Equal to the sequence of the `ConnectionsUpdated` event emitted for
+    /// the same sample, so a subscriber can align the two.
+    pub sequence: u64,
+    pub connections: Vec<ClashConnection>,
 }
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize)]
@@ -247,6 +267,7 @@ struct Args {
     core: CoreClient,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
+    details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
 }
 struct StreamsActor;
 struct State {
@@ -294,6 +315,7 @@ impl State {
         self.api = None;
         self.history = ClashWsHistory::default();
         self.previous = None;
+        let _ = self.args.details.send_replace(None);
         self.status(ClashConnectionsConnectorState::Disconnected);
         let _ = self
             .args
@@ -322,8 +344,9 @@ impl State {
         match sample {
             Sample::Connections(sample) => {
                 let now = tokio::time::Instant::now();
+                let with_details = self.args.details.receiver_count() > 0;
                 let Some(derived) =
-                    ConnectionRates::derive(self.previous.as_ref(), &sample, now, false)
+                    ConnectionRates::derive(self.previous.as_ref(), &sample, now, with_details)
                 else {
                     return;
                 };
@@ -345,6 +368,7 @@ impl State {
                     upload_total: summary.upload_total,
                     download_speed: summary.download_speed,
                     upload_speed: summary.upload_speed,
+                    member_rates: summary.member_rates,
                     memory: sample.memory,
                     connections: sample.connections.map(|connections| {
                         connections
@@ -364,6 +388,15 @@ impl State {
                     );
                 }
                 self.emit(ClashWsUpdate::ConnectionsUpdated(snapshot));
+                if let Some(connections) = derived.details {
+                    let _ =
+                        self.args
+                            .details
+                            .send_replace(Some(Arc::new(ClashConnectionDetails {
+                                sequence: self.sequence,
+                                connections,
+                            })));
+                }
             }
             Sample::Log(sample) => {
                 let log = ClashWsLog {
@@ -630,6 +663,7 @@ impl Actor for StreamsActor {
                             if accepted {
                                 if status != ClashConnectionsConnectorState::Connected {
                                     state.previous = None;
+                                    let _ = state.args.details.send_replace(None);
                                 }
                                 state.status(status);
                             }
@@ -664,6 +698,7 @@ struct Inner {
     actor: ActorRef<Message>,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
+    details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
 }
 impl Drop for Inner {
     fn drop(&mut self) {
@@ -678,6 +713,7 @@ impl StreamsClient {
     ) -> Result<Self> {
         let connections = broadcast::channel(16).0;
         let events = broadcast::channel(64).0;
+        let details = watch::channel(None).0;
         let (actor, _) = Actor::spawn(
             None,
             StreamsActor,
@@ -685,6 +721,7 @@ impl StreamsClient {
                 core,
                 connections: connections.clone(),
                 events: events.clone(),
+                details: details.clone(),
             },
         )
         .await?;
@@ -693,6 +730,7 @@ impl StreamsClient {
             actor,
             connections,
             events,
+            details,
         })))
     }
     async fn call<T: Send + 'static>(
@@ -732,6 +770,14 @@ impl StreamsClient {
     }
     pub fn subscribe_ws(&self) -> broadcast::Receiver<ClashWsEvent> {
         self.0.events.subscribe()
+    }
+    /// The latest connection-detail frame, kept only while at least one
+    /// receiver exists (`receiver_count()` gates the actor's per-sample
+    /// work); `None` until the first sample after subscribing.
+    pub fn subscribe_connection_details(
+        &self,
+    ) -> watch::Receiver<Option<Arc<ClashConnectionDetails>>> {
+        self.0.details.subscribe()
     }
 }
 
@@ -944,5 +990,89 @@ mod tests {
         .unwrap();
         assert_eq!(memory.inuse, 1000);
         assert_eq!(memory.oslimit, 1000);
+    }
+
+    #[tokio::test]
+    async fn details_watch_stays_none_without_a_subscriber() {
+        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
+        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let client =
+            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
+        let mut events = client.subscribe_ws();
+        client.start().await.unwrap();
+        connected(&mut events).await;
+        let api = core.api_client().await.unwrap();
+        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
+
+        // Subscribing only now must still observe the untouched initial
+        // value: nothing was ever published while no receiver existed (G2).
+        let details = client.subscribe_connection_details();
+        assert!(details.borrow().is_none());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn details_frame_matches_the_connections_updated_sequence() {
+        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
+        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let client =
+            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
+        let mut events = client.subscribe_ws();
+        let mut details = client.subscribe_connection_details();
+        client.start().await.unwrap();
+        connected(&mut events).await;
+        let api = core.api_client().await.unwrap();
+        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
+
+        let event = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let event = events.recv().await.unwrap();
+                if matches!(event.update, ClashWsUpdate::ConnectionsUpdated(_)) {
+                    return event;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        tokio::time::timeout(Duration::from_secs(3), details.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        let frame = details.borrow_and_update().clone().unwrap();
+        assert_eq!(frame.sequence, event.sequence);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn reset_clears_the_details_watch() {
+        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
+        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let client =
+            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
+        let mut events = client.subscribe_ws();
+        let mut details = client.subscribe_connection_details();
+        client.start().await.unwrap();
+        connected(&mut events).await;
+        let api = core.api_client().await.unwrap();
+        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
+        tokio::time::timeout(Duration::from_secs(3), details.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(details.borrow().is_some());
+
+        assert!(deliver(&client.0.actor, 1, Delivery::Invalidated).await);
+        tokio::time::timeout(Duration::from_secs(3), details.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(details.borrow().is_none());
+        server.abort();
     }
 }

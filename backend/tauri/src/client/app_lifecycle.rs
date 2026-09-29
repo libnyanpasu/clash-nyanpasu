@@ -129,7 +129,7 @@ mod tests {
                 HotkeyArgs, HotkeyClient,
                 ports::{
                     HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-                    ShortcutRegistrar,
+                    ShortcutError, ShortcutRegistrar,
                 },
             },
             tests::{TestControlEndpoint, test_client_args_with_endpoint},
@@ -304,15 +304,15 @@ mod tests {
             _: &str,
             _: HotkeyAction,
             _: Arc<dyn HotkeyActionSink>,
-        ) -> anyhow::Result<()> {
+        ) -> std::result::Result<(), ShortcutError> {
             Ok(())
         }
 
-        async fn unregister(&self, _: &str) -> anyhow::Result<()> {
+        async fn unregister(&self, _: &str) -> std::result::Result<(), ShortcutError> {
             Ok(())
         }
 
-        async fn unregister_all(&self) -> anyhow::Result<()> {
+        async fn unregister_all(&self) -> std::result::Result<(), ShortcutError> {
             self.releases.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }

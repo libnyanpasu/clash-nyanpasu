@@ -37,7 +37,7 @@ use crate::client::{
         adapters::PlatformAcceleratorValidator,
         ports::{
             HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-            MockShortcutRegistrar, ShortcutRegistrar,
+            MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
         },
     },
     system_proxy::{
@@ -1067,15 +1067,15 @@ impl ShortcutRegistrar for HeldRegistrar {
         _: &str,
         _: HotkeyAction,
         _: Arc<dyn HotkeyActionSink>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ShortcutError> {
         Ok(())
     }
 
-    async fn unregister(&self, _: &str) -> anyhow::Result<()> {
+    async fn unregister(&self, _: &str) -> Result<(), ShortcutError> {
         Ok(())
     }
 
-    async fn unregister_all(&self) -> anyhow::Result<()> {
+    async fn unregister_all(&self) -> Result<(), ShortcutError> {
         self.releasing.notify_one();
         self.release.notified().await;
         Ok(())

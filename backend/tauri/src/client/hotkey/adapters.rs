@@ -3,13 +3,14 @@
 
 use std::{str::FromStr, sync::Arc};
 
-use anyhow::Context;
-use snafu::ensure;
+use snafu::{ResultExt as _, ensure};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use super::ports::{
     AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError, MissingSuperKeySnafu,
-    ShortcutRegistrar, UnsupportedAcceleratorSnafu, WindowControl, has_super_key,
+    RegisterShortcutSnafu, ReleaseAllShortcutsSnafu, ReleaseShortcutSnafu, RunShortcutWorkSnafu,
+    ShortcutError, ShortcutRegistrar, ToggleDashboardSnafu, UnsupportedAcceleratorSnafu,
+    WindowControl, WindowError, has_super_key,
 };
 use crate::client::MainThreadExecutor;
 
@@ -27,8 +28,6 @@ impl AcceleratorValidator for PlatformAcceleratorValidator {
     }
 
     fn canonical(&self, accelerator: &str) -> Result<String, HotkeyParseError> {
-        // Local: this file's registrar uses anyhow's `context` too.
-        use snafu::ResultExt as _;
         // The plugin's own parse panics inside `register`, so an accelerator it
         // cannot read has to be rejected before it gets there (issue #287).
         let shortcut = Shortcut::from_str(accelerator)
@@ -80,7 +79,7 @@ impl<R: tauri::Runtime> ShortcutRegistrar for TauriShortcutRegistrar<R> {
         accelerator: &str,
         action: HotkeyAction,
         sink: Arc<dyn HotkeyActionSink>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ShortcutError> {
         let app_handle = self.app_handle.clone();
         let accelerator = accelerator.to_owned();
         self.main_thread
@@ -89,9 +88,11 @@ impl<R: tauri::Runtime> ShortcutRegistrar for TauriShortcutRegistrar<R> {
                 // Last writer wins: the grab may still be held from a binding
                 // this process has already dropped from its own map.
                 if manager.is_registered(accelerator.as_str()) {
-                    manager
-                        .unregister(accelerator.as_str())
-                        .with_context(|| format!("failed to release the shortcut {accelerator}"))?;
+                    manager.unregister(accelerator.as_str()).boxed().context(
+                        ReleaseShortcutSnafu {
+                            accelerator: &accelerator,
+                        },
+                    )?;
                 }
 
                 manager
@@ -103,12 +104,16 @@ impl<R: tauri::Runtime> ShortcutRegistrar for TauriShortcutRegistrar<R> {
                             sink.dispatch(action);
                         }
                     })
-                    .with_context(|| format!("failed to register the shortcut {accelerator}"))
+                    .boxed()
+                    .context(RegisterShortcutSnafu {
+                        accelerator: &accelerator,
+                    })
             })
-            .await?
+            .await
+            .context(RunShortcutWorkSnafu)?
     }
 
-    async fn unregister(&self, accelerator: &str) -> anyhow::Result<()> {
+    async fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError> {
         let app_handle = self.app_handle.clone();
         let accelerator = accelerator.to_owned();
         self.main_thread
@@ -116,21 +121,27 @@ impl<R: tauri::Runtime> ShortcutRegistrar for TauriShortcutRegistrar<R> {
                 app_handle
                     .global_shortcut()
                     .unregister(accelerator.as_str())
-                    .with_context(|| format!("failed to release the shortcut {accelerator}"))
+                    .boxed()
+                    .context(ReleaseShortcutSnafu {
+                        accelerator: &accelerator,
+                    })
             })
-            .await?
+            .await
+            .context(RunShortcutWorkSnafu)?
     }
 
-    async fn unregister_all(&self) -> anyhow::Result<()> {
+    async fn unregister_all(&self) -> Result<(), ShortcutError> {
         let app_handle = self.app_handle.clone();
         self.main_thread
             .run(move || {
                 app_handle
                     .global_shortcut()
                     .unregister_all()
-                    .context("failed to release the registered shortcuts")
+                    .boxed()
+                    .context(ReleaseAllShortcutsSnafu)
             })
-            .await?
+            .await
+            .context(RunShortcutWorkSnafu)?
     }
 }
 
@@ -173,7 +184,7 @@ impl TauriWindowControl {
 
 #[async_trait::async_trait]
 impl WindowControl for TauriWindowControl {
-    async fn toggle_dashboard(&self) -> anyhow::Result<()> {
+    async fn toggle_dashboard(&self) -> Result<(), WindowError> {
         let app_handle = self.app_handle.clone();
         // Window work belongs on the main thread; the caller is the hotkey
         // pump, which runs on the async runtime. Awaited so two quick presses
@@ -187,6 +198,6 @@ impl WindowControl for TauriWindowControl {
                 }
             })
             .await
-            .context("failed to toggle the dashboard on the main thread")
+            .context(ToggleDashboardSnafu)
     }
 }

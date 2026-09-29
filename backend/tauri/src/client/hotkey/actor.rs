@@ -13,11 +13,14 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     HotkeyStatus,
-    ports::{HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp, ShortcutRegistrar},
+    error::{HotkeyEffectError, InvalidBindingsSnafu, PartialRegistrationSnafu},
+    ports::{
+        HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp, ShortcutError, ShortcutRegistrar,
+    },
 };
 use crate::client::effects::{
     plan::EffectKind,
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectHealth, EffectRevision, EffectStatus},
 };
 
 pub(super) enum Message {
@@ -145,22 +148,12 @@ impl State {
         // old check sat inside `register`, which runs after the releases, so
         // one unparsable binding tore down the shortcuts that did work and then
         // failed. Nothing here is retryable: the list has to change first.
-        let rejected: Vec<String> = desired
+        let rejected: Vec<_> = desired
             .accelerators()
-            .filter(|accelerator| self.registrar.validate(accelerator).is_err())
-            .map(ToOwned::to_owned)
+            .filter_map(|accelerator| self.registrar.validate(accelerator).err())
             .collect();
         if !rejected.is_empty() {
-            let status = self.degraded(
-                revision,
-                EffectFailureCode::HotkeyInvalidBindings,
-                format!(
-                    "the platform refused {}: {}",
-                    rejected.len(),
-                    rejected.join("; ")
-                ),
-                false,
-            );
+            let status = self.degraded(revision, InvalidBindingsSnafu { rejected }.build());
             self.health = status.health.clone();
             return status;
         }
@@ -186,7 +179,7 @@ impl State {
                             self.registered.remove(accelerator);
                         }
                         // Left in place so the next reconcile tries again.
-                        Err(error) => failures.push(format!("{accelerator}: {error}")),
+                        Err(error) => failures.push(error),
                     }
                 }
                 HotkeyOp::Rebind { accelerator, .. } => {
@@ -215,7 +208,7 @@ impl State {
                 Ok(()) => {
                     self.registered.insert(accelerator.clone(), action);
                 }
-                Err(error) => failures.push(format!("{accelerator}: {error}")),
+                Err(error) => failures.push(error),
             }
         }
 
@@ -226,21 +219,14 @@ impl State {
             // caller is told exactly which ones are missing.
             self.degraded(
                 revision,
-                EffectFailureCode::HotkeyPartialRegistration,
-                format!(
-                    "{} of {} shortcuts failed: {}",
-                    failures.len(),
-                    total,
-                    failures.join("; ")
-                ),
-                true,
+                PartialRegistrationSnafu { total, failures }.build(),
             )
         };
         self.health = status.health.clone();
         status
     }
 
-    async fn register(&self, accelerator: &str, action: HotkeyAction) -> anyhow::Result<()> {
+    async fn register(&self, accelerator: &str, action: HotkeyAction) -> Result<(), ShortcutError> {
         // No validation here: `reconcile` cleared the whole desired set before
         // it released anything.
         self.registrar
@@ -248,7 +234,7 @@ impl State {
             .await
     }
 
-    async fn unregister(&self, accelerator: &str) -> anyhow::Result<()> {
+    async fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError> {
         self.registrar.unregister(accelerator).await
     }
 
@@ -272,36 +258,23 @@ impl State {
     /// Not retryable: nothing about this app's exit is going to change, and a
     /// retry would grab the accelerators the unregister just released.
     fn shut_down(&self, revision: EffectRevision) -> EffectStatus {
-        EffectStatus {
-            kind: EffectKind::Hotkeys,
-            desired_revision: revision,
-            applied_revision: self.applied_revision,
-            health: EffectHealth::Degraded {
-                code: EffectFailureCode::HotkeyShutDown,
-                message: "the hotkey owner is shutting down and stopped accepting changes"
-                    .to_owned(),
-                retryable: false,
-            },
-        }
+        self.status_of(revision, HotkeyEffectError::ShutDown)
     }
 
-    fn degraded(
-        &self,
-        revision: EffectRevision,
-        code: EffectFailureCode,
-        message: String,
-        retryable: bool,
-    ) -> EffectStatus {
-        tracing::warn!(?code, %message, "a hotkey effect failed after the config was committed");
+    fn degraded(&self, revision: EffectRevision, error: HotkeyEffectError) -> EffectStatus {
+        let health = error.health();
+        if let EffectHealth::Degraded { code, message, .. } = &health {
+            tracing::warn!(?code, %message, "a hotkey effect failed after the config was committed");
+        }
+        self.status_of(revision, error)
+    }
+
+    fn status_of(&self, revision: EffectRevision, error: HotkeyEffectError) -> EffectStatus {
         EffectStatus {
             kind: EffectKind::Hotkeys,
             desired_revision: revision,
             applied_revision: self.applied_revision,
-            health: EffectHealth::Degraded {
-                code,
-                message,
-                retryable,
-            },
+            health: error.health(),
         }
     }
 }

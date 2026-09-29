@@ -1,8 +1,8 @@
-use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
+use snafu::ResultExt as _;
 use tauri::{Emitter, Manager};
 
-use super::main_thread::MainThreadExecutor;
+use super::main_thread::{HandOffToEventLoopSnafu, MainThreadError, MainThreadExecutor};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -72,10 +72,11 @@ impl<R: tauri::Runtime> TauriMainThread<R> {
 }
 
 impl<R: tauri::Runtime> MainThreadExecutor for TauriMainThread<R> {
-    fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> anyhow::Result<()> {
+    fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), MainThreadError> {
         self.app_handle
             .run_on_main_thread(task)
-            .context("the event loop refused the task")
+            .boxed()
+            .context(HandOffToEventLoopSnafu)
     }
 }
 

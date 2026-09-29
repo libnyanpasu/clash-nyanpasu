@@ -16,11 +16,12 @@ use super::{
         SystemProxyDesired, TrayRefresh, TrayView,
     },
     ports::ApplicationEffectsPort,
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
 use crate::client::{
     hotkey::{
         HotkeyClient,
+        error::InvalidBindingsSnafu,
         ports::{AcceleratorValidator, HotkeyBindings},
     },
     system_proxy::SystemProxyClient,
@@ -75,13 +76,19 @@ impl ApplicationEffectExecutor {
     async fn apply_hotkeys(&self, revision: EffectRevision, raw: &[String]) -> EffectStatus {
         match HotkeyBindings::parse(raw, self.accelerators.as_ref()) {
             Ok(desired) => self.hotkeys.reconcile(revision, desired).await,
-            Err(error) => degraded(
-                EffectKind::Hotkeys,
-                revision,
-                EffectFailureCode::HotkeyInvalidBindings,
-                error.to_string(),
-                false,
-            ),
+            Err(error) => {
+                let error = InvalidBindingsSnafu {
+                    rejected: vec![error],
+                }
+                .build();
+                degraded(
+                    EffectKind::Hotkeys,
+                    revision,
+                    error.code(),
+                    failure_text(&error),
+                    error.retryable(),
+                )
+            }
         }
     }
 

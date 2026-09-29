@@ -9,6 +9,8 @@ use std::{collections::BTreeMap, str::FromStr, sync::Arc};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu, ensure};
 
+use crate::client::main_thread::MainThreadError;
+
 /// Modifiers that make an accelerator safe to grab globally. Matched as a
 /// lowercase substring, which is what the shipped validation did; a stricter
 /// rule would reject accelerators users already have saved.
@@ -128,6 +130,37 @@ pub enum HotkeyParseError {
         first: HotkeyAction,
         second: HotkeyAction,
     },
+}
+
+/// Why the OS would not grant or give back a global shortcut. The plugin's own
+/// error is boxed because this module does not name the plugin.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum ShortcutError {
+    #[snafu(display("could not release the shortcut {accelerator}"))]
+    ReleaseShortcut {
+        accelerator: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    #[snafu(display("could not register the shortcut {accelerator}"))]
+    RegisterShortcut {
+        accelerator: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    #[snafu(display("could not release the registered shortcuts"))]
+    ReleaseAllShortcuts {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    #[snafu(display("the shortcut work could not run on the main thread"))]
+    RunShortcutWork { source: MainThreadError },
+}
+
+/// Why the dashboard window could not be toggled.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum WindowError {
+    #[snafu(display("could not toggle the dashboard on the main thread"))]
+    ToggleDashboard { source: MainThreadError },
 }
 
 /// What has to change at the OS level to go from one binding set to another.
@@ -297,9 +330,9 @@ pub trait ShortcutRegistrar: Send + Sync + 'static {
         accelerator: &str,
         action: HotkeyAction,
         sink: Arc<dyn HotkeyActionSink>,
-    ) -> anyhow::Result<()>;
-    async fn unregister(&self, accelerator: &str) -> anyhow::Result<()>;
-    async fn unregister_all(&self) -> anyhow::Result<()>;
+    ) -> Result<(), ShortcutError>;
+    async fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError>;
+    async fn unregister_all(&self) -> Result<(), ShortcutError>;
 }
 
 /// Where a pressed shortcut goes. Fire-and-forget on purpose: the OS callback
@@ -314,5 +347,5 @@ pub trait HotkeyActionSink: Send + Sync + 'static {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
 pub trait WindowControl: Send + Sync + 'static {
-    async fn toggle_dashboard(&self) -> anyhow::Result<()>;
+    async fn toggle_dashboard(&self) -> Result<(), WindowError>;
 }

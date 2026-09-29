@@ -11,7 +11,7 @@ use super::{
     adapters::PlatformAcceleratorValidator,
     ports::{
         AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp,
-        HotkeyParseError, MockHotkeyActionSink, ShortcutRegistrar,
+        HotkeyParseError, MockHotkeyActionSink, ShortcutError, ShortcutRegistrar,
     },
 };
 use crate::client::effects::status::{EffectFailureCode, EffectHealth, EffectRevision};
@@ -260,7 +260,7 @@ impl ShortcutRegistrar for RecordingRegistrar {
         accelerator: &str,
         action: HotkeyAction,
         sink: Arc<dyn HotkeyActionSink>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")
@@ -272,14 +272,17 @@ impl ShortcutRegistrar for RecordingRegistrar {
             .iter()
             .any(|failing| failing == accelerator)
         {
-            anyhow::bail!("the os refused the shortcut");
+            return Err(ShortcutError::RegisterShortcut {
+                accelerator: accelerator.to_owned(),
+                source: "the os refused the shortcut".into(),
+            });
         }
         *self.last_sink.lock().expect("sink") = Some(sink);
         *self.last_action.lock().expect("action") = Some(action);
         Ok(())
     }
 
-    async fn unregister(&self, accelerator: &str) -> anyhow::Result<()> {
+    async fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")
@@ -291,12 +294,15 @@ impl ShortcutRegistrar for RecordingRegistrar {
             .iter()
             .any(|failing| failing == accelerator)
         {
-            anyhow::bail!("the os kept the shortcut");
+            return Err(ShortcutError::ReleaseShortcut {
+                accelerator: accelerator.to_owned(),
+                source: "the os kept the shortcut".into(),
+            });
         }
         Ok(())
     }
 
-    async fn unregister_all(&self) -> anyhow::Result<()> {
+    async fn unregister_all(&self) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")

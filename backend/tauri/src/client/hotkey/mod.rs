@@ -8,6 +8,7 @@
 
 mod actor;
 pub mod adapters;
+pub(crate) mod error;
 pub mod ports;
 
 #[cfg(test)]
@@ -28,6 +29,7 @@ use tokio_util::task::TaskTracker;
 
 use self::{
     actor::{HotkeyActor, Message},
+    error::HotkeyEffectError,
     ports::{HotkeyAction, HotkeyBindings},
 };
 use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
@@ -36,7 +38,7 @@ use super::{
     NyanpasuClient, Result,
     effects::{
         plan::EffectKind,
-        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+        status::{EffectHealth, EffectRevision, EffectStatus},
     },
     runtime::MutationOutcome,
 };
@@ -120,11 +122,7 @@ impl HotkeyClient {
 
 /// Not retryable: an actor that is gone never answers a retry either.
 fn stopped_health() -> EffectHealth {
-    EffectHealth::Degraded {
-        code: EffectFailureCode::HotkeyStopped,
-        message: "the hotkey actor stopped before answering".to_owned(),
-        retryable: false,
-    }
+    HotkeyEffectError::Stopped.health()
 }
 
 /// Rejects a hotkey list before anything is written.

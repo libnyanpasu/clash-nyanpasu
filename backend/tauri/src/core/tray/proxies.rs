@@ -36,15 +36,10 @@ pub(super) type TrayProxies = IndexMap<String, TrayProxyItem>;
 fn to_tray_proxies(mode: Mode, raw_proxies: &Proxies) -> TrayProxies {
     let mut tray_proxies = TrayProxies::new();
     if matches!(mode, Mode::Global | Mode::Rule | Mode::Script) {
-        if mode == Mode::Global || raw_proxies.proxies.is_empty() {
+        if mode == Mode::Global {
             let global = TrayProxyItem {
                 current: raw_proxies.global.now.clone(),
-                all: raw_proxies
-                    .global
-                    .all
-                    .iter()
-                    .map(|x| x.name.to_owned())
-                    .collect(),
+                all: raw_proxies.global.all.clone(),
                 r#type: "Selector".to_string(),
             };
             tray_proxies.insert("global".to_owned(), global);
@@ -52,7 +47,7 @@ fn to_tray_proxies(mode: Mode, raw_proxies: &Proxies) -> TrayProxies {
         for raw_group in raw_proxies.groups.iter() {
             let group = TrayProxyItem {
                 current: raw_group.now.clone(),
-                all: raw_group.all.iter().map(|x| x.name.to_owned()).collect(),
+                all: raw_group.all.clone(),
                 r#type: raw_group.r#type.clone(),
             };
             tray_proxies.insert(raw_group.name.to_owned(), group);
@@ -542,5 +537,45 @@ mod tests {
             TrayUpdateType::Part(vec![("Proxy".to_owned(), "a".to_owned(), "b".to_owned())])
         );
         assert_eq!(diff_proxies(&none, &none), TrayUpdateType::None);
+    }
+
+    fn sample_proxies() -> Proxies {
+        use crate::core::clash::proxies::ProxyGroupItem;
+
+        Proxies {
+            global: ProxyGroupItem {
+                name: "GLOBAL".into(),
+                r#type: "Selector".into(),
+                now: Some("GroupA".into()),
+                all: vec!["GroupA".into()],
+                ..Default::default()
+            },
+            groups: vec![ProxyGroupItem {
+                name: "GroupA".into(),
+                r#type: "Selector".into(),
+                now: Some("node-a".into()),
+                all: vec!["node-a".into()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// The `proxies.is_empty()` check this replaced was always false (DIRECT
+    /// and REJECT always populate it), so it always reduced to `mode ==
+    /// Global`; the built menu must match that behavior exactly.
+    #[test]
+    fn global_mode_adds_a_global_entry_rule_mode_does_not() {
+        let proxies = sample_proxies();
+
+        let global_mode = to_tray_proxies(Mode::Global, &proxies);
+        assert!(global_mode.contains_key("global"));
+        assert!(global_mode.contains_key("GroupA"));
+        assert_eq!(global_mode["global"].all, vec!["GroupA".to_owned()]);
+
+        let rule_mode = to_tray_proxies(Mode::Rule, &proxies);
+        assert!(!rule_mode.contains_key("global"));
+        assert!(rule_mode.contains_key("GroupA"));
+        assert_eq!(rule_mode["GroupA"].all, vec!["node-a".to_owned()]);
     }
 }

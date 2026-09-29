@@ -613,8 +613,8 @@ mod tests {
     async fn cache_ttl_and_provider_metadata_are_shared() {
         let (client, _core, _, fixture, server) = setup().await;
         let proxies = client.get(false).await.unwrap();
-        assert_eq!(proxies.groups[0].all[0].name, NODE);
-        assert_eq!(proxies.groups[0].all[0].provider.as_deref(), Some(PROVIDER));
+        assert_eq!(proxies.groups[0].all[0], NODE);
+        assert_eq!(proxies.nodes[NODE].provider.as_deref(), Some(PROVIDER));
         assert_eq!(
             client.providers().await.unwrap().providers[PROVIDER]
                 .subscription_info
@@ -669,7 +669,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(outcome.degradations()[0].code, "proxy_cache_refresh_failed");
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         assert_eq!(
             fixture
                 .calls
@@ -683,7 +683,7 @@ mod tests {
         fixture.calls.lock().unwrap().clear();
         let error = client.update_provider(PROVIDER.into()).await.unwrap_err();
         assert!(error.to_string().contains("provider update succeeded"));
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         assert_eq!(*fixture.calls.lock().unwrap(), ["update", "read"]);
         fixture.calls.lock().unwrap().clear();
         fixture.fail_mutation.store(true, Ordering::SeqCst);
@@ -727,7 +727,7 @@ mod tests {
             assert_eq!(outcome.degradations()[0].code, "proxy_interruption_failed");
             assert!(!outcome.degradations()[0].retryable);
             assert_eq!(*fixture.selected.lock().unwrap(), NODE);
-            assert!(!client.snapshot().records.is_empty());
+            assert!(!client.snapshot().nodes.is_empty());
             server.abort();
         }
     }
@@ -752,7 +752,7 @@ mod tests {
         assert_eq!(outcome.degradations().len(), 2);
         assert!(fixture.closed.lock().unwrap().is_empty());
         assert_eq!(*fixture.calls.lock().unwrap(), ["select", "connections"]);
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         fixture.release.notify_one();
         server.abort();
     }
@@ -766,12 +766,12 @@ mod tests {
             binding.as_mut().unwrap().instance_id = "replacement".into();
         });
         core.api_client().await.unwrap();
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         tokio::time::timeout(Duration::from_secs(3), changes.changed())
             .await
             .unwrap()
             .unwrap();
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         server.abort();
     }
 
@@ -790,11 +790,11 @@ mod tests {
             .send_modify(|binding| binding.as_mut().unwrap().instance_id = "replacement".into());
         core.api_client().await.unwrap();
         assert!(waiting.await.unwrap().is_err());
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         fixture.hold_read.store(false, Ordering::SeqCst);
         fixture.release.notify_one();
         client.get(false).await.unwrap();
-        assert!(!client.snapshot().records.is_empty());
+        assert!(!client.snapshot().nodes.is_empty());
         server.abort();
     }
     #[tokio::test]

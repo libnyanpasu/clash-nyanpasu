@@ -14,7 +14,7 @@ pub struct ProxyGroupItem {
     pub r#type: String, // TODO: 考虑改成枚举
     pub udp: bool,
     pub history: Vec<api::ProxyItemHistory>,
-    pub all: Vec<api::ProxyItem>,
+    pub all: Vec<String>, // member names; look up the node in `Proxies::nodes`
     pub now: Option<String>, // 当前选中的代理
     pub provider: Option<String>,
     pub alive: Option<bool>, // Mihomo Or Premium Only
@@ -53,10 +53,11 @@ impl From<api::ProxyItem> for ProxyGroupItem {
 #[serde(rename_all = "camelCase")]
 pub struct Proxies {
     pub global: ProxyGroupItem,
-    pub direct: api::ProxyItem,
     pub groups: Vec<ProxyGroupItem>,
-    pub records: IndexMap<String, api::ProxyItem>,
-    pub proxies: Vec<api::ProxyItem>,
+    /// Every `/proxies` entry plus every provider-owned node referenced by a
+    /// group, keyed by name. A node that belongs to several groups still has
+    /// exactly one entry here; groups reference it by name in `all`.
+    pub nodes: IndexMap<String, api::ProxyItem>,
 }
 
 fn provider_proxy_map(
@@ -118,16 +119,26 @@ impl Proxies {
         let generate_item = |name: &str| resolve_proxy(name, &inner_proxies, &provider_map);
 
         let global = inner_proxies.get("GLOBAL");
-        let direct = inner_proxies
+        inner_proxies
             .get("DIRECT")
-            .ok_or(anyhow::anyhow!("DIRECT is missing in /proxies"))?
-            .clone(); // It should be always exists
-        let reject = inner_proxies
+            .ok_or(anyhow::anyhow!("DIRECT is missing in /proxies"))?; // It should be always exists
+        inner_proxies
             .get("REJECT")
-            .ok_or(anyhow::anyhow!("REJECT is missing in /proxies"))?
-            .clone(); // It should be always exists
+            .ok_or(anyhow::anyhow!("REJECT is missing in /proxies"))?; // It should be always exists
 
-        // 3. generate the proxies groups
+        // 3. every /proxies entry is a node; group members not already
+        // covered by it (provider-owned nodes) are resolved and added once
+        // (a node shared by several groups still has a single entry).
+        let mut nodes = inner_proxies.clone();
+        let collect_members = |names: &[String], nodes: &mut IndexMap<String, api::ProxyItem>| {
+            for name in names {
+                nodes
+                    .entry(name.clone())
+                    .or_insert_with(|| generate_item(name));
+            }
+        };
+
+        // 4. generate the proxies groups
         let groups: Vec<ProxyGroupItem> = match global {
             Some(api::ProxyItem { all: Some(all), .. }) => {
                 let all = all.clone();
@@ -144,11 +155,9 @@ impl Proxies {
                             .unwrap_or(&api::ProxyItem::default())
                             .clone();
                         let item_all = item.all.clone().unwrap_or_default();
+                        collect_members(&item_all, &mut nodes);
                         let mut item: ProxyGroupItem = item.into();
-                        item.all = item_all
-                            .into_iter()
-                            .map(|name| generate_item(&name))
-                            .collect();
+                        item.all = item_all;
                         item
                     })
                     .collect()
@@ -160,8 +169,9 @@ impl Proxies {
                     .filter(|v| v.name == "GLOBAL" && v.all.is_some())
                     .map(|v| {
                         let all = v.all.clone().unwrap_or_default();
+                        collect_members(&all, &mut nodes);
                         let mut item: ProxyGroupItem = v.clone().into();
-                        item.all = all.into_iter().map(|name| generate_item(&name)).collect();
+                        item.all = all;
                         item
                     })
                     .collect();
@@ -170,27 +180,19 @@ impl Proxies {
             }
         };
 
-        // 4. generate the proxies
-        let mut proxies: Vec<api::ProxyItem> = vec![direct.clone(), reject];
-        proxies.extend(inner_proxies.clone().into_values().filter(|v| {
-            matches!(v.name.as_str(), "DIRECT" | "REJECT")
-                && (v.all.is_none() || v.all.as_ref().unwrap().is_empty())
-        }));
-
         // 5. generate the global
         let global: Option<ProxyGroupItem> = global.map(|v| {
             let all = v.all.clone().unwrap_or_default();
+            collect_members(&all, &mut nodes);
             let mut item: ProxyGroupItem = v.clone().into();
-            item.all = all.into_iter().map(|name| generate_item(&name)).collect();
+            item.all = all;
             item
         });
 
         Ok(Proxies {
             global: global.unwrap_or_default(),
-            direct,
             groups,
-            records: inner_proxies,
-            proxies,
+            nodes,
         })
     }
 }
@@ -227,5 +229,99 @@ mod tests {
         assert_eq!(resolved.r#type, "Vless");
         assert!(resolved.udp);
         assert_eq!(resolved.provider.as_deref(), Some("subscription"));
+    }
+
+    fn item(name: &str, r#type: &str, all: Option<Vec<&str>>, now: Option<&str>) -> api::ProxyItem {
+        api::ProxyItem {
+            name: name.to_string(),
+            r#type: r#type.to_string(),
+            all: all.map(|names| names.into_iter().map(String::from).collect()),
+            now: now.map(String::from),
+            ..Default::default()
+        }
+    }
+
+    /// A node shared by two groups is stored once in `nodes` (G7); group
+    /// `all` keeps member names in order; a member absent from `/proxies`
+    /// and from any provider falls back to the Unknown placeholder.
+    #[test]
+    fn shares_one_node_record_across_groups_and_preserves_member_order() {
+        let inner_proxies = api::ProxiesRes {
+            proxies: IndexMap::from([
+                (
+                    "GLOBAL".to_string(),
+                    item(
+                        "GLOBAL",
+                        "Selector",
+                        Some(vec!["GroupA", "GroupB"]),
+                        Some("GroupA"),
+                    ),
+                ),
+                ("DIRECT".to_string(), item("DIRECT", "Direct", None, None)),
+                ("REJECT".to_string(), item("REJECT", "Reject", None, None)),
+                (
+                    "GroupA".to_string(),
+                    item(
+                        "GroupA",
+                        "Selector",
+                        Some(vec!["shared-node", "a-only"]),
+                        Some("shared-node"),
+                    ),
+                ),
+                (
+                    "GroupB".to_string(),
+                    item(
+                        "GroupB",
+                        "Selector",
+                        Some(vec!["shared-node", "provider-only", "totally-unknown"]),
+                        Some("shared-node"),
+                    ),
+                ),
+                (
+                    "shared-node".to_string(),
+                    item("shared-node", "VmessSharedMarker", None, None),
+                ),
+                ("a-only".to_string(), item("a-only", "Vmess", None, None)),
+            ]),
+        };
+        let providers_proxies = api::ProvidersProxiesRes {
+            providers: IndexMap::from([(
+                "sub".to_string(),
+                api::ProxyProviderItem {
+                    name: "sub".into(),
+                    r#type: api::ProviderType::Proxy,
+                    proxies: vec![item("provider-only", "Trojan", None, None)],
+                    vehicle_type: api::VehicleType::Http,
+                    updated_at: None,
+                    subscription_info: None,
+                    test_url: None,
+                    expected_status: None,
+                },
+            )]),
+        };
+
+        let proxies = Proxies::from_responses(inner_proxies, providers_proxies).unwrap();
+
+        let group_a = proxies.groups.iter().find(|g| g.name == "GroupA").unwrap();
+        let group_b = proxies.groups.iter().find(|g| g.name == "GroupB").unwrap();
+        assert_eq!(group_a.all, vec!["shared-node", "a-only"]);
+        assert_eq!(
+            group_b.all,
+            vec!["shared-node", "provider-only", "totally-unknown"]
+        );
+
+        // Serialized once: the marker only lives on the full node record, so
+        // it must appear exactly once even though "shared-node" is a member
+        // of two groups.
+        let serialized = serde_json::to_string(&proxies).unwrap();
+        assert_eq!(serialized.matches("VmessSharedMarker").count(), 1);
+
+        let provider_node = &proxies.nodes["provider-only"];
+        assert_eq!(provider_node.r#type, "Trojan");
+        assert_eq!(provider_node.provider.as_deref(), Some("sub"));
+
+        let unknown_node = &proxies.nodes["totally-unknown"];
+        assert_eq!(unknown_node.r#type, "Unknown");
+        assert!(unknown_node.history.is_empty());
     }
 }

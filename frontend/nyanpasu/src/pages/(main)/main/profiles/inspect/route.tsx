@@ -17,6 +17,7 @@ import {
 } from '@nyanpasu/interface'
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import LogLevelBadge from '../../logs/_modules/log-level-badge'
 import ChangedFields from './_modules/changed-fields'
 import DiffViewer from './_modules/diff-viewer'
 import YamlViewer from './_modules/yaml-viewer'
@@ -250,18 +251,28 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                     {m.inspect_diff_independent()}
                   </p>
                 )}
-                <h3 className="text-sm font-medium">{m.inspect_logs()}</h3>
-                {content.data.logs.length === 0 ? (
-                  <p className="text-on-surface-variant text-sm">
-                    {m.inspect_no_logs()}
-                  </p>
-                ) : (
-                  <pre className="bg-surface max-h-48 overflow-auto rounded-lg p-3 text-xs break-words whitespace-pre-wrap">
-                    {content.data.logs
-                      .map((log) => `[${log.level}] ${log.message}`)
-                      .join('\n')}
-                  </pre>
-                )}
+                <section className="mt-3 flex flex-col gap-2">
+                  <h3 className="text-sm font-medium">{m.inspect_logs()}</h3>
+                  {content.data.logs.length === 0 ? (
+                    <p className="text-on-surface-variant text-sm">
+                      {m.inspect_no_logs()}
+                    </p>
+                  ) : (
+                    <ol className="bg-surface divide-outline-variant/50 max-h-64 divide-y overflow-auto rounded-lg">
+                      {content.data.logs.map((log, index) => (
+                        <li
+                          key={index}
+                          className="flex items-start gap-3 px-3 py-2"
+                        >
+                          <LogLevelBadge>{log.level}</LogLevelBadge>
+                          <span className="text-on-surface min-w-0 flex-1 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
+                            {log.message}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
               </>
             )}
           </div>

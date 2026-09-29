@@ -587,5 +587,8 @@
   "profile_external_mode_symlink": "Symlink",
   "profile_external_mode_mirror_hint": "Keeps a copy that syncs whenever the file changes",
   "profile_external_mode_symlink_hint": "References the file directly; on Windows this needs Developer Mode or administrator rights",
-  "profile_remote_name_hint": "Leave empty to use the name from the subscription"
+  "profile_remote_name_hint": "Leave empty to use the name from the subscription",
+  "profile_global_transform_title": "Global transforms",
+  "profile_global_transform_hint": "Applied to the active config, in order, after the config's own transforms",
+  "profile_global_label": "Global"
 }

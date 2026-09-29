@@ -491,5 +491,8 @@
   "profile_external_mode_symlink": "Символьная ссылка",
   "profile_external_mode_mirror_hint": "Хранит копию и синхронизирует её при изменении файла",
   "profile_external_mode_symlink_hint": "Ссылается на файл напрямую; в Windows нужен режим разработчика или права администратора",
-  "profile_remote_name_hint": "Оставьте пустым, чтобы использовать имя из подписки"
+  "profile_remote_name_hint": "Оставьте пустым, чтобы использовать имя из подписки",
+  "profile_global_transform_title": "Глобальные преобразования",
+  "profile_global_transform_hint": "Применяются к активной конфигурации по порядку после её собственных преобразований",
+  "profile_global_label": "Глобальное"
 }

@@ -487,5 +487,8 @@
   "profile_external_mode_symlink": "심볼릭 링크",
   "profile_external_mode_mirror_hint": "사본을 보관하고 원본 파일이 바뀌면 자동으로 동기화합니다",
   "profile_external_mode_symlink_hint": "원본 파일을 직접 참조합니다. Windows에서는 개발자 모드 또는 관리자 권한이 필요합니다",
-  "profile_remote_name_hint": "비워 두면 구독에서 제공하는 이름을 사용합니다"
+  "profile_remote_name_hint": "비워 두면 구독에서 제공하는 이름을 사용합니다",
+  "profile_global_transform_title": "전역 변환",
+  "profile_global_transform_hint": "활성 설정에 적용되며, 설정 자체의 변환 이후 순서대로 실행됩니다",
+  "profile_global_label": "전역"
 }

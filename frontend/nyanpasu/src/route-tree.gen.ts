@@ -30,6 +30,7 @@ import { Route as mainMainConnectionsIndexRouteImport } from './pages/(main)/mai
 import { Route as mainMainDashboardIndexRouteImport } from './pages/(main)/main/dashboard/index'
 import { Route as mainMainLogsIndexRouteImport } from './pages/(main)/main/logs/index'
 import { Route as mainMainProfilesIndexRouteImport } from './pages/(main)/main/profiles/index'
+import { Route as mainMainProfilesGlobalRouteRouteImport } from './pages/(main)/main/profiles/global/route'
 import { Route as mainMainProfilesInspectRouteRouteImport } from './pages/(main)/main/profiles/inspect/route'
 import { Route as mainMainProvidersIndexRouteImport } from './pages/(main)/main/providers/index'
 import { Route as mainMainProxiesIndexRouteImport } from './pages/(main)/main/proxies/index'
@@ -160,6 +161,12 @@ const mainMainProfilesIndexRoute = mainMainProfilesIndexRouteImport.update({
   path: '/',
   getParentRoute: () => mainMainProfilesRouteRoute,
 } as any)
+const mainMainProfilesGlobalRouteRoute =
+  mainMainProfilesGlobalRouteRouteImport.update({
+    id: '/global',
+    path: '/global',
+    getParentRoute: () => mainMainProfilesRouteRoute,
+  } as any)
 const mainMainProfilesInspectRouteRoute =
   mainMainProfilesInspectRouteRouteImport.update({
     id: '/inspect',
@@ -298,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/tray-menu/proxies': typeof trayMenuTrayMenuProxiesRouteRouteWithChildren
   '/main/': typeof mainMainIndexRoute
   '/tray-menu/': typeof trayMenuTrayMenuIndexRoute
+  '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/main/settings/clash': typeof mainMainSettingsClashRouteRoute
@@ -331,6 +339,7 @@ export interface FileRoutesByTo {
   '/main/topology': typeof mainMainTopologyRouteRoute
   '/main': typeof mainMainIndexRoute
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
+  '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/main/settings/clash': typeof mainMainSettingsClashRouteRoute
@@ -375,6 +384,7 @@ export interface FileRoutesById {
   '/(tray-menu)/tray-menu/proxies': typeof trayMenuTrayMenuProxiesRouteRouteWithChildren
   '/(main)/main/': typeof mainMainIndexRoute
   '/(tray-menu)/tray-menu/': typeof trayMenuTrayMenuIndexRoute
+  '/(main)/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/(main)/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/(main)/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/(main)/main/settings/clash': typeof mainMainSettingsClashRouteRoute
@@ -420,6 +430,7 @@ export interface FileRouteTypes {
     | '/tray-menu/proxies'
     | '/main/'
     | '/tray-menu/'
+    | '/main/profiles/global'
     | '/main/profiles/inspect'
     | '/main/settings/about'
     | '/main/settings/clash'
@@ -453,6 +464,7 @@ export interface FileRouteTypes {
     | '/main/topology'
     | '/main'
     | '/tray-menu'
+    | '/main/profiles/global'
     | '/main/profiles/inspect'
     | '/main/settings/about'
     | '/main/settings/clash'
@@ -496,6 +508,7 @@ export interface FileRouteTypes {
     | '/(tray-menu)/tray-menu/proxies'
     | '/(main)/main/'
     | '/(tray-menu)/tray-menu/'
+    | '/(main)/main/profiles/global'
     | '/(main)/main/profiles/inspect'
     | '/(main)/main/settings/about'
     | '/(main)/main/settings/clash'
@@ -678,6 +691,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/main/profiles/'
       preLoaderRoute: typeof mainMainProfilesIndexRouteImport
+      parentRoute: typeof mainMainProfilesRouteRoute
+    }
+    '/(main)/main/profiles/global': {
+      id: '/(main)/main/profiles/global'
+      path: '/global'
+      fullPath: '/main/profiles/global'
+      preLoaderRoute: typeof mainMainProfilesGlobalRouteRouteImport
       parentRoute: typeof mainMainProfilesRouteRoute
     }
     '/(main)/main/profiles/inspect': {
@@ -870,6 +890,7 @@ const mainMainLogsRouteRouteWithChildren =
   mainMainLogsRouteRoute._addFileChildren(mainMainLogsRouteRouteChildren)
 
 interface mainMainProfilesRouteRouteChildren {
+  mainMainProfilesGlobalRouteRoute: typeof mainMainProfilesGlobalRouteRoute
   mainMainProfilesInspectRouteRoute: typeof mainMainProfilesInspectRouteRoute
   mainMainProfilesIndexRoute: typeof mainMainProfilesIndexRoute
   mainMainProfilesTypeIndexRoute: typeof mainMainProfilesTypeIndexRoute
@@ -877,6 +898,7 @@ interface mainMainProfilesRouteRouteChildren {
 }
 
 const mainMainProfilesRouteRouteChildren: mainMainProfilesRouteRouteChildren = {
+  mainMainProfilesGlobalRouteRoute: mainMainProfilesGlobalRouteRoute,
   mainMainProfilesInspectRouteRoute: mainMainProfilesInspectRouteRoute,
   mainMainProfilesIndexRoute: mainMainProfilesIndexRoute,
   mainMainProfilesTypeIndexRoute: mainMainProfilesTypeIndexRoute,

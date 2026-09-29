@@ -67,9 +67,11 @@ const sourceLabelOf = (profile: ProfileItem_Serialize) => {
 const GridViewProfile = ({
   profile,
   index,
+  isGlobal,
 }: {
   profile: ProfileItem_Serialize
   index: number
+  isGlobal: boolean
 }) => {
   const { type } = IndexRoute.useParams()
 
@@ -146,8 +148,10 @@ const GridViewProfile = ({
             </CardHeader>
 
             <CardContent>
-              <div className="z-10" data-slot="profile-card-type">
+              <div className="z-10 flex gap-1" data-slot="profile-card-type">
                 <Chip>{sourceLabelOf(profile)}</Chip>
+
+                {isGlobal && <Chip>{m.profile_global_label()}</Chip>}
               </div>
             </CardContent>
 
@@ -268,6 +272,8 @@ export default function ProfilesList({
   const filteredProfiles =
     categoryProfiles(profiles?.items)[type as ProfileType] ?? []
 
+  const globalTransforms = new Set(profiles?.global_transforms)
+
   const gridRef = useRef<HTMLDivElement>(null)
 
   const overflows = useListOverflows(gridRef, filteredProfiles.length)
@@ -323,6 +329,7 @@ export default function ProfilesList({
                 key={profile.uid}
                 profile={profile}
                 index={index}
+                isGlobal={globalTransforms.has(profile.uid)}
               />
             ))}
           </div>

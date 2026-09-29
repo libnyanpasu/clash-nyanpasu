@@ -98,6 +98,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   const viewProfile = mutations.viewProfile
   const activateProfile = mutations.activateProfile
   const setProfileValidFields = mutations.setProfileValidFields
+  const setGlobalTransformsOptions = mutations.setGlobalTransforms
   const reorderProfilesByList = mutations.reorderProfilesByList
   const deleteProfile = mutations.deleteProfile
   const invalidate = () =>
@@ -226,6 +227,13 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     onSuccess: invalidate,
   })
 
+  const setGlobalTransforms = useMutation({
+    mutationKey: setGlobalTransformsOptions.mutationKey,
+    mutationFn: async (ids: ProfileId[]) =>
+      unwrapResult(await invokeMutation(setGlobalTransformsOptions, [ids])),
+    onSuccess: invalidate,
+  })
+
   const sort = useMutation({
     mutationKey: reorderProfilesByList.mutationKey,
     mutationFn: async (uids: ProfileId[]) =>
@@ -249,6 +257,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     replaceDefinition,
     activate,
     setValidFields,
+    setGlobalTransforms,
     sort,
     drop,
   }

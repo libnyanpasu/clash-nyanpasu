@@ -587,5 +587,8 @@
   "profile_external_mode_symlink": "符号链接",
   "profile_external_mode_mirror_hint": "保存一份副本，原文件变更时自动同步",
   "profile_external_mode_symlink_hint": "直接引用原文件，Windows 下需要开发者模式或管理员权限",
-  "profile_remote_name_hint": "留空则使用订阅提供的名称"
+  "profile_remote_name_hint": "留空则使用订阅提供的名称",
+  "profile_global_transform_title": "全局转换",
+  "profile_global_transform_hint": "作用于当前启用的配置，在配置自身的转换之后按顺序执行",
+  "profile_global_label": "全局"
 }

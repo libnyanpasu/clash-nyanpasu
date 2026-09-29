@@ -514,6 +514,9 @@ importers:
       nanoid:
         specifier: 6.0.1
         version: 6.0.1
+      postcss-selector-parser:
+        specifier: 7.1.6
+        version: 7.1.6
       sass-embedded:
         specifier: 1.105.0
         version: 1.105.0

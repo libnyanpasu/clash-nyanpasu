@@ -3,7 +3,7 @@ import CloseRounded from '~icons/material-symbols/close-rounded'
 import { sentenceCase } from 'change-case'
 import dayjs from 'dayjs'
 import { filesize } from 'filesize'
-import { ComponentProps, useState } from 'react'
+import { ComponentProps } from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -132,54 +132,40 @@ function RowRender({ label, value }: { label: string; value: any }) {
   )
 }
 
-export default function TableRow({
+// One dialog for the whole table, selected by connection id: a dialog owned by
+// a virtualized row would follow the row's position, and every row would build
+// its hidden dialog content on each sample.
+export function ConnectionDetailModal({
   data,
-  onDoubleClick,
-  ...props
-}: ComponentProps<'tr'> & {
-  data: ConnectionRow
+  onClose,
+}: {
+  data?: ConnectionRow
+  onClose: () => void
 }) {
   const deleteConnections = useDeleteClashConnections()
 
-  const [open, setOpen] = useState(false)
-
   const handleCloseConnection = useLockFn(async () => {
-    // frist close the dialog to avoid showing stale data when the deletion is slow
-    if (open) {
-      setOpen(false)
+    if (!data) {
+      return
     }
+
+    // frist close the dialog to avoid showing stale data when the deletion is slow
+    onClose()
 
     await deleteConnections.mutateAsync(data.id)
   })
 
   return (
-    <>
-      <RegisterContextMenu>
-        <RegisterContextMenuTrigger asChild>
-          <tr
-            onDoubleClick={(e) => {
-              onDoubleClick?.(e)
-              setOpen(true)
-            }}
-            {...props}
-          />
-        </RegisterContextMenuTrigger>
-
-        <RegisterContextMenuContent>
-          <ContextMenuItem onSelect={() => setOpen(true)}>
-            <ChatInfoRounded className="size-4" />
-            <span>{m.connections_view_details()}</span>
-          </ContextMenuItem>
-
-          <ContextMenuItem onSelect={() => handleCloseConnection()}>
-            <CloseRounded className="size-4" />
-            <span>{m.connections_close_connection()}</span>
-          </ContextMenuItem>
-        </RegisterContextMenuContent>
-      </RegisterContextMenu>
-
-      <Modal open={open} onOpenChange={setOpen}>
-        <ModalContent>
+    <Modal
+      open={data !== undefined}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose()
+        }
+      }}
+    >
+      <ModalContent>
+        {data && (
           <Card divider className="flex max-w-[80vw] min-w-96 flex-col">
             <CardHeader>
               <ModalTitle>{m.connections_view_details()}</ModalTitle>
@@ -225,8 +211,50 @@ export default function TableRow({
               </Button>
             </CardFooter>
           </Card>
-        </ModalContent>
-      </Modal>
-    </>
+        )}
+      </ModalContent>
+    </Modal>
+  )
+}
+
+export default function TableRow({
+  data,
+  onDoubleClick,
+  onViewDetails,
+  ...props
+}: ComponentProps<'tr'> & {
+  data: ConnectionRow
+  onViewDetails: (id: string) => void
+}) {
+  const deleteConnections = useDeleteClashConnections()
+
+  const handleCloseConnection = useLockFn(async () => {
+    await deleteConnections.mutateAsync(data.id)
+  })
+
+  return (
+    <RegisterContextMenu>
+      <RegisterContextMenuTrigger asChild>
+        <tr
+          onDoubleClick={(e) => {
+            onDoubleClick?.(e)
+            onViewDetails(data.id)
+          }}
+          {...props}
+        />
+      </RegisterContextMenuTrigger>
+
+      <RegisterContextMenuContent>
+        <ContextMenuItem onSelect={() => onViewDetails(data.id)}>
+          <ChatInfoRounded className="size-4" />
+          <span>{m.connections_view_details()}</span>
+        </ContextMenuItem>
+
+        <ContextMenuItem onSelect={() => handleCloseConnection()}>
+          <CloseRounded className="size-4" />
+          <span>{m.connections_close_connection()}</span>
+        </ContextMenuItem>
+      </RegisterContextMenuContent>
+    </RegisterContextMenu>
   )
 }

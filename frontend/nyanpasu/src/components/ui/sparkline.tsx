@@ -1,5 +1,5 @@
 import * as d3 from 'd3'
-import { cloneDeep } from 'lodash-es'
+import { isEqual } from 'lodash-es'
 import { animate } from 'motion/react'
 import { ComponentPropsWithoutRef, useEffect, useRef } from 'react'
 import { cn } from '@nyanpasu/utils'
@@ -20,6 +20,38 @@ const STABLE_TOP_FACTOR = 2 / 3
 /** When the series has a wide range, use most of the available height. */
 const ACTIVE_TOP_FACTOR = 0.35
 
+/** Vertical mapping of the chart: y = 0 at the bottom, y = yMax at topFactor. */
+type Scale = { yMax: number; topFactor: number }
+
+const computeScale = (points: number[]): Scale => {
+  const mean = d3.mean(points) ?? 0
+  const std = d3.deviation(points) ?? 0
+  const cv = mean > 0 ? std / mean : 0
+
+  return {
+    yMax: Math.max(d3.max(points) ?? 0, 1),
+    topFactor: cv < STABLE_CV_THRESHOLD ? STABLE_TOP_FACTOR : ACTIVE_TOP_FACTOR,
+  }
+}
+
+/**
+ * Number of samples `next` has advanced past `prev` in a fixed-size sliding
+ * window, or 0 when `next` is not a continuation of `prev`.
+ */
+const findShift = (prev: number[], next: number[]) => {
+  if (prev.length !== next.length) {
+    return 0
+  }
+
+  for (let k = 1; k < next.length; k++) {
+    if (next.slice(0, next.length - k).every((v, i) => v === prev[i + k])) {
+      return k
+    }
+  }
+
+  return 0
+}
+
 export const Sparkline = ({
   data,
   animationDuration = 1,
@@ -32,9 +64,16 @@ export const Sparkline = ({
   const svgRef = useRef<SVGSVGElement | null>(null)
   const gRef = useRef<SVGGElement | null>(null)
   const prevDataRef = useRef<number[] | null>(null)
-  // Tracks the most recently scrolled-off left point so successive cycles share
-  // the same left guard value, making the curve at x=0 seamless across transitions.
+  // Every point currently drawn; its last N points always equal the latest
+  // series, and the ones before them are still scrolling off to the left.
+  const bufRef = useRef<number[] | null>(null)
+  // Current scroll position of the buffer, in steps.
+  const offsetRef = useRef(0)
+  // The point just before bufRef[0], so the curve shape at the left edge stays
+  // the same when scrolled-off points are dropped from the buffer.
   const leftGuardRef = useRef<number | null>(null)
+  // The scale currently drawn, which may be mid-transition.
+  const scaleRef = useRef<Scale | null>(null)
   const animRef = useRef<ReturnType<typeof animate> | null>(null)
 
   useEffect(() => {
@@ -51,18 +90,8 @@ export const Sparkline = ({
     const makePaths = (
       points: number[],
       xRange: [number, number],
-      yMax: number,
+      { yMax, topFactor }: Scale,
     ) => {
-      const mean = d3.mean(points) ?? 0
-      const std = d3.deviation(points) ?? 0
-      const cv = mean > 0 ? std / mean : 0
-      const topFactor =
-        yMax === 0
-          ? 1
-          : cv < STABLE_CV_THRESHOLD
-            ? STABLE_TOP_FACTOR
-            : ACTIVE_TOP_FACTOR
-
       const x = d3
         .scaleLinear()
         .domain([0, points.length - 1])
@@ -97,7 +126,7 @@ export const Sparkline = ({
     const buildPaths = (
       points: number[],
       xRange: [number, number],
-      yMax: number,
+      scale: Scale,
       step: number,
       leftGuard?: number,
     ) => {
@@ -111,7 +140,7 @@ export const Sparkline = ({
 
       if (n === 1) {
         // Single point: render a degenerate path without guard extension.
-        return makePaths(points, xRange, yMax)
+        return makePaths(points, xRange, scale)
       }
 
       const lGuard = leftGuard ?? 2 * points[0] - points[1]
@@ -120,34 +149,52 @@ export const Sparkline = ({
       return makePaths(
         [lGuard, ...points, rGuard],
         [xRange[0] - step, xRange[1] + step],
-        yMax,
+        scale,
       )
     }
 
     const prevData = prevDataRef.current
-    prevDataRef.current = cloneDeep(data)
+    // Widgets re-render on every clash ws event and pass a freshly built array,
+    // so only a change in content means a new sample arrived. Leave the running
+    // animation untouched otherwise.
+    if (prevData && isEqual(prevData, data)) {
+      return
+    }
+    prevDataRef.current = data.slice()
 
-    animRef.current?.stop()
+    const running = animRef.current
     animRef.current = null
+    running?.stop()
 
     // Handle short series early to avoid division by zero and invalid indexing.
     if (data.length < 2) {
       g.selectAll('*').remove()
       g.attr('transform', 'translate(0,0)')
+      bufRef.current = null
+      offsetRef.current = 0
       leftGuardRef.current = null
+      scaleRef.current = null
       return
     }
 
-    if (!prevData || prevData.length !== data.length) {
-      const yMax = Math.max(d3.max(data) ?? 0, 1)
-      const step = width / (data.length - 1)
+    const stepWidth = width / (data.length - 1)
+    const prevBuf = bufRef.current
+    const shift = prevData && prevBuf ? findShift(prevData, data) : 0
+
+    const toScale = computeScale(data)
+
+    if (!shift || !prevBuf) {
       const { line, area } = buildPaths(
         data,
         [0, width],
-        yMax,
-        step,
+        toScale,
+        stepWidth,
         leftGuardRef.current ?? undefined,
       )
+
+      bufRef.current = data.slice()
+      offsetRef.current = 0
+      scaleRef.current = toScale
 
       g.selectAll('*').remove()
       g.attr('transform', 'translate(0,0)')
@@ -160,52 +207,70 @@ export const Sparkline = ({
       return
     }
 
-    const stepWidth = width / (data.length - 1)
+    // A new sample may arrive before the previous scroll finished. Continue from
+    // the current position instead of snapping to a cycle boundary: drop the
+    // points that have fully scrolled off, append the new samples and scroll on.
+    const scrolled = Math.floor(offsetRef.current)
+    let buf = prevBuf
+    if (scrolled > 0) {
+      leftGuardRef.current = buf[scrolled - 1]
+      buf = buf.slice(scrolled)
+    }
+    buf = [...buf, ...data.slice(-shift)]
+    bufRef.current = buf
 
-    // N+1 points: the old leading point (about to scroll off) + the full new data array.
-    const extPoints = [...prevData, data[data.length - 1]]
-    const fromYMax = Math.max(d3.max(extPoints) ?? 0, 1)
-    const toYMax = Math.max(d3.max(data) ?? 0, 1)
-    const yMaxChanges = Math.abs(fromYMax - toYMax) > 1
-
-    // Use the stored left guard so the CatmullRom context at x=0 is identical
-    // between the N-point path rendered before this animation and the N+1-point
-    // path at t=0, making the left edge transition seamless.
     const leftGuard = leftGuardRef.current ?? undefined
+    const fromOffset = offsetRef.current - scrolled
+    const toOffset = buf.length - data.length
+    const bufRange: [number, number] = [0, stepWidth * (buf.length - 1)]
+
+    // Start from the scale actually on screen (possibly mid-transition) so a
+    // new peak or a stability change never rescales the chart in one frame.
+    const fromScale = scaleRef.current ?? toScale
+    const scaleChanges = !isEqual(fromScale, toScale)
+
+    const setOffset = (offset: number) => {
+      offsetRef.current = offset
+      g.attr('transform', `translate(${-stepWidth * offset},0)`)
+    }
 
     // Render the initial (pre-animation) state.
     const { line: initLine, area: initArea } = buildPaths(
-      extPoints,
-      [0, width + stepWidth],
-      fromYMax,
+      buf,
+      bufRange,
+      fromScale,
       stepWidth,
       leftGuard,
     )
 
-    g.attr('transform', 'translate(0,0)')
+    setOffset(fromOffset)
     g.select('.area').attr('d', initArea)
     g.select('.line').attr('d', initLine)
-
-    let cancelled = false
 
     const anim = animate(0, 1, {
       duration: animationDuration,
       ease: 'linear',
       onUpdate(t) {
         // X-axis: pure linear translation — the scroll must feel constant-speed.
-        g.attr('transform', `translate(${-stepWidth * t},0)`)
+        setOffset(fromOffset + (toOffset - fromOffset) * t)
 
-        // Y-axis: non-linear easing for the yMax interpolation so the height
+        // Y-axis: non-linear easing for the scale interpolation so the height
         // change feels more natural (slow start/end, faster in the middle).
         // Because x is driven by the translation and y is driven independently
-        // by yMax, the two axes never couple — no wobble.
-        if (yMaxChanges) {
+        // by the scale, the two axes never couple — no wobble.
+        if (scaleChanges) {
           const easedT = d3.easeCubicInOut(t)
-          const currentYMax = fromYMax + (toYMax - fromYMax) * easedT
+          const currentScale = {
+            yMax: fromScale.yMax + (toScale.yMax - fromScale.yMax) * easedT,
+            topFactor:
+              fromScale.topFactor +
+              (toScale.topFactor - fromScale.topFactor) * easedT,
+          }
+          scaleRef.current = currentScale
           const { line, area } = buildPaths(
-            extPoints,
-            [0, width + stepWidth],
-            currentYMax,
+            buf,
+            bufRange,
+            currentScale,
             stepWidth,
             leftGuard,
           )
@@ -215,37 +280,37 @@ export const Sparkline = ({
         }
       },
       onComplete() {
-        if (cancelled) {
+        if (animRef.current !== anim) {
           return
         }
 
-        // The scrolled-off point becomes the left guard for the next cycle so
-        // the curve shape at x=0 stays consistent across animation boundaries.
-        leftGuardRef.current = prevData[0]
+        // The last scrolled-off point becomes the left guard for the next cycle
+        // so the curve shape at x=0 stays consistent across animation boundaries.
+        leftGuardRef.current = buf[toOffset - 1]
+        bufRef.current = data.slice()
+        scaleRef.current = toScale
 
-        // At t=1 the N+1-point path at -stepWidth and the N-point path at x=0
-        // occupy identical visual coordinates, so the swap is seamless.
+        // At the end of the scroll the buffer path at -toOffset steps and the
+        // N-point path at x=0 occupy identical visual coordinates, so the swap
+        // is seamless.
         const { line, area } = buildPaths(
           data,
           [0, width],
-          toYMax,
+          toScale,
           stepWidth,
-          prevData[0],
+          leftGuardRef.current,
         )
 
-        g.attr('transform', 'translate(0,0)')
+        setOffset(0)
         g.select('.area').attr('d', area)
         g.select('.line').attr('d', line)
       },
     })
 
     animRef.current = anim
-
-    return () => {
-      cancelled = true
-      anim.stop()
-    }
   }, [data, animationDuration])
+
+  useEffect(() => () => animRef.current?.stop(), [])
 
   return (
     <svg

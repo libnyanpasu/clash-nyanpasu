@@ -17,7 +17,7 @@ use super::{
 };
 use crate::client::effects::{
     plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 
 /// The core only ever listens on loopback, so the proxy this app installs
@@ -256,7 +256,7 @@ impl State {
                         self.degraded(
                             EffectKind::ProxyGuard,
                             revision,
-                            "proxy_guard_waiting_dependency",
+                            EffectFailureCode::ProxyGuardWaitingDependency,
                             "the desired proxy has not been confirmed".into(),
                         )
                     } else {
@@ -347,7 +347,7 @@ impl State {
             Err(error) => self.degraded(
                 EffectKind::AutoLaunch,
                 revision,
-                "auto_launch_failed",
+                EffectFailureCode::AutoLaunchFailed,
                 error.to_string(),
             ),
         }
@@ -412,7 +412,7 @@ impl State {
         self.degraded(
             EffectKind::SystemProxy,
             revision,
-            "pac_disable_failed",
+            EffectFailureCode::PacDisableFailed,
             message,
         )
     }
@@ -438,7 +438,7 @@ impl State {
             return match status.health {
                 EffectHealth::Healthy => EffectStatus {
                     health: EffectHealth::Unsupported {
-                        code: "pac_unsupported",
+                        code: EffectFailureCode::PacUnsupported,
                     },
                     ..status
                 },
@@ -476,7 +476,7 @@ impl State {
                     Some(disable_error) => self.degraded(
                         EffectKind::SystemProxy,
                         revision,
-                        "pac_disable_failed",
+                        EffectFailureCode::PacDisableFailed,
                         format!(
                             "{error}; the previously installed auto-config url could not be cleared either: {disable_error}; {note}"
                         ),
@@ -484,7 +484,7 @@ impl State {
                     None => self.degraded(
                         EffectKind::SystemProxy,
                         revision,
-                        "pac_apply_failed",
+                        EffectFailureCode::PacApplyFailed,
                         format!("{error}; {note}"),
                     ),
                 }
@@ -541,7 +541,7 @@ impl State {
             Err(error) => self.degraded(
                 EffectKind::SystemProxy,
                 revision,
-                "system_proxy_apply_failed",
+                EffectFailureCode::SystemProxyApplyFailed,
                 error.to_string(),
             ),
         }
@@ -620,7 +620,7 @@ impl State {
         self.degraded(
             EffectKind::SystemProxy,
             revision,
-            "system_proxy_port_unresolved",
+            EffectFailureCode::SystemProxyPortUnresolved,
             "the session has not resolved a mixed port yet".to_owned(),
         )
     }
@@ -736,7 +736,7 @@ impl State {
             Some(message) => self.degraded(
                 EffectKind::SystemProxy,
                 revision,
-                "system_proxy_restore_failed",
+                EffectFailureCode::SystemProxyRestoreFailed,
                 message,
             ),
         }
@@ -771,7 +771,7 @@ impl State {
             desired_revision: revision,
             applied_revision: self.applied.revision(kind),
             health: EffectHealth::Degraded {
-                code: "system_proxy_shut_down",
+                code: EffectFailureCode::SystemProxyShutDown,
                 message: "the system proxy owner is shutting down and stopped accepting changes"
                     .to_owned(),
                 retryable: false,
@@ -792,10 +792,10 @@ impl State {
         &self,
         kind: EffectKind,
         revision: EffectRevision,
-        code: &'static str,
+        code: EffectFailureCode,
         message: String,
     ) -> EffectStatus {
-        tracing::warn!(code, %message, ?kind, "a system effect failed after the config was committed");
+        tracing::warn!(?code, %message, ?kind, "a system effect failed after the config was committed");
         EffectStatus {
             kind,
             desired_revision: revision,

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
+import { effectFailureMessage } from '@/utils/ipc-error'
 import {
   acceptConfigurationStatus,
   attentionSources,
@@ -81,12 +82,16 @@ const STATUS_KEY = ['getConfigurationStatus']
 const StatusItem = ({
   label,
   health,
+  summary,
   message,
   retry,
   busy,
 }: {
   label: string
   health: ConvergenceHealth
+  /** The localized reason, when the failure has a code. */
+  summary?: string | null
+  /** The owner's diagnostic text, as reported. */
   message?: string | null
   retry?: () => void
   busy?: boolean
@@ -98,6 +103,8 @@ const StatusItem = ({
           <ItemLabelText>{label}</ItemLabelText>
 
           <ItemLabelDescription>{healthLabel(health)}</ItemLabelDescription>
+
+          {summary && <ItemLabelDescription>{summary}</ItemLabelDescription>}
 
           {message && (
             <ItemLabelDescription className="break-all">
@@ -232,6 +239,7 @@ export default function ConfigurationStatus() {
             key={effect.kind}
             label={effectLabel(effect.kind)}
             health={effect.health}
+            summary={effect.code && effectFailureMessage(effect.code)}
             message={effect.message}
             retry={
               effect.health !== 'healthy'

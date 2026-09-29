@@ -14,7 +14,7 @@ use super::{
         HotkeyParseError, MockHotkeyActionSink, ShortcutRegistrar,
     },
 };
-use crate::client::effects::status::{EffectHealth, EffectRevision};
+use crate::client::effects::status::{EffectFailureCode, EffectHealth, EffectRevision};
 
 fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()
@@ -406,7 +406,7 @@ async fn partial_registration_failure_degrades_and_keeps_successes() {
             ref message,
             retryable,
         } => {
-            assert_eq!(code, "hotkey_partial_registration");
+            assert_eq!(code, EffectFailureCode::HotkeyPartialRegistration);
             assert!(message.contains("1 of 2"), "{message}");
             assert!(message.contains("Control+B"), "{message}");
             assert!(retryable);
@@ -476,7 +476,7 @@ async fn reconcile_validates_every_binding_before_releasing_any() {
             ref message,
             retryable,
         } => {
-            assert_eq!(code, "hotkey_invalid_bindings");
+            assert_eq!(code, EffectFailureCode::HotkeyInvalidBindings);
             assert!(message.contains("Control+DefinitelyNotAKey"), "{message}");
             assert!(!retryable, "the list has to change before a retry can help");
         }
@@ -569,7 +569,7 @@ async fn reconcile_after_the_cancel_is_rejected() {
     assert_eq!(
         status.health,
         EffectHealth::Degraded {
-            code: "hotkey_shut_down",
+            code: EffectFailureCode::HotkeyShutDown,
             message: "the hotkey owner is shutting down and stopped accepting changes".to_owned(),
             retryable: false,
         }

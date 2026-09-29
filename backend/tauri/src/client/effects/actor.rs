@@ -376,13 +376,7 @@ impl Actor for EffectsActor {
                     entry.status.health = status.health.clone();
                     entry.health = match &entry.status.health {
                         EffectHealth::Healthy => ConvergenceHealth::Healthy,
-                        EffectHealth::Degraded {
-                            code:
-                                "widget_unavailable"
-                                | "system_proxy_port_unresolved"
-                                | "proxy_guard_waiting_dependency",
-                            ..
-                        } => {
+                        EffectHealth::Degraded { code, .. } if code.waits_for_dependency() => {
                             entry.budget.attempts = entry.budget.attempts.saturating_sub(1);
                             if entry.automatic {
                                 entry.budget.remaining += 1;

@@ -36,7 +36,7 @@ use super::{
     NyanpasuClient, Result,
     effects::{
         plan::EffectKind,
-        status::{EffectHealth, EffectRevision, EffectStatus},
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     },
     runtime::MutationOutcome,
 };
@@ -121,7 +121,7 @@ impl HotkeyClient {
 /// Not retryable: an actor that is gone never answers a retry either.
 fn stopped_health() -> EffectHealth {
     EffectHealth::Degraded {
-        code: "hotkey_stopped",
+        code: EffectFailureCode::HotkeyStopped,
         message: "the hotkey actor stopped before answering".to_owned(),
         retryable: false,
     }

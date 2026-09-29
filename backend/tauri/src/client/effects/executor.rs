@@ -16,7 +16,7 @@ use super::{
         SystemProxyDesired, TrayRefresh, TrayView,
     },
     ports::ApplicationEffectsPort,
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
     hotkey::{
@@ -78,7 +78,7 @@ impl ApplicationEffectExecutor {
             Err(error) => degraded(
                 EffectKind::Hotkeys,
                 revision,
-                "hotkey_invalid_bindings",
+                EffectFailureCode::HotkeyInvalidBindings,
                 error.to_string(),
                 false,
             ),
@@ -89,7 +89,7 @@ impl ApplicationEffectExecutor {
         report(
             EffectKind::Locale,
             revision,
-            "locale_apply_failed",
+            EffectFailureCode::LocaleApplyFailed,
             self.locale.set_locale(language),
         )
     }
@@ -98,7 +98,7 @@ impl ApplicationEffectExecutor {
         report(
             EffectKind::Logger,
             revision,
-            "logger_refresh_failed",
+            EffectFailureCode::LoggerRefreshFailed,
             self.logger.refresh(
                 Some(desired.level.clone()),
                 Some(LogRotation {
@@ -121,14 +121,14 @@ impl ApplicationEffectExecutor {
             Err(error @ WidgetError::Unavailable) => degraded(
                 EffectKind::Widget,
                 revision,
-                "widget_unavailable",
+                EffectFailureCode::WidgetUnavailable,
                 error.to_string(),
                 true,
             ),
             Err(WidgetError::Failed(error)) => degraded(
                 EffectKind::Widget,
                 revision,
-                "widget_apply_failed",
+                EffectFailureCode::WidgetApplyFailed,
                 format!("{error:#}"),
                 true,
             ),
@@ -137,7 +137,7 @@ impl ApplicationEffectExecutor {
             Err(error @ (WidgetError::StillOwned | WidgetError::HandshakeBlocked)) => degraded(
                 EffectKind::Widget,
                 revision,
-                "widget_apply_failed",
+                EffectFailureCode::WidgetApplyFailed,
                 error.to_string(),
                 true,
             ),
@@ -166,7 +166,12 @@ impl ApplicationEffectExecutor {
             self.tray_full_pending
                 .store(result.is_err(), Ordering::SeqCst);
         }
-        report(EffectKind::Tray, revision, "tray_refresh_failed", result)
+        report(
+            EffectKind::Tray,
+            revision,
+            EffectFailureCode::TrayRefreshFailed,
+            result,
+        )
     }
 }
 
@@ -211,7 +216,7 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                             degraded(
                                 kind,
                                 revision,
-                                "effect_owner_silent",
+                                EffectFailureCode::EffectOwnerSilent,
                                 format!("the owner of {kind:?} reported no status"),
                                 true,
                             )
@@ -254,7 +259,7 @@ fn system_proxy_desires(
 fn report(
     kind: EffectKind,
     revision: EffectRevision,
-    code: &'static str,
+    code: EffectFailureCode,
     result: anyhow::Result<()>,
 ) -> EffectStatus {
     match result {
@@ -277,7 +282,7 @@ fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
 fn degraded(
     kind: EffectKind,
     revision: EffectRevision,
-    code: &'static str,
+    code: EffectFailureCode,
     message: String,
     retryable: bool,
 ) -> EffectStatus {

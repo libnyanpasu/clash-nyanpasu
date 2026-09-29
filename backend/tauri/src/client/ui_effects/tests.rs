@@ -30,7 +30,7 @@ use crate::client::{
             TrayRefresh,
         },
         ports::ApplicationEffectsPort,
-        status::{EffectHealth, EffectRevision, EffectStatus},
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     },
     hotkey::{
         HotkeyArgs, HotkeyClient,
@@ -313,7 +313,7 @@ async fn each_ui_failure_gets_its_own_code() {
     assert_eq!(plan.effects().len(), 4, "{:?}", plan.effects());
     let statuses = executor.apply(EffectRevision::new(4), plan).await;
 
-    let codes: Vec<(EffectKind, &str)> = statuses
+    let codes: Vec<(EffectKind, EffectFailureCode)> = statuses
         .iter()
         .map(|status| match &status.health {
             EffectHealth::Degraded { code, .. } => (status.kind, *code),
@@ -323,10 +323,10 @@ async fn each_ui_failure_gets_its_own_code() {
     assert_eq!(
         codes,
         vec![
-            (EffectKind::Locale, "locale_apply_failed"),
-            (EffectKind::Logger, "logger_refresh_failed"),
-            (EffectKind::Widget, "widget_apply_failed"),
-            (EffectKind::Tray, "tray_refresh_failed"),
+            (EffectKind::Locale, EffectFailureCode::LocaleApplyFailed),
+            (EffectKind::Logger, EffectFailureCode::LoggerRefreshFailed),
+            (EffectKind::Widget, EffectFailureCode::WidgetApplyFailed),
+            (EffectKind::Tray, EffectFailureCode::TrayRefreshFailed),
         ],
         "one failure must not mask another"
     );
@@ -583,7 +583,7 @@ async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
     assert!(
         matches!(
             widget_health(starting.await),
-            EffectHealth::Degraded { code: "widget_apply_failed", ref message, .. }
+            EffectHealth::Degraded { code: EffectFailureCode::WidgetApplyFailed, ref message, .. }
                 if message.contains("Widget process exited")
         ),
         "the start failed"
@@ -599,7 +599,7 @@ async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
     assert_eq!(
         widget_health(disabling.await),
         EffectHealth::Degraded {
-            code: "widget_apply_failed",
+            code: EffectFailureCode::WidgetApplyFailed,
             message: "widget handshake worker still blocked".into(),
             retryable: true,
         }
@@ -1035,7 +1035,7 @@ async fn the_restore_waits_for_an_os_call_the_token_cannot_interrupt() {
         statuses.iter().all(|status| matches!(
             status.health,
             EffectHealth::Degraded {
-                code: "system_proxy_shut_down",
+                code: EffectFailureCode::SystemProxyShutDown,
                 ..
             }
         )),

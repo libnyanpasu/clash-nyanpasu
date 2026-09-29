@@ -19,7 +19,7 @@ use super::{
 };
 use crate::client::effects::{
     plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 
 const BYPASS: &str = "localhost";
@@ -279,9 +279,9 @@ fn health_of(statuses: &[EffectStatus], kind: EffectKind) -> EffectHealth {
         .clone()
 }
 
-fn code_of(statuses: &[EffectStatus], kind: EffectKind) -> String {
+fn code_of(statuses: &[EffectStatus], kind: EffectKind) -> EffectFailureCode {
     match health_of(statuses, kind) {
-        EffectHealth::Degraded { code, .. } => code.to_owned(),
+        EffectHealth::Degraded { code, .. } => code,
         other => panic!("{kind:?} should be degraded, was {other:?}"),
     }
 }
@@ -360,7 +360,7 @@ async fn enable_without_resolved_port_degrades_without_os_write() {
 
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "system_proxy_port_unresolved"
+        EffectFailureCode::SystemProxyPortUnresolved
     );
     assert!(
         os.writes().is_empty(),
@@ -468,7 +468,7 @@ async fn pac_failure_falls_back_to_direct_and_degrades() {
 
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "pac_apply_failed"
+        EffectFailureCode::PacApplyFailed
     );
     assert_eq!(os.last_write().port, 7890);
     assert!(!client.status().await.pac_active);
@@ -507,7 +507,7 @@ async fn failed_pac_switch_disables_the_previous_pac_before_falling_back() {
 
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "pac_apply_failed"
+        EffectFailureCode::PacApplyFailed
     );
     assert!(
         !client.status().await.pac_active,
@@ -554,7 +554,7 @@ async fn pac_disable_failure_keeps_pac_active_and_degrades() {
 
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "pac_disable_failed"
+        EffectFailureCode::PacDisableFailed
     );
     assert!(
         client.status().await.pac_active,
@@ -589,7 +589,7 @@ async fn pac_unsupported_platform_reports_unsupported() {
     assert_eq!(
         health_of(&statuses, EffectKind::SystemProxy),
         EffectHealth::Unsupported {
-            code: "pac_unsupported"
+            code: EffectFailureCode::PacUnsupported
         }
     );
     // Still proxied: an unsupported PAC must not leave the user with nothing.
@@ -766,14 +766,14 @@ async fn set_failure_degrades_and_keeps_desired() {
 
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "system_proxy_apply_failed"
+        EffectFailureCode::SystemProxyApplyFailed
     );
     let status = client.status().await;
     assert_eq!(status.desired, Some(proxy(true, Some(7890))));
     assert_eq!(
         status.health,
         EffectHealth::Degraded {
-            code: "system_proxy_apply_failed",
+            code: EffectFailureCode::SystemProxyApplyFailed,
             message: "the os refused the proxy settings".to_owned(),
             retryable: true,
         }
@@ -853,7 +853,7 @@ async fn auto_launch_failure_degrades_independently() {
 
     assert_eq!(
         code_of(&statuses, EffectKind::AutoLaunch),
-        "auto_launch_failed"
+        EffectFailureCode::AutoLaunchFailed
     );
     assert_eq!(
         health_of(&statuses, EffectKind::SystemProxy),
@@ -910,7 +910,7 @@ async fn the_exit_cancels_an_in_flight_pac_download() {
     let statuses = reconciling.await.expect("the reconcile task should finish");
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "system_proxy_shut_down",
+        EffectFailureCode::SystemProxyShutDown,
         "the abandoned download is the shutdown, not PAC refusing the url"
     );
     assert!(
@@ -948,7 +948,7 @@ async fn the_token_releases_a_pac_download_before_the_restore() {
     let statuses = reconciling.await.expect("the reconcile task should finish");
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "system_proxy_shut_down"
+        EffectFailureCode::SystemProxyShutDown
     );
     assert!(os.writes().is_empty(), "{:?}", os.writes());
     shutdown.exit().await;
@@ -989,7 +989,7 @@ async fn cancelled_pac_apply_does_not_write_a_fallback_proxy() {
     let statuses = reconciling.await.expect("the reconcile task should finish");
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "system_proxy_shut_down"
+        EffectFailureCode::SystemProxyShutDown
     );
     assert_eq!(
         os.writes().len(),
@@ -1044,7 +1044,7 @@ async fn a_reconcile_queued_behind_the_cancel_is_rejected() {
     ] {
         assert_eq!(
             code_of(&statuses, kind),
-            "system_proxy_shut_down",
+            EffectFailureCode::SystemProxyShutDown,
             "{kind:?}"
         );
     }
@@ -1085,7 +1085,7 @@ async fn a_reconcile_after_the_cancel_is_rejected() {
         assert_eq!(
             health_of(&statuses, kind),
             EffectHealth::Degraded {
-                code: "system_proxy_shut_down",
+                code: EffectFailureCode::SystemProxyShutDown,
                 message: "the system proxy owner is shutting down and stopped accepting changes"
                     .to_owned(),
                 retryable: false,
@@ -1133,7 +1133,7 @@ async fn write_after_cancellation_during_original_capture_is_skipped() {
     let statuses = reconciling.await.expect("the reconcile task should finish");
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "system_proxy_shut_down",
+        EffectFailureCode::SystemProxyShutDown,
         "a write that resumes after the shutdown belongs to the restore"
     );
     assert!(
@@ -1172,7 +1172,7 @@ async fn failed_first_install_does_not_record_original() {
         .await;
     assert_eq!(
         code_of(&statuses, EffectKind::SystemProxy),
-        "system_proxy_apply_failed"
+        EffectFailureCode::SystemProxyApplyFailed
     );
 
     // Lifted so the restore would record a write if it attempted one.

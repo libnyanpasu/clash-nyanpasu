@@ -17,7 +17,7 @@ use super::{
 };
 use crate::client::effects::{
     plan::EffectKind,
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 
 pub(super) enum Message {
@@ -153,7 +153,7 @@ impl State {
         if !rejected.is_empty() {
             let status = self.degraded(
                 revision,
-                "hotkey_invalid_bindings",
+                EffectFailureCode::HotkeyInvalidBindings,
                 format!(
                     "the platform refused {}: {}",
                     rejected.len(),
@@ -226,7 +226,7 @@ impl State {
             // caller is told exactly which ones are missing.
             self.degraded(
                 revision,
-                "hotkey_partial_registration",
+                EffectFailureCode::HotkeyPartialRegistration,
                 format!(
                     "{} of {} shortcuts failed: {}",
                     failures.len(),
@@ -277,7 +277,7 @@ impl State {
             desired_revision: revision,
             applied_revision: self.applied_revision,
             health: EffectHealth::Degraded {
-                code: "hotkey_shut_down",
+                code: EffectFailureCode::HotkeyShutDown,
                 message: "the hotkey owner is shutting down and stopped accepting changes"
                     .to_owned(),
                 retryable: false,
@@ -288,11 +288,11 @@ impl State {
     fn degraded(
         &self,
         revision: EffectRevision,
-        code: &'static str,
+        code: EffectFailureCode,
         message: String,
         retryable: bool,
     ) -> EffectStatus {
-        tracing::warn!(code, %message, "a hotkey effect failed after the config was committed");
+        tracing::warn!(?code, %message, "a hotkey effect failed after the config was committed");
         EffectStatus {
             kind: EffectKind::Hotkeys,
             desired_revision: revision,

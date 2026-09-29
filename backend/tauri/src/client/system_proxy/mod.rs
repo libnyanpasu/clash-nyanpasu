@@ -21,7 +21,7 @@ use self::{
 };
 use crate::client::effects::{
     plan::{ProxyGuardDesired, SystemProxyDesired},
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 
 pub use self::actor::Args as SystemProxyArgs;
@@ -104,7 +104,7 @@ impl SystemProxyClient {
                         desired_revision: revision,
                         applied_revision: EffectRevision::default(),
                         health: EffectHealth::Degraded {
-                            code: "system_proxy_stopped",
+                            code: EffectFailureCode::SystemProxyStopped,
                             message: "the system proxy actor stopped before answering".to_owned(),
                             retryable: false,
                         },
@@ -123,7 +123,7 @@ impl SystemProxyClient {
                 SystemProxyStatus {
                     applied_revision: EffectRevision::default(),
                     health: EffectHealth::Degraded {
-                        code: "system_proxy_stopped",
+                        code: EffectFailureCode::SystemProxyStopped,
                         message: "the system proxy actor stopped before answering".to_owned(),
                         retryable: false,
                     },

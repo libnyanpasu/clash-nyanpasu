@@ -1,6 +1,10 @@
 import { expect, test } from 'vitest'
 import { m } from '@/paraglide/messages'
-import { degradationReasonMessage, ipcErrorMessage } from '@/utils/ipc-error'
+import {
+  degradationReasonMessage,
+  effectFailureMessage,
+  ipcErrorMessage,
+} from '@/utils/ipc-error'
 import type {
   ConfigError,
   IpcError,
@@ -465,5 +469,14 @@ test('a failed DNS flush names the command and its exit code', () => {
     ),
   ).toBe(
     m.error_system_dns_flush_rejected({ command: 'ipconfig.exe', code: '-' }),
+  )
+})
+
+test('an effect failure is localized by its code', () => {
+  expect(effectFailureMessage('system_proxy_apply_failed')).toBe(
+    m.effect_failure_system_proxy_apply_failed(),
+  )
+  expect(effectFailureMessage('hotkey_partial_registration')).toBe(
+    m.effect_failure_hotkey_partial_registration(),
   )
 })

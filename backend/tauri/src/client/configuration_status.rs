@@ -2,7 +2,10 @@
 use super::{
     NyanpasuClient,
     convergence::ConvergenceHealth,
-    effects::{plan::EffectKind, status::EffectHealth},
+    effects::{
+        plan::EffectKind,
+        status::{EffectFailureCode, EffectHealth},
+    },
 };
 use crate::state::profiles::sources::{SourceStatus, SourcesSnapshot};
 
@@ -41,6 +44,9 @@ pub struct EffectConvergence {
     pub applied_revision: u64,
     pub attempts: u32,
     pub automatic_remaining: u8,
+    /// What kind of failure the effect is in, for the UI to localize.
+    pub code: Option<EffectFailureCode>,
+    /// The failure's diagnostic text, as the owner reported it.
     pub message: Option<String>,
 }
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -118,9 +124,13 @@ impl NyanpasuClient {
                     applied_revision: progress.status.applied_revision.get(),
                     attempts: progress.attempts,
                     automatic_remaining: progress.automatic_remaining,
+                    code: match &progress.status.health {
+                        EffectHealth::Degraded { code, .. }
+                        | EffectHealth::Unsupported { code } => Some(*code),
+                        _ => None,
+                    },
                     message: match &progress.status.health {
                         EffectHealth::Degraded { message, .. } => Some(message.clone()),
-                        EffectHealth::Unsupported { code } => Some((*code).into()),
                         _ => None,
                     },
                 })

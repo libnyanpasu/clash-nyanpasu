@@ -570,7 +570,7 @@ mod tests {
     use crate::{
         client::effects::{
             plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
-            status::{EffectHealth, EffectRevision, EffectStatus},
+            status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
         },
         enhance::golden_support,
     };
@@ -1523,7 +1523,7 @@ mod tests {
             desired_revision: EffectRevision::new(4),
             applied_revision: EffectRevision::new(3),
             health: EffectHealth::Degraded {
-                code: "system_proxy_apply_failed",
+                code: EffectFailureCode::SystemProxyApplyFailed,
                 message: "os refused".to_owned(),
                 retryable: true,
             },

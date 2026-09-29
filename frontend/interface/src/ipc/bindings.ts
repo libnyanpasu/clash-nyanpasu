@@ -1507,8 +1507,40 @@ export type EffectConvergence = {
   applied_revision: number
   attempts: number
   automatic_remaining: number
+  /**  What kind of failure the effect is in, for the UI to localize. */
+  code: EffectFailureCode | null
+  /**  The failure's diagnostic text, as the owner reported it. */
   message: string | null
 }
+
+/**
+ *  Why an effect is not in its desired state, in the terms the UI localizes.
+ *
+ *  One value per kind of failure, named after the effect that failed. The
+ *  owner that classifies a failure is the one that picks the code; the
+ *  message beside it is only the diagnostic text.
+ */
+export type EffectFailureCode =
+  | 'hotkey_invalid_bindings'
+  | 'hotkey_partial_registration'
+  | 'hotkey_shut_down'
+  | 'hotkey_stopped'
+  | 'locale_apply_failed'
+  | 'logger_refresh_failed'
+  | 'widget_unavailable'
+  | 'widget_apply_failed'
+  | 'tray_refresh_failed'
+  | 'effect_owner_silent'
+  | 'proxy_guard_waiting_dependency'
+  | 'auto_launch_failed'
+  | 'pac_disable_failed'
+  | 'pac_apply_failed'
+  | 'pac_unsupported'
+  | 'system_proxy_apply_failed'
+  | 'system_proxy_port_unresolved'
+  | 'system_proxy_restore_failed'
+  | 'system_proxy_shut_down'
+  | 'system_proxy_stopped'
 
 /**
  *  Execution order of a plan. The ordering is load-bearing: the tray menu is

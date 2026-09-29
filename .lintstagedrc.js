@@ -13,7 +13,8 @@ export default {
       (file) => !configFiles.some((config) => file.endsWith(config)),
     )
     if (filtered.length === 0) return []
-    return ['prettier --write', 'oxlint --fix']
+    const files = filtered.join(' ')
+    return [`prettier --write ${files}`, `oxlint --fix ${files}`]
   },
   'frontend/interface/**/*.{ts,tsx}': [
     'prettier --write',

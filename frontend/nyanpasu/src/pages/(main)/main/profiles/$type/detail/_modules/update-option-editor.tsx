@@ -147,15 +147,18 @@ export default function UpdateOptionEditor({
               control={form.control}
               name="update_interval"
               render={({ field }) => (
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 space-y-2">
                   <NumericInput
                     label={m.profile_update_interval_label()}
                     variant="outlined"
                     min={1}
                     step={1}
-                    placeholder={m.profile_form_option_update_interval_placeholder()}
                     {...field}
                   />
+
+                  <p className="text-on-surface-variant px-1 text-xs">
+                    {m.profile_form_option_update_interval_placeholder()}
+                  </p>
 
                   <AnimatePresence>
                     {form.formState.errors.update_interval && (

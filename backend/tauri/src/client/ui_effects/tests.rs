@@ -286,9 +286,9 @@ async fn each_ui_failure_gets_its_own_code() {
         .expect_refresh()
         .returning(|_, _| Err(anyhow::anyhow!("logger refused")));
     let mut widget = MockWidgetController::new();
-    widget.expect_apply().returning(|_| {
-        Box::pin(async { Err(WidgetError::Failed(anyhow::anyhow!("widget refused"))) })
-    });
+    widget
+        .expect_apply()
+        .returning(|_| Box::pin(async { Err(spawn_refused("widget refused")) }));
     let mut tray = MockTrayRefresher::new();
     tray.expect_refresh_full()
         .returning(|_| Box::pin(async { Err(anyhow::anyhow!("tray refused")) }));
@@ -511,7 +511,7 @@ async fn widget_start_failure_surfaces_as_a_widget_failure() {
         .expect_is_running()
         .returning(|| Box::pin(async { false }));
     runtime.expect_start().times(1).returning(|_| {
-        Box::pin(async { Err(anyhow::anyhow!("the widget process refused to start")) })
+        Box::pin(async { Err(spawn_refused("the widget process refused to start")) })
     });
     let controller = controller_with(runtime);
 
@@ -522,7 +522,17 @@ async fn widget_start_failure_surfaces_as_a_widget_failure() {
         .await
         .expect_err("a failing spawn is a failure");
 
-    assert!(matches!(error, WidgetError::Failed(_)), "{error:?}");
+    assert!(
+        matches!(error, WidgetError::SpawnWidget { .. }),
+        "{error:?}"
+    );
+}
+
+fn spawn_refused(reason: &str) -> WidgetError {
+    WidgetError::SpawnWidget {
+        variant: "small".into(),
+        source: std::io::Error::other(reason.to_owned()),
+    }
 }
 
 fn widget_health(statuses: Vec<EffectStatus>) -> EffectHealth {
@@ -585,7 +595,7 @@ async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
         matches!(
             widget_health(starting.await),
             EffectHealth::Degraded { code: EffectFailureCode::WidgetApplyFailed, ref message, .. }
-                if message.contains("Widget process exited")
+                if message.contains("exited before it connected")
         ),
         "the start failed"
     );

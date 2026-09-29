@@ -1,5 +1,6 @@
 pub use ipc_channel::ipc::IpcSender;
 use ipc_channel::ipc::{self, IpcReceiver};
+use snafu::{OptionExt as _, ResultExt as _, Snafu};
 
 use crate::widget::network_statistic_large::LogoPreset;
 
@@ -18,6 +19,28 @@ pub enum Message {
     UpdateLogo(LogoPreset),
 }
 
+/// Why the parent's end of the widget channel could not be set up or used.
+#[derive(Debug, Snafu)]
+pub enum WidgetIpcError {
+    #[snafu(display("the IPC server has already accepted a connection"))]
+    AlreadyAccepted,
+    #[snafu(display("could not create the IPC server"))]
+    CreateServer { source: std::io::Error },
+    #[snafu(display("the widget did not connect to the IPC server"))]
+    AcceptWidget { source: ipc_channel::IpcError },
+    #[snafu(display("could not connect to the IPC server {name}"))]
+    ConnectServer {
+        name: String,
+        source: std::io::Error,
+    },
+    #[snafu(display("could not create the IPC channel"))]
+    CreateChannel { source: std::io::Error },
+    #[snafu(display("could not send the handshake"))]
+    SendHandshake { source: ipc_channel::IpcError },
+    #[snafu(display("could not send the message to the widget"))]
+    SendMessage { source: ipc_channel::IpcError },
+}
+
 pub struct IPCServer {
     oneshot_server: Option<ipc::IpcOneShotServer<IpcSender<Message>>>,
     tx: Option<IpcSender<Message>>,
@@ -28,12 +51,9 @@ impl IPCServer {
         self.tx.is_some()
     }
 
-    pub fn connect(&mut self) -> anyhow::Result<()> {
-        if self.oneshot_server.is_none() {
-            anyhow::bail!("IPC server is already initialized");
-        }
-
-        let (_, tx) = self.oneshot_server.take().unwrap().accept()?;
+    pub fn connect(&mut self) -> Result<(), WidgetIpcError> {
+        let server = self.oneshot_server.take().context(AlreadyAcceptedSnafu)?;
+        let (_, tx) = server.accept().context(AcceptWidgetSnafu)?;
         self.tx = Some(tx);
         Ok(())
     }
@@ -43,8 +63,9 @@ impl IPCServer {
     }
 }
 
-pub fn create_ipc_server() -> anyhow::Result<(IPCServer, String)> {
-    let (oneshot_server, oneshot_server_name) = ipc::IpcOneShotServer::new()?;
+pub fn create_ipc_server() -> Result<(IPCServer, String), WidgetIpcError> {
+    let (oneshot_server, oneshot_server_name) =
+        ipc::IpcOneShotServer::new().context(CreateServerSnafu)?;
     Ok((
         IPCServer {
             oneshot_server: Some(oneshot_server),
@@ -58,11 +79,17 @@ pub fn create_ipc_server() -> anyhow::Result<(IPCServer, String)> {
 /// does, so a handshake blocked in `accept` returns. The sender it hands over
 /// leads nowhere: this is only for a parent that stopped waiting for a widget
 /// which never connected.
-pub fn release_server(name: &str) -> anyhow::Result<()> {
-    let oneshot_sender: IpcSender<IpcSender<Message>> = ipc::IpcSender::connect(name.to_string())?;
-    let (tx, _rx) = ipc::channel()?;
-    oneshot_sender.send(tx)?;
+pub fn release_server(name: &str) -> Result<(), WidgetIpcError> {
+    let oneshot_sender: IpcSender<IpcSender<Message>> =
+        ipc::IpcSender::connect(name.to_string()).context(ConnectServerSnafu { name })?;
+    let (tx, _rx) = ipc::channel().context(CreateChannelSnafu)?;
+    oneshot_sender.send(tx).context(SendHandshakeSnafu)?;
     Ok(())
+}
+
+/// Sends `message` to the widget.
+pub fn send_message(sender: &IpcSender<Message>, message: Message) -> Result<(), WidgetIpcError> {
+    sender.send(message).context(SendMessageSnafu)
 }
 
 pub(crate) fn setup_ipc_receiver(name: &str) -> anyhow::Result<IpcReceiver<Message>> {

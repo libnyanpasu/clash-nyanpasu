@@ -6656,6 +6656,7 @@ dependencies = [
  "parking_lot",
  "resvg 0.48.1",
  "serde",
+ "snafu",
  "specta",
  "usvg 0.48.1",
 ]

@@ -26,7 +26,7 @@ use crate::client::{
     },
     system_proxy::SystemProxyClient,
     ui_effects::ports::{
-        LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController, WidgetError,
+        LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController,
     },
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
@@ -124,28 +124,14 @@ impl ApplicationEffectExecutor {
         match self.widget.apply(config).await {
             Ok(()) => healthy(EffectKind::Widget, revision),
             // Not yet installed is a startup-ordering fact rather than a widget
-            // failure, and it gets its own code so a caller can tell them apart.
-            Err(error @ WidgetError::Unavailable) => degraded(
+            // failure, and its code lets a caller tell them apart. A disable
+            // whose stop ran out of time leaves the old widget owned, and the
+            // next reconcile stops it again: every failure is worth a retry.
+            Err(error) => degraded(
                 EffectKind::Widget,
                 revision,
-                EffectFailureCode::WidgetUnavailable,
-                error.to_string(),
-                true,
-            ),
-            Err(WidgetError::Failed(error)) => degraded(
-                EffectKind::Widget,
-                revision,
-                EffectFailureCode::WidgetApplyFailed,
-                format!("{error:#}"),
-                true,
-            ),
-            // A disable whose stop ran out of time: the old widget is still
-            // owned, and the next reconcile stops it again.
-            Err(error @ (WidgetError::StillOwned | WidgetError::HandshakeBlocked)) => degraded(
-                EffectKind::Widget,
-                revision,
-                EffectFailureCode::WidgetApplyFailed,
-                error.to_string(),
+                error.code(),
+                failure_text(&error),
                 true,
             ),
         }

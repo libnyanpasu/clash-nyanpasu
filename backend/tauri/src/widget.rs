@@ -1,11 +1,22 @@
 use super::core::clash::ws::ClashConnectionsConnectorEvent;
-use crate::client::ui_effects::ports::{WIDGET_STOP_BOUND, WidgetError};
+use crate::client::{
+    effects::status::failure_text,
+    ui_effects::ports::{
+        ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
+        MissingWidgetSenderSnafu, ResolveStatePathSnafu, ShutdownBeforeConnectSnafu,
+        ShuttingDownSnafu, SpawnWidgetSnafu, StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu,
+        WidgetError, WidgetExitedSnafu,
+    },
+};
 
-use anyhow::Context;
 use nyanpasu_egui::{
-    ipc::{IpcSender, Message, StatisticMessage, create_ipc_server, release_server},
+    ipc::{
+        IpcSender, Message, StatisticMessage, WidgetIpcError, create_ipc_server, release_server,
+        send_message,
+    },
     widget::StatisticWidgetVariant,
 };
+use snafu::{IntoError as _, OptionExt as _, ResultExt as _, Snafu, ensure};
 use std::{
     sync::{Arc, Mutex as StdMutex, atomic::AtomicBool},
     time::Duration,
@@ -31,16 +42,16 @@ const STOP_GRACE: Duration = Duration::from_millis(500);
 pub(crate) trait WidgetHost: Send + Sync + 'static {
     /// Spawns the widget process and opens the one-shot server it connects
     /// back to.
-    fn spawn(&self, variant: StatisticWidgetVariant) -> anyhow::Result<SpawnedWidget>;
+    fn spawn(&self, variant: StatisticWidgetVariant) -> Result<SpawnedWidget, WidgetError>;
     /// Connects to a pending one-shot server as its client, so a handshake
     /// blocked in `accept` returns.
-    fn release(&self, server_name: &str) -> anyhow::Result<()>;
+    fn release(&self, server_name: &str) -> Result<(), WidgetIpcError>;
 }
 
 pub(crate) struct SpawnedWidget {
     pub process: Box<dyn WidgetProcess>,
     /// Blocks until the widget, or `release`, connects to the server.
-    pub handshake: Box<dyn FnOnce() -> anyhow::Result<Box<dyn WidgetLink>> + Send>,
+    pub handshake: Box<dyn FnOnce() -> Result<Box<dyn WidgetLink>, WidgetError> + Send>,
     pub server_name: String,
 }
 
@@ -48,16 +59,26 @@ pub(crate) struct SpawnedWidget {
 pub(crate) trait WidgetProcess: Send + 'static {
     /// The exit status once the process has exited, `None` while it runs. An
     /// error means the status could not be read, which proves nothing.
-    fn try_exit(&mut self) -> anyhow::Result<Option<String>>;
+    fn try_exit(&mut self) -> std::io::Result<Option<String>>;
     /// Resolves once the process has exited, describing how.
-    async fn exited(&mut self) -> anyhow::Result<String>;
+    async fn exited(&mut self) -> std::io::Result<String>;
     /// Kills the process and reaps it.
-    async fn kill(&mut self) -> anyhow::Result<()>;
+    async fn kill(&mut self) -> std::io::Result<()>;
 }
 
 /// The parent's end of the widget's IPC channel. Sending may block.
 pub(crate) trait WidgetLink: Send + 'static {
-    fn send(&self, message: Message) -> anyhow::Result<()>;
+    fn send(&self, message: Message) -> Result<(), WidgetIpcError>;
+}
+
+/// Why a message could not reach the widget. Only logged: a widget that
+/// missed one sample shows the next.
+#[derive(Debug, Snafu)]
+pub(crate) enum WidgetSendError {
+    #[snafu(display("the widget link is poisoned"))]
+    LinkPoisoned,
+    #[snafu(display("could not send the message to the widget"))]
+    SendToWidget { source: WidgetIpcError },
 }
 
 /// Shared with the blocking thread a send runs on, so a stuck send holds the
@@ -150,7 +171,10 @@ impl WidgetManager {
             .store(true, std::sync::atomic::Ordering::Release);
     }
 
-    async fn handle_event(&self, event: ClashConnectionsConnectorEvent) -> anyhow::Result<()> {
+    async fn handle_event(
+        &self,
+        event: ClashConnectionsConnectorEvent,
+    ) -> Result<(), WidgetSendError> {
         // we only care about the update event now
         let ClashConnectionsConnectorEvent::Update(info) = event else {
             return Ok(());
@@ -165,37 +189,32 @@ impl WidgetManager {
             }
             link.clone()
         };
-        tokio::task::spawn_blocking(move || {
-            send(
-                &link,
-                Message::UpdateStatistic(StatisticMessage {
-                    download_total: info.download_total,
-                    upload_total: info.upload_total,
-                    download_speed: info.download_speed,
-                    upload_speed: info.upload_speed,
-                }),
-            )
-        })
-        .await
-        .map_err(|error| match error.try_into_panic() {
-            Ok(panic) => std::panic::resume_unwind(panic),
-            Err(error) => anyhow::Error::new(error).context("Failed to send event to widget"),
-        })?
+        crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || {
+                send(
+                    &link,
+                    Message::UpdateStatistic(StatisticMessage {
+                        download_total: info.download_total,
+                        upload_total: info.upload_total,
+                        download_speed: info.download_speed,
+                        upload_speed: info.upload_speed,
+                    }),
+                )
+            })
+            .await,
+        )
     }
 
-    pub async fn start(&self, widget: StatisticWidgetVariant) -> anyhow::Result<()> {
+    pub async fn start(&self, widget: StatisticWidgetVariant) -> Result<(), WidgetError> {
         // Held for the whole start, so a stop never finds the slot about to
         // fill behind its back.
         let mut instance = self.instance.lock().await;
-        anyhow::ensure!(
-            !self.shutdown.is_cancelled(),
-            "the app is shutting down; no widget starts"
-        );
+        ensure!(!self.shutdown.is_cancelled(), ShuttingDownSnafu);
         if instance.is_some() {
             log::info!("Widget already running, stopping it first...");
             self.stop_owned(&mut instance, Instant::now() + WIDGET_STOP_BOUND)
                 .await
-                .context("Failed to stop widget")?;
+                .context(StopPreviousSnafu)?;
         }
         let spawned = self.host.spawn(widget)?;
         tracing::debug!("Waiting for widget process to start...");
@@ -216,17 +235,14 @@ impl WidgetManager {
         let linked = tokio::select! {
             // The worker drops the sender unsent only by unwinding.
             linked = linked_rx => linked
-                .unwrap_or_else(|_| panic!("the widget handshake worker panicked"))
-                .context("Failed to get ipc sender"),
-            exited = process.exited() => Err(match exited {
-                Ok(status) => anyhow::anyhow!("Widget process exited: {status}"),
-                Err(e) => anyhow::anyhow!("Failed to wait for widget process: {e}"),
-            }),
+                .unwrap_or_else(|_| panic!("the widget handshake worker panicked")),
+            exited = process.exited() => match exited {
+                Ok(status) => WidgetExitedSnafu { status }.fail(),
+                Err(source) => Err(WaitWidgetSnafu.into_error(source)),
+            },
             // The handshake has no bound of its own; the stop below reaps
             // the child and releases the worker.
-            () = self.shutdown.cancelled() => Err(anyhow::anyhow!(
-                "the app is shutting down before the widget connected"
-            )),
+            () = self.shutdown.cancelled() => ShutdownBeforeConnectSnafu.fail(),
         };
         match linked {
             Ok(link) => {
@@ -286,7 +302,10 @@ impl WidgetManager {
                             let _ = tokio::time::timeout_at(grace, process.exited()).await;
                         }
                         Ok(Ok(Err(error))) => {
-                            tracing::warn!("failed to send stop message to widget: {error:#}")
+                            tracing::warn!(
+                                "failed to send stop message to widget: {}",
+                                failure_text(&error)
+                            )
                         }
                         Ok(Err(error)) => match error.try_into_panic() {
                             Ok(panic) => std::panic::resume_unwind(panic),
@@ -322,7 +341,10 @@ impl WidgetManager {
                 {
                     Ok(Ok(Ok(()))) => {}
                     Ok(Ok(Err(error))) => {
-                        tracing::warn!("failed to release the widget handshake: {error:#}")
+                        tracing::warn!(
+                            "failed to release the widget handshake: {}",
+                            failure_text(&error)
+                        )
                     }
                     Ok(Err(error)) => match error.try_into_panic() {
                         Ok(panic) => std::panic::resume_unwind(panic),
@@ -356,7 +378,7 @@ fn has_exited(process: &mut Box<dyn WidgetProcess>) -> bool {
     match process.try_exit() {
         Ok(status) => status.is_some(),
         Err(error) => {
-            tracing::warn!("failed to read the widget process status: {error:#}");
+            tracing::warn!("failed to read the widget process status: {error}");
             false
         }
     }
@@ -371,88 +393,85 @@ async fn exit_confirmed(process: &mut Box<dyn WidgetProcess>, deadline: Instant)
     match tokio::time::timeout_at(deadline, process.kill()).await {
         Ok(Ok(())) => true,
         Ok(Err(error)) => {
-            tracing::warn!("failed to kill widget process: {error:#}");
+            tracing::warn!("failed to kill widget process: {error}");
             has_exited(process)
         }
         Err(_) => false,
     }
 }
 
-fn send(link: &SharedLink, message: Message) -> anyhow::Result<()> {
+fn send(link: &SharedLink, message: Message) -> Result<(), WidgetSendError> {
     #[cfg(debug_assertions)]
     tracing::debug!("Sending message to widget: {:?}", message);
     link.lock()
-        .map_err(|_| anyhow::anyhow!("the widget link is poisoned"))?
+        .ok()
+        .context(LinkPoisonedSnafu)?
         .send(message)
-        .context("Failed to send message to widget")
+        .context(SendToWidgetSnafu)
 }
 
 /// The widget binary: this executable, relaunched with `statistic-widget`.
 struct ProcessWidgetHost;
 
 impl WidgetHost for ProcessWidgetHost {
-    fn spawn(&self, widget: StatisticWidgetVariant) -> anyhow::Result<SpawnedWidget> {
-        let current_exe = current_exe().context("Failed to get current executable")?;
+    fn spawn(&self, widget: StatisticWidgetVariant) -> Result<SpawnedWidget, WidgetError> {
+        let current_exe = current_exe().context(LocateExecutableSnafu)?;
         // This operation is blocking, but it internal just a system call, so I think it's okay
-        let (mut ipc_server, server_name) = create_ipc_server()?;
+        let (mut ipc_server, server_name) = create_ipc_server().context(CreateIpcServerSnafu)?;
         // spawn a process to run the widget
         let variant = format!("{widget}");
         tracing::debug!("Spawning widget process for {}...", variant);
         let widget_win_state_path = crate::utils::dirs::app_data_dir()
-            .context("Failed to get app data dir")?
+            .map_err(anyhow::Error::into)
+            .context(ResolveStatePathSnafu)?
             .join(format!("widget_{variant}.state"));
         let child = tokio::process::Command::new(current_exe)
             .arg("statistic-widget")
-            .arg(variant)
+            .arg(&variant)
             .env("NYANPASU_EGUI_IPC_SERVER", &server_name)
             .env("NYANPASU_EGUI_WINDOW_STATE_PATH", widget_win_state_path)
             .stdin(std::process::Stdio::inherit())
-            .stdout(os_pipe::dup_stdout()?)
-            .stderr(os_pipe::dup_stderr()?)
+            .stdout(os_pipe::dup_stdout().context(DuplicateStdioSnafu)?)
+            .stderr(os_pipe::dup_stderr().context(DuplicateStdioSnafu)?)
             // The last backstop: an instance that is dropped takes its
             // process with it.
             .kill_on_drop(true)
             .spawn()
-            .context("Failed to spawn widget process")?;
+            .context(SpawnWidgetSnafu { variant })?;
         Ok(SpawnedWidget {
             process: Box::new(child),
             handshake: Box::new(move || {
-                ipc_server
-                    .connect()
-                    .context("Failed to connect to widget")?;
-                let tx = ipc_server.into_tx().context("Failed to get ipc sender")?;
+                ipc_server.connect().context(ConnectWidgetSnafu)?;
+                let tx = ipc_server.into_tx().context(MissingWidgetSenderSnafu)?;
                 Ok(Box::new(tx) as Box<dyn WidgetLink>)
             }),
             server_name,
         })
     }
 
-    fn release(&self, server_name: &str) -> anyhow::Result<()> {
+    fn release(&self, server_name: &str) -> Result<(), WidgetIpcError> {
         release_server(server_name)
     }
 }
 
 #[async_trait::async_trait]
 impl WidgetProcess for tokio::process::Child {
-    fn try_exit(&mut self) -> anyhow::Result<Option<String>> {
+    fn try_exit(&mut self) -> std::io::Result<Option<String>> {
         Ok(self.try_wait()?.map(|status| status.to_string()))
     }
 
-    async fn exited(&mut self) -> anyhow::Result<String> {
+    async fn exited(&mut self) -> std::io::Result<String> {
         Ok(self.wait().await?.to_string())
     }
 
-    async fn kill(&mut self) -> anyhow::Result<()> {
-        tokio::process::Child::kill(self)
-            .await
-            .context("Failed to kill widget process")
+    async fn kill(&mut self) -> std::io::Result<()> {
+        tokio::process::Child::kill(self).await
     }
 }
 
 impl WidgetLink for IpcSender<Message> {
-    fn send(&self, message: Message) -> anyhow::Result<()> {
-        IpcSender::send(self, message)?;
-        Ok(())
+    fn send(&self, message: Message) -> Result<(), WidgetIpcError> {
+        send_message(self, message)
     }
 }
 
@@ -585,7 +604,7 @@ pub(crate) mod tests {
     }
 
     impl WidgetHost for FakeWidgetHost {
-        fn spawn(&self, _: StatisticWidgetVariant) -> anyhow::Result<SpawnedWidget> {
+        fn spawn(&self, _: StatisticWidgetVariant) -> Result<SpawnedWidget, WidgetError> {
             record(&self.log, "spawn");
             let (alive, observed) = watch::channel(true);
             let alive = Arc::new(alive);
@@ -613,14 +632,16 @@ pub(crate) mod tests {
                     Ok(Handshake::Connect) => Ok(Box::new(link) as Box<dyn WidgetLink>),
                     Ok(Handshake::Release) | Err(_) => {
                         record(&log, "handshake released");
-                        anyhow::bail!("released without a widget")
+                        Err(WidgetError::ConnectWidget {
+                            source: WidgetIpcError::AlreadyAccepted,
+                        })
                     }
                 }),
                 server_name: "fake-server".into(),
             })
         }
 
-        fn release(&self, server_name: &str) -> anyhow::Result<()> {
+        fn release(&self, server_name: &str) -> Result<(), WidgetIpcError> {
             assert_eq!(server_name, "fake-server");
             record(&self.log, "release");
             if self.releases.load(Ordering::SeqCst) {
@@ -641,20 +662,21 @@ pub(crate) mod tests {
 
     #[async_trait::async_trait]
     impl WidgetProcess for FakeProcess {
-        fn try_exit(&mut self) -> anyhow::Result<Option<String>> {
-            anyhow::ensure!(
-                !self.status_unreadable.load(Ordering::SeqCst),
-                "scripted: the process status cannot be read"
-            );
+        fn try_exit(&mut self) -> std::io::Result<Option<String>> {
+            if self.status_unreadable.load(Ordering::SeqCst) {
+                return Err(std::io::Error::other(
+                    "scripted: the process status cannot be read",
+                ));
+            }
             Ok((!*self.observed.borrow()).then(|| "exited".to_owned()))
         }
 
-        async fn exited(&mut self) -> anyhow::Result<String> {
+        async fn exited(&mut self) -> std::io::Result<String> {
             let _ = self.observed.wait_for(|alive| !alive).await;
             Ok("exited".into())
         }
 
-        async fn kill(&mut self) -> anyhow::Result<()> {
+        async fn kill(&mut self) -> std::io::Result<()> {
             record(&self.log, "kill");
             if self.kill_hangs {
                 std::future::pending::<()>().await;
@@ -671,7 +693,7 @@ pub(crate) mod tests {
     }
 
     impl WidgetLink for FakeLink {
-        fn send(&self, message: Message) -> anyhow::Result<()> {
+        fn send(&self, message: Message) -> Result<(), WidgetIpcError> {
             if matches!(message, Message::Stop) {
                 record(&self.log, "stop message");
                 if let Some(alive) = &self.alive {
@@ -842,10 +864,7 @@ pub(crate) mod tests {
 
         let error = start.await.unwrap().unwrap_err();
 
-        assert!(
-            error.to_string().contains("Widget process exited"),
-            "{error}"
-        );
+        assert!(matches!(error, WidgetError::WidgetExited { .. }), "{error}");
         assert_eq!(manager.owned().await, None);
         assert_eq!(
             host.events(),

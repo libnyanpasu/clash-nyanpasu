@@ -7,10 +7,11 @@
 use std::time::Duration;
 
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
-use nyanpasu_egui::widget::StatisticWidgetVariant;
+use nyanpasu_egui::{ipc::WidgetIpcError, widget::StatisticWidgetVariant};
+use snafu::Snafu;
 use tokio::time::Instant;
 
-use crate::client::effects::plan::TrayView;
+use crate::client::effects::{plan::TrayView, status::EffectFailureCode};
 
 /// The process-wide i18n locale that the tray menu labels are rendered from.
 #[cfg_attr(test, mockall::automock)]
@@ -59,19 +60,60 @@ pub const WIDGET_STOP_BOUND: Duration = Duration::from_secs(3);
 /// Why a widget effect could not be applied.
 ///
 /// A controller that has not been handed its runtime yet is a startup
-/// ordering fact the caller can retry, while a failed spawn is the widget
-/// itself. The last two are a stop that ran out of time: the widget is still
+/// ordering fact the caller can retry, while every other variant names a step
+/// of starting or stopping the widget itself. `StillOwned` and
+/// `HandshakeBlocked` are a stop that ran out of time: the widget is still
 /// owned, and the caller must not report it gone.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
 pub enum WidgetError {
-    #[error("the network statistic widget is not available yet")]
+    #[snafu(display("the network statistic widget is not available yet"))]
     Unavailable,
-    #[error(transparent)]
-    Failed(#[from] anyhow::Error),
-    #[error("widget process still owned, exit not confirmed")]
+    #[snafu(display("the app is shutting down; no widget starts"))]
+    ShuttingDown,
+    #[snafu(display("could not stop the running widget before starting another"))]
+    StopPrevious {
+        #[snafu(source(from(WidgetError, Box::new)))]
+        source: Box<WidgetError>,
+    },
+    #[snafu(display("could not locate the running executable"))]
+    LocateExecutable { source: std::io::Error },
+    #[snafu(display("could not create the widget's IPC server"))]
+    CreateIpcServer { source: WidgetIpcError },
+    #[snafu(display("could not resolve the widget's state path"))]
+    ResolveStatePath {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    #[snafu(display("could not hand the app's output to the widget"))]
+    DuplicateStdio { source: std::io::Error },
+    #[snafu(display("could not spawn the {variant} widget"))]
+    SpawnWidget {
+        variant: String,
+        source: std::io::Error,
+    },
+    #[snafu(display("the widget did not connect back"))]
+    ConnectWidget { source: WidgetIpcError },
+    #[snafu(display("the widget connected without handing over a sender"))]
+    MissingWidgetSender,
+    #[snafu(display("the widget process exited before it connected: {status}"))]
+    WidgetExited { status: String },
+    #[snafu(display("could not wait for the widget process"))]
+    WaitWidget { source: std::io::Error },
+    #[snafu(display("the app is shutting down before the widget connected"))]
+    ShutdownBeforeConnect,
+    #[snafu(display("widget process still owned, exit not confirmed"))]
     StillOwned,
-    #[error("widget handshake worker still blocked")]
+    #[snafu(display("widget handshake worker still blocked"))]
     HandshakeBlocked,
+}
+
+impl WidgetError {
+    pub fn code(&self) -> EffectFailureCode {
+        match self {
+            Self::Unavailable => EffectFailureCode::WidgetUnavailable,
+            _ => EffectFailureCode::WidgetApplyFailed,
+        }
+    }
 }
 
 /// Drives the network statistic widget towards a desired configuration.
@@ -89,7 +131,7 @@ pub trait WidgetController: Send + Sync + 'static {
 #[async_trait::async_trait]
 #[cfg_attr(test, mockall::automock)]
 pub trait WidgetRuntime: Send + Sync + 'static {
-    async fn start(&self, variant: StatisticWidgetVariant) -> anyhow::Result<()>;
+    async fn start(&self, variant: StatisticWidgetVariant) -> Result<(), WidgetError>;
     async fn stop(&self, deadline: Instant) -> Result<(), WidgetError>;
     async fn is_running(&self) -> bool;
 }

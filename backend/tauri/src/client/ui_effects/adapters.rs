@@ -154,7 +154,7 @@ impl WidgetController for TauriWidgetController {
 
 #[async_trait::async_trait]
 impl WidgetRuntime for crate::widget::WidgetManager {
-    async fn start(&self, variant: StatisticWidgetVariant) -> anyhow::Result<()> {
+    async fn start(&self, variant: StatisticWidgetVariant) -> Result<(), WidgetError> {
         crate::widget::WidgetManager::start(self, variant).await
     }
 

@@ -104,7 +104,7 @@ impl StateAckSubscriber<TestState> for RejectingSubscriber {
     }
 
     async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-        Ack::Rejected("not acceptable".to_string())
+        Ack::Rejected(crate::state::ack::test_ack_error("not acceptable"))
     }
 }
 

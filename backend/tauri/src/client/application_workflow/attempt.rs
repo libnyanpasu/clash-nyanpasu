@@ -327,7 +327,7 @@ impl ApplicationWorkflow {
                 for degradation in degradations {
                     tracing::warn!(
                         %operation_id,
-                        code = %degradation.code,
+                        reason = ?degradation.reason,
                         "recovery could not finish what Confirm owed: {}",
                         degradation.message
                     );

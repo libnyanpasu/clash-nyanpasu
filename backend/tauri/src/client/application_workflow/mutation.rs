@@ -24,7 +24,10 @@ use super::{
     impact::{self, MutationHints, RuntimeImpact},
     policy::{CommandClass, TryCauseKind},
 };
-use crate::client::runtime::{RuntimeApplyReceipt, RuntimeSnapshot};
+use crate::client::{
+    runtime::{RuntimeApplyReceipt, RuntimeSnapshot},
+    runtime_error::{RuntimeError, ack_of},
+};
 
 /// Which source domain a mutation belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,8 +199,9 @@ pub(crate) enum KnownRuntimeState {
 /// and this attempt made nothing less certain than it already was — which is
 /// why it is a plain refusal the caller may retry (v2 §2.4, first row) and
 /// never the isolated state §11.4 reserves for "结果可能已经执行".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EvidenceGap {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceGap {
     /// The core is mid-transition — starting, restarting, switching or
     /// stopping. That is an answer, but not one that says what a candidate
     /// would be applied on top of.
@@ -233,10 +237,11 @@ pub(crate) struct ApplyFailure {
     #[allow(dead_code)]
     pub stage: MutationStage,
     pub cause: RefusalCause,
-    pub message: String,
+    pub error: Arc<RuntimeError>,
 }
 
-/// Why a committed desired value is not the applied one.
+/// Why a committed desired value is not the applied one, as the status
+/// surface shows it.
 #[derive(Debug, Clone)]
 pub(crate) struct RetryableCause {
     pub stage: MutationStage,
@@ -267,6 +272,7 @@ pub(crate) enum RuntimePrepareOutcome {
         /// The document that is committed but not running.
         digest: String,
         cause: RetryableCause,
+        error: Arc<RuntimeError>,
     },
     /// The user stopped the core. The candidate was validated and may be
     /// saved, but nothing is started (R7). `identity` is the candidate's
@@ -283,19 +289,19 @@ pub(crate) enum RuntimePrepareOutcome {
     /// What actually ran cannot be established, so no commit decision may be
     /// derived from it. The attempt and its pending action say what is
     /// unknown; this carries why.
-    RecoveryRequired(String),
+    RecoveryRequired(Arc<RuntimeError>),
 }
 
 impl RuntimePrepareOutcome {
-    /// The ACK this outcome owes the state transaction (v2 §4.4). Its payloads
-    /// are diagnostics: control flow reads the structured outcome kept in the
-    /// operation receipt, never these strings.
+    /// The ACK this outcome owes the state transaction (v2 §4.4). Control flow
+    /// reads the structured outcome kept in the operation receipt, never the
+    /// ACK; the source only reports it to the user.
     pub fn ack(&self) -> Ack {
         match self {
             Self::Applied(_) | Self::SavedInactive { .. } => Ack::Ok,
-            Self::Deferred { cause, .. } => Ack::Degraded(cause.message.clone()),
-            Self::Rejected { cause, .. } => Ack::Rejected(cause.message.clone()),
-            Self::RecoveryRequired(error) => Ack::Failed(anyhow::anyhow!(error.clone())),
+            Self::Deferred { error, .. } => Ack::Degraded(ack_of(error.clone())),
+            Self::Rejected { cause, .. } => Ack::Rejected(ack_of(cause.error.clone())),
+            Self::RecoveryRequired(error) => Ack::Failed(ack_of(error.clone())),
         }
     }
 
@@ -358,7 +364,7 @@ pub(crate) enum CheckRecord {
 /// The structured record of one attempt.
 ///
 /// This is where the cause and the status live. Nothing reads them back out of
-/// an `Ack::Degraded(String)` (v2 §4.4).
+/// an `Ack::Degraded` payload (v2 §4.4).
 #[derive(Debug, Clone)]
 pub(crate) struct MutationReceipt {
     pub degradations: Vec<crate::client::runtime::Degradation>,
@@ -369,6 +375,9 @@ pub(crate) struct MutationReceipt {
     pub conclusion: MutationConclusion,
     /// Diagnostics for the operator, never an input to a decision.
     pub detail: Option<String>,
+    /// What a deferral, an unknown outcome or a failed rollback was, for the
+    /// caller that reports it. `detail` is the same for the status surface.
+    pub cause: Option<Arc<RuntimeError>>,
 }
 
 /// A committed desired value the core is not running, with its automatic

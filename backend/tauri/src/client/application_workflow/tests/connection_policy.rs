@@ -239,7 +239,10 @@ fn failed_reconcile_never_closes_connections() {
             .await
             .unwrap();
         assert_eq!(outcome.degradations().len(), 1);
-        assert_eq!(outcome.degradations()[0].code, "runtime_deferred");
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
+        ));
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
     });
 }
@@ -259,7 +262,10 @@ fn replacement_at_the_same_url_never_receives_source_interruption() {
             if reported {
                 assert!(outcome.degradations().is_empty());
             } else {
-                assert_eq!(outcome.degradations()[0].code, "mode_interruption_failed");
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+                ));
             }
             assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
         });
@@ -277,7 +283,10 @@ fn close_failure_is_committed_degraded_and_not_replayed() {
             .await
             .unwrap();
         assert_eq!(outcome.degradations().len(), 1);
-        assert_eq!(outcome.degradations()[0].code, "mode_interruption_failed");
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+        ));
         assert!(!outcome.degradations()[0].retryable);
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
         assert_eq!(
@@ -306,7 +315,10 @@ fn missing_source_is_degraded_but_confirmed_stopped_startup_needs_no_close() {
             if stopped {
                 assert!(outcome.degradations().is_empty());
             } else {
-                assert_eq!(outcome.degradations()[0].code, "mode_interruption_failed");
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+                ));
             }
             assert_eq!(
                 *f.calls.events.lock().unwrap(),
@@ -378,7 +390,10 @@ fn controller_rotation_invalidates_source_without_closing_through_new_credential
         f.endpoint.binding.lock().unwrap().as_mut().unwrap().secret = Some("rotated".into());
         f.calls.release.notify_one();
         let outcome = first.await.unwrap().unwrap();
-        assert_eq!(outcome.degradations()[0].code, "mode_interruption_failed");
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+        ));
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
     });
 }
@@ -505,10 +520,10 @@ fn profile_reconcile_rejects_selection_but_interruption_failure_preserves_commit
                 assert!(f.client.get_profiles().await.unwrap().current.is_none());
                 assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
             } else {
-                assert_eq!(
-                    result.unwrap().degradations()[0].code,
-                    "profile_interruption_failed"
-                );
+                assert!(matches!(
+                    result.unwrap().degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
                 assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
                 assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
             }
@@ -528,10 +543,10 @@ fn profile_replacement_never_receives_source_interruption() {
             if reported {
                 assert!(outcome.degradations().is_empty());
             } else {
-                assert_eq!(
-                    outcome.degradations()[0].code,
-                    "profile_interruption_failed"
-                );
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
             }
             assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
         });
@@ -604,10 +619,10 @@ fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
             if stopped {
                 assert!(outcome.degradations().is_empty());
             } else {
-                assert_eq!(
-                    outcome.degradations()[0].code,
-                    "profile_interruption_failed"
-                );
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
             }
             assert_eq!(
                 *f.calls.events.lock().unwrap(),

@@ -502,7 +502,7 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
             Ok(outcome) => {
                 debug!("select proxy success: {} {}", group, name);
                 for degradation in outcome.degradations() {
-                    warn!(code = %degradation.code, message = %degradation.message, "proxy selection degraded");
+                    warn!(reason = ?degradation.reason, message = %degradation.message, "proxy selection degraded");
                 }
             }
             Err(error) => error!("select proxy failed, {} {}: {:#}", group, name, error),

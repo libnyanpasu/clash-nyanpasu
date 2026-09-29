@@ -28,15 +28,20 @@ pub enum AckPolicy {
     Advisory,
 }
 
+/// The error a subscriber answers with. It is shared by the transaction's
+/// report, and the application that produced it recovers the concrete type
+/// with [`std::error::Error::downcast_ref`].
+pub type AckError = Arc<dyn std::error::Error + Send + Sync + 'static>;
+
 #[derive(Debug)]
 pub enum Ack {
     Ok,
     /// Successful ACK but with some degradation, e.g. degraded performance or partial failure that does not block the commit.
-    Degraded(String),
-    /// Reject with a message explaining the reason. This is a failure that should block the commit.
-    Rejected(String),
+    Degraded(AckError),
+    /// Reject with the reason. This is a failure that should block the commit.
+    Rejected(AckError),
     /// Failed with an error. This is a failure that should block the commit and may require investigation.
-    Failed(anyhow::Error),
+    Failed(AckError),
 }
 
 /// A unique identifier for a subscriber, used in logging and reporting. It can be a simple string or a more complex struct if needed.
@@ -75,8 +80,8 @@ impl PartialEq<&str> for SubscriberName<'_> {
 
 #[derive(Debug, Clone)]
 pub enum SubscriberFailureKind {
-    Rejected { reason: String },
-    Failed { error: Arc<anyhow::Error> },
+    Rejected { reason: AckError },
+    Failed { error: AckError },
 }
 
 #[derive(Debug, Clone)]
@@ -199,20 +204,18 @@ pub type StateParticipant<T> = Arc<dyn StateAckSubscriber<T> + Send + Sync>;
 #[derive(Debug)]
 pub enum AckStatus {
     Acked,
-    Degraded { message: String },
-    Rejected { reason: String },
-    Failed { error: Arc<anyhow::Error> },
+    Degraded { error: AckError },
+    Rejected { reason: AckError },
+    Failed { error: AckError },
 }
 
 impl From<Ack> for AckStatus {
     fn from(ack: Ack) -> Self {
         match ack {
             Ack::Ok => AckStatus::Acked,
-            Ack::Degraded(message) => AckStatus::Degraded { message },
-            Ack::Rejected(message) => AckStatus::Rejected { reason: message },
-            Ack::Failed(error) => AckStatus::Failed {
-                error: Arc::new(error),
-            },
+            Ack::Degraded(error) => AckStatus::Degraded { error },
+            Ack::Rejected(reason) => AckStatus::Rejected { reason },
+            Ack::Failed(error) => AckStatus::Failed { error },
         }
     }
 }
@@ -268,6 +271,16 @@ impl PrepareReport {
     }
 }
 
+/// An [`AckError`] carrying only a message, for tests that do not care about
+/// its type.
+#[cfg(test)]
+pub(crate) fn test_ack_error(message: &str) -> AckError {
+    #[derive(Debug, thiserror::Error)]
+    #[error("{0}")]
+    struct TestAckError(String);
+    Arc::new(TestAckError(message.to_owned()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,7 +293,7 @@ mod tests {
                 policy: AckPolicy::Advisory,
                 elapsed: Duration::from_millis(1),
                 status: AckStatus::Rejected {
-                    reason: "not acceptable".to_string(),
+                    reason: test_ack_error("not acceptable"),
                 },
             }],
         };

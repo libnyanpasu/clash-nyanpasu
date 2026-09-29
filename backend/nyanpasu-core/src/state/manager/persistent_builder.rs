@@ -324,7 +324,7 @@ mod tests {
 
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            Ack::Failed(anyhow::anyhow!("init ACK failed"))
+            Ack::Failed(crate::state::ack::test_ack_error("init ACK failed"))
         }
     }
 

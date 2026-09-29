@@ -670,15 +670,21 @@ impl NyanpasuClient {
     /// Public wire for a post-commit auto-activation hard failure. Create/import
     /// already committed the profile, so this must never become `Err` that erases
     /// the `ProfileId`. VersionConflict is not special-cased as success.
-    fn auto_activation_failure_degradation(error: &impl std::fmt::Display) -> runtime::Degradation {
+    fn auto_activation_failure_degradation(
+        profile: ProfileId,
+        error: ProfilesError,
+    ) -> runtime::Degradation {
         tracing::warn!(
             %error,
             "profile auto-activation failed after commit; retaining committed profile id",
         );
         runtime::Degradation {
             phase: runtime::DegradationPhase::SystemEffect,
-            code: "profile_auto_activation_failed".into(),
             message: error.to_string(),
+            reason: runtime::DegradationReason::ProfileAutoActivationFailed {
+                profile,
+                cause: Arc::new(error),
+            },
             // Activation can be retried via activate_profile / set_current; even
             // VersionConflict is a transient CAS race, not a permanent rejection.
             retryable: true,
@@ -692,13 +698,13 @@ impl NyanpasuClient {
     async fn try_auto_activate_if_none(&self, uid: ProfileId) -> runtime::MutationOutcome<()> {
         // The conditional stays atomic inside the profiles actor: a facade-level
         // read-then-write could lose a concurrent selection.
-        let report = match self.inner.profiles.set_current_if_none(uid).await {
+        let report = match self.inner.profiles.set_current_if_none(uid.clone()).await {
             Ok(None) => return runtime::MutationOutcome::from_parts((), Vec::new()),
             Ok(Some(report)) => report,
             Err(error) => {
                 return runtime::MutationOutcome::from_parts(
                     (),
-                    vec![Self::auto_activation_failure_degradation(&error)],
+                    vec![Self::auto_activation_failure_degradation(uid, error)],
                 );
             }
         };
@@ -3745,14 +3751,13 @@ pub(crate) mod tests {
                 "auto-activation hard failure after commit must be CommittedDegraded"
             );
             let uid = outcome.value().clone();
-            let codes: Vec<_> = outcome
-                .degradations()
-                .iter()
-                .map(|item| item.code.as_str())
-                .collect();
             assert!(
-                codes.contains(&"profile_auto_activation_failed"),
-                "expected profile_auto_activation_failed, got {codes:?}"
+                outcome.degradations().iter().any(|item| matches!(
+                    item.reason,
+                    crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+                )),
+                "expected ProfileAutoActivationFailed, got {:?}",
+                outcome.degradations()
             );
             assert!(
                 outcome.degradations().iter().any(|item| {
@@ -3876,8 +3881,12 @@ pub(crate) mod tests {
             },
             ProfilesError::ProfilesActorStopped,
         ] {
-            let degradation = NyanpasuClient::auto_activation_failure_degradation(&error);
-            assert_eq!(degradation.code, "profile_auto_activation_failed");
+            let degradation =
+                NyanpasuClient::auto_activation_failure_degradation(uid.clone(), error);
+            assert!(matches!(
+                degradation.reason,
+                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. }
+            ));
             assert_eq!(
                 degradation.phase,
                 crate::client::runtime::DegradationPhase::SystemEffect
@@ -3888,7 +3897,7 @@ pub(crate) mod tests {
             // Protocol both create and import use after a successful durable commit.
             let prior = vec![crate::client::runtime::Degradation {
                 phase: crate::client::runtime::DegradationPhase::ProfileMaterialization,
-                code: "cleanup_deferred".into(),
+                reason: crate::client::runtime::DegradationReason::CleanupDeferred,
                 message: "materialization cleanup deferred".into(),
                 retryable: true,
             }];
@@ -3902,14 +3911,21 @@ pub(crate) mod tests {
                 "activation hard error after commit must be CommittedDegraded"
             );
             assert_eq!(outcome.value(), &uid);
-            let codes: Vec<_> = outcome
-                .degradations()
-                .iter()
-                .map(|item| item.code.as_str())
-                .collect();
-            assert_eq!(
-                codes,
-                ["cleanup_deferred", "profile_auto_activation_failed"],
+            assert!(
+                matches!(
+                    outcome.degradations(),
+                    [
+                        crate::client::runtime::Degradation {
+                            reason: crate::client::runtime::DegradationReason::CleanupDeferred,
+                            ..
+                        },
+                        crate::client::runtime::Degradation {
+                            reason:
+                                crate::client::runtime::DegradationReason::ProfileAutoActivationFailed { .. },
+                            ..
+                        },
+                    ]
+                ),
                 "prior commit degradations must merge with activation failure"
             );
         }

@@ -800,9 +800,17 @@ export type CommitAborted =
   /**  The write failed and so did the recovery of what the transaction staged. */
   | { kind: 'recover_after_write_failure'; runtime: RuntimeAftermath }
   /**  A required participant refused the candidate. */
-  | { kind: 'runtime_refused'; reasons: string[]; runtime: RuntimeAftermath }
+  | {
+      kind: 'runtime_refused'
+      errors: RuntimeError[]
+      runtime: RuntimeAftermath
+    }
   /**  A required participant could not decide. */
-  | { kind: 'runtime_failed'; reasons: string[]; runtime: RuntimeAftermath }
+  | {
+      kind: 'runtime_failed'
+      errors: RuntimeError[]
+      runtime: RuntimeAftermath
+    }
   /**
    *  The coordinator refused before persisting: builder validation, or a CAS
    *  mismatch the caller did not classify as its own version conflict.
@@ -1386,8 +1394,11 @@ export type CoreVersionError =
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = {
   phase: DegradationPhase
-  /**  Stable snake_case code string (not a free-form English phrase). */
-  code: string
+  reason: DegradationReason
+  /**
+   *  The diagnostic text, for logs and the copied details; the frontend
+   *  localizes `reason`.
+   */
   message: string
   retryable: boolean
 }
@@ -1403,6 +1414,34 @@ export type DegradationPhase =
   | 'core_rollback'
   | 'system_effect'
   | 'ui_effect'
+
+/**  Why a committed mutation is degraded. The frontend localizes each variant. */
+export type DegradationReason =
+  /**
+   *  The runtime owner stopped before the mutation settled, or settled it as
+   *  needing recovery.
+   */
+  | {
+      code: 'runtime_recovery_required'
+      operation_id: string | null
+      cause: RuntimeError | null
+    }
+  /**  The runtime will apply the committed mutation later. */
+  | { code: 'runtime_deferred'; cause: RuntimeError }
+  | { code: 'runtime_product_publish_failed'; cause: RuntimeError }
+  | { code: 'service_stop_failed'; cause: RuntimeError }
+  | { code: 'mode_interruption_failed'; cause: InterruptFailure }
+  | { code: 'profile_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_cache_refresh_failed' }
+  | { code: 'journal_invalid' }
+  | { code: 'materialization_deferred' }
+  | { code: 'cleanup_deferred' }
+  | {
+      code: 'profile_auto_activation_failed'
+      profile: ProfileId
+      cause: ProfilesError
+    }
 
 export type DelayRes = {
   delay: number
@@ -1500,6 +1539,36 @@ export type EnvInfo = {
  *  serializable when the path is not valid UTF-8.
  */
 export type ErrorPath = string
+
+/**
+ *  Evidence a mutation needed and did not have, before anything was tried.
+ *
+ *  Not a Try outcome. Nothing was submitted, so there is no result to classify
+ *  and this attempt made nothing less certain than it already was — which is
+ *  why it is a plain refusal the caller may retry (v2 §2.4, first row) and
+ *  never the isolated state §11.4 reserves for "结果可能已经执行".
+ */
+export type EvidenceGap =
+  /**
+   *  The core is mid-transition — starting, restarting, switching or
+   *  stopping. That is an answer, but not one that says what a candidate
+   *  would be applied on top of.
+   */
+  | 'core_transitioning'
+  /**
+   *  The host published no runtime state, or the read failed, and no stop
+   *  this workflow recorded settles the question either.
+   */
+  | 'baseline_unconfirmed'
+  /**
+   *  A core is running that this session never applied to, so no receipt
+   *  describes what it is running. The Try could be submitted, but its Cancel
+   *  would have nothing to put back — and a mutation that cannot be undone
+   *  must not be attempted (R10). The gap is known before anything is
+   *  submitted, which is what keeps it a refusal rather than the isolated
+   *  state a post-submission unknown earns.
+   */
+  | 'no_restorable_baseline'
 
 /**
  *  Which controller owns the runtime. The app perceives the difference in
@@ -1619,6 +1688,11 @@ export type InstallCoreBinaryError =
       exit_code: number | null
     }
   | { kind: 'path_not_utf8'; path: ErrorPath }
+
+/**  How closing the source instance's connections failed. */
+export type InterruptFailure =
+  /**  The Clash API belongs to a core instance that has since been retired. */
+  'stale' | 'unavailable' | 'timeout' | 'protocol'
 
 /**  A failed command as the frontend receives it. */
 export type IpcError = {
@@ -3059,6 +3133,19 @@ export type RemoteProfileOptionsPatch_Serialize = {
   update_interval_minutes?: number | null
 }
 
+/**  Why the runtime baseline could not be put back. */
+export type RestoreFailure =
+  | { kind: 'move_host_back'; host: ExecutionHost; failure: CoreFailure }
+  | { kind: 'read_status'; failure: CoreFailure }
+  /**
+   *  The runtime could not be read once the restore request had answered;
+   *  `failure` is that request's own failure, if it had one.
+   */
+  | { kind: 'unobserved'; failure: CoreFailure | null }
+  | { kind: 'unverified'; failure: CoreFailure | null }
+  /**  The configuration the core ran before was never recorded. */
+  | { kind: 'not_recorded' }
+
 /**
  *  The compare-and-swap identity of a config revision.
  *
@@ -3097,9 +3184,9 @@ export type RuntimeAftermath =
   /**  The runtime went back to the previous configuration. */
   | { kind: 'rolled_back' }
   /**  Rolling the runtime back failed; recovery is required. */
-  | { kind: 'rollback_failed'; detail: string }
+  | { kind: 'rollback_failed'; detail: RuntimeError }
   /**  What the runtime is running is unknown and needs recovery. */
-  | { kind: 'unknown'; detail: string }
+  | { kind: 'unknown'; detail: RuntimeError }
 
 /**  A failure of building a runtime candidate from source config. */
 export type RuntimeBuildError =
@@ -3110,6 +3197,25 @@ export type RuntimeBuildError =
   | { kind: 'serialize_final_config' }
   | { kind: 'config_not_mapping' }
   | { kind: 'serialize_runtime_config' }
+
+/**
+ *  Why no check ran. Every variant is a reason, never a verdict: an absent
+ *  check must not be reported as a passing one (v2 §2.4).
+ */
+export type RuntimeCheckUnavailable =
+  /**  No host owns the runtime, so there is nothing to check against. */
+  | { cause: 'no_endpoint'; reason: string }
+  /**  The host owning the runtime exposes no check for this request. */
+  | { cause: 'host_unsupported'; host: ExecutionHost; reason: string }
+  /**  The host reads the candidate from disk and it could not be staged. */
+  | { cause: 'candidate_unavailable'; reason: string }
+  /**  The host has the capability but could not serve it. */
+  | {
+      cause: 'backend'
+      kind: CoreErrorKind | null
+      message: string
+      retryable: boolean
+    }
 
 export type RuntimeCommitStatus =
   'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
@@ -3130,6 +3236,10 @@ export type RuntimeError =
   | { kind: 'isolated' }
   /**  The workflow took the command and never answered, so it may have run. */
   | { kind: 'owner_unresponsive'; operation_id: string }
+  /**  Refused at admission: the runtime owner is gone, so nothing ran. */
+  | { kind: 'owner_unavailable' }
+  /**  Refused at admission: the source transaction had already been decided. */
+  | { kind: 'source_settled' }
   | { kind: 'apply_runtime'; failure: CoreFailure }
   | { kind: 'stop_core'; failure: CoreFailure }
   | { kind: 'recover_runtime'; failure: CoreFailure }
@@ -3140,6 +3250,7 @@ export type RuntimeError =
   | { kind: 'stop_service'; failure: CoreFailure }
   | { kind: 'restart_service'; failure: CoreFailure }
   | { kind: 'uninstall_service'; failure: CoreFailure }
+  | { kind: 'move_host'; host: ExecutionHost; failure: CoreFailure }
   /**  The service hosts the runtime; the local host must take it over first. */
   | { kind: 'service_hosts_core' }
   /**
@@ -3156,6 +3267,34 @@ export type RuntimeError =
   | { kind: 'install_core_binary'; source: InstallCoreBinaryError }
   | { kind: 'prepare_service_install_prompt'; source: ServiceCommandError }
   | { kind: 'read_core_version'; source: CoreVersionError }
+  /**
+   *  A candidate was refused before anything was submitted, for want of a
+   *  baseline to apply against.
+   */
+  | { kind: 'unsettled_baseline'; gap: EvidenceGap }
+  | {
+      kind: 'core_rejected_config'
+      core_kind: CoreErrorKind | null
+      message: string
+    }
+  | { kind: 'check_unavailable'; reason: RuntimeCheckUnavailable }
+  /**  The core restored its own previous configuration. */
+  | { kind: 'core_rolled_back'; reason: string | null }
+  /**  The submission ended unobserved, so it may have taken effect. */
+  | { kind: 'submission_unobserved'; failure: CoreFailure }
+  | { kind: 'handoff_owner_mismatch'; expected: ExecutionHost }
+  /**
+   *  A mutation that moved the runtime to the other host and failed there
+   *  could not put it back.
+   */
+  | { kind: 'handoff_not_restored'; failure: RestoreFailure }
+  /**  A cancelled mutation could not put the runtime back. */
+  | { kind: 'restore_failed'; failure: RestoreFailure }
+  /**
+   *  The store committed a mutation whose runtime target the workflow had
+   *  refused.
+   */
+  | { kind: 'committed_after_refusal'; operation_id: string }
   /**  No runtime configuration has been built yet. */
   | { kind: 'no_runtime_config' }
   | { kind: 'serialize_runtime_config' }

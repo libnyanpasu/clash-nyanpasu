@@ -208,7 +208,7 @@ impl NyanpasuClient {
 fn log_degradations(outcome: &MutationOutcome<()>) {
     for degradation in outcome.degradations() {
         tracing::warn!(
-            code = %degradation.code,
+            reason = ?degradation.reason,
             message = %degradation.message,
             "a hotkey action committed with a degraded side effect"
         );

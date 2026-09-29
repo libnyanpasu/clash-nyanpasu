@@ -15,13 +15,16 @@
 use std::sync::Arc;
 
 use nyanpasu_core::state::{DecisionHandle, StateDecision};
-use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
+use nyanpasu_core_manager::OperationId;
 
 use super::{
     mutation::{AppliedCandidate, DeferredTarget, KnownRuntimeState},
     workflow::ApplicationWorkflow,
 };
-use crate::client::runtime::{RuntimeApplyReceipt, RuntimeSnapshot};
+use crate::client::{
+    runtime::{RuntimeApplyReceipt, RuntimeSnapshot},
+    runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
+};
 
 pub(super) use super::tcc::RestorableBaseline;
 
@@ -235,20 +238,10 @@ impl ApplicationWorkflow {
     /// resolved by its own evidence first; then the attempt continues by its
     /// origin. Every side effect on the way is written ahead by the facade,
     /// so an interruption here leaves the newest action in the slot.
-    pub(super) async fn recover(&mut self) -> Result<(), CoreError> {
-        let operation_id = self.live.as_ref().map(|live| live.operation_id);
-        let refuse = |reason: String| {
-            let error = CoreError::new(CoreErrorKind::OperationConflict, reason, false);
-            match operation_id {
-                Some(id) => error.with_operation(id),
-                None => error,
-            }
-        };
-        self.lifecycle
-            .core
-            .consume_settled_action()
-            .await
-            .map_err(refuse)?;
+    pub(super) async fn recover(&mut self) -> Result<(), RuntimeError> {
+        if let Err(reason) = self.lifecycle.core.consume_settled_action().await {
+            return RecoveryUnresolvedSnafu { reason }.fail();
+        }
         let Some(origin) = self.live.as_ref().map(|live| live.origin.kind()) else {
             // An action with no attempt behind it has finished, which is all
             // it owed.
@@ -263,7 +256,7 @@ impl ApplicationWorkflow {
         };
         if let Err(reason) = continued {
             self.conclude_attempt(Some(reason.clone()));
-            return Err(refuse(reason));
+            return RecoveryUnresolvedSnafu { reason }.fail();
         }
         if !self.conclude_attempt(None) {
             let reason = self
@@ -271,7 +264,7 @@ impl ApplicationWorkflow {
                 .as_ref()
                 .and_then(|live| live.unresolved.clone())
                 .unwrap_or_default();
-            return Err(refuse(reason));
+            return RecoveryUnresolvedSnafu { reason }.fail();
         }
         // A target recovery put back keeps its health and schedule: only an
         // outcome recovery itself reached for it may change them.

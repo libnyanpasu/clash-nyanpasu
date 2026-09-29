@@ -2625,9 +2625,9 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
     assert!(client.status().uncertain);
     let error = client.retry_runtime().await.unwrap_err();
     assert!(
-        error.message.contains("core operation"),
+        error.to_string().contains("core operation"),
         "an unknown restore retains its lower operation identity: {}",
-        error.message
+        error
     );
     assert!(
         ports.confirmed().is_none(),

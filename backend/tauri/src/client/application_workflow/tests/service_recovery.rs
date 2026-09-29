@@ -337,10 +337,10 @@ async fn explicit_service_stop_suppresses_recovery() {
 async fn a_rejected_uninstall_leaves_recovery_armed() {
     let graph = RecoveryGraph::new(true).await;
     graph.outage(true).await;
-    assert_eq!(
-        graph.client.uninstall_service().await.unwrap_err().kind,
-        Some(CoreErrorKind::OperationConflict)
-    );
+    assert!(matches!(
+        graph.client.uninstall_service().await.unwrap_err(),
+        RuntimeError::ServiceHostsCore
+    ));
     graph.attempt().await;
     assert_eq!(graph.starts(), 1);
     assert_eq!(
@@ -363,7 +363,7 @@ async fn a_failed_local_handoff_leaves_recovery_armed_on_the_service_host() {
             .change_host(ExecutionHost::Local)
             .await
             .unwrap_err()
-            .kind,
+            .core_kind(),
         Some(CoreErrorKind::StopUnconfirmed)
     );
     assert_eq!(graph.client.core_status().host, ExecutionHost::Service);
@@ -498,7 +498,7 @@ async fn a_failed_local_handoff_preserves_an_explicit_suppression() {
             .change_host(ExecutionHost::Local)
             .await
             .unwrap_err()
-            .kind,
+            .core_kind(),
         Some(CoreErrorKind::StopUnconfirmed)
     );
     let probes = graph.daemon.probes.load(Ordering::SeqCst);

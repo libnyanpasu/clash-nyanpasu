@@ -40,6 +40,7 @@ use crate::{
     client::{
         convergence::{OutcomeClass, next_wait},
         core_lifecycle::{RuntimeSubmission, desired_host, ports::RuntimePreparationPort},
+        runtime_error::RuntimeError,
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
     core::actor_v2::{
@@ -281,7 +282,7 @@ impl ApplicationWorkflow {
         &mut self,
         operation_id: nyanpasu_core_manager::OperationId,
         explicit: bool,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), RuntimeError> {
         if self.isolated() {
             // Automatic timers never recover (T10 §4.1); only an explicit
             // retry does.
@@ -872,7 +873,7 @@ impl ApplicationWorkflow {
                                             cause: ApplyFailure {
                                                 stage: MutationStage::TryingCritical,
                                                 cause: RefusalCause::Try(not_submitted_cause(
-                                                    &error,
+                                                    error.kind,
                                                 )),
                                                 message: error.to_string(),
                                             },
@@ -897,7 +898,7 @@ impl ApplicationWorkflow {
                 }
                 Err(error) => {
                     let cause = if error.handoff_started {
-                        core_error_cause(&error.error)
+                        core_error_cause(error.error.kind)
                     } else {
                         // Service preparation has not touched the Local core.
                         // A refused elevation or unavailable daemon rejects this
@@ -976,18 +977,24 @@ impl ApplicationWorkflow {
             Ok(RuntimeSubmission::Unknown(uncertain)) => RuntimePrepareOutcome::RecoveryRequired(
                 format!("runtime submission is unobserved: {}", uncertain.error),
             ),
-            Ok(RuntimeSubmission::NotSubmitted(error)) | Err(error) => {
-                RuntimePrepareOutcome::Rejected {
-                    cause: ApplyFailure {
-                        stage: MutationStage::TryingCritical,
-                        cause: RefusalCause::Try(not_submitted_cause(&error)),
-                        message: error.to_string(),
-                    },
-                    restored: baseline.state.clone(),
-                }
-            }
+            Ok(RuntimeSubmission::NotSubmitted(error)) => RuntimePrepareOutcome::Rejected {
+                cause: ApplyFailure {
+                    stage: MutationStage::TryingCritical,
+                    cause: RefusalCause::Try(not_submitted_cause(error.kind)),
+                    message: error.to_string(),
+                },
+                restored: baseline.state.clone(),
+            },
+            Err(error) => RuntimePrepareOutcome::Rejected {
+                cause: ApplyFailure {
+                    stage: MutationStage::TryingCritical,
+                    cause: RefusalCause::Try(not_submitted_cause(error.core_kind())),
+                    message: error.to_string(),
+                },
+                restored: baseline.state.clone(),
+            },
             Ok(RuntimeSubmission::Unchanged(error)) => {
-                let cause = not_submitted_cause(&error);
+                let cause = not_submitted_cause(error.kind);
                 self.dispose(
                     policy,
                     baseline,
@@ -1602,15 +1609,15 @@ fn check_cause(reason: &RuntimeCheckUnavailable) -> TryCauseKind {
 /// `CoreError::retryable` is deliberately not read: it is a hint attached
 /// before the outcome was observed, and letting it decide is how a lost receipt
 /// turns into an automatic retry (v2 §2.2).
-fn not_submitted_cause(error: &CoreError) -> TryCauseKind {
-    match core_error_cause(error) {
+fn not_submitted_cause(kind: Option<CoreErrorKind>) -> TryCauseKind {
+    match core_error_cause(kind) {
         TryCauseKind::Unknown => TryCauseKind::Transient,
         cause => cause,
     }
 }
 
-fn core_error_cause(error: &CoreError) -> TryCauseKind {
-    match error.kind {
+fn core_error_cause(kind: Option<CoreErrorKind>) -> TryCauseKind {
+    match kind {
         // The document is wrong; the same bytes fail the same way again.
         Some(
             CoreErrorKind::ConfigCheckFailed

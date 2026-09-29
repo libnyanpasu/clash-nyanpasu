@@ -4,7 +4,8 @@ use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
 };
 use nyanpasu_core::state::StateSnapshot;
-use nyanpasu_core_manager::{CoreError, CoreSpec, LocalIpcPolicy, LocalIpcSettings};
+use nyanpasu_core_manager::{CoreSpec, LocalIpcPolicy, LocalIpcSettings};
+use snafu::ResultExt;
 
 use super::{
     super::{SessionPortResolver, runtime},
@@ -12,11 +13,11 @@ use super::{
 };
 use crate::{
     client::{
-        core_lifecycle::{
-            domain_error,
-            ports::{PreparedRuntime, RuntimePreparationPort},
-        },
+        core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
         runtime::PublishRuntimeError,
+        runtime_error::{
+            BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError, SerializeRuntimeConfigSnafu,
+        },
     },
     core::actor_v2::{intent::RuntimeIntentBuilder, local_host::CoreSpecError},
 };
@@ -56,7 +57,7 @@ impl RuntimePreparation {
         profiles: Arc<Profiles>,
         clash: ClashConfig,
         app: NyanpasuAppConfig,
-    ) -> Result<PreparedRuntime, CoreError> {
+    ) -> Result<PreparedRuntime, RuntimeError> {
         let content = self.builder.capture_content(&profiles).await;
         self.prepare_inputs(super::inputs::RuntimeInputs {
             app,
@@ -85,14 +86,14 @@ impl RuntimePreparation {
     pub async fn prepare_inputs(
         &mut self,
         inputs: super::inputs::RuntimeInputs,
-    ) -> Result<PreparedRuntime, CoreError> {
+    ) -> Result<PreparedRuntime, RuntimeError> {
         self.prepare_inputs_with_policy(inputs, false).await
     }
 
     pub async fn prepare_candidate_inputs(
         &mut self,
         inputs: super::inputs::RuntimeInputs,
-    ) -> Result<PreparedRuntime, CoreError> {
+    ) -> Result<PreparedRuntime, RuntimeError> {
         self.prepare_inputs_with_policy(inputs, true).await
     }
 
@@ -100,7 +101,7 @@ impl RuntimePreparation {
         &mut self,
         inputs: super::inputs::RuntimeInputs,
         strict_transforms: bool,
-    ) -> Result<PreparedRuntime, CoreError> {
+    ) -> Result<PreparedRuntime, RuntimeError> {
         let revision = self.revisions.allocate();
         let local_ipc = LocalIpcSettings {
             policy: match inputs.clash.clash_control_channel {
@@ -119,7 +120,7 @@ impl RuntimePreparation {
         let ports = self
             .ports
             .resolve_candidate(&inputs.clash)
-            .map_err(domain_error)?;
+            .context(ResolvePortSnafu)?;
         let core_type: nyanpasu_utils::core::CoreType = (&inputs.app.core).into();
         let target = inputs.target_key();
         let snapshot = self
@@ -131,19 +132,12 @@ impl RuntimePreparation {
                 strict_transforms,
             )
             .await
-            .map_err(domain_error)?;
+            .context(BuildRuntimeSnafu)?;
         // Serialized once, here: the check and the reconcile both consume this
         // value, so "same bytes" holds by construction rather than by
         // convention.
-        let intent = RuntimeIntentBuilder::build(core_type, &snapshot.config, local_ipc).map_err(
-            |error| {
-                CoreError::new(
-                    nyanpasu_core_manager::CoreErrorKind::InvalidConfig,
-                    format!("failed to serialize runtime config: {error}"),
-                    false,
-                )
-            },
-        )?;
+        let intent = RuntimeIntentBuilder::build(core_type, &snapshot.config, local_ipc)
+            .context(SerializeRuntimeConfigSnafu)?;
         Ok(PreparedRuntime {
             snapshot,
             intent: Arc::new(intent),
@@ -156,7 +150,7 @@ impl RuntimePreparation {
         &mut self,
         profiles: Arc<Profiles>,
         clash: ClashConfig,
-    ) -> Result<PreparedRuntime, CoreError> {
+    ) -> Result<PreparedRuntime, RuntimeError> {
         let app = self.application.load().state.clone();
         self.prepare(profiles, clash, app).await
     }
@@ -164,7 +158,7 @@ impl RuntimePreparation {
 
 #[async_trait::async_trait]
 impl RuntimePreparationPort for RuntimePreparation {
-    async fn prepare_latest(&mut self) -> Result<PreparedRuntime, CoreError> {
+    async fn prepare_latest(&mut self) -> Result<PreparedRuntime, RuntimeError> {
         // Independent committed snapshots, sampled when the build starts.
         let profiles = Arc::new(self.profiles.load().state.clone());
         let clash = self.clash.load().state.clone();

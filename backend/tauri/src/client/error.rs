@@ -16,6 +16,8 @@ pub enum ClientError {
     Anyhow(#[from] anyhow::Error),
     #[error(transparent)]
     Profiles(#[from] crate::state::profiles::ProfilesError),
+    #[error(transparent)]
+    Runtime(#[from] super::RuntimeError),
     #[error("{0}")]
     Custom(String),
 }

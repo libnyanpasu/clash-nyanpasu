@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientError, NyanpasuClient},
+    client::{ClientError, NyanpasuClient, RuntimeError},
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     state::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
@@ -42,6 +42,13 @@ pub enum IpcErrorKind {
     /// Not classified into a domain; only `message` describes it.
     Unknown,
     Profiles(Box<ProfilesError>),
+    Runtime(Box<RuntimeError>),
+}
+
+impl From<RuntimeError> for IpcErrorKind {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(Box::new(error))
+    }
 }
 
 impl From<ProfilesError> for IpcErrorKind {
@@ -54,6 +61,7 @@ impl From<ClientError> for IpcErrorKind {
     fn from(error: ClientError) -> Self {
         match error {
             ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
+            ClientError::Runtime(error) => Self::Runtime(Box::new(error)),
             _ => Self::Unknown,
         }
     }
@@ -91,7 +99,6 @@ unknown_domain!(
     tauri::Error,
     StorageOperationError,
     anyhow::Error,
-    nyanpasu_core_manager::CoreError,
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;
@@ -1468,6 +1475,38 @@ mod tests {
             })
         );
         assert_eq!(wire["message"], "profile not found: p1");
+    }
+
+    #[test]
+    fn a_runtime_error_reaches_the_frontend_with_the_cores_own_kind() {
+        let failure = crate::client::runtime_error::ApplyRuntimeSnafu.into_error(
+            nyanpasu_core_manager::CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ApplyFailed,
+                "the core kept the previous configuration",
+                false,
+            ),
+        );
+        let wire = wire(failure);
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "runtime",
+                "error": {
+                    "kind": "apply_runtime",
+                    "failure": {
+                        "kind": "apply_failed",
+                        "message": "the core kept the previous configuration",
+                        "retryable": false,
+                        "operation_id": null,
+                    },
+                },
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(IpcError::from(super::RuntimeError::Isolated)).unwrap()["kind"],
+            json!({ "domain": "runtime", "error": { "kind": "isolated" } })
+        );
     }
 
     #[test]

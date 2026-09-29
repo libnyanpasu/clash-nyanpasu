@@ -3,9 +3,19 @@ use std::sync::Arc;
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use snafu::{ResultExt, ensure};
 
 use super::{
-    super::{SessionPortResolver, runtime, runtime::PublishRuntimeError},
+    super::{
+        SessionPortResolver,
+        runtime::{self, PublishRuntimeError},
+        runtime_error::{
+            ApplyRuntimeSnafu, InstallCoreBinarySnafu, InstallServiceSnafu, PublishRuntimeSnafu,
+            RecoverRuntimeSnafu, RecoverServiceEndpointSnafu, RefreshStatusSnafu,
+            ResolveCoreBinarySnafu, RestartServiceSnafu, RuntimeError, ServiceHostsCoreSnafu,
+            StartServiceSnafu, StopCoreSnafu, StopServiceSnafu, UninstallServiceSnafu,
+        },
+    },
     Command, Output,
     ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
 };
@@ -123,10 +133,6 @@ impl ServiceRecovery {
     }
 }
 
-pub(in crate::client) fn domain_error(error: impl std::fmt::Display) -> CoreError {
-    CoreError::new(CoreErrorKind::Internal, error.to_string(), false)
-}
-
 /// What one submitted candidate did to the running core.
 ///
 /// The three answers are kept apart because they need opposite handling: an
@@ -154,7 +160,7 @@ impl CoreLifecycleWorkflow {
         &mut self,
         command: Command,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<Output, CoreError> {
+    ) -> Result<Output, RuntimeError> {
         match command {
             Command::RecoverServiceEndpoint => {
                 self.recover_service_endpoint(preparation).await?;
@@ -165,7 +171,8 @@ impl CoreLifecycleWorkflow {
             Command::ChangeHost(host) => Ok(Output::Handoff(
                 self.move_execution_host(host)
                     .await
-                    .map_err(|failure| failure.error)?,
+                    .map_err(|failure| failure.error)
+                    .context(ApplyRuntimeSnafu)?,
             )),
             Command::ReplaceCoreBinary(artifact) => {
                 Ok(if self.replace_binary(artifact, preparation).await? {
@@ -180,45 +187,54 @@ impl CoreLifecycleWorkflow {
                 // Running when the endpoint degrades a moment later, and
                 // recovery must not read that as a reason to start the core.
                 self.recovery.intent = CoreIntent::Stopped;
-                let report = self.core.stop().await?;
+                let report = self.core.stop().await.context(StopCoreSnafu)?;
                 // Nothing holds those ports any more. A later reader must get
                 // "unavailable", never the endpoint the stopped core used.
                 self.ports.invalidate();
                 Ok(Output::Stop(report))
             }
             Command::InstallService => {
-                self.core.install_service().await?;
+                self.core
+                    .install_service()
+                    .await
+                    .context(InstallServiceSnafu)?;
                 Ok(Output::Unit)
             }
             Command::StartService => {
-                self.core.start_service().await?;
+                self.core.start_service().await.context(StartServiceSnafu)?;
                 self.recovery.rearm();
                 Ok(Output::Unit)
             }
             Command::StopService => {
                 self.recovery.suppress();
-                self.core.stop_service().await?;
+                self.core.stop_service().await.context(StopServiceSnafu)?;
                 Ok(Output::Unit)
             }
             Command::RestartService => {
-                self.core.stop_service().await?;
-                self.core.start_service().await?;
+                self.core
+                    .stop_service()
+                    .await
+                    .context(RestartServiceSnafu)?;
+                self.core
+                    .start_service()
+                    .await
+                    .context(RestartServiceSnafu)?;
                 self.recovery.rearm();
                 Ok(Output::Unit)
             }
             Command::UninstallService => {
-                if self.core.core_status().host == ExecutionHost::Service {
-                    return Err(CoreError::new(
-                        CoreErrorKind::OperationConflict,
-                        "handoff to the local host before uninstalling the service",
-                        false,
-                    ));
-                }
+                ensure!(
+                    self.core.core_status().host != ExecutionHost::Service,
+                    ServiceHostsCoreSnafu
+                );
                 // Past the ownership guard the intent is committed, so a
                 // half-finished uninstall still suppresses recovery. A refusal
                 // above changed nothing and must leave the policy alone.
                 self.recovery.suppress();
-                self.core.uninstall_service().await?;
+                self.core
+                    .uninstall_service()
+                    .await
+                    .context(UninstallServiceSnafu)?;
                 Ok(Output::Unit)
             }
         }
@@ -348,14 +364,14 @@ impl CoreLifecycleWorkflow {
     async fn recover_service_endpoint(
         &mut self,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), RuntimeError> {
         if !self.recovery_due() {
             return Ok(());
         }
         self.recovery.attempts += 1;
         let result = self.recovery_attempt(preparation).await;
         self.recovery.next_attempt = Some(tokio::time::Instant::now() + super::RECOVERY_INTERVAL);
-        if result.as_ref().is_err_and(|e: &CoreError| !e.retryable) {
+        if result.as_ref().is_err_and(|e| !e.retryable()) {
             // Paused, not abandoned: a terminal failure ends the automatic
             // retries, and an explicit Service start still has a restoration
             // to finish.
@@ -372,12 +388,16 @@ impl CoreLifecycleWorkflow {
     async fn recovery_attempt(
         &mut self,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), RuntimeError> {
         if matches!(
             self.core.core_status().connectivity,
             EndpointConnectivity::Degraded { .. }
         ) {
-            let report = self.core.recover_service_endpoint(&self.closing).await?;
+            let report = self
+                .core
+                .recover_service_endpoint(&self.closing)
+                .await
+                .context(RecoverServiceEndpointSnafu)?;
             self.note_interrupted_core(report.interrupted_running());
         }
         if self.closing.is_cancelled() || self.recovery.intent != CoreIntent::Restore {
@@ -388,7 +408,8 @@ impl CoreLifecycleWorkflow {
         match self
             .core
             .refresh_status()
-            .await?
+            .await
+            .context(RefreshStatusSnafu)?
             .snapshot
             .and_then(|s| s.state)
         {
@@ -444,7 +465,7 @@ impl CoreLifecycleWorkflow {
     async fn reconcile(
         &mut self,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<ReconcileReport, CoreError> {
+    ) -> Result<ReconcileReport, RuntimeError> {
         let prepared = preparation.prepare_latest().await?;
         self.apply_runtime(prepared, preparation).await
     }
@@ -453,28 +474,32 @@ impl CoreLifecycleWorkflow {
         &mut self,
         prepared: PreparedRuntime,
         preparation: &dyn RuntimePreparationPort,
-    ) -> Result<ReconcileReport, CoreError> {
+    ) -> Result<ReconcileReport, RuntimeError> {
         preparation
             .publish(&prepared.snapshot)
             .await
-            .map_err(domain_error)?;
+            .context(PublishRuntimeSnafu)?;
         // Promoted means the product was published, not that the host applied it.
         self.runtime.generated(prepared.snapshot.clone());
-        let expected = self.core.refresh_status().await?;
+        let expected = self
+            .core
+            .refresh_status()
+            .await
+            .context(RefreshStatusSnafu)?;
         match self
             .submit_runtime(prepared, preparation, &expected)
             .await?
         {
             RuntimeSubmission::Applied { report, .. } => Ok(report),
             RuntimeSubmission::NotSubmitted(error) | RuntimeSubmission::Unchanged(error) => {
-                Err(error)
+                Err(error).context(ApplyRuntimeSnafu)
             }
-            RuntimeSubmission::RolledBack(report) => {
-                ReconcileResult::RolledBack(report).into_applied()
-            }
-            RuntimeSubmission::Unknown(uncertain) => {
-                ReconcileResult::Unknown(uncertain).into_applied()
-            }
+            RuntimeSubmission::RolledBack(report) => ReconcileResult::RolledBack(report)
+                .into_applied()
+                .context(ApplyRuntimeSnafu),
+            RuntimeSubmission::Unknown(uncertain) => ReconcileResult::Unknown(uncertain)
+                .into_applied()
+                .context(ApplyRuntimeSnafu),
         }
     }
 
@@ -492,7 +517,7 @@ impl CoreLifecycleWorkflow {
         prepared: PreparedRuntime,
         preparation: &dyn RuntimePreparationPort,
         expected: &crate::core::actor_v2::CoreStatusProjection,
-    ) -> Result<RuntimeSubmission, CoreError> {
+    ) -> Result<RuntimeSubmission, RuntimeError> {
         let PreparedRuntime {
             snapshot,
             intent,
@@ -501,10 +526,12 @@ impl CoreLifecycleWorkflow {
         } = prepared;
         let spec = preparation
             .core_spec(&snapshot.target_core)
-            .map_err(|error| {
-                CoreError::new(CoreErrorKind::BinaryNotFound, error.to_string(), false)
-            })?;
-        let result = self.core.reconcile(&intent, spec.clone(), expected).await?;
+            .context(ResolveCoreBinarySnafu)?;
+        let result = self
+            .core
+            .reconcile(&intent, spec.clone(), expected)
+            .await
+            .context(ApplyRuntimeSnafu)?;
         // An unobserved outcome may still have applied: the core can already
         // be listening on the candidate's ports. The previously confirmed
         // binding then describes an instance that may no longer exist, and
@@ -600,9 +627,13 @@ impl CoreLifecycleWorkflow {
         &mut self,
         artifact: PreparedCoreBinary,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<bool, CoreError> {
+    ) -> Result<bool, RuntimeError> {
         let desired = self.application.load().state.core;
-        let status = self.core.refresh_status().await?;
+        let status = self
+            .core
+            .refresh_status()
+            .await
+            .context(RefreshStatusSnafu)?;
         let (state, applied_kind) = status
             .snapshot
             .map_or((None, None), |s| (s.state, s.applied_kind));
@@ -618,16 +649,16 @@ impl CoreLifecycleWorkflow {
             match self.core.stop().await {
                 Ok(_) => {}
                 Err(error) if error.kind == Some(CoreErrorKind::NotStarted) => {}
-                Err(error) => return Err(error),
+                Err(error) => return Err(error).context(StopCoreSnafu),
             }
             self.ports.invalidate();
         }
         // Stopped/NotStarted alone cannot prove quarantined processes are dead.
-        self.core.recover().await?;
+        self.core.recover().await.context(RecoverRuntimeSnafu)?;
         self.installer
             .install(&artifact)
             .await
-            .map_err(domain_error)?;
+            .context(InstallCoreBinarySnafu)?;
         if restart {
             if !self.start_permitted() {
                 return Ok(true);

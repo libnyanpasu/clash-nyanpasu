@@ -19,6 +19,7 @@ use crate::client::core_lifecycle::ports::{
 };
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
@@ -711,10 +712,10 @@ fn uninstall_waits_for_the_complete_host_switch_then_checks_ownership() {
             switch.await.unwrap().unwrap(),
             runtime::MutationOutcome::Committed { .. }
         ));
-        assert_eq!(
-            uninstall.await.unwrap_err().kind,
-            Some(CoreErrorKind::OperationConflict)
-        );
+        assert!(matches!(
+            uninstall.await.unwrap_err(),
+            RuntimeError::ServiceHostsCore
+        ));
         set_service_mode(&client, false).await.unwrap();
         client.uninstall_service().await.unwrap();
         let calls = calls.lock().unwrap();
@@ -847,7 +848,7 @@ async fn barrier(client: &ApplicationWorkflowClient) {
 async fn start_replacement(
     f: &Fixture,
 ) -> (
-    tokio::task::JoinHandle<Result<(), CoreError>>,
+    tokio::task::JoinHandle<Result<(), RuntimeError>>,
     std::path::PathBuf,
 ) {
     let target = f.client.get_app_config().await.unwrap().core;
@@ -1006,10 +1007,10 @@ fn shutdown_rejects_pending_work_and_waits_for_the_active_installation() {
         assert_eq!(f.endpoint.submissions(), 2);
         f.installer.release.notify_one();
         replace.await.unwrap().unwrap();
-        assert_eq!(
-            reconcile.await.unwrap_err().kind,
-            Some(CoreErrorKind::OperationConflict)
-        );
+        assert!(matches!(
+            reconcile.await.unwrap_err(),
+            RuntimeError::ShuttingDown
+        ));
         shutdown.await;
         let before = f.endpoint.submissions();
         assert!(f.client.reconcile_core().await.is_err());
@@ -1044,13 +1045,13 @@ fn lost_backend_result_blocks_new_mutations_without_hiding_the_promoted_product(
         f.endpoint.prime(&f.client).await;
         f.endpoint.set_result_missing(true);
         let error = f.client.reconcile_core().await.unwrap_err();
-        assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
+        assert_eq!(error.core_kind(), Some(CoreErrorKind::BackendUnavailable));
         assert!(f.client.inner.application_workflow.status().uncertain);
         assert!(f.client.promoted_runtime().await.is_some());
-        assert_eq!(
-            f.client.stop_core().await.unwrap_err().kind,
-            Some(CoreErrorKind::OperationConflict)
-        );
+        assert!(matches!(
+            f.client.stop_core().await.unwrap_err(),
+            RuntimeError::Isolated
+        ));
         assert_eq!(f.endpoint.submissions(), 1);
     });
 }
@@ -1292,10 +1293,10 @@ fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
             .replace_binary(artifact)
             .await
             .unwrap_err();
-        assert!(error.message.contains("was not run"), "{error}");
+        assert!(matches!(error, RuntimeError::ShuttingDown), "{error}");
         let outcomes = terminal.0.lock().unwrap().clone();
         assert_eq!(outcomes.len(), 1, "exactly one terminal notification");
-        assert!(outcomes[0].as_ref().unwrap().contains("was not run"));
+        assert!(outcomes[0].as_ref().unwrap().contains("shutting down"));
         assert_eq!(f.installer.calls.load(Ordering::SeqCst), 0);
 
         // Through the updater, the same refusal ends its task as a failure
@@ -1323,7 +1324,7 @@ fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
         .await
         .expect("the updater task ends");
         assert!(
-            matches!(&state, UpdaterState::Failed(reason) if reason.contains("was not run")),
+            matches!(&state, UpdaterState::Failed(reason) if reason.contains("shutting down")),
             "{state:?}"
         );
         assert_ne!(
@@ -1598,7 +1599,7 @@ fn queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_i
                 "rejected request must deliver exactly one terminal notification"
             );
             assert!(outcomes[0].as_ref().unwrap().contains(if isolate {
-                "uncertain outcome"
+                "left the runtime unsettled"
             } else {
                 "shutting down"
             }));

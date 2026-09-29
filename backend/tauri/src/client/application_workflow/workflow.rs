@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nyanpasu_config::{clash::config::ClashConfig, profile::Profiles};
 use nyanpasu_core::state::StateSnapshot;
-use nyanpasu_core_manager::{CoreError, OperationId};
+use nyanpasu_core_manager::OperationId;
 
 use super::{
     Command, Output,
@@ -14,6 +14,7 @@ use super::{
 use crate::client::{
     core_lifecycle::{Command as CoreCommand, CoreLifecycleWorkflow},
     runtime,
+    runtime_error::RuntimeError,
 };
 
 /// Applies already committed source config to the running core. The two state
@@ -74,7 +75,7 @@ impl ApplicationWorkflow {
         &mut self,
         operation_id: OperationId,
         command: Command,
-    ) -> Result<Output, CoreError> {
+    ) -> Result<Output, RuntimeError> {
         // Observe the old host before any operation can replace its projection.
         self.lifecycle.capture_core_intent();
         match command {
@@ -94,7 +95,7 @@ impl ApplicationWorkflow {
         &mut self,
         operation_id: OperationId,
         command: CoreCommand,
-    ) -> Result<Output, CoreError> {
+    ) -> Result<Output, RuntimeError> {
         // An explicit start without a proven owner of the desired host
         // re-establishes one instead of refusing (T10 §1.7 #5).
         if matches!(command, CoreCommand::Reconcile) && !self.lifecycle.start_permitted() {

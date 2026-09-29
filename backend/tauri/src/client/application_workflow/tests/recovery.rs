@@ -88,7 +88,7 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
         .await
         .expect_err("a rolled back restore is not an applied one");
     assert_eq!(
-        error.kind,
+        error.core_kind(),
         Some(nyanpasu_core_manager::CoreErrorKind::ApplyFailed)
     );
 
@@ -146,7 +146,7 @@ async fn a_rolled_back_restore_that_left_the_core_on_b_is_not_a_recovery() {
 // scripted fakes and barriers; nothing here sleeps for an ordering.
 
 use nyanpasu_core::state::{ReplaceIfVersionError, ReplaceIfVersionResult};
-use nyanpasu_core_manager::{CoreErrorKind, OperationId};
+use nyanpasu_core_manager::OperationId;
 
 use std::sync::atomic::Ordering;
 
@@ -376,11 +376,16 @@ async fn an_accepted_submission_still_running_is_waited_out_before_recovery() {
     scripted.rescript(tried, WaitScript::Running);
     let submitted = scripted.submitted();
     let error = f.client.retry_runtime().await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(matches!(
+        error,
+        crate::client::RuntimeError::RecoveryUnresolved { .. }
+    ));
     assert!(
-        error.message.contains(&format!("{tried} is still Running")),
+        error
+            .to_string()
+            .contains(&format!("{tried} is still Running")),
         "the ticket arrived before the wait ended: {}",
-        error.message
+        error
     );
     assert!(isolated(&f.client));
     assert_eq!(scripted.submitted(), submitted, "nothing is resent blind");
@@ -448,9 +453,9 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
     let submitted = scripted.submitted();
     let error = f.client.retry_runtime().await.unwrap_err();
     assert!(
-        error.message.contains(&restore.to_string()),
+        error.to_string().contains(&restore.to_string()),
         "{}",
-        error.message
+        error.to_string()
     );
     assert_eq!(
         scripted.submitted(),
@@ -537,9 +542,11 @@ async fn an_automatic_retry_never_recovers() {
         .client
         .call(Command::RetryRuntime { explicit: false })
         .await
-        .err()
-        .map(|error| error.kind);
-    assert_eq!(refused, Some(Some(CoreErrorKind::OperationConflict)));
+        .err();
+    assert!(matches!(
+        refused,
+        Some(crate::client::RuntimeError::Isolated)
+    ));
     assert!(isolated(&f.client));
 
     f.client.retry_runtime().await.unwrap();
@@ -562,9 +569,9 @@ async fn a_lifecycle_attempt_is_re_established_once_its_action_is_resolved() {
     assert!(isolated(&f.client));
     let error = f.client.retry_runtime().await.unwrap_err();
     assert!(
-        error.message.contains("core operation"),
+        error.to_string().contains("core operation"),
         "still unobserved: {}",
-        error.message
+        error
     );
 
     f.endpoint.set_result_missing(false);
@@ -814,7 +821,11 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     builder.release.notify_one();
 
     let error = client.install_service().await.unwrap_err();
-    assert!(error.message.contains("still running"), "{}", error.message);
+    assert!(
+        error.to_string().contains("still running"),
+        "{}",
+        error.to_string()
+    );
     daemon.parked.notified().await;
     assert_eq!(
         service.probe().await.unwrap().phase,
@@ -822,15 +833,15 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
         "the daemon probes a stable Ready while the helper runs"
     );
     assert!(client.status().uncertain);
-    assert_eq!(
-        client.start_service().await.unwrap_err().kind,
-        Some(CoreErrorKind::OperationConflict)
-    );
+    assert!(matches!(
+        client.start_service().await.unwrap_err(),
+        crate::client::RuntimeError::Isolated
+    ));
     let error = client.retry_runtime().await.unwrap_err();
     assert!(
-        error.message.contains("service Install command"),
+        error.to_string().contains("service Install command"),
         "the helper still runs: {}",
-        error.message
+        error
     );
 
     assert!(local.reconciled_bytes().is_empty());
@@ -881,11 +892,14 @@ async fn a_lost_handoff() -> super::startup::Graph {
     );
     assert!(isolated(&g.client));
     let error = g.client.retry_runtime().await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(matches!(
+        error,
+        crate::client::RuntimeError::RecoveryUnresolved { .. }
+    ));
     assert!(
-        error.message.contains("handoff to Local"),
+        error.to_string().contains("handoff to Local"),
         "the router is still handing off: {}",
-        error.message
+        error
     );
     assert!(isolated(&g.client));
     g
@@ -984,7 +998,10 @@ async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
 
     let error = f.client.retry_runtime().await.unwrap_err();
 
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(matches!(
+        error,
+        crate::client::RuntimeError::RecoveryUnresolved { .. }
+    ));
     assert!(isolated(&f.client));
     let view = recovery(&f.client);
     assert!(

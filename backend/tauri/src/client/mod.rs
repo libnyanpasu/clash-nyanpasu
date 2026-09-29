@@ -17,6 +17,7 @@ mod main_thread;
 mod ports;
 pub mod profiles;
 pub mod runtime;
+pub mod runtime_error;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
 mod session_state;
@@ -69,6 +70,7 @@ pub use event_sink::{
 pub use main_thread::MainThreadExecutor;
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
+pub use runtime_error::RuntimeError;
 #[cfg(test)]
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
@@ -129,10 +131,6 @@ async fn new_typed_config_clients(
     .await?;
 
     Ok((application, session_state, clash_config))
-}
-
-fn client_error_from_core(error: nyanpasu_core_manager::CoreError) -> ClientError {
-    ClientError::Anyhow(anyhow::anyhow!(error))
 }
 
 #[cfg(not(test))]
@@ -474,18 +472,14 @@ impl NyanpasuClient {
         self.inner.application.snapshot().state
     }
 
-    pub async fn reconcile_core(
-        &self,
-    ) -> std::result::Result<ReconcileReport, nyanpasu_core_manager::CoreError> {
+    pub async fn reconcile_core(&self) -> std::result::Result<ReconcileReport, RuntimeError> {
         self.inner.application_workflow.reconcile().await
     }
 
     // No UI entry issues an explicit stop yet; this is the facade entry to the
     // explicit stop intent the workflow honours (TCC V11, T10 S18 / §1.4).
     #[allow(dead_code)]
-    pub async fn stop_core(
-        &self,
-    ) -> std::result::Result<StopReport, nyanpasu_core_manager::CoreError> {
+    pub async fn stop_core(&self) -> std::result::Result<StopReport, RuntimeError> {
         self.inner.application_workflow.stop_core().await
     }
 
@@ -510,29 +504,23 @@ impl NyanpasuClient {
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
         self.inner.application_workflow.service_events()
     }
-    pub async fn install_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn install_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.install_service().await
     }
 
-    pub async fn start_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn start_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.start_service().await
     }
 
-    pub async fn stop_service(&self) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn stop_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.stop_service().await
     }
 
-    pub async fn restart_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn restart_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.restart_service().await
     }
 
-    pub async fn uninstall_service(
-        &self,
-    ) -> std::result::Result<(), nyanpasu_core_manager::CoreError> {
+    pub async fn uninstall_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.uninstall_service().await
     }
 
@@ -572,12 +560,8 @@ impl NyanpasuClient {
         Ok(client.patch(patch).await?.outcome())
     }
 
-    pub async fn retry_runtime_now(&self) -> Result<()> {
-        self.inner
-            .application_workflow
-            .retry_runtime()
-            .await
-            .map_err(client_error_from_core)
+    pub async fn retry_runtime_now(&self) -> std::result::Result<(), RuntimeError> {
+        self.inner.application_workflow.retry_runtime().await
     }
 
     pub fn retry_effect_now(&self, kind: effects::plan::EffectKind) -> Result<()> {

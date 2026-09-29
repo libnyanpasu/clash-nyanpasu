@@ -997,11 +997,14 @@ async fn an_unobserved_startup_submission_isolates_until_its_operation_ends() {
     assert!(g.isolated());
     assert_eq!(g.notifications.full(), 1);
     let error = g.client.retry_runtime().await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
+    assert!(matches!(
+        error,
+        crate::client::RuntimeError::RecoveryUnresolved { .. }
+    ));
     assert!(
-        error.message.contains("core operation"),
+        error.to_string().contains("core operation"),
         "the slot names the lost submission: {}",
-        error.message
+        error
     );
     assert_eq!(g.log(), ["local:reconcile"], "nothing is resent blind");
 
@@ -1346,8 +1349,16 @@ async fn a_dependency_wait_on_a_spent_budget_blocks_at_once() {
 
     let error = g.client.reconcile().await.unwrap_err();
 
-    assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
-    assert!(error.retryable, "{error}");
+    assert!(
+        matches!(
+            error,
+            crate::client::RuntimeError::CoreNotStarted {
+                retryable: true,
+                ..
+            }
+        ),
+        "{error}"
+    );
     let target = g.target();
     assert_eq!(
         (target.health, target.next_attempt),
@@ -1624,8 +1635,16 @@ async fn an_explicit_start_re_establishes_an_owner_for_the_host_now_asked_for() 
 
     let error = g.client.reconcile().await.unwrap_err();
 
-    assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
-    assert!(error.retryable);
+    assert!(
+        matches!(
+            error,
+            crate::client::RuntimeError::CoreNotStarted {
+                retryable: true,
+                ..
+            }
+        ),
+        "{error}"
+    );
     let target = g.target();
     assert_eq!(
         target.origin,

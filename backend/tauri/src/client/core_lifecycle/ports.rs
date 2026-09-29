@@ -8,7 +8,8 @@ use tempfile::TempDir;
 
 use super::super::runtime;
 use crate::{
-    client::runtime::PublishRuntimeError, core::actor_v2::local_host::CoreSpecError,
+    client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
+    core::actor_v2::local_host::CoreSpecError,
     state::profiles::ErrorPath,
 };
 
@@ -63,8 +64,7 @@ pub trait BinaryInstaller: Send + Sync + 'static {
 /// Application-owned runtime preparation; implementations never call the workflow actor.
 #[async_trait]
 pub(in crate::client) trait RuntimePreparationPort: Send + Sync {
-    async fn prepare_latest(&mut self)
-    -> Result<PreparedRuntime, nyanpasu_core_manager::CoreError>;
+    async fn prepare_latest(&mut self) -> Result<PreparedRuntime, RuntimeError>;
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot)
     -> Result<(), PublishRuntimeError>;
     fn core_spec(

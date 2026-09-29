@@ -229,12 +229,6 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason: "AppKit main-thread marker, bound to the thread by the OS API",
   },
   {
-    path: "backend/tauri/src/enhance/script/js.rs",
-    name: "BOA_LOGGER_LOCK",
-    category: "external",
-    reason: "serializes runs over boa_utils' process-global console logger",
-  },
-  {
     path: "backend/tauri/src/shutdown_hook.rs",
     name: "SHUTDOWN_HOOK_INSTANCE",
     category: "external",

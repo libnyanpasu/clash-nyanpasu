@@ -1,26 +1,22 @@
 use super::runner::{ProcessOutput, Runner, wrap_result};
-use crate::enhance::utils::{LogSpan, Logs, LogsExt};
+use crate::enhance::utils::{Logs, LogsExt};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use boa_engine::{
-    Context, JsError, JsNativeError, JsValue, Source,
+    Context, JsError, JsNativeError, JsResult, JsValue, Source,
     builtins::promise::PromiseState,
+    gc::{Finalize, Trace},
     job::SimpleJobExecutor,
     js_string,
     module::{Module, SimpleModuleLoader},
-    property::Attribute,
 };
-use boa_utils::{
-    Console,
-    module::{combine::CombineModuleLoader, http::HttpModuleLoader},
-};
-use once_cell::sync::Lazy;
+use boa_utils::module::{combine::CombineModuleLoader, http::HttpModuleLoader};
+use boa_wintertc::console::{Console, ConsoleState, Logger};
 use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Mutex,
     time::Duration,
 };
 use utils::wrap_script_if_not_esm;
@@ -56,11 +52,6 @@ impl ScriptDirs {
     }
 }
 
-// boa_utils stores the console logger in a process-global slot (see
-// setup_console below); serialize whole runs so parallel executions
-// (e.g. concurrent tests) cannot steal or drain each other's logs.
-static BOA_LOGGER_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
-
 // define a JsRunnerError due to boa engine error is not Send
 #[derive(Debug, thiserror::Error)]
 pub enum JsRunnerError {
@@ -76,49 +67,44 @@ pub enum JsRunnerError {
     Other(String),
 }
 
-pub struct BoaConsoleLogger(Logs);
-impl boa_utils::Logger for BoaConsoleLogger {
-    type Item = boa_utils::LogMessage;
-    fn log(&mut self, msg: boa_utils::LogMessage, _: &Console) {
-        match msg {
-            boa_utils::LogMessage::Log(msg) => self.0.log(msg),
-            boa_utils::LogMessage::Info(msg) => self.0.info(msg),
-            boa_utils::LogMessage::Warn(msg) => self.0.warn(msg),
-            boa_utils::LogMessage::Error(msg) => self.0.error(msg),
-        }
-    }
+/// Collects the console output of one run. Each run owns its sink, so
+/// concurrent runs never see each other's logs.
+#[derive(Debug, Clone, Default)]
+pub struct ConsoleSink(Rc<RefCell<Logs>>);
 
-    #[inline]
-    fn take(&mut self) -> Vec<Self::Item> {
-        std::mem::take(&mut self.0)
-            .into_iter()
-            .map(|(span, msg)| match span {
-                LogSpan::Log => boa_utils::LogMessage::Log(msg),
-                LogSpan::Info => boa_utils::LogMessage::Info(msg),
-                LogSpan::Warn => boa_utils::LogMessage::Warn(msg),
-                LogSpan::Error => boa_utils::LogMessage::Error(msg),
-            })
-            .collect()
+impl ConsoleSink {
+    pub fn take(&self) -> Logs {
+        std::mem::take(&mut self.0.borrow_mut())
     }
 }
 
-impl BoaConsoleLogger {
-    pub fn take(&mut self) -> Logs {
-        std::mem::take(&mut self.0)
-    }
+impl Finalize for ConsoleSink {}
+
+// SAFETY: the sink holds no `Gc` pointers.
+unsafe impl Trace for ConsoleSink {
+    boa_engine::gc::empty_trace!();
 }
 
-#[inline]
-fn take_console_logs() -> Logs {
-    let logs = boa_utils::inspect_logger(|logger| logger.take());
-    logs.into_iter()
-        .map(|msg| match msg {
-            boa_utils::LogMessage::Log(msg) => (LogSpan::Log, msg),
-            boa_utils::LogMessage::Info(msg) => (LogSpan::Info, msg),
-            boa_utils::LogMessage::Warn(msg) => (LogSpan::Warn, msg),
-            boa_utils::LogMessage::Error(msg) => (LogSpan::Error, msg),
-        })
-        .collect()
+impl Logger for ConsoleSink {
+    fn log(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+        self.0.borrow_mut().log(msg);
+        Ok(())
+    }
+
+    fn info(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+        self.0.borrow_mut().info(msg);
+        Ok(())
+    }
+
+    fn warn(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+        self.0.borrow_mut().warn(msg);
+        Ok(())
+    }
+
+    fn error(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+        self.0.borrow_mut().error(msg);
+        Ok(())
+    }
 }
 
 pub struct JSRunner {
@@ -168,12 +154,8 @@ impl BoaRunner {
         })
     }
 
-    pub fn setup_console(&self, logger: BoaConsoleLogger) -> Result<()> {
-        let ctx = &mut self.ctx.borrow_mut();
-        // it not concurrency safe. we should move to new boa_runtime console when it is ready for custom logger
-        boa_utils::set_logger(Box::new(logger) as Box<dyn boa_utils::LoggerBox>);
-        let console = Console::init(ctx);
-        ctx.register_global_property(js_string!(Console::NAME), console, Attribute::all())?;
+    pub fn setup_console(&self, logger: impl Logger + 'static) -> Result<()> {
+        Console::register_with_logger(logger, &mut self.ctx.borrow_mut())?;
         Ok(())
     }
 
@@ -250,18 +232,14 @@ impl Runner for JSRunner {
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
         let (scripts_dir, cache_dir) = (self.scripts_dir.clone(), self.cache_dir.clone());
         let res = tokio::task::spawn_blocking(move || {
-            let _logger_guard = BOA_LOGGER_LOCK
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let wrapped_fn = move || {
-                let mut logger = BoaConsoleLogger(Logs::new());
-                let boa_runner =
-                    wrap_result!(BoaRunner::try_new(scripts_dir, cache_dir), logger.take());
-                wrap_result!(boa_runner.setup_console(logger), take_console_logs());
+                let console = ConsoleSink::default();
+                let boa_runner = wrap_result!(BoaRunner::try_new(scripts_dir, cache_dir));
+                wrap_result!(boa_runner.setup_console(console.clone()), console.take());
                 let config = wrap_result!(
                     serde_json::to_string(&mapping)
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    take_console_logs()
+                    console.take()
                 );
                 let config = serde_json::to_string(&config).unwrap(); // escape the string
                 let execute_module = format!(
@@ -280,28 +258,28 @@ impl Runner for JSRunner {
                 // wrap_result!(boa_runner.execute_module(&process_module));
                 let main_module = wrap_result!(
                     boa_runner.parse_module(&execute_module, "main"),
-                    take_console_logs()
+                    console.take()
                 );
                 wrap_result!(boa_runner.execute_module(&main_module));
                 let ctx = boa_runner.get_ctx();
                 let namespace = main_module.namespace(&mut ctx.borrow_mut());
                 let result = wrap_result!(
                     namespace.get(js_string!("result"), &mut ctx.borrow_mut()),
-                    take_console_logs()
+                    console.take()
                 );
                 let result = wrap_result!(
                     result
                         .as_string()
                         .ok_or_else(|| JsNativeError::typ().with_message("Expected string"))
                         .map(|str| str.to_std_string_escaped()),
-                    take_console_logs()
+                    console.take()
                 );
                 let mapping = wrap_result!(
                     serde_json::from_str(&result)
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    take_console_logs()
+                    console.take()
                 );
-                (Ok::<Mapping, JsRunnerError>(mapping), take_console_logs())
+                (Ok::<Mapping, JsRunnerError>(mapping), console.take())
             };
             let (res, logs) = wrapped_fn();
             match res {
@@ -478,6 +456,31 @@ mod test {
         let expected: serde_yaml::Mapping =
             serde_yaml::from_str("existing: true\na:\n  b: 1\n  c: 2\n").unwrap();
         assert_eq!(result.unwrap(), expected);
+    }
+
+    /// Each run owns its console sink, so runs executing at the same time
+    /// never see each other's logs.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_runs_keep_their_logs_apart() {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let script = |tag: &str| {
+            format!(
+                "export default function main(config) {{ for (let i = 0; i < 50; i++) console.log('{tag}'); return config; }}"
+            )
+        };
+        let (script_a, script_b) = (script("a"), script("b"));
+        let (a, b) = tokio::join!(
+            runner.process_honey(serde_yaml::Mapping::new(), &script_a),
+            runner.process_honey(serde_yaml::Mapping::new(), &script_b),
+        );
+        for (tag, (result, logs)) in [("a", a), ("b", b)] {
+            result.unwrap();
+            assert_eq!(logs.len(), 50);
+            assert!(logs.iter().all(|(_, msg)| msg == tag), "{tag}: {logs:?}");
+        }
     }
 
     #[test]

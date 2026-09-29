@@ -62,6 +62,60 @@ export const useClashWSHistory = <K extends ClashWsKind>(kind: K) =>
 
 export const useClashWSStatus = () => useClashWSValue(ClashWSStatusContext)
 
+type ClashWSValues = {
+  [K in ClashWsKind]: ClashWSHistory[K] | null
+} & {
+  status: ClashWSStatus | null
+}
+
+const ClashWSValuesProvider = ({
+  values,
+  children,
+}: PropsWithChildren<{ values: ClashWSValues }>) => (
+  <ClashWSStatusContext.Provider value={values.status}>
+    <ClashWSHistoryContexts.connections.Provider value={values.connections}>
+      <ClashWSHistoryContexts.logs.Provider value={values.logs}>
+        <ClashWSHistoryContexts.traffic.Provider value={values.traffic}>
+          <ClashWSHistoryContexts.memory.Provider value={values.memory}>
+            {children}
+          </ClashWSHistoryContexts.memory.Provider>
+        </ClashWSHistoryContexts.traffic.Provider>
+      </ClashWSHistoryContexts.logs.Provider>
+    </ClashWSHistoryContexts.connections.Provider>
+  </ClashWSStatusContext.Provider>
+)
+
+// While `frozen`, re-provides the values captured when it turned on, so a
+// subtree that is on its way out (a page animating away) stops re-rendering
+// on every sample. Keep it mounted and toggle `frozen`: inserting it only
+// when freezing would remount the subtree.
+export const ClashWSFreezeBoundary = ({
+  frozen,
+  children,
+}: PropsWithChildren<{ frozen: boolean }>) => {
+  const live: ClashWSValues = {
+    connections: useContext(ClashWSHistoryContexts.connections),
+    logs: useContext(ClashWSHistoryContexts.logs),
+    traffic: useContext(ClashWSHistoryContexts.traffic),
+    memory: useContext(ClashWSHistoryContexts.memory),
+    status: useContext(ClashWSStatusContext),
+  }
+
+  const [captured, setCaptured] = useState<ClashWSValues | null>(null)
+
+  if (frozen && captured === null) {
+    setCaptured(live)
+  } else if (!frozen && captured !== null) {
+    setCaptured(null)
+  }
+
+  return (
+    <ClashWSValuesProvider values={(frozen && captured) || live}>
+      {children}
+    </ClashWSValuesProvider>
+  )
+}
+
 export const ClashWSProvider = ({ children }: PropsWithChildren) => {
   const [snapshot, setSnapshot] = useState<ClashWsSnapshot>()
   const [isLoading, setIsLoading] = useState(true)
@@ -186,17 +240,12 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
     [isLoading, error, clearHistory],
   )
 
+  const values = useMemo(
+    () => ({ connections, logs, traffic, memory, status }),
+    [connections, logs, traffic, memory, status],
+  )
+
   return (
-    <ClashWSStatusContext.Provider value={status}>
-      <ClashWSHistoryContexts.connections.Provider value={connections}>
-        <ClashWSHistoryContexts.logs.Provider value={logs}>
-          <ClashWSHistoryContexts.traffic.Provider value={traffic}>
-            <ClashWSHistoryContexts.memory.Provider value={memory}>
-              {children}
-            </ClashWSHistoryContexts.memory.Provider>
-          </ClashWSHistoryContexts.traffic.Provider>
-        </ClashWSHistoryContexts.logs.Provider>
-      </ClashWSHistoryContexts.connections.Provider>
-    </ClashWSStatusContext.Provider>
+    <ClashWSValuesProvider values={values}>{children}</ClashWSValuesProvider>
   )
 }

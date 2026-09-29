@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query'
 import type { Degradation } from '../ipc/bindings'
 import {
+  ClashWSFreezeBoundary,
   ClashWSProvider,
   useClashWSHistory,
   useClashWSStatus,
@@ -69,4 +70,4 @@ export const NyanpasuProvider = ({ children }: PropsWithChildren) => {
   )
 }
 
-export { useClashWSHistory, useClashWSStatus }
+export { ClashWSFreezeBoundary, useClashWSHistory, useClashWSStatus }

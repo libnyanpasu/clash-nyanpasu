@@ -95,6 +95,7 @@ export default function UpdateOptionEditor({
           message(`Update failed: \n ${formatError(error)}`, {
             title: 'Error',
             kind: 'error',
+            error,
           })
         }
       },
@@ -103,6 +104,7 @@ export default function UpdateOptionEditor({
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
+          error,
         })
       },
     ),

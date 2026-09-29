@@ -22,6 +22,7 @@ export default function FieldFilterButton() {
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }

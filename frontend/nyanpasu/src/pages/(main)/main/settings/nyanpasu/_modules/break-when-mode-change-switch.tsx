@@ -27,6 +27,7 @@ export default function BreakWhenModeChangeSwitch() {
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }

@@ -27,6 +27,7 @@ export default function BreakWhenProfileChangeSwitch() {
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }

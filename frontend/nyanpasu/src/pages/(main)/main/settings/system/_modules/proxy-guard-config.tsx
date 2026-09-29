@@ -43,6 +43,7 @@ export default function ProxyGuardConfig() {
       message(formatError(error), {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

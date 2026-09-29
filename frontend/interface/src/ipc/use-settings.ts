@@ -12,6 +12,7 @@ import {
   queries,
   type ClashConfig,
   type ClashConfigPatch_Deserialize,
+  type IpcError,
   type MutationOutcome,
   type NyanpasuAppConfig_Serialize,
   type NyanpasuAppConfigPatch_Serialize,
@@ -22,7 +23,7 @@ type ConfigQuery<TConfig> = {
   queryKey: QueryKey
   queryFn?: (
     context: never,
-  ) => Result<TConfig, string> | Promise<Result<TConfig, string>>
+  ) => Result<TConfig, IpcError> | Promise<Result<TConfig, IpcError>>
 }
 
 type ConfigMutation<TPatch> = {
@@ -30,7 +31,7 @@ type ConfigMutation<TPatch> = {
   mutationFn?: (
     input: [TPatch],
     context: never,
-  ) => Promise<Result<MutationOutcome<null>, string>>
+  ) => Promise<Result<MutationOutcome<null>, IpcError>>
 }
 
 const useTypedConfig = <TConfig, TPatch>(

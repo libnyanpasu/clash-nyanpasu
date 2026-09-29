@@ -92,6 +92,7 @@ function useCoreUpdateTask(
       console.error(e)
       message(formatError(e), {
         kind: 'error',
+        error: e,
         title: 'Error',
       })
     }
@@ -300,6 +301,7 @@ export default function CoreManagerCard() {
           `${m.settings_clash_core_manager_card_loading_error()} \n${formatError(e)}`,
           {
             kind: 'error',
+            error: e,
             title: 'Error',
           },
         )
@@ -323,6 +325,7 @@ export default function CoreManagerCard() {
           `${m.settings_clash_core_manager_card_restart_sidecar_error()} \n${formatError(e)}`,
           {
             kind: 'error',
+            error: e,
             title: 'Error',
           },
         )
@@ -337,6 +340,7 @@ export default function CoreManagerCard() {
       console.error(e)
       message(formatError(e), {
         kind: 'error',
+        error: e,
         title: 'Error',
       })
     }

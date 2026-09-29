@@ -35,6 +35,7 @@ export default function BreakWhenProxyChangeSwitch() {
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }

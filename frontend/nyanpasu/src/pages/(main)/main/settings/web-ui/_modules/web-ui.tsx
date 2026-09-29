@@ -157,6 +157,7 @@ const EditItemButton = ({
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
     },
@@ -164,6 +165,7 @@ const EditItemButton = ({
       message(formatError(error), {
         title: 'Error',
         kind: 'error',
+        error,
       })
     },
   )

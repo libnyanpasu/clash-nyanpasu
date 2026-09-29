@@ -73,6 +73,7 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
       console.error(e)
       message(m.settings_nyanpasu_tray_icon_set_failed(), {
         kind: 'error',
+        error: e,
       })
     } finally {
       setIsLoading(false)
@@ -93,6 +94,7 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
       console.error(e)
       message(m.settings_nyanpasu_tray_icon_reset_failed(), {
         kind: 'error',
+        error: e,
       })
     }
   })

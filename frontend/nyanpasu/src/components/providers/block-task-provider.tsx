@@ -6,6 +6,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { useLockFn } from '@/hooks/use-lock-fn'
+import { formatError } from '@/utils'
 
 type BlockTaskStatus = 'idle' | 'pending' | 'success' | 'error'
 
@@ -79,7 +80,10 @@ const createBlockTaskStore = (): BlockTaskStore => {
         setTask(key, {
           ...task,
           status: 'error',
-          error: error instanceof Error ? error : new Error(String(error)),
+          error:
+            error instanceof Error
+              ? error
+              : new Error(formatError(error), { cause: error }),
           endTime: Date.now(),
         })
 

@@ -48,6 +48,7 @@ export default function SystemServiceSwitch() {
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }

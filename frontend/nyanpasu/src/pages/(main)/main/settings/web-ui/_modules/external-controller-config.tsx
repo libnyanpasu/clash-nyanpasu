@@ -67,6 +67,7 @@ export default function ExternalControllerConfig() {
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
     },

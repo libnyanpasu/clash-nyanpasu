@@ -25,6 +25,7 @@ export default function ExpandIncludeAllSwitch() {
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }

@@ -456,6 +456,7 @@
   "common_validate": "Validate",
   "common_close": "Close",
   "common_copy": "Copy",
+  "common_copy_error_details": "Copy error details",
   "common_open": "Open",
   "common_cut": "Cut",
   "common_paste": "Paste",

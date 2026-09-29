@@ -93,6 +93,7 @@ export default function SubscriptionUrlEditor({
           message(`Update failed: \n ${formatError(error)}`, {
             title: 'Error',
             kind: 'error',
+            error,
           })
         }
       },

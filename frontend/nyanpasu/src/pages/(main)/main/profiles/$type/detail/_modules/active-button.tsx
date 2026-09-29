@@ -33,6 +33,7 @@ export const useActiveProfile = (profile: ProfileItem_Serialize) => {
         {
           title: 'Error',
           kind: 'error',
+          error: err,
         },
       )
 

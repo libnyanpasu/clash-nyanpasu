@@ -26,6 +26,7 @@ export const useDeleteProfile = (
       message(`Delete failed: \n ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

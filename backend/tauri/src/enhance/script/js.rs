@@ -61,8 +61,6 @@ pub enum JsRunnerError {
     JsError(#[from] boa_engine::JsError),
     #[error("JsNativeError: {0}")]
     JsNativeError(#[from] boa_engine::JsNativeError),
-    #[error("TryNativeError: {0}")]
-    TryNativeError(#[from] boa_engine::error::TryNativeError),
     #[error("IoError: {0}")]
     IoError(#[from] std::io::Error),
     #[error("Other: {0}")]
@@ -201,9 +199,7 @@ fn settle(promise: &JsPromise, ctx: &mut Context) -> Result<JsValue> {
         match promise.state() {
             PromiseState::Pending => std::thread::sleep(Duration::from_millis(100)),
             PromiseState::Fulfilled(v) => return Ok(v),
-            PromiseState::Rejected(err) => {
-                return Err(JsError::from_opaque(err).try_native(ctx)?.into());
-            }
+            PromiseState::Rejected(err) => return Err(JsError::from_opaque(err).into()),
         }
     }
     Err(JsRunnerError::Other("the script didn't finish".to_string()))
@@ -282,8 +278,10 @@ impl Runner for JSRunner {
             let console = ConsoleSink::default();
             let result = run_module(scripts_dir, cache_dir, &script, mapping, console.clone())
                 .map_err(|e| {
-                    tracing::error!("error: {:?}", e);
-                    anyhow::anyhow!("{:?}", e)
+                    // Display, not Debug: a JsError's Display carries the
+                    // script's stack with file, line and column.
+                    tracing::error!("error: {e}");
+                    anyhow::anyhow!("{e}")
                 });
             (result, console.take())
         })
@@ -549,6 +547,39 @@ mod test {
             output,
             yaml("kept: 1\nwhen: 1970-01-01T00:00:00.000Z\nlink: https://example.com/a\n")
         );
+    }
+
+    async fn run_js_error(script: &str) -> String {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        runner
+            .process_honey(serde_yaml::Mapping::new(), script, &mut Vec::new())
+            .await
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn errors_carry_the_js_stack() {
+        let error = run_js_error(
+            "export default function main(config) {\n  helper();\n}\nfunction helper() {\n  throw new Error('boom');\n}\n",
+        )
+        .await;
+        assert!(error.contains("Error: boom"), "{error}");
+        assert!(error.contains("at helper (./main.mjs:5:9)"), "{error}");
+        assert!(error.contains("at main (./main.mjs:2:"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn errors_after_an_await_carry_the_js_stack() {
+        let error = run_js_error(
+            "export default async function main(config) {\n  await null;\n  config.proxies.length;\n}\n",
+        )
+        .await;
+        assert!(error.contains("TypeError"), "{error}");
+        assert!(error.contains("at main (./main.mjs:3:"), "{error}");
     }
 
     #[tokio::test]

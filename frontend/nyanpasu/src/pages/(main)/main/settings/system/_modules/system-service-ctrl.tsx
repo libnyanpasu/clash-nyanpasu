@@ -1,4 +1,4 @@
-import { startCase } from 'lodash-es'
+import { startCase } from 'es-toolkit/compat'
 import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'

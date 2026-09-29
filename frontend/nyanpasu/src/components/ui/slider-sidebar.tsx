@@ -1,5 +1,5 @@
 import MenuOpenRounded from '~icons/material-symbols/menu-open-rounded'
-import { merge } from 'lodash-es'
+import { merge } from 'es-toolkit/compat'
 import { motion } from 'motion/react'
 import {
   createContext,

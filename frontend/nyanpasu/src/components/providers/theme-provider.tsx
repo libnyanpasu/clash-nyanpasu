@@ -1,4 +1,4 @@
-import { isEqual, kebabCase } from 'lodash-es'
+import { isEqual, kebabCase } from 'es-toolkit'
 import {
   createContext,
   PropsWithChildren,

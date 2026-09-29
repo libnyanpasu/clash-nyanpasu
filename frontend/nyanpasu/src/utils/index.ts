@@ -1,5 +1,4 @@
 // oxlint-disable typescript/no-explicit-any
-import { includes, isArray, isObject, isString, some } from 'lodash-es'
 import { EnvInfo } from '@nyanpasu/interface'
 
 /**
@@ -18,12 +17,14 @@ export async function sleep(ms: number) {
 export const containsSearchTerm = (obj: any, term: string): boolean => {
   if (!obj || !term) return false
 
-  if (isString(obj)) {
-    return includes(obj.toLowerCase(), term.toLowerCase())
+  if (typeof obj === 'string') {
+    return obj.toLowerCase().includes(term.toLowerCase())
   }
 
-  if (isObject(obj) || isArray(obj)) {
-    return some(obj, (value: any) => containsSearchTerm(value, term))
+  if (typeof obj === 'object') {
+    return Object.values(obj).some((value: any) =>
+      containsSearchTerm(value, term),
+    )
   }
 
   return false

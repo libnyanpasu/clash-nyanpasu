@@ -1,4 +1,4 @@
-import { isEqual } from 'lodash-es'
+import { isEqual } from 'es-toolkit'
 import { editor } from 'monaco-editor'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import z from 'zod'

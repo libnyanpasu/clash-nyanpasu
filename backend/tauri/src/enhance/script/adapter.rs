@@ -83,6 +83,7 @@ impl ScriptRunner for EnhanceScriptRunner {
             .set("item", lua_item)
             .map_err(|e| format!("set item: {e}"))?;
         lua.load(expr)
+            .set_name("=predicate")
             .eval::<bool>()
             .map_err(|e| format!("predicate eval: {e}").into())
     }
@@ -98,6 +99,7 @@ impl ScriptRunner for EnhanceScriptRunner {
             .map_err(|e| format!("set item: {e}"))?;
         let result = lua
             .load(expr)
+            .set_name("=expression")
             .eval::<mlua::Value>()
             .map_err(|e| format!("expr eval: {e}"))?;
         let yaml: serde_yaml::Value = lua
@@ -155,6 +157,25 @@ function main(config) {
             &mut Vec::new(),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn eval_item_errors_name_the_expression() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let item = value("name: test-node\n");
+        let error = runner
+            .eval_item_predicate("item.missing.field", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("predicate:1:"), "{error}");
+        assert!(!error.contains(".rs:"), "{error}");
+        let error = runner
+            .eval_item_expr("item.missing.field", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("expression:1:"), "{error}");
+        assert!(!error.contains(".rs:"), "{error}");
     }
 
     #[test]

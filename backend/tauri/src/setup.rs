@@ -44,6 +44,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app: &M,
     bundle_metadata: crate::bundle::BundleMetadata,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
+    jobs_capture: nyanpasu_jobs::LogCapture,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     let main_thread: Arc<dyn MainThreadExecutor> =
@@ -112,6 +113,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // One instance behind both the system proxy actor and the client's own
     // read of the OS settings.
     let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
+    let jobs = tauri::async_runtime::block_on(crate::client::jobs::start(
+        paths.jobs_path(),
+        jobs_capture,
+        shutdown.child_token(),
+        &tasks,
+    ))
+    .context("Failed to start jobs owner")?;
     let (effects, widget_controller) = build_application_effects(
         &app_handle,
         main_thread.clone(),
@@ -119,11 +127,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &paths,
         hotkey_tx,
         logger_reload,
+        jobs.clone(),
         &shutdown,
         &tasks,
     )?;
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
+        jobs,
         logging: crate::client::logs::LoggingSetup {
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
                 paths.app_logs_dir(),
@@ -213,6 +223,7 @@ fn build_application_effects(
     paths: &PathResolver,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
+    jobs: nyanpasu_jobs::JobsClient,
     shutdown: &CancellationToken,
     tasks: &TaskTracker,
 ) -> anyhow::Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>)> {
@@ -240,6 +251,7 @@ fn build_application_effects(
 
     let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(
         SystemProxyArgs {
+            jobs,
             os: os_proxy,
             auto_launch: Arc::new(auto_launch),
             pac: Arc::new(pac),

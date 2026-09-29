@@ -2,6 +2,8 @@
 //! snapshot handle; writes go through the actor with no RPC timeout.
 
 use crate::state::mutation::MutationCoordinator;
+#[cfg(test)]
+use crate::state::profiles::RefreshOrigin;
 
 use std::{sync::Arc, time::Duration};
 
@@ -19,8 +21,7 @@ use crate::{
     core::migration::modules::profiles::ProfilesFormat,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-        ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu, RefreshOrigin,
-        ReorderOp,
+        ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu, ReorderOp,
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
         sources::SourcesSnapshot,
     },
@@ -37,18 +38,22 @@ struct ProfilesClientInner {
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<Profiles>,
     sources: tokio::sync::watch::Receiver<SourcesSnapshot>,
+    jobs: crate::state::profiles::jobs::ProfileJobs,
 }
 
 impl ProfilesClient {
-    pub(crate) async fn new(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn new_with_jobs(
         mutations: MutationCoordinator,
         profiles_path: Utf8PathBuf,
+        jobs: nyanpasu_jobs::JobsClient,
         fs: Arc<dyn ProfileFsPort>,
         fetcher: Arc<dyn SubscriptionFetcher>,
         materialization: Arc<dyn ProfileMaterializationPort>,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
+        let jobs = crate::state::profiles::jobs::ProfileJobs::new(jobs);
         let should_load = profiles_path.exists();
         let setup = PersistentStateManagerSetup::<Profiles, ProfilesFormat>::builder()
             .config_path(profiles_path)
@@ -83,6 +88,7 @@ impl ProfilesClient {
                 fetcher,
                 materialization,
                 sources,
+                jobs: jobs.clone(),
                 shutdown: shutdown.clone(),
             },
         )
@@ -96,8 +102,54 @@ impl ProfilesClient {
                 actor_ref,
                 snapshot,
                 sources: sources_rx,
+                jobs,
             }),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn new(
+        mutations: MutationCoordinator,
+        profiles_path: Utf8PathBuf,
+        fs: Arc<dyn ProfileFsPort>,
+        fetcher: Arc<dyn SubscriptionFetcher>,
+        materialization: Arc<dyn ProfileMaterializationPort>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> anyhow::Result<Self> {
+        let jobs = crate::client::jobs::start(
+            profiles_path
+                .with_file_name(format!("jobs-{}.redb", nyanpasu_jobs::RunId::new_v4()))
+                .into_std_path_buf(),
+            crate::client::jobs::capture(),
+            shutdown.clone(),
+            tasks,
+        )
+        .await?;
+        Self::new_with_jobs(
+            mutations,
+            profiles_path,
+            jobs,
+            fs,
+            fetcher,
+            materialization,
+            shutdown,
+            tasks,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn jobs(&self) -> nyanpasu_jobs::JobsClient {
+        self.inner.jobs.client.clone()
+    }
+
+    pub(crate) async fn sync(
+        &self,
+        uid: ProfileId,
+        patch: Option<RemoteProfileOptionsPatch>,
+    ) -> crate::client::Result<CommitReport> {
+        self.inner.jobs.sync(uid, patch).await
     }
 
     /// Lets the refresh scheduler, the external watchers and the journal
@@ -259,6 +311,7 @@ impl ProfilesClient {
         .await
     }
 
+    #[cfg(test)]
     pub async fn refresh(
         &self,
         uid: ProfileId,
@@ -952,6 +1005,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn import_suggestion_is_committed_and_reschedules_the_timer() {
+        let _clock = crate::client::jobs::explicit_test_time();
         let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut fetcher = MockSubscriptionFetcher::new();
         let counter = std::sync::Arc::clone(&fetch_count);
@@ -1004,18 +1058,11 @@ mod tests {
         assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
         tokio::time::advance(std::time::Duration::from_secs(60 * 60 + 1)).await;
-        for _ in 0..200 {
-            let snapshot = client.snapshot();
-            let source = snapshot.items[&uid].definition.source().unwrap();
-            if matches!(
-                source,
-                ProfileSource::Remote { subscription, .. }
-                    if subscription.upload == Some(2)
-            ) {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
+        wait_for_source(&client, &uid.0, |source| {
+            source.origin == SourceOrigin::ScheduledRefresh
+        })
+        .await;
+        crate::client::jobs::settled(&client.jobs()).await;
         assert!(fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 2);
         let snapshot = client.snapshot();
         let source = snapshot.items[&uid].definition.source().unwrap();
@@ -1258,6 +1305,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn scheduler_fires_refresh_on_interval() {
+        let _clock = crate::client::jobs::explicit_test_time();
         let fs = MockProfileFsPort::new();
         let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let fetched = std::sync::Arc::new(tokio::sync::Notify::new());
@@ -1306,6 +1354,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn scheduler_reconcile_add_remove_and_kind_switch() {
+        let _clock = crate::client::jobs::explicit_test_time();
         let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut fetcher = MockSubscriptionFetcher::new();
         let counter = std::sync::Arc::clone(&fetch_count);
@@ -1354,6 +1403,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn scheduler_catches_up_overdue_profiles_on_start() {
+        let _clock = crate::client::jobs::explicit_test_time();
         let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut fetcher = MockSubscriptionFetcher::new();
         let counter = std::sync::Arc::clone(&fetch_count);
@@ -1395,12 +1445,11 @@ mod tests {
         .await
         .unwrap();
         client.start_producers().unwrap();
-        for _ in 0..200 {
-            if fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 1 {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
+        wait_for_source(&client, "r1", |source| {
+            source.origin == SourceOrigin::ScheduledRefresh
+        })
+        .await;
+        crate::client::jobs::settled(&client.jobs()).await;
         assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
@@ -3756,6 +3805,7 @@ mod tests {
     /// profile up exactly once and arms the scheduler and the journal ticker.
     #[tokio::test(start_paused = true)]
     async fn producers_stay_held_until_started_and_catch_up_once() {
+        let _clock = crate::client::jobs::explicit_test_time();
         let (fetches, mut fetched) = tokio::sync::watch::channel(0usize);
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
@@ -3794,9 +3844,12 @@ mod tests {
         }
         assert_eq!(*fetched.borrow(), 1, "a second start catches up nothing");
 
-        tokio::time::advance(std::time::Duration::from_secs(120 * 60)).await;
-        reach(&mut fetched, 2).await;
+        crate::client::jobs::settled(&client.jobs()).await;
+        tokio::time::advance(std::time::Duration::from_secs(5 * 60)).await;
         reach(&mut reconciled, 2).await;
+        crate::client::jobs::settled(&client.jobs()).await;
+        tokio::time::advance(std::time::Duration::from_secs(115 * 60)).await;
+        reach(&mut fetched, 2).await;
     }
 
     /// P1: an external file event is dropped while held and applied once the
@@ -3946,6 +3999,7 @@ mod tests {
     /// background input is dropped; a start arms nothing.
     #[tokio::test(start_paused = true)]
     async fn after_the_shutdown_began_no_write_or_producer_runs() {
+        let _clock = crate::client::jobs::explicit_test_time();
         let (fetches, fetched) = tokio::sync::watch::channel(0usize);
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
@@ -4495,5 +4549,220 @@ mod tests {
             "proxies: []\n# edited\n"
         );
         assert_eq!(yaml(&fixture.client.snapshot()), before);
+    }
+    async fn sync_fixture(
+        directory: &TempDir,
+        fetcher: Arc<dyn SubscriptionFetcher>,
+        capture: nyanpasu_jobs::LogCapture,
+        shutdown: &CancellationToken,
+        tasks: &TaskTracker,
+    ) -> ProfilesClient {
+        let jobs = crate::client::jobs::start(
+            directory.path().join("sync-jobs.redb"),
+            capture,
+            shutdown.clone(),
+            tasks,
+        )
+        .await
+        .unwrap();
+        ProfilesClient::new_with_jobs(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(directory),
+            jobs,
+            Arc::new(MockProfileFsPort::new()),
+            fetcher,
+            test_materialization_port(),
+            shutdown.clone(),
+            tasks,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn manual_sync_persists_commit_and_scoped_safe_logs() {
+        use tracing::instrument::WithSubscriber;
+        use tracing_subscriber::{Layer as _, layer::SubscriberExt};
+        // Keep two dispatchers alive so tracing does not cache a callsite first
+        // visited by a parallel test against that thread's NoSubscriber.
+        let _parallel_dispatch =
+            tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+        let capture = crate::client::jobs::capture();
+        let subscriber = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::sink)
+                    .with_filter(tracing_subscriber::filter::LevelFilter::WARN),
+            )
+            .with(capture.layer());
+        async {
+            let dir = tempdir().unwrap();
+            let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
+            let client = sync_fixture(
+                &dir,
+                Arc::new(ok_fetch("proxies: []\n")),
+                capture,
+                &shutdown,
+                &tasks,
+            )
+            .await;
+            let mut profiles = Profiles::default();
+            let mut item = remote_config_item("r1");
+            if let Some(ProfileSource::Remote { url, .. }) = item.definition.source_mut() {
+                *url = url::Url::parse("https://example.com/sub?token=private-token").unwrap();
+            }
+            profiles.append_item(item);
+            client.replace(profiles).await.unwrap();
+            let uid = ProfileId("r1".into());
+            let report = client.sync(uid.clone(), None).await.unwrap();
+            assert!(
+                report.snapshot.items[&uid]
+                    .definition
+                    .source()
+                    .unwrap()
+                    .materialized()
+                    .updated_at
+                    .is_some()
+            );
+            let runs = client
+                .jobs()
+                .runs(crate::state::profiles::jobs::sync_key(&uid), None, 10)
+                .await
+                .unwrap();
+            assert_eq!(runs.items.len(), 1);
+            let run = &runs.items[0];
+            assert_eq!(run.trigger, nyanpasu_jobs::Trigger::Manual);
+            assert_eq!(
+                run.completion().unwrap().outcome,
+                nyanpasu_jobs::Outcome::Succeeded
+            );
+            let logs = client.jobs().logs(run.id, 0, 100).await.unwrap();
+            let stages: Vec<_> = logs
+                .items
+                .iter()
+                .filter_map(|entry| {
+                    entry
+                        .fields
+                        .get("stage")
+                        .map(|value| serde_json::from_str::<String>(value).unwrap())
+                })
+                .collect();
+            assert_eq!(stages, ["started", "download", "validated", "committed"]);
+            let serialized = serde_json::to_string(&logs.items).unwrap();
+            assert!(!serialized.contains("private-token"));
+            assert!(!serialized.contains("example.com"));
+            shutdown.cancel();
+            tasks.close();
+            tasks.wait().await;
+        }
+        .with_subscriber(subscriber)
+        .await;
+    }
+
+    #[tokio::test]
+    async fn failed_sync_retains_ten_runs_and_recovers_history_after_restart() {
+        let dir = tempdir().unwrap();
+        let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher
+            .expect_fetch()
+            .returning(|_, _| Err(SubscriptionFetchError::SubscriptionHttpStatus { status: 403 }));
+        let client = sync_fixture(
+            &dir,
+            Arc::new(fetcher),
+            crate::client::jobs::capture(),
+            &shutdown,
+            &tasks,
+        )
+        .await;
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
+        let uid = ProfileId("r1".into());
+        for _ in 0..12 {
+            assert!(matches!(
+                client.sync(uid.clone(), None).await,
+                Err(crate::client::ClientError::Profiles(
+                    ProfilesError::FetchSubscription { .. }
+                ))
+            ));
+        }
+        crate::client::jobs::settled(&client.jobs()).await;
+        let key = crate::state::profiles::jobs::sync_key(&uid);
+        let first = client.jobs().runs(key.clone(), None, 4).await.unwrap();
+        let second = client
+            .jobs()
+            .runs(key.clone(), first.next, 10)
+            .await
+            .unwrap();
+        assert_eq!(first.items.len(), 4);
+        assert_eq!(second.items.len(), 6);
+        assert!(first.items.iter().chain(&second.items).all(|run| matches!(&run.completion().unwrap().outcome, nyanpasu_jobs::Outcome::Failed(error) if error.code == "subscription_http_status")));
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+        let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
+        let reloaded = sync_fixture(
+            &dir,
+            Arc::new(MockSubscriptionFetcher::new()),
+            crate::client::jobs::capture(),
+            &shutdown,
+            &tasks,
+        )
+        .await;
+        assert_eq!(
+            reloaded
+                .jobs()
+                .runs(key, None, 20)
+                .await
+                .unwrap()
+                .items
+                .len(),
+            10
+        );
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+    }
+
+    #[tokio::test]
+    async fn dropping_sync_waiter_keeps_the_download_owned_and_rejects_overlap() {
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let release = Arc::new(tokio::sync::Notify::new());
+        let fetcher = HoldingFetcher {
+            started: std::sync::Mutex::new(Some(started)),
+            release: release.clone(),
+        };
+        let (client, _dir) =
+            remote_seeded_client_with_fetcher(MockProfileFsPort::new(), Arc::new(fetcher)).await;
+        let uid = ProfileId("r1".into());
+        let caller = tokio::spawn({
+            let client = client.clone();
+            let uid = uid.clone();
+            async move { client.sync(uid, None).await }
+        });
+        started_rx.await.unwrap();
+        caller.abort();
+        let _ = caller.await;
+        assert!(matches!(
+            client.sync(uid.clone(), None).await,
+            Err(crate::client::ClientError::Jobs(nyanpasu_jobs::Error::Busy))
+        ));
+        release.notify_waiters();
+        wait_for_source(&client, "r1", |source| {
+            matches!(source.outcome, SourceOutcome::Committed { .. })
+        })
+        .await;
+        crate::client::jobs::settled(&client.jobs()).await;
+        let runs = client
+            .jobs()
+            .runs(crate::state::profiles::jobs::sync_key(&uid), None, 10)
+            .await
+            .unwrap();
+        assert_eq!(runs.items.len(), 1);
+        assert_eq!(
+            runs.items[0].completion().unwrap().outcome,
+            nyanpasu_jobs::Outcome::Succeeded
+        );
     }
 }

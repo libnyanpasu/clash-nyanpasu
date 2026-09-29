@@ -15,7 +15,7 @@ use std::{
 use tracing::error;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_log::log_tracer;
-use tracing_subscriber::{EnvFilter, filter, fmt, layer::SubscriberExt, reload};
+use tracing_subscriber::{EnvFilter, Layer as _, filter, fmt, layer::SubscriberExt, reload};
 
 pub type ReloadSignal = (Option<LoggingLevel>, Option<LogRotation>);
 
@@ -66,7 +66,8 @@ fn get_file_appender(rotation: LogRotation) -> Result<(NonBlocking, FileAppender
 }
 
 /// initial instance global logger, returning the channel that reloads it
-pub fn init() -> Result<Sender<ReloadSignal>> {
+pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
+    let jobs = crate::client::jobs::capture();
     let log_dir = dirs::app_logs_dir().unwrap();
     if !log_dir.exists() {
         let _ = fs::create_dir_all(&log_dir);
@@ -157,14 +158,17 @@ pub fn init() -> Result<Sender<ReloadSignal>> {
         .with_line_number(true)
         .with_writer(std::io::stdout);
 
-    let subscriber = tracing_subscriber::registry().with(filter).with(file_layer);
     #[cfg(debug_assertions)]
-    let subscriber = subscriber.with(terminal_layer);
+    let file_layer = file_layer.and_then(terminal_layer);
+
+    let subscriber = tracing_subscriber::registry()
+        .with(file_layer.with_filter(filter))
+        .with(jobs.layer());
 
     log_tracer::LogTracer::init()?;
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|x| anyhow!("setup logging error: {}", x))?;
-    Ok(sender)
+    Ok((sender, jobs))
 }
 
 #[cfg(test)]

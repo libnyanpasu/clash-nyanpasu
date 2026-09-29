@@ -188,7 +188,8 @@ pub fn run() -> std::io::Result<()> {
         std::process::exit(1);
     }
 
-    let logger_reload = init::logging::init().expect("failed to initialize logging");
+    let (logger_reload, jobs_capture) =
+        init::logging::init().expect("failed to initialize logging");
     crate::log_err!(init::init_config());
 
     // Until setup hands over an app handle, a panic can only end the process.
@@ -266,7 +267,7 @@ pub fn run() -> std::io::Result<()> {
         })
         .setup(move |app| {
             specta_builder.mount_events(app);
-            setup::setup(app, metadata, logger_reload)
+            setup::setup(app, metadata, logger_reload, jobs_capture)
                 .context("Failed to setup the app")
                 .inspect_err(|e| {
                     tracing::error!("Failed to setup the app: {:#?}", e);

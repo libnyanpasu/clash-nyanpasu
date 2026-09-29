@@ -227,6 +227,7 @@ async fn spawn_owned(
 ) -> SystemProxyClient {
     SystemProxyClient::spawn(
         SystemProxyArgs {
+            jobs: crate::client::jobs::test_client().await,
             os,
             auto_launch,
             pac,

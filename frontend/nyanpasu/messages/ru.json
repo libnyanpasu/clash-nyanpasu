@@ -634,7 +634,6 @@
   "effect_failure_hotkey_partial_registration": "Не удалось зарегистрировать некоторые сочетания клавиш",
   "effect_failure_hotkey_shut_down": "Сочетания клавиш недоступны, пока приложение закрывается",
   "effect_failure_hotkey_stopped": "Служба сочетаний клавиш не запущена",
-  "effect_failure_locale_apply_failed": "Не удалось применить язык",
   "effect_failure_logger_refresh_failed": "Не удалось обновить настройки журнала",
   "effect_failure_widget_unavailable": "Виджет сетевой статистики ещё не готов",
   "effect_failure_widget_apply_failed": "Не удалось обновить виджет сетевой статистики",
@@ -651,5 +650,6 @@
   "effect_failure_system_proxy_shut_down": "Системный прокси недоступен, пока приложение закрывается",
   "effect_failure_system_proxy_stopped": "Служба системного прокси не запущена",
   "error_system_proxy_read_os_proxy": "Не удалось прочитать системный прокси",
-  "error_system_proxy_write_os_proxy": "Не удалось обновить системный прокси на {host}:{port}"
+  "error_system_proxy_write_os_proxy": "Не удалось обновить системный прокси на {host}:{port}",
+  "error_effects_stopped": "Служба конфигурации не запущена"
 }

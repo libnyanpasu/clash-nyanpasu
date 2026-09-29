@@ -17,8 +17,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     adapters::TauriWidgetController,
     ports::{
-        LocaleSink, LogRotation, LoggerRefresher, MockLocaleSink, MockLoggerRefresher,
-        MockTrayRefresher, MockWidgetController, MockWidgetRuntime, TrayRefresher,
+        LocaleSink, LogRotation, LoggerError, LoggerRefresher, MockLocaleSink, MockLoggerRefresher,
+        MockTrayRefresher, MockWidgetController, MockWidgetRuntime, TrayError, TrayRefresher,
         WIDGET_STOP_BOUND, WidgetController, WidgetError,
     },
 };
@@ -234,7 +234,6 @@ async fn locale_is_applied_before_tray_refresh() {
     let locale_log = log.clone();
     locale.expect_set_locale().times(1).returning(move |_| {
         record(&locale_log, "set_locale");
-        Ok(())
     });
 
     let mut tray = MockTrayRefresher::new();
@@ -278,20 +277,23 @@ async fn locale_is_applied_before_tray_refresh() {
 #[tokio::test]
 async fn each_ui_failure_gets_its_own_code() {
     let mut locale = MockLocaleSink::new();
-    locale
-        .expect_set_locale()
-        .returning(|_| Err(anyhow::anyhow!("locale refused")));
+    locale.expect_set_locale().returning(|_| ());
     let mut logger = MockLoggerRefresher::new();
     logger
         .expect_refresh()
-        .returning(|_, _| Err(anyhow::anyhow!("logger refused")));
+        .returning(|_, _| Err(LoggerError::ReloadThreadStopped));
     let mut widget = MockWidgetController::new();
     widget
         .expect_apply()
         .returning(|_| Box::pin(async { Err(spawn_refused("widget refused")) }));
     let mut tray = MockTrayRefresher::new();
-    tray.expect_refresh_full()
-        .returning(|_| Box::pin(async { Err(anyhow::anyhow!("tray refused")) }));
+    tray.expect_refresh_full().returning(|_| {
+        Box::pin(async {
+            Err(TrayError::ScheduleTrayWork {
+                source: "tray refused".into(),
+            })
+        })
+    });
 
     let executor = executor(
         Arc::new(locale),
@@ -302,6 +304,7 @@ async fn each_ui_failure_gets_its_own_code() {
     .await;
 
     // One patch that touches all four: the language rebuilds the tray as well.
+    // Setting the locale cannot fail, so the other three degrade beside it.
     let app = NyanpasuAppConfig {
         language: I18nLanguage::Russian,
         app_log_level: LoggingLevel::Error,
@@ -316,6 +319,7 @@ async fn each_ui_failure_gets_its_own_code() {
 
     let codes: Vec<(EffectKind, EffectFailureCode)> = statuses
         .iter()
+        .filter(|status| status.kind != EffectKind::Locale)
         .map(|status| match &status.health {
             EffectHealth::Degraded { code, .. } => (status.kind, *code),
             other => panic!("{:?} should have degraded, got {other:?}", status.kind),
@@ -324,7 +328,6 @@ async fn each_ui_failure_gets_its_own_code() {
     assert_eq!(
         codes,
         vec![
-            (EffectKind::Locale, EffectFailureCode::LocaleApplyFailed),
             (EffectKind::Logger, EffectFailureCode::LoggerRefreshFailed),
             (EffectKind::Widget, EffectFailureCode::WidgetApplyFailed),
             (EffectKind::Tray, EffectFailureCode::TrayRefreshFailed),
@@ -643,7 +646,6 @@ async fn late_full_tray_refresh_still_runs_after_a_newer_part_refresh() {
     let locale_log = log.clone();
     locale.expect_set_locale().times(1).returning(move |_| {
         record(&locale_log, "set_locale");
-        Ok(())
     });
     let mut tray = MockTrayRefresher::new();
     let part_log = log.clone();

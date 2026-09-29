@@ -731,7 +731,6 @@
   "effect_failure_hotkey_partial_registration": "Some shortcuts could not be registered",
   "effect_failure_hotkey_shut_down": "Shortcuts are unavailable while the app exits",
   "effect_failure_hotkey_stopped": "The shortcut service is not running",
-  "effect_failure_locale_apply_failed": "Could not apply the language",
   "effect_failure_logger_refresh_failed": "Could not update logging",
   "effect_failure_widget_unavailable": "The network statistic widget is not ready yet",
   "effect_failure_widget_apply_failed": "Could not update the network statistic widget",
@@ -748,5 +747,6 @@
   "effect_failure_system_proxy_shut_down": "The system proxy is unavailable while the app exits",
   "effect_failure_system_proxy_stopped": "The system proxy service is not running",
   "error_system_proxy_read_os_proxy": "Could not read the system proxy",
-  "error_system_proxy_write_os_proxy": "Could not update the system proxy to {host}:{port}"
+  "error_system_proxy_write_os_proxy": "Could not update the system proxy to {host}:{port}",
+  "error_effects_stopped": "The configuration service is not running"
 }

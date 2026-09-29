@@ -145,8 +145,8 @@ pub(super) fn steps<M>(work: TrayWork, paint: &Paint<M>, icon: bool) -> Vec<Step
 pub(super) fn request(
     queue: &Mutex<TrayQueue>,
     work: TrayWork,
-    schedule: impl FnOnce() -> anyhow::Result<()>,
-) -> anyhow::Result<()> {
+    schedule: impl FnOnce() -> tauri::Result<()>,
+) -> tauri::Result<()> {
     let must_schedule = queue.lock().push(work);
     if !must_schedule {
         return Ok(());
@@ -191,7 +191,7 @@ mod tests {
 
     /// Counts the drains scheduled. The test runs each one itself, as the
     /// main thread would.
-    fn counting(schedules: &Cell<usize>) -> impl FnOnce() -> anyhow::Result<()> + '_ {
+    fn counting(schedules: &Cell<usize>) -> impl FnOnce() -> tauri::Result<()> + '_ {
         move || {
             schedules.set(schedules.get() + 1);
             Ok(())
@@ -403,9 +403,7 @@ mod tests {
     #[test]
     fn a_failed_schedule_lets_the_next_request_schedule() {
         let queue = Mutex::new(TrayQueue::default());
-        let failed = request(&queue, TrayWork::PART, || {
-            anyhow::bail!("the event loop is gone")
-        });
+        let failed = request(&queue, TrayWork::PART, || Err(tauri::Error::WindowNotFound));
         assert!(failed.is_err());
         assert!(!queue.lock().scheduled);
 

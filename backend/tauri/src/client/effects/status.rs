@@ -38,7 +38,6 @@ pub enum EffectFailureCode {
     HotkeyPartialRegistration,
     HotkeyShutDown,
     HotkeyStopped,
-    LocaleApplyFailed,
     LoggerRefreshFailed,
     WidgetUnavailable,
     WidgetApplyFailed,

@@ -7,6 +7,7 @@ import {
 } from '@/utils/ipc-error'
 import type {
   ConfigError,
+  EffectsError,
   IpcError,
   OsProxyError,
   ProfilesError,
@@ -47,6 +48,12 @@ const systemDns = (error: SystemDnsError): IpcError => ({
 
 const systemProxy = (error: OsProxyError): IpcError => ({
   kind: { domain: 'system_proxy', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const effects = (error: EffectsError): IpcError => ({
+  kind: { domain: 'effects', error },
   message: 'the backend text',
   detail: 'the backend text: caused by',
 })
@@ -501,5 +508,11 @@ test('a failed system proxy write names the address it was going to', () => {
   ).toBe(m.error_system_proxy_write_os_proxy({ host: '127.0.0.1', port: 7890 }))
   expect(ipcErrorMessage(systemProxy({ kind: 'read_os_proxy' }))).toBe(
     m.error_system_proxy_read_os_proxy(),
+  )
+})
+
+test('a retry that cannot reach the effects owner says it is not running', () => {
+  expect(ipcErrorMessage(effects({ kind: 'effects_stopped' }))).toBe(
+    m.error_effects_stopped(),
   )
 })

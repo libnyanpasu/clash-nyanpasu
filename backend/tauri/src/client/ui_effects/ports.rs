@@ -14,9 +14,41 @@ use tokio::time::Instant;
 use crate::client::effects::{plan::TrayView, status::EffectFailureCode};
 
 /// The process-wide i18n locale that the tray menu labels are rendered from.
+/// Setting it cannot fail.
 #[cfg_attr(test, mockall::automock)]
 pub trait LocaleSink: Send + Sync + 'static {
-    fn set_locale(&self, language: I18nLanguage) -> anyhow::Result<()>;
+    fn set_locale(&self, language: I18nLanguage);
+}
+
+/// Why the tray could not be asked to refresh. Whatever goes wrong once the
+/// work is queued is logged where the tray runs it.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum TrayError {
+    #[snafu(display("could not schedule the tray work on the main thread"))]
+    ScheduleTrayWork {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
+
+impl TrayError {
+    pub fn code(&self) -> EffectFailureCode {
+        EffectFailureCode::TrayRefreshFailed
+    }
+}
+
+/// Why the running logger could not be reconfigured.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum LoggerError {
+    #[snafu(display("the logger reload thread has stopped"))]
+    ReloadThreadStopped,
+}
+
+impl LoggerError {
+    pub fn code(&self) -> EffectFailureCode {
+        EffectFailureCode::LoggerRefreshFailed
+    }
 }
 
 /// A tray rebuild (`refresh_full`) or a refresh of the parts that change with
@@ -26,8 +58,8 @@ pub trait LocaleSink: Send + Sync + 'static {
 #[async_trait::async_trait]
 #[cfg_attr(test, mockall::automock)]
 pub trait TrayRefresher: Send + Sync + 'static {
-    async fn refresh_full(&self, view: TrayView) -> anyhow::Result<()>;
-    async fn refresh_part(&self, view: TrayView) -> anyhow::Result<()>;
+    async fn refresh_full(&self, view: TrayView) -> Result<(), TrayError>;
+    async fn refresh_part(&self, view: TrayView) -> Result<(), TrayError>;
 }
 
 /// How the log file is split and how many of its files are kept. The two
@@ -50,7 +82,7 @@ pub trait LoggerRefresher: Send + Sync + 'static {
         &self,
         level: Option<LoggingLevel>,
         rotation: Option<LogRotation>,
-    ) -> anyhow::Result<()>;
+    ) -> Result<(), LoggerError>;
 }
 
 /// How long a widget stop waits for the widget to leave before it reports the

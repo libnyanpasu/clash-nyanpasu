@@ -6,6 +6,7 @@ import type {
   CoreFailure,
   DegradationReason,
   EffectFailureCode,
+  EffectsError,
   EvidenceGap,
   ExecutionHost,
   HotkeyAction,
@@ -43,6 +44,8 @@ export function ipcErrorMessage(error: IpcError): string {
       return systemDnsErrorMessage(error.kind.error)
     case 'system_proxy':
       return osProxyErrorMessage(error.kind.error)
+    case 'effects':
+      return effectsErrorMessage(error.kind.error)
   }
 }
 
@@ -273,6 +276,13 @@ export function storageErrorMessage(error: StorageOperationError): string {
     case 'decode_value':
     case 'encode_value':
       return m.error_storage_invalid_value()
+  }
+}
+
+function effectsErrorMessage(error: EffectsError): string {
+  switch (error.kind) {
+    case 'effects_stopped':
+      return m.error_effects_stopped()
   }
 }
 
@@ -609,8 +619,6 @@ export function effectFailureMessage(code: EffectFailureCode): string {
       return m.effect_failure_hotkey_shut_down()
     case 'hotkey_stopped':
       return m.effect_failure_hotkey_stopped()
-    case 'locale_apply_failed':
-      return m.effect_failure_locale_apply_failed()
     case 'logger_refresh_failed':
       return m.effect_failure_logger_refresh_failed()
     case 'widget_unavailable':

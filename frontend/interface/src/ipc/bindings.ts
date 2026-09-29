@@ -1525,7 +1525,6 @@ export type EffectFailureCode =
   | 'hotkey_partial_registration'
   | 'hotkey_shut_down'
   | 'hotkey_stopped'
-  | 'locale_apply_failed'
   | 'logger_refresh_failed'
   | 'widget_unavailable'
   | 'widget_apply_failed'
@@ -1556,6 +1555,10 @@ export type EffectKind =
   | 'hotkeys'
   | 'widget'
   | 'tray'
+
+export type EffectsError =
+  /**  The owner's mailbox is closed: the app is exiting, or the owner died. */
+  { kind: 'effects_stopped' }
 
 export type EndpointConnectivity =
   | { kind: 'connected' }
@@ -1809,6 +1812,7 @@ export type IpcErrorKind =
   | { domain: 'storage'; error: StorageOperationError }
   | { domain: 'system_dns'; error: SystemDnsError }
   | { domain: 'system_proxy'; error: OsProxyError }
+  | { domain: 'effects'; error: EffectsError }
 
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`

@@ -5,10 +5,12 @@ use nyanpasu_config::runtime::executor::ResolvedPortBindings;
 #[cfg(test)]
 use ractor::RpcReplyPort;
 use ractor::{Actor, ActorProcessingErr, ActorRef};
+use snafu::OptionExt as _;
 use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
+    error::{EffectsError, EffectsStoppedSnafu},
     plan::{
         ApplicationEffect, ApplicationEffectFields, ApplicationEffectInputs, ApplicationEffectPlan,
         ClashEffectFields, EffectKind, TrayRefresh,
@@ -478,10 +480,11 @@ impl EffectsClient {
         })
     }
 
-    pub fn retry_now(&self, kind: EffectKind) -> anyhow::Result<()> {
+    pub fn retry_now(&self, kind: EffectKind) -> Result<(), EffectsError> {
         self.actor
             .cast(Message::RetryNow(kind))
-            .map_err(|error| anyhow::anyhow!("{error}"))
+            .ok()
+            .context(EffectsStoppedSnafu)
     }
     pub fn snapshot(&self) -> EffectsSnapshot {
         self.status.borrow().clone()

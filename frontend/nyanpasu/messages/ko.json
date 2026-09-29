@@ -630,7 +630,6 @@
   "effect_failure_hotkey_partial_registration": "일부 단축키를 등록하지 못했습니다",
   "effect_failure_hotkey_shut_down": "앱이 종료되는 동안에는 단축키를 사용할 수 없습니다",
   "effect_failure_hotkey_stopped": "단축키 서비스가 실행 중이 아닙니다",
-  "effect_failure_locale_apply_failed": "언어를 적용하지 못했습니다",
   "effect_failure_logger_refresh_failed": "로그 설정을 업데이트하지 못했습니다",
   "effect_failure_widget_unavailable": "네트워크 통계 위젯이 아직 준비되지 않았습니다",
   "effect_failure_widget_apply_failed": "네트워크 통계 위젯을 업데이트하지 못했습니다",
@@ -647,5 +646,6 @@
   "effect_failure_system_proxy_shut_down": "앱이 종료되는 동안에는 시스템 프록시를 사용할 수 없습니다",
   "effect_failure_system_proxy_stopped": "시스템 프록시 서비스가 실행 중이 아닙니다",
   "error_system_proxy_read_os_proxy": "시스템 프록시를 읽지 못했습니다",
-  "error_system_proxy_write_os_proxy": "시스템 프록시를 {host}:{port}(으)로 업데이트하지 못했습니다"
+  "error_system_proxy_write_os_proxy": "시스템 프록시를 {host}:{port}(으)로 업데이트하지 못했습니다",
+  "error_effects_stopped": "구성 서비스가 실행 중이 아닙니다"
 }

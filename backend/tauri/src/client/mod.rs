@@ -580,9 +580,11 @@ impl NyanpasuClient {
         self.inner.application_workflow.retry_runtime().await
     }
 
-    pub fn retry_effect_now(&self, kind: effects::plan::EffectKind) -> Result<()> {
-        self.inner.effects.retry_now(kind)?;
-        Ok(())
+    pub fn retry_effect_now(
+        &self,
+        kind: effects::plan::EffectKind,
+    ) -> std::result::Result<(), effects::error::EffectsError> {
+        self.inner.effects.retry_now(kind)
     }
 
     pub async fn save_main_window_geometry(

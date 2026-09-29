@@ -731,7 +731,6 @@
   "effect_failure_hotkey_partial_registration": "部分快捷键注册失败",
   "effect_failure_hotkey_shut_down": "应用退出时快捷键不可用",
   "effect_failure_hotkey_stopped": "快捷键服务未运行",
-  "effect_failure_locale_apply_failed": "无法应用语言设置",
   "effect_failure_logger_refresh_failed": "无法更新日志设置",
   "effect_failure_widget_unavailable": "网络统计小组件尚未就绪",
   "effect_failure_widget_apply_failed": "无法更新网络统计小组件",
@@ -748,5 +747,6 @@
   "effect_failure_system_proxy_shut_down": "应用退出时系统代理不可用",
   "effect_failure_system_proxy_stopped": "系统代理服务未运行",
   "error_system_proxy_read_os_proxy": "无法读取系统代理",
-  "error_system_proxy_write_os_proxy": "无法将系统代理更新为 {host}:{port}"
+  "error_system_proxy_write_os_proxy": "无法将系统代理更新为 {host}:{port}",
+  "error_effects_stopped": "配置服务未运行"
 }

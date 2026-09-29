@@ -731,7 +731,6 @@
   "effect_failure_hotkey_partial_registration": "部分快速鍵註冊失敗",
   "effect_failure_hotkey_shut_down": "應用程式結束時快速鍵無法使用",
   "effect_failure_hotkey_stopped": "快速鍵服務未執行",
-  "effect_failure_locale_apply_failed": "無法套用語言設定",
   "effect_failure_logger_refresh_failed": "無法更新日誌設定",
   "effect_failure_widget_unavailable": "網路統計小工具尚未就緒",
   "effect_failure_widget_apply_failed": "無法更新網路統計小工具",
@@ -748,5 +747,6 @@
   "effect_failure_system_proxy_shut_down": "應用程式結束時系統代理無法使用",
   "effect_failure_system_proxy_stopped": "系統代理服務未執行",
   "error_system_proxy_read_os_proxy": "無法讀取系統代理",
-  "error_system_proxy_write_os_proxy": "無法將系統代理更新為 {host}:{port}"
+  "error_system_proxy_write_os_proxy": "無法將系統代理更新為 {host}:{port}",
+  "error_effects_stopped": "設定服務未執行"
 }

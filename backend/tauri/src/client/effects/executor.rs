@@ -93,27 +93,30 @@ impl ApplicationEffectExecutor {
     }
 
     fn apply_locale(&self, revision: EffectRevision, language: I18nLanguage) -> EffectStatus {
-        report(
-            EffectKind::Locale,
-            revision,
-            EffectFailureCode::LocaleApplyFailed,
-            self.locale.set_locale(language),
-        )
+        self.locale.set_locale(language);
+        healthy(EffectKind::Locale, revision)
     }
 
     fn apply_logger(&self, revision: EffectRevision, desired: &LoggerDesired) -> EffectStatus {
-        report(
-            EffectKind::Logger,
-            revision,
-            EffectFailureCode::LoggerRefreshFailed,
-            self.logger.refresh(
-                Some(desired.level.clone()),
-                Some(LogRotation {
-                    max_files: desired.max_files,
-                    max_file_size: desired.max_file_size,
-                }),
+        let refreshed = self.logger.refresh(
+            Some(desired.level.clone()),
+            Some(LogRotation {
+                max_files: desired.max_files,
+                max_file_size: desired.max_file_size,
+            }),
+        );
+        match refreshed {
+            Ok(()) => healthy(EffectKind::Logger, revision),
+            // Retryable: the configuration is committed, so the next reconcile
+            // hands the same desired value to the same adapter again.
+            Err(error) => degraded(
+                EffectKind::Logger,
+                revision,
+                error.code(),
+                failure_text(&error),
+                true,
             ),
-        )
+        }
     }
 
     async fn apply_widget(
@@ -159,12 +162,16 @@ impl ApplicationEffectExecutor {
             self.tray_full_pending
                 .store(result.is_err(), Ordering::SeqCst);
         }
-        report(
-            EffectKind::Tray,
-            revision,
-            EffectFailureCode::TrayRefreshFailed,
-            result,
-        )
+        match result {
+            Ok(()) => healthy(EffectKind::Tray, revision),
+            Err(error) => degraded(
+                EffectKind::Tray,
+                revision,
+                error.code(),
+                failure_text(&error),
+                true,
+            ),
+        }
     }
 }
 
@@ -247,20 +254,6 @@ fn system_proxy_desires(
         }
     }
     (proxy, guard, auto_launch)
-}
-
-fn report(
-    kind: EffectKind,
-    revision: EffectRevision,
-    code: EffectFailureCode,
-    result: anyhow::Result<()>,
-) -> EffectStatus {
-    match result {
-        Ok(()) => healthy(kind, revision),
-        // Retryable: the configuration is committed, so the next reconcile
-        // hands the same desired value to the same adapter again.
-        Err(error) => degraded(kind, revision, code, format!("{error:#}"), true),
-    }
 }
 
 fn healthy(kind: EffectKind, revision: EffectRevision) -> EffectStatus {

@@ -1,6 +1,6 @@
 use crate::{
     client::{
-        ClientError, NyanpasuClient, RuntimeError, SystemDnsError,
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
         system_proxy::ports::OsProxyError,
     },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
@@ -52,6 +52,13 @@ pub enum IpcErrorKind {
     Storage(Box<StorageOperationError>),
     SystemDns(Box<SystemDnsError>),
     SystemProxy(Box<OsProxyError>),
+    Effects(Box<EffectsError>),
+}
+
+impl From<EffectsError> for IpcErrorKind {
+    fn from(error: EffectsError) -> Self {
+        Self::Effects(Box::new(error))
+    }
 }
 
 impl From<OsProxyError> for IpcErrorKind {
@@ -1471,7 +1478,10 @@ mod tests {
     use snafu::IntoError;
 
     use crate::{
-        client::{runtime_error::RuntimeError, system_proxy::ports::OsProxyError},
+        client::{
+            effects::error::EffectsError, runtime_error::RuntimeError,
+            system_proxy::ports::OsProxyError,
+        },
         state::{
             mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
             profiles::{ProfileFileError, SubscriptionFetchError},
@@ -1544,6 +1554,16 @@ mod tests {
                 "domain": "system_dns",
                 "error": { "kind": "flush_rejected", "command": "ipconfig.exe", "code": 5 },
             })
+        );
+    }
+
+    #[test]
+    fn a_stopped_effects_owner_reaches_the_frontend_as_its_own_domain() {
+        let wire = serde_json::to_value(IpcError::from(EffectsError::EffectsStopped)).unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({ "domain": "effects", "error": { "kind": "effects_stopped" } })
         );
     }
 

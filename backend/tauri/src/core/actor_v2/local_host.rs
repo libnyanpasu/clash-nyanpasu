@@ -7,6 +7,8 @@ use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{
     ControlOptions, CoreControl, CoreKind, CoreManager, CoreSpec, LocalIpcPolicy, ManagerOptions,
 };
+use serde::Serialize;
+use snafu::{ResultExt, Snafu};
 
 use crate::utils::path::PathResolver;
 
@@ -36,14 +38,33 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
     ))
 }
 
-pub fn core_spec(core: &ClashCore) -> Result<CoreSpec> {
+/// A failure of locating the binary a core is started from.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CoreSpecError {
+    #[snafu(display("could not find the {core} core binary"))]
+    FindCoreBinary {
+        #[specta(type = String)]
+        core: ClashCore,
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("the {core} core binary path is not valid UTF-8: {path}"))]
+    CoreBinaryPathNotUtf8 {
+        #[specta(type = String)]
+        core: ClashCore,
+        path: String,
+    },
+}
+
+pub fn core_spec(core: &ClashCore) -> Result<CoreSpec, CoreSpecError> {
     core_spec_with(core, crate::core::find_binary_path)
 }
 
 fn core_spec_with(
     core: &ClashCore,
     find_binary: impl FnOnce(&nyanpasu_utils::core::CoreType) -> std::io::Result<std::path::PathBuf>,
-) -> Result<CoreSpec> {
+) -> Result<CoreSpec, CoreSpecError> {
     let core_type = core.into();
     let kind = match core {
         ClashCore::ClashPremium => CoreKind::ClashPremium,
@@ -51,11 +72,17 @@ fn core_spec_with(
         ClashCore::Mihomo | ClashCore::MihomoAlpha => CoreKind::Mihomo,
         ClashCore::Meow => CoreKind::Meow,
     };
-    let binary_path = find_binary(&core_type)?;
+    let binary_path = find_binary(&core_type).context(FindCoreBinarySnafu { core: *core })?;
+    let binary_path = Utf8PathBuf::from_path_buf(binary_path).map_err(|path| {
+        CoreSpecError::CoreBinaryPathNotUtf8 {
+            core: *core,
+            path: path.to_string_lossy().into_owned(),
+        }
+    })?;
 
     Ok(CoreSpec {
         kind,
-        binary_path: to_utf8(binary_path)?,
+        binary_path,
         version: None,
         features: vec![],
     })

@@ -138,14 +138,20 @@ fn client_error_from_core(error: nyanpasu_core_manager::CoreError) -> ClientErro
 #[cfg(not(test))]
 fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
-) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    crate::core::actor_v2::local_host::CoreSpecError,
+> {
     crate::core::actor_v2::local_host::core_spec(core)
 }
 
 #[cfg(test)]
 fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
-) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+) -> std::result::Result<
+    nyanpasu_core_manager::CoreSpec,
+    crate::core::actor_v2::local_host::CoreSpecError,
+> {
     use nyanpasu_core_manager::CoreKind;
     let kind = match core {
         nyanpasu_config::application::ClashCore::ClashPremium => CoreKind::ClashPremium,

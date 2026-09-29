@@ -14,7 +14,9 @@ use super::{
     },
     *,
 };
-use crate::client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary};
+use crate::client::core_lifecycle::ports::{
+    BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
+};
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
 use std::{
@@ -55,6 +57,14 @@ fn aftermath(
     }
 }
 
+/// A publication that fails the way a full disk does.
+pub(super) fn scripted_publish_failure() -> crate::client::runtime::PublishRuntimeError {
+    crate::client::runtime::PublishRuntimeError::CreateRuntimeDirectory {
+        path: std::path::PathBuf::from("runtime").into(),
+        source: std::io::Error::other("scripted publish failure"),
+    }
+}
+
 struct BlockingBuilder {
     delegate: adapters::FsRuntimeBuildAdapter,
     calls: AtomicUsize,
@@ -70,11 +80,15 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
-    ) -> anyhow::Result<super::inputs::FrozenProfileContent> {
+    ) -> super::inputs::FrozenProfileContent {
         self.delegate.capture_content(profiles).await
     }
 
-    fn core_spec(&self, core: &ClashCore) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+    fn core_spec(
+        &self,
+        core: &ClashCore,
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -83,17 +97,22 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
-        anyhow::ensure!(!self.fail.load(Ordering::SeqCst), "scripted build failure");
+        if self.fail.load(Ordering::SeqCst) {
+            return Err(crate::enhance::RuntimeBuildError::ConfigNotMapping);
+        }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
             .await
     }
-    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
+    async fn publish(
+        &self,
+        snapshot: &runtime::RuntimeSnapshot,
+    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
         self.delegate.publish(snapshot).await
     }
 }
@@ -728,7 +747,7 @@ struct Installer {
 
 #[async_trait::async_trait]
 impl BinaryInstaller for Installer {
-    async fn install(&self, artifact: &PreparedCoreBinary) -> anyhow::Result<()> {
+    async fn install(&self, artifact: &PreparedCoreBinary) -> Result<(), InstallCoreBinaryError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.submissions_at_copy
             .store(self.endpoint.submissions(), Ordering::SeqCst);
@@ -736,8 +755,16 @@ impl BinaryInstaller for Installer {
         if self.park {
             self.release.notified().await;
         }
-        anyhow::ensure!(!self.fail, "scripted installation failure");
-        tokio::fs::copy(&artifact.source, &artifact.destination).await?;
+        if self.fail {
+            return Err(InstallCoreBinaryError::ElevatedCopyFailed {
+                core: artifact.target,
+                destination: (&artifact.destination).into(),
+                exit_code: Some(1),
+            });
+        }
+        tokio::fs::copy(&artifact.source, &artifact.destination)
+            .await
+            .unwrap();
         Ok(())
     }
 }

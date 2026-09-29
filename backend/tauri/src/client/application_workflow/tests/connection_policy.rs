@@ -755,7 +755,7 @@ impl crate::client::core_lifecycle::ports::BinaryInstaller for CountingInstaller
     async fn install(
         &self,
         _: &crate::client::core_lifecycle::ports::PreparedCoreBinary,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), crate::client::core_lifecycle::ports::InstallCoreBinaryError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -856,14 +856,15 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
-    ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
+    ) -> super::super::inputs::FrozenProfileContent {
         self.delegate.capture_content(profiles).await
     }
 
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
-    ) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -872,12 +873,15 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> anyhow::Result<Arc<crate::client::runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<crate::client::runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError>
+    {
         self.inputs
             .lock()
             .unwrap()
             .push((inputs.profiles.clone(), inputs.clash.clone()));
-        anyhow::ensure!(!self.fail_build, "scripted build failure");
+        if self.fail_build {
+            return Err(crate::enhance::RuntimeBuildError::ConfigNotMapping);
+        }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
             .await
@@ -885,8 +889,10 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     async fn publish(
         &self,
         snapshot: &crate::client::runtime::RuntimeSnapshot,
-    ) -> anyhow::Result<()> {
-        anyhow::ensure!(!self.fail_publish, "scripted publish failure");
+    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+        if self.fail_publish {
+            return Err(super::scripted_publish_failure());
+        }
         self.delegate.publish(snapshot).await
     }
 }

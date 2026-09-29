@@ -1,3 +1,4 @@
+pub mod blocking;
 pub mod candy;
 pub mod color;
 pub mod config;

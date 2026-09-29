@@ -5,7 +5,7 @@ use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 
 use super::{
-    super::{SessionPortResolver, runtime},
+    super::{SessionPortResolver, runtime, runtime::PublishRuntimeError},
     Command, Output,
     ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
 };
@@ -587,7 +587,7 @@ impl CoreLifecycleWorkflow {
         &self,
         product: Arc<runtime::RuntimeSnapshot>,
         preparation: &dyn RuntimePreparationPort,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PublishRuntimeError> {
         preparation.publish(&product).await?;
         self.runtime.generated_confirmed(product);
         Ok(())

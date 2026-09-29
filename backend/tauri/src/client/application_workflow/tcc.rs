@@ -142,32 +142,28 @@ impl ApplicationWorkflow {
         };
         let impact = request.impact;
         let inputs = self.capture_candidate(&request).await;
-        let target = inputs
-            .as_ref()
-            .ok()
-            .map(|inputs| inputs.target_key())
-            .transpose();
+        let target = inputs.target_key();
         let baseline = self.observe_baseline().await;
         self.record_baseline(&baseline);
         let policy = policy_for(request.class, impact, baseline.run_intent);
 
         let mut check = CheckRecord::NotOwed;
         self.advance(AttemptStage::TryingCritical);
-        let outcome = match (inputs, target) {
-            (Err(error), _) | (_, Err(error)) => RuntimePrepareOutcome::Rejected {
+        let outcome = match target {
+            None => RuntimePrepareOutcome::Rejected {
                 cause: ApplyFailure {
                     stage: MutationStage::Preparing,
                     cause: RefusalCause::Try(TryCauseKind::Deterministic),
-                    message: error.to_string(),
+                    message: "the runtime identity of this candidate cannot be serialized".into(),
                 },
                 restored: baseline.state.clone(),
             },
-            (inputs, Ok(target)) => {
+            Some(target) => {
                 self.try_critical(
                     policy,
                     &baseline,
-                    target,
-                    inputs.ok(),
+                    Some(target),
+                    Some(inputs),
                     &mut check,
                     AttemptCharge::None,
                 )
@@ -346,18 +342,8 @@ impl ApplicationWorkflow {
             return;
         }
         let identity = target.identity.clone();
-        let inputs = match self.capture_committed().await {
-            Ok(inputs) => inputs,
-            Err(error) => {
-                let target = self.committed_target();
-                target.health = ConvergenceHealth::Blocked;
-                target.cause.message = error.to_string();
-                target.next_attempt = None;
-                self.conclude_attempt(None);
-                return;
-            }
-        };
-        if inputs.target_key().ok().as_ref() != Some(&identity) {
+        let inputs = self.capture_committed().await;
+        if inputs.target_key().as_ref() != Some(&identity) {
             // A newer committed source owns convergence now. Never reapply the
             // old bytes: the target ends with this attempt.
             self.live = None;
@@ -504,7 +490,7 @@ impl ApplicationWorkflow {
 
     /// The latest committed inputs of all three domains: a committed target
     /// is re-read from the committed state, never from a request.
-    pub(super) async fn capture_committed(&self) -> anyhow::Result<super::inputs::RuntimeInputs> {
+    pub(super) async fn capture_committed(&self) -> super::inputs::RuntimeInputs {
         self.preparation
             .capture_inputs(
                 self.lifecycle.application.load().state.clone(),
@@ -1070,10 +1056,7 @@ impl ApplicationWorkflow {
         }
     }
 
-    async fn capture_candidate(
-        &self,
-        request: &MutationRequest,
-    ) -> anyhow::Result<super::inputs::RuntimeInputs> {
+    async fn capture_candidate(&self, request: &MutationRequest) -> super::inputs::RuntimeInputs {
         let change = &request.change;
         let app = match change {
             DomainChange::Application { candidate, .. } => candidate.as_ref().clone(),
@@ -1087,16 +1070,13 @@ impl ApplicationWorkflow {
             DomainChange::Profiles { candidate, .. } => candidate.clone(),
             _ => Arc::new(self.profiles.load().state.clone()),
         };
-        let mut inputs = self
-            .preparation
-            .capture_inputs(app, clash, profiles)
-            .await?;
+        let mut inputs = self.preparation.capture_inputs(app, clash, profiles).await;
         for (path, content) in &request.hints.staged_content {
             if let Some(captured) = inputs.content.0.get_mut(path) {
                 *captured = Ok(content.clone());
             }
         }
-        Ok(inputs)
+        inputs
     }
 
     /// The whole deferral conjunction in one place: a failed Try may still

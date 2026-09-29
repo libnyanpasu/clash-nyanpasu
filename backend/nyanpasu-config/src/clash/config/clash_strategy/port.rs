@@ -5,6 +5,7 @@ use std::{
 
 use crate::clash::config::DEFAULT_EXTERNAL_CONTROLLER_PORT;
 use serde::{Deserialize, Serialize};
+use snafu::{OptionExt, Snafu, ensure};
 use specta::Type;
 use struct_patch::Patch;
 
@@ -76,11 +77,12 @@ impl PartialEq for PortStrategy {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Snafu, Serialize, Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PickPortError {
-    #[error("Port {port} is not available")]
+    #[snafu(display("Port {port} is not available"))]
     PortNotAvailable { port: u16 },
-    #[error("Can't find an open port")]
+    #[snafu(display("Can't find an open port"))]
     NoOpenPort,
 }
 
@@ -120,27 +122,27 @@ impl PortStrategy {
     pub fn pick_and_try_port(&self) -> Result<PickedPort, PickPortError> {
         let port = match self.kind {
             PortStrategyKind::Fixed => {
-                if !port_scanner::local_port_available(self.start_port) {
-                    return Err(PickPortError::PortNotAvailable {
-                        port: self.start_port,
-                    });
-                }
+                ensure!(
+                    port_scanner::local_port_available(self.start_port),
+                    PortNotAvailableSnafu {
+                        port: self.start_port
+                    }
+                );
                 PickedPort::Original(self.start_port)
             }
             PortStrategyKind::Random => {
-                let new_port =
-                    port_scanner::request_open_port().ok_or(PickPortError::NoOpenPort)?;
-                if !port_scanner::local_port_available(new_port) {
-                    return Err(PickPortError::PortNotAvailable { port: new_port });
-                }
+                let new_port = port_scanner::request_open_port().context(NoOpenPortSnafu)?;
+                ensure!(
+                    port_scanner::local_port_available(new_port),
+                    PortNotAvailableSnafu { port: new_port }
+                );
                 PickedPort::Fallback(new_port)
             }
             PortStrategyKind::AllowFallback => {
                 if port_scanner::local_port_available(self.start_port) {
                     PickedPort::Original(self.start_port)
                 } else {
-                    let new_port =
-                        port_scanner::request_open_port().ok_or(PickPortError::NoOpenPort)?;
+                    let new_port = port_scanner::request_open_port().context(NoOpenPortSnafu)?;
                     PickedPort::Fallback(new_port)
                 }
             }

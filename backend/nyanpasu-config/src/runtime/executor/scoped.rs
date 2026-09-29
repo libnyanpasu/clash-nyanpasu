@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use snafu::ResultExt;
+
 use crate::{
     profile::{ConfigDefinition, ProfileDefinition, ProfileId, Profiles},
     runtime::snapshot::{ConfigExecutionRole, ConfigSnapshotsBuilder, OperatorTag},
@@ -10,7 +12,10 @@ use crate::{
 
 use super::{
     LogSink, apply_transform,
-    error::RuntimePipelineError,
+    error::{
+        CompositionMemberInvalidSnafu, ContentSourceSnafu, ParseProfileSnafu, RuntimePipelineError,
+        SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu,
+    },
     parse_config_document,
     ports::{ProfileContentSource, ScriptRunner},
 };
@@ -30,25 +35,30 @@ pub(super) fn build_scoped_file(
     role: ConfigExecutionRole,
 ) -> Result<ScopedBuild, RuntimePipelineError> {
     let member_error = |reason: &str| match &role {
-        ConfigExecutionRole::Selected => {
-            RuntimePipelineError::SelectedProfileNotConfig(profile_id.clone())
+        ConfigExecutionRole::Selected => SelectedProfileNotConfigSnafu {
+            profile: profile_id.clone(),
         }
+        .build(),
         ConfigExecutionRole::CompositionBase { composition_id }
         | ConfigExecutionRole::CompositionContributor { composition_id, .. } => {
-            RuntimePipelineError::CompositionMemberInvalid {
+            CompositionMemberInvalidSnafu {
                 composition: composition_id.clone(),
                 member: profile_id.clone(),
-                reason: reason.to_string(),
+                reason,
             }
+            .build()
         }
     };
 
-    let item = profiles.items.get(profile_id).ok_or_else(|| match &role {
-        ConfigExecutionRole::Selected => {
-            RuntimePipelineError::SelectedProfileNotFound(profile_id.clone())
-        }
-        _ => member_error("member not found"),
-    })?;
+    let Some(item) = profiles.items.get(profile_id) else {
+        return Err(match &role {
+            ConfigExecutionRole::Selected => SelectedProfileNotFoundSnafu {
+                profile: profile_id.clone(),
+            }
+            .build(),
+            _ => member_error("member not found"),
+        });
+    };
     let ProfileDefinition::Config {
         config: ConfigDefinition::File(file),
     } = &item.definition
@@ -57,18 +67,20 @@ pub(super) fn build_scoped_file(
     };
 
     let path = file.source.materialized().file.clone();
-    let text = content
-        .read(&path)
-        .map_err(|source| RuntimePipelineError::ContentSource {
-            profile: profile_id.clone(),
-            path: path.clone(),
-            source,
-        })?;
-    let raw =
-        parse_config_document(&text).map_err(|message| RuntimePipelineError::ParseProfile {
-            profile: profile_id.clone(),
-            message,
-        })?;
+    let text = content.read(&path).with_context(|_| ContentSourceSnafu {
+        profile: profile_id.clone(),
+        path: path.clone(),
+    })?;
+    let raw = match parse_config_document(&text) {
+        Ok(raw) => raw,
+        Err(message) => {
+            return ParseProfileSnafu {
+                profile: profile_id.clone(),
+                message,
+            }
+            .fail();
+        }
+    };
 
     let mut value = Arc::new(raw);
     let mut builder = ConfigSnapshotsBuilder::new_root(

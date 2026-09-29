@@ -12,17 +12,41 @@ use nyanpasu_config::{
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
         BuiltinTransform, ExecutionTarget, GuardInputs, ProfileContentSource, ResolvedPortBindings,
-        RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner, TunFlavor,
-        TunParams, execute,
+        RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner,
+        TransformFailure, TunFlavor, TunParams, execute,
     },
 };
+use serde::Serialize;
+use snafu::{ResultExt, Snafu};
 
-#[derive(Debug, thiserror::Error)]
+/// A failure of building a runtime candidate from source config.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[snafu(visibility(pub(crate)))]
 pub enum RuntimeBuildError {
-    #[error("profiles snapshot failed validation: {0:?}")]
-    Validation(Vec<ProfileValidationError>),
-    #[error(transparent)]
-    Pipeline(#[from] RuntimePipelineError),
+    #[snafu(display("could not start the script runner"))]
+    StartScriptRunner {
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("profiles snapshot failed validation: {errors:?}"))]
+    ValidateProfiles { errors: Vec<ProfileValidationError> },
+    #[snafu(display("could not run the runtime pipeline: {source}"))]
+    RunPipeline { source: RuntimePipelineError },
+    #[snafu(display("runtime candidate contains failed transforms: {failures:?}"))]
+    TransformsFailed { failures: Vec<TransformFailure> },
+    #[snafu(display("could not serialize the final config"))]
+    SerializeFinalConfig {
+        #[serde(skip)]
+        source: serde_yaml::Error,
+    },
+    #[snafu(display("the final config is not a mapping"))]
+    ConfigNotMapping,
+    #[snafu(display("could not render the runtime config"))]
+    SerializeRuntimeConfig {
+        #[serde(skip)]
+        source: serde_yaml::Error,
+    },
 }
 
 pub struct RuntimeBuildInput {
@@ -106,10 +130,9 @@ impl RuntimeBuilder {
         content: &dyn ProfileContentSource,
         scripts: &dyn ScriptRunner,
     ) -> Result<RuntimeArtifact, RuntimeBuildError> {
-        input
-            .profiles
-            .validate()
-            .map_err(RuntimeBuildError::Validation)?;
+        if let Err(errors) = input.profiles.validate() {
+            return ValidateProfilesSnafu { errors }.fail();
+        }
 
         let target = match &input.profiles.current {
             Some(uid) => ExecutionTarget::Selected(uid.clone()),
@@ -136,7 +159,7 @@ impl RuntimeBuilder {
             expand_include_all: input.clash.expand_include_all,
             builtin_transforms: &builtin_transforms,
         };
-        execute(&inputs, content, scripts).map_err(RuntimeBuildError::Pipeline)
+        execute(&inputs, content, scripts).context(RunPipelineSnafu)
     }
 }
 
@@ -265,8 +288,40 @@ mod tests {
         input.profiles = Arc::new(profiles);
         assert!(matches!(
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner),
-            Err(RuntimeBuildError::Validation(_))
+            Err(RuntimeBuildError::ValidateProfiles { .. })
         ));
+    }
+
+    #[test]
+    fn build_failures_reach_the_wire_with_their_context() {
+        let error = RuntimeBuildError::RunPipeline {
+            source: RuntimePipelineError::SelectedProfileNotFound {
+                profile: ProfileId("ghost".into()),
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "run_pipeline",
+                "source": { "kind": "selected_profile_not_found", "profile": "ghost" },
+            })
+        );
+        let error = RuntimeBuildError::TransformsFailed {
+            failures: vec![
+                TransformFailure::Profile { id: "t1".into() },
+                TransformFailure::Builtin { name: "b".into() },
+            ],
+        };
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "transforms_failed",
+                "failures": [
+                    { "kind": "profile", "id": "t1" },
+                    { "kind": "builtin", "name": "b" },
+                ],
+            })
+        );
     }
 
     #[test]

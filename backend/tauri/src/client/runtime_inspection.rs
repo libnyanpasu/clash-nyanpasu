@@ -376,7 +376,7 @@ pub(crate) mod tests {
 
     fn snapshot() -> RuntimeSnapshot {
         RuntimeSnapshot::from_data(
-            RuntimeRevisionAllocator::new().allocate().unwrap(),
+            RuntimeRevisionAllocator::new().allocate(),
             ClashCore::default(),
             Arc::from(&b"mode: rule\n"[..]),
             RuntimeSnapshotData {

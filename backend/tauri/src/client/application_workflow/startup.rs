@@ -675,7 +675,7 @@ impl ApplicationWorkflow {
                 )
                 .is_verified()
         })?;
-        let committed = self.capture_committed().await.ok()?.target_key().ok()?;
+        let committed = self.capture_committed().await.target_key()?;
         (confirmed.receipt.target.as_ref() == Some(&committed)).then_some(confirmed)
     }
 
@@ -748,21 +748,9 @@ impl ApplicationWorkflow {
                 ),
             );
         }
-        let inputs = match self.capture_committed().await {
-            Ok(inputs) => inputs,
-            Err(error) => {
-                return self.block(format!(
-                    "the committed configuration could not be read: {error}"
-                ));
-            }
-        };
-        let identity = match inputs.target_key() {
-            Ok(identity) => identity,
-            Err(error) => {
-                return self.block(format!(
-                    "the committed configuration has no runtime identity: {error}"
-                ));
-            }
+        let inputs = self.capture_committed().await;
+        let Some(identity) = inputs.target_key() else {
+            return self.block("the committed configuration has no runtime identity".to_owned());
         };
         let target = self.committed_target();
         if target.identity != identity {

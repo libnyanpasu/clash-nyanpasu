@@ -11,11 +11,14 @@ use super::{
     ports::RuntimeBuildPort,
 };
 use crate::{
-    client::core_lifecycle::{
-        domain_error,
-        ports::{PreparedRuntime, RuntimePreparationPort},
+    client::{
+        core_lifecycle::{
+            domain_error,
+            ports::{PreparedRuntime, RuntimePreparationPort},
+        },
+        runtime::PublishRuntimeError,
     },
-    core::actor_v2::intent::RuntimeIntentBuilder,
+    core::actor_v2::{intent::RuntimeIntentBuilder, local_host::CoreSpecError},
 };
 
 /// Builds runtime candidates from committed source config. It holds read-only
@@ -54,11 +57,7 @@ impl RuntimePreparation {
         clash: ClashConfig,
         app: NyanpasuAppConfig,
     ) -> Result<PreparedRuntime, CoreError> {
-        let content = self
-            .builder
-            .capture_content(&profiles)
-            .await
-            .map_err(domain_error)?;
+        let content = self.builder.capture_content(&profiles).await;
         self.prepare_inputs(super::inputs::RuntimeInputs {
             app,
             clash,
@@ -73,14 +72,14 @@ impl RuntimePreparation {
         app: NyanpasuAppConfig,
         clash: ClashConfig,
         profiles: Arc<Profiles>,
-    ) -> anyhow::Result<super::inputs::RuntimeInputs> {
-        let content = self.builder.capture_content(&profiles).await?;
-        Ok(super::inputs::RuntimeInputs {
+    ) -> super::inputs::RuntimeInputs {
+        let content = self.builder.capture_content(&profiles).await;
+        super::inputs::RuntimeInputs {
             app,
             clash,
             profiles,
             content,
-        })
+        }
     }
 
     pub async fn prepare_inputs(
@@ -102,7 +101,7 @@ impl RuntimePreparation {
         inputs: super::inputs::RuntimeInputs,
         strict_transforms: bool,
     ) -> Result<PreparedRuntime, CoreError> {
-        let revision = self.revisions.allocate().map_err(domain_error)?;
+        let revision = self.revisions.allocate();
         let local_ipc = LocalIpcSettings {
             policy: match inputs.clash.clash_control_channel {
                 nyanpasu_config::clash::config::ClashControlChannel::PreferIpc => {
@@ -122,7 +121,7 @@ impl RuntimePreparation {
             .resolve_candidate(&inputs.clash)
             .map_err(domain_error)?;
         let core_type: nyanpasu_utils::core::CoreType = (&inputs.app.core).into();
-        let target = inputs.target_key().ok();
+        let target = inputs.target_key();
         let snapshot = self
             .builder
             .build(
@@ -172,14 +171,17 @@ impl RuntimePreparationPort for RuntimePreparation {
         self.prepare_committed(profiles, clash).await
     }
 
-    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
+    async fn publish(
+        &self,
+        snapshot: &runtime::RuntimeSnapshot,
+    ) -> Result<(), PublishRuntimeError> {
         self.builder.publish(snapshot).await
     }
 
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
-    ) -> anyhow::Result<CoreSpec> {
+    ) -> Result<CoreSpec, CoreSpecError> {
         self.builder.core_spec(core)
     }
 }

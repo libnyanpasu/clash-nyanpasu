@@ -7,18 +7,40 @@
 //! `SelfProxyPortSource` reads that record: with no running instance there
 //! is no endpoint to report.
 
-use anyhow::Context as _;
 use nyanpasu_config::{
     clash::config::{
         ClashConfig,
-        clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
+        clash_strategy::port::{ExternalControllerStrategy, PickPortError, PortStrategy},
     },
     runtime::executor::ResolvedPortBindings,
 };
+use serde::Serialize;
+use snafu::{ResultExt, Snafu};
 
 #[cfg(test)]
 use super::runtime::RuntimeApplyReceipt;
 use crate::service::profile_file::SelfProxyPortSource;
+
+/// The port a resolution was picking for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum PortField {
+    Mixed,
+    Http,
+    Socks,
+    ExternalController,
+}
+
+/// A failure of resolving the ports a candidate runtime would bind.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PortResolveError {
+    #[snafu(display("failed to resolve the {field:?} port: {source}"))]
+    ResolvePort {
+        field: PortField,
+        source: PickPortError,
+    },
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortsFingerprint {
@@ -71,7 +93,10 @@ impl SessionPortResolver {
     /// confirmed binding, never an earlier candidate: re-probing a field the
     /// running core still holds would make a Fixed strategy report its own
     /// port as occupied and move an AllowFallback one off it. Writes nothing.
-    pub fn resolve_candidate(&self, clash: &ClashConfig) -> anyhow::Result<CandidatePortBindings> {
+    pub fn resolve_candidate(
+        &self,
+        clash: &ClashConfig,
+    ) -> Result<CandidatePortBindings, PortResolveError> {
         let fingerprint = ports_fingerprint(clash);
         let previous = self
             .runtime
@@ -106,7 +131,9 @@ impl SessionPortResolver {
             None => *clash
                 .mixed_port
                 .pick_and_try_port()
-                .context("failed to resolve mixed port")?,
+                .context(ResolvePortSnafu {
+                    field: PortField::Mixed,
+                })?,
         };
         let port = match unchanged(
             previous
@@ -119,7 +146,9 @@ impl SessionPortResolver {
                 .as_ref()
                 .map(|strategy| strategy.pick_and_try_port())
                 .transpose()
-                .context("failed to resolve http port")?
+                .context(ResolvePortSnafu {
+                    field: PortField::Http,
+                })?
                 .map(|picked| *picked),
         };
         let socks_port = match unchanged(
@@ -133,7 +162,9 @@ impl SessionPortResolver {
                 .as_ref()
                 .map(|strategy| strategy.pick_and_try_port())
                 .transpose()
-                .context("failed to resolve socks port")?
+                .context(ResolvePortSnafu {
+                    field: PortField::Socks,
+                })?
                 .map(|picked| *picked),
         };
         // The external controller compares host and port strategy separately:
@@ -151,14 +182,15 @@ impl SessionPortResolver {
                 .and_then(|raw| raw.parse::<u16>().ok()),
             None => None,
         };
-        let external_port = match external_port {
-            Some(port) => port,
-            None => *clash
-                .external_controller
-                .port
-                .pick_and_try_port()
-                .context("failed to resolve external controller port")?,
-        };
+        let external_port =
+            match external_port {
+                Some(port) => port,
+                None => *clash.external_controller.port.pick_and_try_port().context(
+                    ResolvePortSnafu {
+                        field: PortField::ExternalController,
+                    },
+                )?,
+            };
         let external_controller = Some(format!(
             "{}:{}",
             clash.external_controller.host, external_port
@@ -229,6 +261,23 @@ mod tests {
             },
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_taken_fixed_port_names_the_field_and_the_port() {
+        let taken = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = taken.local_addr().unwrap().port();
+        let error = SessionPortResolver::default()
+            .resolve_candidate(&pinned(port, port.wrapping_add(1).max(1024)))
+            .unwrap_err();
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "resolve_port",
+                "field": "mixed",
+                "source": { "kind": "port_not_available", "port": port },
+            })
+        );
     }
 
     /// The receipt a real apply would produce for `candidate`. Only its port

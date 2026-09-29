@@ -9,7 +9,7 @@ use crate::runtime::value::{ConfigObject, ConfigValue};
 
 use super::{
     GuardInputs, TunFlavor, TunParams,
-    error::RuntimePipelineError,
+    error::{InternalSnafu, RuntimePipelineError},
     value_util::{obj_get, obj_insert},
 };
 
@@ -112,12 +112,24 @@ pub(super) fn apply_guard(
     config: &ConfigValue,
     guard: &GuardInputs<'_>,
 ) -> Result<ConfigValue, RuntimePipelineError> {
-    let raw = serde_json::to_value(guard.overrides).map_err(|error| {
-        RuntimePipelineError::Internal(format!("encode guard overrides: {error}"))
-    })?;
-    let entries = ConfigValue::try_from(raw).map_err(|error| {
-        RuntimePipelineError::Internal(format!("convert guard overrides: {error:?}"))
-    })?;
+    let raw = match serde_json::to_value(guard.overrides) {
+        Ok(raw) => raw,
+        Err(error) => {
+            return InternalSnafu {
+                message: format!("encode guard overrides: {error}"),
+            }
+            .fail();
+        }
+    };
+    let entries = match ConfigValue::try_from(raw) {
+        Ok(entries) => entries,
+        Err(error) => {
+            return InternalSnafu {
+                message: format!("convert guard overrides: {error:?}"),
+            }
+            .fail();
+        }
+    };
 
     let mut next = config.clone();
     if let Some(map) = entries.as_object_arc() {

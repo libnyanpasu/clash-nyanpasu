@@ -22,7 +22,7 @@ pub struct EnhanceScriptRunner {
 }
 
 impl EnhanceScriptRunner {
-    pub fn new(dirs: ScriptDirs) -> anyhow::Result<Self> {
+    pub fn new(dirs: ScriptDirs) -> std::io::Result<Self> {
         Ok(Self {
             runtime: tokio::runtime::Builder::new_current_thread()
                 .enable_all()

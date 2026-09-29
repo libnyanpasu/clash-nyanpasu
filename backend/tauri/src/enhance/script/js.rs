@@ -8,6 +8,7 @@ use boa_engine::{
     job::SimpleJobExecutor,
     js_string,
     module::{Module, SimpleModuleLoader},
+    object::builtins::JsPromise,
 };
 use boa_runtime::console::{Console, ConsoleState, Logger};
 use boa_utils::module::{combine::CombineModuleLoader, http::HttpModuleLoader};
@@ -29,7 +30,8 @@ type Result<T, E = JsRunnerError> = StdResult<T, E>;
 /// downloads.
 #[derive(Debug, Clone)]
 pub struct ScriptDirs {
-    /// Each script is written here as a module file while it runs.
+    /// Module root the script's relative imports resolve against. The script
+    /// itself runs from memory; nothing is written here.
     pub scripts: PathBuf,
     /// Cache of the modules scripts import over HTTP.
     pub cache: PathBuf,
@@ -183,58 +185,65 @@ impl BoaRunner {
 
     pub fn execute_module(&self, module: &Module) -> Result<()> {
         let ctx = &mut self.ctx.borrow_mut();
-        let promise_result = module.load_link_evaluate(ctx);
-
-        // Very important to push forward the job queue after queueing promises.
-        let _ = ctx.run_jobs();
-
-        // Checking if the final promise didn't return an error.
-        for i in 0..20 {
-            match promise_result.state() {
-                PromiseState::Pending => {
-                    if i == 19 {
-                        return Err(JsRunnerError::Other("module didn't execute!".to_string()));
-                    }
-                }
-                PromiseState::Fulfilled(v) => {
-                    assert_eq!(v, JsValue::undefined());
-                    break;
-                }
-                PromiseState::Rejected(err) => {
-                    return Err(JsError::from_opaque(err).try_native(ctx)?.into());
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
+        let promise = module.load_link_evaluate(ctx);
+        settle(&promise, ctx)?;
         Ok(())
     }
 }
 
-/// Runs the script module `./{hash}.mjs` against `mapping` on the current
-/// thread. Everything the script logs goes to `console`.
+/// Runs the job queue until `promise` settles and returns its value.
+fn settle(promise: &JsPromise, ctx: &mut Context) -> Result<JsValue> {
+    // Very important to push forward the job queue after queueing promises.
+    let _ = ctx.run_jobs();
+
+    // Checking if the final promise didn't return an error.
+    for _ in 0..20 {
+        match promise.state() {
+            PromiseState::Pending => std::thread::sleep(Duration::from_millis(100)),
+            PromiseState::Fulfilled(v) => return Ok(v),
+            PromiseState::Rejected(err) => {
+                return Err(JsError::from_opaque(err).try_native(ctx)?.into());
+            }
+        }
+    }
+    Err(JsRunnerError::Other("the script didn't finish".to_string()))
+}
+
+/// Evaluates `script` as a module from memory, then calls its default export
+/// with `mapping` and awaits the result. Everything the script logs goes to
+/// `console`.
 fn run_module(
     scripts_dir: PathBuf,
     cache_dir: PathBuf,
-    hash: &str,
+    script: &str,
     mapping: Mapping,
     console: ConsoleSink,
 ) -> Result<Mapping> {
     let boa_runner = BoaRunner::try_new(scripts_dir, cache_dir)?;
     boa_runner.setup_console(console)?;
-    let config = serde_json::to_string(&mapping)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let config = serde_json::to_string(&config).unwrap(); // escape the string
-    let execute_module = format!(
-        r#"import process from "./{hash}.mjs";
-        let config = JSON.parse({config});
-        export let result = JSON.stringify(await process(config));
-        "#
-    );
-    let main_module = boa_runner.parse_module(&execute_module, "main")?;
-    boa_runner.execute_module(&main_module)?;
+    let module = boa_runner.parse_module(script, "main")?;
+    boa_runner.execute_module(&module)?;
+
     let ctx = boa_runner.get_ctx();
-    let namespace = main_module.namespace(&mut ctx.borrow_mut());
-    let result = namespace.get(js_string!("result"), &mut ctx.borrow_mut())?;
+    let ctx = &mut ctx.borrow_mut();
+    let main = module.namespace(ctx).get(js_string!("default"), ctx)?;
+    let main = main
+        .as_callable()
+        .ok_or_else(|| JsNativeError::typ().with_message("the default export is not a function"))?;
+    let config = serde_json::to_value(&mapping)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let config = JsValue::from_json(&config, ctx)?;
+    let returned = main.call(&JsValue::undefined(), &[config], ctx)?;
+    let result = settle(&JsPromise::resolve(returned, ctx)?, ctx)?;
+
+    // JSON.stringify rather than `JsValue::to_json`: it honours `toJSON` and
+    // drops functions and undefined members, which scripts rely on.
+    let json = ctx.intrinsics().objects().json();
+    let stringify = json.get(js_string!("stringify"), ctx)?;
+    let result = stringify
+        .as_callable()
+        .ok_or_else(|| JsNativeError::typ().with_message("JSON.stringify is not callable"))?
+        .call(&json.into(), &[result], ctx)?;
     let result = result
         .as_string()
         .ok_or_else(|| JsNativeError::typ().with_message("Expected string"))
@@ -264,19 +273,14 @@ impl Runner for JSRunner {
         script: &str,
         logs: &mut Vec<StepLogEntry>,
     ) -> anyhow::Result<Mapping> {
-        let script = wrap_script_if_not_esm(script)?;
-        let hash = crate::utils::help::get_uid("script");
-        let path = self.scripts_dir.join(format!("{hash}.mjs"));
-        tokio::fs::write(&path, script.as_bytes())
-            .await
-            .context("failed to write the script file")?;
+        let script = wrap_script_if_not_esm(script)?.into_owned();
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
         let (scripts_dir, cache_dir) = (self.scripts_dir.clone(), self.cache_dir.clone());
         let res = tokio::task::spawn_blocking(move || {
             // The sink is not Send, so it lives on this thread with the boa
             // context and only its entries cross back.
             let console = ConsoleSink::default();
-            let result = run_module(scripts_dir, cache_dir, &hash, mapping, console.clone())
+            let result = run_module(scripts_dir, cache_dir, &script, mapping, console.clone())
                 .map_err(|e| {
                     tracing::error!("error: {:?}", e);
                     anyhow::anyhow!("{:?}", e)
@@ -284,7 +288,6 @@ impl Runner for JSRunner {
             (result, console.take())
         })
         .await;
-        let _ = tokio::fs::remove_file(&path).await;
         let (result, run_logs) = res?;
         logs.extend(run_logs);
         result
@@ -529,6 +532,44 @@ mod test {
             yaml(
                 "user: secret\nhost: example.com\nport: '443'\nsearch: ?sni=a.com\nname: Node 1\n"
             )
+        );
+    }
+
+    /// The returned config goes through `JSON.stringify`, so `toJSON` applies
+    /// and undefined members are dropped, as when the runner built the result
+    /// in JavaScript.
+    #[tokio::test]
+    async fn returned_config_follows_json_stringify() {
+        let output = run_js(
+            "export default async function main(config) { config.gone = undefined; config.when = new Date(0); config.link = new URL('https://example.com/a'); return config; }",
+            "kept: 1\n",
+        )
+        .await;
+        assert_eq!(
+            output,
+            yaml("kept: 1\nwhen: 1970-01-01T00:00:00.000Z\nlink: https://example.com/a\n")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_default_export_that_is_not_a_function_fails() {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let error = runner
+            .process_honey(
+                serde_yaml::Mapping::new(),
+                "export default 42;",
+                &mut Vec::new(),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("the default export is not a function"),
+            "{error}"
         );
     }
 

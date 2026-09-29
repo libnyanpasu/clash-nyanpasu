@@ -8,6 +8,7 @@ import {
 import type {
   ConfigError,
   IpcError,
+  OsProxyError,
   ProfilesError,
   RuntimeError,
   StorageOperationError,
@@ -40,6 +41,12 @@ const storage = (error: StorageOperationError): IpcError => ({
 
 const systemDns = (error: SystemDnsError): IpcError => ({
   kind: { domain: 'system_dns', error },
+  message: 'the backend text',
+  detail: 'the backend text: caused by',
+})
+
+const systemProxy = (error: OsProxyError): IpcError => ({
+  kind: { domain: 'system_proxy', error },
   message: 'the backend text',
   detail: 'the backend text: caused by',
 })
@@ -478,5 +485,21 @@ test('an effect failure is localized by its code', () => {
   )
   expect(effectFailureMessage('hotkey_partial_registration')).toBe(
     m.effect_failure_hotkey_partial_registration(),
+  )
+})
+
+test('a failed system proxy write names the address it was going to', () => {
+  expect(
+    ipcErrorMessage(
+      systemProxy({
+        kind: 'write_os_proxy',
+        enable: true,
+        host: '127.0.0.1',
+        port: 7890,
+      }),
+    ),
+  ).toBe(m.error_system_proxy_write_os_proxy({ host: '127.0.0.1', port: 7890 }))
+  expect(ipcErrorMessage(systemProxy({ kind: 'read_os_proxy' }))).toBe(
+    m.error_system_proxy_read_os_proxy(),
   )
 })

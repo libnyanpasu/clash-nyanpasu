@@ -69,6 +69,19 @@ impl EffectFailureCode {
     }
 }
 
+/// The diagnostic text of a failure: its message, then each cause down the
+/// chain. Unlike `Display` it keeps what the library underneath reported.
+pub fn failure_text(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut text = error.to_string();
+    let mut cause = error.source();
+    while let Some(next) = cause {
+        text.push_str(": ");
+        text.push_str(&next.to_string());
+        cause = next.source();
+    }
+    text
+}
+
 // Every variant but `Healthy` is constructed by the effect owners, which are
 // added one task at a time.
 #[allow(dead_code)]
@@ -101,6 +114,20 @@ pub struct EffectStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failure_text_joins_the_whole_chain() {
+        #[derive(Debug, snafu::Snafu)]
+        #[snafu(display("outer"))]
+        struct Outer {
+            source: std::io::Error,
+        }
+        let error = Outer {
+            source: std::io::Error::other("inner"),
+        };
+
+        assert_eq!(failure_text(&error), "outer: inner");
+    }
 
     #[test]
     fn revision_is_monotonically_comparable() {

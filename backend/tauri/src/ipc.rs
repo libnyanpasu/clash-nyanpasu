@@ -1,5 +1,8 @@
 use crate::{
-    client::{ClientError, NyanpasuClient, RuntimeError, SystemDnsError},
+    client::{
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError,
+        system_proxy::ports::OsProxyError,
+    },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     state::{
@@ -21,7 +24,6 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
 
@@ -49,6 +51,13 @@ pub enum IpcErrorKind {
     Config(Box<ConfigError>),
     Storage(Box<StorageOperationError>),
     SystemDns(Box<SystemDnsError>),
+    SystemProxy(Box<OsProxyError>),
+}
+
+impl From<OsProxyError> for IpcErrorKind {
+    fn from(error: OsProxyError) -> Self {
+        Self::SystemProxy(Box::new(error))
+    }
 }
 
 impl From<SystemDnsError> for IpcErrorKind {
@@ -567,8 +576,8 @@ pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
 /// server field is the combination of host and port
 #[tauri::command]
 #[specta::specta]
-pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
-    let current = (Sysproxy::get_system_proxy()).context("failed to get system proxy")?;
+pub async fn get_sys_proxy(client: State<'_, NyanpasuClient>) -> Result<GetSysProxyResponse> {
+    let current = client.get_os_proxy().await?;
 
     let server = format!("{}:{}", current.host, current.port);
 
@@ -1462,7 +1471,7 @@ mod tests {
     use snafu::IntoError;
 
     use crate::{
-        client::runtime_error::RuntimeError,
+        client::{runtime_error::RuntimeError, system_proxy::ports::OsProxyError},
         state::{
             mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
             profiles::{ProfileFileError, SubscriptionFetchError},
@@ -1536,6 +1545,31 @@ mod tests {
                 "error": { "kind": "flush_rejected", "command": "ipconfig.exe", "code": 5 },
             })
         );
+    }
+
+    #[test]
+    fn a_failed_os_proxy_write_names_where_it_was_going() {
+        let wire = serde_json::to_value(IpcError::from(OsProxyError::WriteOsProxy {
+            enable: true,
+            host: "127.0.0.1".into(),
+            port: 7890,
+            source: "access denied".into(),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "system_proxy",
+                "error": {
+                    "kind": "write_os_proxy",
+                    "enable": true,
+                    "host": "127.0.0.1",
+                    "port": 7890,
+                },
+            })
+        );
+        assert!(wire["detail"].as_str().unwrap().contains("access denied"));
     }
 
     #[test]

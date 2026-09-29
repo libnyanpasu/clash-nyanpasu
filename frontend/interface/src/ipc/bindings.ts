@@ -1808,6 +1808,7 @@ export type IpcErrorKind =
   | { domain: 'config'; error: ConfigError }
   | { domain: 'storage'; error: StorageOperationError }
   | { domain: 'system_dns'; error: SystemDnsError }
+  | { domain: 'system_proxy'; error: OsProxyError }
 
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`
@@ -2427,6 +2428,15 @@ export type OperatorTag =
         step_index: number
       }
     }
+
+/**
+ *  Why the platform proxy settings could not be read or written. The platform's
+ *  own error stays in `source`, boxed because this module does not name the
+ *  crate that produced it; it reaches the user through the copied detail.
+ */
+export type OsProxyError =
+  | { kind: 'read_os_proxy' }
+  | { kind: 'write_os_proxy'; enable: boolean; host: string; port: number }
 
 export type OverlayTransform =
   OverlayTransform_Serialize | OverlayTransform_Deserialize

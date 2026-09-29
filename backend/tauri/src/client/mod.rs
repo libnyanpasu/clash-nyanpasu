@@ -83,6 +83,7 @@ pub struct ClientSetupArgs {
     pub core_v2: CoreClientV2,
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
+    pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
@@ -201,6 +202,7 @@ struct NyanpasuClientInner {
     streams: crate::core::clash::ws::StreamsClient,
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
+    os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
@@ -223,6 +225,7 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
+            os_proxy,
             binary_installer,
             effects,
             window,
@@ -299,6 +302,7 @@ impl NyanpasuClient {
             core_v2,
             service,
             system_dns,
+            os_proxy,
             binary_installer,
             effects,
             window,
@@ -327,6 +331,7 @@ impl NyanpasuClient {
         core_v2: CoreClientV2,
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
+        os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
@@ -432,6 +437,7 @@ impl NyanpasuClient {
                 streams,
                 updater,
                 system_dns,
+                os_proxy,
                 effects,
                 window,
                 accelerators,
@@ -539,6 +545,19 @@ impl NyanpasuClient {
 
     pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {
         Ok(self.inner.updater.inspect(id).await?)
+    }
+
+    /// The proxy settings the OS holds right now, whoever wrote them.
+    ///
+    /// Read straight from the port rather than through the system proxy
+    /// actor: its mailbox is held for the whole of a PAC download, which
+    /// would stall a status poll behind it.
+    pub async fn get_os_proxy(
+        &self,
+    ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
+    {
+        let os_proxy = self.inner.os_proxy.clone();
+        crate::utils::blocking::join(tokio::task::spawn_blocking(move || os_proxy.get()).await)
     }
 
     pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
@@ -992,6 +1011,7 @@ impl crate::core::updater::ports::CoreUpdateInstaller
 pub(crate) mod tests {
     use super::*;
     use crate::{
+        client::system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError, OsProxyPort},
         core::actor_v2::endpoint::ExecutionHost,
         state::profiles::{
             error::SubscriptionFetchError,
@@ -2021,9 +2041,24 @@ pub(crate) mod tests {
         dir: &TempDir,
         system_dns: Arc<dyn SystemDnsCache>,
     ) -> NyanpasuClient {
+        test_client_with_ports(dir, system_dns, Arc::new(MockOsProxyPort::new())).await
+    }
+
+    async fn test_client_with_ports(
+        dir: &TempDir,
+        system_dns: Arc<dyn SystemDnsCache>,
+        os_proxy: Arc<dyn OsProxyPort>,
+    ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
-        test_client_from_typed_clients(dir, application, session_state, clash_config, system_dns)
-            .await
+        test_client_from_typed_clients(
+            dir,
+            application,
+            session_state,
+            clash_config,
+            system_dns,
+            os_proxy,
+        )
+        .await
     }
 
     async fn test_client_from_typed_clients(
@@ -2032,6 +2067,7 @@ pub(crate) mod tests {
         session_state: SessionStateClient,
         clash_config: ClashConfigClient,
         system_dns: Arc<dyn SystemDnsCache>,
+        os_proxy: Arc<dyn OsProxyPort>,
     ) -> NyanpasuClient {
         let profiles = profiles::ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2075,6 +2111,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns,
+            os_proxy,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -2225,6 +2262,7 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
+            Arc::new(MockOsProxyPort::new()),
         )
         .await;
 
@@ -2271,6 +2309,41 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn get_os_proxy_reads_through_the_injected_port() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut os_proxy = MockOsProxyPort::new();
+        os_proxy.expect_get().times(1).returning(|| {
+            Ok(OsProxyConfig {
+                enable: true,
+                host: "127.0.0.1".into(),
+                port: 7890,
+                bypass: "localhost".into(),
+            })
+        });
+        let client =
+            test_client_with_ports(&dir, Arc::new(NoopSystemDnsCache), Arc::new(os_proxy)).await;
+
+        let read = client.get_os_proxy().await.expect("the port answers");
+        assert_eq!((read.enable, read.port), (true, 7890));
+    }
+
+    #[tokio::test]
+    async fn get_os_proxy_reports_the_port_failure_as_its_own_error() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut os_proxy = MockOsProxyPort::new();
+        os_proxy.expect_get().times(1).returning(|| {
+            Err(OsProxyError::ReadOsProxy {
+                source: "denied".into(),
+            })
+        });
+        let client =
+            test_client_with_ports(&dir, Arc::new(NoopSystemDnsCache), Arc::new(os_proxy)).await;
+
+        let error = client.get_os_proxy().await.unwrap_err();
+        assert!(matches!(error, OsProxyError::ReadOsProxy { .. }));
+    }
+
+    #[tokio::test]
     async fn flush_system_dns_cache_propagates_adapter_failure() {
         let dir = tempdir().expect("tempdir should be created");
         let mut system_dns = MockSystemDnsCache::new();
@@ -2313,6 +2386,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
+            os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
@@ -2649,6 +2723,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             Arc::new(NoopSystemDnsCache),
+            Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -2760,6 +2835,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
+            os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
@@ -3731,6 +3807,7 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
+                Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),

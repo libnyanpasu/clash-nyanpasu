@@ -746,5 +746,7 @@
   "effect_failure_system_proxy_port_unresolved": "正在等待代理端口确定",
   "effect_failure_system_proxy_restore_failed": "退出时无法还原系统代理",
   "effect_failure_system_proxy_shut_down": "应用退出时系统代理不可用",
-  "effect_failure_system_proxy_stopped": "系统代理服务未运行"
+  "effect_failure_system_proxy_stopped": "系统代理服务未运行",
+  "error_system_proxy_read_os_proxy": "无法读取系统代理",
+  "error_system_proxy_write_os_proxy": "无法将系统代理更新为 {host}:{port}"
 }

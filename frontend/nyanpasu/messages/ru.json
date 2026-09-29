@@ -649,5 +649,7 @@
   "effect_failure_system_proxy_port_unresolved": "Ожидание определения порта прокси",
   "effect_failure_system_proxy_restore_failed": "Не удалось восстановить системный прокси при выходе",
   "effect_failure_system_proxy_shut_down": "Системный прокси недоступен, пока приложение закрывается",
-  "effect_failure_system_proxy_stopped": "Служба системного прокси не запущена"
+  "effect_failure_system_proxy_stopped": "Служба системного прокси не запущена",
+  "error_system_proxy_read_os_proxy": "Не удалось прочитать системный прокси",
+  "error_system_proxy_write_os_proxy": "Не удалось обновить системный прокси на {host}:{port}"
 }

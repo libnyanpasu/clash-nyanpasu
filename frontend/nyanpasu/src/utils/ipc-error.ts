@@ -12,6 +12,7 @@ import type {
   HotkeyParseError,
   InstallCoreBinaryError,
   IpcError,
+  OsProxyError,
   PickPortError,
   PortField,
   ProfileContentError,
@@ -40,6 +41,8 @@ export function ipcErrorMessage(error: IpcError): string {
       return storageErrorMessage(error.kind.error)
     case 'system_dns':
       return systemDnsErrorMessage(error.kind.error)
+    case 'system_proxy':
+      return osProxyErrorMessage(error.kind.error)
   }
 }
 
@@ -270,6 +273,18 @@ export function storageErrorMessage(error: StorageOperationError): string {
     case 'decode_value':
     case 'encode_value':
       return m.error_storage_invalid_value()
+  }
+}
+
+function osProxyErrorMessage(error: OsProxyError): string {
+  switch (error.kind) {
+    case 'read_os_proxy':
+      return m.error_system_proxy_read_os_proxy()
+    case 'write_os_proxy':
+      return m.error_system_proxy_write_os_proxy({
+        host: error.host,
+        port: error.port,
+      })
   }
 }
 

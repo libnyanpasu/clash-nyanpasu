@@ -746,5 +746,7 @@
   "effect_failure_system_proxy_port_unresolved": "Waiting for the proxy port to be resolved",
   "effect_failure_system_proxy_restore_failed": "Could not restore the system proxy on exit",
   "effect_failure_system_proxy_shut_down": "The system proxy is unavailable while the app exits",
-  "effect_failure_system_proxy_stopped": "The system proxy service is not running"
+  "effect_failure_system_proxy_stopped": "The system proxy service is not running",
+  "error_system_proxy_read_os_proxy": "Could not read the system proxy",
+  "error_system_proxy_write_os_proxy": "Could not update the system proxy to {host}:{port}"
 }

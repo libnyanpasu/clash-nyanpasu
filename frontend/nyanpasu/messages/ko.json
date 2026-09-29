@@ -645,5 +645,7 @@
   "effect_failure_system_proxy_port_unresolved": "프록시 포트가 확정되기를 기다리는 중입니다",
   "effect_failure_system_proxy_restore_failed": "종료할 때 시스템 프록시를 복원하지 못했습니다",
   "effect_failure_system_proxy_shut_down": "앱이 종료되는 동안에는 시스템 프록시를 사용할 수 없습니다",
-  "effect_failure_system_proxy_stopped": "시스템 프록시 서비스가 실행 중이 아닙니다"
+  "effect_failure_system_proxy_stopped": "시스템 프록시 서비스가 실행 중이 아닙니다",
+  "error_system_proxy_read_os_proxy": "시스템 프록시를 읽지 못했습니다",
+  "error_system_proxy_write_os_proxy": "시스템 프록시를 {host}:{port}(으)로 업데이트하지 못했습니다"
 }

@@ -9,7 +9,10 @@ use camino::Utf8PathBuf;
 use sysproxy::{Autoproxy, Sysproxy};
 use tokio_util::sync::CancellationToken;
 
-use super::ports::{AutoLaunchPort, OsProxyConfig, OsProxyPort, PacPort};
+use super::ports::{
+    AutoLaunchPort, OsProxyConfig, OsProxyError, OsProxyPort, PacPort, ReadOsProxySnafu,
+    WriteOsProxySnafu,
+};
 
 #[cfg(target_os = "windows")]
 const DEFAULT_BYPASS: &str = "localhost;127.*;192.168.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;<local>";
@@ -23,8 +26,12 @@ const DEFAULT_BYPASS: &str =
 pub struct SysproxyOsProxy;
 
 impl OsProxyPort for SysproxyOsProxy {
-    fn get(&self) -> anyhow::Result<OsProxyConfig> {
-        let current = Sysproxy::get_system_proxy().context("failed to read the system proxy")?;
+    fn get(&self) -> Result<OsProxyConfig, OsProxyError> {
+        // Named path: `anyhow::Context` is in scope for the rest of this file.
+        let current = snafu::ResultExt::context(
+            snafu::ResultExt::boxed(Sysproxy::get_system_proxy()),
+            ReadOsProxySnafu,
+        )?;
         Ok(OsProxyConfig {
             enable: current.enable,
             host: current.host,
@@ -33,15 +40,22 @@ impl OsProxyPort for SysproxyOsProxy {
         })
     }
 
-    fn set(&self, config: &OsProxyConfig) -> anyhow::Result<()> {
-        Sysproxy {
+    fn set(&self, config: &OsProxyConfig) -> Result<(), OsProxyError> {
+        let written = Sysproxy {
             enable: config.enable,
             host: config.host.clone(),
             port: config.port,
             bypass: config.bypass.clone(),
         }
-        .set_system_proxy()
-        .context("failed to write the system proxy")
+        .set_system_proxy();
+        snafu::ResultExt::context(
+            snafu::ResultExt::boxed(written),
+            WriteOsProxySnafu {
+                enable: config.enable,
+                host: &config.host,
+                port: config.port,
+            },
+        )
     }
 
     fn default_bypass(&self) -> &'static str {

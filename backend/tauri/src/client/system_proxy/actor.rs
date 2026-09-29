@@ -17,7 +17,7 @@ use super::{
 };
 use crate::client::effects::{
     plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
 
 /// The core only ever listens on loopback, so the proxy this app installs
@@ -542,7 +542,7 @@ impl State {
                 EffectKind::SystemProxy,
                 revision,
                 EffectFailureCode::SystemProxyApplyFailed,
-                error.to_string(),
+                failure_text(&error),
             ),
         }
     }
@@ -726,7 +726,7 @@ impl State {
         if let Some(config) = write {
             let os = self.os.clone();
             if let Err(error) = blocking(move || os.set(&config)).await {
-                failure = Some(error.to_string());
+                failure = Some(failure_text(&error));
             }
         }
 
@@ -827,18 +827,10 @@ pub(super) fn requested_kinds(proxy: bool, guard: bool, auto_launch: bool) -> Ve
 
 /// The OS and auto-launch ports block. Running them on the mailbox turn would
 /// stall every other message behind a registry or `launchctl` write.
-async fn blocking<T, F>(work: F) -> anyhow::Result<T>
+async fn blocking<T, F>(work: F) -> T
 where
-    F: FnOnce() -> anyhow::Result<T> + Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    match tokio::task::spawn_blocking(work).await {
-        Ok(result) => result,
-        Err(error) => match error.try_into_panic() {
-            Ok(panic) => std::panic::resume_unwind(panic),
-            Err(error) => Err(anyhow::anyhow!(
-                "the system proxy worker did not run: {error}"
-            )),
-        },
-    }
+    crate::utils::blocking::join(tokio::task::spawn_blocking(work).await)
 }

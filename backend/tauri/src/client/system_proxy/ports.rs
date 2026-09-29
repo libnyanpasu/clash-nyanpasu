@@ -4,6 +4,8 @@
 //! plain fakes: nothing here mentions `sysproxy`, `auto_launch`, `reqwest` or
 //! Tauri. The concrete implementations live in [`super::adapters`].
 
+use serde::Serialize;
+use snafu::Snafu;
 use tokio_util::sync::CancellationToken;
 
 /// What the OS proxy settings look like, in the only shape this app writes.
@@ -15,12 +17,52 @@ pub struct OsProxyConfig {
     pub bypass: String,
 }
 
+/// Why the platform proxy settings could not be read or written. The platform's
+/// own error stays in `source`, boxed because this module does not name the
+/// crate that produced it; it reaches the user through the copied detail.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[snafu(visibility(pub(crate)))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OsProxyError {
+    #[snafu(display("could not read the system proxy"))]
+    ReadOsProxy {
+        #[serde(skip)]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    #[snafu(display("could not update the system proxy to {host}:{port} (enabled: {enable})"))]
+    WriteOsProxy {
+        enable: bool,
+        host: String,
+        port: u16,
+        #[serde(skip)]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
+
+#[cfg(test)]
+impl OsProxyError {
+    pub(crate) fn unreadable(reason: &str) -> Self {
+        Self::ReadOsProxy {
+            source: reason.into(),
+        }
+    }
+
+    pub(crate) fn refused(config: &OsProxyConfig, reason: &str) -> Self {
+        Self::WriteOsProxy {
+            enable: config.enable,
+            host: config.host.clone(),
+            port: config.port,
+            source: reason.into(),
+        }
+    }
+}
+
 /// The platform proxy settings. Blocking by nature, so the actor calls these
 /// from a blocking pool rather than from its mailbox turn.
 #[cfg_attr(test, mockall::automock)]
 pub trait OsProxyPort: Send + Sync + 'static {
-    fn get(&self) -> anyhow::Result<OsProxyConfig>;
-    fn set(&self, config: &OsProxyConfig) -> anyhow::Result<()>;
+    fn get(&self) -> Result<OsProxyConfig, OsProxyError>;
+    fn set(&self, config: &OsProxyConfig) -> Result<(), OsProxyError>;
     /// Platform bypass list used when the user left the field empty.
     fn default_bypass(&self) -> &'static str;
 }

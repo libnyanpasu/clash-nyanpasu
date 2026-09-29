@@ -14,7 +14,7 @@ use super::{
     SystemProxyArgs, SystemProxyClient,
     ports::{
         AutoLaunchPort, MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig,
-        OsProxyPort, PacPort,
+        OsProxyError, OsProxyPort, PacPort,
     },
 };
 use crate::client::effects::{
@@ -60,17 +60,20 @@ impl RecordingOsProxy {
 }
 
 impl OsProxyPort for RecordingOsProxy {
-    fn get(&self) -> anyhow::Result<OsProxyConfig> {
+    fn get(&self) -> Result<OsProxyConfig, OsProxyError> {
         self.original
             .lock()
             .expect("original")
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("no system proxy is set"))
+            .ok_or_else(|| OsProxyError::unreadable("no system proxy is set"))
     }
 
-    fn set(&self, config: &OsProxyConfig) -> anyhow::Result<()> {
+    fn set(&self, config: &OsProxyConfig) -> Result<(), OsProxyError> {
         if *self.fail_set.lock().expect("failure switch") {
-            anyhow::bail!("the os refused the proxy settings");
+            return Err(OsProxyError::refused(
+                config,
+                "the os refused the proxy settings",
+            ));
         }
         self.writes.lock().expect("write log").push(config.clone());
         Ok(())
@@ -146,7 +149,7 @@ impl GatedOsProxy {
 }
 
 impl OsProxyPort for GatedOsProxy {
-    fn get(&self) -> anyhow::Result<OsProxyConfig> {
+    fn get(&self) -> Result<OsProxyConfig, OsProxyError> {
         self.reading.notify_one();
         // Taken out of the lock first: the wait below is the whole point, and
         // holding the mutex across it would serialise nothing useful.
@@ -157,7 +160,7 @@ impl OsProxyPort for GatedOsProxy {
         self.os.get()
     }
 
-    fn set(&self, config: &OsProxyConfig) -> anyhow::Result<()> {
+    fn set(&self, config: &OsProxyConfig) -> Result<(), OsProxyError> {
         self.os.set(config)
     }
 
@@ -774,7 +777,7 @@ async fn set_failure_degrades_and_keeps_desired() {
         status.health,
         EffectHealth::Degraded {
             code: EffectFailureCode::SystemProxyApplyFailed,
-            message: "the os refused the proxy settings".to_owned(),
+            message: "could not update the system proxy to 127.0.0.1:7890 (enabled: true): the os refused the proxy settings".to_owned(),
             retryable: true,
         }
     );

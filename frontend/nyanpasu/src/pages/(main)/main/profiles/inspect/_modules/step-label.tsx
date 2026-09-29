@@ -24,16 +24,24 @@ const profileTagClassName = cn(
   'inline-block max-w-full rounded-md px-1.5 py-0.5 text-xs [overflow-wrap:anywhere]',
 )
 
+/** The selected profile needs no note, since its name is already shown. */
 function roleParts(role: ConfigExecutionRole): LabelPart[] {
   switch (role.kind) {
     case 'selected':
-      return [m.inspect_selected()]
+      return []
     case 'composition_base':
-      return [`${m.inspect_base()} → `, { profileId: role.data.composition_id }]
+      return [
+        ' (',
+        `${m.inspect_base()} → `,
+        { profileId: role.data.composition_id },
+        ')',
+      ]
     case 'composition_contributor':
       return [
+        ' (',
         `${m.inspect_contributor()} ${role.data.contributor_index + 1} → `,
         { profileId: role.data.composition_id },
+        ')',
       ]
   }
 }
@@ -94,16 +102,14 @@ export function stepSubject(tag: OperatorTag): LabelPart | undefined {
 function stepContext(tag: OperatorTag): LabelPart[] {
   switch (tag.kind) {
     case 'file_config_root':
-      return [' (', ...roleParts(tag.data.role), ')']
+      return roleParts(tag.data.role)
     case 'extend_proxies_step':
       return [' → ', { profileId: tag.data.composition_id }]
     case 'scoped_transform':
       return [
         ' → ',
         { profileId: tag.data.host_profile_id },
-        ' (',
         ...roleParts(tag.data.role),
-        ')',
       ]
     default:
       return []

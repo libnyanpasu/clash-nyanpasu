@@ -497,7 +497,6 @@
   "inspect_filter": "过滤字段",
   "inspect_include_all": "展开 include-all",
   "inspect_finalizing": "完成配置",
-  "inspect_selected": "当前配置",
   "inspect_base": "组合基底",
   "inspect_contributor": "代理贡献来源",
   "inspect_diff": "差异",

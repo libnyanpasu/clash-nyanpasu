@@ -71,3 +71,11 @@ export const categoryProfiles = (
 
   return categorized
 }
+
+/** The `$type` route segment a profile's detail page lives under. */
+export const profileTypeOf = (profile: ProfileItem_Serialize): ProfileType => {
+  if (isJavaScriptProfile(profile)) return ProfileType.JavaScript
+  if (isLuaProfile(profile)) return ProfileType.Lua
+  if (isMergeProfile(profile)) return ProfileType.Merge
+  return ProfileType.Profile
+}

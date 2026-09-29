@@ -10,64 +10,26 @@ import {
   events,
   queries,
   unwrapQueryOptions,
-  type ConfigExecutionRole,
-  type OperatorTag,
   type RuntimeInspection,
   type RuntimeInspectionContent,
 } from '@nyanpasu/interface'
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import LogLevelBadge from '../../logs/_modules/log-level-badge'
+import ChainGraph from './_modules/chain-graph'
 import ChangedFields from './_modules/changed-fields'
 import DiffViewer from './_modules/diff-viewer'
+import {
+  StepLabel,
+  stepParts,
+  useOpenProfile,
+  useProfileLookup,
+} from './_modules/step-label'
 import YamlViewer from './_modules/yaml-viewer'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
   component: RouteComponent,
 })
-
-function roleLabel(role: ConfigExecutionRole): string {
-  switch (role.kind) {
-    case 'selected':
-      return m.inspect_selected()
-    case 'composition_base':
-      return `${m.inspect_base()} → ${role.data.composition_id}`
-    case 'composition_contributor':
-      return `${m.inspect_contributor()} ${role.data.contributor_index + 1} → ${role.data.composition_id}`
-  }
-}
-
-function stepLabel(tag: OperatorTag): string {
-  switch (tag.kind) {
-    case 'bare_root':
-      return m.inspect_bare()
-    case 'file_config_root':
-      return `${m.inspect_file()} · ${tag.data.profile_id} (${roleLabel(tag.data.role)})`
-    case 'composition_root':
-      return `${m.inspect_composition()} · ${tag.data.profile_id}`
-    case 'extend_proxies_step':
-      return `${m.inspect_extend()} · ${tag.data.contributor_profile_id} → ${tag.data.composition_id}`
-    case 'scoped_transform':
-      return `${m.inspect_scoped()} · ${tag.data.transform_profile_id} → ${tag.data.host_profile_id} (${roleLabel(tag.data.role)})`
-    case 'global_transform':
-      return `${m.inspect_global()} · ${tag.data.transform_profile_id}`
-    case 'builtin_transform':
-      return `${m.inspect_builtin()} · ${tag.data.name}`
-    case 'builtin_step':
-      switch (tag.data.step) {
-        case 'guard_overrides':
-          return m.inspect_overrides()
-        case 'whitelist_field_filter':
-          return m.inspect_filter()
-        case 'include_all_expansion':
-          return m.inspect_include_all()
-        case 'core_controller':
-          return m.inspect_core_controller()
-        case 'finalizing':
-          return m.inspect_finalizing()
-      }
-  }
-}
 
 function RouteComponent() {
   const queryClient = useQueryClient()
@@ -131,11 +93,16 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
   const [showAll, setShowAll] = useState(false)
   const [selectedId, setSelectedId] = useState<number>()
   const [view, setView] = useState('diff')
-  const nodes = showAll
-    ? snapshot.nodes
-    : snapshot.nodes.filter(
-        (node) => node.has_logs || (node.changed_fields?.length ?? 0) > 0,
-      )
+  const [stepsView, setStepsView] = useState('list')
+  const profiles = useProfileLookup()
+  const openProfile = useOpenProfile(profiles)
+  // The chain keeps every step so that its edges stay connected.
+  const nodes =
+    showAll || stepsView === 'chain'
+      ? snapshot.nodes
+      : snapshot.nodes.filter(
+          (node) => node.has_logs || (node.changed_fields?.length ?? 0) > 0,
+        )
   const selected = nodes.find((node) => node.id === selectedId) ?? nodes[0]
   const contentQuery = selected
     ? queries.inspectRuntimeNode(snapshot.snapshot_id, selected.id)
@@ -164,31 +131,61 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
             : m.inspect_generated()}{' '}
         · {snapshot.target_core} · {m.inspect_revision()} {snapshot.revision}
       </p>
-      <div className="grid min-w-0 gap-4 @[40rem]:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
+      <div className="grid min-w-0 gap-4 @[40rem]:grid-cols-[20rem_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-3">
-          <label className="flex items-center justify-between gap-2 text-sm">
-            {m.inspect_show_all()}
-            <Switch checked={showAll} onCheckedChange={setShowAll} />
-          </label>
-          <nav
-            aria-label={m.inspect_steps()}
-            className="flex max-h-[65vh] flex-col gap-1 overflow-auto"
+          <SegmentedButton
+            size="sm"
+            value={stepsView}
+            onValueChange={(value) => {
+              if (value) setStepsView(value)
+            }}
           >
-            {nodes.map((node) => (
-              <button
-                key={node.id}
-                type="button"
-                aria-current={selected?.id === node.id ? 'step' : undefined}
-                onClick={() => setSelectedId(node.id)}
-                className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary rounded-lg p-3 text-left text-sm focus-visible:outline-2"
-              >
-                <span className="text-on-surface-variant mr-2">
-                  #{node.id + 1}
-                </span>
-                {stepLabel(node.tag)}
-              </button>
-            ))}
-          </nav>
+            <SegmentedButtonItem value="list">
+              {m.inspect_view_list()}
+            </SegmentedButtonItem>
+            <SegmentedButtonItem value="chain">
+              {m.inspect_view_chain()}
+            </SegmentedButtonItem>
+          </SegmentedButton>
+          {stepsView === 'list' && (
+            <label className="flex items-center justify-between gap-2 text-sm">
+              {m.inspect_show_all()}
+              <Switch checked={showAll} onCheckedChange={setShowAll} />
+            </label>
+          )}
+          {stepsView === 'chain' ? (
+            <ChainGraph
+              nodes={nodes}
+              profiles={profiles}
+              onOpenProfile={openProfile}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+            />
+          ) : (
+            <nav
+              aria-label={m.inspect_steps()}
+              className="flex max-h-[65vh] flex-col gap-1 overflow-auto"
+            >
+              {nodes.map((node) => (
+                <button
+                  key={node.id}
+                  type="button"
+                  aria-current={selected?.id === node.id ? 'step' : undefined}
+                  onClick={() => setSelectedId(node.id)}
+                  className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary rounded-lg p-3 text-left text-sm focus-visible:outline-2"
+                >
+                  <span className="text-on-surface-variant mr-2">
+                    #{node.id + 1}
+                  </span>
+                  <StepLabel
+                    parts={stepParts(node.tag)}
+                    profiles={profiles}
+                    onOpenProfile={openProfile}
+                  />
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
         {!selected && (
           <p role="status" className="text-on-surface-variant text-sm">
@@ -198,7 +195,12 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
         {selected && (
           <div className="flex min-w-0 flex-col gap-3">
             <h2 className="font-medium">
-              #{selected.id + 1} {stepLabel(selected.tag)}
+              #{selected.id + 1}{' '}
+              <StepLabel
+                parts={stepParts(selected.tag)}
+                profiles={profiles}
+                onOpenProfile={openProfile}
+              />
             </h2>
             <ChangedFields key={selected.id} fields={selected.changed_fields} />
             {showAll && selected.next.length > 0 && (

@@ -3,7 +3,7 @@
 **日期：** 2026-09-29
 **基线：** `main @ 218fd4b9d`（已含第一阶段 #5423）
 **来源：** UI 卡顿审计 `.claude/reviews/2026-09-29-ui-jank-performance-audit.md` §8 第二阶段（N2、N4、N9）
-**范围：** 轨道 A（Clash 连接流：汇总常驻、明细按需）；轨道 B（`get_proxies` 负载归一化）。两条轨道互不依赖，各自成 PR，A 先行。
+**范围：** 轨道 A（Clash 连接流：汇总常驻、明细按需；含 nyanpasu-runtime 中 clash-api 连接类型的一处改动）；轨道 B（`get_proxies` 负载归一化）。两条轨道互不依赖，各自成 PR，A 先行。
 **不在范围：** 日志流批量合并（N9 的日志部分，见 §6）；`ProxiesActor` 的 3 s 缓存、10 s 强制刷新与指纹计算（只耗 Rust 侧 CPU，不经过 WebView）；前端 `useFlushSync` 调整。
 **权威顺序：** `AGENTS.md` > `docs/design/actor-migration-roadmap.md` > 本设计 > 实施计划
 
@@ -15,8 +15,9 @@
 2. **速率在 Rust 里算。** 逐连接速率和按链路成员（分组、节点）聚合的速率，由一个纯服务从相邻两个原始样本推导。前端不再保留两份样本做差，现有的两套做差代码（connections 页、proxies 分组页头）删除。
 3. **任何一端都不再保留明细历史。** Rust 只保留上一个原始样本用于算速率；`Reset` 快照和 `get_clash_ws_snapshot` 不含明细，大小由日志上限决定，与连接数无关。
 4. **明细订阅的生命周期由适配层按 webview label 显式管理。** Tauri `Channel::send` 在页面重载后、甚至窗口关闭后仍返回 `Ok`（§1.3），不能靠发送失败发现订阅方消失。订阅在"显式退订""该 webview 开始加载新页面""该 webview 销毁"三种情况下结束。
-5. **StreamsActor 不接触 Tauri。** 明细经 `tokio::sync::watch` 发布；actor 用 `receiver_count()` 判断是否有人需要明细，没人订阅时不做逐条 JSON 转换。Tauri `Channel` 转发与订阅登记全部在适配层。
-6. **Proxies（轨道 B）：** 节点记录只出现一次（`nodes` 表），分组的 `all` 改为成员名列表。负载从 O(Σ分组成员数 × 节点记录大小) 降到 O(节点数 × 记录大小 + Σ成员数 × 名字长度)，一次测速结果只替换一个节点对象。
+5. **明细强类型，直接用 clash-api 的类型。** IPC 明细为 `clash_api::Connection` 加两个速率字段。clash-api 做两处改动：未知字段 `extra` 序列化为具名的 `_extra`（反序列化仍然 flatten）；新增一个只给 specta 看的 JSON 描述类型，让这两个类型可以导出（§3.1.1、§7 A0）。
+6. **StreamsActor 不接触 Tauri。** 明细经 `tokio::sync::watch` 发布；actor 用 `receiver_count()` 判断是否有人需要明细，没人订阅时不做逐条 JSON 转换。Tauri `Channel` 转发与订阅登记全部在适配层。
+7. **Proxies（轨道 B）：** 节点记录只出现一次（`nodes` 表），分组的 `all` 改为成员名列表。负载从 O(Σ分组成员数 × 节点记录大小) 降到 O(节点数 × 记录大小 + Σ成员数 × 名字长度)，一次测速结果只替换一个节点对象。
 
 ---
 
@@ -24,15 +25,16 @@
 
 ### 1.1 连接流（Rust → WebView）
 
-| 事实                                                                                                                                           | 位置                                                                                                         |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 连接流按 mihomo 默认 1 s 采样；`ConnectionStreamQuery` 只有 `interval` 一个参数，没有只要总量的模式，Rust 必然收到完整连接列表（经 localhost） | `nyanpasu-runtime/crates/clash-api/src/api/connections.rs:204-230`；`tauri/src/core/actor_v2/api.rs:119-125` |
-| 每个样本都把每条连接 `serde_json::to_value` 成 JSON 值，克隆一份进历史，再把完整快照作为事件推出，与是否有人在看无关                           | `core/clash/ws.rs:352-376`                                                                                   |
-| `recording` 默认全开，且只控制是否保留历史，不控制是否推送                                                                                     | `ws.rs:80-89`、`ws.rs:369-376`                                                                               |
-| Rust 与前端各保留 32 个样本，每个样本含完整连接列表                                                                                            | `ws.rs:17`；`frontend/interface/src/provider/clash-ws-state.ts:3`                                            |
-| `snapshot()` 深拷贝全部历史；bridge 收到 `Lagged` 时取快照并以 `Reset` 整体推送                                                                | `ws.rs:173-188`；`core/clash/mod.rs:103-124`                                                                 |
-| 四类数据共用一个序号和一个容量 64 的 broadcast，每条日志单独一个事件                                                                           | `ws.rs:272-277`、`ws.rs:378-387`、`ws.rs:689-690`                                                            |
-| 另有一个小的总量事件 `ClashConnectionsEvent` 被转发到 WebView，但**前端没有监听方**；它在 Rust 内部的唯一消费者是网速小组件                    | `core/clash/mod.rs:84-100`；`widget.rs:118-160`、`setup.rs:163-170`                                          |
+| 事实                                                                                                                                             | 位置                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| 连接流按 mihomo 默认 1 s 采样；`ConnectionStreamQuery` 只有 `interval` 一个参数，没有只要总量的模式，Rust 必然收到完整连接列表（经 localhost）   | `nyanpasu-runtime/crates/clash-api/src/api/connections.rs:204-230`；`tauri/src/core/actor_v2/api.rs:119-125` |
+| 每个样本都把每条连接 `serde_json::to_value` 成 JSON 值，克隆一份进历史，再把完整快照作为事件推出，与是否有人在看无关                             | `core/clash/ws.rs:352-376`                                                                                   |
+| `recording` 默认全开，且只控制是否保留历史，不控制是否推送                                                                                       | `ws.rs:80-89`、`ws.rs:369-376`                                                                               |
+| Rust 与前端各保留 32 个样本，每个样本含完整连接列表                                                                                              | `ws.rs:17`；`frontend/interface/src/provider/clash-ws-state.ts:3`                                            |
+| `snapshot()` 深拷贝全部历史；bridge 收到 `Lagged` 时取快照并以 `Reset` 整体推送                                                                  | `ws.rs:173-188`；`core/clash/mod.rs:103-124`                                                                 |
+| 四类数据共用一个序号和一个容量 64 的 broadcast，每条日志单独一个事件                                                                             | `ws.rs:272-277`、`ws.rs:378-387`、`ws.rs:689-690`                                                            |
+| 明细目前以 `serde_json::Value` 上 IPC；用仓库的导出配置，`clash_api::Connection` 本身无法导出（`Value` 被判为无限递归的内联类型），实验见 §3.1.1 | `ws.rs:40-44`、`ws.rs:359-367`                                                                               |
+| 另有一个小的总量事件 `ClashConnectionsEvent` 被转发到 WebView，但**前端没有监听方**；它在 Rust 内部的唯一消费者是网速小组件                      | `core/clash/mod.rs:84-100`；`widget.rs:118-160`、`setup.rs:163-170`                                          |
 
 ### 1.2 谁在消费什么（前端）
 
@@ -112,14 +114,58 @@ pub struct TrafficRate {
 /// 只推给订阅方；只存在最新一帧。
 pub struct ClashConnectionDetails {
     pub sequence: u64, // 与汇总事件同一序号空间，便于前端对齐
-    /// 保持可扩展的 JSON：每条是内核的连接对象，另外加入 downloadSpeed / uploadSpeed。
-    pub connections: Vec<serde_json::Value>,
+    pub connections: Vec<ClashConnection>,
 }
 ```
 
 - `ClashWsUpdate::ConnectionsUpdated` 的载荷从 `ClashWsConnectionSnapshot` 改为 `ClashConnectionsSummary`；`ClashWsSnapshot.connections` 相应改为 `Vec<ClashConnectionsSummary>`。这是**可迁移的破坏性变更**：重新生成 bindings，调用方一次迁完，不保留旧形状（AGENTS §11）。
-- 明细继续用 `serde_json::Value`。原因有两个：`ws.rs:40-43` 的 specta 递归类型限制仍然存在；`Connection` 本身带有 `#[serde(flatten)] extra`，详情弹窗需要展示内核新增的未知字段。
+- 明细是强类型的 `ClashConnection`，即 `clash_api::Connection` 加速率，见 §3.1.1。
 - `member_rates` 的规模取决于活跃链路里出现的分组名和节点名，典型是几十项，与连接数无关。分组页头直接读 `member_rates[groupName]`，不需要明细。
+
+### 3.1.1 明细类型：直接使用 clash-api 的强类型连接
+
+`clash_api::Connection` 与 `ConnectionMetadata` 已经是强类型（`nyanpasu-runtime/crates/clash-api/src/api/connections.rs:10-34`、`93-170`）。内核新增、clash-api 尚未建模的字段收在 `#[serde(flatten)] extra: IndexMap<String, serde_json::Value>` 里。明细直接使用这两个类型，不在应用侧复制一份字段。为此在 clash-api（运行时 monorepo）里做两处改动（§7 A0）：
+
+1. **`extra` 序列化为一个具名字段 `_extra`。** Rust 字段名仍是 `extra`：
+   - **反序列化**（来自 mihomo）：和现在一样，用 `flatten` 收集未知字段；
+   - **序列化**（给我们的 IPC）：未知字段整体放在键 `_extra` 下，不再与已知字段平铺在一起。
+
+   加下划线前缀，是为了避免 mihomo 以后真的引入一个叫 `extra` 的字段时发生冲突：到那时，那个字段在反序列化时照常进入 `extra` 这个 map，输出时出现在 `_extra.extra` 下，与 `_extra` 这个键本身不会冲突。
+
+2. **让这两个类型可以被 specta 导出。** `serde_json::Value` 在仓库的导出配置下会被判为无限递归的内联类型，导出失败（实验见下）。解决办法：在 clash-api 里新增一个只给 specta 看的 JSON 描述类型，并用 `#[specta(type = …)]` 覆盖 `extra` 的类型。
+   - 不用 `specta_typescript::Unknown`：那是 TypeScript 导出器专用的 opaque 类型，clash-api 是与语言无关的库，不应该依赖它。
+
+序列化与反序列化的形状不同，所以 clash-api 需要一个私有的 wire 结构专门用于反序列化（`#[serde(from = "…Wire")]`）。为了不重复 `ConnectionMetadata` 的 26 个字段，已知字段可以放进一个两边都 `flatten` 的内部结构，wire 结构只多一个 `flatten` 的未知字段 map。代价是 Rust 侧的访问会多一层；目前唯一的 Rust 调用方是本应用。具体写法在实现时决定。runtime 自身测试里引用 `.extra` 的地方只有 `tests/mihomo.rs:571`，由于字段名不变，不受影响。
+
+应用侧只包一层速率：
+
+```rust
+#[derive(Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ClashConnection {
+    #[serde(flatten)]
+    pub connection: clash_api::Connection,
+    pub download_speed: u64,
+    pub upload_speed: u64,
+}
+```
+
+- 导出形状为 `ClashConnection_Serialize = { downloadSpeed, uploadSpeed } & Connection_Serialize`，其中 `Connection_Serialize` 是强类型的已知字段加上 `_extra: { [key in string]: JsonValue | null }`。前端使用 `_Serialize` 这一侧，与现有的 `ProxyItem_Serialize` 惯例一致。
+- clash-api 以后新增的强类型字段会自动出现在 IPC 类型里，应用侧不需要同步维护字段。
+
+**导出实验。** 编译了真实的 clash-api，使用仓库锁定的 specta `2.0.0-rc.25`、specta-serde `0.0.12`、specta-typescript `0.0.12`，导出配置与 tauri-specta `373c25d` 的 `SpectaFormat` 等价（`PhasesFormat` 加 bigint→number 映射）：
+
+| 形状                                                               | 结果                                                                                                                                                                                               |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 现在的 `clash_api::Connection`（`flatten extra: Value`）           | ❌ `serde_json::Value → Vec<Value> → Value` 被判为无限递归的内联类型，与 `ws.rs:40-43` 的 TODO 一致                                                                                                |
+| 具名 map `IndexMap<String, Value>`（不加覆盖）                     | ❌ 同样的错误                                                                                                                                                                                      |
+| 保留 `flatten`，用具名 JSON 描述类型覆盖                           | ✅ 但导出为交叉类型 `{…} & { [key in string]: JsonValue }`，已知字段与未知字段混在一起                                                                                                             |
+| **反序列化时 flatten、序列化为具名字段，用具名 JSON 描述类型覆盖** | ✅ `Connection_Serialize = { …已知字段, extra: { [key in string]: JsonValue \| null } }`（实验中的键名；采用时为 `_extra`）；往返：`{"id":"a","newField":1}` → `{"id":"a","extra":{"newField":1}}` |
+| 应用侧 `flatten` 包一层速率                                        | ✅ `{ downloadSpeed, uploadSpeed } & Connection_Serialize`                                                                                                                                         |
+
+具名 JSON 描述类型的写法：`Array` 与 `Object` 的元素用 `Option<JsonValue>` 表示 `null`，不用单元变体 `Null`。用单元变体时，specta 会把它导出成字符串字面量 `"Null"`。
+
+**前端收益：** `use-clash-connections.ts` 里手写的 `ClashConnectionItem` / `ClashConnectionMetadata` 改用生成的 bindings 类型。详情弹窗分两部分展示：已知字段（有标签），以及 `_extra` 中的未知字段（用字段名作标签）。现在靠 `Object.entries` 遍历整个对象、再用 `INTERNAL_KEYS` 排除内部字段的做法随之删除。`ws.rs:40-43` 的 specta TODO 随本改动关闭。
 
 ### 3.2 速率推导（纯服务）
 
@@ -134,7 +180,7 @@ impl ConnectionRates {
         previous: Option<&RawConnectionsSample>,
         current: &RawConnectionsSample,
         with_details: bool,
-    ) -> (ClashConnectionsSummary, Option<Vec<serde_json::Value>>);
+    ) -> (ClashConnectionsSummary, Option<Vec<ClashConnection>>);
 }
 ```
 
@@ -218,13 +264,13 @@ async fn unsubscribe_clash_connection_details(id: SubscriptionId, ..) -> Result<
 - **`ClashWSFreezeBoundary`** 同时冻结明细 context，退出中的页面不再随明细更新重渲染（沿用第一阶段的机制）。
 - 调用方迁移：
 
-| 调用方               | 改动                                                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------ |
-| Dashboard 流量卡片   | 读汇总历史的 `downloadTotal` / `uploadTotal`，只有类型变化                                             |
-| Dashboard 连接数卡片 | 折线读 `connectionCount` 历史                                                                          |
-| Topology             | 改用 `useClashConnectionDetails()` 的最新帧                                                            |
-| Connections 页       | 改用明细帧；逐条速率直接读 `downloadSpeed` / `uploadSpeed`，删除 `prevMap` 做差                        |
-| Proxies 分组页头     | 读最新汇总的 `memberRates[groupName]`，删除 `sumGroupTrafficSpeed` / `useGroupTrafficSpeed` 的做差实现 |
+| 调用方               | 改动                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Dashboard 流量卡片   | 读汇总历史的 `downloadTotal` / `uploadTotal`，只有类型变化                                                                                             |
+| Dashboard 连接数卡片 | 折线读 `connectionCount` 历史                                                                                                                          |
+| Topology             | 改用 `useClashConnectionDetails()` 的最新帧                                                                                                            |
+| Connections 页       | 改用明细帧；逐条速率直接读 `downloadSpeed` / `uploadSpeed`，删除 `prevMap` 做差；类型改用生成的 `ClashConnection`；详情弹窗按"已知字段 + `_extra`"展示 |
+| Proxies 分组页头     | 读最新汇总的 `memberRates[groupName]`，删除 `sumGroupTrafficSpeed` / `useGroupTrafficSpeed` 的做差实现                                                 |
 
 - **托盘窗口：** 托盘页面不读任何流数据。改动后它只会收到小的汇总事件。托盘窗口仍挂载 `ClashWSProvider`（D3）。
 
@@ -240,13 +286,15 @@ async fn unsubscribe_clash_connection_details(id: SubscriptionId, ..) -> Result<
 
 ### 3.8 测试
 
-| 层                          | 测试                                                                                                                                                             |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ConnectionRates`（纯服务） | 首个样本；新增、关闭的连接；计数器回退；间隔为 0；`chains` 里有重复名字；`with_details = false` 时不生成明细；按成员名聚合的求和                                 |
-| `StreamsActor`              | 没有 receiver 时明细始终为 `None`（G2）；订阅后收到明细帧，而且与汇总的序号一致；`reset` 清空明细和 `previous`；N = 0 / 1000 时事件与快照的字节数（G1、G4）      |
-| 适配层                      | 显式退订、按 label 批量取消、根 token 取消后转发任务结束，`receiver_count` 回到 0（G5）。用假的发送端替代 `Channel`                                              |
-| 前端                        | 用浏览器探针（`.probe/` + vite + playwright，见 frontend-adhoc-test-harness）验证 `ClashConnectionDetailsProvider` 的计数订阅和退订、冻结边界；bindings 重新生成 |
-| 真机冒烟                    | Dashboard 四张卡片、Topology、Connections（速率、详情弹窗、排序、搜索）、分组页头速率、托盘菜单打开并隐藏后的 CPU 占用对比                                       |
+| 层                          | 测试                                                                                                                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| clash-api（A0）             | 带未知字段的 mihomo JSON 反序列化后，未知字段进入 `extra`，序列化时出现在 `_extra` 下；连接与 metadata 两层都测；mihomo 以后若出现名为 `extra` 的字段，反序列化后落在 `extra` map 里，不与已知字段冲突 |
+| bindings 导出               | 导出测试断言 `ClashConnection_Serialize` 含 `Connection_Serialize` 的强类型字段与 `_extra`                                                                                                             |
+| `ConnectionRates`（纯服务） | 首个样本；新增、关闭的连接；计数器回退；间隔为 0；`chains` 里有重复名字；`with_details = false` 时不生成明细；按成员名聚合的求和                                                                       |
+| `StreamsActor`              | 没有 receiver 时明细始终为 `None`（G2）；订阅后收到明细帧，而且与汇总的序号一致；`reset` 清空明细和 `previous`；N = 0 / 1000 时事件与快照的字节数（G1、G4）                                            |
+| 适配层                      | 显式退订、按 label 批量取消、根 token 取消后转发任务结束，`receiver_count` 回到 0（G5）。用假的发送端替代 `Channel`                                                                                    |
+| 前端                        | 用浏览器探针（`.probe/` + vite + playwright，见 frontend-adhoc-test-harness）验证 `ClashConnectionDetailsProvider` 的计数订阅和退订、冻结边界；bindings 重新生成                                       |
+| 真机冒烟                    | Dashboard 四张卡片、Topology、Connections（速率、详情弹窗、排序、搜索）、分组页头速率、托盘菜单打开并隐藏后的 CPU 占用对比                                                                             |
 
 ---
 
@@ -308,8 +356,9 @@ ProxyGroup.all: string[]
 
 原则是**先建后删**：先加上新通路，调用方迁过去以后，再从旧契约里删掉明细。这样每个中间提交都能工作，不需要兼容层。
 
+0. A0（nyanpasu-runtime 仓库的 PR）：clash-api 的 `Connection` / `ConnectionMetadata` 序列化为具名 `_extra`，新增 JSON 描述类型，使两者可以被 specta 导出；合入后应用侧升级 submodule pin。
 1. A1：`ConnectionRates` 纯服务及其单测。
-2. A2：`StreamsActor` 增加明细 `watch` 和 `member_rates`（汇总事件暂时仍带完整列表）；适配层订阅命令，以及按 label 的生命周期管理；重新生成 bindings。
+2. A2：`ClashConnection`（`clash_api::Connection` 加速率）；`StreamsActor` 增加明细 `watch` 和 `member_rates`（汇总事件暂时仍带完整列表）；适配层订阅命令，以及按 label 的生命周期管理；重新生成 bindings。
 3. A3：前端 `ClashConnectionDetailsProvider`；Topology、Connections 迁到明细订阅，分组页头迁到 `memberRates`。
 4. A4：汇总契约定型：`ConnectionsUpdated` 与快照改为 `ClashConnectionsSummary`，历史只保留汇总；Dashboard 迁到 `connectionCount`；删除前端两处做差实现。
 5. A5（D4）：删除没有监听方的转发任务和命令。

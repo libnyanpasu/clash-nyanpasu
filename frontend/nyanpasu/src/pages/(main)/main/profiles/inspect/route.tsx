@@ -10,8 +10,6 @@ import {
   events,
   queries,
   unwrapQueryOptions,
-  type ConfigExecutionRole,
-  type OperatorTag,
   type RuntimeInspection,
   type RuntimeInspectionContent,
 } from '@nyanpasu/interface'
@@ -20,54 +18,17 @@ import { createFileRoute } from '@tanstack/react-router'
 import LogLevelBadge from '../../logs/_modules/log-level-badge'
 import ChangedFields from './_modules/changed-fields'
 import DiffViewer from './_modules/diff-viewer'
+import {
+  StepLabel,
+  stepParts,
+  useOpenProfile,
+  useProfileLookup,
+} from './_modules/step-label'
 import YamlViewer from './_modules/yaml-viewer'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
   component: RouteComponent,
 })
-
-function roleLabel(role: ConfigExecutionRole): string {
-  switch (role.kind) {
-    case 'selected':
-      return m.inspect_selected()
-    case 'composition_base':
-      return `${m.inspect_base()} → ${role.data.composition_id}`
-    case 'composition_contributor':
-      return `${m.inspect_contributor()} ${role.data.contributor_index + 1} → ${role.data.composition_id}`
-  }
-}
-
-function stepLabel(tag: OperatorTag): string {
-  switch (tag.kind) {
-    case 'bare_root':
-      return m.inspect_bare()
-    case 'file_config_root':
-      return `${m.inspect_file()} · ${tag.data.profile_id} (${roleLabel(tag.data.role)})`
-    case 'composition_root':
-      return `${m.inspect_composition()} · ${tag.data.profile_id}`
-    case 'extend_proxies_step':
-      return `${m.inspect_extend()} · ${tag.data.contributor_profile_id} → ${tag.data.composition_id}`
-    case 'scoped_transform':
-      return `${m.inspect_scoped()} · ${tag.data.transform_profile_id} → ${tag.data.host_profile_id} (${roleLabel(tag.data.role)})`
-    case 'global_transform':
-      return `${m.inspect_global()} · ${tag.data.transform_profile_id}`
-    case 'builtin_transform':
-      return `${m.inspect_builtin()} · ${tag.data.name}`
-    case 'builtin_step':
-      switch (tag.data.step) {
-        case 'guard_overrides':
-          return m.inspect_overrides()
-        case 'whitelist_field_filter':
-          return m.inspect_filter()
-        case 'include_all_expansion':
-          return m.inspect_include_all()
-        case 'core_controller':
-          return m.inspect_core_controller()
-        case 'finalizing':
-          return m.inspect_finalizing()
-      }
-  }
-}
 
 function RouteComponent() {
   const queryClient = useQueryClient()
@@ -131,6 +92,8 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
   const [showAll, setShowAll] = useState(false)
   const [selectedId, setSelectedId] = useState<number>()
   const [view, setView] = useState('diff')
+  const profiles = useProfileLookup()
+  const openProfile = useOpenProfile(profiles)
   const nodes = showAll
     ? snapshot.nodes
     : snapshot.nodes.filter(
@@ -185,7 +148,11 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                 <span className="text-on-surface-variant mr-2">
                   #{node.id + 1}
                 </span>
-                {stepLabel(node.tag)}
+                <StepLabel
+                  parts={stepParts(node.tag)}
+                  profiles={profiles}
+                  onOpenProfile={openProfile}
+                />
               </button>
             ))}
           </nav>
@@ -198,7 +165,12 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
         {selected && (
           <div className="flex min-w-0 flex-col gap-3">
             <h2 className="font-medium">
-              #{selected.id + 1} {stepLabel(selected.tag)}
+              #{selected.id + 1}{' '}
+              <StepLabel
+                parts={stepParts(selected.tag)}
+                profiles={profiles}
+                onOpenProfile={openProfile}
+              />
             </h2>
             <ChangedFields key={selected.id} fields={selected.changed_fields} />
             {showAll && selected.next.length > 0 && (

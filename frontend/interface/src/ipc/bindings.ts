@@ -800,6 +800,26 @@ export type ClashWsUpdate =
   | { kind: 'recording_changed'; data: ClashWsRecording }
   | { kind: 'history_cleared'; data: ClashWsKind }
 
+/**
+ *  Why a source transaction did not commit, classified once from the
+ *  persistence error and, when the Runtime took part, the receipt it settled
+ *  (U7). A source wraps it in its own domain error.
+ */
+export type CommitAborted =
+  /**  The yaml write failed; nothing committed. */
+  | { kind: 'write_config'; runtime: RuntimeAftermath }
+  /**  The write failed and so did the recovery of what the transaction staged. */
+  | { kind: 'recover_after_write_failure'; runtime: RuntimeAftermath }
+  /**  A required participant refused the candidate. */
+  | { kind: 'runtime_refused'; reasons: string[]; runtime: RuntimeAftermath }
+  /**  A required participant could not decide. */
+  | { kind: 'runtime_failed'; reasons: string[]; runtime: RuntimeAftermath }
+  /**
+   *  The coordinator refused before persisting: builder validation, or a CAS
+   *  mismatch the caller did not classify as its own version conflict.
+   */
+  | { kind: 'validate_state' }
+
 /**  A source commit and its critical runtime result. Peripheral owners settle separately. */
 export type CommitReceipt = {
   operation_id: string | null
@@ -1411,11 +1431,30 @@ export type EnvInfo = {
 }
 
 /**
+ *  A filesystem path as it appears in an error. The lossy conversion keeps it
+ *  serializable when the path is not valid UTF-8.
+ */
+export type ErrorPath = string
+
+/**
  *  Which controller owns the runtime. The app perceives the difference in
  *  exactly two places: this tag on the endpoint slot, and the handoff
  *  protocol.
  */
 export type ExecutionHost = 'local' | 'service'
+
+/**  What a path was required to be when it was not. */
+export type ExpectedNode =
+  | 'real_directory'
+  | 'regular_file'
+  /**  A regular file, or a symlink whose target is read as text. */
+  | 'hashable_target'
+  /**  Absent, a regular file, or a symlink. */
+  | 'replaceable_target'
+  /**  Anything but a directory. */
+  | 'removable_resource'
+  /**  Absent, or a symlink to the staged target. */
+  | 'ready_symlink'
 
 export type ExternalControllerStrategy = {
   host: string
@@ -1518,7 +1557,7 @@ export type IpcError = {
 /**  The domain a command failed in. A domain joins once its errors are typed. */
 export type IpcErrorKind =
   /**  Not classified into a domain; only `message` describes it. */
-  { domain: 'unknown' }
+  { domain: 'unknown' } | { domain: 'profiles'; error: ProfilesError }
 
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`
@@ -1723,6 +1762,17 @@ export type ManifestVersionLatest = {
   clash_premium: string
   meow: string
 }
+
+/**  What the materialization port was doing when it failed. */
+export type MaterializationOperation =
+  | 'prepare_file_first'
+  | 'compensate'
+  | 'complete'
+  | 'prepare_cleanup'
+  | 'activate_cleanup'
+  | 'cancel_cleanup'
+  | 'retry_cleanup'
+  | 'reconcile'
 
 /**  Stable read location used by parsers and processors. */
 export type MaterializedFile =
@@ -2175,6 +2225,13 @@ export type PostProcessingOutput = {
   advice: [LogSpan, string][]
 }
 
+/**  Downloaded or read content that is not a valid profile document. */
+export type ProfileContentError =
+  | { kind: 'not_yaml_mapping' }
+  | { kind: 'reserialize_yaml' }
+  | { kind: 'missing_proxies' }
+  | { kind: 'empty_script' }
+
 /**  Top-level semantic split. */
 export type ProfileDefinition =
   ProfileDefinition_Serialize | ProfileDefinition_Deserialize
@@ -2213,6 +2270,59 @@ export type ProfileDocument_Serialize = {
   valid: string[]
   items: ProfileItem_Serialize[]
 }
+
+/**
+ *  A failure of the profile filesystem, its materialization journals or its
+ *  private storage. One type for both the profile filesystem port and the
+ *  materialization port, whose implementations share their helpers.
+ */
+export type ProfileFileError =
+  | { kind: 'inspect_path'; path: ErrorPath }
+  | { kind: 'read_file'; path: ErrorPath }
+  | { kind: 'read_link'; path: ErrorPath }
+  | { kind: 'write_file'; path: ErrorPath }
+  | { kind: 'atomic_write'; path: ErrorPath }
+  | { kind: 'create_directory'; path: ErrorPath }
+  | { kind: 'remove_file'; path: ErrorPath }
+  | { kind: 'replace_file'; from: ErrorPath; to: ErrorPath }
+  | { kind: 'create_symlink'; link: ErrorPath; target: ErrorPath }
+  | { kind: 'list_directory'; path: ErrorPath }
+  | { kind: 'sync_directory'; path: ErrorPath }
+  | { kind: 'set_permissions'; path: ErrorPath }
+  | { kind: 'canonicalize_path'; path: ErrorPath }
+  | { kind: 'read_external_target'; target: ExternalProfilePath }
+  | { kind: 'parse_journal'; path: ErrorPath }
+  | { kind: 'serialize_journal' }
+  | { kind: 'reserved_path'; path: ErrorPath }
+  | { kind: 'path_escapes_profiles_dir'; path: ErrorPath; root: ErrorPath }
+  | { kind: 'no_parent_directory'; path: ErrorPath }
+  | { kind: 'unexpected_node'; path: ErrorPath; expected: ExpectedNode }
+  | { kind: 'unexpected_symlink'; path: ErrorPath }
+  | { kind: 'existing_file_blocks_symlink'; path: ErrorPath }
+  | { kind: 'symlink_target_not_utf8'; path: ErrorPath }
+  | { kind: 'invalid_external_path' }
+  | { kind: 'cleanup_tombstone_exists'; path: ErrorPath }
+  | { kind: 'journal_not_found'; operation_id: string }
+  | { kind: 'compensation_fenced'; path: ErrorPath }
+  | { kind: 'operation_id_invalid' }
+  | { kind: 'operation_id_exhausted' }
+  | { kind: 'journal_operation_id_mismatch' }
+  | { kind: 'journal_hash_invalid' }
+  | { kind: 'mixed_transaction_families' }
+  | { kind: 'conflicting_journal_payloads' }
+  | { kind: 'journal_destination_differs' }
+  | { kind: 'conflicting_cleanup_payloads' }
+  | { kind: 'multiple_staged_resources' }
+  | { kind: 'multiple_backups' }
+  | { kind: 'staged_hash_mismatch' }
+  | { kind: 'ready_symlink_mismatch' }
+  | { kind: 'staged_resource_missing' }
+  | { kind: 'promoted_hash_mismatch' }
+  | { kind: 'compensating_cannot_promote' }
+  | { kind: 'target_hash_mismatch' }
+  | { kind: 'not_completable' }
+  | { kind: 'cleanup_already_activated' }
+  | { kind: 'diverged_before_recovery' }
 
 /**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
 export type ProfileId = string
@@ -2628,6 +2738,59 @@ export type ProfileValidationError =
       UnsupportedRemoteUrlScheme?: never
     })
 
+/**  What a profile command failed with. */
+export type ProfilesError =
+  | { kind: 'profile_not_found'; uid: ProfileId }
+  | { kind: 'profile_has_no_file'; uid: ProfileId }
+  | { kind: 'not_a_remote_profile'; uid: ProfileId }
+  | { kind: 'profile_file_not_writable'; uid: ProfileId }
+  | {
+      kind: 'profile_in_use'
+      uid: ProfileId
+      referrers: ProfileId[]
+      /**  Referenced by the document-level `current` selection. */
+      current: boolean
+      /**  Referenced by the document-level `global_transforms` list. */
+      global_transforms: boolean
+    }
+  | { kind: 'profile_id_collision'; uid: ProfileId }
+  | { kind: 'validation_failed'; errors: ProfileValidationError[] }
+  | { kind: 'reorder_list_size_mismatch'; expected: number; got: number }
+  | { kind: 'reorder_list_duplicate'; uid: ProfileId }
+  | { kind: 'revision_overflow' }
+  | { kind: 'invalid_subscription_url'; url: string }
+  | { kind: 'remote_profile_needs_import' }
+  | { kind: 'refresh_in_progress'; uid: ProfileId }
+  | { kind: 'fetch_subscription'; url: string; source: SubscriptionFetchError }
+  | { kind: 'profile_content_rejected'; source: ProfileContentError }
+  | { kind: 'profile_deleted_during_refresh'; uid: ProfileId }
+  | { kind: 'profile_changed_during_refresh'; uid: ProfileId }
+  | { kind: 'fingerprint_definition'; uid: ProfileId }
+  | { kind: 'read_profile_file'; uid: ProfileId; source: ProfileFileError }
+  | {
+      kind: 'profile_file_not_yaml'
+      uid: ProfileId
+      source: ProfileContentError
+    }
+  | { kind: 'profile_file_missing'; uid: ProfileId; path: ErrorPath }
+  | {
+      kind: 'read_external_profile'
+      target: ExternalProfilePath
+      source: ProfileFileError
+    }
+  | {
+      kind: 'materialization'
+      operation: MaterializationOperation
+      source: ProfileFileError
+    }
+  | { kind: 'version_conflict'; expected: number; actual: number }
+  | { kind: 'commit'; source: CommitAborted }
+  | { kind: 'workflow_not_ready' }
+  | { kind: 'profiles_actor_stopped' }
+  | { kind: 'profiles_reply_dropped' }
+  | { kind: 'blocking_task_cancelled' }
+  | { kind: 'shutting_down' }
+
 export type ProviderType = 'Proxy' | 'Rule' | string
 
 export type ProvidersProxiesRes =
@@ -2826,6 +2989,21 @@ export type RuleProviderItem = {
 export type RulesRes = {
   rules: ClashRule[]
 }
+
+/**
+ *  What became of the runtime after an aborted commit, from the receipt's
+ *  structured fields. `detail` is the receipt's operator diagnostics, never an
+ *  input to a decision.
+ */
+export type RuntimeAftermath =
+  /**  The runtime took no part, or the transaction withdrew before it did. */
+  | { kind: 'untouched' }
+  /**  The runtime went back to the previous configuration. */
+  | { kind: 'rolled_back' }
+  /**  Rolling the runtime back failed; recovery is required. */
+  | { kind: 'rollback_failed'; detail: string }
+  /**  What the runtime is running is unknown and needs recovery. */
+  | { kind: 'unknown'; detail: string }
 
 export type RuntimeCommitStatus =
   'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
@@ -3124,6 +3302,16 @@ export type StorageValueChangedEvent = {
   /**  The new JSON-encoded value, or `None` if the key was removed. */
   value: string | null
 }
+
+/**
+ *  A failure to download a subscription. The URL is not repeated here: the
+ *  caller that knows it names it.
+ */
+export type SubscriptionFetchError =
+  | { kind: 'build_http_client' }
+  | { kind: 'request_subscription' }
+  | { kind: 'subscription_http_status'; status: number }
+  | { kind: 'read_subscription_body' }
 
 /**
  *  Identifies one `subscribe_clash_connection_details` call, for a later

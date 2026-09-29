@@ -171,7 +171,10 @@ impl ApplicationActor {
             )),
             Err(error) => Err(anyhow::anyhow!(
                 "failed to persist application config: {}",
-                mutation::uncommitted(&error, settlement.as_ref())
+                snafu::Report::from_error(mutation::CommitAborted::classify(
+                    error,
+                    settlement.as_ref()
+                ))
             )),
         }
     }

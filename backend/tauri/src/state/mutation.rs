@@ -8,6 +8,8 @@ use nyanpasu_core::state::{
     error::StateChangedError,
 };
 use nyanpasu_core_manager::OperationId;
+use serde::Serialize;
+use snafu::{IntoError, Snafu, ensure};
 use tokio::sync::{oneshot, watch};
 
 use crate::client::{
@@ -160,10 +162,10 @@ impl MutationCoordinator {
         }
     }
 
-    pub fn ensure_ready(&self) -> anyhow::Result<()> {
-        anyhow::ensure!(
+    pub fn ensure_ready(&self) -> Result<(), NotReady> {
+        ensure!(
             !matches!(*self.0.borrow(), Connection::Pending),
-            "application workflow is not ready"
+            NotReadySnafu
         );
         Ok(())
     }
@@ -177,19 +179,19 @@ impl MutationCoordinator {
         hints: MutationHints,
         class: CommandClass,
         impact: RuntimeImpact,
-    ) -> anyhow::Result<(
-        impl FnOnce(DecisionHandle) -> StateParticipant<T> + use<T>,
-        Settlement,
-    )>
+    ) -> Result<
+        (
+            impl FnOnce(DecisionHandle) -> StateParticipant<T> + use<T>,
+            Settlement,
+        ),
+        NotReady,
+    >
     where
         T: Clone + Send + Sync + 'static,
         DomainChange: From<StateChange<T>>,
     {
         let connection = self.0.borrow().clone();
-        anyhow::ensure!(
-            !matches!(connection, Connection::Pending),
-            "application workflow is not ready"
-        );
+        ensure!(!matches!(connection, Connection::Pending), NotReadySnafu);
         let (settle, settlement) = oneshot::channel();
         let participant = move |decision| -> StateParticipant<T> {
             match connection {
@@ -211,65 +213,158 @@ impl MutationCoordinator {
     }
 }
 
-/// Why a source transaction did not commit, in the words its caller reads:
-/// the persistence cause chain, the reasons a refused prepare gave, and, when
-/// the Runtime took part, what became of a Try it had already applied (U7).
-/// The caller only ever sees text, so all of it is here.
-pub(crate) fn uncommitted(
-    error: &ReplaceIfVersionError,
-    settlement: Option<&MutationReceipt>,
-) -> String {
-    let cause = match error {
-        // The variant's own text names the first cause; the rest of the chain
-        // follows it.
-        ReplaceIfVersionError::WriteConfig(cause) | ReplaceIfVersionError::LocalWrite(cause) => {
-            cause
-                .chain()
-                .skip(1)
-                .fold(error.to_string(), |text, cause| format!("{text}: {cause}"))
+/// The application workflow is not connected yet, so no mutation can run.
+#[derive(Debug, Snafu)]
+#[snafu(display("the application workflow is not ready"))]
+pub(crate) struct NotReady;
+
+/// Why a source transaction did not commit, classified once from the
+/// persistence error and, when the Runtime took part, the receipt it settled
+/// (U7). A source wraps it in its own domain error.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[snafu(visibility(pub(crate)))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CommitAborted {
+    /// The yaml write failed; nothing committed.
+    #[snafu(display("failed to write the config{runtime}"))]
+    WriteConfig {
+        runtime: RuntimeAftermath,
+        #[serde(skip)]
+        source: ReplaceIfVersionError,
+    },
+    /// The write failed and so did the recovery of what the transaction staged.
+    #[snafu(display("failed to write the config and failed to recover afterwards{runtime}"))]
+    RecoverAfterWriteFailure {
+        runtime: RuntimeAftermath,
+        #[serde(skip)]
+        source: ReplaceIfVersionError,
+    },
+    /// A required participant refused the candidate.
+    #[snafu(display("the runtime refused the change: {}{runtime}", joined(reasons)))]
+    RuntimeRefused {
+        reasons: Vec<String>,
+        runtime: RuntimeAftermath,
+        #[serde(skip)]
+        source: ReplaceIfVersionError,
+    },
+    /// A required participant could not decide.
+    #[snafu(display(
+        "the runtime failed while applying the change: {}{runtime}",
+        joined(reasons)
+    ))]
+    RuntimeFailed {
+        reasons: Vec<String>,
+        runtime: RuntimeAftermath,
+        #[serde(skip)]
+        source: ReplaceIfVersionError,
+    },
+    /// The coordinator refused before persisting: builder validation, or a CAS
+    /// mismatch the caller did not classify as its own version conflict.
+    #[snafu(display("the state change was refused before it was saved"))]
+    ValidateState {
+        #[serde(skip)]
+        source: ReplaceIfVersionError,
+    },
+}
+
+fn joined(reasons: &[String]) -> String {
+    reasons.join("; ")
+}
+
+/// What became of the runtime after an aborted commit, from the receipt's
+/// structured fields. `detail` is the receipt's operator diagnostics, never an
+/// input to a decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RuntimeAftermath {
+    /// The runtime took no part, or the transaction withdrew before it did.
+    Untouched,
+    /// The runtime went back to the previous configuration.
+    RolledBack,
+    /// Rolling the runtime back failed; recovery is required.
+    RollbackFailed { detail: String },
+    /// What the runtime is running is unknown and needs recovery.
+    Unknown { detail: String },
+}
+
+impl RuntimeAftermath {
+    fn of(settlement: Option<&MutationReceipt>) -> Self {
+        let Some(receipt) = settlement else {
+            return Self::Untouched;
+        };
+        let detail = || receipt.detail.clone().unwrap_or_default();
+        match (receipt.outcome, receipt.conclusion) {
+            (MutationOutcomeKind::RecoveryRequired, _) => Self::Unknown { detail: detail() },
+            (_, MutationConclusion::Cancelled) => Self::RolledBack,
+            (_, MutationConclusion::RecoveryRequired) => Self::RollbackFailed { detail: detail() },
+            _ => Self::Untouched,
         }
-        ReplaceIfVersionError::ResourceRecovery {
-            cause,
-            recovery_error,
-        } => format!(
-            "persistence failed ({cause:#}) and resource recovery failed: {recovery_error:#}"
-        ),
-        ReplaceIfVersionError::State(StateChangedError::PrepareAck(refusal)) => {
-            let reasons: Vec<String> = refusal
-                .report
-                .subscriber_acks
-                .iter()
-                .filter(|ack| ack.is_required_failure())
-                .map(|ack| match &ack.status {
-                    AckStatus::Rejected { reason } => reason.clone(),
-                    AckStatus::Failed { error } => format!("{error:#}"),
-                    AckStatus::Acked | AckStatus::Degraded { .. } => {
-                        unreachable!("only a refusal or a failure fails a required ACK")
-                    }
-                })
-                .collect();
-            format!("{error}: {}", reasons.join("; "))
+    }
+}
+
+/// Reads as the tail of a sentence: nothing when the runtime was not touched.
+impl std::fmt::Display for RuntimeAftermath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Untouched => Ok(()),
+            Self::RolledBack => {
+                f.write_str("; the runtime was rolled back to the previous configuration")
+            }
+            Self::RollbackFailed { detail } => {
+                write!(
+                    f,
+                    "; rolling the runtime back failed: {detail}; recovery required"
+                )
+            }
+            Self::Unknown { detail } => write!(
+                f,
+                "; what the runtime is running is unknown and needs recovery: {detail}"
+            ),
         }
-        error => error.to_string(),
-    };
-    let runtime = settlement.and_then(|receipt| match (receipt.outcome, receipt.conclusion) {
-        (MutationOutcomeKind::RecoveryRequired, _) => Some(format!(
-            "what the runtime is running is unknown and needs recovery: {}",
-            receipt.detail.as_deref().unwrap_or_default()
-        )),
-        (_, MutationConclusion::Cancelled) => {
-            Some("the runtime was rolled back to the previous configuration".to_owned())
+    }
+}
+
+impl CommitAborted {
+    pub(crate) fn classify(
+        error: ReplaceIfVersionError,
+        settlement: Option<&MutationReceipt>,
+    ) -> Self {
+        let runtime = RuntimeAftermath::of(settlement);
+        match &error {
+            ReplaceIfVersionError::WriteConfig(_) | ReplaceIfVersionError::LocalWrite(_) => {
+                WriteConfigSnafu { runtime }.into_error(error)
+            }
+            ReplaceIfVersionError::ResourceRecovery { .. } => {
+                RecoverAfterWriteFailureSnafu { runtime }.into_error(error)
+            }
+            ReplaceIfVersionError::State(StateChangedError::PrepareAck(refusal)) => {
+                let mut refused = false;
+                let reasons: Vec<String> = refusal
+                    .report
+                    .subscriber_acks
+                    .iter()
+                    .filter(|ack| ack.is_required_failure())
+                    .map(|ack| match &ack.status {
+                        AckStatus::Rejected { reason } => {
+                            refused = true;
+                            reason.clone()
+                        }
+                        AckStatus::Failed { error } => format!("{error:#}"),
+                        AckStatus::Acked | AckStatus::Degraded { .. } => {
+                            unreachable!("only a refusal or a failure fails a required ACK")
+                        }
+                    })
+                    .collect();
+                if refused {
+                    RuntimeRefusedSnafu { reasons, runtime }.into_error(error)
+                } else {
+                    RuntimeFailedSnafu { reasons, runtime }.into_error(error)
+                }
+            }
+            ReplaceIfVersionError::State(
+                StateChangedError::Validation(_) | StateChangedError::StateCasMismatch { .. },
+            ) => ValidateStateSnafu.into_error(error),
         }
-        (_, MutationConclusion::RecoveryRequired) => Some(format!(
-            "rolling the runtime back failed: {}; recovery required",
-            receipt.detail.as_deref().unwrap_or_default()
-        )),
-        // Withdrawn: nothing reached the runtime.
-        _ => None,
-    });
-    match runtime {
-        Some(runtime) => format!("{cause}; {runtime}"),
-        None => cause,
     }
 }
 

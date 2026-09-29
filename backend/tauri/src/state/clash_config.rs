@@ -155,7 +155,10 @@ impl ClashConfigActor {
             )),
             Err(error) => Err(anyhow::anyhow!(
                 "failed to persist clash config: {}",
-                mutation::uncommitted(&error, settlement.as_ref())
+                snafu::Report::from_error(mutation::CommitAborted::classify(
+                    error,
+                    settlement.as_ref()
+                ))
             )),
         }
     }

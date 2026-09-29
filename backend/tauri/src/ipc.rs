@@ -2,6 +2,7 @@ use crate::{
     client::{ClientError, NyanpasuClient},
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
+    state::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     utils::{
         candy,
         collect::EnvInfo,
@@ -40,6 +41,22 @@ pub struct IpcError {
 pub enum IpcErrorKind {
     /// Not classified into a domain; only `message` describes it.
     Unknown,
+    Profiles(Box<ProfilesError>),
+}
+
+impl From<ProfilesError> for IpcErrorKind {
+    fn from(error: ProfilesError) -> Self {
+        Self::Profiles(Box::new(error))
+    }
+}
+
+impl From<ClientError> for IpcErrorKind {
+    fn from(error: ClientError) -> Self {
+        match error {
+            ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
+            _ => Self::Unknown,
+        }
+    }
 }
 
 impl<E> From<E> for IpcError
@@ -74,9 +91,7 @@ unknown_domain!(
     tauri::Error,
     StorageOperationError,
     anyhow::Error,
-    crate::state::profiles::actor::ProfilesError,
     nyanpasu_core_manager::CoreError,
-    ClientError,
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;
@@ -139,7 +154,10 @@ pub async fn import_profile(
     option: Option<RemoteProfileOptionsPatch>,
     transform: Option<TransformKind>,
 ) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
-    let url = url::Url::parse(&url).context("failed to parse the url")?;
+    let url = snafu::ResultExt::context(
+        url::Url::parse(&url),
+        InvalidSubscriptionUrlSnafu { url: &url },
+    )?;
     // `name` carries deep-link intent (e.g. an install-config `name=` param);
     // when absent the facade derives the name from the url server-side. Return
     // MutationOutcome so a degraded post-import rebuild still carries the uid.
@@ -296,9 +314,9 @@ pub async fn view_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
 ) -> Result {
-    let path = client.get_profile_materialized_path(uid).await?;
+    let path = client.get_profile_materialized_path(uid.clone()).await?;
     if !path.exists() {
-        return Err(IpcError::from("profile file not found".to_string()));
+        return Err(ProfileFileMissingSnafu { uid, path: &path }.build().into());
     }
     help::open_file(app_handle, path)?;
     Ok(())
@@ -1421,7 +1439,123 @@ pub fn retry_configuration_effect(
 
 #[cfg(test)]
 mod tests {
-    use super::{IpcError, PendingDeepLinks};
+    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError};
+    use nyanpasu_config::profile::ProfileId;
+    use nyanpasu_core::state::ReplaceIfVersionError;
+    use serde_json::json;
+    use snafu::IntoError;
+
+    use crate::state::{
+        mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
+        profiles::{ProfileFileError, SubscriptionFetchError},
+    };
+
+    fn wire(error: impl Into<ClientError>) -> serde_json::Value {
+        serde_json::to_value(IpcError::from(error.into())).unwrap()
+    }
+
+    #[test]
+    fn a_profiles_error_reaches_the_frontend_as_its_own_domain() {
+        let wire = wire(ProfilesError::ProfileNotFound {
+            uid: ProfileId("p1".into()),
+        });
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "profiles",
+                "error": { "kind": "profile_not_found", "uid": "p1" },
+            })
+        );
+        assert_eq!(wire["message"], "profile not found: p1");
+    }
+
+    #[test]
+    fn unit_variants_and_context_free_kinds_serialize_their_tag_only() {
+        assert_eq!(
+            wire(ProfilesError::ShuttingDown)["kind"],
+            json!({ "domain": "profiles", "error": { "kind": "shutting_down" } })
+        );
+        assert_eq!(
+            wire(ClientError::Custom("no domain".into()))["kind"],
+            json!({ "domain": "unknown" })
+        );
+    }
+
+    #[test]
+    fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
+        let fetch = wire(ProfilesError::FetchSubscription {
+            url: "https://sub.example/x".parse().unwrap(),
+            source: SubscriptionFetchError::SubscriptionHttpStatus { status: 404 },
+        });
+        assert_eq!(
+            fetch["kind"]["error"],
+            json!({
+                "kind": "fetch_subscription",
+                "url": "https://sub.example/x",
+                "source": { "kind": "subscription_http_status", "status": 404 },
+            })
+        );
+
+        let read = wire(ProfilesError::ReadProfileFile {
+            uid: ProfileId("p1".into()),
+            source: ProfileFileError::mock("disk full"),
+        });
+        assert_eq!(
+            read["kind"]["error"],
+            json!({
+                "kind": "read_profile_file",
+                "uid": "p1",
+                "source": { "kind": "write_file", "path": "mock" },
+            }),
+            "the io error stays out of the wire form"
+        );
+        assert!(
+            read["detail"].as_str().unwrap().contains("disk full"),
+            "and reaches the user through the copied detail: {}",
+            read["detail"]
+        );
+    }
+
+    #[test]
+    fn an_aborted_commit_names_what_became_of_the_runtime() {
+        let cause = ReplaceIfVersionError::WriteConfig(anyhow::anyhow!("disk full"));
+        let aborted = WriteConfigSnafu {
+            runtime: RuntimeAftermath::RollbackFailed {
+                detail: "the core did not answer".into(),
+            },
+        }
+        .into_error(cause);
+        assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
+
+        let wire = wire(ProfilesError::Commit {
+            source: aborted,
+            cleanup_failures: Vec::new(),
+        });
+        assert_eq!(
+            wire["kind"]["error"],
+            json!({
+                "kind": "commit",
+                "source": {
+                    "kind": "write_config",
+                    "runtime": { "kind": "rollback_failed", "detail": "the core did not answer" },
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn a_version_conflict_does_not_serialize_its_cleanup_failures() {
+        let wire = wire(ProfilesError::VersionConflict {
+            expected: 3,
+            actual: 4,
+            cleanup_failures: vec![ProfilesError::ShuttingDown],
+        });
+        assert_eq!(
+            wire["kind"]["error"],
+            json!({ "kind": "version_conflict", "expected": 3, "actual": 4 })
+        );
+    }
 
     #[test]
     fn unclassified_error_serializes_message_and_original_error() {

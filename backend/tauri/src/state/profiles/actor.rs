@@ -7,12 +7,15 @@ use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
     ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition,
     ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata, ProfileMetadataPatch,
-    ProfileRevisionError, ProfileSource, ProfileValidationError, Profiles, RemoteProfileOptions,
-    RemoteProfileOptionsPatch, ScriptRuntime, ScriptTransform, SubscriptionInfo,
-    TransformDefinition, TransformKind,
+    ProfileSource, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch, ScriptRuntime,
+    ScriptTransform, SubscriptionInfo, TransformDefinition, TransformKind,
 };
-use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult, Version};
+use nyanpasu_core::state::{
+    PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
+    error::StateChangedError,
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
 use crate::{
     client::application_workflow::{
@@ -23,13 +26,14 @@ use crate::{
         policy::CommandClass,
     },
     core::migration::modules::profiles::ProfilesFormat,
-    state::mutation::MutationCoordinator,
+    state::mutation::{CommitAborted, MutationCoordinator},
 };
 use nyanpasu_core_manager::OperationId;
 use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use super::{
+    error::*,
     ports::{
         MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
         ProfileDegradation, ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
@@ -43,64 +47,6 @@ use super::{
 /// Background work only casts [`ProfilesActorMessage::ReconcileMaterializations`];
 /// the actor performs the blocking reconcile under message serialization.
 const MATERIALIZATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5 * 60);
-
-#[derive(Debug, thiserror::Error)]
-pub enum ProfilesError {
-    #[error("profile not found: {0}")]
-    ProfileNotFound(ProfileId),
-    #[error(
-        "profile is referenced and cannot be deleted (referrers: {referrers:?}, current: {current}, global_transforms: {global_transforms})"
-    )]
-    ProfileInUse {
-        referrers: Vec<ProfileId>,
-        /// Referenced by the document-level `current` selection.
-        current: bool,
-        /// Referenced by the document-level `global_transforms` list.
-        global_transforms: bool,
-    },
-    #[error("profile has no materialized file")]
-    ProfileHasNoFile,
-    #[error("validation failed: {0:?}")]
-    ValidationFailed(Vec<ProfileValidationError>),
-    #[error("invalid reorder list: {reason}")]
-    InvalidReorderList { reason: String },
-    #[error("profile is not a remote profile")]
-    NotARemoteProfile,
-    #[error("file not writable: {reason}")]
-    FileNotWritable { reason: String },
-    #[error("refresh failed: {message}")]
-    RefreshFailed { message: String },
-    #[error("import failed: {message}")]
-    ImportFailed { message: String },
-    #[error("failed to persist profiles: {0}")]
-    Persist(String),
-    #[error("profiles source transaction failed: {detail}; staging cleanup: {cleanup:?}")]
-    SourceTransaction {
-        #[source]
-        source: nyanpasu_core::state::ReplaceIfVersionError,
-        /// The persistence cause chain and what the Runtime did about it.
-        detail: String,
-        cleanup: Option<String>,
-    },
-    #[error("profiles state version conflict: expected {expected}, actual {actual}")]
-    VersionConflict { expected: u64, actual: u64 },
-    #[error(
-        "profiles state version conflict: expected {expected}, actual {actual}; staging cleanup failed: {cleanup}"
-    )]
-    ConflictCleanup {
-        expected: u64,
-        actual: u64,
-        cleanup: String,
-    },
-    #[error("failed to advance profile revision: {0}")]
-    Revision(#[from] ProfileRevisionError),
-    #[error("profile materialization failed: {0}")]
-    Materialization(String),
-    #[error("profiles actor rpc failed: {0}")]
-    Rpc(String),
-    #[error("application is shutting down")]
-    ShuttingDown,
-}
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -219,8 +165,8 @@ impl RefreshOrigin {
 /// How a refresh attempt that reached its commit handler ended.
 enum RefreshConclusion {
     Committed(CommitReport),
-    Superseded(String),
-    Failed(String),
+    Superseded(ProfilesError),
+    Failed(ProfilesError),
     Rejected(ProfilesError),
 }
 
@@ -237,7 +183,7 @@ pub enum RefreshOutcome {
         filename: Option<String>,
     },
     Failed {
-        message: String,
+        error: ProfilesError,
     },
 }
 
@@ -446,7 +392,9 @@ impl ProfilesActor {
     }
 
     fn prepare_candidate(mut next: Profiles) -> Result<Profiles, ProfilesError> {
-        next.validate().map_err(ProfilesError::ValidationFailed)?;
+        if let Err(errors) = next.validate() {
+            return ValidationFailedSnafu { errors }.fail();
+        }
         next.bump_revision()?;
         Ok(next)
     }
@@ -469,10 +417,7 @@ impl ProfilesActor {
         ),
         ProfilesError,
     > {
-        state
-            .mutations
-            .ensure_ready()
-            .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+        state.mutations.ensure_ready()?;
         // Only a mutation that reaches the runtime takes the Runtime into its
         // transaction; any other save commits on its own.
         let (operation, result, settlement) =
@@ -481,8 +426,7 @@ impl ProfilesActor {
                     let operation = OperationId::generate();
                     let (participant, settlement) = state
                         .mutations
-                        .participant(operation, hints, class, impact)
-                        .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+                        .participant(operation, hints, class, impact)?;
                     let result = state
                         .manager
                         .replace_if_version_with_participant(
@@ -515,17 +459,36 @@ impl ProfilesActor {
                 );
                 Ok((Arc::new(next), completion))
             }
-            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => {
-                Err(ProfilesError::VersionConflict {
-                    expected: *expected_version.as_ref(),
-                    actual: *actual_version.as_ref(),
-                })
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
+                expected: *expected_version.as_ref(),
+                actual: *actual_version.as_ref(),
+                cleanup_failures: Vec::new(),
             }
-            Err(source) => Err(ProfilesError::SourceTransaction {
-                detail: crate::state::mutation::uncommitted(&source, settlement.as_ref()),
-                source,
-                cleanup: None,
-            }),
+            .fail(),
+            Err(error) => Err(Self::commit_failure(error, settlement.as_ref(), Vec::new())),
+        }
+    }
+
+    /// The one place a persistence error becomes a profiles error. A CAS
+    /// mismatch reported by the coordinator is the same conflict as the
+    /// manager's own `Conflict` result.
+    fn commit_failure(
+        error: ReplaceIfVersionError,
+        settlement: Option<&crate::client::application_workflow::mutation::MutationReceipt>,
+        cleanup_failures: Vec<ProfilesError>,
+    ) -> ProfilesError {
+        match error {
+            ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
+                expected,
+                actual,
+            }) => VersionConflictSnafu {
+                expected: *expected.as_ref(),
+                actual: *actual.as_ref(),
+                cleanup_failures,
+            }
+            .build(),
+            error => CommitSnafu { cleanup_failures }
+                .into_error(CommitAborted::classify(error, settlement)),
         }
     }
 
@@ -584,9 +547,10 @@ impl ProfilesActor {
                 let fetched = fetcher
                     .fetch(&url, &option)
                     .await
-                    .map_err(|e| format!("download failed: {e}"))?;
-                Self::validate_fetched_content(&definition, &fetched.content)?;
-                Ok::<_, String>(fetched)
+                    .context(FetchSubscriptionSnafu { url: url.clone() })?;
+                Self::validate_fetched_content(&definition, &fetched.content)
+                    .context(ProfileContentRejectedSnafu)?;
+                Ok::<_, ProfilesError>(fetched)
             };
             let outcome = match fetch.await {
                 Ok(fetched) => RefreshOutcome::Succeeded {
@@ -595,7 +559,7 @@ impl ProfilesActor {
                     content: fetched.content,
                     filename: fetched.filename,
                 },
-                Err(message) => RefreshOutcome::Failed { message },
+                Err(error) => RefreshOutcome::Failed { error },
             };
             settle(outcome);
         })
@@ -620,33 +584,27 @@ impl ProfilesActor {
         expected_path: ManagedProfilePath,
         definition: ProfileDefinition,
     ) -> SourceOutcome {
-        let expected_fingerprint = match serde_yaml::to_string(&definition) {
+        let expected_fingerprint = match Self::fingerprint(uid, &definition) {
             Ok(fingerprint) => fingerprint,
             Err(error) => {
                 return SourceOutcome::Failed {
-                    message: format!("failed to fingerprint external profile: {error}"),
+                    message: error.report(),
                 };
             }
         };
-        let fs = Arc::clone(&state.fs);
-        let read_target = expected_target.clone();
-        let content = tokio::task::spawn_blocking(move || fs.read_external(&read_target))
-            .await
-            .map_err(|error| match error.try_into_panic() {
-                Ok(panic) => std::panic::resume_unwind(panic),
-                Err(error) => anyhow::anyhow!("mirror source read task failed: {error}"),
-            })
-            .and_then(|content| content);
-        let content = match content {
+        let content = match Self::read_external(&state.fs, &expected_target).await {
             Ok(content) => content,
             Err(error) => {
                 return SourceOutcome::Failed {
-                    message: format!("failed to read external profile: {error}"),
+                    message: error.report(),
                 };
             }
         };
         if let Err(error) = Self::validate_fetched_content(&definition, &content) {
-            return SourceOutcome::rejected(SourceOutcome::EXTERNAL_SOURCE_REJECTED, error);
+            return SourceOutcome::rejected(
+                SourceOutcome::EXTERNAL_SOURCE_REJECTED,
+                snafu::Report::from_error(error),
+            );
         }
 
         let versioned = state.manager.snapshot_handle().load();
@@ -700,7 +658,9 @@ impl ProfilesActor {
             Ok(report) => SourceOutcome::Committed {
                 operation_id: report.receipt.operation_id,
             },
-            Err(error) => SourceOutcome::rejected(SourceOutcome::EXTERNAL_SOURCE_REJECTED, error),
+            Err(error) => {
+                SourceOutcome::rejected(SourceOutcome::EXTERNAL_SOURCE_REJECTED, error.report())
+            }
         }
     }
 
@@ -718,18 +678,18 @@ impl ProfilesActor {
         let before = versioned.state.clone();
         drop(versioned);
         let changed = || {
-            RefreshConclusion::Superseded("subscription definition changed during refresh".into())
+            RefreshConclusion::Superseded(
+                ProfileChangedDuringRefreshSnafu { uid: uid.clone() }.build(),
+            )
         };
         let Some(current) = before.items.get(uid) else {
-            return RefreshConclusion::Superseded("profile deleted during refresh".into());
+            return RefreshConclusion::Superseded(
+                ProfileDeletedDuringRefreshSnafu { uid: uid.clone() }.build(),
+            );
         };
-        let current_fingerprint = match serde_yaml::to_string(&current.definition) {
+        let current_fingerprint = match Self::fingerprint(uid, &current.definition) {
             Ok(fingerprint) => fingerprint,
-            Err(error) => {
-                return RefreshConclusion::Failed(format!(
-                    "failed to fingerprint current definition: {error}"
-                ));
-            }
+            Err(error) => return RefreshConclusion::Failed(error),
         };
         let path = match current.definition.source() {
             Some(ProfileSource::Remote {
@@ -744,7 +704,7 @@ impl ProfilesActor {
         // Fenced first: a download that failed for a definition that no
         // longer exists says nothing about the current one.
         let (subscription, content, filename) = match outcome {
-            RefreshOutcome::Failed { message } => return RefreshConclusion::Failed(message),
+            RefreshOutcome::Failed { error } => return RefreshConclusion::Failed(error),
             RefreshOutcome::Succeeded {
                 subscription,
                 suggested_update_interval_minutes: _,
@@ -752,10 +712,8 @@ impl ProfilesActor {
                 filename,
             } => (subscription, content, filename),
         };
-        if let Err(message) = Self::validate_fetched_content(&current.definition, &content) {
-            return RefreshConclusion::Superseded(format!(
-                "stale download no longer valid for the current definition: {message}"
-            ));
+        if let Err(error) = Self::validate_fetched_content(&current.definition, &content) {
+            return RefreshConclusion::Superseded(ProfileContentRejectedSnafu.into_error(error));
         }
         let mut next = before.clone();
         let item = next
@@ -823,25 +781,55 @@ impl ProfilesActor {
         })
     }
 
-    async fn materialization_call<T, F>(
-        state: &ProfilesActorState,
-        operation: F,
-    ) -> anyhow::Result<T>
-    where
-        T: Send + 'static,
-        F: FnOnce(&dyn ProfileMaterializationPort) -> anyhow::Result<T> + Send + 'static,
-    {
-        let materialization = Arc::clone(&state.materialization);
-        tokio::task::spawn_blocking(move || operation(materialization.as_ref()))
-            .await
-            .map_err(|error| match error.try_into_panic() {
+    /// Awaits a blocking task. A panic in it is resumed, never turned into an
+    /// error; the join only fails otherwise when the runtime cancelled the task.
+    async fn blocking<T>(task: JoinHandle<T>) -> Result<T, ProfilesError> {
+        match task.await {
+            Ok(value) => Ok(value),
+            Err(error) => match error.try_into_panic() {
                 Ok(panic) => std::panic::resume_unwind(panic),
-                Err(error) => anyhow::anyhow!("materialization task failed: {error}"),
-            })?
+                Err(error) => Err(BlockingTaskCancelledSnafu.into_error(error)),
+            },
+        }
     }
 
-    fn materialization_error(context: &str, error: impl std::fmt::Display) -> ProfilesError {
-        ProfilesError::Materialization(format!("{context}: {error}"))
+    async fn materialization_call<T, F>(
+        state: &ProfilesActorState,
+        operation: MaterializationOperation,
+        call: F,
+    ) -> Result<T, ProfilesError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&dyn ProfileMaterializationPort) -> Result<T, ProfileFileError> + Send + 'static,
+    {
+        let materialization = Arc::clone(&state.materialization);
+        Self::blocking(tokio::task::spawn_blocking(move || {
+            call(materialization.as_ref())
+        }))
+        .await?
+        .context(MaterializationSnafu { operation })
+    }
+
+    async fn read_external(
+        fs: &Arc<dyn ProfileFsPort>,
+        target: &ExternalProfilePath,
+    ) -> Result<String, ProfilesError> {
+        let fs = Arc::clone(fs);
+        let read_target = target.clone();
+        Self::blocking(tokio::task::spawn_blocking(move || {
+            fs.read_external(&read_target)
+        }))
+        .await?
+        .context(ReadExternalProfileSnafu {
+            target: target.clone(),
+        })
+    }
+
+    fn fingerprint(
+        uid: &ProfileId,
+        definition: &ProfileDefinition,
+    ) -> Result<String, ProfilesError> {
+        serde_yaml::to_string(definition).context(FingerprintDefinitionSnafu { uid: uid.clone() })
     }
 
     async fn resource_for_definition(
@@ -876,24 +864,9 @@ impl ProfilesActor {
                         ..
                     },
             } => {
-                let fs = Arc::clone(&state.fs);
-                let target = target.clone();
-                let content = tokio::task::spawn_blocking(move || fs.read_external(&target))
-                    .await
-                    .map_err(|error| match error.try_into_panic() {
-                        Ok(panic) => std::panic::resume_unwind(panic),
-                        Err(error) => {
-                            Self::materialization_error("mirror source read task failed", error)
-                        }
-                    })?
-                    .map_err(|error| {
-                        Self::materialization_error("failed to read mirror source", error)
-                    })?;
-                Self::validate_fetched_content(definition, &content).map_err(|error| {
-                    ProfilesError::Materialization(format!(
-                        "mirror source validation failed: {error}"
-                    ))
-                })?;
+                let content = Self::read_external(&state.fs, target).await?;
+                Self::validate_fetched_content(definition, &content)
+                    .context(ProfileContentRejectedSnafu)?;
                 Ok(Some(MaterializationResource::File { content }))
             }
             ProfileSource::Remote { .. } => Ok(Some(MaterializationResource::File {
@@ -959,14 +932,18 @@ impl ProfilesActor {
             source.materialized_mut().file = ManagedProfilePath::new(format!("{uid}.{ext}"))
                 .expect("uid-derived path is always a valid managed path");
         }
-        if !next.append_item(ProfileItem {
-            uid,
-            metadata: metadata.clone(),
-            definition,
-        }) {
-            return Err(ProfilesError::Persist("uid collision".into()));
+        let collision = uid.clone();
+        ensure!(
+            next.append_item(ProfileItem {
+                uid,
+                metadata: metadata.clone(),
+                definition,
+            }),
+            ProfileIdCollisionSnafu { uid: collision }
+        );
+        if let Err(errors) = next.validate() {
+            return ValidationFailedSnafu { errors }.fail();
         }
-        next.validate().map_err(ProfilesError::ValidationFailed)?;
         Ok(())
     }
 
@@ -976,24 +953,30 @@ impl ProfilesActor {
         snapshot: &Profiles,
     ) -> Vec<ProfileDegradation> {
         let retry = cleanup.clone();
-        if let Err(error) =
-            Self::materialization_call(state, move |port| port.activate_cleanup(&cleanup)).await
+        if let Err(error) = Self::materialization_call(
+            state,
+            MaterializationOperation::ActivateCleanup,
+            move |port| port.activate_cleanup(&cleanup),
+        )
+        .await
         {
             return vec![ProfileDegradation {
                 phase: ProfileDegradationPhase::Cleanup,
                 code: ProfileDegradationCode::CleanupDeferred,
-                message: format!("profile cleanup activation deferred: {error}"),
+                message: format!("profile cleanup activation deferred: {}", error.report()),
             }];
         }
         let profiles = snapshot.clone();
         if let Err(error) =
-            Self::materialization_call(state, move |port| port.retry_cleanup(&retry, &profiles))
-                .await
+            Self::materialization_call(state, MaterializationOperation::RetryCleanup, move |port| {
+                port.retry_cleanup(&retry, &profiles)
+            })
+            .await
         {
             return vec![ProfileDegradation {
                 phase: ProfileDegradationPhase::Cleanup,
                 code: ProfileDegradationCode::CleanupDeferred,
-                message: format!("profile cleanup retry deferred: {error}"),
+                message: format!("profile cleanup retry deferred: {}", error.report()),
             }];
         }
         Vec::new()
@@ -1047,10 +1030,7 @@ impl ProfilesActor {
     ) -> Result<CommitReport, ProfilesError> {
         let candidate = Self::prepare_candidate(next)?;
         let expected_revision = candidate.revision();
-        state
-            .mutations
-            .ensure_ready()
-            .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+        state.mutations.ensure_ready()?;
         let (mut hints, class) = Self::mutation_hints(&affects, &candidate);
         let prepared = if let Some((path, resource)) = resource {
             let content = match &resource {
@@ -1067,19 +1047,7 @@ impl ProfilesActor {
                     None
                 }
                 MaterializationResource::Symlink { target } => {
-                    let fs = state.fs.clone();
-                    let target = target.clone();
-                    Some(
-                        tokio::task::spawn_blocking(move || fs.read_external(&target))
-                            .await
-                            .map_err(|error| match error.try_into_panic() {
-                                Ok(panic) => std::panic::resume_unwind(panic),
-                                Err(error) => {
-                                    Self::materialization_error("source read task", error)
-                                }
-                            })?
-                            .map_err(|error| Self::materialization_error("source read", error))?,
-                    )
+                    Some(Self::read_external(&state.fs, target).await?)
                 }
             };
             hints.touched.push(TouchedContent {
@@ -1093,31 +1061,35 @@ impl ProfilesActor {
                 hints.staged_content.insert(path.to_string(), content);
             }
             Some(
-                Self::materialization_call(state, move |port| {
-                    port.prepare_file_first(&path, resource, expected_revision)
-                })
-                .await
-                .map_err(|error| Self::materialization_error("prepare materialization", error))?,
+                Self::materialization_call(
+                    state,
+                    MaterializationOperation::PrepareFileFirst,
+                    move |port| port.prepare_file_first(&path, resource, expected_revision),
+                )
+                .await?,
             )
         } else {
             None
         };
         let cleanup = if let Some(path) = cleanup_path {
-            match Self::materialization_call(state, move |port| {
-                port.prepare_cleanup(&path, expected_revision)
-            })
+            match Self::materialization_call(
+                state,
+                MaterializationOperation::PrepareCleanup,
+                move |port| port.prepare_cleanup(&path, expected_revision),
+            )
             .await
             {
                 Ok(cleanup) => Some(cleanup),
                 Err(error) => {
                     if let Some(prepared) = prepared {
-                        Self::materialization_call(state, move |port| port.compensate(&prepared))
-                            .await
-                            .map_err(|error| {
-                                Self::materialization_error("discard staged resource", error)
-                            })?;
+                        Self::materialization_call(
+                            state,
+                            MaterializationOperation::Compensate,
+                            move |port| port.compensate(&prepared),
+                        )
+                        .await?;
                     }
-                    return Err(Self::materialization_error("prepare cleanup", error));
+                    return Err(error);
                 }
             }
         } else {
@@ -1138,6 +1110,8 @@ impl ProfilesActor {
         let recover_port = state.materialization.clone();
         let recover_resource = prepared.clone();
         let recover_cleanup = cleanup.clone();
+        // nyanpasu-core's local write and recovery steps return anyhow; the typed
+        // port error is kept as their source and shows in the abort's detail.
         let write = move || async move {
             tokio::task::spawn_blocking(move || {
                 if let Some(prepared) = write_resource {
@@ -1178,8 +1152,7 @@ impl ProfilesActor {
             Some((operation, impact)) => {
                 let (participant, settlement) = state
                     .mutations
-                    .participant(operation, hints, class, impact)
-                    .map_err(|error| ProfilesError::Persist(error.to_string()))?;
+                    .participant(operation, hints, class, impact)?;
                 let result = state
                     .manager
                     .replace_if_version_with_participant(
@@ -1221,43 +1194,37 @@ impl ProfilesActor {
                 let mut failures = Vec::new();
                 if before_write {
                     if let Some(prepared) = prepared {
-                        if let Err(error) = Self::materialization_call(state, move |port| {
-                            port.compensate(&prepared)
-                        })
+                        if let Err(error) = Self::materialization_call(
+                            state,
+                            MaterializationOperation::Compensate,
+                            move |port| port.compensate(&prepared),
+                        )
                         .await
                         {
-                            failures.push(error.to_string());
+                            failures.push(error);
                         }
                     }
                     if let Some(cleanup) = cleanup {
-                        if let Err(error) = Self::materialization_call(state, move |port| {
-                            port.cancel_cleanup(&cleanup)
-                        })
+                        if let Err(error) = Self::materialization_call(
+                            state,
+                            MaterializationOperation::CancelCleanup,
+                            move |port| port.cancel_cleanup(&cleanup),
+                        )
                         .await
                         {
-                            failures.push(error.to_string());
+                            failures.push(error);
                         }
                     }
                 }
                 return Err(match result {
-                    Err(source) => ProfilesError::SourceTransaction {
-                        detail: crate::state::mutation::uncommitted(&source, settlement.as_ref()),
-                        source,
-                        cleanup: (!failures.is_empty()).then(|| failures.join("; ")),
-                    },
+                    Err(error) => Self::commit_failure(error, settlement.as_ref(), failures),
                     Ok(ReplaceIfVersionResult::Conflict { actual_version }) => {
-                        if failures.is_empty() {
-                            ProfilesError::VersionConflict {
-                                expected: *expected_version.as_ref(),
-                                actual: *actual_version.as_ref(),
-                            }
-                        } else {
-                            ProfilesError::ConflictCleanup {
-                                expected: *expected_version.as_ref(),
-                                actual: *actual_version.as_ref(),
-                                cleanup: failures.join("; "),
-                            }
+                        VersionConflictSnafu {
+                            expected: *expected_version.as_ref(),
+                            actual: *actual_version.as_ref(),
+                            cleanup_failures: failures,
                         }
+                        .build()
                     }
                     Ok(ReplaceIfVersionResult::Replaced) => unreachable!(),
                 });
@@ -1275,12 +1242,15 @@ impl ProfilesActor {
         let mut degradations = Vec::new();
         if let Some(prepared) = prepared {
             if let Err(error) =
-                Self::materialization_call(state, move |port| port.complete(&prepared)).await
+                Self::materialization_call(state, MaterializationOperation::Complete, move |port| {
+                    port.complete(&prepared)
+                })
+                .await
             {
                 degradations.push(ProfileDegradation {
                     phase: ProfileDegradationPhase::Reconcile,
                     code: ProfileDegradationCode::MaterializationDeferred,
-                    message: format!("materialization completion deferred: {error}"),
+                    message: format!("materialization completion deferred: {}", error.report()),
                 });
             }
         }
@@ -1323,15 +1293,12 @@ impl ProfilesActor {
 
     async fn reconcile_materializations(
         state: &ProfilesActorState,
-    ) -> anyhow::Result<MaterializationReconcileReport> {
+    ) -> Result<MaterializationReconcileReport, ProfilesError> {
         let snapshot = Self::current_state(state);
-        let materialization = Arc::clone(&state.materialization);
-        tokio::task::spawn_blocking(move || materialization.reconcile(&snapshot))
-            .await
-            .map_err(|error| match error.try_into_panic() {
-                Ok(panic) => std::panic::resume_unwind(panic),
-                Err(error) => anyhow::anyhow!("materialization reconcile join failed: {error}"),
-            })?
+        Self::materialization_call(state, MaterializationOperation::Reconcile, move |port| {
+            port.reconcile(&snapshot)
+        })
+        .await
     }
 
     fn log_reconcile_report(report: &MaterializationReconcileReport) {
@@ -1393,7 +1360,7 @@ impl ProfilesActor {
     fn validate_fetched_content(
         definition: &ProfileDefinition,
         content: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), ProfileContentError> {
         let needs_yaml = match definition {
             ProfileDefinition::Config { .. } => true,
             ProfileDefinition::Transform { transform } => {
@@ -1402,20 +1369,19 @@ impl ProfilesActor {
         };
         if needs_yaml {
             let mapping = serde_yaml::from_str::<serde_yaml::Mapping>(content)
-                .map_err(|e| format!("downloaded content is not a YAML mapping: {e}"))?;
+                .context(NotYamlMappingSnafu)?;
             // Legacy subscription semantics (remote.rs BC): a Config
             // subscription must actually carry proxies, otherwise arbitrary
             // mappings (e.g. `{}`) get persisted and can be auto-activated.
-            if matches!(definition, ProfileDefinition::Config { .. })
-                && !mapping.contains_key("proxies")
-                && !mapping.contains_key("proxy-providers")
-            {
-                return Err("subscription does not contain `proxies` or `proxy-providers`".into());
-            }
+            ensure!(
+                !matches!(definition, ProfileDefinition::Config { .. })
+                    || mapping.contains_key("proxies")
+                    || mapping.contains_key("proxy-providers"),
+                MissingProxiesSnafu
+            );
             Ok(())
-        } else if content.trim().is_empty() {
-            Err("downloaded script is empty".into())
         } else {
+            ensure!(!content.trim().is_empty(), EmptyScriptSnafu);
             Ok(())
         }
     }
@@ -1565,20 +1531,16 @@ impl Actor for ProfilesActor {
                     let item = before
                         .items
                         .get(&uid)
-                        .ok_or_else(|| ProfilesError::ProfileNotFound(uid.clone()))?;
+                        .context(ProfileNotFoundSnafu { uid: uid.clone() })?;
                     let source = item
                         .definition
                         .source()
-                        .ok_or(ProfilesError::ProfileHasNoFile)?;
+                        .context(ProfileHasNoFileSnafu { uid: uid.clone() })?;
                     let path = match source {
                         ProfileSource::Local {
                             binding: LocalBinding::Managed { materialized },
                         } => materialized.file.clone(),
-                        _ => {
-                            return Err(ProfilesError::FileNotWritable {
-                                reason: "only managed local profiles are writable".into(),
-                            });
-                        }
+                        _ => return ProfileFileNotWritableSnafu { uid }.fail(),
                     };
                     Self::commit_file_first(
                         &myself,
@@ -1685,7 +1647,7 @@ impl Actor for ProfilesActor {
                             };
                             let mut next = before.clone();
                             if !next.append_item(item) {
-                                Err(ProfilesError::Persist("uid collision".into()))
+                                ProfileIdCollisionSnafu { uid }.fail()
                             } else {
                                 Self::commit_with_resources(
                                     &myself,
@@ -1711,15 +1673,17 @@ impl Actor for ProfilesActor {
                 let before = versioned.state.clone();
                 drop(versioned);
                 let result = if before.items.get(&uid).is_none() {
-                    Err(ProfilesError::ProfileNotFound(uid.clone()))
+                    ProfileNotFoundSnafu { uid: uid.clone() }.fail()
                 } else if let Some((referrers, current, global_transforms)) =
                     Self::referrers_of(state, &before, &uid)
                 {
-                    Err(ProfilesError::ProfileInUse {
+                    ProfileInUseSnafu {
+                        uid: uid.clone(),
                         referrers,
                         current,
                         global_transforms,
-                    })
+                    }
+                    .fail()
                 } else {
                     let cleanup_path = before
                         .items
@@ -1748,40 +1712,38 @@ impl Actor for ProfilesActor {
                     match op {
                         ReorderOp::Move { active, over } => {
                             if profiles.items.get(&active).is_none() {
-                                return Err(ProfilesError::ProfileNotFound(active));
+                                return ProfileNotFoundSnafu { uid: active }.fail();
                             }
                             if profiles.items.get(&over).is_none() {
-                                return Err(ProfilesError::ProfileNotFound(over));
+                                return ProfileNotFoundSnafu { uid: over }.fail();
                             }
                             profiles.reorder(&active, &over);
                         }
                         ReorderOp::ByList(list) => {
-                            if list.len() != profiles.items.len() {
-                                return Err(ProfilesError::InvalidReorderList {
-                                    reason: format!(
-                                        "expected {} uids, got {}",
-                                        profiles.items.len(),
-                                        list.len()
-                                    ),
-                                });
-                            }
+                            ensure!(
+                                list.len() == profiles.items.len(),
+                                ReorderListSizeMismatchSnafu {
+                                    expected: profiles.items.len(),
+                                    got: list.len()
+                                }
+                            );
                             let mut seen = indexmap::IndexSet::with_capacity(list.len());
                             for uid in &list {
-                                if !seen.insert(uid.clone()) {
-                                    return Err(ProfilesError::InvalidReorderList {
-                                        reason: format!("duplicate uid {uid}"),
-                                    });
-                                }
-                                if profiles.items.get(uid).is_none() {
-                                    return Err(ProfilesError::ProfileNotFound(uid.clone()));
-                                }
+                                ensure!(
+                                    seen.insert(uid.clone()),
+                                    ReorderListDuplicateSnafu { uid: uid.clone() }
+                                );
+                                ensure!(
+                                    profiles.items.get(uid).is_some(),
+                                    ProfileNotFoundSnafu { uid: uid.clone() }
+                                );
                             }
                             let mut reordered = indexmap::IndexMap::with_capacity(list.len());
                             for uid in list {
                                 let item = profiles
                                     .items
                                     .shift_remove(&uid)
-                                    .ok_or_else(|| ProfilesError::ProfileNotFound(uid.clone()))?;
+                                    .context(ProfileNotFoundSnafu { uid: uid.clone() })?;
                                 reordered.insert(uid, item);
                             }
                             profiles.items = reordered;
@@ -1795,7 +1757,7 @@ impl Actor for ProfilesActor {
             ProfilesActorMessage::PatchMetadata { uid, patch, reply } => {
                 let result = Self::run_state_write(&myself, state, move |profiles| {
                     let Some(item) = profiles.items.get_mut(&uid) else {
-                        return Err(ProfilesError::ProfileNotFound(uid));
+                        return ProfileNotFoundSnafu { uid }.fail();
                     };
                     item.apply_metadata_patch(patch);
                     Ok(AffectsRule::Never)
@@ -1806,7 +1768,7 @@ impl Actor for ProfilesActor {
             ProfilesActorMessage::PatchRemoteOptions { uid, patch, reply } => {
                 let result = Self::run_state_write(&myself, state, move |profiles| {
                     let Some(item) = profiles.items.get_mut(&uid) else {
-                        return Err(ProfilesError::ProfileNotFound(uid));
+                        return ProfileNotFoundSnafu { uid }.fail();
                     };
                     match item.definition.source_mut() {
                         Some(ProfileSource::Remote { option, .. }) => {
@@ -1814,7 +1776,7 @@ impl Actor for ProfilesActor {
                             option.apply(patch);
                             Ok(AffectsRule::Never)
                         }
-                        _ => Err(ProfilesError::NotARemoteProfile),
+                        _ => NotARemoteProfileSnafu { uid }.fail(),
                     }
                 })
                 .await;
@@ -1834,9 +1796,7 @@ impl Actor for ProfilesActor {
                     // of its own: that download reports the outcome, and a
                     // healthy row now would hide the last failure until then.
                     if let Some(reply) = reply {
-                        let _ = reply.send(Err(ProfilesError::RefreshFailed {
-                            message: "refresh already in progress".into(),
-                        }));
+                        let _ = reply.send(RefreshInProgressSnafu { uid }.fail());
                     }
                     return Ok(());
                 }
@@ -1846,7 +1806,7 @@ impl Actor for ProfilesActor {
                         let uid = uid.clone();
                         move |profiles| {
                             let Some(item) = profiles.items.get_mut(&uid) else {
-                                return Err(ProfilesError::ProfileNotFound(uid.clone()));
+                                return ProfileNotFoundSnafu { uid }.fail();
                             };
                             match item.definition.source_mut() {
                                 Some(ProfileSource::Remote { option, .. }) => {
@@ -1854,7 +1814,7 @@ impl Actor for ProfilesActor {
                                     option.apply(patch);
                                     Ok(AffectsRule::Never)
                                 }
-                                _ => Err(ProfilesError::NotARemoteProfile),
+                                _ => NotARemoteProfileSnafu { uid }.fail(),
                             }
                         }
                     })
@@ -1870,34 +1830,32 @@ impl Actor for ProfilesActor {
                 let snapshot = Self::current_state(state);
                 let Some(item) = snapshot.items.get(&uid) else {
                     if let Some(reply) = reply {
-                        let _ = reply.send(Err(ProfilesError::ProfileNotFound(uid.clone())));
+                        let _ = reply.send(ProfileNotFoundSnafu { uid }.fail());
                     }
                     return Ok(());
                 };
                 let Some(ProfileSource::Remote { url, option, .. }) = item.definition.source()
                 else {
                     if let Some(reply) = reply {
-                        let _ = reply.send(Err(ProfilesError::NotARemoteProfile));
+                        let _ = reply.send(NotARemoteProfileSnafu { uid }.fail());
                     }
                     return Ok(());
                 };
 
                 let definition = item.definition.clone();
-                let definition_fingerprint = match serde_yaml::to_string(&definition) {
+                let definition_fingerprint = match Self::fingerprint(&uid, &definition) {
                     Ok(fingerprint) => fingerprint,
                     Err(error) => {
-                        let message =
-                            format!("failed to fingerprint subscription definition: {error}");
                         Self::record_source(
                             state,
                             &uid,
                             origin.source(),
                             SourceOutcome::Failed {
-                                message: message.clone(),
+                                message: error.report(),
                             },
                         );
                         if let Some(reply) = reply {
-                            let _ = reply.send(Err(ProfilesError::RefreshFailed { message }));
+                            let _ = reply.send(Err(error));
                         }
                         return Ok(());
                     }
@@ -1970,20 +1928,23 @@ impl Actor for ProfilesActor {
                         },
                         Ok(report),
                     ),
-                    RefreshConclusion::Superseded(reason) => (
+                    RefreshConclusion::Superseded(error) => (
                         SourceOutcome::Superseded {
-                            reason: reason.clone(),
+                            reason: error.report(),
                         },
-                        Err(ProfilesError::RefreshFailed { message: reason }),
+                        Err(error),
                     ),
-                    RefreshConclusion::Failed(message) => (
+                    RefreshConclusion::Failed(error) => (
                         SourceOutcome::Failed {
-                            message: message.clone(),
+                            message: error.report(),
                         },
-                        Err(ProfilesError::RefreshFailed { message }),
+                        Err(error),
                     ),
                     RefreshConclusion::Rejected(error) => (
-                        SourceOutcome::rejected(SourceOutcome::SUBSCRIPTION_REJECTED, &error),
+                        SourceOutcome::rejected(
+                            SourceOutcome::SUBSCRIPTION_REJECTED,
+                            error.report(),
+                        ),
                         Err(error),
                     ),
                 };
@@ -2056,9 +2017,7 @@ impl Actor for ProfilesActor {
                 }
 
                 let result = match outcome {
-                    RefreshOutcome::Failed { message } => {
-                        Err(ProfilesError::ImportFailed { message })
-                    }
+                    RefreshOutcome::Failed { error } => Err(error),
                     RefreshOutcome::Succeeded {
                         subscription,
                         suggested_update_interval_minutes,
@@ -2090,13 +2049,8 @@ impl Actor for ProfilesActor {
                             subscription,
                             Some(time::OffsetDateTime::now_utc()),
                         );
-                        if let Err(message) = Self::validate_fetched_content(&definition, &content)
-                        {
-                            Err(ProfilesError::ImportFailed {
-                                message: format!(
-                                    "downloaded content is not valid for import: {message}"
-                                ),
-                            })
+                        if let Err(error) = Self::validate_fetched_content(&definition, &content) {
+                            Err(ProfileContentRejectedSnafu.into_error(error))
                         } else {
                             let uid = Self::generate_uid(&definition, &before);
                             let ext = Self::canonical_extension(&definition);
@@ -2111,7 +2065,7 @@ impl Actor for ProfilesActor {
                                 metadata,
                                 definition,
                             }) {
-                                Err(ProfilesError::Persist("uid collision".into()))
+                                ProfileIdCollisionSnafu { uid }.fail()
                             } else {
                                 // If the caller closed between the pre-check and
                                 // the first durable step, a complete valid profile
@@ -2173,16 +2127,16 @@ impl Actor for ProfilesActor {
                         let uid = uid.clone();
                         move |profiles| {
                             let Some(item) = profiles.items.get_mut(&uid) else {
-                                return Err(ProfilesError::ProfileNotFound(uid.clone()));
+                                return ProfileNotFoundSnafu { uid }.fail();
                             };
                             match item.definition.source_mut() {
                                 Some(ProfileSource::Local {
                                     binding: LocalBinding::External { materialized, .. },
                                 }) => {
                                     materialized.updated_at = Some(time::OffsetDateTime::now_utc());
-                                    Ok(AffectsRule::Touched(uid.clone()))
+                                    Ok(AffectsRule::Touched(uid))
                                 }
-                                _ => Err(ProfilesError::ProfileNotFound(uid.clone())),
+                                _ => ProfileNotFoundSnafu { uid }.fail(),
                             }
                         }
                     })
@@ -2191,9 +2145,10 @@ impl Actor for ProfilesActor {
                         Ok(report) => SourceOutcome::Committed {
                             operation_id: report.receipt.operation_id,
                         },
-                        Err(error) => {
-                            SourceOutcome::rejected(SourceOutcome::EXTERNAL_SOURCE_REJECTED, error)
-                        }
+                        Err(error) => SourceOutcome::rejected(
+                            SourceOutcome::EXTERNAL_SOURCE_REJECTED,
+                            error.report(),
+                        ),
                     }
                 };
                 if let SourceOutcome::Failed { message } | SourceOutcome::Rejected { message, .. } =
@@ -2213,7 +2168,7 @@ impl Actor for ProfilesActor {
                 let before = versioned.state.clone();
                 drop(versioned);
                 let result = match before.items.get(&uid) {
-                    None => Err(ProfilesError::ProfileNotFound(uid.clone())),
+                    None => ProfileNotFoundSnafu { uid: uid.clone() }.fail(),
                     Some(previous_item) => {
                         let previous_source = previous_item.definition.source().cloned();
                         let mut definition = definition;
@@ -2297,7 +2252,7 @@ impl Actor for ProfilesActor {
                     Ok(report) => Self::log_reconcile_report(&report),
                     Err(error) => {
                         tracing::warn!(
-                            error = %error,
+                            error = %error.report(),
                             "profile materialization reconcile failed"
                         );
                     }

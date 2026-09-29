@@ -36,7 +36,9 @@ use crate::{
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::profiles::{
-        CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
+        CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
+        ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
+        ReorderOp,
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
     },
     utils::path::PathResolver,
@@ -726,15 +728,13 @@ impl NyanpasuClient {
         // unmaterialized (and auto-activation would rebuild against a missing
         // file). Remote subscriptions must use import_profile.
         if matches!(request.definition.source(), Some(source) if source.is_remote()) {
-            return Err(ClientError::Custom(
-                "remote profiles must be created via import_profile".into(),
-            ));
+            return Err(RemoteProfileNeedsImportSnafu.build().into());
         }
         let report = self.inner.profiles.add(request, initial_file).await?;
         let created = report
             .created
             .clone()
-            .ok_or_else(|| ClientError::Custom("add committed without a created uid".into()))?;
+            .expect("an add commits the uid it generated");
         Ok(runtime::MutationOutcome::from_parts(
             created,
             self.collect_post_commit_degradations(&report).await,
@@ -817,7 +817,7 @@ impl NyanpasuClient {
         let created = report
             .created
             .clone()
-            .ok_or_else(|| ClientError::Custom("import committed without a created uid".into()))?;
+            .expect("an import commits the uid it generated");
         let outcome = runtime::MutationOutcome::from_parts(
             created.clone(),
             self.collect_post_commit_degradations(&report).await,
@@ -924,11 +924,11 @@ impl NyanpasuClient {
         let item = snapshot
             .items
             .get(&uid)
-            .ok_or(ProfilesError::ProfileNotFound(uid))?;
+            .ok_or_else(|| ProfileNotFoundSnafu { uid: uid.clone() }.build())?;
         let source = item
             .definition
             .source()
-            .ok_or(ProfilesError::ProfileHasNoFile)?;
+            .ok_or_else(|| ProfileHasNoFileSnafu { uid }.build())?;
         Ok(self
             .inner
             .profiles_dir
@@ -940,21 +940,20 @@ impl NyanpasuClient {
         let item = snapshot
             .items
             .get(&uid)
-            .ok_or_else(|| ProfilesError::ProfileNotFound(uid.clone()))?;
+            .ok_or_else(|| ProfileNotFoundSnafu { uid: uid.clone() }.build())?;
         let source = item
             .definition
             .source()
-            .ok_or(ProfilesError::ProfileHasNoFile)?;
-        let raw = self
-            .inner
-            .fs
-            .read(&source.materialized().file)
-            .map_err(ClientError::Anyhow)?;
+            .ok_or_else(|| ProfileHasNoFileSnafu { uid: uid.clone() }.build())?;
+        let raw = snafu::ResultExt::context(
+            self.inner.fs.read(&source.materialized().file),
+            ReadProfileFileSnafu { uid: uid.clone() },
+        )?;
         match &item.definition {
-            ProfileDefinition::Config { .. } => {
-                crate::service::profile_file::normalize_yaml_document(&raw)
-                    .map_err(ClientError::Anyhow)
-            }
+            ProfileDefinition::Config { .. } => Ok(snafu::ResultExt::context(
+                crate::service::profile_file::normalize_yaml_document(&raw),
+                ProfileFileNotYamlSnafu { uid },
+            )?),
             ProfileDefinition::Transform { .. } => Ok(raw),
         }
     }
@@ -1001,10 +1000,13 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         core::actor_v2::endpoint::ExecutionHost,
-        state::profiles::ports::{
-            CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
-            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-            PreparedMaterialization, ProfileMaterializationPort,
+        state::profiles::{
+            error::SubscriptionFetchError,
+            ports::{
+                CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
+                MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
+                PreparedMaterialization, ProfileMaterializationPort,
+            },
         },
     };
     use camino::Utf8PathBuf;
@@ -3344,7 +3346,7 @@ pub(crate) mod tests {
                     suggested_update_interval_minutes: None,
                 })
             } else {
-                anyhow::bail!("dns exploded")
+                Err(SubscriptionFetchError::mock())
             }
         });
         tauri::async_runtime::block_on(async {
@@ -3502,7 +3504,7 @@ pub(crate) mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
             .expect_fetch()
-            .returning(|_, _| anyhow::bail!("dns exploded"));
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
         // A failed import never reaches core apply, so the bridge expects nothing.
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
@@ -3529,15 +3531,15 @@ pub(crate) mod tests {
 
         tauri::async_runtime::block_on(async {
             let rejected = client.add_profile(remote_config_request(), None).await;
-            match rejected {
-                Err(ClientError::Custom(message)) => {
-                    assert!(
-                        message.contains("import_profile"),
-                        "stable rejection must direct callers to import_profile: {message}"
-                    );
-                }
-                other => panic!("expected Custom(import_profile) rejection, got {other:?}"),
-            }
+            assert!(
+                matches!(
+                    rejected,
+                    Err(ClientError::Profiles(
+                        ProfilesError::RemoteProfileNeedsImport
+                    ))
+                ),
+                "remote profiles must be rejected before any write, got {rejected:?}"
+            );
             let snapshot = client.get_profiles().await.unwrap();
             assert!(
                 snapshot.items.is_empty(),
@@ -3557,7 +3559,12 @@ pub(crate) mod tests {
             // create_profile shares the public add_profile remote guard.
             let rejected = client.create_profile(remote_config_request(), None).await;
             assert!(
-                matches!(rejected, Err(ClientError::Custom(message)) if message.contains("import_profile")),
+                matches!(
+                    rejected,
+                    Err(ClientError::Profiles(
+                        ProfilesError::RemoteProfileNeedsImport
+                    ))
+                ),
                 "create must reject remote sources via the add_profile guard"
             );
             assert!(
@@ -3818,12 +3825,13 @@ pub(crate) mod tests {
     fn create_import_auto_activation_failure_retains_profile_id_as_committed_degraded() {
         let uid = ProfileId("committed-uid".into());
         for error in [
-            ProfilesError::Persist("disk full".into()),
+            ProfilesError::ProfilesReplyDropped,
             ProfilesError::VersionConflict {
                 expected: 1,
                 actual: 2,
+                cleanup_failures: Vec::new(),
             },
-            ProfilesError::Rpc("actor stopped".into()),
+            ProfilesError::ProfilesActorStopped,
         ] {
             let degradation = NyanpasuClient::auto_activation_failure_degradation(&error);
             assert_eq!(degradation.code, "profile_auto_activation_failed");

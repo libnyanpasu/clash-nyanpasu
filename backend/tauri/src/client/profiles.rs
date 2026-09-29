@@ -19,7 +19,8 @@ use crate::{
     core::migration::modules::profiles::ProfilesFormat,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-        ProfilesError, RefreshOrigin, ReorderOp,
+        ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu, RefreshOrigin,
+        ReorderOp,
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
         sources::SourcesSnapshot,
     },
@@ -102,10 +103,17 @@ impl ProfilesClient {
     /// Lets the refresh scheduler, the external watchers and the journal
     /// ticker run. Until then they stay held; only the first call counts.
     pub(crate) fn start_producers(&self) -> Result<(), ProfilesError> {
-        self.inner
+        // The send error is not kept: it dumps the whole message, file contents
+        // included.
+        if self
+            .inner
             .actor_ref
             .cast(ProfilesActorMessage::StartProducers)
-            .map_err(|error| ProfilesError::Rpc(error.to_string()))
+            .is_err()
+        {
+            return ProfilesActorStoppedSnafu.fail();
+        }
+        Ok(())
     }
 
     /// The latest background-source receipt per profile.
@@ -315,9 +323,11 @@ impl ProfilesClient {
     {
         match self.inner.actor_ref.call(make, timeout).await {
             Ok(CallResult::Success(result)) => result,
-            Ok(CallResult::SenderError) => Err(ProfilesError::Rpc("reply dropped".into())),
-            Ok(CallResult::Timeout) => Err(ProfilesError::Rpc("call timed out".into())),
-            Err(e) => Err(ProfilesError::Rpc(e.to_string())),
+            Ok(CallResult::SenderError) => ProfilesReplyDroppedSnafu.fail(),
+            Ok(CallResult::Timeout) => unreachable!("profiles calls are made without a timeout"),
+            // The send error is not kept: it dumps the whole message, file
+            // contents included.
+            Err(_) => ProfilesActorStoppedSnafu.fail(),
         }
     }
 }
@@ -333,11 +343,17 @@ mod tests {
     use super::*;
     use crate::{
         service::profile_file::{ProfileFileService, SelfProxyPortSource},
-        state::profiles::ports::{
-            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport, MockProfileFsPort,
-            MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-            PreparedMaterialization, ProfileDegradationCode, ProfileDegradationPhase,
-            ProfileFsPort, ProfileMaterializationPort,
+        state::{
+            mutation::CommitAborted,
+            profiles::{
+                error::{MaterializationOperation, ProfileFileError, SubscriptionFetchError},
+                ports::{
+                    CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+                    MockProfileFsPort, MockProfileMaterializationPort, MockSubscriptionFetcher,
+                    PreparedCleanup, PreparedMaterialization, ProfileDegradationCode,
+                    ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
+                },
+            },
         },
         utils::path::PathResolver,
     };
@@ -347,6 +363,7 @@ mod tests {
         ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, ScriptRuntime,
         ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
+    use nyanpasu_core::state::ReplaceIfVersionError;
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
 
@@ -401,7 +418,7 @@ mod tests {
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         materialization.expect_compensate().returning(|_| Ok(()));
         Arc::new(materialization)
     }
@@ -419,7 +436,7 @@ mod tests {
             .returning(|_| Ok(()));
         materialization
             .expect_retry_cleanup()
-            .returning(|_, _| Err(anyhow::anyhow!("disk on fire")));
+            .returning(|_, _| Err(ProfileFileError::mock("disk on fire")));
         Arc::new(materialization)
     }
 
@@ -759,7 +776,7 @@ mod tests {
             &self,
             _url: &url::Url,
             _options: &RemoteProfileOptions,
-        ) -> anyhow::Result<FetchedSubscription> {
+        ) -> Result<FetchedSubscription, SubscriptionFetchError> {
             if let Some(started) = self.started.lock().unwrap().take() {
                 let _ = started.send(());
             }
@@ -1022,13 +1039,13 @@ mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
             .expect_fetch()
-            .returning(|_, _| anyhow::bail!("dns exploded"));
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
         let (client, _dir) = remote_seeded_client(MockProfileFsPort::new(), fetcher).await;
         let err = client
             .refresh(ProfileId("r1".into()), None)
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::RefreshFailed { .. }));
+        assert!(matches!(err, ProfilesError::FetchSubscription { .. }));
         let snapshot = client.snapshot();
         let source = snapshot.items[&ProfileId("r1".into())]
             .definition
@@ -1085,12 +1102,12 @@ mod tests {
             .refresh(ProfileId("cfg1".into()), None)
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::NotARemoteProfile));
+        assert!(matches!(err, ProfilesError::NotARemoteProfile { .. }));
         let err = client
             .refresh(ProfileId("ghost".into()), None)
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::ProfileNotFound(_)));
+        assert!(matches!(err, ProfilesError::ProfileNotFound { .. }));
 
         let (started, started_rx) = tokio::sync::oneshot::channel();
         let release_fetch = std::sync::Arc::new(tokio::sync::Notify::new());
@@ -1106,16 +1123,12 @@ mod tests {
         started_rx.await.unwrap();
         let err = loop {
             match client.refresh(ProfileId("r1".into()), None).await {
-                Err(ProfilesError::RefreshFailed { message })
-                    if message.contains("in progress") =>
-                {
-                    break ProfilesError::RefreshFailed { message };
-                }
+                Err(error @ ProfilesError::RefreshInProgress { .. }) => break error,
                 Ok(_) => panic!("second refresh must not both succeed before first settles"),
                 Err(_) => tokio::task::yield_now().await,
             }
         };
-        assert!(matches!(err, ProfilesError::RefreshFailed { .. }));
+        assert!(matches!(err, ProfilesError::RefreshInProgress { .. }));
         release_fetch.notify_waiters();
         first.await.unwrap().expect("first refresh completes");
     }
@@ -1143,9 +1156,10 @@ mod tests {
         release_fetch.notify_waiters();
 
         let err = pending.await.unwrap().unwrap_err();
-        assert!(
-            matches!(err, ProfilesError::RefreshFailed { message } if message.contains("deleted"))
-        );
+        assert!(matches!(
+            err,
+            ProfilesError::ProfileDeletedDuringRefresh { .. }
+        ));
         assert!(
             client
                 .snapshot()
@@ -1186,9 +1200,10 @@ mod tests {
         release_fetch.notify_waiters();
 
         let err = pending.await.unwrap().unwrap_err();
-        assert!(
-            matches!(err, ProfilesError::RefreshFailed { message } if message.contains("changed"))
-        );
+        assert!(matches!(
+            err,
+            ProfilesError::ProfileChangedDuringRefresh { .. }
+        ));
         let snapshot = client.snapshot();
         let item = snapshot.items.get(&ProfileId("r1".into())).unwrap();
         let Some(nyanpasu_config::profile::ProfileSource::Remote { materialized, .. }) =
@@ -1226,9 +1241,10 @@ mod tests {
         release_fetch.notify_waiters();
 
         let err = pending.await.unwrap().unwrap_err();
-        assert!(
-            matches!(err, ProfilesError::RefreshFailed { message } if message.contains("changed"))
-        );
+        assert!(matches!(
+            err,
+            ProfilesError::ProfileChangedDuringRefresh { .. }
+        ));
         assert!(
             client.snapshot().items[&ProfileId("r1".into())]
                 .definition
@@ -1295,7 +1311,7 @@ mod tests {
         let counter = std::sync::Arc::clone(&fetch_count);
         fetcher.expect_fetch().returning(move |_, _| {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            anyhow::bail!("count only")
+            Err(SubscriptionFetchError::mock())
         });
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
@@ -1343,7 +1359,7 @@ mod tests {
         let counter = std::sync::Arc::clone(&fetch_count);
         fetcher.expect_fetch().returning(move |_, _| {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            anyhow::bail!("count only")
+            Err(SubscriptionFetchError::mock())
         });
         let dir = tempdir().unwrap();
         {
@@ -1648,12 +1664,12 @@ mod tests {
             .set_current(Some(ProfileId("ghost".into())))
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        assert!(matches!(err, ProfilesError::ValidationFailed { .. }));
         let err = client
             .set_current(Some(ProfileId("ovl1".into())))
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        assert!(matches!(err, ProfilesError::ValidationFailed { .. }));
         assert!(client.snapshot().current.is_none());
     }
 
@@ -1669,7 +1685,7 @@ mod tests {
             .set_global_transforms(vec![ProfileId("cfg1".into())])
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        assert!(matches!(err, ProfilesError::ValidationFailed { .. }));
     }
 
     #[tokio::test]
@@ -1774,7 +1790,13 @@ mod tests {
             )
             .await
             .expect_err("promote failure must fail Add");
-        assert!(matches!(err, ProfilesError::SourceTransaction { .. }));
+        assert!(matches!(
+            err,
+            ProfilesError::Commit {
+                source: CommitAborted::WriteConfig { .. },
+                ..
+            }
+        ));
         assert!(client.snapshot().items.is_empty());
     }
 
@@ -1803,7 +1825,7 @@ mod tests {
             // Simulate losing the config directory before the source CAS.
             std::fs::rename(&live_for_promote, &dead_for_promote)
                 .expect("move profiles parent aside before source CAS");
-            Err(anyhow::anyhow!("disk full"))
+            Err(ProfileFileError::mock("disk full"))
         });
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
@@ -1830,7 +1852,13 @@ mod tests {
             .add(add_placeholder_request(), Some("proxies: []\n".into()))
             .await
             .expect_err("promotion failure must reject before the source CAS");
-        assert!(matches!(error, ProfilesError::SourceTransaction { .. }));
+        assert!(matches!(
+            error,
+            ProfilesError::Commit {
+                source: CommitAborted::WriteConfig { .. },
+                ..
+            }
+        ));
         assert!(client.snapshot().items.is_empty());
         assert!(
             !durable_forward.exists(),
@@ -1852,7 +1880,7 @@ mod tests {
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         materialization
             .expect_prepare_file_first()
-            .returning(|_, _, _| Err(anyhow::anyhow!("staging refused")));
+            .returning(|_, _, _| Err(ProfileFileError::mock("staging refused")));
         {
             let promote_calls = Arc::clone(&promote_calls);
             materialization.expect_promote().returning(move |_| {
@@ -1885,11 +1913,15 @@ mod tests {
             .add(add_placeholder_request(), Some("proxies: []\n".into()))
             .await
             .expect_err("prepare failure must fail Add");
-        let message = err.to_string();
         assert!(
-            matches!(err, ProfilesError::Materialization(_))
-                && message.contains("prepare materialization"),
-            "prepare-phase failure expected, got: {message}"
+            matches!(
+                err,
+                ProfilesError::Materialization {
+                    operation: MaterializationOperation::PrepareFileFirst,
+                    ..
+                }
+            ),
+            "prepare-phase failure expected, got: {err:?}"
         );
         assert!(client.snapshot().items.is_empty());
         assert_eq!(promote_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -1910,13 +1942,13 @@ mod tests {
             .returning(|_, _, _| Ok(PreparedMaterialization::new("state".into())));
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let compensate_calls = Arc::clone(&compensate_calls);
             materialization.expect_compensate().returning(move |_| {
                 compensate_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Err(anyhow::anyhow!("cannot restore"))
+                Err(ProfileFileError::mock("cannot restore"))
             });
         }
 
@@ -1937,10 +1969,25 @@ mod tests {
             .add(add_placeholder_request(), Some("proxies: []\n".into()))
             .await
             .expect_err("compound materialization failure");
-        let message = err.to_string();
+        let ProfilesError::Commit {
+            source:
+                CommitAborted::RecoverAfterWriteFailure {
+                    source:
+                        ReplaceIfVersionError::ResourceRecovery {
+                            cause,
+                            recovery_error,
+                        },
+                    ..
+                },
+            ..
+        } = &err
+        else {
+            panic!("compound failure expected, got: {err:?}");
+        };
         assert!(
-            message.contains("disk full") && message.contains("cannot restore"),
-            "compound error must mention promotion and compensate failures: {message}"
+            format!("{cause:#}").contains("disk full")
+                && format!("{recovery_error:#}").contains("cannot restore"),
+            "compound error must carry promotion and compensate failures: {err:?}"
         );
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
@@ -1961,7 +2008,7 @@ mod tests {
         materialization.expect_promote().returning(|_| Ok(()));
         materialization
             .expect_complete()
-            .returning(|_| Err(anyhow::anyhow!("journal stuck")));
+            .returning(|_| Err(ProfileFileError::mock("journal stuck")));
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
@@ -2010,7 +2057,7 @@ mod tests {
             .returning(|_, _, _| Ok(PreparedMaterialization::new("new".into())));
         materialization
             .expect_prepare_cleanup()
-            .returning(|_, _| Err(anyhow::anyhow!("cleanup journal refused")));
+            .returning(|_, _| Err(ProfileFileError::mock("cleanup journal refused")));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let compensate_calls = Arc::clone(&compensate_calls);
@@ -2040,7 +2087,13 @@ mod tests {
             .replace_definition(ProfileId("cfg2".into()), kind_switch_script_definition())
             .await
             .expect_err("prepare-cleanup failure must fail ReplaceDefinition");
-        assert!(matches!(err, ProfilesError::Materialization(_)));
+        assert!(matches!(
+            err,
+            ProfilesError::Materialization {
+                operation: MaterializationOperation::PrepareCleanup,
+                ..
+            }
+        ));
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
@@ -2072,7 +2125,7 @@ mod tests {
             .returning(|_, _| Ok(PreparedCleanup::new("old".into())));
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         let cancel_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
@@ -2110,7 +2163,13 @@ mod tests {
             .replace_definition(ProfileId("cfg2".into()), kind_switch_script_definition())
             .await
             .expect_err("promote failure must roll back ReplaceDefinition");
-        assert!(matches!(err, ProfilesError::SourceTransaction { .. }));
+        assert!(matches!(
+            err,
+            ProfilesError::Commit {
+                source: CommitAborted::WriteConfig { .. },
+                ..
+            }
+        ));
         assert_eq!(cancel_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
@@ -2140,7 +2199,7 @@ mod tests {
             .returning(|_, _, _| Ok(PreparedMaterialization::new("file".into())));
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         let compensate_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let compensate_calls = Arc::clone(&compensate_calls);
@@ -2170,7 +2229,13 @@ mod tests {
             .refresh(ProfileId("r1".into()), None)
             .await
             .expect_err("refresh promote failure");
-        assert!(matches!(err, ProfilesError::SourceTransaction { .. }));
+        assert!(matches!(
+            err,
+            ProfilesError::Commit {
+                source: CommitAborted::WriteConfig { .. },
+                ..
+            }
+        ));
         assert_eq!(
             compensate_calls.load(std::sync::atomic::Ordering::SeqCst),
             1
@@ -2195,7 +2260,7 @@ mod tests {
         materialization.expect_promote().returning(|_| Ok(()));
         materialization
             .expect_complete()
-            .returning(|_| Err(anyhow::anyhow!("journal stuck")));
+            .returning(|_| Err(ProfileFileError::mock("journal stuck")));
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
@@ -2246,7 +2311,7 @@ mod tests {
             .returning(|_| Ok(MaterializationReconcileReport::default()));
         materialization
             .expect_prepare_cleanup()
-            .returning(|_, _| Err(anyhow::anyhow!("cleanup journal refused")));
+            .returning(|_, _| Err(ProfileFileError::mock("cleanup journal refused")));
 
         let dir = tempdir().unwrap();
         let client = ProfilesClient::new(
@@ -2266,7 +2331,13 @@ mod tests {
             .delete(ProfileId("cfg2".into()))
             .await
             .expect_err("prepare-cleanup failure must fail Delete");
-        assert!(matches!(err, ProfilesError::Materialization(_)));
+        assert!(matches!(
+            err,
+            ProfilesError::Materialization {
+                operation: MaterializationOperation::PrepareCleanup,
+                ..
+            }
+        ));
         assert!(
             client
                 .snapshot()
@@ -2286,7 +2357,7 @@ mod tests {
             .returning(|_, _| Ok(PreparedCleanup::new("cleanup".into())));
         materialization
             .expect_activate_cleanup()
-            .returning(|_| Err(anyhow::anyhow!("activate refused")));
+            .returning(|_| Err(ProfileFileError::mock("activate refused")));
         let retry_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
             let retry_calls = Arc::clone(&retry_calls);
@@ -2351,7 +2422,7 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 let should_hold = self
                     .holds_remaining
                     .fetch_update(
@@ -2405,9 +2476,7 @@ mod tests {
             loop {
                 match client.refresh(ProfileId("r1".into()), None).await {
                     Ok(report) => break report,
-                    Err(ProfilesError::RefreshFailed { message })
-                        if message.contains("in progress") =>
-                    {
+                    Err(ProfilesError::RefreshInProgress { .. }) => {
                         tokio::task::yield_now().await;
                     }
                     Err(other) => {
@@ -2502,7 +2571,10 @@ mod tests {
         std::fs::create_dir(&profiles_path).unwrap();
         assert!(matches!(
             client.refresh(ProfileId("r1".into()), None).await,
-            Err(ProfilesError::SourceTransaction { .. })
+            Err(ProfilesError::Commit {
+                source: CommitAborted::WriteConfig { .. },
+                ..
+            })
         ));
         assert_eq!(
             fs.read(&path).unwrap(),
@@ -2553,7 +2625,7 @@ mod tests {
         assert!(matches!(err, ProfilesError::ProfileInUse { .. }));
 
         let err = client.delete(ProfileId("ghost".into())).await.unwrap_err();
-        assert!(matches!(err, ProfilesError::ProfileNotFound(_)));
+        assert!(matches!(err, ProfilesError::ProfileNotFound { .. }));
     }
 
     #[tokio::test]
@@ -2656,7 +2728,7 @@ mod tests {
             .reorder(ReorderOp::ByList(vec![ProfileId("cfg1".into())]))
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::InvalidReorderList { .. }));
+        assert!(matches!(err, ProfilesError::ReorderListSizeMismatch { .. }));
 
         let err = client
             .reorder(ReorderOp::ByList(vec![
@@ -2666,7 +2738,7 @@ mod tests {
             ]))
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::InvalidReorderList { .. }));
+        assert!(matches!(err, ProfilesError::ReorderListDuplicate { .. }));
     }
 
     #[tokio::test]
@@ -2690,7 +2762,7 @@ mod tests {
             .patch_remote_options(ProfileId("cfg1".into()), options_patch)
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::NotARemoteProfile));
+        assert!(matches!(err, ProfilesError::NotARemoteProfile { .. }));
     }
 
     #[tokio::test]
@@ -2729,6 +2801,7 @@ mod tests {
                 referrers,
                 current,
                 global_transforms,
+                ..
             } => {
                 assert_eq!(referrers, vec![ProfileId("cfg1".into())]);
                 assert!(!current);
@@ -2745,7 +2818,7 @@ mod tests {
             .set_current(Some(ProfileId("ghost".into())))
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        assert!(matches!(err, ProfilesError::ValidationFailed { .. }));
         drop(client);
 
         let reopened = ProfilesClient::new(
@@ -2793,6 +2866,7 @@ mod tests {
                 referrers,
                 current,
                 global_transforms,
+                ..
             } => {
                 assert_eq!(referrers, vec![ProfileId("comp".into())]);
                 assert!(!current);
@@ -2822,6 +2896,7 @@ mod tests {
                 referrers,
                 current,
                 global_transforms,
+                ..
             } => {
                 assert!(referrers.is_empty());
                 assert!(current);
@@ -2959,7 +3034,7 @@ mod tests {
             .replace_definition(ProfileId("cfg1".into()), definition)
             .await
             .unwrap_err();
-        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        assert!(matches!(err, ProfilesError::ValidationFailed { .. }));
         drop(client);
 
         let reopened = ProfilesClient::new(
@@ -3128,7 +3203,7 @@ mod tests {
         fetcher
             .expect_fetch()
             .times(1)
-            .returning(|_, _| anyhow::bail!("dns exploded"));
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
         let mut materialization = MockProfileMaterializationPort::new();
         materialization
             .expect_reconcile()
@@ -3156,7 +3231,7 @@ mod tests {
             )
             .await
             .expect_err("fetch failure");
-        assert!(matches!(err, ProfilesError::ImportFailed { .. }));
+        assert!(matches!(err, ProfilesError::FetchSubscription { .. }));
         assert!(client.snapshot().items.is_empty());
     }
 
@@ -3178,7 +3253,7 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 if call == 1 {
                     if let Some(started) = self.started.lock().unwrap().take() {
@@ -3258,12 +3333,12 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 if let Some(started) = self.started.lock().unwrap().take() {
                     let _ = started.send(());
                 }
                 self.release.notified().await;
-                anyhow::bail!("dns exploded after cancel")
+                Err(SubscriptionFetchError::mock())
             }
         }
 
@@ -3475,7 +3550,7 @@ mod tests {
             )
             .await
             .expect_err("zero interval");
-        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        assert!(matches!(err, ProfilesError::ValidationFailed { .. }));
         assert!(client.snapshot().items.is_empty());
     }
 
@@ -3495,7 +3570,10 @@ mod tests {
     async fn round_trip(client: &ProfilesClient) {
         let result = client.refresh(ProfileId("ghost".into()), None).await;
         assert!(
-            !matches!(result, Err(ProfilesError::Rpc(_))),
+            !matches!(
+                result,
+                Err(ProfilesError::ProfilesActorStopped | ProfilesError::ProfilesReplyDropped)
+            ),
             "profiles actor must survive: {result:?}"
         );
     }
@@ -3660,7 +3738,7 @@ mod tests {
             &self,
             _url: &url::Url,
             _options: &RemoteProfileOptions,
-        ) -> anyhow::Result<FetchedSubscription> {
+        ) -> Result<FetchedSubscription, SubscriptionFetchError> {
             let mut parked = Parked(Some(Arc::clone(&self.dropped)));
             let _ = self.started.send(());
             self.release.notified().await;
@@ -3682,7 +3760,7 @@ mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             fetches.send_modify(|calls| *calls += 1);
-            anyhow::bail!("count only")
+            Err(SubscriptionFetchError::mock())
         });
         let (reconciles, mut reconciled) = tokio::sync::watch::channel(0usize);
         let mut materialization = MockProfileMaterializationPort::new();
@@ -3872,7 +3950,7 @@ mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             fetches.send_modify(|calls| *calls += 1);
-            anyhow::bail!("count only")
+            Err(SubscriptionFetchError::mock())
         });
         let dir = tempdir().unwrap();
         // Only an external event that got through would read the Mirror
@@ -3882,7 +3960,9 @@ mod tests {
         let mut fs = MockProfileFsPort::new();
         fs.expect_read_external().returning(move |_| {
             counter.fetch_add(1, Ordering::SeqCst);
-            anyhow::bail!("a stopped actor reads no external file")
+            Err(ProfileFileError::mock(
+                "a stopped actor reads no external file",
+            ))
         });
         let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
         let client = ProfilesClient::new(
@@ -3999,7 +4079,7 @@ mod tests {
         );
         assert!(matches!(
             bounded(client.refresh(ProfileId("r1".into()), None)).await,
-            Err(ProfilesError::RefreshFailed { message }) if message.contains("in progress")
+            Err(ProfilesError::RefreshInProgress { .. })
         ));
         assert_eq!(yaml(&client.snapshot()), before);
         assert!(client.sources().entries.is_empty());
@@ -4036,7 +4116,7 @@ mod tests {
                     suggested_update_interval_minutes: None,
                 })
             } else {
-                anyhow::bail!("dns exploded")
+                Err(SubscriptionFetchError::mock())
             }
         });
         let dir = tempdir().unwrap();
@@ -4066,7 +4146,7 @@ mod tests {
         .await;
         assert!(matches!(
             &failed.outcome,
-            SourceOutcome::Failed { message } if message.contains("dns exploded")
+            SourceOutcome::Failed { message } if message.contains("HTTP 500")
         ));
         assert_eq!(failed.health, ConvergenceHealth::Blocked);
         assert_eq!(client.sources().entries.len(), 1, "one row per profile");
@@ -4099,7 +4179,7 @@ mod tests {
         release.notify_waiters();
         assert!(matches!(
             bounded(pending).await.unwrap(),
-            Err(ProfilesError::RefreshFailed { message }) if message.contains("changed")
+            Err(ProfilesError::ProfileChangedDuringRefresh { .. })
         ));
         let stale = client.sources().entries[0].clone();
         assert_eq!(stale.origin, SourceOrigin::ManualRefresh);
@@ -4125,10 +4205,10 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 let _ = self.started.send(());
                 self.release.notified().await;
-                anyhow::bail!("dns exploded")
+                Err(SubscriptionFetchError::mock())
             }
         }
         let (started, mut started_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -4158,7 +4238,7 @@ mod tests {
         release.notify_waiters();
         assert!(matches!(
             bounded(pending).await.unwrap(),
-            Err(ProfilesError::RefreshFailed { message }) if message.contains("changed")
+            Err(ProfilesError::ProfileChangedDuringRefresh { .. })
         ));
         let stale = client.sources().entries[0].clone();
         assert_eq!(stale.origin, SourceOrigin::ManualRefresh);
@@ -4185,9 +4265,9 @@ mod tests {
                 &self,
                 _url: &url::Url,
                 _options: &RemoteProfileOptions,
-            ) -> anyhow::Result<FetchedSubscription> {
+            ) -> Result<FetchedSubscription, SubscriptionFetchError> {
                 if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
-                    anyhow::bail!("dns exploded");
+                    return Err(SubscriptionFetchError::mock());
                 }
                 let _ = self.started.send(());
                 self.release.notified().await;
@@ -4256,7 +4336,10 @@ mod tests {
 
         assert!(matches!(
             client.refresh(ProfileId("r1".into()), None).await,
-            Err(ProfilesError::SourceTransaction { .. })
+            Err(ProfilesError::Commit {
+                source: CommitAborted::WriteConfig { .. },
+                ..
+            })
         ));
         let status = client.sources().entries[0].clone();
         assert!(matches!(
@@ -4336,7 +4419,7 @@ mod tests {
             });
         materialization
             .expect_promote()
-            .returning(|_| Err(anyhow::anyhow!("disk full")));
+            .returning(|_| Err(ProfileFileError::mock("disk full")));
         materialization.expect_compensate().returning(|_| Ok(()));
         Arc::new(materialization)
     }

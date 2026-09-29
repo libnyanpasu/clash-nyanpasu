@@ -44,7 +44,7 @@ use crate::client::{
         SystemProxyArgs, SystemProxyClient,
         ports::{
             MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
-            OsProxyPort, PacPort,
+            OsProxyPort, PacError, PacPort,
         },
     },
 };
@@ -720,14 +720,14 @@ impl PacPort for HeldPac {
         &self,
         _url: &url::Url,
         _cancel: tokio_util::sync::CancellationToken,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PacError> {
         self.applies.fetch_add(1, Ordering::SeqCst);
         self.started.notify_one();
         self.release.notified().await;
         Ok(())
     }
 
-    fn disable(&self) -> anyhow::Result<()> {
+    fn disable(&self) -> Result<(), PacError> {
         Ok(())
     }
 }
@@ -855,15 +855,15 @@ impl PacPort for CancelledPac {
         &self,
         _url: &url::Url,
         cancel: tokio_util::sync::CancellationToken,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PacError> {
         record(&self.log, "pac download started");
         self.started.notify_one();
         cancel.cancelled().await;
         record(&self.log, "pac download cancelled");
-        anyhow::bail!("the PAC download was cancelled by the shutdown")
+        Err(PacError::DownloadCancelled)
     }
 
-    fn disable(&self) -> anyhow::Result<()> {
+    fn disable(&self) -> Result<(), PacError> {
         record(&self.log, "pac disabled");
         Ok(())
     }

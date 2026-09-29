@@ -3,15 +3,19 @@
 
 use std::time::Duration;
 
-use anyhow::{Context, anyhow};
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 use camino::Utf8PathBuf;
+use snafu::{OptionExt as _, ResultExt as _, ensure};
 use sysproxy::{Autoproxy, Sysproxy};
 use tokio_util::sync::CancellationToken;
 
 use super::ports::{
-    AutoLaunchPort, OsProxyConfig, OsProxyError, OsProxyPort, PacPort, ReadOsProxySnafu,
-    WriteOsProxySnafu,
+    AutoLaunchError, AutoLaunchPort, BuildHttpClientSnafu, BuildRegistrationSnafu,
+    CanonicalizeExecutableSnafu, ClearPacSnafu, DownloadCancelledSnafu, ExecutableNameSnafu,
+    ExecutablePathNotUtf8Snafu, InstallPacSnafu, LocateExecutableSnafu, MissingEntryPointSnafu,
+    OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort, ReadOsProxySnafu,
+    ReadRegistrationSnafu, ReadScriptBodySnafu, RegisterSnafu, RequestScriptSnafu,
+    ScriptNotUtf8Snafu, ScriptStatusSnafu, ScriptTooLargeSnafu, WriteOsProxySnafu,
 };
 
 #[cfg(target_os = "windows")]
@@ -27,11 +31,9 @@ pub struct SysproxyOsProxy;
 
 impl OsProxyPort for SysproxyOsProxy {
     fn get(&self) -> Result<OsProxyConfig, OsProxyError> {
-        // Named path: `anyhow::Context` is in scope for the rest of this file.
-        let current = snafu::ResultExt::context(
-            snafu::ResultExt::boxed(Sysproxy::get_system_proxy()),
-            ReadOsProxySnafu,
-        )?;
+        let current = Sysproxy::get_system_proxy()
+            .boxed()
+            .context(ReadOsProxySnafu)?;
         Ok(OsProxyConfig {
             enable: current.enable,
             host: current.host,
@@ -41,21 +43,19 @@ impl OsProxyPort for SysproxyOsProxy {
     }
 
     fn set(&self, config: &OsProxyConfig) -> Result<(), OsProxyError> {
-        let written = Sysproxy {
+        Sysproxy {
             enable: config.enable,
             host: config.host.clone(),
             port: config.port,
             bypass: config.bypass.clone(),
         }
-        .set_system_proxy();
-        snafu::ResultExt::context(
-            snafu::ResultExt::boxed(written),
-            WriteOsProxySnafu {
-                enable: config.enable,
-                host: &config.host,
-                port: config.port,
-            },
-        )
+        .set_system_proxy()
+        .boxed()
+        .context(WriteOsProxySnafu {
+            enable: config.enable,
+            host: &config.host,
+            port: config.port,
+        })
     }
 
     fn default_bypass(&self) -> &'static str {
@@ -75,20 +75,19 @@ impl AutoLaunchConfig {
     /// `appimage` is the Tauri environment's AppImage path, passed in rather
     /// than looked up: on Linux the running binary lives inside a mount that
     /// disappears, so the AppImage itself is what an autostart entry must name.
-    pub fn resolve(appimage: Option<String>) -> anyhow::Result<Self> {
-        let exe = tauri::utils::platform::current_exe()
-            .context("failed to locate the running executable")?;
-        let exe = dunce::canonicalize(exe).context("failed to canonicalize the executable path")?;
+    pub fn resolve(appimage: Option<String>) -> Result<Self, AutoLaunchError> {
+        let exe = tauri::utils::platform::current_exe().context(LocateExecutableSnafu)?;
+        let exe = dunce::canonicalize(&exe).context(CanonicalizeExecutableSnafu { path: &exe })?;
 
         let app_name = exe
             .file_stem()
             .and_then(|stem| stem.to_str())
-            .ok_or_else(|| anyhow!("the executable has no file stem"))?
+            .context(ExecutableNameSnafu { path: &exe })?
             .to_owned();
         let app_path = exe
             .as_os_str()
             .to_str()
-            .ok_or_else(|| anyhow!("the executable path is not UTF-8"))?
+            .context(ExecutablePathNotUtf8Snafu { path: &exe })?
             .to_owned();
 
         // Quoted so a path with spaces survives the registry value (issue #26).
@@ -125,24 +124,28 @@ pub struct AutoLaunchBackend {
 }
 
 impl AutoLaunchBackend {
-    pub fn new(config: AutoLaunchConfig) -> anyhow::Result<Self> {
+    pub fn new(config: AutoLaunchConfig) -> Result<Self, AutoLaunchError> {
         let inner = AutoLaunchBuilder::new()
             .set_app_name(&config.app_name)
             .set_app_path(&config.app_path)
             .build()
-            .context("failed to build the auto-launch registration")?;
+            .boxed()
+            .context(BuildRegistrationSnafu {
+                app_path: &config.app_path,
+            })?;
         Ok(Self { inner })
     }
 }
 
 impl AutoLaunchPort for AutoLaunchBackend {
-    fn is_enabled(&self) -> anyhow::Result<bool> {
+    fn is_enabled(&self) -> Result<bool, AutoLaunchError> {
         self.inner
             .is_enabled()
-            .context("failed to read the auto-launch registration")
+            .boxed()
+            .context(ReadRegistrationSnafu)
     }
 
-    fn set_enabled(&self, enabled: bool) -> anyhow::Result<()> {
+    fn set_enabled(&self, enabled: bool) -> Result<(), AutoLaunchError> {
         // A dev build shares the release build's autostart entry name; letting
         // it disable the entry would silently turn the user's setting off.
         #[cfg(feature = "verge-dev")]
@@ -165,9 +168,7 @@ impl AutoLaunchPort for AutoLaunchBackend {
         #[cfg(target_os = "macos")]
         let _ = self.inner.disable();
 
-        self.inner
-            .enable()
-            .context("failed to register the app for auto-launch")
+        self.inner.enable().boxed().context(RegisterSnafu)
     }
 }
 
@@ -185,57 +186,74 @@ pub struct HttpPacBackend {
 }
 
 impl HttpPacBackend {
-    pub fn new(cache_path: Utf8PathBuf) -> anyhow::Result<Self> {
+    pub fn new(cache_path: Utf8PathBuf) -> Result<Self, PacError> {
         let client = reqwest::Client::builder()
             .timeout(PAC_DOWNLOAD_TIMEOUT)
             .build()
-            .context("failed to build the PAC http client")?;
+            .boxed()
+            .context(BuildHttpClientSnafu)?;
         Ok(Self { client, cache_path })
     }
 
     /// One bounded attempt, raced against the token: it runs on the actor's
     /// mailbox, and a shutdown that had to wait it out would exit with the
     /// proxy still on. Retrying a failed download is the effects actor's job.
-    async fn download(&self, url: &url::Url, cancel: &CancellationToken) -> anyhow::Result<String> {
+    async fn download(
+        &self,
+        url: &url::Url,
+        cancel: &CancellationToken,
+    ) -> Result<String, PacError> {
         cancel
             .run_until_cancelled(self.fetch(url))
             .await
-            .unwrap_or_else(|| Err(cancelled()))
+            .unwrap_or_else(|| DownloadCancelledSnafu.fail())
     }
 
-    async fn fetch(&self, url: &url::Url) -> anyhow::Result<String> {
+    async fn fetch(&self, url: &url::Url) -> Result<String, PacError> {
         let mut response = self
             .client
             .get(url.clone())
             .send()
             .await
-            .context("failed to request the PAC script")?;
+            .boxed()
+            .context(RequestScriptSnafu { url: url.as_str() })?;
         let status = response.status();
-        if !status.is_success() {
-            anyhow::bail!("the PAC url answered with {status}");
-        }
+        ensure!(
+            status.is_success(),
+            ScriptStatusSnafu {
+                url: url.as_str(),
+                status: status.as_u16()
+            }
+        );
         // Checked first where the server declares it, and again while reading,
         // because the declaration is only a claim.
-        if let Some(length) = response.content_length()
-            && length > PAC_MAX_BODY as u64
-        {
-            anyhow::bail!(
-                "the PAC script declares {length} bytes, over the {PAC_MAX_BODY} allowed"
-            );
-        }
+        ensure!(
+            response
+                .content_length()
+                .is_none_or(|length| length <= PAC_MAX_BODY as u64),
+            ScriptTooLargeSnafu {
+                url: url.as_str(),
+                limit: PAC_MAX_BODY
+            }
+        );
 
         let mut body = Vec::new();
         while let Some(chunk) = response
             .chunk()
             .await
-            .context("failed to read the PAC script body")?
+            .boxed()
+            .context(ReadScriptBodySnafu { url: url.as_str() })?
         {
-            if body.len() + chunk.len() > PAC_MAX_BODY {
-                anyhow::bail!("the PAC script is larger than the {PAC_MAX_BODY} bytes allowed");
-            }
+            ensure!(
+                body.len() + chunk.len() <= PAC_MAX_BODY,
+                ScriptTooLargeSnafu {
+                    url: url.as_str(),
+                    limit: PAC_MAX_BODY
+                }
+            );
             body.extend_from_slice(&chunk);
         }
-        String::from_utf8(body).context("the PAC script is not valid UTF-8")
+        String::from_utf8(body).context(ScriptNotUtf8Snafu { url: url.as_str() })
     }
 
     async fn cache(&self, script: &str) {
@@ -259,37 +277,35 @@ impl PacPort for HttpPacBackend {
         Autoproxy::is_support()
     }
 
-    async fn apply(&self, url: &url::Url, cancel: CancellationToken) -> anyhow::Result<()> {
+    async fn apply(&self, url: &url::Url, cancel: CancellationToken) -> Result<(), PacError> {
         let script = self.download(url, &cancel).await?;
         // Validated before it is installed: an OS pointed at a script without
         // an entry point resolves every request to no proxy at all.
-        if !script.contains("FindProxyForURL") {
-            anyhow::bail!("the PAC script has no FindProxyForURL function");
-        }
+        ensure!(
+            script.contains("FindProxyForURL"),
+            MissingEntryPointSnafu { url: url.as_str() }
+        );
         self.cache(&script).await;
         // The restore is already on its way to putting the original settings
         // back, so installing this url now would outlive the app.
-        if cancel.is_cancelled() {
-            return Err(cancelled());
-        }
+        ensure!(!cancel.is_cancelled(), DownloadCancelledSnafu);
 
         let url = url.to_string();
-        tokio::task::spawn_blocking(move || {
-            Autoproxy {
-                enable: true,
-                url: url.clone(),
-            }
-            .set_auto_proxy()
-            .context("failed to install the PAC url")
-        })
-        .await
-        .map_err(|error| match error.try_into_panic() {
-            Ok(panic) => std::panic::resume_unwind(panic),
-            Err(error) => anyhow!("the PAC worker did not run: {error}"),
-        })?
+        crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || {
+                Autoproxy {
+                    enable: true,
+                    url: url.clone(),
+                }
+                .set_auto_proxy()
+                .boxed()
+                .context(InstallPacSnafu { url })
+            })
+            .await,
+        )
     }
 
-    fn disable(&self) -> anyhow::Result<()> {
+    fn disable(&self) -> Result<(), PacError> {
         if !Autoproxy::is_support() {
             return Ok(());
         }
@@ -298,10 +314,7 @@ impl PacPort for HttpPacBackend {
             url: String::new(),
         }
         .set_auto_proxy()
-        .context("failed to clear the PAC url")
+        .boxed()
+        .context(ClearPacSnafu)
     }
-}
-
-fn cancelled() -> anyhow::Error {
-    anyhow!("the PAC download was cancelled by the shutdown")
 }

@@ -13,8 +13,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::{
     SystemProxyArgs, SystemProxyClient,
     ports::{
-        AutoLaunchPort, MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig,
-        OsProxyError, OsProxyPort, PacPort,
+        AutoLaunchError, AutoLaunchPort, MockAutoLaunchPort, MockOsProxyPort, MockPacPort,
+        OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort,
     },
 };
 use crate::client::effects::{
@@ -110,13 +110,13 @@ impl PacPort for BlockingPac {
         true
     }
 
-    async fn apply(&self, _url: &url::Url, cancel: CancellationToken) -> anyhow::Result<()> {
+    async fn apply(&self, _url: &url::Url, cancel: CancellationToken) -> Result<(), PacError> {
         self.started.notify_one();
         cancel.cancelled().await;
-        anyhow::bail!("the PAC download was cancelled by the shutdown")
+        Err(PacError::DownloadCancelled)
     }
 
-    fn disable(&self) -> anyhow::Result<()> {
+    fn disable(&self) -> Result<(), PacError> {
         Ok(())
     }
 }
@@ -457,7 +457,7 @@ async fn pac_failure_falls_back_to_direct_and_degrades() {
     let mut pac = MockPacPort::new();
     pac.expect_is_supported().returning(|| true);
     pac.expect_apply()
-        .returning(|_, _| Err(anyhow::anyhow!("the pac url is unreachable")));
+        .returning(|_, _| Err(PacError::unreachable("the pac url is unreachable")));
     let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
 
     let statuses = client
@@ -487,7 +487,7 @@ async fn failed_pac_switch_disables_the_previous_pac_before_falling_back() {
     pac.expect_apply().times(1).returning(|_, _| Ok(()));
     pac.expect_apply()
         .times(1)
-        .returning(|_, _| Err(anyhow::anyhow!("the new pac url is unreachable")));
+        .returning(|_, _| Err(PacError::unreachable("the new pac url is unreachable")));
     pac.expect_disable().times(1).returning(|| Ok(()));
     let client = spawn(os.clone(), silent_auto_launch(), Arc::new(pac)).await;
 
@@ -530,10 +530,10 @@ async fn pac_disable_failure_keeps_pac_active_and_degrades() {
     pac.expect_apply().times(1).returning(|_, _| Ok(()));
     pac.expect_apply()
         .times(1)
-        .returning(|_, _| Err(anyhow::anyhow!("the new pac url is unreachable")));
+        .returning(|_, _| Err(PacError::unreachable("the new pac url is unreachable")));
     pac.expect_disable()
         .times(1)
-        .returning(|| Err(anyhow::anyhow!("the os kept the auto-config url")));
+        .returning(|| Err(PacError::kept("the os kept the auto-config url")));
     pac.expect_disable().times(1).returning(|| Ok(()));
     let shutdown = Shutdown::new();
     let client = spawn_owned(os.clone(), silent_auto_launch(), Arc::new(pac), &shutdown).await;
@@ -777,7 +777,7 @@ async fn set_failure_degrades_and_keeps_desired() {
         status.health,
         EffectHealth::Degraded {
             code: EffectFailureCode::SystemProxyApplyFailed,
-            message: "could not update the system proxy to 127.0.0.1:7890 (enabled: true): the os refused the proxy settings".to_owned(),
+            message: "the system proxy was not applied: could not write the system proxy 127.0.0.1:7890 (enabled: true): the os refused the proxy settings".to_owned(),
             retryable: true,
         }
     );
@@ -847,7 +847,7 @@ async fn auto_launch_failure_degrades_independently() {
     auto_launch.expect_is_enabled().returning(|| Ok(false));
     auto_launch
         .expect_set_enabled()
-        .returning(|_| Err(anyhow::anyhow!("the login item is locked")));
+        .returning(|_| Err(AutoLaunchError::refused("the login item is locked")));
     let client = spawn(os.clone(), Arc::new(auto_launch), unsupported_pac()).await;
 
     let statuses = client

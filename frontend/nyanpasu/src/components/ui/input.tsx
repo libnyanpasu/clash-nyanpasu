@@ -40,7 +40,7 @@ export const inputVariants = cva(
   [
     'peer',
     'w-full border-none p-0',
-    'bg-transparent placeholder-transparent outline-hidden',
+    'bg-transparent outline-hidden',
     'transition-[margin] duration-200',
   ],
   {
@@ -54,7 +54,8 @@ export const inputVariants = cva(
         false: '',
       },
       haveLabel: {
-        true: '',
+        // the label sits where the placeholder would render
+        true: 'placeholder:text-transparent',
         false: '',
       },
     },

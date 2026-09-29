@@ -5,8 +5,7 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "scripts": {
-    "build": "pnpm generate:application-client && tsc",
-    "generate:application-client": "deno run --config ../../scripts/deno.jsonc -A ../../scripts/generate-application-api.ts"
+    "build": "tsc"
   },
   "exports": {
     ".": "./dist/index.js"

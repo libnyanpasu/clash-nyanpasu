@@ -7,7 +7,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
 import {
-  queries,
+  rpc,
   unwrapQueryOptions,
   type ConfigExecutionRole,
   type OperatorTag,
@@ -67,8 +67,8 @@ function stepLabel(tag: OperatorTag): string {
 function RouteComponent() {
   const [appliedView, setAppliedView] = useState(false)
   const inspectionQuery = appliedView
-    ? queries.inspectAppliedRuntime()
-    : queries.inspectRuntime()
+    ? rpc.queries.inspectAppliedRuntime()
+    : rpc.queries.inspectRuntime()
   const inspection = useQuery({
     ...unwrapQueryOptions(inspectionQuery, inspectionQuery.queryFn!),
     refetchOnWindowFocus: false,
@@ -126,7 +126,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
       )
   const selected = nodes.find((node) => node.id === selectedId) ?? nodes[0]
   const contentQuery = selected
-    ? queries.inspectRuntimeNode(snapshot.snapshot_id, selected.id)
+    ? rpc.queries.inspectRuntimeNode(snapshot.snapshot_id, selected.id)
     : null
   const content = useQuery<RuntimeInspectionContent>({
     queryKey: contentQuery?.queryKey ?? [

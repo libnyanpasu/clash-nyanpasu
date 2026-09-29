@@ -27,7 +27,10 @@ use crate::{
             RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController, TracingLoggerRefresher,
         },
     },
-    utils::path::PathResolver,
+    utils::{
+        net::{NetworkHttp, ReqwestHttpGet},
+        path::PathResolver,
+    },
 };
 use anyhow::Context;
 use camino::Utf8PathBuf;
@@ -43,6 +46,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     bundle_metadata: crate::bundle::BundleMetadata,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
+    let rpc_events = crate::unified_rpc::EventBus::new();
+    crate::unified_rpc::bridge_tauri_events(&app_handle, rpc_events.clone());
+    app.manage(rpc_events);
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
@@ -123,11 +129,31 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
-    let application_api = crate::application_api::ApplicationApi::new(client.clone())
-        .context("Failed to register application API procedures")?;
-    app.manage(application_api);
+    // TODO(actor-migration): temporary bridge to legacy proxy configuration.
+    // Reason: get_reqwest_client still derives proxy settings from legacy process state.
+    // Remove when: HTTP client settings are injected through NyanpasuClient.
+    let network_client = crate::utils::candy::get_reqwest_client()
+        .context("Failed to setup network command HTTP client")?;
+    app.manage(NetworkHttp::new(Arc::new(ReqwestHttpGet::new(
+        network_client,
+    ))));
     app.manage(client);
 
+    Ok(())
+}
+
+/// Registers the unified RPC command table after `resolve_setup` has managed
+/// storage and the other Tauri state dependencies.
+pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Result<()> {
+    let dependencies = crate::unified_rpc::RpcDependencies {
+        client: (*app.state::<NyanpasuClient>()).clone(),
+        storage: (*app.state::<crate::core::storage::Storage>()).clone(),
+        legacy_verge: (*app.state::<LegacyVergeBridge>()).clone(),
+        network_http: (*app.state::<NetworkHttp>()).clone(),
+        events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
+    };
+    let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies)?;
+    anyhow::ensure!(app.manage(rpc), "unified RPC state was already registered");
     Ok(())
 }
 

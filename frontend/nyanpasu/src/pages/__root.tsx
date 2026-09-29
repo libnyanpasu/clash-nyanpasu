@@ -23,8 +23,8 @@ import { useDeepLinkImport } from '@/hooks/use-deep-link-import'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
 import {
-  events,
   NyanpasuProvider,
+  rpc,
   setMutationDegradationHandler,
   useSettings,
   type Degradation,
@@ -113,7 +113,7 @@ function WindowReveal() {
         appWindow.unminimize(),
         appWindow.setFocus(),
       ]).finally(() => {
-        events.windowReadyEvent.emit({ label: appWindow.label })
+        rpc.events.windowReadyEvent.emit({ label: appWindow.label })
       })
     }
   }, [query.isSuccess, query.isError])

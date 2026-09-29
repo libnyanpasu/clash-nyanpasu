@@ -714,6 +714,23 @@ impl NyanpasuClient {
         Ok(self.inner.clash_config.snapshot().state)
     }
 
+    /// Project the persisted Clash controller settings into the legacy IPC DTO.
+    pub async fn get_clash_info(&self) -> Result<crate::config::ClashInfo> {
+        let clash = self.inner.clash_config.snapshot().state;
+        let mut overrides: serde_yaml::Mapping =
+            serde_yaml::from_value(serde_yaml::to_value(clash.overrides)?)?;
+        overrides.insert("mixed-port".into(), clash.mixed_port.start_port.into());
+        overrides.insert(
+            "external-controller".into(),
+            format!(
+                "{}:{}",
+                clash.external_controller.host, clash.external_controller.port.start_port
+            )
+            .into(),
+        );
+        Ok(crate::config::IClashTemp(overrides).get_client_info())
+    }
+
     pub async fn patch_runtime_overrides(
         &self,
         patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,

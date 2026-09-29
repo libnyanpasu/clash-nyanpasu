@@ -2,8 +2,9 @@ import { useEffect, useRef } from 'react'
 import { m } from '@/paraglide/messages'
 import { parseInstallConfigDeepLink } from '@/utils/deep-link'
 import { message } from '@/utils/notification'
-import { commands, events, unwrapResult, useProfile } from '@nyanpasu/interface'
-import { type UnlistenFn } from '@tauri-apps/api/event'
+import { rpc, unwrapResult, useProfile } from '@nyanpasu/interface'
+
+type Unlisten = () => void
 
 // Guard against duplicate registration across React StrictMode's double-mount
 // and against multiple hook consumers: only one global listener should exist.
@@ -11,7 +12,7 @@ let listenerRegistered = false
 
 /**
  * Imports the profile described by an `install-config` deep link. Two delivery
- * paths are handled: the `scheme-request-received` Tauri event (running app or
+ * paths are handled: the `scheme-request-received` backend event (running app or
  * secondary instance) and the backend's pending deep link drained once on
  * startup (cold start, where the event may fire before the listener registers).
  * Mount once near the app root.
@@ -34,7 +35,7 @@ export function useDeepLinkImport() {
     }
     listenerRegistered = true
 
-    let unlisten: UnlistenFn | undefined
+    let unlisten: Unlisten | undefined
     let disposed = false
 
     const handleDeepLink = async (raw: string) => {
@@ -76,7 +77,7 @@ export function useDeepLinkImport() {
       }
     }
 
-    events.schemeRequestReceivedEvent
+    rpc.events.schemeRequestReceivedEvent
       .listen(async (event) => {
         await handleDeepLink(event.payload.url)
       })
@@ -95,7 +96,7 @@ export function useDeepLinkImport() {
 
     // Cold start: the event may have been emitted before the listener above was
     // registered, so drain the backend's pending deep link (take-and-clear) once.
-    commands
+    rpc
       .getPendingDeepLink()
       .then(async (result) => {
         const pending = unwrapResult(result)

@@ -2,7 +2,7 @@ import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-ro
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { commands } from '@nyanpasu/interface'
+import { rpc } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -14,7 +14,7 @@ import {
 
 export default function UwpToolsButton() {
   const handleOpenUwpTools = useLockFn(async () => {
-    await commands.invokeUwpTool()
+    await rpc.invokeUwpTool()
   })
 
   return (

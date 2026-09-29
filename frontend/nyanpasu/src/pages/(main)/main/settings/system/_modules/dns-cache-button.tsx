@@ -4,7 +4,7 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { commands, unwrapResult } from '@nyanpasu/interface'
+import { rpc, unwrapResult } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -17,7 +17,7 @@ import {
 export default function DnsCacheButton() {
   const handleFlushDnsCache = useLockFn(async () => {
     try {
-      unwrapResult(await commands.flushSystemDnsCache())
+      unwrapResult(await rpc.flushSystemDnsCache())
       await message(m.settings_system_proxy_dns_cache_success(), {
         kind: 'info',
       })

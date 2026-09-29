@@ -16,7 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { commands, useProfile } from '@nyanpasu/interface'
+import { rpc, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 
 type Item = {
@@ -30,7 +30,7 @@ const OpenLinkButton = ({ data }: { data: Item }) => {
       return
     }
 
-    await commands.openThat(data.url)
+    await rpc.openThat(data.url)
   })
 
   return (

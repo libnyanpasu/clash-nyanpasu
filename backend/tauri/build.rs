@@ -117,8 +117,6 @@ fn main() {
     // See https://github.com/tauri-apps/tauri/issues/13419
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
-    let application_api =
-        tauri_build::InlinedPlugin::new().commands(&["call", "subscribe", "unsubscribe"]);
     if target_os == "windows" && target_env == "msvc" {
         let manifest = env::current_dir()
             .expect("failed to resolve build script working directory")
@@ -133,11 +131,10 @@ fn main() {
         );
 
         let attributes = tauri_build::Attributes::new()
-            .plugin("application-api", application_api)
             .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
         tauri_build::try_build(attributes).expect("failed to run tauri-build");
     } else {
-        let attributes = tauri_build::Attributes::new().plugin("application-api", application_api);
+        let attributes = tauri_build::Attributes::new();
         tauri_build::try_build(attributes).expect("failed to run tauri-build");
     }
 }

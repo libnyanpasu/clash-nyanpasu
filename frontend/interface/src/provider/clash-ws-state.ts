@@ -1,4 +1,4 @@
-import type { ClashWsEvent, ClashWsSnapshot } from '../ipc/bindings'
+import type { ClashWsEvent, ClashWsSnapshot } from '../ipc/rpc-bindings'
 
 export const MAX_CONNECTIONS_HISTORY = 32
 export const MAX_MEMORY_HISTORY = 32

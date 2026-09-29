@@ -1,0 +1,441 @@
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
+use syn::{Error, FnArg, ItemFn, Pat, ReturnType, Type, spanned::Spanned};
+
+pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
+    let original = &item.sig;
+    let name = &original.ident;
+    let implementation_name = format_ident!("__unified_impl_{}", name);
+    let http_handler = format_ident!("__unified_http_{}", name);
+    let tauri_handler = format_ident!("__unified_tauri_{}", name);
+
+    let mut implementation = item.clone();
+    implementation.attrs = item
+        .attrs
+        .iter()
+        .filter(|attribute| attribute.path().is_ident("cfg"))
+        .cloned()
+        .collect();
+    implementation.vis = syn::Visibility::Inherited;
+    implementation.sig.ident = implementation_name.clone();
+
+    let mut wrapper_args = Vec::new();
+    let mut http_args = Vec::new();
+    let mut fields = Vec::new();
+    let mut field_names = Vec::new();
+    let mut http_supported = can_share_with_http(original);
+    let mut tauri_supported = true;
+
+    for argument in implementation.sig.inputs.iter_mut() {
+        let FnArg::Typed(argument) = argument else {
+            return Err(Error::new(
+                argument.span(),
+                "self receivers are not supported",
+            ));
+        };
+        let Pat::Ident(binding) = argument.pat.as_ref() else {
+            return Err(Error::new(
+                argument.pat.span(),
+                "command parameters must be identifiers",
+            ));
+        };
+        let ident = binding.ident.clone();
+
+        if let Some(state_type) = state_inner_type(&argument.ty) {
+            let state_name = type_name(&state_type);
+            argument.ty = Box::new(syn::parse_quote!(&#state_type));
+            wrapper_args.push(quote!(&*#ident));
+            if state_name.as_deref() == Some("NyanpasuClient") {
+                http_args.push(quote!(&dependencies.client));
+            } else if state_name.as_deref() == Some("Storage") {
+                http_args.push(quote!(&dependencies.storage));
+            } else if state_name.as_deref() == Some("LegacyVergeBridge") {
+                http_args.push(quote!(&dependencies.legacy_verge));
+            } else if state_name.as_deref() == Some("NetworkHttp") {
+                http_args.push(quote!(&dependencies.network_http));
+            } else {
+                http_supported = false;
+            }
+        } else if is_context_type(&argument.ty, "AppHandle") {
+            wrapper_args.push(quote!(#ident));
+            http_supported = false;
+        } else if is_context_type(&argument.ty, "Window") {
+            wrapper_args.push(quote!(#ident));
+            http_supported = false;
+        } else if is_context_type(&argument.ty, "Webview")
+            || is_context_type(&argument.ty, "WebviewWindow")
+        {
+            wrapper_args.push(quote!(#ident));
+            http_supported = false;
+        } else if is_tauri_channel(&argument.ty) {
+            wrapper_args.push(quote!(#ident));
+            http_supported = false;
+            tauri_supported = false;
+        } else {
+            let ty = argument.ty.clone();
+            fields.push(quote!(#ident: #ty));
+            field_names.push(ident.clone());
+            wrapper_args.push(quote!(#ident));
+            http_args.push(quote!(#ident));
+            if contains_reference(&argument.ty) {
+                tauri_supported = false;
+            }
+        }
+    }
+
+    let generic_args = static_lifetime_args(original, &mut tauri_supported);
+    let attrs = &item.attrs;
+    let cfg_attrs = implementation.attrs.iter().collect::<Vec<_>>();
+    let vis = &item.vis;
+    let block = &item.block;
+    let wrapper_call = call(
+        &implementation_name,
+        &wrapper_args,
+        original.asyncness.is_some(),
+        None,
+    );
+    let wrapper = quote! {
+        #(#attrs)*
+        #vis #original {
+            #wrapper_call
+        }
+    };
+    implementation.block = block.clone();
+
+    let params_parser = parser(&fields, &field_names);
+    let http_parse = params_parser;
+    let http_call = call(
+        &implementation_name,
+        &http_args,
+        original.asyncness.is_some(),
+        None,
+    );
+    let http_handler_body = if http_supported && !matches!(original.output, ReturnType::Default) {
+        let output = output_value(&http_call, &original.output);
+        quote! {
+            #http_parse
+            let output = #output?;
+            ::serde_json::to_value(output)
+                .map_err(crate::unified_rpc::RpcError::application)
+        }
+    } else {
+        quote! { Err(crate::unified_rpc::RpcError::unsupported(stringify!(#name))) }
+    };
+
+    let tauri_handler_definition = if tauri_supported {
+        let mut state_bindings = Vec::new();
+        let mut tauri_args = Vec::new();
+        for argument in &original.inputs {
+            let FnArg::Typed(argument) = argument else {
+                continue;
+            };
+            let Pat::Ident(binding) = argument.pat.as_ref() else {
+                continue;
+            };
+            let ident = &binding.ident;
+            if let Some(inner) = state_inner_type(&argument.ty) {
+                let state_name = format_ident!("__state_{}", ident);
+                state_bindings
+                    .push(quote!(let #state_name = ::tauri::Manager::state::<#inner>(&app);));
+                tauri_args.push(quote!(&*#state_name));
+            } else if is_context_type(&argument.ty, "AppHandle") {
+                tauri_args.push(quote!(app.clone()));
+            } else if is_context_type(&argument.ty, "Window") {
+                tauri_args.push(quote!(window.clone()));
+            } else if is_context_type(&argument.ty, "Webview")
+                || is_context_type(&argument.ty, "WebviewWindow")
+            {
+                tauri_args.push(quote!(webview.clone()));
+            } else {
+                tauri_args.push(quote!(#ident));
+            }
+        }
+        let generic_args = if generic_args.is_empty() {
+            None
+        } else {
+            Some(generic_args.as_slice())
+        };
+        let tauri_call = call(
+            &implementation_name,
+            &tauri_args,
+            original.asyncness.is_some(),
+            generic_args,
+        );
+        let output = output_value(&tauri_call, &original.output);
+        let parser = parser(&fields, &field_names);
+        quote! {
+            #(#cfg_attrs)*
+            fn #tauri_handler(
+                app: ::tauri::AppHandle,
+                window: ::tauri::Window,
+                webview: ::tauri::Webview,
+                params: ::serde_json::Value,
+            ) -> crate::unified_rpc::RpcFuture {
+                ::std::boxed::Box::pin(async move {
+                    #parser
+                    #(#state_bindings)*
+                    let output = #output?;
+                    ::serde_json::to_value(output)
+                        .map_err(crate::unified_rpc::RpcError::application)
+                })
+            }
+        }
+    } else {
+        quote! {
+            #(#cfg_attrs)*
+            fn #tauri_handler(
+                _app: ::tauri::AppHandle,
+                _window: ::tauri::Window,
+                _webview: ::tauri::Webview,
+                _params: ::serde_json::Value,
+            ) -> crate::unified_rpc::RpcFuture {
+                ::std::boxed::Box::pin(async move {
+                    Err(crate::unified_rpc::RpcError::unsupported(stringify!(#name)))
+                })
+            }
+        }
+    };
+
+    Ok(quote! {
+        #implementation
+        #wrapper
+
+        #(#cfg_attrs)*
+        fn #http_handler(
+            dependencies: ::std::sync::Arc<crate::unified_rpc::RpcDependencies>,
+            params: ::serde_json::Value,
+        ) -> crate::unified_rpc::RpcFuture {
+            ::std::boxed::Box::pin(async move {
+                #http_handler_body
+            })
+        }
+
+        #tauri_handler_definition
+
+        #(#cfg_attrs)*
+        ::inventory::submit! {
+            crate::unified_rpc::CommandEntry {
+                name: stringify!(#name),
+                http_handler: #http_handler,
+                tauri_handler: #tauri_handler,
+            }
+        }
+    })
+}
+
+fn call(
+    name: &syn::Ident,
+    args: &[TokenStream],
+    is_async: bool,
+    generic_args: Option<&[TokenStream]>,
+) -> TokenStream {
+    let generics = generic_args
+        .map(|args| quote!(::<#(#args),*>))
+        .unwrap_or_default();
+    if is_async {
+        quote!(#name #generics (#(#args),*).await)
+    } else {
+        quote!(#name #generics (#(#args),*))
+    }
+}
+
+fn output_value(call: &TokenStream, output: &ReturnType) -> TokenStream {
+    match output {
+        ReturnType::Type(_, ty) if is_result(ty) => {
+            quote!(#call.map_err(crate::unified_rpc::RpcError::application))
+        }
+        ReturnType::Type(_, _) => quote!(Ok(#call)),
+        ReturnType::Default => quote!(Ok(#call)),
+    }
+}
+
+fn parser(fields: &[TokenStream], names: &[syn::Ident]) -> TokenStream {
+    if fields.is_empty() {
+        quote! {
+            if !params.is_null() && !matches!(&params, ::serde_json::Value::Object(map) if map.is_empty()) {
+                return Err(crate::unified_rpc::RpcError::invalid_params("expected an empty input object"));
+            }
+        }
+    } else {
+        quote! {
+            #[derive(::serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args { #(#fields,)* }
+            let Args { #(#names,)* } = ::serde_json::from_value(params)
+                .map_err(|error| crate::unified_rpc::RpcError::invalid_params(error.to_string()))?;
+        }
+    }
+}
+
+fn can_share_with_http(signature: &syn::Signature) -> bool {
+    if !signature.generics.params.is_empty() || matches!(signature.output, ReturnType::Default) {
+        return false;
+    }
+    let mut has_dependency = false;
+    for argument in &signature.inputs {
+        let FnArg::Typed(argument) = argument else {
+            return false;
+        };
+        if !matches!(argument.pat.as_ref(), Pat::Ident(_)) {
+            return false;
+        }
+        if is_state(&argument.ty) {
+            if ![
+                "NyanpasuClient",
+                "Storage",
+                "LegacyVergeBridge",
+                "NetworkHttp",
+            ]
+            .iter()
+            .any(|name| is_state_of(&argument.ty, name))
+            {
+                return false;
+            }
+            has_dependency = true;
+        } else if contains_reference(&argument.ty) || is_tauri_context(&argument.ty) {
+            return false;
+        }
+    }
+    has_dependency
+}
+
+fn static_lifetime_args(signature: &syn::Signature, supported: &mut bool) -> Vec<TokenStream> {
+    signature
+        .generics
+        .params
+        .iter()
+        .map(|param| match param {
+            syn::GenericParam::Lifetime(_) => quote!('static),
+            _ => {
+                *supported = false;
+                quote!()
+            }
+        })
+        .collect()
+}
+
+fn is_tauri_context(ty: &Type) -> bool {
+    ["AppHandle", "Window", "Webview", "WebviewWindow"]
+        .iter()
+        .any(|name| is_context_type(ty, name))
+        || is_tauri_channel(ty)
+}
+
+fn is_tauri_channel(ty: &Type) -> bool {
+    matches!(ty, Type::Path(path)
+        if path.path.segments.last().is_some_and(|segment| segment.ident == "Channel")
+            && path.path.segments.iter().any(|segment| segment.ident == "tauri"))
+}
+
+fn is_context_type(ty: &Type, expected: &str) -> bool {
+    matches!(ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == expected))
+}
+
+fn state_inner_type(ty: &Type) -> Option<Type> {
+    let Type::Path(path) = ty else { return None };
+    let segment = path.path.segments.last()?;
+    if segment.ident != "State" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return None;
+    };
+    args.args.iter().find_map(|arg| match arg {
+        syn::GenericArgument::Type(ty) => Some(ty.clone()),
+        _ => None,
+    })
+}
+
+fn is_state(ty: &Type) -> bool {
+    state_inner_type(ty).is_some()
+}
+
+fn is_state_of(ty: &Type, expected: &str) -> bool {
+    state_inner_type(ty).is_some_and(|inner| is_context_type(&inner, expected))
+}
+
+fn type_name(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Path(path) => path
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string()),
+        _ => None,
+    }
+}
+
+fn contains_reference(ty: &Type) -> bool {
+    matches!(ty, Type::Reference(_))
+}
+
+fn is_result(ty: &Type) -> bool {
+    matches!(ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "Result"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand;
+    use syn::{Item, ItemFn};
+
+    #[test]
+    fn every_ipc_rpc_command_has_a_desktop_dispatcher() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../tauri/src/ipc.rs");
+        let source = std::fs::read_to_string(path).expect("failed to read IPC command source");
+        let file = syn::parse_file(&source).expect("failed to parse IPC command source");
+        let mut commands = Vec::new();
+        collect_rpc_commands(&file.items, &mut commands);
+        assert!(!commands.is_empty(), "expected RPC commands in ipc.rs");
+
+        for command in commands {
+            let name = command.sig.ident.to_string();
+            let expanded =
+                expand(command).unwrap_or_else(|error| panic!("failed to expand {name}: {error}"));
+            let expanded = syn::parse2::<syn::File>(expanded)
+                .unwrap_or_else(|error| panic!("failed to parse expansion for {name}: {error}"));
+            let handler_name = format_ident!("__unified_tauri_{name}");
+            let handler = expanded
+                .items
+                .iter()
+                .find_map(|item| match item {
+                    Item::Fn(function) if function.sig.ident == handler_name => Some(function),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("missing Tauri handler for {name}"));
+            assert!(
+                !handler
+                    .block
+                    .to_token_stream()
+                    .to_string()
+                    .contains("RpcError :: unsupported"),
+                "Tauri command {name} was compiled into an unsupported dispatcher"
+            );
+        }
+    }
+
+    fn collect_rpc_commands(items: &[Item], commands: &mut Vec<ItemFn>) {
+        for item in items {
+            match item {
+                Item::Fn(function)
+                    if function.attrs.iter().any(|attribute| {
+                        attribute
+                            .path()
+                            .segments
+                            .last()
+                            .is_some_and(|segment| segment.ident == "rpc")
+                    }) =>
+                {
+                    commands.push(function.clone())
+                }
+                Item::Mod(module) => {
+                    if let Some((_, nested)) = &module.content {
+                        collect_rpc_commands(nested, commands);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    use quote::{ToTokens, format_ident};
+}

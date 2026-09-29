@@ -1,4 +1,4 @@
-import type { ConfigurationStatus } from './bindings'
+import type { ConfigurationStatus } from './rpc-bindings'
 
 /** Event and query replies share a sequence; delayed replies cannot erase newer failures. */
 export function acceptConfigurationStatus(

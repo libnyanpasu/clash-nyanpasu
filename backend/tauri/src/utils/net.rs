@@ -1,34 +1,64 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use super::candy::get_reqwest_client;
+use anyhow::Result;
+use serde_json::Value;
 
-#[tracing_attributes::instrument]
-pub async fn url_delay_test(url: &str, expected_status: u16) -> Option<u64> {
+#[async_trait::async_trait]
+pub trait HttpGet: Send + Sync {
+    async fn get_status(&self, url: &str) -> Result<u16>;
+    async fn get_json(&self, url: &str) -> Result<Value>;
+}
+
+#[derive(Clone)]
+pub struct NetworkHttp(pub Arc<dyn HttpGet>);
+
+impl NetworkHttp {
+    pub fn new(http: Arc<dyn HttpGet>) -> Self {
+        Self(http)
+    }
+}
+
+pub struct ReqwestHttpGet {
+    client: reqwest::Client,
+}
+
+impl ReqwestHttpGet {
+    pub fn new(client: reqwest::Client) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait::async_trait]
+impl HttpGet for ReqwestHttpGet {
+    async fn get_status(&self, url: &str) -> Result<u16> {
+        Ok(self.client.get(url).send().await?.status().as_u16())
+    }
+
+    async fn get_json(&self, url: &str) -> Result<Value> {
+        let response = self.client.get(url).send().await?.error_for_status()?;
+        Ok(response.json().await?)
+    }
+}
+
+#[tracing_attributes::instrument(skip(http))]
+pub async fn url_delay_test(http: &dyn HttpGet, url: &str, expected_status: u16) -> Option<u64> {
     // heat up
-    let client = get_reqwest_client().ok()?;
-    let _ = tokio::time::timeout(Duration::from_secs(10), client.get(url).send())
+    let _ = tokio::time::timeout(Duration::from_secs(10), http.get_status(url))
         .await
         .ok()?
         .ok()?;
     let tick = tokio::time::Instant::now();
-    let response = tokio::time::timeout(Duration::from_secs(10), client.get(url).send())
+    let status = tokio::time::timeout(Duration::from_secs(10), http.get_status(url))
         .await
         .ok()?
         .ok()?;
-    if response.status().as_u16() != expected_status {
+    if status != expected_status {
         return None;
     }
     Some(tick.elapsed().as_millis() as u64)
 }
 
-#[tracing_attributes::instrument]
-pub async fn get_ipsb_asn() -> anyhow::Result<serde_json::Value> {
-    let client = get_reqwest_client()?;
-    let response = client
-        .get("https://api.ip.sb/geoip")
-        .send()
-        .await?
-        .error_for_status()?;
-    let data: serde_json::Value = response.json().await?;
-    Ok(data)
+#[tracing_attributes::instrument(skip(http))]
+pub async fn get_ipsb_asn(http: &dyn HttpGet) -> anyhow::Result<serde_json::Value> {
+    http.get_json("https://api.ip.sb/geoip").await
 }

@@ -2,10 +2,9 @@ import { useEffect } from 'react'
 import { m } from '@/paraglide/messages'
 import {
   acceptConfigurationStatus,
-  commands,
-  events,
   invokeMutation,
   MutationUnconfirmedError,
+  rpc,
   unwrapResult,
   type ConfigurationStatus,
   type ConvergenceHealth,
@@ -82,7 +81,7 @@ export function ConfigurationStatusPanel() {
     queryKey: STATUS_KEY,
     // A late poll must not replace a newer event already in the cache.
     queryFn: async () => {
-      const next = await commands.getConfigurationStatus()
+      const next = await rpc.getConfigurationStatus()
       // Compare with the cache after the reply: an event may have landed meanwhile.
       return acceptConfigurationStatus(
         queryClient.getQueryData<ConfigurationStatus>(STATUS_KEY),
@@ -92,7 +91,7 @@ export function ConfigurationStatusPanel() {
     refetchInterval: 10_000,
   })
   useEffect(() => {
-    const listener = events.configurationStatusChanged
+    const listener = rpc.events.configurationStatusChanged
       .listen((event) =>
         queryClient.setQueryData<ConfigurationStatus>(STATUS_KEY, (previous) =>
           acceptConfigurationStatus(previous, event.payload),
@@ -111,8 +110,8 @@ export function ConfigurationStatusPanel() {
           {
             mutationFn: () =>
               kind
-                ? commands.retryConfigurationEffect(kind)
-                : commands.retryConfigurationRuntime(),
+                ? rpc.retryConfigurationEffect(kind)
+                : rpc.retryConfigurationRuntime(),
           },
           undefined,
         ),

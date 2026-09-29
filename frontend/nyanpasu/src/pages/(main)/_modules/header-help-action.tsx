@@ -8,12 +8,12 @@ import {
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatEnvInfos } from '@/utils'
-import { commands } from '@nyanpasu/interface'
+import { rpc } from '@nyanpasu/interface'
 import { Link } from '@tanstack/react-router'
 
 const WikiItem = () => {
   const handleClick = useLockFn(async () => {
-    await commands.openThat('https://nyanpasu.org')
+    await rpc.openThat('https://nyanpasu.org')
   })
 
   return (
@@ -25,7 +25,7 @@ const WikiItem = () => {
 
 const IssuesItem = () => {
   const handleClick = useLockFn(async () => {
-    const envs = await commands.collectEnvs()
+    const envs = await rpc.collectEnvs()
 
     if (envs.status !== 'ok') {
       return
@@ -45,7 +45,7 @@ const IssuesItem = () => {
       template: 'bug_report.yaml',
     })
 
-    return commands.openThat(
+    return rpc.openThat(
       'https://github.com/libnyanpasu/clash-nyanpasu/issues/new?' +
         params.toString() +
         // envs can't be serialized
@@ -63,7 +63,7 @@ const IssuesItem = () => {
 
 const CollectLogItem = () => {
   const handleClick = useLockFn(async () => {
-    await commands.collectLogs()
+    await rpc.collectLogs()
   })
 
   return (

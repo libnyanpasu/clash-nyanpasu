@@ -1,13 +1,9 @@
 import { merge } from 'lodash-es'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import {
-  mutations,
-  queries,
-  type IVerge_Deserialize,
-  type IVerge_Serialize,
-} from './bindings'
 import { invokeMutation, unwrapQueryOptions } from './query-options'
+import { rpc } from './rpc'
+import { type IVerge_Deserialize, type IVerge_Serialize } from './rpc-bindings'
 
 /**
  * Custom hook for managing Verge configuration settings using React Query.
@@ -35,8 +31,8 @@ import { invokeMutation, unwrapQueryOptions } from './query-options'
  */
 export const useSettings = () => {
   const queryClient = useQueryClient()
-  const settingsQuery = queries.getVergeConfig()
-  const patchSettings = mutations.patchVergeConfig
+  const settingsQuery = rpc.queries.getVergeConfig()
+  const patchSettings = rpc.mutations.patchVergeConfig
 
   /**
    * A query hook that fetches Verge configuration settings.

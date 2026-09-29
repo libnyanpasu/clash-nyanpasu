@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 import {
-  commands,
+  rpc,
   unwrapResult,
   useIsAppImage,
   useReleaseChannel,
@@ -65,7 +65,7 @@ export default function NyanpasuUpdateProvider({
 
   const blockTask = useBlockTask('check-nyanpasu-update', async () => {
     const checkedChannel = channelRef.current
-    const metadata = unwrapResult(await commands.checkUpdate())
+    const metadata = unwrapResult(await rpc.checkUpdate())
 
     if (metadata) {
       const update = new Update({

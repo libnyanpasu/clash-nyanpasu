@@ -6,13 +6,12 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import { rpc } from '../ipc/rpc'
 import {
-  commands,
-  events,
   type ClashWsEvent,
   type ClashWsKind,
   type ClashWsSnapshot,
-} from '../ipc/bindings'
+} from '../ipc/rpc-bindings'
 import type { ClashConnection } from '../ipc/use-clash-connections'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
@@ -56,7 +55,7 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       syncing = true
       try {
         do {
-          const result = await commands.getClashWsSnapshot()
+          const result = await rpc.getClashWsSnapshot()
           if (disposed) return
           if (result.status === 'error') throw result.error
           if (!current || result.data.sequence >= current.sequence)
@@ -86,7 +85,7 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
 
     // Subscribe before requesting the snapshot. The bounded buffer plus sequence
     // checks also covers slow IPC, event loss, and StrictMode effect teardown.
-    events.clashWsEvent
+    rpc.events.clashWsEvent
       .listen(({ payload }) => {
         if (disposed) return
         if (syncing || !current) {
@@ -125,7 +124,7 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
   }, [])
 
   const clearHistory = useCallback(async (kind: ClashWsKind) => {
-    const result = await commands.clearClashWsHistory(kind)
+    const result = await rpc.clearClashWsHistory(kind)
     if (result.status === 'error') throw result.error
     // The sequenced history_cleared event orders this against later samples.
   }, [])

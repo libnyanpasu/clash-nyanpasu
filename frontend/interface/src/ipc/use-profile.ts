@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
+import { invokeMutation, invokeQuery } from './query-options'
+import { rpc } from './rpc'
 import {
-  mutations,
-  queries,
   type MutationOutcome,
   type NewProfileRequest_Deserialize,
   type ProfileDefinition_Deserialize,
@@ -11,8 +11,7 @@ import {
   type ProfileMetadataPatch_Deserialize,
   type ProfileSource_Serialize,
   type RemoteProfileOptionsPatch_Deserialize,
-} from './bindings'
-import { invokeMutation, invokeQuery } from './query-options'
+} from './rpc-bindings'
 
 // ---- discriminant helpers (successors of the retired NormalizedProfile collapse) ----
 
@@ -79,18 +78,18 @@ export type CreateParams =
 
 export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   const queryClient = useQueryClient()
-  const profilesOptions = queries.getProfiles()
-  const importProfile = mutations.importProfile
-  const createProfile = mutations.createProfile
-  const updateProfile = mutations.updateProfile
-  const patchProfileMetadata = mutations.patchProfileMetadata
-  const patchRemoteProfileOptions = mutations.patchRemoteProfileOptions
-  const replaceProfileDefinition = mutations.replaceProfileDefinition
-  const viewProfile = mutations.viewProfile
-  const activateProfile = mutations.activateProfile
-  const setProfileValidFields = mutations.setProfileValidFields
-  const reorderProfilesByList = mutations.reorderProfilesByList
-  const deleteProfile = mutations.deleteProfile
+  const profilesOptions = rpc.queries.getProfiles()
+  const importProfile = rpc.mutations.importProfile
+  const createProfile = rpc.mutations.createProfile
+  const updateProfile = rpc.mutations.updateProfile
+  const patchProfileMetadata = rpc.mutations.patchProfileMetadata
+  const patchRemoteProfileOptions = rpc.mutations.patchRemoteProfileOptions
+  const replaceProfileDefinition = rpc.mutations.replaceProfileDefinition
+  const viewProfile = rpc.mutations.viewProfile
+  const activateProfile = rpc.mutations.activateProfile
+  const setProfileValidFields = rpc.mutations.setProfileValidFields
+  const reorderProfilesByList = rpc.mutations.reorderProfilesByList
+  const deleteProfile = rpc.mutations.deleteProfile
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: profilesOptions.queryKey })
 
@@ -117,7 +116,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
   })
 
-  // Profile mutations return the full MutationOutcome so MutationCache can
+  // Profile rpc.mutations return the full MutationOutcome so MutationCache can
   // observe `committed_degraded`. Do not collapse to bare values or legacy
   // `{ uid, rebuild }` shapes before React Query onSuccess.
   const create = useMutation({

@@ -1,8 +1,8 @@
-import { commands } from '@interface/ipc'
+import { rpc } from '@interface/ipc'
 import { unwrapResult } from '@interface/utils'
 
 export const timing = async (url: string, code: number) => {
-  return (unwrapResult(await commands.urlDelayTest(url, code)) ?? 0) as number
+  return (unwrapResult(await rpc.urlDelayTest(url, code)) ?? 0) as number
 }
 
 export const createTiming = (url: string, code: number = 204) => {

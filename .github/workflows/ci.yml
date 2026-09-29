@@ -112,8 +112,6 @@ jobs:
           NODE_OPTIONS: '--max_old_space_size=4096'
       - name: Prepare sidecar and resources
         run: pnpm prepare:check
-      - name: Check application API generated artifacts
-        run: pnpm check:application-api
       - name: Lint
         if: startsWith(matrix.targets.os, 'ubuntu-')
         run: pnpm lint # Lint

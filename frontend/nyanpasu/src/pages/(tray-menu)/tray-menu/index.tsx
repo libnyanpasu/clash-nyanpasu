@@ -9,9 +9,9 @@ import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import SettingsEthernet from '~icons/material-symbols/settings-ethernet-rounded'
 import TerminalIcon from '~icons/material-symbols/terminal-rounded'
 import {
-  commands,
   CopyEnvOption,
   ProxyMode as ProxyModeType,
+  rpc,
   useProxyMode,
 } from '@nyanpasu/interface/ipc'
 import {
@@ -29,7 +29,6 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { relaunch } from '@tauri-apps/plugin-process'
 import { ActionButton } from './_modules/action-button'
 import { useTrayClickHandler } from './_modules/hooks'
 
@@ -41,7 +40,7 @@ export const Route = createFileRoute('/(tray-menu)/tray-menu/')({
 
 const OpenDashboardButton = () => {
   const handleClick = useLockFn(async () => {
-    await commands.createMainWindow()
+    await rpc.createMainWindow()
   })
 
   return (
@@ -145,7 +144,7 @@ const ProxiesButton = () => {
 
 const EnvCopyButton = () => {
   const handleClick = useTrayClickHandler(async (type: CopyEnvOption) => {
-    await commands.copyClashEnv(type)
+    await rpc.copyClashEnv(type)
   })
 
   const messages = {
@@ -195,16 +194,16 @@ const OpenDirectoryButton = () => {
     async (type: DirectoryType) => {
       switch (type) {
         case 'data':
-          await commands.openAppDataDir()
+          await rpc.openAppDataDir()
           break
         case 'config':
-          await commands.openAppConfigDir()
+          await rpc.openAppConfigDir()
           break
         case 'core':
-          await commands.openCoreDir()
+          await rpc.openCoreDir()
           break
         case 'log':
-          await commands.openLogsDir()
+          await rpc.openLogsDir()
           break
       }
     },
@@ -248,10 +247,10 @@ const RestartButton = () => {
   const handleRestart = useTrayClickHandler(async (type: RestartType) => {
     switch (type) {
       case 'app':
-        await commands.restartApplication()
+        await rpc.restartApplication()
         break
       case 'core':
-        await commands.restartSidecar()
+        await rpc.restartSidecar()
         break
     }
   })
@@ -285,7 +284,7 @@ const RestartButton = () => {
 
 const QuitActionButton = () => {
   const handleClick = useLockFn(async () => {
-    await commands.quitApplication()
+    await rpc.quitApplication()
   })
 
   return (

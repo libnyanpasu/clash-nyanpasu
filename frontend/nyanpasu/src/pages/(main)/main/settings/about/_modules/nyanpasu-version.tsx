@@ -28,7 +28,7 @@ import {
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { commands, useSetting, type ReleaseChannel } from '@nyanpasu/interface'
+import { rpc, useSetting, type ReleaseChannel } from '@nyanpasu/interface'
 import { relaunch } from '@tauri-apps/plugin-process'
 import {
   SettingsCard,
@@ -165,7 +165,7 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
         }
       })
 
-      await commands.cleanupProcesses()
+      await rpc.cleanupProcesses()
       // cleanup and stop core
       await newVersion.install()
       // On macOS and Linux you will need to restart the app manually.
@@ -222,7 +222,7 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
                             e.stopPropagation()
 
                             if (typeof node?.properties.href === 'string') {
-                              commands.openThat(node.properties.href)
+                              rpc.openThat(node.properties.href)
                             }
                           }}
                         >
@@ -265,7 +265,7 @@ export default function NyanpasuVersion() {
   } = useNyanpasuUpdate()
 
   const handleUpdateToGithubReleases = useLockFn(
-    async () => await commands.openThat(GITHUB_RELEASES_URL),
+    async () => await rpc.openThat(GITHUB_RELEASES_URL),
   )
 
   const handleCheckNewVersion = useLockFn(async () => {

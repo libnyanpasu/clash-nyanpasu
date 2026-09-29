@@ -1,14 +1,13 @@
 import { kebabCase } from 'lodash-es'
 import { unwrapResult } from '@interface/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { invokeMutation, invokeQuery } from './query-options'
+import { rpc } from './rpc'
 import {
-  mutations,
-  queries,
   type ClashCore,
   type ClashCore_Deserialize,
   type ClashCore_Serialize,
-} from './bindings'
-import { invokeMutation, invokeQuery } from './query-options'
+} from './rpc-bindings'
 
 export const ClashCores = {
   clash: 'Clash Premium',
@@ -29,11 +28,11 @@ export type ClashCoresDetail = {
 
 export const useClashCores = () => {
   const queryClient = useQueryClient()
-  const coreQueryKey = queries.getCoreVersion('clash').queryKey.slice(0, 1)
-  const fetchLatestCoreVersions = queries.fetchLatestCoreVersions()
-  const updateCoreCommand = mutations.updateCore
-  const changeClashCoreCommand = mutations.changeClashCore
-  const restartSidecarCommand = mutations.restartSidecar
+  const coreQueryKey = rpc.queries.getCoreVersion('clash').queryKey.slice(0, 1)
+  const fetchLatestCoreVersions = rpc.queries.fetchLatestCoreVersions()
+  const updateCoreCommand = rpc.mutations.updateCore
+  const changeClashCoreCommand = rpc.mutations.changeClashCore
+  const restartSidecarCommand = rpc.mutations.restartSidecar
 
   const query = useQuery({
     queryKey: coreQueryKey,
@@ -45,7 +44,7 @@ export const useClashCores = () => {
             const currentVersion =
               unwrapResult(
                 await invokeQuery(
-                  queries.getCoreVersion(key as ClashCore_Deserialize),
+                  rpc.queries.getCoreVersion(key as ClashCore_Deserialize),
                 ),
               ) ?? 'N/A'
 
@@ -118,10 +117,10 @@ export const useClashCores = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKey })
       queryClient.invalidateQueries({
-        queryKey: queries.getVergeConfig().queryKey,
+        queryKey: rpc.queries.getVergeConfig().queryKey,
       })
       queryClient.invalidateQueries({
-        queryKey: queries.clashApiGetVersion().queryKey,
+        queryKey: rpc.queries.clashApiGetVersion().queryKey,
       })
     },
   })
@@ -131,7 +130,9 @@ export const useClashCores = () => {
   }
 
   const inspectUpdater = async (updaterId: number) => {
-    return unwrapResult(await invokeQuery(queries.inspectUpdater(updaterId)))
+    return unwrapResult(
+      await invokeQuery(rpc.queries.inspectUpdater(updaterId)),
+    )
   }
 
   return {

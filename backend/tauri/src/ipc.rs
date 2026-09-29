@@ -2,7 +2,7 @@ use crate::{
     bridge::verge::LegacyVergeBridge,
     client::{ClientError, NyanpasuClient},
     config::*,
-    core::{logger::Logger, storage::Storage, updater::ManifestVersionLatest, *},
+    core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat::{self, CopyEnvOption},
     utils::{candy, collect::EnvInfo, dirs, help, resolve},
@@ -102,12 +102,14 @@ use nyanpasu_config::profile::{
     RemoteProfileOptionsPatch,
 };
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<DomainProfiles> {
     Ok((*client.get_profiles().await?).clone())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
@@ -122,6 +124,7 @@ pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
 
 /// Rebuild-only command: there is no prior state commit, so a failure is a
 /// plain error — the committed/degraded model (spec §6.2) does not apply.
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
@@ -129,6 +132,7 @@ pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn import_profile(
@@ -169,6 +173,7 @@ pub struct PendingDeepLink(pub std::sync::Mutex<Option<String>>);
 
 /// Take and clear the pending cold-start deep link, if any. Called once by the
 /// frontend during startup.
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<String>> {
@@ -176,6 +181,7 @@ pub async fn get_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Resul
 }
 
 /// create a new profile
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn create_profile(
@@ -187,6 +193,7 @@ pub async fn create_profile(
     Ok(client.create_profile(request, file_data).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn reorder_profile(
@@ -197,6 +204,7 @@ pub async fn reorder_profile(
     Ok(client.reorder_profile(active_id, over_id).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn reorder_profiles_by_list(
@@ -206,6 +214,7 @@ pub async fn reorder_profiles_by_list(
     Ok(client.reorder_profiles_by_list(list).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn update_profile(
@@ -216,6 +225,7 @@ pub async fn update_profile(
     Ok(client.refresh_profile(uid, option).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_profile(
@@ -225,6 +235,7 @@ pub async fn delete_profile(
     Ok(client.delete_profile(uid).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn activate_profile(
@@ -234,6 +245,7 @@ pub async fn activate_profile(
     Ok(client.activate_profile(uid).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_global_transforms(
@@ -243,6 +255,7 @@ pub async fn set_global_transforms(
     Ok(client.set_global_transforms(ids).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_profile_valid_fields(
@@ -252,6 +265,7 @@ pub async fn set_profile_valid_fields(
     Ok(client.set_profile_valid_fields(fields).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn patch_profile_metadata(
@@ -262,6 +276,7 @@ pub async fn patch_profile_metadata(
     Ok(client.patch_profile_metadata(uid, patch).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn patch_remote_profile_options(
@@ -272,6 +287,7 @@ pub async fn patch_remote_profile_options(
     Ok(client.patch_remote_profile_options(uid, patch).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn replace_profile_definition(
@@ -282,6 +298,7 @@ pub async fn replace_profile_definition(
     Ok(client.replace_profile_definition(uid, definition).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn view_profile(
@@ -297,6 +314,7 @@ pub async fn view_profile(
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn read_profile_file(
@@ -306,6 +324,7 @@ pub async fn read_profile_file(
     Ok(client.read_profile_file(uid).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn save_profile_file(
@@ -316,13 +335,15 @@ pub async fn save_profile_file(
     Ok(client.save_profile_file(uid, file_data).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn get_clash_info() -> Result<ClashInfo> {
-    Ok(Config::clash().latest().get_client_info())
+pub async fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<ClashInfo> {
+    Ok(client.get_clash_info().await?)
 }
 
 /// get the runtime config
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
@@ -343,6 +364,7 @@ pub async fn get_runtime_config(
     }
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
@@ -357,6 +379,7 @@ pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<Strin
     Ok(mapping)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn inspect_runtime(
@@ -365,6 +388,7 @@ pub async fn inspect_runtime(
     Ok(client.inspect_runtime().await)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn inspect_applied_runtime(
@@ -373,6 +397,7 @@ pub async fn inspect_applied_runtime(
     Ok(client.inspect_applied_runtime().await)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn inspect_runtime_node(
@@ -383,6 +408,7 @@ pub async fn inspect_runtime_node(
     Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
@@ -394,6 +420,7 @@ pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec
         .unwrap_or_default())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_postprocessing_output(
@@ -407,6 +434,7 @@ pub async fn get_postprocessing_output(
         .unwrap_or_default())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_status(
@@ -415,18 +443,26 @@ pub async fn get_core_status(
     Ok(client.core_status().into())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u64>> {
-    Ok(crate::utils::net::url_delay_test(url, expected_status).await)
+pub async fn url_delay_test(
+    http: State<'_, crate::utils::net::NetworkHttp>,
+    url: String,
+    expected_status: u16,
+) -> Result<Option<u64>> {
+    Ok(crate::utils::net::url_delay_test(&*http.0, &url, expected_status).await)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
 // Any<> to avoid infinite type expansion.
-pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>> {
-    let value = crate::utils::net::get_ipsb_asn().await?;
+pub async fn get_ipsb_asn(
+    http: State<'_, crate::utils::net::NetworkHttp>,
+) -> Result<specta_typescript::Any<serde_json::Value>> {
+    let value = crate::utils::net::get_ipsb_asn(&*http.0).await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
 }
@@ -445,6 +481,7 @@ pub struct PatchRuntimeConfig {
 }
 
 /// patch clash runtime config
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 #[tracing_attributes::instrument(skip_all)]
@@ -467,12 +504,14 @@ pub async fn patch_clash_config(
     Ok(client.patch_runtime_overrides(overrides).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_verge_config(legacy: State<'_, LegacyVergeBridge>) -> Result<IVerge> {
     Ok(legacy.get_verge_config().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn get_hotkey_functions() -> Vec<&'static str> {
@@ -482,6 +521,7 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
         .collect()
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn patch_verge_config(
@@ -491,6 +531,7 @@ pub async fn patch_verge_config(
     Ok(legacy.patch_verge_config(payload).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn change_clash_core(
@@ -512,6 +553,7 @@ pub async fn change_clash_core(
 }
 
 /// restart the sidecar
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
@@ -521,6 +563,7 @@ pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
 
 /// get the system proxy
 /// server field is the combination of host and port
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
@@ -537,6 +580,7 @@ pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
     })
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result {
@@ -544,12 +588,20 @@ pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn get_clash_logs() -> Result<VecDeque<String>> {
-    Ok(Logger::global().get_log())
+pub async fn get_clash_logs(client: State<'_, NyanpasuClient>) -> Result<VecDeque<String>> {
+    Ok(client
+        .clash_ws_snapshot()
+        .await?
+        .logs
+        .into_iter()
+        .map(|log| log.payload)
+        .collect())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn open_app_config_dir() -> Result<()> {
@@ -558,6 +610,7 @@ pub fn open_app_config_dir() -> Result<()> {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn open_app_data_dir() -> Result<()> {
@@ -566,6 +619,7 @@ pub fn open_app_data_dir() -> Result<()> {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn open_core_dir() -> Result<()> {
@@ -577,6 +631,7 @@ pub fn open_core_dir() -> Result<()> {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn get_core_dir() -> Result<String> {
@@ -588,6 +643,7 @@ pub fn get_core_dir() -> Result<String> {
     Ok(core_dir.to_string_lossy().to_string())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn open_logs_dir() -> Result<()> {
@@ -596,6 +652,7 @@ pub fn open_logs_dir() -> Result<()> {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn open_web_url(url: String) -> Result<()> {
@@ -603,6 +660,7 @@ pub fn open_web_url(url: String) -> Result<()> {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn fetch_latest_core_versions(
@@ -611,6 +669,7 @@ pub async fn fetch_latest_core_versions(
     Ok(client.fetch_latest_core_versions().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_version(
@@ -623,6 +682,7 @@ pub async fn get_core_version(
     }
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn collect_logs(app_handle: AppHandle) -> Result {
@@ -648,6 +708,7 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn update_core(
@@ -657,6 +718,7 @@ pub async fn update_core(
     Ok(client.download_core_update(core_type).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn inspect_updater(
@@ -666,6 +728,7 @@ pub async fn inspect_updater(
     Ok(client.inspect_updater(updater_id).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_proxy_delay(
@@ -677,6 +740,7 @@ pub async fn clash_api_get_proxy_delay(
     Ok(client.proxy_delay(name, provider, url).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_configs(
@@ -685,6 +749,7 @@ pub async fn clash_api_get_configs(
     Ok(client.clash_configs().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_delete_connections(
@@ -694,6 +759,7 @@ pub async fn clash_api_delete_connections(
     Ok(client.close_clash_connections(id).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_version(
@@ -702,6 +768,7 @@ pub async fn clash_api_get_version(
     Ok(client.clash_version().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_rules(
@@ -710,6 +777,7 @@ pub async fn clash_api_get_rules(
     Ok(client.clash_rules().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_providers_rules(
@@ -718,6 +786,7 @@ pub async fn clash_api_get_providers_rules(
     Ok(client.clash_rule_providers().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_update_providers_rules(
@@ -727,6 +796,7 @@ pub async fn clash_api_update_providers_rules(
     Ok(client.update_clash_rule_provider(name).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_group_delay(
@@ -737,6 +807,7 @@ pub async fn clash_api_get_group_delay(
     Ok(client.group_delay(group, url).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_providers_proxies(
@@ -745,6 +816,7 @@ pub async fn clash_api_get_providers_proxies(
     Ok(client.proxy_providers().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_proxies(
@@ -753,6 +825,7 @@ pub async fn get_proxies(
     Ok(client.get_proxies().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn mutate_proxies(
@@ -761,6 +834,7 @@ pub async fn mutate_proxies(
     Ok(client.refresh_proxies().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn select_proxy(
@@ -771,18 +845,21 @@ pub async fn select_proxy(
     Ok(client.select_proxy(group, name).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: String) -> Result<()> {
     Ok(client.update_proxy_provider(name).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> {
     Ok((crate::utils::collect::collect_envs())?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn open_that(path: String) -> Result {
@@ -790,6 +867,7 @@ pub fn open_that(path: String) -> Result {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn is_appimage() -> Result<bool> {
@@ -797,6 +875,7 @@ pub fn is_appimage() -> Result<bool> {
 }
 
 #[cfg(windows)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
@@ -809,6 +888,7 @@ pub fn get_custom_app_dir() -> Result<Option<String>> {
 }
 
 #[cfg(not(windows))]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
@@ -816,6 +896,7 @@ pub fn get_custom_app_dir() -> Result<Option<String>> {
 }
 
 #[cfg(windows)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> Result {
@@ -855,6 +936,7 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> R
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
@@ -862,6 +944,7 @@ pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn get_server_port() -> Result<u16> {
@@ -869,6 +952,7 @@ pub fn get_server_port() -> Result<u16> {
 }
 
 #[cfg(not(windows))]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_custom_app_dir(_path: String) -> Result {
@@ -880,6 +964,7 @@ pub mod uwp {
     use super::Result;
     use crate::core::win_uwp;
 
+    #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
     pub async fn invoke_uwp_tool() -> Result {
@@ -888,6 +973,7 @@ pub mod uwp {
     }
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_icon(
@@ -900,6 +986,7 @@ pub async fn set_tray_icon(
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn is_tray_icon_set(mode: TrayIcon) -> Result<bool> {
@@ -925,6 +1012,7 @@ pub mod service {
         pub restart_attempts: u8,
     }
 
+    #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
     pub async fn status_service(client: State<'_, NyanpasuClient>) -> Result<ServiceStatusInfo> {
@@ -940,6 +1028,7 @@ pub mod service {
         })
     }
 
+    #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
     pub async fn install_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -947,6 +1036,7 @@ pub mod service {
         Ok(())
     }
 
+    #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
     pub async fn uninstall_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -954,6 +1044,7 @@ pub mod service {
         Ok(())
     }
 
+    #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
     pub async fn start_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -961,6 +1052,7 @@ pub mod service {
         Ok(())
     }
 
+    #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
     pub async fn stop_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -968,6 +1060,7 @@ pub mod service {
         Ok(())
     }
 
+    #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
     pub async fn restart_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -980,6 +1073,7 @@ pub mod service {
 pub mod uwp {
     use super::*;
 
+    #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
     pub async fn invoke_uwp_tool() -> Result {
@@ -987,6 +1081,7 @@ pub mod uwp {
     }
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt() -> Result<String> {
@@ -1002,6 +1097,7 @@ pub async fn get_service_install_prompt() -> Result<String> {
     Ok(prompt)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn cleanup_processes(app_handle: AppHandle) -> Result {
@@ -1018,36 +1114,38 @@ fn web_key(key: &str) -> String {
     format!("{WEB_STORAGE_KEY_PREFIX}{key}")
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn get_storage_item(app_handle: AppHandle, key: String) -> Result<Option<String>> {
-    let storage = app_handle.state::<Storage>();
+pub fn get_storage_item(storage: State<'_, Storage>, key: String) -> Result<Option<String>> {
     let value = (storage.get_item(web_key(&key)))?;
     Ok(value)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn set_storage_item(app_handle: AppHandle, key: String, value: String) -> Result {
-    let storage = app_handle.state::<Storage>();
+pub fn set_storage_item(storage: State<'_, Storage>, key: String, value: String) -> Result {
     (storage.set_item(web_key(&key), &value))?;
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn remove_storage_item(app_handle: AppHandle, key: String) -> Result {
-    let storage = app_handle.state::<Storage>();
+pub fn remove_storage_item(storage: State<'_, Storage>, key: String) -> Result {
     (storage.remove_item(web_key(&key)))?;
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_hotkeys(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
     Ok(client.get_app_config().await?.hotkeys)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_hotkeys(
@@ -1073,10 +1171,10 @@ pub struct StorageEntry {
 
 /// Debug: returns all frontend KV entries (keys with the `web:` prefix).
 /// Internal storage entries used by other subsystems are excluded.
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn get_all_storage_items(app_handle: AppHandle) -> Result<Vec<StorageEntry>> {
-    let storage = app_handle.state::<Storage>();
+pub fn get_all_storage_items(storage: State<'_, Storage>) -> Result<Vec<StorageEntry>> {
     let items = storage.get_all()?;
     Ok(items
         .into_iter()
@@ -1093,10 +1191,10 @@ pub fn get_all_storage_items(app_handle: AppHandle) -> Result<Vec<StorageEntry>>
 
 /// Debug: clears all frontend KV entries (keys with the `web:` prefix).
 /// Internal storage entries used by other subsystems are left intact.
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn clear_storage(app_handle: AppHandle) -> Result {
-    let storage = app_handle.state::<Storage>();
+pub fn clear_storage(storage: State<'_, Storage>) -> Result {
     let web_keys: Vec<String> = storage
         .get_all()?
         .into_iter()
@@ -1109,6 +1207,7 @@ pub fn clear_storage(app_handle: AppHandle) -> Result {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_clash_ws_connections_state(
@@ -1117,6 +1216,7 @@ pub async fn get_clash_ws_connections_state(
     Ok(client.clash_ws_snapshot().await?.state)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_clash_ws_snapshot(
@@ -1125,6 +1225,7 @@ pub async fn get_clash_ws_snapshot(
     Ok(client.clash_ws_snapshot().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_clash_ws_recording(
@@ -1135,6 +1236,7 @@ pub async fn set_clash_ws_recording(
     Ok(client.set_clash_ws_recording(kind, enabled).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn clear_clash_ws_history(
@@ -1147,6 +1249,7 @@ pub async fn clear_clash_ws_history(
 
 // Updater block
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn list_log_files(
@@ -1155,6 +1258,7 @@ pub async fn list_log_files(
 ) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
     client.list_log_files(source).await
 }
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn open_log_session(
@@ -1167,6 +1271,7 @@ pub async fn open_log_session(
         .open_log_session(source, window.label().to_string(), request)
         .await
 }
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn query_logs(
@@ -1179,6 +1284,7 @@ pub async fn query_logs(
         .query_logs(source, window.label().to_string(), request)
         .await
 }
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn close_log_session(
@@ -1206,6 +1312,7 @@ pub struct UpdateWrapper {
     raw_json: serde_json::Value,
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_release_channel(
@@ -1214,6 +1321,7 @@ pub async fn get_release_channel(
     Ok(client.release_channel().await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_release_channel(
@@ -1223,6 +1331,7 @@ pub async fn set_release_channel(
     Ok(client.set_release_channel(channel).await?)
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn check_update(
@@ -1280,6 +1389,7 @@ pub async fn check_update(
     }))
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()> {
@@ -1289,6 +1399,7 @@ pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Res
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn create_main_window(app_handle: AppHandle) -> Result<()> {
@@ -1304,6 +1415,7 @@ pub fn create_main_window(app_handle: AppHandle) -> Result<()> {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
@@ -1319,18 +1431,21 @@ pub fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn copy_clash_env(app_handle: AppHandle, env_type: CopyEnvOption) {
     feat::copy_clash_env(&app_handle, &env_type);
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn quit_application(app_handle: AppHandle) {
     crate::utils::help::quit_application(&app_handle);
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn create_editor_window(
@@ -1350,6 +1465,7 @@ pub fn create_editor_window(
     Ok(())
 }
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn get_system_accent_color() -> Result<Option<String>> {
@@ -1359,6 +1475,7 @@ pub fn get_system_accent_color() -> Result<Option<String>> {
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ConfigurationStatusChanged(pub crate::client::configuration_status::ConfigurationStatus);
 
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn get_configuration_status(
@@ -1366,11 +1483,13 @@ pub fn get_configuration_status(
 ) -> crate::client::configuration_status::ConfigurationStatus {
     client.configuration_status()
 }
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn retry_configuration_runtime(client: State<'_, NyanpasuClient>) -> Result<()> {
     Ok(client.retry_runtime_now().await?)
 }
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub fn retry_configuration_effect(

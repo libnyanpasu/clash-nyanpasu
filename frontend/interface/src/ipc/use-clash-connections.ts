@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useClashWSContext } from '@interface/provider/clash-ws-provider'
 import { unwrapResult } from '../utils'
-import { mutations } from './bindings'
 import { invokeMutation } from './query-options'
+import { rpc } from './rpc'
 
 export type ClashConnection = {
   downloadTotal: number
@@ -51,7 +51,7 @@ export type ClashConnectionMetadata = {
 
 export const useClashConnections = () => {
   const { connections, isLoading, error } = useClashWSContext()
-  const deleteConnectionsCommand = mutations.clashApiDeleteConnections
+  const deleteConnectionsCommand = rpc.mutations.clashApiDeleteConnections
   const [deleteError, setDeleteError] = useState<unknown>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 

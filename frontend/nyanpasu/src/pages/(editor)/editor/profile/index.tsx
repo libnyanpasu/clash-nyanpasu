@@ -7,7 +7,7 @@ import { useExperimentalThemeContext } from '@/components/providers/theme-provid
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
-import { commands, useProfileContent } from '@interface/ipc'
+import { rpc, useProfileContent } from '@interface/ipc'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
@@ -141,7 +141,7 @@ function RouteComponent() {
               const url = match[0].startsWith('http')
                 ? match[0]
                 : `https://${match[0]}`
-              commands.openThat(url)
+              rpc.openThat(url)
               e.event.preventDefault()
               break
             }

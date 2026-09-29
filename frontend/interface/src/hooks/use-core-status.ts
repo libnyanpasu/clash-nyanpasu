@@ -1,9 +1,9 @@
-import { invokeQuery, queries } from '@interface/ipc'
+import { invokeQuery, rpc } from '@interface/ipc'
 import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
 
 export function useCoreStatus() {
-  const statusOptions = queries.getCoreStatus()
+  const statusOptions = rpc.queries.getCoreStatus()
   const query = useQuery({
     queryKey: statusOptions.queryKey,
     queryFn: async () => {

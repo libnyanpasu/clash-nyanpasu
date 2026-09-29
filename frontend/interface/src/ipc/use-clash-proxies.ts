@@ -5,15 +5,14 @@ import {
   type QueryKey,
 } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
+import { invokeMutation, invokeQuery } from './query-options'
+import { rpc } from './rpc'
 import {
-  mutations,
-  queries,
   type Proxies_Serialize,
   type ProxyGroupItem_Serialize,
   type ProxyItem_Serialize,
   type ProxyItemHistory,
-} from './bindings'
-import { invokeMutation, invokeQuery } from './query-options'
+} from './rpc-bindings'
 
 export type ClashDelayOptions = {
   url?: string
@@ -56,8 +55,8 @@ const createUpdatedProxy = (
 
 export const useClashProxies = () => {
   const queryClient = useQueryClient()
-  const proxiesOptions = queries.getProxies()
-  const selectProxyMutation = mutations.selectProxy
+  const proxiesOptions = rpc.queries.getProxies()
+  const selectProxyMutation = rpc.mutations.selectProxy
 
   const selectProxy = useMutation({
     mutationKey: selectProxyMutation.mutationKey,
@@ -139,7 +138,11 @@ export const useClashProxies = () => {
       const [name, provider, options] = args
       const res = unwrapResult(
         await invokeQuery(
-          queries.clashApiGetProxyDelay(name, provider, options?.url ?? null),
+          rpc.queries.clashApiGetProxyDelay(
+            name,
+            provider,
+            options?.url ?? null,
+          ),
         ),
       )
       return {
@@ -186,7 +189,7 @@ export const useClashProxies = () => {
       return (
         unwrapResult(
           await invokeQuery(
-            queries.clashApiGetGroupDelay(group, options?.url ?? null),
+            rpc.queries.clashApiGetGroupDelay(group, options?.url ?? null),
           ),
         ) ?? {}
       )

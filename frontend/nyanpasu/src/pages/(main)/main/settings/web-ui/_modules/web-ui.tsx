@@ -29,7 +29,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { commands, useClashInfo, useSetting } from '@nyanpasu/interface'
+import { rpc, useClashInfo, useSetting } from '@nyanpasu/interface'
 import {
   SettingsCard,
   SettingsCardAnimatedItem,
@@ -243,7 +243,7 @@ const WebUIItem = ({ url }: { url: string }) => {
   const formattedUrl = useFormattedUrl(url)
 
   const handleOpen = useLockFn(async () => {
-    await commands.openWebUrl(formattedUrl)
+    await rpc.openWebUrl(formattedUrl)
   })
 
   const { value, upsert } = useSetting('web_ui_list')

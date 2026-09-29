@@ -26,10 +26,9 @@ export * from './use-core-dir'
 export * from './use-platform'
 export * from './use-system-accent-color'
 export * from './use-file-logs'
+export { rpc } from './rpc'
 
-export { commands, events } from './bindings'
-export { mutations, queries } from './bindings'
-export type * from './bindings'
+export type * from './rpc-bindings'
 export type { ClashDelayOptions } from './use-clash-proxies'
 export {
   MutationUnconfirmedError,
@@ -38,7 +37,7 @@ export {
   unwrapQueryOptions,
 } from './query-options'
 
-export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
-export type { RuleProviderItem as ClashProviderRule } from './bindings'
+export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './rpc-bindings'
+export type { RuleProviderItem as ClashProviderRule } from './rpc-bindings'
 
 export { acceptConfigurationStatus } from './configuration-status'

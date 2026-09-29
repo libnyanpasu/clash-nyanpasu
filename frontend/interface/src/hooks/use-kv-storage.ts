@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { events, mutations, queries } from '../ipc/bindings'
 import { invokeMutation, invokeQuery } from '../ipc/query-options'
+import { rpc } from '../ipc/rpc'
 
 const LOCAL_CACHE_PREFIX = 'nyanpasu-kv-:'
 /** Mirrors the `WEB_STORAGE_KEY_PREFIX` constant on the backend. */
@@ -48,7 +48,7 @@ export interface UseKvStorageOptions<T> {
  * - Fetches the authoritative value from the backend on mount; the backend
  *   always wins.
  * - Listens for `StorageValueChangedEvent` so all open windows stay in sync.
- * - Writing calls the generated `mutations.setStorageItem` binding and
+ * - Writing calls the generated `rpc.mutations.setStorageItem` binding and
  *   optimistically updates local
  *   state; the subsequent backend event confirms the change.
  */
@@ -91,67 +91,71 @@ export function useKvStorage<T>(
     setValueState(getLocalCache(key, defaultValueRef.current))
     setIsLoading(true)
 
-    Promise.resolve(invokeQuery(queries.getStorageItem(key))).then((result) => {
-      if (result.status === 'ok') {
-        if (result.data !== null) {
-          try {
-            const parsed = JSON.parse(result.data)
-            const migrated = applyMigrate(parsed)
-            setValueState(migrated)
-            setLocalCache(key, migrated)
-          } catch {
-            // backend returned non-JSON; keep local cache
+    Promise.resolve(invokeQuery(rpc.queries.getStorageItem(key))).then(
+      (result) => {
+        if (result.status === 'ok') {
+          if (result.data !== null) {
+            try {
+              const parsed = JSON.parse(result.data)
+              const migrated = applyMigrate(parsed)
+              setValueState(migrated)
+              setLocalCache(key, migrated)
+            } catch {
+              // backend returned non-JSON; keep local cache
+            }
           }
-        }
 
-        setIsLoading(false)
-      }
-    })
+          setIsLoading(false)
+        }
+      },
+    )
   }, [key, applyMigrate])
 
   // Listen for changes emitted from backend (any window).
   // The backend emits the raw storage key which includes the `web:` prefix.
   useEffect(() => {
-    const unlistenPromise = events.storageValueChangedEvent.listen((event) => {
-      if (event.payload.key !== WEB_KEY_PREFIX + key) {
-        return
-      }
-
-      if (event.payload.value === null) {
-        pendingWritesRef.current.delete('null')
-        setValueState(defaultValueRef.current)
-        removeLocalCache(key)
-      } else {
-        // If this event is the echo of our own optimistic write, skip the
-        // redundant setState to avoid an unnecessary re-render.
-        // Note: the backend double-encodes the value in the event payload
-        // (the stored JSON string is wrapped in another JSON string), so we
-        // compare against the double-encoded form.
-        if (pendingWritesRef.current.has(event.payload.value)) {
-          pendingWritesRef.current.delete(event.payload.value)
+    const unlistenPromise = rpc.events.storageValueChangedEvent.listen(
+      (event) => {
+        if (event.payload.key !== WEB_KEY_PREFIX + key) {
           return
         }
 
-        try {
-          // The backend emits the stored value double-encoded: the raw stored
-          // string (already valid JSON) is JSON-encoded again inside the event
-          // payload. Parse once to get the inner string, then parse again to
-          // get the actual value. Fall back to single-parse for backends that
-          // emit the value without extra encoding.
-          const firstParsed = JSON.parse(event.payload.value)
-          const parsed =
-            typeof firstParsed === 'string'
-              ? JSON.parse(firstParsed)
-              : firstParsed
-          const migrated = applyMigrate(parsed)
+        if (event.payload.value === null) {
+          pendingWritesRef.current.delete('null')
+          setValueState(defaultValueRef.current)
+          removeLocalCache(key)
+        } else {
+          // If this event is the echo of our own optimistic write, skip the
+          // redundant setState to avoid an unnecessary re-render.
+          // Note: the backend double-encodes the value in the event payload
+          // (the stored JSON string is wrapped in another JSON string), so we
+          // compare against the double-encoded form.
+          if (pendingWritesRef.current.has(event.payload.value)) {
+            pendingWritesRef.current.delete(event.payload.value)
+            return
+          }
 
-          setValueState(migrated)
-          setLocalCache(key, migrated)
-        } catch {
-          // ignore invalid JSON from event
+          try {
+            // The backend emits the stored value double-encoded: the raw stored
+            // string (already valid JSON) is JSON-encoded again inside the event
+            // payload. Parse once to get the inner string, then parse again to
+            // get the actual value. Fall back to single-parse for backends that
+            // emit the value without extra encoding.
+            const firstParsed = JSON.parse(event.payload.value)
+            const parsed =
+              typeof firstParsed === 'string'
+                ? JSON.parse(firstParsed)
+                : firstParsed
+            const migrated = applyMigrate(parsed)
+
+            setValueState(migrated)
+            setLocalCache(key, migrated)
+          } catch {
+            // ignore invalid JSON from event
+          }
         }
-      }
-    })
+      },
+    )
 
     return () => {
       unlistenPromise.then((fn) => fn())
@@ -176,7 +180,7 @@ export function useKvStorage<T>(
       setValueState(resolved)
       setLocalCache(key, resolved)
 
-      const result = await invokeMutation(mutations.setStorageItem, [
+      const result = await invokeMutation(rpc.mutations.setStorageItem, [
         key,
         serialized,
       ])
@@ -198,7 +202,7 @@ export function useKvStorage<T>(
 export const kvStorageDebug = {
   /** Returns all stored key-value pairs with values deserialized from JSON. */
   async getAll(): Promise<Record<string, unknown>> {
-    const result = await invokeQuery(queries.getAllStorageItems())
+    const result = await invokeQuery(rpc.queries.getAllStorageItems())
 
     if (result.status === 'error') {
       throw new Error(result.error)
@@ -217,7 +221,7 @@ export const kvStorageDebug = {
 
   /** Removes every entry from the backend storage. */
   async clear(): Promise<void> {
-    const result = await invokeMutation(mutations.clearStorage, [])
+    const result = await invokeMutation(rpc.mutations.clearStorage, [])
 
     if (result.status === 'error') {
       throw new Error(result.error)

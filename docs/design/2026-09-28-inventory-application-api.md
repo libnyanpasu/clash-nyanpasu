@@ -1,26 +1,57 @@
-# 基于 inventory 和 Specta 的应用 API
+# 复用现有 UI 的 Tauri / HTTP 命令适配设计
 
 **日期：** 2026-09-28
-**状态：** 首批 profiles 与 Clash 调用链已实现；桌面实机与后续 WebUI 验证待完成
+**状态：** 现有 UI 命令与事件已接入统一传输入口；HTTP 仍仅供进程内实验测试
 
-## 契约与注册
+## 目标和范围
 
-应用 API 使用项目自己的 `fn_name + params` 契约，不使用 JSON-RPC 或 OpenRPC。普通方法写成带 `#[rpc(name = "profiles.list")]` 的 typed async Rust 函数。过程宏生成 Serde 参数适配、结果序列化、Specta 类型登记函数和 `inventory::submit!` 注册项。业务函数通过显式注入的 `ApiContext` 调用 `NyanpasuClient`，不读取 Tauri 状态或全局服务。
+短期优先复用现有 UI：页面和 hooks 调用 `rpc` 门面。`rpc-bindings.ts` 承载完整的 Specta 命令、事件与类型契约；桌面传输由只包含 `call_rpc` 等少量入口及 Tauri 事件的 `bindings.ts` 承载。已经具备跨端实现的命令在两条路径上执行同一个业务实现，不再维护两份命令主体。迁移范围是现有 UI 使用的全部命令，而非只选一个试点；窗口、托盘、系统集成等能力当前仍由 Tauri 实现，待平台适配后也应进入全平台接口，不把它们永久定义为桌面专属。
 
-启动时 `ApplicationApi` 一次性收集已链接的注册项，拒绝重复 `fn_name`，建立方法表。`inventory` 只负责发现；请求分发查询方法表。Clash 事件作为 stream 注册项，输入和输出类型同样进入 Specta 导出。方法、事件和客户端类型都从 Rust 注册项生成，不维护第二份手写契约。
+HTTP 当前只提供实验性验证：保留进程内 Router，并为一个代表性命令做端到端 HTTP 测试。此阶段不接生产监听器，不承诺独立部署、远程访问、完整 WebUI 或公共外部 API。迁移应尽量局限在命令声明、薄适配层和前端调用底座，不借此重构页面、hooks、actor 图或业务域。允许按可独立验证的批次提交，但完成清单仍覆盖现有 UI 使用的全部命令。
 
-## 两个入口
+## 统一调用链
 
-Tauri 插件暴露固定的 `call`、`subscribe`、`unsubscribe` 命令；它们根据 `fnName` 调用同一个 `ApplicationApi`。Tauri 的逐条 `generate_handler!` 列表需要在编译期确定，不能直接从运行时 inventory 枚举生成。插件初始化脚本由 `scripts/application-plugin-init.ts` 编译生成，向 WebView 注入窄的调用对象；前端 typed client 隐藏固定命令和 Channel 细节。
+```text
+现有页面 / hooks
+    → rpc 类型化门面
+        → Specta 生成的统一 RPC 契约
+            → 薄传输入口
+                → 同一个 Rust 命令实现
+                    → NyanpasuClient / typed actor client / pure service
+```
 
-Axum adapter 从同一个 `ApplicationApi` 构建路由组：`POST /call` 接收 `{ "fn_name": "profiles.list", "params": {} }`；`GET /events/{fn_name}` 提供 SSE。桌面端本阶段不启动 HTTP 监听器；Axum 路由已通过进程内请求测试，后续最小 WebUI 直接调用该接口。
+共享实现接受显式依赖，不读取 `::global()`、Tauri 状态、窗口或 HTTP 请求。Tauri wrapper 负责参数及 `tauri::State` 适配，HTTP handler 负责 JSON 反序列化、依赖接入与返回值编码。`NyanpasuClient` 仍是应用门面；命令迁移时依赖可以进一步收窄为 typed client 或 port，传输契约不因此改变。
 
-事件源由 Clash actor client 提供。Axum 将事件序列化为 SSE `data`，连接断开即丢弃接收端；Tauri 用 Channel 单向发送相同的事件 DTO，并由显式 `unsubscribe` 停止转发任务。SSE 表示单向事件流；普通请求仍通过 `call` 返回。
+新设计文档的 `ServiceContext` 是一种可选的 HTTP 接合方式。当前主要依赖是 `NyanpasuClient`，先由组合根显式装配具体上下文；不要仅为复刻示例引入 `TypeId + Any` 服务容器，也不要让业务代码通过容器任意查找服务。若未来的独立依赖确实增加，再评估有界的服务上下文。不得新增全局服务或把 Tauri 类型带入业务层。
 
-## 生成链
+## 命令声明、注册与生成
 
-后端导出器遍历 `ApplicationApi`，写入 `backend/tauri/gen/application-api.json`，并把 Specta 类型直接写到 `frontend/interface/src/application-api/types.ts`。仓库根目录的 `pnpm generate:application-api` 先编译插件初始化 TypeScript，再运行后端导出器，最后运行 `scripts/generate-application-api.ts` 生成前端源码中的 `generated.ts` 方法映射。`pnpm check:application-api` 检查四份生成产物是否与源代码一致。前端生成脚本均为 TypeScript。
+现有 UI 的命令统一使用 `#[nyanpasu_macro::rpc]` 注册。宏生成同一命令实现的 Tauri 分发处理器和实验 HTTP 处理器；依赖窗口、托盘等 Tauri 上下文的命令在桌面端注入当前上下文执行，实验 HTTP 返回明确的 `unsupported`，后续再逐项提取平台 port。两类命令均保留原命令名与 tauri-specta 类型，不另建手写 JSON 清单。顶层参数沿用现有 tauri-specta 的 camelCase 约定，嵌套 DTO 遵守自己的 Serde 属性。
 
-Clash 事件中的 `u64` 沿用现有 tauri-specta 绑定的 `number` 映射；JS 对超过 `Number.MAX_SAFE_INTEGER` 的值存在精度限制。后续若有需要精确保留的大整数，应给对应字段定义明确的字符串线格式。
+命令由静态注册项收集，启动时拒绝重复命令名；Specta 的逐条收集仍用于生成完整类型契约，不依赖运行时 `inventory` 自动导出类型。`bindings.ts` 由单独的 Tauri transport builder 生成，只注册 `call_rpc` 和事件；`rpc-bindings.ts` 从完整 Specta 命令清单生成，并替换为传输无关的命令调用与浏览器事件入口。生成检查必须在必要替换点失效时失败，不能只打印警告；不得手工维护生成文件。
 
-首批方法为 profiles 查询/激活、Clash snapshot 和 Clash 事件。旧 Tauri commands、events 与业务 hooks 暂时并行；桌面 Host API、LuCI/OpenWrt 和完整 WebUI 不属于此切片。
+实验 HTTP 请求保持现有命令名和参数形状，例如 `{"method":"get_profiles","params":{}}`。成功时返回裸 JSON 值，客户端沿用生成命令函数现有的 `Result` 包装。协议是项目内部轻量 RPC，不宣称符合 JSON-RPC 2.0。Tauri 传输和 HTTP 线上都使用 `{kind, message}` 错误 DTO，区分无效参数、未知命令和应用失败；前端传输边界把 `message` 交给现有 `typedError<T, string>`。网络失败继续作为 Promise rejection。HTTP 提取 JSON 失败及非 JSON 响应也需要可读的客户端回退错误。
+
+## 事件与平台能力
+
+普通命令与事件分开适配。桌面继续使用 Tauri Event，实验浏览器入口通过 `GET /bridge/events?name=...` 的 SSE 接收同名通知；Tauri 事件在宿主边界转发到进程内广播总线，payload 沿用 Serde/Specta 类型。SSE 广播可能丢事件，重连必须恢复已有订阅，需要正确恢复的页面在收到通知或重连后拉取权威快照。浏览器 `emit` 明确返回不支持。Tauri Channel 的浏览器占位对象不构成流式支持；相关命令需等待流标识、取消和结束语义的跨端协议。
+
+所有现有命令均进入统一注册表；尚无 HTTP/全平台适配的命令返回 `unsupported`，前端不维护永久的平台能力或 HTTP 白名单。文件与资源内容后续走独立端点或桌面协议，不放进 JSON RPC。此次不要求完成 Channel、文件或系统能力的浏览器等价实现，后续可逐步替换前端 Tauri 插件。
+
+现有 `url_delay_test` 接受调用方任意 URL，本阶段只在受控进程内 HTTP 测试中保留该语义。若未来启动 HTTP 监听器，必须先确定调用方身份与授权，并定义服务端出站 URL 策略，避免把此命令直接变成可访问内网资源的请求代理。
+
+## 与早期实验实现的关系
+
+早期 `ApplicationApi` 的固定 `call/subscribe/unsubscribe` 插件、独立客户端与 JSON 目录已被统一命令和事件入口取代。命令名、参数与事件载荷类型由现有 tauri-specta 绑定继续提供，不维护第二套 RPC DTO 与类型导出。
+
+现有 UI 使用的命令已从声明直接注册到统一 RPC；不再维护单独的 JSON 状态清单或 HTTP 命令名单。`get_clash_logs` 已改读 actor 持有的 Clash 日志快照，避免继续使用无生产写入者的 legacy global buffer。
+
+未来若需要重新拆分命令颗粒度，可在共享命令实现下面逐步提取更窄的 typed client、纯服务或 port；不在这次短期复用工作中预先建立大框架。
+
+## 验证与完成标准
+
+1. 现有 UI 使用的所有命令与事件均从声明进入统一传输入口；尚未实现的平台能力明确返回不支持。
+2. 已具备跨端实现的命令从现有生成函数调用，桌面结果不变，HTTP 注册项调用同一 Rust 实现。
+3. 进程内 HTTP 测试验证请求形状、返回值、未知命令、无效参数及不支持的平台命令；前端测试验证 IPC/HTTP 选择与错误回退。
+4. 类型和客户端生成可复现，检查命令能发现过期或失效的传输接入点；不需要改页面和 hooks 来选择传输。
+5. 没有新全局服务、通用 service locator、隐藏的 Tauri 业务依赖或第二份命令业务主体。没有把实验性 HTTP Router 描述为已部署 Web 服务。

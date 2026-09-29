@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import useCustomCss from '@/hooks/use-custom-css'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { commands } from '@nyanpasu/interface'
+import { rpc } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -20,7 +20,7 @@ export default function CustomCssCard() {
   const isLarge = charCount > 100_000
 
   const handleOpen = useLockFn(async () => {
-    await commands.createEditorWindow('css-editor', null)
+    await rpc.createEditorWindow('css-editor', null)
   })
 
   return (

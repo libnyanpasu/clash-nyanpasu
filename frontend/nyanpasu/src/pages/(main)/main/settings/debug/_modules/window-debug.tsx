@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
-import { commands } from '@nyanpasu/interface'
+import { rpc } from '@nyanpasu/interface'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import {
   SettingsCard,
@@ -13,11 +13,11 @@ const currentWindow = getCurrentWebviewWindow()
 
 export default function WindowDebug() {
   const handleCreateEditorWindow = useLockFn(async () => {
-    await commands.createEditorWindow('profile', 'test')
+    await rpc.createEditorWindow('profile', 'test')
   })
 
   const handleCreateDebugTrayMenuWindow = useLockFn(async () => {
-    await commands.createDebugTrayMenuWindow()
+    await rpc.createDebugTrayMenuWindow()
   })
 
   return (

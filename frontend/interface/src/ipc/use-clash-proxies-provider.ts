@@ -1,11 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import {
-  mutations,
-  queries,
-  type ProxyProviderItem_Serialize,
-} from './bindings'
 import { invokeMutation, invokeQuery } from './query-options'
+import { rpc } from './rpc'
+import { type ProxyProviderItem_Serialize } from './rpc-bindings'
 
 export interface ClashProxiesProviderQueryItem extends ProxyProviderItem_Serialize {
   mutate: () => Promise<void>
@@ -17,8 +14,8 @@ export type ClashProxiesProviderQuery = Record<
 >
 
 export const useClashProxiesProvider = () => {
-  const providersQuery = queries.clashApiGetProvidersProxies()
-  const updateProxyProvider = mutations.updateProxyProvider
+  const providersQuery = rpc.queries.clashApiGetProvidersProxies()
+  const updateProxyProvider = rpc.mutations.updateProxyProvider
   const query = useQuery({
     queryKey: providersQuery.queryKey,
     queryFn: async () => {

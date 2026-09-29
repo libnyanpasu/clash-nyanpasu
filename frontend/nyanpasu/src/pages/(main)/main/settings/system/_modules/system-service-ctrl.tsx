@@ -17,7 +17,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { getShikiSingleton } from '@/utils/shiki'
 import {
-  commands,
+  rpc,
   unwrapResult,
   useCoreDir,
   useServicePrompt,
@@ -129,7 +129,7 @@ const ServiceInstallButton = () => {
   const handleInstallClick = useLockFn(async () => {
     try {
       await upsert.mutateAsync('install')
-      unwrapResult(await commands.restartSidecar())
+      unwrapResult(await rpc.restartSidecar())
     } catch (e) {
       const errorMessage = `${m.settings_system_proxy_system_service_ctrl_failed_install()}: ${formatError(e)}`
 

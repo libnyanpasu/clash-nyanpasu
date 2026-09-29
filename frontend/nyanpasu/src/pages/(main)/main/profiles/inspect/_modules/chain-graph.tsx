@@ -59,7 +59,13 @@ const THEME_CSS = `
     justify-content: center;
     gap: 6px;
   }
-  .step-head.has-subject { margin-bottom: 4px; font-size: 11px; opacity: 0.8; }
+  .step-head.has-subject { margin-bottom: 4px; font-size: 11px; }
+  /* Fade through the color, not opacity: WebKit paints an opacity layer
+     inside a foreignObject without the node's transform. */
+  .node .step-head.has-subject,
+  .node .step-head.has-subject span {
+    color: color-mix(in srgb, var(--node-fg) 80%, transparent);
+  }
   .step-index {
     box-sizing: border-box;
     min-width: 18px;

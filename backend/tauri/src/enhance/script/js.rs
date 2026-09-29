@@ -1,5 +1,4 @@
-use super::runner::{ProcessOutput, Runner, wrap_result};
-use crate::enhance::utils::{Logs, LogsExt};
+use super::runner::{ConsoleSink, Runner};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use boa_engine::{
@@ -12,6 +11,7 @@ use boa_engine::{
 };
 use boa_utils::module::{combine::CombineModuleLoader, http::HttpModuleLoader};
 use boa_wintertc::console::{Console, ConsoleState, Logger};
+use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
 use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
@@ -67,17 +67,6 @@ pub enum JsRunnerError {
     Other(String),
 }
 
-/// Collects the console output of one run. Each run owns its sink, so
-/// concurrent runs never see each other's logs.
-#[derive(Debug, Clone, Default)]
-pub struct ConsoleSink(Rc<RefCell<Logs>>);
-
-impl ConsoleSink {
-    pub fn take(&self) -> Logs {
-        std::mem::take(&mut self.0.borrow_mut())
-    }
-}
-
 impl Finalize for ConsoleSink {}
 
 // SAFETY: the sink holds no `Gc` pointers.
@@ -87,22 +76,22 @@ unsafe impl Trace for ConsoleSink {
 
 impl Logger for ConsoleSink {
     fn log(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
-        self.0.borrow_mut().log(msg);
+        self.push(StepLogLevel::Log, msg);
         Ok(())
     }
 
     fn info(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
-        self.0.borrow_mut().info(msg);
+        self.push(StepLogLevel::Info, msg);
         Ok(())
     }
 
     fn warn(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
-        self.0.borrow_mut().warn(msg);
+        self.push(StepLogLevel::Warn, msg);
         Ok(())
     }
 
     fn error(&self, msg: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
-        self.0.borrow_mut().error(msg);
+        self.push(StepLogLevel::Error, msg);
         Ok(())
     }
 }
@@ -209,93 +198,84 @@ impl BoaRunner {
     }
 }
 
-#[async_trait]
-impl Runner for JSRunner {
-    async fn process(&self, mapping: Mapping, path: &str) -> ProcessOutput {
-        let content = wrap_result!(
-            tokio::fs::read_to_string(path)
-                .await
-                .context("failed to read the script file")
-        );
-        self.process_honey(mapping, &content).await
-    }
-
-    async fn process_honey(&self, mapping: Mapping, script: &str) -> ProcessOutput {
-        let script = wrap_result!(wrap_script_if_not_esm(script));
-        let hash = crate::utils::help::get_uid("script");
-        let path = self.scripts_dir.join(format!("{hash}.mjs"));
-        wrap_result!(
-            tokio::fs::write(&path, script.as_bytes())
-                .await
-                .context("failed to write the script file")
-        );
-        // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
-        let (scripts_dir, cache_dir) = (self.scripts_dir.clone(), self.cache_dir.clone());
-        let res = tokio::task::spawn_blocking(move || {
-            let wrapped_fn = move || {
-                let console = ConsoleSink::default();
-                let boa_runner = wrap_result!(BoaRunner::try_new(scripts_dir, cache_dir));
-                wrap_result!(boa_runner.setup_console(console.clone()), console.take());
-                let config = wrap_result!(
-                    serde_json::to_string(&mapping)
-                        .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    console.take()
-                );
-                let config = serde_json::to_string(&config).unwrap(); // escape the string
-                let execute_module = format!(
-                    r#"import process from "./{hash}.mjs";
+/// Runs the script module `./{hash}.mjs` against `mapping` on the current
+/// thread. Everything the script logs goes to `console`.
+fn run_module(
+    scripts_dir: PathBuf,
+    cache_dir: PathBuf,
+    hash: &str,
+    mapping: Mapping,
+    console: ConsoleSink,
+) -> Result<Mapping> {
+    let boa_runner = BoaRunner::try_new(scripts_dir, cache_dir)?;
+    boa_runner.setup_console(console)?;
+    let config = serde_json::to_string(&mapping)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let config = serde_json::to_string(&config).unwrap(); // escape the string
+    let execute_module = format!(
+        r#"import process from "./{hash}.mjs";
         let config = JSON.parse({config});
         export let result = JSON.stringify(await process(config));
         "#
-                );
-                // let process_module = wrap_result!(
-                //     boa_runner.parse_module(&script, "process").map_err(|e| {
-                //         logs.error(format!("failed to parse the process module: {:?}", e));
-                //         e
-                //     }),
-                //     logs
-                // );
-                // wrap_result!(boa_runner.execute_module(&process_module));
-                let main_module = wrap_result!(
-                    boa_runner.parse_module(&execute_module, "main"),
-                    console.take()
-                );
-                wrap_result!(boa_runner.execute_module(&main_module));
-                let ctx = boa_runner.get_ctx();
-                let namespace = main_module.namespace(&mut ctx.borrow_mut());
-                let result = wrap_result!(
-                    namespace.get(js_string!("result"), &mut ctx.borrow_mut()),
-                    console.take()
-                );
-                let result = wrap_result!(
-                    result
-                        .as_string()
-                        .ok_or_else(|| JsNativeError::typ().with_message("Expected string"))
-                        .map(|str| str.to_std_string_escaped()),
-                    console.take()
-                );
-                let mapping = wrap_result!(
-                    serde_json::from_str(&result)
-                        .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    console.take()
-                );
-                (Ok::<Mapping, JsRunnerError>(mapping), console.take())
-            };
-            let (res, logs) = wrapped_fn();
-            match res {
-                Ok(mapping) => (Ok(mapping), logs),
-                Err(e) => {
+    );
+    let main_module = boa_runner.parse_module(&execute_module, "main")?;
+    boa_runner.execute_module(&main_module)?;
+    let ctx = boa_runner.get_ctx();
+    let namespace = main_module.namespace(&mut ctx.borrow_mut());
+    let result = namespace.get(js_string!("result"), &mut ctx.borrow_mut())?;
+    let result = result
+        .as_string()
+        .ok_or_else(|| JsNativeError::typ().with_message("Expected string"))
+        .map(|str| str.to_std_string_escaped())?;
+    let mapping = serde_json::from_str(&result)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    Ok(mapping)
+}
+
+#[async_trait]
+impl Runner for JSRunner {
+    async fn process(
+        &self,
+        mapping: Mapping,
+        path: &str,
+        logs: &mut Vec<StepLogEntry>,
+    ) -> anyhow::Result<Mapping> {
+        let content = tokio::fs::read_to_string(path)
+            .await
+            .context("failed to read the script file")?;
+        self.process_honey(mapping, &content, logs).await
+    }
+
+    async fn process_honey(
+        &self,
+        mapping: Mapping,
+        script: &str,
+        logs: &mut Vec<StepLogEntry>,
+    ) -> anyhow::Result<Mapping> {
+        let script = wrap_script_if_not_esm(script)?;
+        let hash = crate::utils::help::get_uid("script");
+        let path = self.scripts_dir.join(format!("{hash}.mjs"));
+        tokio::fs::write(&path, script.as_bytes())
+            .await
+            .context("failed to write the script file")?;
+        // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
+        let (scripts_dir, cache_dir) = (self.scripts_dir.clone(), self.cache_dir.clone());
+        let res = tokio::task::spawn_blocking(move || {
+            // The sink is not Send, so it lives on this thread with the boa
+            // context and only its entries cross back.
+            let console = ConsoleSink::default();
+            let result = run_module(scripts_dir, cache_dir, &hash, mapping, console.clone())
+                .map_err(|e| {
                     tracing::error!("error: {:?}", e);
-                    (Err(anyhow::anyhow!("{:?}", e)), logs)
-                }
-            }
+                    anyhow::anyhow!("{:?}", e)
+                });
+            (result, console.take())
         })
         .await;
         let _ = tokio::fs::remove_file(&path).await;
-        match res {
-            Ok(output) => output,
-            Err(e) => (Err(e.into()), vec![]),
-        }
+        let (result, run_logs) = res?;
+        logs.extend(run_logs);
+        result
     }
 }
 
@@ -413,6 +393,8 @@ mod utils {
 
 #[cfg(test)]
 mod test {
+    use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+
     /// The runner creates its scripts dir where it is told, runs the script
     /// from there and leaves nothing behind.
     #[tokio::test]
@@ -424,10 +406,11 @@ mod test {
         let runner = JSRunner::new(&dirs).unwrap();
         assert!(dirs.scripts.is_dir());
 
-        let (result, _) = runner
+        let result = runner
             .process_honey(
                 serde_yaml::from_str("a: 1").unwrap(),
                 "export default function main(config) { return config; }",
+                &mut Vec::new(),
             )
             .await;
         let expected: serde_yaml::Mapping = serde_yaml::from_str("a: 1").unwrap();
@@ -452,10 +435,28 @@ mod test {
                 return config;
             }
         "#;
-        let (result, _) = runner.process_honey(input, script).await;
+        let result = runner.process_honey(input, script, &mut Vec::new()).await;
         let expected: serde_yaml::Mapping =
             serde_yaml::from_str("existing: true\na:\n  b: 1\n  c: 2\n").unwrap();
         assert_eq!(result.unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn logs_written_before_a_throw_survive_the_failure() {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let mut logs = Vec::new();
+        let result = runner
+            .process_honey(
+                serde_yaml::Mapping::new(),
+                "export default function main(config) { console.log('before'); throw new Error('boom'); }",
+                &mut logs,
+            )
+            .await;
+        assert!(result.is_err());
+        assert_eq!(logs, vec![StepLogEntry::new(StepLogLevel::Log, "before")]);
     }
 
     /// Each run owns its console sink, so runs executing at the same time
@@ -472,14 +473,18 @@ mod test {
             )
         };
         let (script_a, script_b) = (script("a"), script("b"));
+        let (mut logs_a, mut logs_b) = (Vec::new(), Vec::new());
         let (a, b) = tokio::join!(
-            runner.process_honey(serde_yaml::Mapping::new(), &script_a),
-            runner.process_honey(serde_yaml::Mapping::new(), &script_b),
+            runner.process_honey(serde_yaml::Mapping::new(), &script_a, &mut logs_a),
+            runner.process_honey(serde_yaml::Mapping::new(), &script_b, &mut logs_b),
         );
-        for (tag, (result, logs)) in [("a", a), ("b", b)] {
+        for (tag, result, logs) in [("a", a, logs_a), ("b", b, logs_b)] {
             result.unwrap();
             assert_eq!(logs.len(), 50);
-            assert!(logs.iter().all(|(_, msg)| msg == tag), "{tag}: {logs:?}");
+            assert!(
+                logs.iter().all(|entry| entry.message == tag),
+                "{tag}: {logs:?}"
+            );
         }
     }
 
@@ -587,7 +592,8 @@ const foreignNameservers = [
             .build()
             .unwrap()
             .block_on(async move {
-                let (res, logs) = runner.process_honey(mapping, script).await;
+                let mut logs = Vec::new();
+                let res = runner.process_honey(mapping, script, &mut logs).await;
                 eprintln!("logs: {logs:?}");
                 let mapping = res.unwrap();
                 assert_eq!(
@@ -605,10 +611,13 @@ const foreignNameservers = [
                         "Test".to_string()
                     ),])
                 );
-                let outs = serde_json::to_string(&logs).unwrap();
                 assert_eq!(
-                    outs,
-                    r#"[["log","Test console log"],["warn","Test console log"],["error","Test console log"]]"#
+                    logs,
+                    vec![
+                        StepLogEntry::new(StepLogLevel::Log, "Test console log"),
+                        StepLogEntry::new(StepLogLevel::Warn, "Test console log"),
+                        StepLogEntry::new(StepLogLevel::Error, "Test console log"),
+                    ]
                 );
             });
     }
@@ -660,7 +669,8 @@ const foreignNameservers = [
             .build()
             .unwrap()
             .block_on(async move {
-                let (res, logs) = runner.process_honey(mapping, script).await;
+                let mut logs = Vec::new();
+                let res = runner.process_honey(mapping, script, &mut logs).await;
                 eprintln!("logs: {logs:?}");
                 let mapping = res.unwrap();
                 assert_eq!(
@@ -673,8 +683,7 @@ const foreignNameservers = [
                         serde_yaml::Value::String("d29ybGQ=".to_string()),
                     ])
                 );
-                let outs = serde_json::to_string(&logs).unwrap();
-                assert_eq!(outs, r#"[]"#);
+                assert_eq!(logs, vec![]);
             });
     }
 
@@ -724,7 +733,8 @@ const foreignNameservers = [
             .build()
             .unwrap()
             .block_on(async move {
-                let (res, logs) = runner.process_honey(mapping, script).await;
+                let mut logs = Vec::new();
+                let res = runner.process_honey(mapping, script, &mut logs).await;
                 eprintln!("logs: {logs:?}");
                 let mapping = res.unwrap();
                 assert_eq!(
@@ -737,8 +747,7 @@ const foreignNameservers = [
                         serde_yaml::Value::String("d29ybGQ=".to_string()),
                     ])
                 );
-                let outs = serde_json::to_string(&logs).unwrap();
-                assert_eq!(outs, r#"[]"#);
+                assert_eq!(logs, vec![]);
             });
     }
 }

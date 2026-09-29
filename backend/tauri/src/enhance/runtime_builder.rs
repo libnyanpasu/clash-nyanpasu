@@ -169,7 +169,7 @@ mod tests {
     use nyanpasu_config::{
         profile::{ManagedProfilePath, ProfileId, ScriptRuntime},
         runtime::{
-            executor::{PortError, ScriptRunOutcome},
+            executor::{PortError, StepLogEntry},
             value::ConfigValue,
         },
     };
@@ -183,11 +183,14 @@ mod tests {
     }
     struct EchoRunner;
     impl ScriptRunner for EchoRunner {
-        fn run(&self, _: ScriptRuntime, _: &str, config: &ConfigValue) -> ScriptRunOutcome {
-            ScriptRunOutcome {
-                result: Ok(config.clone()),
-                logs: Vec::new(),
-            }
+        fn run(
+            &self,
+            _: ScriptRuntime,
+            _: &str,
+            config: &ConfigValue,
+            _: &mut Vec<StepLogEntry>,
+        ) -> Result<ConfigValue, PortError> {
+            Ok(config.clone())
         }
         fn eval_item_predicate(&self, _: &str, _: &ConfigValue) -> Result<bool, PortError> {
             Ok(true)

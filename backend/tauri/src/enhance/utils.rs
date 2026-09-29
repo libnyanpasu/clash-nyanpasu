@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use parking_lot::Mutex;
-use std::sync::Arc;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum LogSpan {
@@ -24,31 +21,3 @@ impl AsRef<str> for LogSpan {
 }
 
 pub type Logs = Vec<(LogSpan, String)>;
-pub trait LogsExt {
-    fn span<T: AsRef<str>>(&mut self, span: LogSpan, msg: T);
-    fn log<T: AsRef<str>>(&mut self, msg: T);
-    fn info<T: AsRef<str>>(&mut self, msg: T);
-    fn warn<T: AsRef<str>>(&mut self, msg: T);
-    fn error<T: AsRef<str>>(&mut self, msg: T);
-}
-impl LogsExt for Logs {
-    fn span<T: AsRef<str>>(&mut self, span: LogSpan, msg: T) {
-        self.push((span, msg.as_ref().to_string()));
-    }
-    fn log<T: AsRef<str>>(&mut self, msg: T) {
-        self.span(LogSpan::Log, msg);
-    }
-    fn info<T: AsRef<str>>(&mut self, msg: T) {
-        self.span(LogSpan::Info, msg);
-    }
-    fn warn<T: AsRef<str>>(&mut self, msg: T) {
-        self.span(LogSpan::Warn, msg);
-    }
-    fn error<T: AsRef<str>>(&mut self, msg: T) {
-        self.span(LogSpan::Error, msg);
-    }
-}
-
-pub fn take_logs(logs: Arc<Mutex<Option<Logs>>>) -> Logs {
-    logs.lock().take().unwrap()
-}

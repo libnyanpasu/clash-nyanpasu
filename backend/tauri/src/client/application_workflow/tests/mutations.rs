@@ -50,7 +50,7 @@ use super::{
         participant::ApplicationMutationParticipant,
         policy::CommandClass,
     },
-    RecordingNotifications, ScriptedWaitEndpoint,
+    RecordingNotifications, ScriptedWaitEndpoint, classify, refusal_reasons,
 };
 use crate::{
     client::{
@@ -64,6 +64,7 @@ use crate::{
         endpoint::ExecutionHost,
         service_actor::{ServiceClient, ServiceHostAdapter},
     },
+    state::mutation::{CommitAborted, RuntimeAftermath},
 };
 
 // -- fixture ---------------------------------------------------------------
@@ -1289,11 +1290,14 @@ async fn a_failed_save_restores_the_verified_runtime_baseline() {
     assert_eq!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
     // V08: the persistence cause, and that the runtime went back.
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
-    assert!(text.contains("failed to write config"), "{text}");
+    let aborted = classify(result.unwrap_err(), &receipt);
+    let CommitAborted::WriteConfig { runtime, source } = &aborted else {
+        panic!("{aborted:?}");
+    };
+    assert_eq!(*runtime, RuntimeAftermath::RolledBack);
     assert!(
-        text.contains("the runtime was rolled back to the previous configuration"),
-        "{text}"
+        source.to_string().contains("failed to write config"),
+        "{source}"
     );
     assert_eq!(clash.snapshot_handle().load().version, committed);
     assert_eq!(
@@ -1557,16 +1561,27 @@ async fn an_abort_that_owes_a_resource_recovery_still_rolls_the_runtime_back() {
         Some(&baseline.config_text.as_bytes().to_vec()),
         "the Cancel put the baseline back"
     );
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
+    let aborted = classify(result.unwrap_err(), &receipt);
+    let CommitAborted::RecoverAfterWriteFailure {
+        runtime,
+        source:
+            ReplaceIfVersionError::ResourceRecovery {
+                cause,
+                recovery_error,
+            },
+    } = &aborted
+    else {
+        panic!("{aborted:?}");
+    };
     // Both failures reach the caller with their causes.
-    assert!(text.contains("resource write failed: disk full"), "{text}");
+    assert_eq!(*runtime, RuntimeAftermath::RolledBack);
     assert!(
-        text.contains("resource recovery failed: file locked"),
-        "{text}"
+        format!("{cause:#}").contains("resource write failed: disk full"),
+        "{cause:#}"
     );
     assert!(
-        text.contains("the runtime was rolled back to the previous configuration"),
-        "{text}"
+        format!("{recovery_error:#}").contains("resource recovery failed: file locked"),
+        "{recovery_error:#}"
     );
     drop(clash);
 }
@@ -1606,10 +1621,10 @@ async fn a_running_core_with_no_confirmed_apply_refuses_a_critical_mutation() {
     );
     let receipt = settled(&client, operation_id).await;
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    let text = crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+    let reasons = refusal_reasons(&classify(result.unwrap_err(), &receipt));
     assert!(
-        text.contains("a core is running that this session has not applied to"),
-        "{text}"
+        reasons.contains("a core is running that this session has not applied to"),
+        "{reasons}"
     );
     assert!(
         !client.status().uncertain,
@@ -1705,15 +1720,15 @@ async fn a_rejected_check_refuses_the_mutation_without_touching_the_runtime() {
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
     assert_eq!(receipt.conclusion, MutationConclusion::Withdrawn);
     // V07: the caller is told why.
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
+    let reasons = refusal_reasons(&classify(result.unwrap_err(), &receipt));
     assert!(
-        text.contains("the core will not run this document"),
-        "{text}"
+        reasons.contains("the core will not run this document"),
+        "{reasons}"
     );
     // A Try that ran and was refused, not an evidence gap.
     assert!(
-        text.contains("the core rejected this configuration"),
-        "{text}"
+        reasons.contains("the core rejected this configuration"),
+        "{reasons}"
     );
     assert!(!f.client.status().uncertain);
 }
@@ -1780,10 +1795,10 @@ async fn a_host_that_publishes_nothing_refuses_a_critical_mutation() {
     let receipt = settled(&f.client, operation_id).await;
     assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
     assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-    let text = crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+    let reasons = refusal_reasons(&classify(result.unwrap_err(), &receipt));
     assert!(
-        text.contains("reports no settled runtime state (None)"),
-        "{text}"
+        reasons.contains("reports no settled runtime state (None)"),
+        "{reasons}"
     );
     assert!(
         !f.client.status().uncertain,
@@ -1886,11 +1901,10 @@ async fn a_transitional_core_state_refuses_a_mutation_without_isolating_the_doma
         );
         assert_ne!(receipt.outcome, MutationOutcomeKind::Applied);
         assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
-        let text =
-            crate::state::mutation::uncommitted(result.as_ref().unwrap_err(), Some(&receipt));
+        let reasons = refusal_reasons(&classify(result.unwrap_err(), &receipt));
         assert!(
-            text.contains("reports no settled runtime state (Some("),
-            "{state:?}: {text}"
+            reasons.contains("reports no settled runtime state (Some("),
+            "{state:?}: {reasons}"
         );
         assert!(
             !f.client.status().uncertain,
@@ -4277,10 +4291,18 @@ async fn a_failed_save_whose_rollback_fails_reports_both() {
     );
     let receipt = settlement.await.expect("the Runtime settles its Try");
     assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
-    assert!(text.contains("failed to write config"), "{text}");
-    assert!(text.contains("rolling the runtime back failed"), "{text}");
-    assert!(text.contains("recovery required"), "{text}");
+    let aborted = classify(result.unwrap_err(), &receipt);
+    let CommitAborted::WriteConfig { runtime, source } = &aborted else {
+        panic!("{aborted:?}");
+    };
+    assert!(
+        matches!(runtime, RuntimeAftermath::RollbackFailed { .. }),
+        "{runtime:?}"
+    );
+    assert!(
+        source.to_string().contains("failed to write config"),
+        "{source}"
+    );
     assert!(f.client.status().uncertain);
 }
 

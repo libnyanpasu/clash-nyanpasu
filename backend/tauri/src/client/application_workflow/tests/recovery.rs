@@ -424,8 +424,14 @@ async fn a_lost_second_action_replaces_the_resolved_one_and_is_never_resent() {
     // outcome is unknown.
     let receipt = settlement.await.expect("an unknown Try is settled too");
     assert_eq!(receipt.conclusion, MutationConclusion::RecoveryRequired);
-    let text = crate::state::mutation::uncommitted(&result.unwrap_err(), Some(&receipt));
-    assert!(text.contains("unknown and needs recovery"), "{text}");
+    let aborted = super::classify(result.unwrap_err(), &receipt);
+    assert!(
+        matches!(
+            super::aftermath(&aborted),
+            crate::state::mutation::RuntimeAftermath::Unknown { .. }
+        ),
+        "{aborted:?}"
+    );
     let tried = pending_submission(&scripted);
 
     scripted.rescript(tried, WaitScript::Deliver);

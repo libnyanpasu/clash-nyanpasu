@@ -24,6 +24,37 @@ use std::{
 use struct_patch::Patch;
 use tokio::sync::Notify;
 
+/// What the source that hit `error` would classify it as, given the Runtime's
+/// receipt for the operation.
+fn classify(
+    error: nyanpasu_core::state::ReplaceIfVersionError,
+    receipt: &super::mutation::MutationReceipt,
+) -> crate::state::mutation::CommitAborted {
+    crate::state::mutation::CommitAborted::classify(error, Some(receipt))
+}
+
+/// The reasons a required participant gave for refusing a candidate.
+fn refusal_reasons(aborted: &crate::state::mutation::CommitAborted) -> String {
+    match aborted {
+        crate::state::mutation::CommitAborted::RuntimeRefused { reasons, .. } => reasons.join("; "),
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}
+
+/// What became of the runtime after the aborted commit.
+fn aftermath(
+    aborted: &crate::state::mutation::CommitAborted,
+) -> &crate::state::mutation::RuntimeAftermath {
+    use crate::state::mutation::CommitAborted::*;
+    match aborted {
+        WriteConfig { runtime, .. }
+        | RecoverAfterWriteFailure { runtime, .. }
+        | RuntimeRefused { runtime, .. }
+        | RuntimeFailed { runtime, .. } => runtime,
+        ValidateState { .. } => panic!("{aborted:?} has no runtime aftermath"),
+    }
+}
+
 struct BlockingBuilder {
     delegate: adapters::FsRuntimeBuildAdapter,
     calls: AtomicUsize,

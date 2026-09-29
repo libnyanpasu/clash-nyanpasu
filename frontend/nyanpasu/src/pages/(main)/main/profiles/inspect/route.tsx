@@ -1,3 +1,4 @@
+import ArticleRounded from '~icons/material-symbols/article-rounded'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
@@ -131,8 +132,10 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
             : m.inspect_generated()}{' '}
         · {snapshot.target_core} · {m.inspect_revision()} {snapshot.revision}
       </p>
-      <div className="grid min-w-0 gap-4 @[40rem]:grid-cols-[20rem_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-3">
+      {/* On wide layouts both columns share the remaining viewport height and
+          scroll inside, so a long diff or log does not move the step list. */}
+      <div className="grid min-w-0 gap-4 @[40rem]:min-h-[28rem] @[40rem]:grow @[40rem]:basis-0 @[40rem]:grid-cols-[20rem_minmax(0,1fr)] @[40rem]:grid-rows-[minmax(0,1fr)]">
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
           <SegmentedButton
             size="sm"
             value={stepsView}
@@ -164,7 +167,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
           ) : (
             <nav
               aria-label={m.inspect_steps()}
-              className="flex max-h-[65vh] flex-col gap-1 overflow-auto"
+              className="flex max-h-[65vh] flex-col gap-1 overflow-auto @[40rem]:max-h-none @[40rem]:min-h-0 @[40rem]:flex-1"
             >
               {nodes.map((node) => (
                 <button
@@ -172,16 +175,25 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                   type="button"
                   aria-current={selected?.id === node.id ? 'step' : undefined}
                   onClick={() => setSelectedId(node.id)}
-                  className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary rounded-lg p-3 text-left text-sm focus-visible:outline-2"
+                  className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary flex items-center gap-2 rounded-lg p-3 text-left text-sm focus-visible:outline-2"
                 >
-                  <span className="text-on-surface-variant mr-2">
+                  <span className="text-on-surface-variant shrink-0 self-start">
                     #{node.id + 1}
                   </span>
-                  <StepLabel
-                    parts={stepParts(node.tag)}
-                    profiles={profiles}
-                    onOpenProfile={openProfile}
-                  />
+                  <span className="min-w-0 flex-1">
+                    <StepLabel
+                      parts={stepParts(node.tag)}
+                      profiles={profiles}
+                      onOpenProfile={openProfile}
+                    />
+                  </span>
+                  {node.has_logs && (
+                    <ArticleRounded
+                      role="img"
+                      aria-label={m.inspect_logs()}
+                      className="text-on-surface-variant size-4 shrink-0"
+                    />
+                  )}
                 </button>
               ))}
             </nav>
@@ -193,7 +205,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
           </p>
         )}
         {selected && (
-          <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-h-0 min-w-0 flex-col gap-3">
             <h2 className="font-medium">
               #{selected.id + 1}{' '}
               <StepLabel
@@ -222,7 +234,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
             {content.isSuccess && (
               <>
                 <SegmentedButton
-                  className="max-w-sm"
+                  className="max-w-md"
                   size="sm"
                   value={view}
                   onValueChange={(value) => {
@@ -233,8 +245,39 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                   <SegmentedButtonItem value="diff">
                     {m.inspect_diff()}
                   </SegmentedButtonItem>
+                  <SegmentedButtonItem value="logs">
+                    {m.inspect_logs()}
+                    {content.data.logs.length > 0 &&
+                      ` (${content.data.logs.length})`}
+                  </SegmentedButtonItem>
                 </SegmentedButton>
-                {view === 'yaml' ? (
+                {view === 'logs' ? (
+                  content.data.logs.length === 0 ? (
+                    <p
+                      role="status"
+                      className="text-on-surface-variant text-sm"
+                    >
+                      {m.inspect_no_logs()}
+                    </p>
+                  ) : (
+                    <ol
+                      aria-label={m.inspect_logs()}
+                      className="bg-surface divide-outline-variant/50 h-[55vh] min-h-64 divide-y overflow-auto rounded-lg @[40rem]:h-auto @[40rem]:min-h-48 @[40rem]:flex-1"
+                    >
+                      {content.data.logs.map((log, index) => (
+                        <li
+                          key={index}
+                          className="flex items-start gap-3 px-3 py-2"
+                        >
+                          <LogLevelBadge>{log.level}</LogLevelBadge>
+                          <span className="text-on-surface min-w-0 flex-1 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
+                            {log.message}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )
+                ) : view === 'yaml' ? (
                   <YamlViewer
                     code={content.data.yaml}
                     label={m.inspect_yaml()}
@@ -253,28 +296,6 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                     {m.inspect_diff_independent()}
                   </p>
                 )}
-                <section className="mt-3 flex flex-col gap-2">
-                  <h3 className="text-sm font-medium">{m.inspect_logs()}</h3>
-                  {content.data.logs.length === 0 ? (
-                    <p className="text-on-surface-variant text-sm">
-                      {m.inspect_no_logs()}
-                    </p>
-                  ) : (
-                    <ol className="bg-surface divide-outline-variant/50 max-h-64 divide-y overflow-auto rounded-lg">
-                      {content.data.logs.map((log, index) => (
-                        <li
-                          key={index}
-                          className="flex items-start gap-3 px-3 py-2"
-                        >
-                          <LogLevelBadge>{log.level}</LogLevelBadge>
-                          <span className="text-on-surface min-w-0 flex-1 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
-                            {log.message}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </section>
               </>
             )}
           </div>

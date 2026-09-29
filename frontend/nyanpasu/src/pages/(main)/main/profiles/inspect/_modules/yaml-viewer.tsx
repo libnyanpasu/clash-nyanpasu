@@ -33,7 +33,7 @@ export default function YamlViewer({
       role="region"
       aria-label={label}
       tabIndex={0}
-      className={`${styles.viewer} bg-surface text-on-surface focus-visible:outline-primary h-[55vh] min-h-64 overflow-auto rounded-lg text-xs focus-visible:outline-2`}
+      className={`${styles.viewer} bg-surface text-on-surface focus-visible:outline-primary h-[55vh] min-h-64 overflow-auto rounded-lg text-xs focus-visible:outline-2 @[40rem]:h-auto @[40rem]:min-h-48 @[40rem]:flex-1`}
     >
       {highlighted?.code === code ? (
         <div

@@ -178,7 +178,7 @@ export const inputLabelFieldsetVariants = cva('pointer-events-none', {
         // different material web border color, i think this looks better
         'group-data-[state=closed]:border-outline-variant',
         'group-data-[state=open]:border-primary',
-        'peer-not-focus:border-primary-container',
+        'peer-not-focus:border-outline-variant',
         'peer-focus:border-primary',
         // dark must be prefixed
         'dark:group-data-[state=closed]:border-outline-variant',

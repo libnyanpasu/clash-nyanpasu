@@ -9,8 +9,8 @@ use boa_engine::{
     js_string,
     module::{Module, SimpleModuleLoader},
 };
+use boa_runtime::console::{Console, ConsoleState, Logger};
 use boa_utils::module::{combine::CombineModuleLoader, http::HttpModuleLoader};
-use boa_wintertc::console::{Console, ConsoleState, Logger};
 use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
 use serde_yaml::Mapping;
 use std::{
@@ -117,6 +117,17 @@ impl JSRunner {
     }
 }
 
+/// Registers the Web APIs scripts may use. Only pure ones: timers, fetch and
+/// other time- or IO-bound APIs would make a transform's output depend on
+/// more than its input.
+fn register_web_apis(context: &mut Context) -> JsResult<()> {
+    boa_runtime::base64::register(None, context)?;
+    boa_runtime::clone::register(None, context)?;
+    boa_runtime::text::register(None, context)?;
+    boa_runtime::url::Url::register(None, context)?;
+    Ok(())
+}
+
 // boa engine is single-thread runner so that we can not define it in runner trait directly
 pub struct BoaRunner {
     ctx: Rc<RefCell<Context>>,
@@ -132,10 +143,11 @@ impl BoaRunner {
         ));
         let simple_loader = loader.clone_simple();
         let queue = Rc::new(SimpleJobExecutor::new());
-        let context = Context::builder()
+        let mut context = Context::builder()
             .job_executor(queue)
             .module_loader(loader.clone())
             .build()?;
+        register_web_apis(&mut context)?;
         Ok(Self {
             ctx: Rc::new(RefCell::new(context)),
             simple_loader,
@@ -457,6 +469,67 @@ mod test {
             .await;
         assert!(result.is_err());
         assert_eq!(logs, vec![StepLogEntry::new(StepLogLevel::Log, "before")]);
+    }
+
+    async fn run_js(script: &str, input: &str) -> serde_yaml::Mapping {
+        use super::{super::runner::Runner, JSRunner, ScriptDirs};
+
+        let dir = tempfile::tempdir().unwrap();
+        let runner = JSRunner::new(&ScriptDirs::under(dir.path())).unwrap();
+        let mut logs = Vec::new();
+        runner
+            .process_honey(serde_yaml::from_str(input).unwrap(), script, &mut logs)
+            .await
+            .unwrap_or_else(|e| panic!("{e:?}\nlogs: {logs:?}"))
+    }
+
+    fn yaml(text: &str) -> serde_yaml::Mapping {
+        serde_yaml::from_str(text).unwrap()
+    }
+
+    #[tokio::test]
+    async fn scripts_can_deep_copy_with_structured_clone() {
+        let output = run_js(
+            "export default function main(config) { const copy = structuredClone(config); copy.a.b = 2; config.copied = copy.a.b; return config; }",
+            "a:\n  b: 1\n",
+        )
+        .await;
+        assert_eq!(output, yaml("a:\n  b: 1\ncopied: 2\n"));
+    }
+
+    #[tokio::test]
+    async fn scripts_can_use_atob_and_btoa() {
+        let output = run_js(
+            "export default function main(config) { config.encoded = btoa('hello'); config.decoded = atob('aGVsbG8='); return config; }",
+            "{}",
+        )
+        .await;
+        assert_eq!(output, yaml("encoded: aGVsbG8=\ndecoded: hello\n"));
+    }
+
+    #[tokio::test]
+    async fn scripts_can_use_text_encoder_and_decoder() {
+        let output = run_js(
+            "export default function main(config) { const bytes = new TextEncoder().encode('你好'); config.length = bytes.length; config.text = new TextDecoder().decode(bytes); return config; }",
+            "{}",
+        )
+        .await;
+        assert_eq!(output, yaml("length: 6\ntext: 你好\n"));
+    }
+
+    #[tokio::test]
+    async fn scripts_can_parse_share_links_with_url() {
+        let output = run_js(
+            "export default function main(config) { const url = new URL('trojan://secret@example.com:443?sni=a.com#Node%201'); config.user = url.username; config.host = url.hostname; config.port = url.port; config.search = url.search; config.name = decodeURIComponent(url.hash.slice(1)); return config; }",
+            "{}",
+        )
+        .await;
+        assert_eq!(
+            output,
+            yaml(
+                "user: secret\nhost: example.com\nport: '443'\nsearch: ?sni=a.com\nname: Node 1\n"
+            )
+        );
     }
 
     /// Each run owns its console sink, so runs executing at the same time

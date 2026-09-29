@@ -1266,6 +1266,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "boa_runtime"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4f64cd1483c17ad23f3c9792cc1f949618178b79b0b25d3fee8f07d3019edd5"
+dependencies = [
+ "boa_engine",
+ "boa_gc",
+ "boa_wintertc",
+ "bytemuck",
+ "futures",
+ "futures-lite",
+ "rustc-hash 2.1.3",
+ "url",
+]
+
+[[package]]
 name = "boa_string"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1932,8 +1948,8 @@ dependencies = [
  "base64 0.23.1",
  "bimap",
  "boa_engine",
+ "boa_runtime",
  "boa_utils",
- "boa_wintertc",
  "bolt-load",
  "bytes",
  "camino",

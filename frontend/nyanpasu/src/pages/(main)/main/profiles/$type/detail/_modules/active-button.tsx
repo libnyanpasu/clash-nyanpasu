@@ -6,7 +6,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
-  useClashConnections,
+  useDeleteClashConnections,
   useProfile,
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
@@ -20,7 +20,7 @@ export const useActiveProfile = (profile: ProfileItem_Serialize) => {
 
   const isActive = data?.current === profile.uid
 
-  const { deleteConnections } = useClashConnections()
+  const deleteConnections = useDeleteClashConnections()
 
   const blockTask = useBlockTask(`active-profile-${profile.uid}`, async () => {
     try {

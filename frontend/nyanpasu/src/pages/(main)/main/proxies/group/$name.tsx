@@ -4,16 +4,17 @@ import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
 import { useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { useScrollArea } from '@/components/ui/scroll-area'
+import { useScrollAreaViewport } from '@/components/ui/scroll-area'
 import {
   ClashProxiesQueryGroupItem,
+  ClashProxiesQueryProxyItem,
   useClashProxies,
   useProxyMode,
 } from '@nyanpasu/interface'
 import { useContainerBreakpointValue } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useCurrentGroupConnection } from '../_modules/hooks'
+import { useGroupTrafficSpeed } from '../_modules/hooks'
 import DelayTestButton from './_modules/delay-test-button'
 import GroupHeader from './_modules/group-header'
 import ProxyNodeButton from './_modules/proxy-node-button'
@@ -22,11 +23,45 @@ export const Route = createFileRoute('/(main)/main/proxies/group/$name')({
   component: RouteComponent,
 })
 
+// Subscribes to connection samples on its own so each sample re-renders only
+// this label, not the node grid.
+function GroupTrafficSpeed({ groupName }: { groupName?: string }) {
+  const speed = useGroupTrafficSpeed(groupName)
+
+  return (
+    <>
+      <div className="flex items-center">
+        <ArrowDownwardAltRounded className="size-6" />
+
+        <span className="text-sm">
+          {filesize(speed.download, {
+            standard: 'iec',
+          })}
+          /s
+        </span>
+      </div>
+
+      <div className="flex items-center">
+        <ArrowUpwardAltRounded className="size-6" />
+
+        <span className="text-sm">
+          {filesize(speed.upload, {
+            standard: 'iec',
+          })}
+          /s
+        </span>
+      </div>
+    </>
+  )
+}
+
 function RouteComponent() {
   const { name: proxyGroupName } = Route.useParams()
 
   const {
     proxies: { data: proxies },
+    selectProxy,
+    updateProxiesDelay: { mutateAsync: mutateProxyDelay },
   } = useClashProxies()
 
   const { value: proxyMode } = useProxyMode()
@@ -39,7 +74,25 @@ function RouteComponent() {
     return proxies?.groups.find((group) => group.name === proxyGroupName)
   }, [proxies, proxyGroupName, proxyMode])
 
-  const { viewportRef } = useScrollArea()
+  const groupName = currentGroup?.name
+
+  const handleSelectProxy = useCallback(
+    async (proxy: ClashProxiesQueryProxyItem) => {
+      if (groupName) {
+        await selectProxy(groupName, proxy.name)
+      }
+    },
+    [groupName, selectProxy],
+  )
+
+  const handleDelayTest = useCallback(
+    async (proxy: ClashProxiesQueryProxyItem) => {
+      await mutateProxyDelay([proxy.name, proxy.provider])
+    },
+    [mutateProxyDelay],
+  )
+
+  const { viewportRef } = useScrollAreaViewport()
 
   // define the number of lanes based on the container breakpoint
   const lanes = useContainerBreakpointValue(
@@ -79,8 +132,6 @@ function RouteComponent() {
     }
   }, [currentGroup?.all, currentGroup?.now, virtualizer])
 
-  const currentGroupConnection = useCurrentGroupConnection(currentGroup)
-
   return (
     <>
       <GroupHeader>
@@ -91,27 +142,7 @@ function RouteComponent() {
             </div>
           </div>
 
-          <div className="flex items-center">
-            <ArrowDownwardAltRounded className="size-6" />
-
-            <span className="text-sm">
-              {filesize(currentGroupConnection?.download ?? 0, {
-                standard: 'iec',
-              })}
-              /s
-            </span>
-          </div>
-
-          <div className="flex items-center">
-            <ArrowUpwardAltRounded className="size-6" />
-
-            <span className="text-sm">
-              {filesize(currentGroupConnection?.upload ?? 0, {
-                standard: 'iec',
-              })}
-              /s
-            </span>
-          </div>
+          <GroupTrafficSpeed groupName={currentGroup?.name} />
         </div>
 
         <div className="flex-1" />
@@ -154,7 +185,11 @@ function RouteComponent() {
               data-slot="proxies-virtual-item"
               data-active={String(proxy.name === currentGroup?.now)}
             >
-              <ProxyNodeButton proxy={proxy} />
+              <ProxyNodeButton
+                proxy={proxy}
+                onSelect={handleSelectProxy}
+                onDelayTest={handleDelayTest}
+              />
             </div>
           )
         })}

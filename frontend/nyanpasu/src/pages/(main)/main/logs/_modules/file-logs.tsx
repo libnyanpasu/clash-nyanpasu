@@ -9,7 +9,11 @@ import {
   ModalTitle,
   ModalTrigger,
 } from '@/components/ui/modal'
-import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
+import {
+  ScrollArea,
+  useScrollArea,
+  useScrollAreaViewport,
+} from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -315,7 +319,8 @@ function FileRows({
   setFollowing: (value: boolean) => void
   setUnseen: React.Dispatch<React.SetStateAction<number>>
 }) {
-  const { viewportRef, isBottom, scrollDirection, isTop } = useScrollArea()
+  const { isBottom, scrollDirection, isTop } = useScrollArea()
+  const { viewportRef } = useScrollAreaViewport()
   const lastId = useRef<string | undefined>(undefined)
   const anchor = useRef<{
     id: string

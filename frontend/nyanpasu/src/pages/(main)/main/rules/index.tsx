@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import HighlightText from '@/components/ui/highlight-text'
-import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea, useScrollAreaViewport } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { useClashRules } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
@@ -31,7 +31,7 @@ const Viewer = ({ search }: { search: string }) => {
 
   const { proxy } = IndexRoute.useSearch()
 
-  const { viewportRef } = useScrollArea()
+  const { viewportRef } = useScrollAreaViewport()
 
   const filteredRules = useMemo(() => {
     const rules = data?.rules ?? []

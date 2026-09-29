@@ -1,7 +1,14 @@
 import BoxOutlineRounded from '~icons/material-symbols/box-outline-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -10,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import HighlightText from '@/components/ui/highlight-text'
-import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea, useScrollAreaViewport } from '@/components/ui/scroll-area'
 import {
   Tooltip,
   TooltipContent,
@@ -20,7 +27,11 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
-import { ClashConnectionItem, useClashConnections } from '@nyanpasu/interface'
+import {
+  ClashConnectionItem,
+  useClashConnections,
+  useDeleteClashConnections,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -38,13 +49,16 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useLocalStorage } from '@uidotdev/usehooks'
-import TableRow from './_modules/table-row'
+import TableRow, { ConnectionDetailModal } from './_modules/table-row'
 import { Route as IndexRoute } from './route'
 
 export type ConnectionRow = ClashConnectionItem & {
   closed: boolean
   downloadSpeed: number
   uploadSpeed: number
+  // Parsed once per sample: sorting by time compares numbers instead of
+  // parsing both dates in every comparison.
+  startMs: number
 }
 
 const features = tableFeatures({
@@ -61,7 +75,9 @@ export const Route = createFileRoute('/(main)/main/connections/')({
   component: RouteComponent,
 })
 
-const Viewer = ({ search }: { search: string }) => {
+// Memoized so a keystroke's urgent render skips the table; it re-renders
+// with the deferred search term, or on its own stream and route updates.
+const Viewer = memo(function Viewer({ search }: { search: string }) {
   const { proxy } = IndexRoute.useSearch()
 
   const [columnSizing, setColumnSizing] = useLocalStorage<ColumnSizingState>(
@@ -71,7 +87,7 @@ const Viewer = ({ search }: { search: string }) => {
 
   const { data: clashConnections } = useClashConnections()
 
-  const { viewportRef } = useScrollArea()
+  const { viewportRef } = useScrollAreaViewport()
 
   const data = useMemo<ConnectionRow[]>(() => {
     const allSnapshots = clashConnections ?? []
@@ -90,12 +106,21 @@ const Viewer = ({ search }: { search: string }) => {
           closed: false,
           downloadSpeed: prev ? conn.download - prev.download : 0,
           uploadSpeed: prev ? conn.upload - prev.upload : 0,
+          startMs: Date.parse(conn.start),
         }
       })
       .filter((c) => (search ? containsSearchTerm(c, search) : true))
 
     return all
   }, [clashConnections, search, proxy])
+
+  const [detailId, setDetailId] = useState<string | null>(null)
+
+  const detailRow = useMemo(
+    () =>
+      detailId === null ? undefined : data.find((row) => row.id === detailId),
+    [data, detailId],
+  )
 
   const handleColumnSizingChange = useCallback(
     (updater: Updater<ColumnSizingState>) => {
@@ -216,8 +241,7 @@ const Viewer = ({ search }: { search: string }) => {
           id: 'Time',
           header: () => m.connections_column_time(),
           accessorFn: ({ start }) => dayjs(start).fromNow(),
-          sortFn: (rowA, rowB) =>
-            dayjs(rowA.original.start).diff(rowB.original.start),
+          sortFn: (rowA, rowB) => rowA.original.startMs - rowB.original.startMs,
           size: 120,
           cell: (info) => (
             <span
@@ -273,6 +297,9 @@ const Viewer = ({ search }: { search: string }) => {
     features,
     data,
     columns,
+    // Row identity must follow the connection, not its position in the
+    // current sample, or rows and their menus are reused for other connections.
+    getRowId: (row) => row.id,
     state: {
       columnSizing,
     },
@@ -324,131 +351,151 @@ const Viewer = ({ search }: { search: string }) => {
       : 0
   const tableRenderWidth = Math.max(tableBaseWidth, viewportWidth)
 
+  const detailModal = (
+    <ConnectionDetailModal data={detailRow} onClose={() => setDetailId(null)} />
+  )
+
   if (rows.length === 0) {
     return (
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center gap-4"
-        data-slot="connections-no-connections"
-      >
-        <BoxOutlineRounded className="text-surface-variant size-16" />
-
-        <p
-          className="text-surface-variant text-sm"
-          data-slot="connections-no-connections-message"
+      <>
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-4"
+          data-slot="connections-no-connections"
         >
-          {m.connections_empty_message()}
-        </p>
-      </div>
+          <BoxOutlineRounded className="text-surface-variant size-16" />
+
+          <p
+            className="text-surface-variant text-sm"
+            data-slot="connections-no-connections-message"
+          >
+            {m.connections_empty_message()}
+          </p>
+        </div>
+
+        {detailModal}
+      </>
     )
   }
 
   return (
-    <div
-      className="mx-auto min-h-full"
-      data-slot="connections-virtual-container"
-      style={{
-        height: `${rowVirtualizer.getTotalSize()}px`,
-      }}
-    >
-      <table
-        className="divide-outline-variant w-full table-fixed border-separate border-spacing-0"
-        data-slot="connections-virtual-table"
-        style={{ width: tableRenderWidth }}
+    <>
+      <div
+        className="mx-auto min-h-full"
+        data-slot="connections-virtual-container"
+        style={{
+          height: `${rowVirtualizer.getTotalSize()}px`,
+        }}
       >
-        <thead className="bg-mixed-background sticky top-0 z-20 h-10">
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <th
-                  key={header.id}
-                  colSpan={header.colSpan}
-                  className="border-outline-variant relative border-b whitespace-nowrap"
-                  style={{ width: header.getSize() + extraWidthPerColumn }}
+        <table
+          className="divide-outline-variant w-full table-fixed border-separate border-spacing-0"
+          data-slot="connections-virtual-table"
+          style={{ width: tableRenderWidth }}
+        >
+          <thead className="bg-mixed-background sticky top-0 z-20 h-10">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th
+                    key={header.id}
+                    colSpan={header.colSpan}
+                    className="border-outline-variant relative border-b whitespace-nowrap"
+                    style={{ width: header.getSize() + extraWidthPerColumn }}
+                  >
+                    {header.isPlaceholder ? null : (
+                      <div
+                        className={cn(
+                          'truncate px-3 text-left align-middle text-sm font-bold select-none',
+                          header.column.getCanSort() &&
+                            'hover:text-primary cursor-pointer',
+                        )}
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                        {header.column.getIsSorted() === 'asc' && ' ↑'}
+                        {header.column.getIsSorted() === 'desc' && ' ↓'}
+                      </div>
+                    )}
+                    {header.column.getCanResize() && (
+                      <div
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        className={cn(
+                          'absolute top-0 right-0 h-full w-1 cursor-col-resize touch-none select-none',
+                          'hover:bg-primary/40 bg-transparent',
+                          header.column.getIsResizing() && 'bg-primary/60',
+                        )}
+                      />
+                    )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+
+          <tbody className="select-text" data-slot="connections-virtual-tbody">
+            {virtualItems.map((virtualRow, index) => {
+              const row = rows[virtualRow.index]
+
+              if (!row) {
+                return null
+              }
+
+              const offset = virtualRow.start - index * virtualRow.size
+
+              return (
+                <TableRow
+                  key={row.id}
+                  data-index={virtualRow.index}
+                  ref={(node) => rowVirtualizer.measureElement(node)}
+                  className={cn(
+                    'transition-colors',
+                    'hover:bg-primary/5 active:bg-primary/10',
+                    row.original.closed && 'opacity-40',
+                  )}
+                  style={{
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${offset}px)`,
+                  }}
+                  data={row.original}
+                  onViewDetails={setDetailId}
                 >
-                  {header.isPlaceholder ? null : (
-                    <div
-                      className={cn(
-                        'truncate px-3 text-left align-middle text-sm font-bold select-none',
-                        header.column.getCanSort() &&
-                          'hover:text-primary cursor-pointer',
-                      )}
-                      onClick={header.column.getToggleSortingHandler()}
+                  {row.getVisibleCells().map((cell) => (
+                    <td
+                      key={cell.id}
+                      className="border-outline-variant/30 max-w-0 truncate border-b px-3 text-sm"
+                      style={{
+                        width: cell.column.getSize() + extraWidthPerColumn,
+                      }}
                     >
                       {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
                       )}
-                      {header.column.getIsSorted() === 'asc' && ' ↑'}
-                      {header.column.getIsSorted() === 'desc' && ' ↓'}
-                    </div>
-                  )}
-                  {header.column.getCanResize() && (
-                    <div
-                      onMouseDown={header.getResizeHandler()}
-                      onTouchStart={header.getResizeHandler()}
-                      className={cn(
-                        'absolute top-0 right-0 h-full w-1 cursor-col-resize touch-none select-none',
-                        'hover:bg-primary/40 bg-transparent',
-                        header.column.getIsResizing() && 'bg-primary/60',
-                      )}
-                    />
-                  )}
-                </th>
-              ))}
-            </tr>
-          ))}
-        </thead>
+                    </td>
+                  ))}
+                </TableRow>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
 
-        <tbody className="select-text" data-slot="connections-virtual-tbody">
-          {virtualItems.map((virtualRow, index) => {
-            const row = rows[virtualRow.index]
-
-            if (!row) {
-              return null
-            }
-
-            const offset = virtualRow.start - index * virtualRow.size
-
-            return (
-              <TableRow
-                key={row.id}
-                data-index={virtualRow.index}
-                ref={(node) => rowVirtualizer.measureElement(node)}
-                className={cn(
-                  'transition-colors',
-                  'hover:bg-primary/5 active:bg-primary/10',
-                  row.original.closed && 'opacity-40',
-                )}
-                style={{
-                  height: `${virtualRow.size}px`,
-                  transform: `translateY(${offset}px)`,
-                }}
-                data={row.original}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className="border-outline-variant/30 max-w-0 truncate border-b px-3 text-sm"
-                    style={{
-                      width: cell.column.getSize() + extraWidthPerColumn,
-                    }}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </TableRow>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+      {detailModal}
+    </>
   )
-}
+})
 
 function RouteComponent() {
   const [search, setSearch] = useState('')
 
-  const { deleteConnections } = useClashConnections()
+  // Filtering, highlighting and re-sorting every connection is heavy; typing
+  // stays responsive while the table catches up with the latest term.
+  const deferredSearch = useDeferredValue(search)
+
+  const deleteConnections = useDeleteClashConnections()
 
   const handleCloseAllConnections = useLockFn(async () => {
     await deleteConnections.mutateAsync(null)
@@ -459,7 +506,7 @@ function RouteComponent() {
       <RegisterContextMenu>
         <RegisterContextMenuTrigger asChild>
           <ScrollArea className="min-h-0 flex-1" scrollbars="both" type="hover">
-            <Viewer search={search} />
+            <Viewer search={deferredSearch} />
           </ScrollArea>
         </RegisterContextMenuTrigger>
 

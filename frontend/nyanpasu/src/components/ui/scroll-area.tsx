@@ -1,6 +1,6 @@
 import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
 import * as React from 'react'
-import { createContext, useContext, useRef, useState } from 'react'
+import { createContext, useContext, useMemo, useRef, useState } from 'react'
 import { cn } from '@nyanpasu/utils'
 
 interface ScrollAreaContextValue {
@@ -14,16 +14,37 @@ interface ScrollAreaContextValue {
     left: number
     right: number
   }
+}
+
+interface ScrollAreaViewportContextValue {
   viewportRef: React.RefObject<HTMLDivElement | null>
 }
 
+// Scroll state changes on every scroll event, while the viewport ref never
+// changes. Separate contexts keep consumers that only need the ref (virtual
+// lists) from re-rendering on every scroll frame.
 const ScrollAreaContext = createContext<ScrollAreaContextValue | null>(null)
+
+const ScrollAreaViewportContext =
+  createContext<ScrollAreaViewportContextValue | null>(null)
 
 export function useScrollArea() {
   const context = useContext(ScrollAreaContext)
 
   if (!context) {
     throw new Error('useScrollArea must be used within a ScrollArea component')
+  }
+
+  return context
+}
+
+export function useScrollAreaViewport() {
+  const context = useContext(ScrollAreaViewportContext)
+
+  if (!context) {
+    throw new Error(
+      'useScrollAreaViewport must be used within a ScrollArea component',
+    )
   }
 
   return context
@@ -154,6 +175,8 @@ export function ScrollArea({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
 
+  const viewport = useMemo(() => ({ viewportRef }), [])
+
   const {
     isTop,
     isBottom,
@@ -164,38 +187,39 @@ export function ScrollArea({
   } = useScrollTracking()
 
   return (
-    <ScrollAreaContext.Provider
-      value={{
-        isScrolling,
-        isTop,
-        isBottom,
-        scrollDirection,
-        viewportRef,
-        offset,
-      }}
-    >
-      <Root
-        data-slot="scroll-area"
-        type="scroll"
-        scrollHideDelay={600}
-        className={cn('relative flex min-h-0 flex-col', className)}
-        data-top={String(isTop)}
-        data-scroll-direction={scrollDirection}
-        {...props}
+    <ScrollAreaViewportContext.Provider value={viewport}>
+      <ScrollAreaContext.Provider
+        value={{
+          isScrolling,
+          isTop,
+          isBottom,
+          scrollDirection,
+          offset,
+        }}
       >
-        <Viewport ref={viewportRef} onScroll={handleScroll}>
-          {children}
-        </Viewport>
+        <Root
+          data-slot="scroll-area"
+          type="scroll"
+          scrollHideDelay={600}
+          className={cn('relative flex min-h-0 flex-col', className)}
+          data-top={String(isTop)}
+          data-scroll-direction={scrollDirection}
+          {...props}
+        >
+          <Viewport ref={viewportRef} onScroll={handleScroll}>
+            {children}
+          </Viewport>
 
-        {(scrollbars === 'vertical' || scrollbars === 'both') && (
-          <ScrollBar orientation="vertical" />
-        )}
-        {(scrollbars === 'horizontal' || scrollbars === 'both') && (
-          <ScrollBar orientation="horizontal" />
-        )}
-        <Corner />
-      </Root>
-    </ScrollAreaContext.Provider>
+          {(scrollbars === 'vertical' || scrollbars === 'both') && (
+            <ScrollBar orientation="vertical" />
+          )}
+          {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+            <ScrollBar orientation="horizontal" />
+          )}
+          <Corner />
+        </Root>
+      </ScrollAreaContext.Provider>
+    </ScrollAreaViewportContext.Provider>
   )
 }
 
@@ -238,6 +262,8 @@ export function AppContentScrollArea({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
 
+  const viewport = useMemo(() => ({ viewportRef }), [])
+
   const {
     isTop,
     isBottom,
@@ -248,45 +274,46 @@ export function AppContentScrollArea({
   } = useScrollTracking()
 
   return (
-    <ScrollAreaContext.Provider
-      value={{
-        isScrolling,
-        isTop,
-        isBottom,
-        scrollDirection,
-        viewportRef,
-        offset,
-      }}
-    >
-      <Root
-        className={cn(
-          'relative',
-          'flex flex-1 flex-col',
-          'min-h-0',
-          'max-w-screen min-w-0',
-          className,
-        )}
-        data-slot="app-content-scroll-area"
-        type="scroll"
-        scrollHideDelay={600}
-        data-scrolling={String(isScrolling)}
-        data-top={String(isTop)}
-        data-bottom={String(isBottom)}
-        data-scroll-direction={scrollDirection}
-        {...props}
+    <ScrollAreaViewportContext.Provider value={viewport}>
+      <ScrollAreaContext.Provider
+        value={{
+          isScrolling,
+          isTop,
+          isBottom,
+          scrollDirection,
+          offset,
+        }}
       >
-        <Viewport ref={viewportRef} onScroll={handleScroll}>
-          {children}
-        </Viewport>
+        <Root
+          className={cn(
+            'relative',
+            'flex flex-1 flex-col',
+            'min-h-0',
+            'max-w-screen min-w-0',
+            className,
+          )}
+          data-slot="app-content-scroll-area"
+          type="scroll"
+          scrollHideDelay={600}
+          data-scrolling={String(isScrolling)}
+          data-top={String(isTop)}
+          data-bottom={String(isBottom)}
+          data-scroll-direction={scrollDirection}
+          {...props}
+        >
+          <Viewport ref={viewportRef} onScroll={handleScroll}>
+            {children}
+          </Viewport>
 
-        {(scrollbars === 'vertical' || scrollbars === 'both') && (
-          <ScrollBar orientation="vertical" />
-        )}
-        {(scrollbars === 'horizontal' || scrollbars === 'both') && (
-          <ScrollBar orientation="horizontal" />
-        )}
-        <Corner />
-      </Root>
-    </ScrollAreaContext.Provider>
+          {(scrollbars === 'vertical' || scrollbars === 'both') && (
+            <ScrollBar orientation="vertical" />
+          )}
+          {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+            <ScrollBar orientation="horizontal" />
+          )}
+          <Corner />
+        </Root>
+      </ScrollAreaContext.Provider>
+    </ScrollAreaViewportContext.Provider>
   )
 }

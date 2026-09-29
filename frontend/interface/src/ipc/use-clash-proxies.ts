@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import {
   useMutation,
   useQuery,
@@ -20,24 +21,14 @@ export type ClashDelayOptions = {
   timeout?: number
 }
 
-export type ClashProxiesQueryHelperFn = {
-  mutateDelay: (options?: ClashDelayOptions) => Promise<void>
-}
+// Query data stays plain JSON: functions in it would defeat structural
+// sharing, so every refetch would hand every group and node a new identity.
+// Actions are returned by the hook instead.
+export type ClashProxiesQueryProxyItem = ProxyItem_Serialize
 
-export interface ClashProxiesQueryProxyItem
-  extends ProxyItem_Serialize, ClashProxiesQueryHelperFn {
-  mutateSelect: () => Promise<void>
-}
+export type ClashProxiesQueryGroupItem = ProxyGroupItem_Serialize
 
-export interface ClashProxiesQueryGroupItem
-  extends ProxyGroupItem_Serialize, ClashProxiesQueryHelperFn {
-  all: ClashProxiesQueryProxyItem[]
-}
-
-export interface ClashProxiesQuery extends Proxies_Serialize {
-  global: ClashProxiesQueryGroupItem
-  groups: ClashProxiesQueryGroupItem[]
-}
+export type ClashProxiesQuery = Proxies_Serialize
 
 // Create a new proxy item with updated history
 const createUpdatedProxy = (
@@ -57,12 +48,12 @@ const createUpdatedProxy = (
 export const useClashProxies = () => {
   const queryClient = useQueryClient()
   const proxiesOptions = queries.getProxies()
-  const selectProxyMutation = mutations.selectProxy
+  const selectProxyCommand = mutations.selectProxy
 
-  const selectProxy = useMutation({
-    mutationKey: selectProxyMutation.mutationKey,
+  const { mutateAsync: mutateSelectProxy } = useMutation({
+    mutationKey: selectProxyCommand.mutationKey,
     mutationFn: async ({ group, name }: { group: string; name: string }) =>
-      unwrapResult(await invokeMutation(selectProxyMutation, [group, name])),
+      unwrapResult(await invokeMutation(selectProxyCommand, [group, name])),
   })
 
   const proxies = useQuery<ClashProxiesQuery | undefined>({
@@ -74,53 +65,22 @@ export const useClashProxies = () => {
         return
       }
 
-      // Create helper functions to reduce code duplication
-      const createProxyWithHelpers = (
-        proxy: ProxyItem_Serialize,
-        groupName: string,
-      ): ClashProxiesQueryProxyItem => ({
-        ...proxy,
-        mutateDelay: async (options?: ClashDelayOptions) => {
-          await updateProxiesDelay.mutateAsync([
-            proxy.name,
-            proxy.provider,
-            options,
-          ])
-        },
-        mutateSelect: async () => {
-          await selectProxy.mutateAsync({ group: groupName, name: proxy.name })
-          await proxies.refetch()
-        },
-      })
-
-      const createGroupWithHelpers = (
-        group: ProxyGroupItem_Serialize,
-      ): ClashProxiesQueryGroupItem => ({
-        ...group,
-        mutateDelay: async (options?: ClashDelayOptions) => {
-          await updateGroupDelay.mutateAsync([group.name, options])
-        },
-        all: group.all.map((proxy) =>
-          createProxyWithHelpers(proxy, group.name),
-        ),
-      })
-
-      // Apply helper functions to groups and global
-      const groups = result.groups
-        .filter((g) => !g.hidden)
-        .map(createGroupWithHelpers)
-      const global = createGroupWithHelpers(result.global)
-
-      // merge the results & type validation
-      const merged = {
+      return {
         ...result,
-        groups,
-        global,
+        groups: result.groups.filter((group) => !group.hidden),
       } satisfies ClashProxiesQuery
-
-      return merged
     },
   })
+
+  const { refetch: refetchProxies } = proxies
+
+  const selectProxy = useCallback(
+    async (group: string, name: string) => {
+      await mutateSelectProxy({ group, name })
+      await refetchProxies()
+    },
+    [mutateSelectProxy, refetchProxies],
+  )
 
   const getQueryData = () => {
     return queryClient.getQueryData(proxiesOptions.queryKey) as
@@ -245,6 +205,7 @@ export const useClashProxies = () => {
 
   return {
     proxies,
+    selectProxy,
     updateProxiesDelay,
     updateGroupDelay,
   }

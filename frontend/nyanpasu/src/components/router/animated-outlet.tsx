@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, useIsPresent, Variants } from 'motion/react'
 import { ComponentProps, useRef } from 'react'
+import { ClashWSFreezeBoundary } from '@nyanpasu/interface'
 import {
   Outlet,
   RouterContextProvider,
@@ -11,32 +12,39 @@ import {
 
 type TransitionDirection = 1 | -1
 
+// A whole `transform` value (not `translateX`) lets Motion run the slide as a
+// browser animation off the main thread; independent transforms are driven
+// from the JS frame loop, which stalls while the incoming page mounts. The
+// settled page drops the transform so it is not the containing block of
+// `position: fixed` descendants.
 const directionalSlideVariants = {
   forward: {
     initial: {
-      translateX: '30%',
+      transform: 'translateX(30%)',
       opacity: 0,
     },
     visible: {
-      translateX: '0%',
+      transform: 'translateX(0%)',
       opacity: 1,
+      transitionEnd: { transform: 'none' },
     },
     hidden: {
-      translateX: '-30%',
+      transform: 'translateX(-30%)',
       opacity: 0,
     },
   },
   backward: {
     initial: {
-      translateX: '-30%',
+      transform: 'translateX(-30%)',
       opacity: 0,
     },
     visible: {
-      translateX: '0%',
+      transform: 'translateX(0%)',
       opacity: 1,
+      transitionEnd: { transform: 'none' },
     },
     hidden: {
-      translateX: '30%',
+      transform: 'translateX(30%)',
       opacity: 0,
     },
   },
@@ -156,7 +164,11 @@ export function AnimatedOutlet({
   return (
     <motion.div ref={ref} {...props}>
       <RouterContextProvider router={renderedRouter}>
-        <Outlet />
+        {/* The exiting page keeps the stream samples it had when it started
+            leaving, so live updates do not re-render it during the slide. */}
+        <ClashWSFreezeBoundary frozen={!isPresent}>
+          <Outlet />
+        </ClashWSFreezeBoundary>
       </RouterContextProvider>
     </motion.div>
   )
@@ -199,7 +211,6 @@ export function AnimatedOutletPreset(props: ComponentProps<typeof motion.div>) {
       <AnimatedOutlet
         key={id}
         custom={direction}
-        layout="position"
         initial="initial"
         animate="visible"
         exit="hidden"

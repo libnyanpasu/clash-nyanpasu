@@ -102,7 +102,7 @@ pub struct GetSysProxyResponse {
 use crate::state::profiles::actor::NewProfileRequest;
 use nyanpasu_config::profile::{
     ProfileDefinition, ProfileId, ProfileMetadataPatch, Profiles as DomainProfiles,
-    RemoteProfileOptionsPatch,
+    RemoteProfileOptionsPatch, TransformKind,
 };
 
 #[tauri::command]
@@ -139,12 +139,13 @@ pub async fn import_profile(
     url: String,
     name: Option<String>,
     option: Option<RemoteProfileOptionsPatch>,
+    transform: Option<TransformKind>,
 ) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     // `name` carries deep-link intent (e.g. an install-config `name=` param);
     // when absent the facade derives the name from the url server-side. Return
     // MutationOutcome so a degraded post-import rebuild still carries the uid.
-    Ok(client.import_profile(url, name, option).await?)
+    Ok(client.import_profile(url, name, option, transform).await?)
 }
 
 /// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep

@@ -9,7 +9,7 @@ use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
     ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
-    RemoteProfileOptions, RemoteProfileOptionsPatch,
+    RemoteProfileOptions, RemoteProfileOptionsPatch, TransformKind,
 };
 use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
@@ -273,6 +273,7 @@ impl ProfilesClient {
     pub async fn import(
         &self,
         url: url::Url,
+        transform: Option<TransformKind>,
         metadata: ProfileMetadata,
         option: RemoteProfileOptions,
         update_interval_explicit: bool,
@@ -280,6 +281,7 @@ impl ProfilesClient {
         self.call(
             |reply| ProfilesActorMessage::ImportRemote {
                 url,
+                transform,
                 metadata,
                 option,
                 update_interval_explicit,
@@ -965,6 +967,7 @@ mod tests {
         let report = client
             .import(
                 url::Url::parse("https://example.com/sub").unwrap(),
+                None,
                 ProfileMetadata {
                     name: "imported".into(),
                     desc: None,
@@ -1057,6 +1060,7 @@ mod tests {
             client
                 .import(
                     url::Url::parse("https://example.com/sub").unwrap(),
+                    None,
                     ProfileMetadata {
                         name: "imported".into(),
                         desc: None,
@@ -3089,6 +3093,7 @@ mod tests {
         let report = client
             .import(
                 url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap(),
+                None,
                 import_metadata("url-name", false),
                 RemoteProfileOptions::default(),
                 false,
@@ -3144,6 +3149,7 @@ mod tests {
         let err = client
             .import(
                 url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                None,
                 import_metadata("x", true),
                 RemoteProfileOptions::default(),
                 false,
@@ -3209,6 +3215,7 @@ mod tests {
             client_for_task
                 .import(
                     url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                    None,
                     import_metadata("x", true),
                     RemoteProfileOptions::default(),
                     false,
@@ -3224,6 +3231,7 @@ mod tests {
         client
             .import(
                 url::Url::parse("https://example.com/subs/y.yaml").unwrap(),
+                None,
                 import_metadata("y", true),
                 RemoteProfileOptions::default(),
                 false,
@@ -3278,6 +3286,7 @@ mod tests {
             client_for_task
                 .import(
                     url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                    None,
                     import_metadata("x", true),
                     RemoteProfileOptions::default(),
                     false,
@@ -3316,6 +3325,7 @@ mod tests {
             client
                 .import(
                     url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                    None,
                     import_metadata("x", true),
                     RemoteProfileOptions::default(),
                     false,
@@ -3376,6 +3386,7 @@ mod tests {
         let report = client
             .import(
                 url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                None,
                 import_metadata("Pinned Name", true),
                 option,
                 true,
@@ -3418,6 +3429,7 @@ mod tests {
         let report = client
             .import(
                 url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                None,
                 import_metadata("x", true),
                 RemoteProfileOptions::default(),
                 false,
@@ -3456,6 +3468,7 @@ mod tests {
         let err = client
             .import(
                 url::Url::parse("https://example.com/subs/x.yaml").unwrap(),
+                None,
                 import_metadata("x", true),
                 option,
                 true,
@@ -3765,6 +3778,7 @@ mod tests {
         let report = client
             .import(
                 url::Url::parse("https://example.com/subs/held.yaml").unwrap(),
+                None,
                 import_metadata("held", true),
                 RemoteProfileOptions::default(),
                 false,
@@ -3802,6 +3816,7 @@ mod tests {
             import_client
                 .import(
                     url::Url::parse("https://example.com/subs/stopped.yaml").unwrap(),
+                    None,
                     import_metadata("stopped", true),
                     RemoteProfileOptions::default(),
                     false,
@@ -3906,6 +3921,7 @@ mod tests {
             client.refresh(ProfileId("r1".into()), None),
             client.import(
                 url::Url::parse("https://example.com/subs/late.yaml").unwrap(),
+                None,
                 import_metadata("late", true),
                 RemoteProfileOptions::default(),
                 false,

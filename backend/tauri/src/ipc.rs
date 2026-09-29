@@ -1002,7 +1002,16 @@ pub mod uwp {
 pub async fn get_service_install_prompt() -> Result<String> {
     let args = (crate::core::service::control::get_service_install_args().await)?
         .into_iter()
-        .map(|arg| arg.to_string_lossy().to_string())
+        .map(|arg| {
+            #[cfg(unix)]
+            {
+                format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''"))
+            }
+            #[cfg(windows)]
+            {
+                arg.to_string_lossy().to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join(" ");
     let mut prompt = format!("./nyanpasu-service {args}");

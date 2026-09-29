@@ -22,20 +22,6 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> 
     let config_dir = app_config_dir()?;
     let app_dir = app_install_dir()?;
 
-    #[cfg(not(windows))]
-    let args: Vec<OsString> = vec![
-        "install".into(),
-        "--user".into(),
-        user.into(),
-        "--nyanpasu-data-dir".into(),
-        format!("\"{}\"", data_dir.to_string_lossy()).into(),
-        "--nyanpasu-config-dir".into(),
-        format!("\"{}\"", config_dir.to_string_lossy()).into(),
-        "--nyanpasu-app-dir".into(),
-        format!("\"{}\"", app_dir.to_string_lossy()).into(),
-    ];
-
-    #[cfg(windows)]
     let args: Vec<OsString> = vec![
         "install".into(),
         "--user".into(),
@@ -65,7 +51,10 @@ pub async fn install_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            let args = args.iter().map(|s| s.to_string_lossy()).collect::<Vec<_>>();
+            let args = args
+                .iter()
+                .map(|arg| format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''")))
+                .collect::<Vec<_>>();
             match sudo(SERVICE_PATH.to_string_lossy(), &args) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
@@ -96,12 +85,21 @@ pub async fn install_service() -> anyhow::Result<()> {
 }
 
 pub async fn update_service() -> anyhow::Result<()> {
+    #[cfg(unix)]
+    let args: Vec<OsString> = vec![
+        "update".into(),
+        "--user".into(),
+        whoami::username()?.into(),
+        "--nyanpasu-data-dir".into(),
+        app_data_dir()?.into(),
+    ];
+    #[cfg(windows)]
+    let args: Vec<OsString> = vec!["update".into()];
     let child = tokio::task::spawn_blocking(move || {
-        const ARGS: &[&str] = &["update"];
         #[cfg(not(target_os = "macos"))]
         {
             RunasCommand::new(SERVICE_PATH.as_path())
-                .args(ARGS)
+                .args(&args)
                 .gui(true)
                 .show(true)
                 .status()
@@ -109,7 +107,11 @@ pub async fn update_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
+            let args = args
+                .iter()
+                .map(|arg| format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''")))
+                .collect::<Vec<_>>();
+            match sudo(SERVICE_PATH.to_string_lossy(), &args) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);

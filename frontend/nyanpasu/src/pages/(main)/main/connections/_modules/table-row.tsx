@@ -27,13 +27,12 @@ import {
   type ConnectionMetadataFields_Serialize,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
-import { ConnectionRow } from '..'
+import type { ConnectionRow } from './active-viewer'
 
 // Keys added by ConnectionRow, plus the two wrapper fields, that should not
 // be rendered as their own dialog row: `metadata` and `_extra` get their own
 // sections below.
 const INTERNAL_KEYS = new Set([
-  'closed',
   'downloadSpeed',
   'uploadSpeed',
   'startMs',

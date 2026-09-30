@@ -11,7 +11,7 @@ use std::{
 use nyanpasu_traffic::{
     Bytes, ClosedCursor, ClosedPage, FlushBatch, Frame, GroupBy, Rate, Session, Topology,
     TopologyKey, TopologyPath, TrafficError, TrafficResult, TrafficStore, TrafficSummary, Usage,
-    UsageGroup, topology,
+    UsageGroup, merge_closed_page, topology,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
@@ -194,16 +194,24 @@ impl State {
         cursor: Option<ClosedCursor>,
         limit: usize,
     ) -> TrafficResult<ClosedPage> {
-        if self.session.reset_pending() {
-            return Ok(ClosedPage {
+        let stored = if self.session.reset_pending() {
+            ClosedPage {
                 connections: Vec::new(),
                 next: None,
-            });
-        }
-        blocking(&self.store, move |store| {
-            store.closed_connections(cursor.as_ref(), limit)
-        })
-        .await
+            }
+        } else {
+            let before = cursor.clone();
+            blocking(&self.store, move |store| {
+                store.closed_connections(before.as_ref(), limit)
+            })
+            .await?
+        };
+        Ok(merge_closed_page(
+            stored,
+            self.session.pending_closed(),
+            cursor.as_ref(),
+            limit,
+        ))
     }
 }
 

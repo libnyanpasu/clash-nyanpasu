@@ -186,6 +186,11 @@ impl Session {
         self.reset_pending
     }
 
+    /// Closed since the last batch, so not in the store yet.
+    pub fn pending_closed(&self) -> &[ClosedConnection] {
+        &self.closed
+    }
+
     /// Re-arms the wipe after a batch that carried it could not be stored.
     pub fn require_reset(&mut self) {
         self.reset_pending = true;

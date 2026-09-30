@@ -522,7 +522,7 @@ async fn restart_with_another_profile_wipes_the_store() {
 }
 
 #[tokio::test]
-async fn closed_connections_appear_after_flush() {
+async fn closed_connections_appear_before_and_after_flush() {
     let h = Harness::new("p1").await;
     h.client
         .observe(Some(frame(
@@ -544,17 +544,20 @@ async fn closed_connections_appear_after_flush() {
         .await
         .unwrap();
 
+    // Not stored yet, but already listed ...
+    let pending = h.client.closed_connections(None, 10).await.unwrap();
     assert!(
-        h.client
+        h.store
             .closed_connections(None, 10)
-            .await
             .unwrap()
             .connections
             .is_empty()
     );
 
+    // ... and listed once more after the flush moves it to the store.
     h.client.flush().await.unwrap();
     let page = h.client.closed_connections(None, 10).await.unwrap();
+    assert_eq!(page, pending);
     assert_eq!(page.next, None);
     assert_eq!(page.connections.len(), 1);
     let closed = &page.connections[0];

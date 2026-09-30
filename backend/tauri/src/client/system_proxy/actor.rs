@@ -631,6 +631,9 @@ impl State {
     /// Guard only the last confirmed setting. Converging a failed desired
     /// target belongs to EffectsActor's bounded budget, never this timer.
     async fn guard_tick(&mut self) {
+        if self.guard_interval().is_none() {
+            return;
+        }
         // A tick queued before the shutdown still reaches the mailbox, ahead
         // of the restore, and must not re-install what the restore removes.
         if self.shutting_down() {

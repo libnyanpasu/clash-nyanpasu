@@ -47,6 +47,7 @@ struct Args {
     core: CoreClient,
     snapshots: watch::Sender<Option<Arc<Snapshot>>>,
     changes: watch::Sender<()>,
+    shutdown: CancellationToken,
 }
 struct State {
     core: CoreClient,
@@ -56,6 +57,7 @@ struct State {
     generation: u64,
     monitor: Option<tokio::task::JoinHandle<()>>,
     timer: Option<tokio::task::JoinHandle<()>>,
+    shutdown: CancellationToken,
 }
 impl Drop for State {
     fn drop(&mut self) {
@@ -223,6 +225,7 @@ impl Actor for ProxiesActor {
             generation: 0,
             monitor: None,
             timer: None,
+            shutdown: args.shutdown,
         })
     }
     async fn post_start(
@@ -250,6 +253,21 @@ impl Actor for ProxiesActor {
         message: Message,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
+        if state.shutdown.is_cancelled() {
+            match message {
+                Message::Read { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::Select { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::UpdateProvider { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::Refresh | Message::Invalidated(_) => {}
+            }
+            return Ok(());
+        }
         match message {
             Message::Read { force, reply } => {
                 if reply.is_closed() {
@@ -295,6 +313,16 @@ impl Actor for ProxiesActor {
         }
         Ok(())
     }
+    async fn post_stop(
+        &self,
+        _actor: ActorRef<Message>,
+        state: &mut State,
+    ) -> Result<(), ActorProcessingErr> {
+        if let Some(timer) = state.timer.take() {
+            timer.abort();
+        }
+        Ok(())
+    }
 }
 
 struct ClientInner {
@@ -322,6 +350,7 @@ impl ProxiesClient {
             ProxiesActor,
             Args {
                 core,
+                shutdown: shutdown.clone(),
                 snapshots,
                 changes,
             },

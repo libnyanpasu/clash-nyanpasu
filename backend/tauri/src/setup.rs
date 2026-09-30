@@ -44,6 +44,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app: &M,
     bundle_metadata: crate::bundle::BundleMetadata,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
+    jobs_capture: nyanpasu_jobs::LogCapture,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     let main_thread: Arc<dyn MainThreadExecutor> =
@@ -112,6 +113,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // One instance behind both the system proxy actor and the client's own
     // read of the OS settings.
     let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
+    let jobs = tauri::async_runtime::block_on(crate::client::jobs::start(
+        paths.jobs_path(),
+        jobs_capture,
+        shutdown.child_token(),
+        &tasks,
+    ))
+    .context("Failed to start jobs owner")?;
     let (effects, widget_controller) = build_application_effects(
         &app_handle,
         main_thread.clone(),
@@ -124,6 +132,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     )?;
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
+        jobs,
         logging: crate::client::logs::LoggingSetup {
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
                 paths.app_logs_dir(),

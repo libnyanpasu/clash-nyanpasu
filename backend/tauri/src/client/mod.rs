@@ -12,6 +12,7 @@ pub(crate) mod effects;
 mod error;
 mod event_sink;
 pub mod hotkey;
+pub(crate) mod jobs;
 pub mod logs;
 mod main_thread;
 mod ports;
@@ -75,6 +76,7 @@ pub use runtime_error::RuntimeError;
 pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
+    pub jobs: nyanpasu_jobs::JobsClient,
     pub bundle_metadata: crate::bundle::BundleMetadata,
     pub logging: logs::LoggingSetup,
     pub paths: PathResolver,
@@ -188,6 +190,7 @@ fn url_derived_name(url: &url::Url) -> String {
 struct NyanpasuClientInner {
     bundle_metadata: crate::bundle::BundleMetadata,
     app_logs: nyanpasu_logging::LogsClient,
+    jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
     application: ApplicationClient,
     session_state: SessionStateClient,
@@ -217,6 +220,7 @@ struct NyanpasuClientInner {
 impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
         let ClientSetupArgs {
+            jobs,
             bundle_metadata,
             logging,
             paths,
@@ -238,6 +242,7 @@ impl NyanpasuClient {
         let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
+        let jobs_for_setup = jobs.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
         let wiring = mutations.clone();
         let (owner_shutdown, owner_tasks) = (shutdown.clone(), tasks.clone());
@@ -265,9 +270,10 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                 ));
-                let profiles = profiles::ProfilesClient::new(
+                let profiles = profiles::ProfilesClient::new_with_jobs(
                     mutations.clone(),
                     profiles_path,
+                    jobs_for_setup,
                     file_service.clone() as Arc<dyn ProfileFsPort>,
                     file_service.clone() as Arc<dyn SubscriptionFetcher>,
                     file_service.clone() as Arc<dyn ProfileMaterializationPort>,
@@ -288,6 +294,7 @@ impl NyanpasuClient {
             Some(wiring),
             bundle_metadata,
             logging,
+            jobs,
             application,
             session_state,
             clash_config,
@@ -317,6 +324,7 @@ impl NyanpasuClient {
         mutations: Option<crate::state::mutation::MutationCoordinator>,
         bundle_metadata: crate::bundle::BundleMetadata,
         logging: logs::LoggingSetup,
+        jobs: nyanpasu_jobs::JobsClient,
         application: ApplicationClient,
         session_state: SessionStateClient,
         clash_config: ClashConfigClient,
@@ -423,6 +431,7 @@ impl NyanpasuClient {
             inner: Arc::new(NyanpasuClientInner {
                 bundle_metadata,
                 app_logs,
+                jobs,
                 service_logs,
                 application,
                 session_state,
@@ -874,7 +883,7 @@ impl NyanpasuClient {
         uid: ProfileId,
         patch: Option<RemoteProfileOptionsPatch>,
     ) -> Result<runtime::MutationOutcome<()>> {
-        let report = self.inner.profiles.refresh(uid, patch).await?;
+        let report = self.inner.profiles.sync(uid, patch).await?;
         Ok(self.after_commit(&report).await)
     }
 
@@ -2095,6 +2104,7 @@ pub(crate) mod tests {
                 PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                     .app_logs_dir(),
             ),
+            profiles.jobs(),
             application,
             session_state,
             clash_config,
@@ -2374,8 +2384,23 @@ pub(crate) mod tests {
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         seed_test_clash_config(paths.clash_config_path());
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let (shutdown, tasks) = (
+            tokio_util::sync::CancellationToken::new(),
+            tokio_util::task::TaskTracker::new(),
+        );
         let (core_v2, service) = test_v2_clients_with_endpoint(endpoint);
         ClientSetupArgs {
+            jobs: std::thread::scope(|scope| {
+                scope
+                    .spawn(|| {
+                        tauri::async_runtime::block_on(jobs::test_client_with_owner(
+                            shutdown.clone(),
+                            &tasks,
+                        ))
+                    })
+                    .join()
+                    .unwrap()
+            }),
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,
@@ -2397,8 +2422,8 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            shutdown: tokio_util::sync::CancellationToken::new(),
-            tasks: tokio_util::task::TaskTracker::new(),
+            shutdown,
+            tasks,
         }
     }
 
@@ -2711,6 +2736,7 @@ pub(crate) mod tests {
                 PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                     .app_logs_dir(),
             ),
+            profiles.jobs(),
             application,
             session_state,
             clash_config,
@@ -2823,8 +2849,23 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let (shutdown, tasks) = (
+            tokio_util::sync::CancellationToken::new(),
+            tokio_util::task::TaskTracker::new(),
+        );
         let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            jobs: std::thread::scope(|scope| {
+                scope
+                    .spawn(|| {
+                        tauri::async_runtime::block_on(jobs::test_client_with_owner(
+                            shutdown.clone(),
+                            &tasks,
+                        ))
+                    })
+                    .join()
+                    .unwrap()
+            }),
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: true,
                 is_fixed_webview: false,
@@ -2846,8 +2887,8 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            shutdown: tokio_util::sync::CancellationToken::new(),
-            tasks: tokio_util::task::TaskTracker::new(),
+            shutdown,
+            tasks,
         })
         .expect("client should construct with typed config actors");
 
@@ -3791,6 +3832,7 @@ pub(crate) mod tests {
                     PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
                         .app_logs_dir(),
                 ),
+                profiles.jobs(),
                 application,
                 session_state,
                 clash_config,

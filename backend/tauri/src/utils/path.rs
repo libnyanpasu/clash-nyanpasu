@@ -147,6 +147,11 @@ impl PathResolver {
         self.data_dir.join(dirs::STORAGE_DB)
     }
 
+    /// Durable job runs and their scoped journals.
+    pub fn jobs_path(&self) -> PathBuf {
+        self.data_dir.join("jobs.redb")
+    }
+
     /// `clash.pid` runtime file.
     pub fn clash_pid_path(&self) -> PathBuf {
         self.data_dir.join("clash.pid")

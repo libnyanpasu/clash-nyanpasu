@@ -55,7 +55,6 @@ serde_yaml_ng = { version = '0.10', git = 'https://github.com/libnyanpasu/serde-
 ] }
 sysproxy = { git = 'https://github.com/libnyanpasu/sysproxy-rs.git', version = '0.3', rev = '355d9c98e20f894e75f13049d0031d3794e9a74a' }
 auto-launch = { git = 'https://github.com/libnyanpasu/auto-launch.git', version = '0.5', rev = '729d5429dd689067047489af4a0a32f7013854c8' }
-delay_timer = { version = '0.11', git = 'https://github.com/libnyanpasu/delay-timer.git', rev = '76615d9b0c1bb830212fe84b5d18ee5444831625' }  # Task scheduler with timer
 runas = { git = 'https://github.com/libnyanpasu/rust-runas.git', rev = '29bdb2501c05b7d78e63628bedbd4a190b71bad3' }
 include_url_macro = { git = 'https://github.com/libnyanpasu/include_url_macro', rev = 'fbe47bd71047892a218e3166a2a1bac474488218' }
 

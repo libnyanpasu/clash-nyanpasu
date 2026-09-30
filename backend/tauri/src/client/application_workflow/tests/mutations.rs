@@ -3979,6 +3979,34 @@ async fn deferred_fixture() -> Fixture {
 }
 
 #[tokio::test]
+async fn native_store_failure_refuses_the_save_without_scheduling_retries() {
+    let mut f = fixture().await;
+    f.endpoint.set_failure(Some("native_store_unavailable"));
+    let before = f.clash.snapshot_handle().load().version;
+
+    let (id, result) = simple_mutate(
+        &mut f.clash,
+        &f.client,
+        overrides(serde_json::json!({"mode": "direct"})),
+        CommandClass::Save,
+    )
+    .await;
+
+    assert!(refused(&result), "{result:?}");
+    let receipt = settled(&f.client, id).await;
+    assert_eq!(receipt.outcome, MutationOutcomeKind::Rejected);
+    assert_eq!(receipt.conclusion, MutationConclusion::Withdrawn);
+    assert_eq!(f.clash.snapshot_handle().load().version, before);
+    assert!(f.client.mutation_journal().deferred.is_none());
+    let attempts = f.endpoint.submissions();
+    f.client
+        .call(super::super::Command::RetryRuntime { explicit: false })
+        .await
+        .unwrap();
+    assert_eq!(f.endpoint.submissions(), attempts);
+}
+
+#[tokio::test]
 async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
     use crate::client::convergence::ConvergenceHealth;
     let f = deferred_fixture().await;

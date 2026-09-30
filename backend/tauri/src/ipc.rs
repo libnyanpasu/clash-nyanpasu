@@ -281,6 +281,36 @@ pub async fn reorder_profiles_by_list(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn get_profile_sync_status(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+) -> Result<crate::client::jobs::ProfileSyncStatus> {
+    Ok(client.profile_sync_status(uid).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_profile_sync_runs(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    after: Option<nyanpasu_jobs::dto::RunCursorDto>,
+) -> Result<nyanpasu_jobs::dto::RunPageDto> {
+    Ok(client.profile_sync_runs(uid, after).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_profile_sync_logs(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    run: String,
+    after: Option<String>,
+) -> Result<nyanpasu_jobs::dto::LogPageDto> {
+    Ok(client.profile_sync_logs(uid, run, after).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn update_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
@@ -1047,7 +1077,16 @@ pub async fn get_service_install_prompt() -> Result<String> {
         crate::client::runtime_error::PrepareServiceInstallPromptSnafu,
     )?
     .into_iter()
-    .map(|arg| arg.to_string_lossy().to_string())
+    .map(|arg| {
+        #[cfg(unix)]
+        {
+            format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''"))
+        }
+        #[cfg(windows)]
+        {
+            arg.to_string_lossy().to_string()
+        }
+    })
     .collect::<Vec<_>>()
     .join(" ");
     let mut prompt = format!("./nyanpasu-service {args}");

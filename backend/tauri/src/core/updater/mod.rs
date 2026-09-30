@@ -356,7 +356,7 @@ impl Actor for UpdaterActor {
                     task.finished = Some(Instant::now());
                 }
             }
-            Message::Prune(now) => {
+            Message::Prune(now) if !state.args.shutdown.is_cancelled() => {
                 state.tasks.retain(|_, task| {
                     task.worker.is_some()
                         || task.finished.is_none_or(|finished| {
@@ -364,6 +364,7 @@ impl Actor for UpdaterActor {
                         })
                 });
             }
+            Message::Prune(_) => {}
         }
         Ok(())
     }

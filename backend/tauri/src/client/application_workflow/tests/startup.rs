@@ -285,6 +285,7 @@ impl ServiceHostAdapter for FakeDaemon {
 }
 
 pub(super) struct Setup {
+    pub(super) schedule_ticks: bool,
     pub(super) service_mode: bool,
     pub(super) daemon: DaemonState,
     /// The service host's core runs, and no receipt this session holds
@@ -305,6 +306,7 @@ pub(super) struct Setup {
 impl Default for Setup {
     fn default() -> Self {
         Self {
+            schedule_ticks: false,
             service_mode: false,
             daemon: DaemonState::NotInstalled,
             residual: false,
@@ -422,7 +424,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             shutdown: shutdown.clone(),
             tasks: tokio_util::task::TaskTracker::new(),
         },
-        false,
+        setup.schedule_ticks,
     )
     .await
     .unwrap();
@@ -1788,4 +1790,65 @@ async fn a_startup_update_still_running_holds_back_submission_and_adoption() {
         }
         assert_eq!(g.daemon.updates.load(Ordering::SeqCst), 1);
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn stale_convergence_callback_keeps_the_replacement_timer_owned() {
+    let _clock = crate::client::jobs::explicit_test_time();
+    let g = graph(Setup {
+        schedule_ticks: true,
+        service_mode: true,
+        ..Setup::default()
+    })
+    .await;
+    g.start().await;
+    let first = g.target().next_attempt.unwrap();
+    tokio::time::advance(Duration::from_secs(1)).await;
+    g.client.retry_runtime().await.unwrap();
+    let replacement = g.target().next_attempt.unwrap();
+    assert!(replacement > first);
+    let identity = g
+        .client
+        .0
+        .actor
+        .call(super::Message::ConvergenceDeadline, None)
+        .await
+        .unwrap();
+    let identity = match identity {
+        ractor::rpc::CallResult::Success(Some((_, id))) => id,
+        _ => panic!("replacement timer missing"),
+    };
+    g.client
+        .0
+        .actor
+        .cast(super::Message::ScheduledConvergenceTick(first))
+        .unwrap();
+    super::barrier(&g.client).await;
+    let timer = g
+        .client
+        .0
+        .actor
+        .call(super::Message::ConvergenceDeadline, None)
+        .await
+        .unwrap();
+    assert!(
+        matches!(timer, ractor::rpc::CallResult::Success(Some((at, id))) if at == replacement && id == identity)
+    );
+
+    let waits = g.target().waits;
+    tokio::time::advance(replacement.saturating_duration_since(Instant::now())).await;
+    for _ in 0..100 {
+        super::barrier(&g.client).await;
+        if g.target().waits > waits {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        g.target().waits,
+        waits + 1,
+        "the replacement timer delivers exactly one attempt"
+    );
+    g.shutdown.cancel();
+    g.client.0.actor.stop_and_wait(None, None).await.unwrap();
 }

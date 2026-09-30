@@ -83,6 +83,8 @@ struct Args {
     dependencies: EffectsArgs,
     status: watch::Sender<EffectsSnapshot>,
 }
+type WakeUp = tokio::task::JoinHandle<Result<(), ractor::MessagingErr<Message>>>;
+
 struct State {
     port: Arc<dyn ApplicationEffectsPort>,
     ui: Arc<dyn UiEventSink>,
@@ -94,7 +96,7 @@ struct State {
     active: [Option<tokio::task::JoinHandle<()>>; 3],
     status: watch::Sender<EffectsSnapshot>,
     shutdown: CancellationToken,
-    timer: tokio::task::JoinHandle<()>,
+    retry_timer: Option<(tokio::time::Instant, WakeUp)>,
 }
 
 enum Message {
@@ -110,10 +112,12 @@ enum Message {
         kinds: Vec<EffectKind>,
         statuses: Vec<EffectStatus>,
     },
-    Tick,
+    Tick(tokio::time::Instant),
     RetryNow(EffectKind),
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
+    #[cfg(test)]
+    RetryDeadline(RpcReplyPort<Option<(tokio::time::Instant, tokio::task::Id)>>),
 }
 
 /// The part of [`ApplicationEffectInputs`] one owner sends. Each has a single
@@ -138,6 +142,24 @@ fn group(kind: EffectKind) -> usize {
 }
 
 impl State {
+    fn arm_retry(&mut self, actor: &ActorRef<Message>) {
+        let due = if self.shutdown.is_cancelled() {
+            None
+        } else {
+            self.entries.values().filter_map(|entry| entry.next).min()
+        };
+        if self.retry_timer.as_ref().map(|(at, _)| *at) == due {
+            return;
+        }
+        if let Some((_, timer)) = self.retry_timer.take() {
+            timer.abort();
+        }
+        self.retry_timer = due.map(|at| {
+            let wait = at.saturating_duration_since(tokio::time::Instant::now());
+            (at, actor.send_after(wait, move || Message::Tick(at)))
+        });
+    }
+
     fn publish(&self) {
         let event_seq = self.status.borrow().event_seq + 1;
         self.status.send_replace(EffectsSnapshot {
@@ -304,7 +326,7 @@ impl Actor for EffectsActor {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Message>,
+        _myself: ActorRef<Message>,
         args: Args,
     ) -> Result<State, ActorProcessingErr> {
         Ok(State {
@@ -317,7 +339,7 @@ impl Actor for EffectsActor {
             active: [None, None, None],
             status: args.status,
             shutdown: args.dependencies.shutdown,
-            timer: myself.send_interval(Duration::from_millis(250), || Message::Tick),
+            retry_timer: None,
         })
     }
 
@@ -414,7 +436,14 @@ impl Actor for EffectsActor {
                 }
                 state.drive(&myself);
             }
-            Message::Tick if !state.shutdown.is_cancelled() => {
+            Message::Tick(at)
+                if !state.shutdown.is_cancelled()
+                    && state
+                        .retry_timer
+                        .as_ref()
+                        .is_some_and(|(due, _)| *due == at) =>
+            {
+                state.retry_timer = None;
                 let ready: Vec<_> = state
                     .entries
                     .iter()
@@ -432,12 +461,22 @@ impl Actor for EffectsActor {
                 state.retry(kind, false);
                 state.drive(&myself);
             }
-            Message::Tick | Message::RetryNow(_) => {}
+            Message::Tick(_) | Message::RetryNow(_) => {}
+            #[cfg(test)]
+            Message::RetryDeadline(reply) => {
+                let _ = reply.send(
+                    state
+                        .retry_timer
+                        .as_ref()
+                        .map(|(at, timer)| (*at, timer.id())),
+                );
+            }
             #[cfg(test)]
             Message::Barrier(reply) => {
                 let _ = reply.send(());
             }
         }
+        state.arm_retry(&myself);
         Ok(())
     }
 
@@ -446,7 +485,9 @@ impl Actor for EffectsActor {
         _: ActorRef<Message>,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
-        state.timer.abort();
+        if let Some((_, timer)) = state.retry_timer.take() {
+            timer.abort();
+        }
         // Awaited, never aborted: a group's owner is part way through work it
         // has to finish, and the drain refuses the `Completed` it would send.
         for task in state.active.iter_mut().filter_map(Option::take) {
@@ -502,6 +543,27 @@ impl EffectsClient {
             tracing::warn!(%error, "committed effects could not be queued");
         }
     }
+    #[cfg(test)]
+    pub async fn retry_deadline(&self) -> Option<tokio::time::Instant> {
+        match self.actor.call(Message::RetryDeadline, None).await.unwrap() {
+            ractor::rpc::CallResult::Success(timer) => timer.map(|(at, _)| at),
+            _ => panic!("retry deadline reply dropped"),
+        }
+    }
+
+    #[cfg(test)]
+    pub async fn retry_timer_id(&self) -> tokio::task::Id {
+        match self.actor.call(Message::RetryDeadline, None).await.unwrap() {
+            ractor::rpc::CallResult::Success(Some((_, id))) => id,
+            _ => panic!("retry timer missing"),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn stale_tick(&self, at: tokio::time::Instant) {
+        self.actor.cast(Message::Tick(at)).unwrap();
+    }
+
     #[cfg(test)]
     pub async fn barrier(&self) {
         assert!(matches!(

@@ -195,7 +195,7 @@ test('an aborted commit says what became of the core', () => {
     }),
   ).toBe(
     m.error_commit_runtime_refused({
-      reason: m.error_runtime_unsettled_baseline_core_transitioning(),
+      reason: `${m.error_runtime_unsettled_baseline_core_transitioning()}\n\n${m.error_runtime_isolated()}`,
     }),
   )
   expect(
@@ -253,6 +253,32 @@ test('a core operation names what failed and why the core refused it', () => {
   ).toBe(m.error_runtime_stop_service())
 })
 
+test('unavailable native storage is explained for operations and refused mutations', () => {
+  const reason = m.error_runtime_core_reason_native_store_unavailable()
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'apply_runtime',
+        failure: {
+          kind: 'native_store_unavailable',
+          message: 'native storage failed',
+          retryable: false,
+          operation_id: null,
+        },
+      }),
+    ),
+  ).toBe(`${m.error_runtime_apply_runtime()} (${reason})`)
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'core_rejected_config',
+        core_kind: 'native_store_unavailable',
+        message: 'native storage failed',
+      }),
+    ),
+  ).toBe(`${m.error_runtime_core_rejected_config()} (${reason})`)
+})
+
 test('a refused admission is told apart from a failed operation', () => {
   expect(ipcErrorMessage(runtime({ kind: 'isolated' }))).toBe(
     m.error_runtime_isolated(),
@@ -304,6 +330,7 @@ test('a failed build names the profile or the transform', () => {
         kind: 'build_runtime',
         source: {
           kind: 'transforms_failed',
+          logs: [],
           failures: [
             { kind: 'profile', id: 't1' },
             { kind: 'builtin', name: 'config_fixer' },

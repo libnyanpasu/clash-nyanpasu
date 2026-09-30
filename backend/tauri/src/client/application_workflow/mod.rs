@@ -106,8 +106,11 @@ enum Message {
     RecoveryTick,
     /// The deferred target's next attempt may be due.
     ConvergenceTick,
+    ScheduledConvergenceTick(tokio::time::Instant),
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
+    #[cfg(test)]
+    ConvergenceDeadline(RpcReplyPort<Option<(tokio::time::Instant, tokio::task::Id)>>),
     /// Which owner the workflow holds proven.
     #[cfg(test)]
     Ownership(RpcReplyPort<Ownership>),
@@ -320,7 +323,10 @@ impl ApplicationWorkflowState {
         }
         self.convergence_timer = due.map(|at| {
             let wait = at.saturating_duration_since(tokio::time::Instant::now());
-            (at, myself.send_after(wait, || Message::ConvergenceTick))
+            (
+                at,
+                myself.send_after(wait, move || Message::ScheduledConvergenceTick(at)),
+            )
         });
     }
 
@@ -394,7 +400,21 @@ impl Actor for ApplicationWorkflowActor {
         message: Message,
         state: &mut ApplicationWorkflowState,
     ) -> Result<(), ActorProcessingErr> {
+        let message = match message {
+            Message::ScheduledConvergenceTick(at) => {
+                if state
+                    .convergence_timer
+                    .as_ref()
+                    .is_none_or(|(due, _)| *due != at)
+                {
+                    return Ok(());
+                }
+                Message::ConvergenceTick
+            }
+            message => message,
+        };
         match message {
+            Message::ScheduledConvergenceTick(_) => unreachable!(),
             Message::Request(request) => state.request(request).await,
             Message::BeginMutation(request) => state.begin_mutation(*request).await,
             Message::RecoveryTick => {
@@ -406,7 +426,9 @@ impl Actor for ApplicationWorkflowActor {
             Message::ConvergenceTick => {
                 // Whichever wake-up this was, it has fired: the target is read
                 // afresh, and the next one is armed from what it says.
-                state.convergence_timer = None;
+                if let Some((_, timer)) = state.convergence_timer.take() {
+                    timer.abort();
+                }
                 if state.automatic_work_allowed()
                     && state
                         .workflow
@@ -418,6 +440,15 @@ impl Actor for ApplicationWorkflowActor {
                     let command = Command::RetryRuntime { explicit: false };
                     state.run(command, Response::background()).await;
                 }
+            }
+            #[cfg(test)]
+            Message::ConvergenceDeadline(reply) => {
+                let _ = reply.send(
+                    state
+                        .convergence_timer
+                        .as_ref()
+                        .map(|(at, timer)| (*at, timer.id())),
+                );
             }
             #[cfg(test)]
             Message::Barrier(reply) => {

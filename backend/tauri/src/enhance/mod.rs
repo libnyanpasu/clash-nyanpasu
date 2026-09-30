@@ -14,7 +14,7 @@ pub use artifact_snapshot::runtime_snapshot_data_from_artifact;
 pub use content_source::FsProfileContentSource;
 pub(crate) use runtime_builder::{
     ConfigNotMappingSnafu, SerializeFinalConfigSnafu, SerializeRuntimeConfigSnafu,
-    StartScriptRunnerSnafu, TransformsFailedSnafu,
+    StartScriptRunnerSnafu,
 };
 pub use runtime_builder::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, builtin_transforms_for,

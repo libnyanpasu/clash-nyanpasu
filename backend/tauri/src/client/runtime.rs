@@ -711,6 +711,7 @@ pub enum DegradationReason {
     },
     ProxyCacheRefreshFailed,
     JournalInvalid,
+    JobsJournalUnavailable,
     MaterializationDeferred,
     CleanupDeferred,
     ProfileAutoActivationFailed {

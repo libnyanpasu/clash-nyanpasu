@@ -17,6 +17,8 @@ pub enum ClientError {
     #[error(transparent)]
     Profiles(#[from] crate::state::profiles::ProfilesError),
     #[error(transparent)]
+    Jobs(#[from] nyanpasu_jobs::Error),
+    #[error(transparent)]
     Config(#[from] crate::state::config_error::ConfigError),
     #[error(transparent)]
     Runtime(#[from] super::RuntimeError),

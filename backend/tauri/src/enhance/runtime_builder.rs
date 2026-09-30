@@ -12,12 +12,18 @@ use nyanpasu_config::{
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
         BuiltinTransform, ExecutionTarget, GuardInputs, ProfileContentSource, ResolvedPortBindings,
-        RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner,
+        RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner, StepLogEntry,
         TransformFailure, TunFlavor, TunParams, execute,
     },
 };
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
+
+#[derive(Debug, Serialize, specta::Type)]
+pub struct RuntimeBuildLog {
+    pub tag: nyanpasu_config::runtime::snapshot::OperatorTag,
+    pub entries: Vec<StepLogEntry>,
+}
 
 /// A failure of building a runtime candidate from source config.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
@@ -34,7 +40,10 @@ pub enum RuntimeBuildError {
     #[snafu(display("could not run the runtime pipeline: {source}"))]
     RunPipeline { source: RuntimePipelineError },
     #[snafu(display("runtime candidate contains failed transforms: {failures:?}"))]
-    TransformsFailed { failures: Vec<TransformFailure> },
+    TransformsFailed {
+        failures: Vec<TransformFailure>,
+        logs: Vec<RuntimeBuildLog>,
+    },
     #[snafu(display("could not serialize the final config"))]
     SerializeFinalConfig {
         #[serde(skip)]
@@ -125,6 +134,32 @@ pub fn derive_tun_flavor(core: ClashCore, stack: TunStack) -> TunFlavor {
 pub struct RuntimeBuilder;
 
 impl RuntimeBuilder {
+    /// Retain diagnostics from the rejected candidate, which is never published.
+    pub fn validate_transforms(artifact: &RuntimeArtifact) -> Result<(), RuntimeBuildError> {
+        if artifact.transform_failures.is_empty() {
+            return Ok(());
+        }
+        let logs = artifact
+            .step_logs
+            .iter()
+            .map(|log| RuntimeBuildLog {
+                tag: artifact
+                    .graph
+                    .nodes
+                    .iter()
+                    .find(|node| node.key == log.key)
+                    .expect("executor logs must belong to a snapshot node")
+                    .tag
+                    .clone(),
+                entries: log.entries.clone(),
+            })
+            .collect();
+        Err(RuntimeBuildError::TransformsFailed {
+            failures: artifact.transform_failures.clone(),
+            logs,
+        })
+    }
+
     pub fn build(
         input: &RuntimeBuildInput,
         content: &dyn ProfileContentSource,
@@ -314,6 +349,10 @@ mod tests {
                 TransformFailure::Profile { id: "t1".into() },
                 TransformFailure::Builtin { name: "b".into() },
             ],
+            logs: vec![RuntimeBuildLog {
+                tag: nyanpasu_config::runtime::snapshot::OperatorTag::BareRoot,
+                entries: vec![StepLogEntry::error("transform reported an error")],
+            }],
         };
         assert_eq!(
             serde_json::to_value(&error).unwrap(),
@@ -323,6 +362,10 @@ mod tests {
                     { "kind": "profile", "id": "t1" },
                     { "kind": "builtin", "name": "b" },
                 ],
+                "logs": [{
+                    "tag": { "kind": "bare_root" },
+                    "entries": [{ "level": "error", "message": "transform reported an error" }],
+                }],
             })
         );
     }
@@ -424,5 +467,36 @@ mod tests {
                 .any(|entry| entry.message.contains("scoped ran"))),
             "script logs must be anchored for the postprocessing_output consumer"
         );
+        RuntimeBuilder::validate_transforms(&artifact).unwrap();
+
+        std::fs::write(
+            temp.path().join("scr1.js"),
+            "function main(config) { console.log('before failure'); throw new Error('transform rejected'); }",
+        )
+        .unwrap();
+        let artifact = RuntimeBuilder::build(&input, &content, &scripts).unwrap();
+        let error = RuntimeBuilder::validate_transforms(&artifact).unwrap_err();
+        let wire = serde_json::to_value(&error).unwrap();
+        assert_eq!(wire["kind"], "transforms_failed");
+        let log = wire["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|log| log["tag"]["data"]["transform_profile_id"] == "scr1")
+            .expect("failed transform must keep its chain tag");
+        let entries = log["entries"].as_array().unwrap();
+        assert!(entries.iter().any(|entry| {
+            entry["message"]
+                .as_str()
+                .unwrap()
+                .contains("before failure")
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry["level"] == "error"
+                && entry["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("transform rejected")
+        }));
     }
 }

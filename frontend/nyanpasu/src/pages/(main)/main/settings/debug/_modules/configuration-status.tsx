@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
+import { ErrorMessage } from '@/components/error-message'
 import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
-import { formatError } from '@/utils'
 import { effectFailureMessage } from '@/utils/ipc-error'
 import {
   acceptConfigurationStatus,
@@ -180,13 +180,15 @@ export default function ConfigurationStatus() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: STATUS_KEY }),
   })
   const busy = retry.isPending
-  const error = retry.error
-    ? retry.error instanceof MutationUnconfirmedError
-      ? m.configuration_unconfirmed()
-      : formatError(retry.error)
-    : isError
-      ? m.configuration_unconfirmed()
-      : undefined
+  const error = retry.error ? (
+    retry.error instanceof MutationUnconfirmedError ? (
+      m.configuration_unconfirmed()
+    ) : (
+      <ErrorMessage error={retry.error} />
+    )
+  ) : isError ? (
+    m.configuration_unconfirmed()
+  ) : undefined
 
   const sources = status ? attentionSources(status) : []
   const operations = status?.recent_operations.slice(0, 8) ?? []

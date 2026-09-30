@@ -115,6 +115,24 @@ export const commands = {
     typedError<ProfileDocument_Serialize, IpcError>(
       __TAURI_INVOKE('get_profiles'),
     ),
+  getProfileSyncStatus: (uid: ProfileId) =>
+    typedError<ProfileSyncStatus, IpcError>(
+      __TAURI_INVOKE('get_profile_sync_status', { uid }),
+    ),
+  getProfileSyncRuns: (
+    uid: ProfileId,
+    after: {
+      sequence: string
+      id: string
+    } | null,
+  ) =>
+    typedError<RunPageDto, IpcError>(
+      __TAURI_INVOKE('get_profile_sync_runs', { uid, after }),
+    ),
+  getProfileSyncLogs: (uid: ProfileId, run: string, after: string | null) =>
+    typedError<LogPageDto, IpcError>(
+      __TAURI_INVOKE('get_profile_sync_logs', { uid, run, after }),
+    ),
   readProfileFile: (uid: ProfileId) =>
     typedError<string, IpcError>(__TAURI_INVOKE('read_profile_file', { uid })),
   getCustomAppDir: () =>
@@ -825,6 +843,12 @@ export type CommitReceipt = {
   runtime: RuntimeCommitStatus
 }
 
+export type CompletionDto = {
+  outcome: OutcomeDto
+  output: OutputDto
+  journal: JournalDto
+}
+
 export type CompositionConfig =
   CompositionConfig_Serialize | CompositionConfig_Deserialize
 
@@ -1189,6 +1213,7 @@ export type CoreControllerInfo =
   | ({ Http: string } & { NamedPipe?: never; UnixSocket?: never })
 
 export type CoreErrorKind =
+  | 'native_store_unavailable'
   /**  The operation needs a running core and there is none. */
   | 'not_started'
   /**  The operation needs a stopped core and one is running. */
@@ -1456,6 +1481,7 @@ export type DegradationReason =
   | { code: 'proxy_interruption_failed'; cause: InterruptFailure }
   | { code: 'proxy_cache_refresh_failed' }
   | { code: 'journal_invalid' }
+  | { code: 'jobs_journal_unavailable' }
   | { code: 'materialization_deferred' }
   | { code: 'cleanup_deferred' }
   | {
@@ -1814,6 +1840,9 @@ export type IpcErrorKind =
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
 
+export type JournalDto =
+  { kind: 'durable' } | { kind: 'degraded'; code: string }
+
 /**
  *  Type-only description of an arbitrary JSON value, used to give the `extra`
  *  maps below (see [`Connection::extra`], [`ConnectionMetadata::extra`]) a
@@ -1866,6 +1895,15 @@ export type LogCursor = {
   offset: string
 }
 
+export type LogDto = {
+  run_id: string
+  sequence: string
+  time: string
+  level: string
+  target: string
+  fields: { [key in string]: string }
+}
+
 export type LogError =
   | 'unavailable'
   | 'unsupported'
@@ -1896,6 +1934,11 @@ export type LogPage = {
   truncated: string
   indexed_bytes: string
   file_bytes: string
+}
+
+export type LogPageDto = {
+  items: LogDto[]
+  next: string | null
 }
 
 /**
@@ -2442,6 +2485,18 @@ export type OsProxyError =
   | { kind: 'read_os_proxy' }
   | { kind: 'write_os_proxy'; enable: boolean; host: string; port: number }
 
+export type OutcomeDto =
+  | { kind: 'succeeded' }
+  | { kind: 'failed'; code: string; message: string }
+  | { kind: 'cancelled' }
+  | { kind: 'interrupted' }
+  | { kind: 'skipped' }
+
+export type OutputDto =
+  | { kind: 'json_text'; value: string }
+  | { kind: 'unavailable'; code: string }
+  | { kind: 'none' }
+
 export type OverlayTransform =
   OverlayTransform_Serialize | OverlayTransform_Deserialize
 
@@ -2740,6 +2795,15 @@ export type ProfileSubscriptionInfo = {
   download?: number | null
   total?: number | null
   expire?: number | null
+}
+
+export type ProfileSyncStatus = {
+  scheduled: boolean
+  next_run_at: string | null
+  active: RunDto[]
+  journal_degraded: boolean
+  registration_error: string | null
+  history_limit: number
 }
 
 export type ProfileValidationError =
@@ -3285,6 +3349,37 @@ export type RulesRes = {
   rules: ClashRule[]
 }
 
+export type RunCursorDto = {
+  sequence: string
+  id: string
+}
+
+export type RunDto = {
+  id: string
+  job: string
+  definition_version: string
+  admission_sequence: string
+  trigger: string
+  scheduled_at: string | null
+  admitted_at: string
+  finished_at: string | null
+  state: RunStateDto
+  last_log_sequence: string
+  dropped_log_count: string
+}
+
+export type RunPageDto = {
+  items: RunDto[]
+  next: RunCursorDto | null
+}
+
+export type RunStateDto =
+  | { kind: 'admitted' }
+  | { kind: 'running' }
+  | { kind: 'cancelling' }
+  | { kind: 'finalizing' }
+  | { kind: 'finished'; completion: CompletionDto }
+
 /**
  *  What became of the runtime after an aborted commit, from the receipt's
  *  structured fields. `detail` is the receipt's operator diagnostics, never an
@@ -3305,10 +3400,19 @@ export type RuntimeBuildError =
   | { kind: 'start_script_runner' }
   | { kind: 'validate_profiles'; errors: ProfileValidationError[] }
   | { kind: 'run_pipeline'; source: RuntimePipelineError }
-  | { kind: 'transforms_failed'; failures: TransformFailure[] }
+  | {
+      kind: 'transforms_failed'
+      failures: TransformFailure[]
+      logs: RuntimeBuildLog[]
+    }
   | { kind: 'serialize_final_config' }
   | { kind: 'config_not_mapping' }
   | { kind: 'serialize_runtime_config' }
+
+export type RuntimeBuildLog = {
+  tag: OperatorTag
+  entries: StepLogEntry[]
+}
 
 /**
  *  Why no check ran. Every variant is a reason, never a verdict: an absent
@@ -4132,6 +4236,27 @@ export const queries = {
     queryOptions({
       queryKey: ['getProfiles', ...args],
       queryFn: () => commands.getProfiles(...args),
+    }),
+  getProfileSyncStatus: (
+    ...args: Parameters<typeof commands.getProfileSyncStatus>
+  ) =>
+    queryOptions({
+      queryKey: ['getProfileSyncStatus', ...args],
+      queryFn: () => commands.getProfileSyncStatus(...args),
+    }),
+  getProfileSyncRuns: (
+    ...args: Parameters<typeof commands.getProfileSyncRuns>
+  ) =>
+    queryOptions({
+      queryKey: ['getProfileSyncRuns', ...args],
+      queryFn: () => commands.getProfileSyncRuns(...args),
+    }),
+  getProfileSyncLogs: (
+    ...args: Parameters<typeof commands.getProfileSyncLogs>
+  ) =>
+    queryOptions({
+      queryKey: ['getProfileSyncLogs', ...args],
+      queryFn: () => commands.getProfileSyncLogs(...args),
     }),
   readProfileFile: (...args: Parameters<typeof commands.readProfileFile>) =>
     queryOptions({

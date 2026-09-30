@@ -45,6 +45,7 @@ function targetsForArchive(name: string): string[] {
 export async function collectUpdaterPlatforms(
   assets: readonly ReleaseAsset[],
   loadSignature: (url: string) => Promise<string>,
+  announcedVersion: string,
 ): Promise<Record<string, UpdaterPlatform>> {
   const byName = new Map(assets.map((asset) => [asset.name, asset]));
   const platforms: Record<string, UpdaterPlatform> = {};
@@ -56,6 +57,20 @@ export async function collectUpdaterPlatforms(
     const signature = (await loadSignature(signatureAsset.browser_download_url))
       .trim();
     if (!signature) throw new Error(`Empty signature for ${asset.name}`);
+    // Publication check only; the updater verifies the trusted comment's signature.
+    const trustedComment = atob(signature).split("\n")[2] ?? "";
+    const signedVersion = trustedComment.replace(/^trusted comment: /, "")
+      .split("\t").find((field) => field.startsWith("version:"))
+      ?.slice("version:".length).trim();
+    // Historical releases were signed before Tauri recorded the app version.
+    if (
+      signedVersion !== undefined &&
+      signedVersion.replace(/^v+/, "") !== announcedVersion.replace(/^v+/, "")
+    ) {
+      throw new Error(
+        `Signed version mismatch for ${asset.name}: ${signedVersion} != ${announcedVersion}`,
+      );
+    }
     for (const target of targets) {
       if (platforms[target]) {
         throw new Error(`Multiple updater archives for ${target}`);

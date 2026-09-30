@@ -1,6 +1,7 @@
 // oxlint-disable typescript/no-explicit-any
 import { EnvInfo, isIpcError } from '@nyanpasu/interface'
 import { ipcErrorMessage } from './ipc-error'
+import type { ProfileLabel } from './profile-label'
 
 /**
  * classNames filter out falsy values and join the rest with a space
@@ -32,9 +33,9 @@ export const containsSearchTerm = (obj: any, term: string): boolean => {
 }
 
 /** The simplest message for a caught error; the original goes to "copy error details". */
-export function formatError(err: unknown): string {
+export function formatError(err: unknown, profileLabel?: ProfileLabel): string {
   if (isIpcError(err)) {
-    return ipcErrorMessage(err)
+    return ipcErrorMessage(err, profileLabel)
   }
   return err instanceof Error ? err.message : String(err)
 }

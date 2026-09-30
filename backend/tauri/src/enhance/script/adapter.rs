@@ -3,7 +3,6 @@
 //! whole pipeline can execute inside spawn_blocking (roadmap §4.0.4). Do NOT
 //! call it from an async context on a runtime worker thread.
 
-use mlua::LuaSerdeExt as _;
 use nyanpasu_config::{
     profile::ScriptRuntime,
     runtime::{
@@ -13,7 +12,7 @@ use nyanpasu_config::{
 };
 use tracing::Instrument;
 
-use super::{RunnerManager, ScriptDirs, create_lua_context};
+use super::{RunnerManager, ScriptDirs, create_lua_context, ordered_map};
 use crate::enhance::{ScriptType, chain::ScriptWrapper};
 
 pub struct EnhanceScriptRunner {
@@ -76,13 +75,13 @@ impl ScriptRunner for EnhanceScriptRunner {
     fn eval_item_predicate(&self, expr: &str, item: &ConfigValue) -> Result<bool, PortError> {
         let lua = create_lua_context().map_err(|e| format!("lua context: {e}"))?;
         let item_yaml = serde_yaml::to_value(item).map_err(|e| format!("item to yaml: {e}"))?;
-        let lua_item = lua
-            .to_value(&item_yaml)
-            .map_err(|e| format!("item to lua: {e}"))?;
+        let lua_item =
+            ordered_map::to_lua(&lua, &item_yaml).map_err(|e| format!("item to lua: {e}"))?;
         lua.globals()
             .set("item", lua_item)
             .map_err(|e| format!("set item: {e}"))?;
         lua.load(expr)
+            .set_name("=predicate")
             .eval::<bool>()
             .map_err(|e| format!("predicate eval: {e}").into())
     }
@@ -90,19 +89,17 @@ impl ScriptRunner for EnhanceScriptRunner {
     fn eval_item_expr(&self, expr: &str, item: &ConfigValue) -> Result<ConfigValue, PortError> {
         let lua = create_lua_context().map_err(|e| format!("lua context: {e}"))?;
         let item_yaml = serde_yaml::to_value(item).map_err(|e| format!("item to yaml: {e}"))?;
-        let lua_item = lua
-            .to_value(&item_yaml)
-            .map_err(|e| format!("item to lua: {e}"))?;
+        let lua_item =
+            ordered_map::to_lua(&lua, &item_yaml).map_err(|e| format!("item to lua: {e}"))?;
         lua.globals()
             .set("item", lua_item)
             .map_err(|e| format!("set item: {e}"))?;
         let result = lua
             .load(expr)
+            .set_name("=expression")
             .eval::<mlua::Value>()
             .map_err(|e| format!("expr eval: {e}"))?;
-        let yaml: serde_yaml::Value = lua
-            .from_value(result)
-            .map_err(|e| format!("lua to yaml: {e}"))?;
+        let yaml = ordered_map::from_lua(&lua, result).map_err(|e| format!("lua to yaml: {e}"))?;
         ConfigValue::try_from(yaml).map_err(|e| format!("yaml to config: {e:?}").into())
     }
 }
@@ -155,6 +152,42 @@ function main(config) {
             &mut Vec::new(),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn eval_item_errors_name_the_expression() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let item = value("name: test-node\n");
+        let error = runner
+            .eval_item_predicate("item.missing.field", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("predicate:1:"), "{error}");
+        assert!(!error.contains(".rs:"), "{error}");
+        let error = runner
+            .eval_item_expr("item.missing.field", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("expression:1:"), "{error}");
+        assert!(!error.contains(".rs:"), "{error}");
+    }
+
+    #[test]
+    fn eval_item_expr_keeps_the_item_key_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let item = value("name: node\ntype: ss\nserver: example.com\nport: 443\n");
+        let renamed = runner
+            .eval_item_expr(
+                r#"(function() item.name = "renamed"; return item end)()"#,
+                &item,
+            )
+            .unwrap();
+        assert_eq!(
+            serde_yaml::to_string(&to_yaml(&renamed)).unwrap(),
+            "name: renamed\ntype: ss\nserver: example.com\nport: 443\n"
+        );
     }
 
     #[test]

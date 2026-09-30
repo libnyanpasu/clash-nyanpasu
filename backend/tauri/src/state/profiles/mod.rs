@@ -2,6 +2,7 @@
 
 pub mod actor;
 pub mod error;
+pub(crate) mod jobs;
 pub mod ports;
 mod scheduler;
 pub mod sources;

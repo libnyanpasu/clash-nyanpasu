@@ -115,7 +115,7 @@ async function resolveUpdater() {
       args: ["rev-parse", "--short", "pre-release"],
       stdout: "piped",
     }).output();
-    shortHash = new TextDecoder().decode(gitResult.stdout).trim().slice(0, 7);
+    shortHash = new TextDecoder().decode(gitResult.stdout).trim();
   }
 
   consola.info(`latest pre-release short hash: ${shortHash}`);
@@ -127,6 +127,7 @@ async function resolveUpdater() {
     platforms: await collectUpdaterPlatforms(
       latestPreRelease.assets,
       getSignature,
+      `${tauriNightly.version}-alpha+${shortHash}`,
     ),
   };
 

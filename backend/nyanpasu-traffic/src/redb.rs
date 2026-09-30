@@ -1,5 +1,5 @@
 use crate::{accounting::FlushBatch, model::*, ports::TrafficStore};
-use ::redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
+use ::redb::{Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{fmt::Display, fs, ops::Bound, path::Path};
 
@@ -195,6 +195,12 @@ impl TrafficStore for RedbTrafficStore {
             None
         };
         Ok(ClosedPage { connections, next })
+    }
+
+    fn closed_count(&self) -> TrafficResult<u64> {
+        let txn = self.db.begin_read().map_err(storage)?;
+        let table = txn.open_table(CLOSED).map_err(storage)?;
+        table.len().map_err(storage)
     }
 
     fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>> {

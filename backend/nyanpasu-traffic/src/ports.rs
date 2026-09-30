@@ -14,6 +14,8 @@ pub trait TrafficStore: Send + Sync + 'static {
         limit: usize,
     ) -> TrafficResult<ClosedPage>;
 
+    fn closed_count(&self) -> TrafficResult<u64>;
+
     fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>>;
 
     fn topology(&self) -> TrafficResult<Vec<(TopologyKey, Bytes)>>;

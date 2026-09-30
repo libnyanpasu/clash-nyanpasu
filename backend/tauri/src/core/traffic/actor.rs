@@ -26,7 +26,7 @@ pub(super) enum Message {
     Observe(Frame, RpcReplyPort<()>),
     Disconnected(RpcReplyPort<()>),
     Flush(RpcReplyPort<()>),
-    Summary(RpcReplyPort<TrafficSummary>),
+    Summary(RpcReplyPort<TrafficResult<TrafficSummary>>),
     Usage(GroupBy, usize, RpcReplyPort<TrafficResult<Usage>>),
     Topology(usize, RpcReplyPort<TrafficResult<Topology>>),
     ClosedConnections(
@@ -110,7 +110,7 @@ impl Actor for TrafficActor {
                 let _ = reply.send(());
             }
             Message::Summary(reply) => {
-                let _ = reply.send(state.session.summary());
+                let _ = reply.send(state.summary().await);
             }
             Message::Usage(group, limit, reply) => {
                 let _ = reply.send(state.usage(group, limit).await);
@@ -159,6 +159,15 @@ impl State {
 
     // While the wipe is pending the store still holds the previous session, so the queries
     // below answer from memory alone.
+    async fn summary(&self) -> TrafficResult<TrafficSummary> {
+        let stored_closed = if self.session.reset_pending() {
+            0
+        } else {
+            blocking(&self.store, |store| store.closed_count()).await?
+        };
+        Ok(self.session.summary(stored_closed))
+    }
+
     async fn usage(&self, group: GroupBy, limit: usize) -> TrafficResult<Usage> {
         let stored = if self.session.reset_pending() {
             Vec::new()

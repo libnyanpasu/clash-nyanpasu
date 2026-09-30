@@ -49,7 +49,7 @@ impl TrafficClient {
     }
 
     pub async fn summary(&self) -> Result<TrafficSummary> {
-        self.call(Message::Summary).await
+        Ok(self.call(Message::Summary).await??)
     }
 
     /// Top `limit` groups of the session so far, including what is not flushed yet.

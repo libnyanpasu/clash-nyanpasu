@@ -319,6 +319,8 @@ pub struct TrafficSummary {
     pub last_sample_at: Option<i64>,
     pub core_bytes: Bytes,
     pub active_connections: u64,
+    /// Closed in this session, including those not flushed yet.
+    pub closed_connections: u64,
     pub current_rate: Option<Rate>,
 }
 

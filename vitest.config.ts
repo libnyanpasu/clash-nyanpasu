@@ -39,6 +39,15 @@ export default defineConfig({
                 new URL('frontend/interface/src', import.meta.url),
               ),
             },
+            {
+              find: /^~icons\/.*$/,
+              replacement: fileURLToPath(
+                new URL(
+                  'frontend/nyanpasu/tests/icon-stub.tsx',
+                  import.meta.url,
+                ),
+              ),
+            },
           ],
         },
         test: {

@@ -49,7 +49,7 @@ impl TrafficClient {
     }
 
     pub async fn summary(&self) -> Result<TrafficSummary> {
-        self.call(Message::Summary).await
+        Ok(self.call(Message::Summary).await??)
     }
 
     /// Top `limit` groups of the session so far, including what is not flushed yet.
@@ -64,8 +64,7 @@ impl TrafficClient {
         Ok(self.call(|reply| Message::Topology(limit, reply)).await??)
     }
 
-    /// Newest first, strictly before `before`. Read from the store, so it lags
-    /// by up to one flush interval.
+    /// Newest first, strictly before `before`, including what is not flushed yet.
     pub async fn closed_connections(
         &self,
         before: Option<ClosedCursor>,

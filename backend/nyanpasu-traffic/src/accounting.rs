@@ -186,6 +186,11 @@ impl Session {
         self.reset_pending
     }
 
+    /// Closed since the last batch, so not in the store yet.
+    pub fn pending_closed(&self) -> &[ClosedConnection] {
+        &self.closed
+    }
+
     /// Re-arms the wipe after a batch that carried it could not be stored.
     pub fn require_reset(&mut self) {
         self.reset_pending = true;
@@ -207,13 +212,15 @@ impl Session {
         }
     }
 
-    pub fn summary(&self) -> TrafficSummary {
+    /// `stored_closed` is how many closed connections of this session the store holds.
+    pub fn summary(&self, stored_closed: u64) -> TrafficSummary {
         TrafficSummary {
             profile: self.meta.profile.clone(),
             started_at: self.meta.started_at,
             last_sample_at: self.meta.last_sample_at,
             core_bytes: self.meta.core_bytes,
             active_connections: self.active.len() as u64,
+            closed_connections: stored_closed + self.closed.len() as u64,
             current_rate: self.current_rate,
         }
     }
@@ -494,7 +501,30 @@ mod tests {
         assert_eq!(closed.bytes, bytes(10, 10));
         assert_eq!(closed.first_seen_at, 1_000);
         assert_eq!(batch.active.len(), 1);
-        assert_eq!(session.summary().active_connections, 1);
+        assert_eq!(session.summary(0).active_connections, 1);
+    }
+
+    #[test]
+    fn summary_counts_stored_and_unflushed_closed_connections() {
+        let mut session = Session::new(None, 0);
+        session.observe(&frame(
+            INSTANCE,
+            1_000,
+            0,
+            bytes(30, 30),
+            vec![sample("a", 10, 10), sample("b", 20, 20)],
+        ));
+        session.observe(&frame(
+            INSTANCE,
+            2_000,
+            1_000,
+            bytes(35, 35),
+            vec![sample("b", 25, 25)],
+        ));
+
+        assert_eq!(session.summary(5).closed_connections, 6);
+        session.take_batch();
+        assert_eq!(session.summary(6).closed_connections, 6);
     }
 
     #[test]
@@ -524,7 +554,7 @@ mod tests {
             pending(&session, GroupBy::Process, "curl"),
             Some(bytes(5, 5))
         );
-        assert_eq!(session.summary().current_rate, None);
+        assert_eq!(session.summary(0).current_rate, None);
 
         let batch = session.take_batch();
         assert_eq!(batch.closed.len(), 1);
@@ -589,7 +619,7 @@ mod tests {
             bytes(100, 100),
             vec![sample("a", 100, 100)],
         ));
-        assert_eq!(session.summary().current_rate, None);
+        assert_eq!(session.summary(0).current_rate, None);
         assert!(session.current_rate_by(GroupBy::Process).is_empty());
 
         session.observe(&frame(
@@ -600,7 +630,7 @@ mod tests {
             vec![sample("a", 200, 300), sample("b", 50, 50)],
         ));
         assert_eq!(
-            session.summary().current_rate,
+            session.summary(0).current_rate,
             Some(Rate {
                 upload: 100,
                 download: 200
@@ -623,7 +653,7 @@ mod tests {
             bytes(300, 500),
             vec![sample("a", 200, 300)],
         ));
-        assert_eq!(session.summary().current_rate, None);
+        assert_eq!(session.summary(0).current_rate, None);
         assert!(session.current_rate_by(GroupBy::Process).is_empty());
     }
 
@@ -678,7 +708,7 @@ mod tests {
             upload: 3,
             download: 0,
         };
-        assert_eq!(session.summary().current_rate, Some(expected));
+        assert_eq!(session.summary(0).current_rate, Some(expected));
         assert_eq!(
             session.current_rate_by(GroupBy::Process).get("curl"),
             Some(&expected)
@@ -705,7 +735,7 @@ mod tests {
             vec![sample("a", u64::MAX, 0), sample("b", u64::MAX, 0)],
         ));
 
-        assert_eq!(session.summary().current_rate.unwrap().upload, u64::MAX);
+        assert_eq!(session.summary(0).current_rate.unwrap().upload, u64::MAX);
         assert_eq!(
             session.current_rate_by(GroupBy::Process)["curl"],
             Rate {
@@ -732,12 +762,12 @@ mod tests {
             bytes(150, 150),
             vec![sample("a", 150, 150)],
         ));
-        assert!(session.summary().current_rate.is_some());
+        assert!(session.summary(0).current_rate.is_some());
 
         session.disconnect();
-        assert_eq!(session.summary().current_rate, None);
+        assert_eq!(session.summary(0).current_rate, None);
         assert!(session.current_rate_by(GroupBy::Process).is_empty());
-        assert_eq!(session.summary().active_connections, 1);
+        assert_eq!(session.summary(0).active_connections, 1);
 
         session.take_batch();
         session.observe(&frame(
@@ -752,7 +782,7 @@ mod tests {
             pending(&session, GroupBy::Process, "curl"),
             Some(bytes(10, 10))
         );
-        assert_eq!(session.summary().current_rate, None);
+        assert_eq!(session.summary(0).current_rate, None);
     }
 
     #[test]
@@ -781,7 +811,7 @@ mod tests {
             pending(&restored, GroupBy::Process, "curl"),
             Some(bytes(20, 40))
         );
-        assert_eq!(restored.summary().current_rate, None);
+        assert_eq!(restored.summary(0).current_rate, None);
         assert!(restored.take_batch().closed.is_empty());
     }
 

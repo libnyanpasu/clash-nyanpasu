@@ -96,9 +96,7 @@ export const ClashConnectionDetailsProvider = ({
     return () => setSubscriberCount((count) => count - 1)
   }, [])
 
-  // The Rust side clears its own watch to `None` on disconnect, but the
-  // forwarder only ever forwards `Some` frames, so a webview learns of a
-  // disconnect only by watching the connector state itself, not the channel.
+  // Summary freshness also clears stale display while detail retirement arrives explicitly as null.
   useEffect(() => {
     if (connectorState !== 'connected') setFrame(null)
   }, [connectorState])
@@ -111,9 +109,19 @@ export const ClashConnectionDetailsProvider = ({
     let disposed = false
     let subscriptionId: SubscriptionId | undefined
 
-    const channel = new Channel<ClashConnectionDetails_Serialize>()
+    const channel = new Channel<ClashConnectionDetails_Serialize | null>()
     channel.onmessage = (data) => {
-      if (!disposed) setFrame(data)
+      if (!disposed)
+        setFrame((current) => {
+          if (
+            !data ||
+            !current ||
+            current.sessionId !== data.sessionId ||
+            BigInt(data.revision) >= BigInt(current.revision)
+          )
+            return data
+          return current
+        })
     }
 
     // tauri-specta types every command argument's phase as "Deserialize",
@@ -123,7 +131,7 @@ export const ClashConnectionDetailsProvider = ({
     // only thing actually sent across the boundary.
     commands
       .subscribeClashConnectionDetails(
-        channel as unknown as Channel<ClashConnectionDetails_Deserialize>,
+        channel as unknown as Channel<ClashConnectionDetails_Deserialize | null>,
       )
       .then((result) => {
         if (result.status === 'error') {
@@ -135,7 +143,7 @@ export const ClashConnectionDetailsProvider = ({
         }
         if (disposed) {
           // The last consumer unmounted before this resolved.
-          commands.unsubscribeClashConnectionDetails(result.data)
+          commands.unsubscribeTrafficSubscription(result.data)
           return
         }
         subscriptionId = result.data
@@ -145,7 +153,7 @@ export const ClashConnectionDetailsProvider = ({
       disposed = true
       setFrame(null)
       if (subscriptionId !== undefined) {
-        commands.unsubscribeClashConnectionDetails(subscriptionId)
+        commands.unsubscribeTrafficSubscription(subscriptionId)
       }
     }
   }, [hasSubscribers])

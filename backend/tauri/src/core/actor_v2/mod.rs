@@ -37,6 +37,8 @@ pub mod intent;
 pub mod local_host;
 pub mod service_actor;
 pub mod service_host_adapter;
+mod traffic;
+pub mod traffic_host;
 
 use std::time::Duration;
 

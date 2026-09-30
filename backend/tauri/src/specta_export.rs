@@ -56,6 +56,11 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_hotkeys,
             ipc::get_core_dir,
             ipc::get_clash_ws_snapshot,
+            ipc::get_current_traffic_session,
+            ipc::get_traffic_session,
+            ipc::query_traffic_connections,
+            ipc::query_traffic_usage,
+            ipc::query_traffic_topology,
             ipc::check_update,
             ipc::get_release_channel,
             ipc::get_system_accent_color,
@@ -121,7 +126,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::set_clash_ws_recording,
             ipc::clear_clash_ws_history,
             ipc::subscribe_clash_connection_details,
-            ipc::unsubscribe_clash_connection_details,
+            ipc::unsubscribe_traffic_subscription,
+            ipc::subscribe_traffic_summary,
             ipc::save_window_size_state,
             ipc::create_main_window,
             ipc::create_debug_tray_menu_window,
@@ -144,6 +150,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     // arrive with T08; explicit registration keeps them exported (and the
     // specta nested-tagged-enum risk probed) before any command exists.
     .typ::<nyanpasu_config::profile::Profiles>()
+    .typ::<core::clash::connection_rates::ClashConnectionsSummary>()
     .typ::<nyanpasu_config::profile::FileConfig>()
     .typ::<nyanpasu_config::profile::CompositionConfig>()
     .typ::<nyanpasu_config::profile::OverlayTransform>()
@@ -221,14 +228,19 @@ mod tests {
         append_query_bindings(BINDINGS_PATH, &query_bindings)
             .expect("failed to append TanStack Query bindings");
 
-        let package_manager = if cfg!(target_os = "windows") {
-            "pnpm.cmd"
-        } else {
-            "pnpm"
+        let run_prettier = |package_manager: &str| {
+            std::process::Command::new(package_manager)
+                .args(["exec", "prettier", "--write", BINDINGS_PATH])
+                .status()
         };
-        let status = std::process::Command::new(package_manager)
-            .args(["exec", "prettier", "--write", BINDINGS_PATH])
-            .status()
+        let status = run_prettier("pnpm")
+            .or_else(|error| {
+                if cfg!(target_os = "windows") && error.kind() == std::io::ErrorKind::NotFound {
+                    run_prettier("pnpm.cmd")
+                } else {
+                    Err(error)
+                }
+            })
             .expect("failed to spawn pnpm exec prettier");
         assert!(status.success(), "prettier --write failed on bindings.ts");
 
@@ -460,20 +472,25 @@ mod tests {
             "unit profile mutations must return MutationOutcome<null>"
         );
 
-        // A2: the connection-detail Channel payload wraps clash-api's
-        // strongly typed Connection with the two rate fields, and unknown
+        // A2: the connection-detail Channel payload wraps the UI connection
+        // projection with rates and their known state, and unknown
         // Mihomo fields are named (`_extra`) rather than flattened, so the
         // detail dialog can tell them apart from known fields (A0/A2).
         let clash_connection = exported_type(&generated, "ClashConnection_Serialize");
         assert_contains_all(
             clash_connection,
             "ClashConnection_Serialize",
-            &["downloadSpeed", "uploadSpeed", "Connection_Serialize"],
+            &[
+                "downloadSpeed",
+                "uploadSpeed",
+                "rateKnown",
+                "UiConnection_Serialize",
+            ],
         );
-        let connection = exported_type(&generated, "Connection_Serialize");
+        let connection = exported_type(&generated, "UiConnection_Serialize");
         assert_contains_all(
             connection,
-            "Connection_Serialize",
+            "UiConnection_Serialize",
             &[
                 "chains: string[]",
                 "metadata: ConnectionMetadata_Serialize",

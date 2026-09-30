@@ -1997,6 +1997,7 @@ dependencies = [
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
+ "nyanpasu-traffic",
  "nyanpasu-utils",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -6662,6 +6663,7 @@ dependencies = [
  "interprocess",
  "nyanpasu-core-metadata",
  "nyanpasu-logging",
+ "nyanpasu-traffic",
  "nyanpasu-utils",
  "nyanpasu-windows-security",
  "reqwest 0.13.5",
@@ -6719,6 +6721,25 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "nyanpasu-traffic"
+version = "1.0.0-rc.7"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "clash-api",
+ "futures-util",
+ "ractor",
+ "redb",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "specta",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

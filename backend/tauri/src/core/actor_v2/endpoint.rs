@@ -110,6 +110,50 @@ pub enum CheckSupport {
 /// read and deliberately not routed through the actor mailbox.
 #[async_trait::async_trait]
 pub trait ControlEndpoint: Send + Sync {
+    async fn get_current_traffic_session(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<Option<nyanpasu_traffic::SessionRecord>> {
+        Err(nyanpasu_traffic::StoreError::Unsupported)
+    }
+    async fn traffic_status(&self) -> nyanpasu_traffic::TrafficResult<()> {
+        Err(nyanpasu_traffic::StoreError::Unsupported)
+    }
+
+    async fn get_traffic_session(
+        &self,
+        _request: nyanpasu_traffic::SessionId,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::SessionRecord> {
+        Err(nyanpasu_traffic::StoreError::Unsupported)
+    }
+    async fn query_traffic_connections(
+        &self,
+        _request: nyanpasu_traffic::ConnectionsQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::ConnectionPage> {
+        Err(nyanpasu_traffic::StoreError::Unsupported)
+    }
+    async fn query_traffic_usage(
+        &self,
+        _request: nyanpasu_traffic::UsageQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::UsageResult> {
+        Err(nyanpasu_traffic::StoreError::Unsupported)
+    }
+    async fn query_traffic_topology(
+        &self,
+        _request: nyanpasu_traffic::TopologyQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::TopologyResult> {
+        Err(nyanpasu_traffic::StoreError::Unsupported)
+    }
+    async fn subscribe_traffic_summary(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<TrafficStream<nyanpasu_traffic::TrafficSummary>> {
+        Err(nyanpasu_traffic::StoreError::Unsupported)
+    }
+    async fn subscribe_traffic_details(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<TrafficStream<nyanpasu_traffic::TrafficDetails>> {
+        Err(nyanpasu_traffic::StoreError::Unsupported)
+    }
+
     async fn effective_config(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
@@ -161,20 +205,133 @@ pub trait ControlEndpoint: Send + Sync {
 // Local host: the in-process CoreControl.
 // ---------------------------------------------------------------------------
 
+pub type TrafficStream<T> = std::pin::Pin<
+    Box<dyn futures::Stream<Item = nyanpasu_traffic::TrafficResult<Option<T>>> + Send>,
+>;
+
 pub type ApiChanges = std::pin::Pin<Box<dyn futures::Stream<Item = Result<(), CoreError>> + Send>>;
 
 pub struct LocalEndpoint {
     control: CoreControl,
+    traffic: nyanpasu_traffic::TrafficResult<nyanpasu_traffic::TrafficClient>,
 }
 
 impl LocalEndpoint {
+    pub fn with_traffic(
+        control: CoreControl,
+        traffic: nyanpasu_traffic::TrafficResult<nyanpasu_traffic::TrafficClient>,
+    ) -> Self {
+        Self { control, traffic }
+    }
+
     pub fn new(control: CoreControl) -> Self {
-        Self { control }
+        Self {
+            control,
+            traffic: Err(nyanpasu_traffic::StoreError::Unsupported),
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl ControlEndpoint for LocalEndpoint {
+    async fn get_current_traffic_session(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<Option<nyanpasu_traffic::SessionRecord>> {
+        self.traffic
+            .as_ref()
+            .map_err(Clone::clone)?
+            .current_session()
+            .await
+    }
+    async fn traffic_status(&self) -> nyanpasu_traffic::TrafficResult<()> {
+        self.traffic
+            .as_ref()
+            .map_err(Clone::clone)?
+            .subscribe_status()
+            .borrow()
+            .clone()
+            .map_or(Ok(()), Err)
+    }
+
+    async fn get_traffic_session(
+        &self,
+        request: nyanpasu_traffic::SessionId,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::SessionRecord> {
+        self.traffic
+            .as_ref()
+            .map_err(Clone::clone)?
+            .session(request)
+            .await
+    }
+    async fn query_traffic_connections(
+        &self,
+        request: nyanpasu_traffic::ConnectionsQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::ConnectionPage> {
+        self.traffic
+            .as_ref()
+            .map_err(Clone::clone)?
+            .query_connections(request)
+            .await
+    }
+    async fn query_traffic_usage(
+        &self,
+        request: nyanpasu_traffic::UsageQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::UsageResult> {
+        self.traffic
+            .as_ref()
+            .map_err(Clone::clone)?
+            .query_usage(request)
+            .await
+    }
+    async fn query_traffic_topology(
+        &self,
+        request: nyanpasu_traffic::TopologyQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::TopologyResult> {
+        self.traffic
+            .as_ref()
+            .map_err(Clone::clone)?
+            .query_topology(request)
+            .await
+    }
+    async fn subscribe_traffic_summary(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<TrafficStream<nyanpasu_traffic::TrafficSummary>> {
+        let receiver = self
+            .traffic
+            .as_ref()
+            .map_err(Clone::clone)?
+            .subscribe_summary();
+        Ok(Box::pin(futures::stream::unfold(
+            (receiver, true),
+            |(mut receiver, first)| async move {
+                if !first {
+                    receiver.changed().await.ok()?;
+                }
+                let value = receiver.borrow_and_update().clone();
+                Some((Ok(value), (receiver, false)))
+            },
+        )))
+    }
+    async fn subscribe_traffic_details(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<TrafficStream<nyanpasu_traffic::TrafficDetails>> {
+        let receiver = self
+            .traffic
+            .as_ref()
+            .map_err(Clone::clone)?
+            .subscribe_details();
+        Ok(Box::pin(futures::stream::unfold(
+            (receiver, true),
+            |(mut receiver, first)| async move {
+                if !first {
+                    receiver.changed().await.ok()?;
+                }
+                let value = receiver.borrow_and_update().clone();
+                Some((Ok(value), (receiver, false)))
+            },
+        )))
+    }
+
     async fn effective_config(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
@@ -457,6 +614,84 @@ fn map_client_error(error: nyanpasu_ipc::client::ClientError) -> CoreError {
 
 #[async_trait::async_trait]
 impl ControlEndpoint for ServiceEndpoint {
+    async fn get_current_traffic_session(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<Option<nyanpasu_traffic::SessionRecord>> {
+        self.client
+            .current_traffic_session()
+            .await
+            .map_err(traffic_ipc_error)?
+    }
+    async fn traffic_status(&self) -> nyanpasu_traffic::TrafficResult<()> {
+        self.client
+            .traffic_status()
+            .await
+            .map_err(traffic_ipc_error)?
+    }
+
+    async fn get_traffic_session(
+        &self,
+        request: nyanpasu_traffic::SessionId,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::SessionRecord> {
+        self.client
+            .traffic_session(&request)
+            .await
+            .map_err(traffic_ipc_error)?
+    }
+    async fn query_traffic_connections(
+        &self,
+        request: nyanpasu_traffic::ConnectionsQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::ConnectionPage> {
+        self.client
+            .query_traffic_connections(&request)
+            .await
+            .map_err(traffic_ipc_error)?
+    }
+    async fn query_traffic_usage(
+        &self,
+        request: nyanpasu_traffic::UsageQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::UsageResult> {
+        self.client
+            .query_traffic_usage(&request)
+            .await
+            .map_err(traffic_ipc_error)?
+    }
+    async fn query_traffic_topology(
+        &self,
+        request: nyanpasu_traffic::TopologyQuery,
+    ) -> nyanpasu_traffic::TrafficResult<nyanpasu_traffic::TopologyResult> {
+        self.client
+            .query_traffic_topology(&request)
+            .await
+            .map_err(traffic_ipc_error)?
+    }
+    async fn subscribe_traffic_summary(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<TrafficStream<nyanpasu_traffic::TrafficSummary>> {
+        use futures::StreamExt;
+        let stream = self
+            .client
+            .subscribe_traffic_summary()
+            .await
+            .map_err(traffic_ipc_error)?;
+        Ok(Box::pin(
+            stream.map(|value| value.map_err(traffic_ipc_error)),
+        ))
+    }
+    async fn subscribe_traffic_details(
+        &self,
+    ) -> nyanpasu_traffic::TrafficResult<TrafficStream<nyanpasu_traffic::TrafficDetails>> {
+        use futures::StreamExt;
+        let stream = self
+            .client
+            .subscribe_traffic_details()
+            .await
+            .map_err(traffic_ipc_error)?;
+        Ok(Box::pin(
+            stream.map(|value| value.map_err(traffic_ipc_error)),
+        ))
+    }
+
     async fn effective_config(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
@@ -846,5 +1081,14 @@ fn map_controller(
         Host::UnixSocket(path) => Some(CoreControllerInfo::UnixSocket(path.clone())),
         Host::NamedPipe(path) => Some(CoreControllerInfo::NamedPipe(path.clone())),
         _ => None,
+    }
+}
+
+fn traffic_ipc_error(error: nyanpasu_ipc::client::ClientError) -> nyanpasu_traffic::StoreError {
+    match error {
+        nyanpasu_ipc::client::ClientError::UnsupportedTraffic => {
+            nyanpasu_traffic::StoreError::Unsupported
+        }
+        error => nyanpasu_traffic::StoreError::Unavailable(error.to_string()),
     }
 }

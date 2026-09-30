@@ -1206,6 +1206,62 @@ pub async fn get_clash_ws_snapshot(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn get_current_traffic_session(
+    client: tauri::State<'_, NyanpasuClient>,
+) -> Result<Option<nyanpasu_traffic::SessionRecord>> {
+    Ok(client
+        .get_current_traffic_session()
+        .await
+        .map_err(anyhow::Error::new)?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_traffic_session(
+    client: tauri::State<'_, NyanpasuClient>,
+    session_id: nyanpasu_traffic::SessionId,
+) -> Result<nyanpasu_traffic::SessionRecord> {
+    Ok(client
+        .get_traffic_session(session_id)
+        .await
+        .map_err(anyhow::Error::new)?)
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_connections(
+    client: tauri::State<'_, NyanpasuClient>,
+    query: nyanpasu_traffic::ConnectionsQuery,
+) -> Result<nyanpasu_traffic::ConnectionPage> {
+    Ok(client
+        .query_traffic_connections(query)
+        .await
+        .map_err(anyhow::Error::new)?)
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_usage(
+    client: tauri::State<'_, NyanpasuClient>,
+    query: nyanpasu_traffic::UsageQuery,
+) -> Result<nyanpasu_traffic::UsageResult> {
+    Ok(client
+        .query_traffic_usage(query)
+        .await
+        .map_err(anyhow::Error::new)?)
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_topology(
+    client: tauri::State<'_, NyanpasuClient>,
+    query: nyanpasu_traffic::TopologyQuery,
+) -> Result<nyanpasu_traffic::TopologyResult> {
+    Ok(client
+        .query_traffic_topology(query)
+        .await
+        .map_err(anyhow::Error::new)?)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn set_clash_ws_recording(
     client: tauri::State<'_, NyanpasuClient>,
     kind: crate::core::clash::ws::ClashWsKind,
@@ -1229,13 +1285,12 @@ pub async fn clear_clash_ws_history(
 pub async fn subscribe_clash_connection_details(
     webview: tauri::Webview,
     client: tauri::State<'_, NyanpasuClient>,
-    subscriptions: tauri::State<
-        '_,
-        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    subscriptions: tauri::State<'_, crate::core::clash::connection_details::TrafficSubscriptions>,
+    on_frame: tauri::ipc::Channel<
+        Option<crate::core::clash::connection_rates::ClashConnectionDetails>,
     >,
-    on_frame: tauri::ipc::Channel<crate::core::clash::ws::ClashConnectionDetails>,
 ) -> Result<crate::core::clash::connection_details::SubscriptionId> {
-    let receiver = client.subscribe_clash_connection_details();
+    let receiver = crate::core::clash::traffic::details_stream(client.inner().clone());
     let parent = client.shutdown_child_token();
     let (id, cancel) = subscriptions.register(&parent, webview.label().to_string());
     client.spawn_tracked(
@@ -1247,11 +1302,8 @@ pub async fn subscribe_clash_connection_details(
 
 #[tauri::command]
 #[specta::specta]
-pub fn unsubscribe_clash_connection_details(
-    subscriptions: tauri::State<
-        '_,
-        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
-    >,
+pub fn unsubscribe_traffic_subscription(
+    subscriptions: tauri::State<'_, crate::core::clash::connection_details::TrafficSubscriptions>,
     id: crate::core::clash::connection_details::SubscriptionId,
 ) -> Result {
     subscriptions.unsubscribe(id);
@@ -1752,4 +1804,21 @@ mod tests {
             ["clash://install-config?url=https%3A%2F%2Fc"]
         );
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn subscribe_traffic_summary(
+    webview: tauri::Webview,
+    client: tauri::State<'_, NyanpasuClient>,
+    subscriptions: tauri::State<'_, crate::core::clash::connection_details::TrafficSubscriptions>,
+    on_frame: tauri::ipc::Channel<crate::core::clash::traffic::TrafficSummaryFrame>,
+) -> Result<crate::core::clash::connection_details::SubscriptionId> {
+    let parent = client.shutdown_child_token();
+    let (id, cancel) = subscriptions.register(&parent, webview.label().to_string());
+    client.spawn_tracked(
+        &cancel,
+        crate::core::clash::traffic::forward_summary(client.inner().clone(), on_frame),
+    );
+    Ok(id)
 }

@@ -95,7 +95,7 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
       .map((conn) => ({
         ...conn,
         closed: false,
-        startMs: Date.parse(conn.start),
+        startMs: conn.start ? Date.parse(conn.start) : Number.NaN,
       }))
       .filter((c) => (search ? containsSearchTerm(c, search) : true))
   }, [details, search, proxy])
@@ -232,11 +232,13 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
           size: 120,
           cell: (info) => (
             <span
-              title={dayjs(info.row.original.start).format(
+              title={dayjs(info.row.original.start ?? '').format(
                 'YYYY-MM-DD HH:mm:ss',
               )}
             >
-              {dayjs(info.row.original.start).fromNow()}
+              {info.row.original.start
+                ? dayjs(info.row.original.start).fromNow()
+                : '-'}
             </span>
           ),
         },

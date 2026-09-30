@@ -23,8 +23,8 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import {
   useDeleteClashConnections,
-  type Connection_Serialize,
   type ConnectionMetadataFields_Serialize,
+  type UiConnection_Serialize,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { ConnectionRow } from '..'
@@ -36,6 +36,7 @@ const INTERNAL_KEYS = new Set([
   'closed',
   'downloadSpeed',
   'uploadSpeed',
+  'rateKnown',
   'startMs',
   'metadata',
   '_extra',
@@ -73,7 +74,7 @@ const FIELD_LABELS = {
   specialRules: m.connections_field_special_rules,
 } satisfies Partial<
   Record<
-    | Exclude<keyof Connection_Serialize, 'metadata' | '_extra'>
+    | Exclude<keyof UiConnection_Serialize, 'metadata' | '_extra'>
     | keyof ConnectionMetadataFields_Serialize,
     () => string
   >

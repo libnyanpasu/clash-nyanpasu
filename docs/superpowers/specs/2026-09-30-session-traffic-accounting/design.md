@@ -2,7 +2,7 @@
 
 **日期：** 2026-09-30
 
-**状态：** 设计提案；领域分层、单一采集 owner、可替换存储方向已确认，本文尚未实施。
+**状态：** 后端实施与 leader review 已完成；验证结果、未执行验收及发行边界见 [tasks.md](./tasks.md)。
 
 **源码基线：** 主仓库 `9c16aba1c`，runtime 子模块 `c62514a`。
 
@@ -24,7 +24,9 @@
 | 后续更换数据库     | 领域 `TrafficStore` trait，首个生产实现为 redb，替换时不改 actor 或应用查询语义 |
 | 服务模式连续记录   | 采集与数据库 owner 运行在实际承载内核的宿主中，不依赖桌面进程存在               |
 
-本阶段不实现新页面、图表、报表导出、跨 session 合并、云同步、Turso adapter、内核补丁或精确计费。允许必要的现有消费链迁移和生成类型更新，保证替换 owner 后现有功能继续工作；这不等于实现历史页面。
+原后端实施阶段不实现新页面、图表、报表导出、跨 session 合并、云同步、Turso adapter、内核补丁或精确计费。允许必要的现有消费链迁移和生成类型更新，保证替换 owner 后现有功能继续工作；这不等于实现历史页面。
+
+用户在后端实施完成后追加了独立 Sol agent 的双 store 对照评估：新增 `turso-store` 可选 feature 下的本地 `TursoTrafficStore`，不改变默认 redb 组合。该追加工作的验证、方法和结果见 [store-benchmark.md](./store-benchmark.md)。不提供 redb/Turso 文件迁移或生产切换配置。
 
 “历史”首先指当前 session 内已发生的数据。停止后保留最近一个结束的 session 供查询；新 session 建立成功后旧 session 才按保留策略清理。默认不承诺长期跨 session 档案。
 
@@ -77,7 +79,7 @@ flowchart TD
     T --> P[纯增量和拓扑计算]
     T --> S[TrafficStore]
     S --> D[RedbTrafficStore]
-    S -.未来替换.-> U[TursoTrafficStore]
+    S -.可选评估实现.-> U[TursoTrafficStore]
     F[NyanpasuClient] --> C[本地 TrafficClient 或服务 IPC adapter]
     C --> T
     T --> O[流量领域实时订阅]
@@ -143,7 +145,7 @@ flowchart TD
 
 只有成功解码且有效的完整快照才能判断连接消失。错误、无效帧、断流不是空列表。`connections: null` 按协议是有效的空列表。非法负计数帧不参与入账或关闭检测，记录质量异常。
 
-Closed 记录不会回到活跃内存表；同 session 内同 ID 意外重现，必须从持久化记录恢复已入账基线、标记重现并避免重复累计。连接关闭命令的成功只代表控制操作成功，不代表已经拿到最终字节数。
+Closed 历史不常驻活跃内存表。例外是完整快照明确再次报告同 session 内的同 ID：仅恢复这些 ID 的已入账基线，最新状态改为 Active，保留重现标记并避免重复累计或增加唯一连接数。连接记录表达最新状态与持久化质量证据，不提供全部开闭事件的回放日志。连接关闭命令的成功只代表控制操作成功，不代表已经拿到最终字节数。
 
 ## 6. 流量模型与计算口径
 
@@ -156,6 +158,8 @@ Closed 记录不会回到活跃内存表；同 session 内同 ID 意外重现，
 | `current_rate`        | 连续有效采样间的字节增量/实际单调时间间隔，单位 B/s |
 
 这些值都不是网卡物理字节或运营商计费口径。上传/下载始终分别保存。session 总量只计一次；按进程、规则、出口等维度查询是同一流量的不同投影，不能跨维度相加。
+
+`first_sample_at = None` 表示尚无成功采样，累计值的初始零不能解释为测得零消耗；短命实例即使已结束也可能处于这种覆盖状态。调用方结合首次/末次采样时间、freshness 和质量标记解释累计值。
 
 对两次连续有效观测的同一连接，入账增量为 `current - last_accounted`。首次发现连接时，把其当前非负累计计数入账一次，但首个速率为 unknown，不假定它全部发生在最后一秒。第一份全局计数也记录其累计值，同时标记此前时间分布不可知。
 
@@ -201,7 +205,7 @@ session 累计包含已入账的 time-unallocated 字节。趋势返回桶值和
 
 ### 7.1 接口形状
 
-采用 object-safe async trait（实现可用 `async_trait`），以 `Arc<dyn TrafficStore>` 显式注入。以下为领域契约草图，不是已实现 API：
+采用 object-safe async trait（实现使用 `async_trait`），以 `Arc<dyn TrafficStore>` 显式注入。以下展示主要领域方法；完整签名及恢复基线的单条/批量读取见 [ports.rs](../../../../backend/nyanpasu-runtime/crates/nyanpasu-traffic/src/ports.rs)：
 
 ```rust
 #[async_trait::async_trait]
@@ -212,6 +216,7 @@ pub trait TrafficStore: Send + Sync + 'static {
     async fn committed_position(&self, session: SessionId) -> Result<CommittedPosition, StoreError>;
     async fn finish_session(&self, end: SessionEnd) -> Result<CommitReceipt, StoreError>;
     async fn session(&self, id: SessionId) -> Result<SessionRecord, StoreError>;
+    async fn latest_session(&self, host: HostId) -> Result<Option<SessionRecord>, StoreError>;
     async fn query_connections(&self, query: ConnectionsQuery) -> Result<ConnectionPage, StoreError>;
     async fn query_usage(&self, query: UsageQuery) -> Result<UsageResult, StoreError>;
     async fn query_topology(&self, query: TopologyQuery) -> Result<TopologyResult, StoreError>;
@@ -226,20 +231,20 @@ pub trait TrafficStore: Send + Sync + 'static {
 
 - 每个 session 有单调递增 observation sequence；批次包含期望前序位置、批次摘要及当前序号。
 - 连接更新、归因区段、汇总、分钟桶、质量事件、counter baseline、sequence 在同一事务提交。
-- 同序号同内容重试返回已提交 receipt；同序号不同内容返回 conflict；跳号/前序不匹配拒绝。
+- 最新已提交序号的同内容重试返回 receipt；同序号不同内容返回 conflict；跳号/前序不匹配拒绝。串行 owner 对每个实例同时只保留一个待核实批次，不会在该实例的后续批次提交后重试更早批次；早于当前位置的请求明确返回 stale/conflict。adapter 只需保留当前提交与封存回执，不能为每秒采样无限追加回执日志。
 - `finish_session` 也必须幂等，不得重复关闭/重复加账；不能封存仍有未解决提交结果的 session。
 - 持久化成功后 actor 才替换自身 baseline、递增发布版本。累计查询和已发布版本均指向已提交位置。
 - 不同查询操作每次使用一致读；不承诺不同时间发出的多个查询天然是同一个快照。
 
 成功 receipt 承诺宿主进程重启后可恢复该提交，redb adapter 使用满足此契约的提交持久性设置。未来 adapter 不得在仅写入进程内缓存时返回同等成功。电源故障的保证仍受文件系统和设备影响，不宣称超出数据库自身持久性模型。
 
-Turso 后续 adapter 也必须通过这些契约测试，使用事务和唯一约束实现同等语义；“支持 SQL”不自动代表已满足 port。数据库替换不包含旧文件的自动格式迁移。
+Turso adapter 也必须通过这些契约测试，使用事务和唯一约束实现同等语义；“支持 SQL”不自动代表已满足 port。追加评估实现与 redb 共用基础契约，并增加 adapter 专项测试；完整验证边界见对照报告。数据库替换不包含旧文件的自动格式迁移。
 
 ### 7.3 错误与提交不确定性
 
 错误区分 unavailable、capacity exhausted、corrupt/incompatible schema、conflict 和 unknown commit outcome。事务已确定未提交时，可以保持旧 baseline，随后接收较新的完整累计快照；中间已经关闭的连接可能无法补回，须记录 gap。
 
-结果不确定时，仅保留当前这一份待核实批次，查询 committed position/摘要，或以完全相同批次重试；不得先推进 baseline 或用同序号提交不同内容。actor 每次消息完成一次恢复步骤，不建立重试队列、不在 handler 内无限循环等待数据库恢复。恢复期间读者仍能读最后提交数据，状态显示 degraded。
+结果不确定时，每个存活实例仅保留当前这一份待核实批次，查询 committed position/摘要，或以完全相同批次重试；不得先推进 baseline 或用同序号提交不同内容。graceful drain 期间不同实例有独立 session 账目，可各持有一份待核实批次。actor 每次消息完成一次恢复步骤，不建立重试队列、不在 handler 内无限循环等待数据库恢复。恢复期间读者仍能读最后提交数据，状态显示 degraded。
 
 一次失败对应一个有界状态和错误，不把整段原始采样排队留在内存。宿主退出时若仍无法落盘，报告失败；下次依据持久化位置恢复，不能声称未落盘部分已保存。
 
@@ -260,25 +265,29 @@ Turso 后续 adapter 也必须通过这些契约测试，使用事务和唯一�
 
 精确物理 key 编码由 adapter 决定。索引跟记录同事务更新。使用相同序列化版本做 round-trip 测试，不直接依赖 clash wire 类型的反序列化形状来读取库内对象。
 
+当前实现的 schema 为 2，不兼容的旧 schema 显式返回错误。七种分组的完整累计保存在 group totals 中；每个 session、每种分组另持久化最多 500 项排行，与查询最大 limit 一致，同事务更新。无过滤的 Session top-N 查询读取该有界排行，`other` 用会话已归因总量扣除返回项计算，保持完整对账。累计只增，因此未入榜项仅需在自身累计更新时重新比较；排序使用确定性的并列规则。带其他过滤或时间窗口的查询仍按对应查询路径执行，不宣称所有组合查询都已有专用索引。
+
 redb open/读/写/维护操作在阻塞执行边界运行；actor 等待整个调用，取消调用方不取消已开始的操作。`JoinError` 的 panic 必须继续传播为 panic，不能变成普通 StoreError。adapter 内不新增无界写入队列或后台事务合并器。
 
 ## 8. actor 协议、资源与退出
 
-启动参数包含 source、store、clock、宿主身份、采样配置、保留策略和根 cancellation token。公开的是 `TrafficClient`，raw ActorRef 不离开 actor/application internals。
+启动参数包含 source、store、clock、宿主身份和根 cancellation token；采样间隔及网络 deadline 由注入的 source 配置。第一版采用 §10 的固定保留策略，不新增尚无使用需求的策略配置界面。公开的是 `TrafficClient`，raw ActorRef 不离开 actor/application internals。
 
 领域消息包括 `InstanceStarted`、`ControllerBound`、`ObserveConnections`、`SourceDisconnected`、`InstanceExited`、各类查询及存储恢复通知。采样/查询/落盘操作需要真实结果，用 request/reply；生命周期输入按有序通知接收。每条消息处理整个命令，不增加内部 scheduler、优先级或 admission queue。
 
-内存保存：活跃连接基线、当前速率、必要的活跃归因信息、有限质量状态，以及至多一个待核实批次。已关闭连接、全部历史目标、路径和累计维度不在内存无限累计。历史排行由持久化索引/扫描完成，不先加载整个 session。
+内存保存：活跃连接基线、当前速率、必要的活跃归因信息、有限质量状态，以及每个存活实例至多一个待核实批次。其占用随同时存活实例和活跃连接数变化。已关闭连接、全部历史目标、路径和累计维度不在内存无限累计。历史排行由持久化索引/扫描完成，不先加载整个 session。
 
 查询必须分页/限定输出规模。复杂扫描虽然可使用恒定或受限内存，仍会占用 actor；压测须证明常用查询不会长期压住采集。过宽查询返回显式 `QueryTooBroad`，不偷偷返回截断的“完整合计”。不要为解决性能先加入第二套 actor 内队列；有实测证据后再评估存储读路径。
 
 根 token 取消后拒绝新工作。已经开始的提交运行到终态，owner 在 `post_stop` 中停止/回收自己的采样任务，记录 collector 停止状态，flush 并关闭自己的存储资源。没有全局 shutdown phase 或预算。内核正常停止是业务生命周期消息，不取消整个 traffic owner，因为结束后的 session 仍需查询。若退出清理时未收到可确认的内核退出事件，只记录采集中断，重启后对账；不能把 collector 停止等同于 `CoreExited`。
 
+宿主正常退出时，取消后的新查询、采样、Start/Bind 均被拒绝；已经拥有的实例随后产生的真实 Exited 是既有资源的清理通知，仍可完成封存。宿主须等待自身 core supervisor 交付这些终态通知，再 drain 并 join traffic owner；不能用高优先级 stop 信号抢在已入 mailbox 的 Exited 前结束 actor。这是宿主所拥有资源的依赖清理，不增加全局阶段、预算或第二队列。宿主异常崩溃后，无法确认的实例仍标记 lifecycle unknown，不猜测退出时间或自动删除其历史。
+
 ## 9. 查询 API 与对账能力
 
 `NyanpasuClient` 暴露 `get_traffic_session`、`query_traffic_connections`、`query_traffic_usage`、`query_traffic_topology`、`subscribe_traffic_summary` 和按需活跃连接订阅。应用 API 不提供 `get_store` 或 `get_actor_ref`。
 
-所有查询明确携带 session；默认 session 的选择在 facade 边界完成，不能在多页查询中途悄悄切到新内核。返回值包含 session、committed revision、采样时间、freshness、coverage、retention 状态。
+历史查询明确携带 session；单独的当前/最近保留会话查询帮助调用方取得 ID，随后分页与聚合始终使用该 ID，不能在多页查询中途悄悄切到新内核。已停止且没有新会话时，最近保留会话仍可发现。返回值的 `QueryMeta.session` 包含 committed revision、首次/末次采样时间、freshness 和质量标记，用这些字段表达观测覆盖；不另外序列化重复的 coverage DTO。第一版只整 session 清理，查询成功表示该 session 的已提交观测记录完整保留，已清理 session 返回 NotFound；没有部分裁剪的 retention DTO。未来引入部分裁剪时必须按 §10 扩展返回契约，不能沿用此完整保留语义。
 
 第一版支持有限枚举的过滤和排序，不做任意查询语言：状态、规则归因键、进程键、目标键、出口/路径、协议、连接开始时间；usage 的 scope 为 session 或分钟窗口，group-by 为上述受支持维度。规则/路径过滤可用于明细下钻。历史任意 JSON 字段全文检索不在本阶段。
 
@@ -294,7 +303,7 @@ usage/topology 单次查询在一致读内计算汇总和排行，返回全部�
 
 ## 10. 保留策略、磁盘空间与恢复
 
-默认保留所有仍在运行的 session，以及没有新 session 时最近一个结束的 session。新 session 成功建立后可清理已结束的旧 session；graceful drain 中的实例不在清理对象内。默认完整保留当前 session 的已关闭连接和一分钟桶，不自动淘汰历史明细。
+默认保护所有尚未确认结束的 session、当前选中的 session，以及最近一个结束的 session。成功建立或封存会话后清理其余已结束会话；graceful drain 中的实例不在清理对象内。选择变更与下一次清理之间可暂留上一份受保护会话，不把该策略描述为磁盘硬上限。默认完整保留当前 session 的已关闭连接和一分钟桶，不自动淘汰历史明细。
 
 因此磁盘用量随连接数、高基数归因维度、运行时间增长。这是默认语义，不把“页缓存 32 MiB”描述成数据库大小上限。所有历史记录完整保留与无限运行下固定磁盘上限不能同时保证。
 

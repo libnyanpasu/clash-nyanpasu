@@ -24,6 +24,7 @@ pub(crate) mod runtime_recovery;
 mod session_state;
 mod system_dns;
 pub mod system_proxy;
+mod traffic;
 pub mod ui_effects;
 
 use self::{
@@ -1711,6 +1712,7 @@ pub(crate) mod tests {
                 status: nyanpasu_ipc::types::ServiceStatus::Running,
                 server: Some(nyanpasu_ipc::api::status::StatusResBody {
                     log_query_version: None,
+                    traffic_query_version: None,
                     version: std::borrow::Cow::Borrowed("2.0.0"),
                     core_infos: nyanpasu_ipc::api::status::CoreInfos {
                         instance_id: None,

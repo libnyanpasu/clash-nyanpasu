@@ -89,9 +89,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .service_binary_path()
         .context("Failed to locate the service binary")?;
     let (core_v2, service) = tauri::async_runtime::block_on(async {
-        let control = crate::core::actor_v2::local_host::build(&paths).await?;
-        let local: crate::core::actor_v2::endpoint::EndpointHandle =
-            Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
+        let (control, traffic) =
+            crate::core::actor_v2::local_host::build(&paths, shutdown.clone(), &tasks).await?;
+        let local: crate::core::actor_v2::endpoint::EndpointHandle = Arc::new(
+            crate::core::actor_v2::endpoint::LocalEndpoint::with_traffic(control, traffic),
+        );
         let core = crate::core::actor_v2::CoreClient::spawn(local)
             .await
             .context("Failed to spawn core actor")?;
@@ -177,7 +179,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // the one place that has both. Its desired configuration arrives with the
     // startup effect reconcile like every other effect.
     let widget_manager = tauri::async_runtime::block_on(crate::widget::setup(
-        client.subscribe_clash_connections(),
+        client.clone(),
         shutdown.child_token(),
         &tasks,
     ))

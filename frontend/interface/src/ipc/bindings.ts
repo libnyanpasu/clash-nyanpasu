@@ -182,6 +182,46 @@ export const commands = {
     typedError<ClashWsSnapshot, IpcError>(
       __TAURI_INVOKE('get_clash_ws_snapshot'),
     ),
+  getCurrentTrafficSession: () =>
+    typedError<
+      {
+        id: SessionId
+        host: HostId
+        instance_id: string
+        process_started_at: UInt | null
+        attached_at: UInt
+        first_sample_at: UInt | null
+        last_sample_at: UInt | null
+        ended_at: UInt | null
+        core_reported_bytes: Bytes
+        attributed_bytes: Bytes
+        time_unallocated: Bytes
+        global_counters: Bytes | null
+        last_monotonic_ns: UInt | null
+        source_generation: UInt
+        position: CommittedPosition
+        quality: Quality[]
+        freshness: Freshness
+        observed_connections: UInt
+      } | null,
+      IpcError
+    >(__TAURI_INVOKE('get_current_traffic_session')),
+  getTrafficSession: (sessionId: SessionId) =>
+    typedError<SessionRecord, IpcError>(
+      __TAURI_INVOKE('get_traffic_session', { sessionId }),
+    ),
+  queryTrafficConnections: (query: ConnectionsQuery) =>
+    typedError<ConnectionPage_Serialize, IpcError>(
+      __TAURI_INVOKE('query_traffic_connections', { query }),
+    ),
+  queryTrafficUsage: (query: UsageQuery) =>
+    typedError<UsageResult, IpcError>(
+      __TAURI_INVOKE('query_traffic_usage', { query }),
+    ),
+  queryTrafficTopology: (query: TopologyQuery) =>
+    typedError<TopologyResult, IpcError>(
+      __TAURI_INVOKE('query_traffic_topology', { query }),
+    ),
   checkUpdate: () =>
     typedError<
       {
@@ -427,14 +467,23 @@ export const commands = {
       __TAURI_INVOKE('clear_clash_ws_history', { kind }),
     ),
   subscribeClashConnectionDetails: (
-    onFrame: Channel<ClashConnectionDetails_Deserialize>,
+    onFrame: Channel<{
+      sessionId: SessionId
+      revision: UInt
+      freshness: Freshness
+      connections: ClashConnection_Deserialize[]
+    } | null>,
   ) =>
     typedError<SubscriptionId, IpcError>(
       __TAURI_INVOKE('subscribe_clash_connection_details', { onFrame }),
     ),
-  unsubscribeClashConnectionDetails: (id: SubscriptionId) =>
+  unsubscribeTrafficSubscription: (id: SubscriptionId) =>
     typedError<null, IpcError>(
-      __TAURI_INVOKE('unsubscribe_clash_connection_details', { id }),
+      __TAURI_INVOKE('unsubscribe_traffic_subscription', { id }),
+    ),
+  subscribeTrafficSummary: (onFrame: Channel<TrafficSummaryFrame>) =>
+    typedError<SubscriptionId, IpcError>(
+      __TAURI_INVOKE('subscribe_traffic_summary', { onFrame }),
     ),
   saveWindowSizeState: (label: string) =>
     typedError<null, IpcError>(
@@ -523,6 +572,11 @@ export type BuiltinStepKind =
   | 'finalizing'
   | 'core_controller'
 
+export type Bytes = {
+  upload: UInt
+  download: UInt
+}
+
 export type ClashApiConfig = {
   port: number | null
   mode: string | null
@@ -606,64 +660,47 @@ export type ClashConfigPatch_Serialize = {
 
 /**
  *  One connection plus its derived rates, for IPC consumers that need the
- *  per-connection detail (only built when `with_details` is set).
+ *  per-connection detail, projected only for active UI subscribers.
  */
 export type ClashConnection =
   ClashConnection_Serialize | ClashConnection_Deserialize
 
-/**
- *  Latest per-connection detail frame, pushed only while at least one
- *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
- *  only the newest frame is kept, never a history.
- */
 export type ClashConnectionDetails =
   ClashConnectionDetails_Serialize | ClashConnectionDetails_Deserialize
 
-/**
- *  Latest per-connection detail frame, pushed only while at least one
- *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
- *  only the newest frame is kept, never a history.
- */
 export type ClashConnectionDetails_Deserialize = {
-  /**
-   *  Equal to the sequence of the `ConnectionsUpdated` event emitted for
-   *  the same sample, so a subscriber can align the two.
-   */
-  sequence: number
+  sessionId: SessionId
+  revision: UInt
+  freshness: Freshness
   connections: ClashConnection_Deserialize[]
 }
 
-/**
- *  Latest per-connection detail frame, pushed only while at least one
- *  subscriber exists (see `StreamsClient::subscribe_connection_details`);
- *  only the newest frame is kept, never a history.
- */
 export type ClashConnectionDetails_Serialize = {
-  /**
-   *  Equal to the sequence of the `ConnectionsUpdated` event emitted for
-   *  the same sample, so a subscriber can align the two.
-   */
-  sequence: number
+  sessionId: SessionId
+  revision: UInt
+  freshness: Freshness
   connections: ClashConnection_Serialize[]
 }
 
 /**
  *  One connection plus its derived rates, for IPC consumers that need the
- *  per-connection detail (only built when `with_details` is set).
+ *  per-connection detail, projected only for active UI subscribers.
  */
 export type ClashConnection_Deserialize = {
   downloadSpeed: number
   uploadSpeed: number
-} & Connection_Deserialize
+  rateKnown: boolean
+} & UiConnection_Deserialize
 
 /**
  *  One connection plus its derived rates, for IPC consumers that need the
- *  per-connection detail (only built when `with_details` is set).
+ *  per-connection detail, projected only for active UI subscribers.
  */
 export type ClashConnection_Serialize = {
   downloadSpeed: number
   uploadSpeed: number
-} & Connection_Serialize
+  rateKnown: boolean
+} & UiConnection_Serialize
 
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'
@@ -762,7 +799,7 @@ export type ClashWsEvent = {
   update: ClashWsUpdate
 }
 
-export type ClashWsKind = 'connections' | 'logs' | 'traffic' | 'memory'
+export type ClashWsKind = 'logs' | 'memory'
 
 export type ClashWsLog = {
   type: string
@@ -776,9 +813,7 @@ export type ClashWsMemory = {
 }
 
 export type ClashWsRecording = {
-  connections: boolean
   logs: boolean
-  traffic: boolean
   memory: boolean
 }
 
@@ -786,26 +821,19 @@ export type ClashWsSnapshot = {
   sequence: number
   state: ClashConnectionsConnectorState
   recording: ClashWsRecording
-  connections: ClashConnectionsSummary[]
   logs: ClashWsLog[]
-  traffic: ClashWsTraffic[]
   memory: ClashWsMemory[]
-}
-
-export type ClashWsTraffic = {
-  up: number
-  down: number
 }
 
 export type ClashWsUpdate =
   | { kind: 'reset'; data: ClashWsSnapshot }
   | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'connections_updated'; data: ClashConnectionsSummary }
   | { kind: 'log_appended'; data: ClashWsLog }
-  | { kind: 'traffic_updated'; data: ClashWsTraffic }
   | { kind: 'memory_updated'; data: ClashWsMemory }
   | { kind: 'recording_changed'; data: ClashWsRecording }
   | { kind: 'history_cleared'; data: ClashWsKind }
+
+export type CloseReason = 'MissingFromSnapshot' | 'CoreExited'
 
 /**
  *  Why a source transaction did not commit, classified once from the
@@ -841,6 +869,11 @@ export type CommitReceipt = {
   domain: string
   source_version: number
   runtime: RuntimeCommitStatus
+}
+
+export type CommittedPosition = {
+  sequence: UInt
+  digest: string
 }
 
 export type CompletionDto = {
@@ -996,7 +1029,27 @@ export type ConfigurationStatus = {
 
 export type ConfigurationStatusChanged = ConfigurationStatus
 
-export type Connection = Connection_Serialize | Connection_Deserialize
+export type ConnectionCursor = {
+  session_id: SessionId
+  query_digest: string
+  high_watermark: UInt
+  last_sequence: UInt
+  last_id: string
+}
+
+export type ConnectionFilter = {
+  status: boolean | null
+  rule: RuleKey | null
+  process: string | null
+  source: string | null
+  target: string | null
+  exit: string | null
+  path: string[] | null
+  group_chain: string[] | null
+  protocol: string | null
+  started_after: string | null
+  started_before: string | null
+}
 
 export type ConnectionMetadata =
   ConnectionMetadata_Serialize | ConnectionMetadata_Deserialize
@@ -1096,6 +1149,93 @@ export type ConnectionMetadata_Serialize = {
 
 export type ConnectionNetwork = 'tcp' | 'udp' | 'all' | 'invalid'
 
+export type ConnectionPage =
+  ConnectionPage_Serialize | ConnectionPage_Deserialize
+
+export type ConnectionPage_Deserialize = {
+  meta: QueryMeta
+  connections: ConnectionRecord_Deserialize[]
+  next_cursor: ConnectionCursor | null
+}
+
+export type ConnectionPage_Serialize = {
+  meta: QueryMeta
+  connections: ConnectionRecord_Serialize[]
+  next_cursor: ConnectionCursor | null
+}
+
+export type ConnectionRecord =
+  ConnectionRecord_Serialize | ConnectionRecord_Deserialize
+
+export type ConnectionRecord_Deserialize = {
+  session_id: SessionId
+  id: string
+  first_observed_sequence: UInt
+  first_observed_at: UInt
+  last_observed_at: UInt
+  sample: ConnectionSample_Deserialize
+  counters: Bytes
+  accounted_bytes: Bytes
+  status: ConnectionStatus
+  dimensions: Dimensions
+  segment: UInt
+  quality: Quality[]
+}
+
+export type ConnectionRecord_Serialize = {
+  session_id: SessionId
+  id: string
+  first_observed_sequence: UInt
+  first_observed_at: UInt
+  last_observed_at: UInt
+  sample: ConnectionSample_Serialize
+  counters: Bytes
+  accounted_bytes: Bytes
+  status: ConnectionStatus
+  dimensions: Dimensions
+  segment: UInt
+  quality: Quality[]
+}
+
+export type ConnectionSample =
+  ConnectionSample_Serialize | ConnectionSample_Deserialize
+
+export type ConnectionSample_Deserialize = {
+  id: string
+  started_at: string | null
+  metadata: { [key in string]: TrafficJsonValue | null }
+  extra: { [key in string]: TrafficJsonValue | null }
+  upload: string
+  download: string
+  rule: string
+  rule_payload: string
+  chains: string[]
+  provider_chains: string[]
+}
+
+export type ConnectionSample_Serialize = {
+  id: string
+  started_at: string | null
+  metadata: { [key in string]: TrafficJsonValue | null }
+  extra: { [key in string]: TrafficJsonValue | null }
+  upload: string
+  download: string
+  rule: string
+  rule_payload: string
+  chains: string[]
+  provider_chains: string[]
+}
+
+export type ConnectionStatus =
+  | 'Active'
+  | {
+      Closed: {
+        detected_at: UInt
+        reason: CloseReason
+        final_counters_exact: boolean
+      }
+    }
+
 export type ConnectionType =
   | 'HTTP'
   | 'HTTPS'
@@ -1120,71 +1260,11 @@ export type ConnectionType =
   | 'Inner'
   | 'Unknown'
 
-/**
- *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
- *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
- *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
- *  different, named shape for `extra` (see [`Connection::extra`]).
- */
-export type ConnectionWire =
-  ConnectionWire_Serialize | ConnectionWire_Deserialize
-
-/**
- *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
- *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
- *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
- *  different, named shape for `extra` (see [`Connection::extra`]).
- */
-export type ConnectionWire_Deserialize = {
-  id: string
-  metadata: ConnectionMetadata_Deserialize | null
-  upload: number
-  download: number
-  start: string
-  chains: string[]
-  providerChains?: string[] | null
-  rule: string
-  rulePayload: string
-} & { [key in string]: JsonValue | null }
-
-/**
- *  Deserialize-only mirror of [`Connection`], with unknown fields flattened
- *  the way Mihomo sends them. [`Connection`]'s `Deserialize` impl delegates
- *  here via `#[serde(from = "ConnectionWire")]` so serialization can use a
- *  different, named shape for `extra` (see [`Connection::extra`]).
- */
-export type ConnectionWire_Serialize = {
-  id: string
-  metadata: ConnectionMetadata_Serialize | null
-  upload: number
-  download: number
-  start: string
-  chains: string[]
-  providerChains: string[] | null
-  rule: string
-  rulePayload: string
-} & { [key in string]: JsonValue | null }
-
-export type Connection_Deserialize = ConnectionWire_Deserialize
-
-export type Connection_Serialize = {
-  id: string
-  metadata: ConnectionMetadata_Serialize | null
-  upload: number
-  download: number
-  start: string
-  chains: string[]
-  providerChains?: string[] | null
-  rule: string
-  rulePayload: string
-  /**
-   *  Fields Mihomo returns that this type does not yet model. Deserializing
-   *  (from Mihomo) collects unknown keys here regardless of direction;
-   *  serializing (for our own IPC) emits them under this named key instead
-   *  of flattening them, so a future Mihomo field literally named `extra`
-   *  cannot collide with it.
-   */
-  _extra: { [key in string]: JsonValue | null }
+export type ConnectionsQuery = {
+  session_id: SessionId
+  filter: ConnectionFilter
+  limit: number
+  cursor: ConnectionCursor | null
 }
 
 export type ConvergenceHealth =
@@ -1503,6 +1583,18 @@ export type DeviceInfo = {
   memory: string
 }
 
+export type DifferenceDirection = 'Equal' | 'CoreHigher' | 'AttributedHigher'
+
+export type Dimensions = {
+  process: string
+  source: string
+  target: string
+  protocol: string
+  rule: RuleKey
+  path: string[]
+  exit: string
+}
+
 export type Direction = 'latest' | 'before' | 'after'
 
 export type DnsMode = 'normal' | 'fake-ip' | 'redir-host' | 'hosts' | 'Unknown'
@@ -1717,6 +1809,8 @@ export type Filter = {
   text: string | null
 }
 
+export type Freshness = 'Fresh' | 'Stale' | 'Ended' | 'Unavailable'
+
 export type GetSysProxyResponse = {
   enable: boolean
   host: string
@@ -1724,6 +1818,11 @@ export type GetSysProxyResponse = {
   bypass: string
   server: string
 }
+
+export type GroupBy =
+  'Process' | 'Source' | 'Target' | 'Protocol' | 'Rule' | 'Exit' | 'Path'
+
+export type HostId = string
 
 /**
  *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
@@ -2087,6 +2186,11 @@ export type MaterializedFile_Serialize = {
   file: ManagedProfilePath
   /**  Last successful materialization time. */
   updated_at?: number | null
+}
+
+export type MinuteBucket = {
+  minute: UInt
+  bytes: Bytes
 }
 
 export type Mode = 'rule' | 'global' | 'direct' | 'script'
@@ -3281,12 +3385,43 @@ export type PublishRuntimeError =
   | { kind: 'create_runtime_directory'; path: ErrorPath }
   | { kind: 'write_runtime_config'; path: ErrorPath }
 
+export type Quality =
+  | 'LateAttach'
+  | 'Gap'
+  | 'CounterReset'
+  | 'InvalidCounters'
+  | 'Reappeared'
+  | 'AmbiguousRule'
+  | 'TimeUnallocated'
+  | 'LifecycleUnknown'
+  | 'StorageDegraded'
+
 export type QueryLogs = {
   session: string
   filter: Filter
   direction: Direction
   cursor: LogCursor | null
   limit: number
+}
+
+export type QueryMeta = {
+  session: SessionRecord
+  cross_page_snapshot: boolean
+}
+
+export type QueryScope =
+  | 'Live'
+  | 'Session'
+  | {
+      MinuteWindow: {
+        from: UInt
+        until: UInt
+      }
+    }
+
+export type Rate = {
+  upload: number | null
+  download: number | null
 }
 
 export type ReleaseChannel = 'stable' | 'beta' | 'nightly'
@@ -3332,6 +3467,13 @@ export type RevisionIdInfo = {
   epoch: number
   generation: number
   effective_hash: string
+}
+
+export type RuleKey = {
+  kind: string
+  payload: string
+  context: string | null
+  ambiguous: boolean
 }
 
 export type RuleProviderItem = {
@@ -3756,6 +3898,34 @@ export type ServiceStatusInfo_Serialize = {
   restart_attempts: number
 }
 
+export type SessionId = string
+
+export type SessionRecord = {
+  id: SessionId
+  host: HostId
+  instance_id: string
+  process_started_at: UInt | null
+  attached_at: UInt
+  first_sample_at: UInt | null
+  last_sample_at: UInt | null
+  ended_at: UInt | null
+  core_reported_bytes: Bytes
+  attributed_bytes: Bytes
+  time_unallocated: Bytes
+  global_counters: Bytes | null
+  last_monotonic_ns: UInt | null
+  source_generation: UInt
+  position: CommittedPosition
+  quality: Quality[]
+  freshness: Freshness
+  observed_connections: UInt
+}
+
+export type SignedDifference = {
+  direction: DifferenceDirection
+  magnitude: UInt
+}
+
 export type SnapshotDiffHunk = {
   old_start: number
   old_lines: number
@@ -3813,6 +3983,7 @@ export type StatusResBody_Deserialize = {
   logs?: LogPathsInfo_Deserialize | null
   /**  Optional viewer protocol; absence does not affect core control compatibility. */
   log_query_version?: number | null
+  traffic_query_version?: number | null
 }
 
 export type StatusResBody_Serialize = {
@@ -3828,6 +3999,7 @@ export type StatusResBody_Serialize = {
   logs?: LogPathsInfo_Serialize | null
   /**  Optional viewer protocol; absence does not affect core control compatibility. */
   log_query_version?: number | null
+  traffic_query_version?: number | null
 }
 
 export type StepLogEntry = {
@@ -3939,9 +4111,76 @@ export type SystemDnsError =
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+export type TopologyEdge = {
+  source: string
+  target: string
+  bytes: Bytes
+  current_rate: Rate | null
+}
+
+export type TopologyNode = {
+  id: string
+  layer: number
+  label: string
+  bytes: Bytes
+  filter: ConnectionFilter
+  current_rate: Rate | null
+}
+
+export type TopologyPath = {
+  dimensions: Dimensions
+  bytes: Bytes
+  memberships: UInt
+  current_rate: Rate | null
+}
+
+export type TopologyQuery = {
+  session_id: SessionId
+  filter: ConnectionFilter
+  scope: QueryScope
+  limit: number
+}
+
+export type TopologyResult = {
+  meta: QueryMeta
+  paths: TopologyPath[]
+  nodes: TopologyNode[]
+  edges: TopologyEdge[]
+  other: Bytes
+  time_unallocated: Bytes
+}
+
+export type TrafficDifference = {
+  upload: SignedDifference
+  download: SignedDifference
+}
+
+/**  Type-only named JSON shape prevents recursive serde_json::Value export. */
+export type TrafficJsonValue =
+  | boolean
+  | number
+  | null
+  | string
+  | (TrafficJsonValue | null)[]
+  | { [key in string]: TrafficJsonValue | null }
+
 export type TrafficRate = {
   download: number
   upload: number
+}
+
+export type TrafficSummary = {
+  session: SessionRecord
+  revision: UInt
+  current_rate: Rate | null
+  active_connections: UInt
+  member_rates: { [key in string]: Rate | null }
+  discrepancy: TrafficDifference
+}
+
+export type TrafficSummaryFrame = {
+  summary: TrafficSummary | null
+  error: string | null
 }
 
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
@@ -3991,6 +4230,37 @@ export type TrayMenuMode = 'native' | 'webview'
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 
+/**  All long integers use decimal strings on the wire, including sequence and time. */
+export type UInt = string
+
+export type UiConnection = UiConnection_Serialize | UiConnection_Deserialize
+
+export type UiConnection_Deserialize = {
+  id: string
+  metadata: ConnectionMetadata_Deserialize | null
+  upload: number
+  download: number
+  start: string | null
+  chains: string[]
+  providerChains: string[] | null
+  rule: string
+  rulePayload: string
+  _extra: { [key in string]: JsonValue | null }
+}
+
+export type UiConnection_Serialize = {
+  id: string
+  metadata: ConnectionMetadata_Serialize | null
+  upload: number
+  download: number
+  start: string | null
+  chains: string[]
+  providerChains?: string[] | null
+  rule: string
+  rulePayload: string
+  _extra: { [key in string]: JsonValue | null }
+}
+
 export type UpdateWrapper = {
   rid: number
   available: boolean
@@ -4014,6 +4284,30 @@ export type UpdaterSummary = {
   id: number
   state: UpdaterState
   downloader: DownloadStatus
+}
+
+export type UsageGroup = {
+  key: string
+  bytes: Bytes
+  current_rate: Rate | null
+}
+
+export type UsageQuery = {
+  session_id: SessionId
+  filter: ConnectionFilter
+  scope: QueryScope
+  group_by: GroupBy | null
+  limit: number
+}
+
+export type UsageResult = {
+  meta: QueryMeta
+  total: Bytes
+  groups: UsageGroup[]
+  other: Bytes
+  time_unallocated: Bytes
+  minutes: MinuteBucket[]
+  current_rate: Rate | null
 }
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
@@ -4353,6 +4647,37 @@ export const queries = {
       queryKey: ['getClashWsSnapshot', ...args],
       queryFn: () => commands.getClashWsSnapshot(...args),
     }),
+  getCurrentTrafficSession: (
+    ...args: Parameters<typeof commands.getCurrentTrafficSession>
+  ) =>
+    queryOptions({
+      queryKey: ['getCurrentTrafficSession', ...args],
+      queryFn: () => commands.getCurrentTrafficSession(...args),
+    }),
+  getTrafficSession: (...args: Parameters<typeof commands.getTrafficSession>) =>
+    queryOptions({
+      queryKey: ['getTrafficSession', ...args],
+      queryFn: () => commands.getTrafficSession(...args),
+    }),
+  queryTrafficConnections: (
+    ...args: Parameters<typeof commands.queryTrafficConnections>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficConnections', ...args],
+      queryFn: () => commands.queryTrafficConnections(...args),
+    }),
+  queryTrafficUsage: (...args: Parameters<typeof commands.queryTrafficUsage>) =>
+    queryOptions({
+      queryKey: ['queryTrafficUsage', ...args],
+      queryFn: () => commands.queryTrafficUsage(...args),
+    }),
+  queryTrafficTopology: (
+    ...args: Parameters<typeof commands.queryTrafficTopology>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficTopology', ...args],
+      queryFn: () => commands.queryTrafficTopology(...args),
+    }),
   checkUpdate: (...args: Parameters<typeof commands.checkUpdate>) =>
     queryOptions({
       queryKey: ['checkUpdate', ...args],
@@ -4672,11 +4997,16 @@ export const mutations = {
       input: Parameters<typeof commands.subscribeClashConnectionDetails>,
     ) => commands.subscribeClashConnectionDetails(...input),
   }),
-  unsubscribeClashConnectionDetails: mutationOptions({
-    mutationKey: ['unsubscribeClashConnectionDetails'],
+  unsubscribeTrafficSubscription: mutationOptions({
+    mutationKey: ['unsubscribeTrafficSubscription'],
     mutationFn: (
-      input: Parameters<typeof commands.unsubscribeClashConnectionDetails>,
-    ) => commands.unsubscribeClashConnectionDetails(...input),
+      input: Parameters<typeof commands.unsubscribeTrafficSubscription>,
+    ) => commands.unsubscribeTrafficSubscription(...input),
+  }),
+  subscribeTrafficSummary: mutationOptions({
+    mutationKey: ['subscribeTrafficSummary'],
+    mutationFn: (input: Parameters<typeof commands.subscribeTrafficSummary>) =>
+      commands.subscribeTrafficSummary(...input),
   }),
   saveWindowSizeState: mutationOptions({
     mutationKey: ['saveWindowSizeState'],

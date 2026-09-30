@@ -1,22 +1,21 @@
 //! Tauri boundary for per-webview connection-detail subscriptions (design
 //! §3.4, `docs/superpowers/specs/2026-09-29-stream-proxies-payload`).
-//! `StreamsActor` only publishes frames on a `watch` channel (see
-//! `ws::StreamsClient::subscribe_connection_details`); this module owns each
+//! The host traffic owner publishes committed detail frames; this module owns each
 //! subscription's lifetime, since `Channel::send` cannot detect a reloaded
 //! or closed webview on its own (design §1.3).
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Mutex,
         atomic::{AtomicU64, Ordering},
     },
 };
 
 use tauri::Manager;
-use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use super::ws::ClashConnectionDetails;
+use super::connection_rates::{ClashConnectionDetails, project_details};
+use futures_util::StreamExt;
 
 /// Identifies one `subscribe_clash_connection_details` call, for a later
 /// `unsubscribe_clash_connection_details`.
@@ -33,12 +32,12 @@ struct Subscription {
 
 /// Adapter-owned state, not an actor: tracked with a lock (AGENTS §8).
 #[derive(Default)]
-pub struct ConnectionDetailSubscriptions {
+pub struct TrafficSubscriptions {
     next_id: AtomicU64,
     inner: Mutex<HashMap<SubscriptionId, Subscription>>,
 }
 
-impl ConnectionDetailSubscriptions {
+impl TrafficSubscriptions {
     pub fn new() -> Self {
         Self::default()
     }
@@ -83,148 +82,84 @@ impl ConnectionDetailSubscriptions {
 }
 
 /// Ends every subscription owned by `webview`, from the app's page-load and
-/// window-event hooks. A no-op before `ConnectionDetailSubscriptions` is
+/// window-event hooks. A no-op before `TrafficSubscriptions` is
 /// managed (state is registered in `core::clash::setup`, which always runs
 /// before any webview can load a page).
 pub fn cancel_for_webview<R: tauri::Runtime>(manager: &impl Manager<R>, webview: &str) {
-    if let Some(subscriptions) = manager.try_state::<ConnectionDetailSubscriptions>() {
+    if let Some(subscriptions) = manager.try_state::<TrafficSubscriptions>() {
         subscriptions.cancel_for_webview(webview);
     }
 }
 
-/// A destination for detail frames, implemented by `tauri::ipc::Channel` in
-/// production and a fake in tests, so `forward_details` is testable without
-/// a real webview.
+/// Per-webview destination; `None` explicitly clears a retired source's frame.
 pub trait DetailsSink: Send + Sync + 'static {
-    /// Returns `false` to end the forwarding loop (e.g. the channel closed).
-    fn send(&self, frame: &ClashConnectionDetails) -> bool;
+    fn send(&self, frame: &Option<ClashConnectionDetails>) -> bool;
 }
-
-impl DetailsSink for tauri::ipc::Channel<ClashConnectionDetails> {
-    fn send(&self, frame: &ClashConnectionDetails) -> bool {
+impl DetailsSink for tauri::ipc::Channel<Option<ClashConnectionDetails>> {
+    fn send(&self, frame: &Option<ClashConnectionDetails>) -> bool {
         tauri::ipc::Channel::send(self, frame.clone()).is_ok()
     }
 }
-
-/// Sends the current frame (if any), then the latest frame after every
-/// `changed()`, until the watch closes. Cancellation is the caller's job:
-/// production races this against a subscription's token via
-/// `NyanpasuClient::spawn_tracked`.
 pub async fn forward_details(
-    mut receiver: watch::Receiver<Option<Arc<ClashConnectionDetails>>>,
+    mut receiver: crate::core::actor_v2::endpoint::TrafficStream<nyanpasu_traffic::TrafficDetails>,
     sink: impl DetailsSink,
 ) {
-    if let Some(frame) = receiver.borrow_and_update().clone()
-        && !sink.send(&frame)
-    {
-        return;
-    }
-    while receiver.changed().await.is_ok() {
-        if let Some(frame) = receiver.borrow_and_update().clone()
-            && !sink.send(&frame)
-        {
-            return;
+    while let Some(frame) = receiver.next().await {
+        let frame = match frame {
+            Ok(Some(frame)) => match project_details(frame) {
+                Ok(frame) => Some(frame),
+                Err(error) => {
+                    tracing::warn!(%error,"failed to project traffic details");
+                    None
+                }
+            },
+            Ok(None) => None,
+            Err(error) => {
+                tracing::warn!(%error,"traffic detail subscription unavailable");
+                None
+            }
+        };
+        if !sink.send(&frame) {
+            break;
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tokio::sync::mpsc;
-
     use super::*;
-
-    #[derive(Clone)]
-    struct RecordingSink(mpsc::UnboundedSender<u64>);
-    impl DetailsSink for RecordingSink {
-        fn send(&self, frame: &ClashConnectionDetails) -> bool {
-            self.0.send(frame.sequence).is_ok()
+    #[tokio::test]
+    async fn explicit_unsubscribe_and_webview_lifetime_cancel_only_owned_subscriptions() {
+        let subscriptions = TrafficSubscriptions::new();
+        let root = CancellationToken::new();
+        let (id, a) = subscriptions.register(&root, "main".into());
+        let (_, b) = subscriptions.register(&root, "tray".into());
+        subscriptions.unsubscribe(id);
+        assert!(a.is_cancelled());
+        assert!(!b.is_cancelled());
+        let (_, c) = subscriptions.register(&root, "main".into());
+        subscriptions.cancel_for_webview("main");
+        assert!(c.is_cancelled());
+        assert!(!b.is_cancelled());
+        root.cancel();
+        assert!(b.is_cancelled());
+    }
+    struct Sink(tokio::sync::mpsc::UnboundedSender<bool>);
+    impl DetailsSink for Sink {
+        fn send(&self, frame: &Option<ClashConnectionDetails>) -> bool {
+            self.0.send(frame.is_some()).is_ok()
         }
     }
-
-    fn details(sequence: u64) -> Arc<ClashConnectionDetails> {
-        Arc::new(ClashConnectionDetails {
-            sequence,
-            connections: Vec::new(),
-        })
-    }
-
-    /// Mirrors `NyanpasuClient::spawn_tracked`'s race, without pulling in
-    /// `tauri::async_runtime` or a `TaskTracker` for a plain adapter test.
-    fn spawn_forwarding(
-        token: CancellationToken,
-        receiver: watch::Receiver<Option<Arc<ClashConnectionDetails>>>,
-        sink: RecordingSink,
-    ) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            tokio::select! {
-                () = token.cancelled() => {}
-                () = forward_details(receiver, sink) => {}
-            }
-        })
-    }
-
     #[tokio::test]
-    async fn explicit_unsubscribe_ends_the_task_and_drops_the_receiver() {
-        let (tx, rx) = watch::channel(Some(details(1)));
-        let subscriptions = ConnectionDetailSubscriptions::new();
-        let root = CancellationToken::new();
-        let (id, cancel) = subscriptions.register(&root, "main".into());
-        let (sink_tx, mut sink_rx) = mpsc::unbounded_channel();
-        let task = spawn_forwarding(cancel, rx, RecordingSink(sink_tx));
-
-        assert_eq!(sink_rx.recv().await, Some(1));
-        assert_eq!(tx.receiver_count(), 1);
-
-        subscriptions.unsubscribe(id);
-        task.await.unwrap();
-        assert_eq!(tx.receiver_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn cancel_for_webview_ends_only_that_webviews_subscriptions() {
-        let (tx, rx_a) = watch::channel(Some(details(1)));
-        let rx_b = tx.subscribe();
-        let subscriptions = ConnectionDetailSubscriptions::new();
-        let root = CancellationToken::new();
-        let (_, cancel_a) = subscriptions.register(&root, "main".into());
-        let (_, cancel_b) = subscriptions.register(&root, "tray".into());
-        let (tx_a, mut sink_rx_a) = mpsc::unbounded_channel();
-        let (tx_b, mut sink_rx_b) = mpsc::unbounded_channel();
-        let task_a = spawn_forwarding(cancel_a, rx_a, RecordingSink(tx_a));
-        let task_b = spawn_forwarding(cancel_b, rx_b, RecordingSink(tx_b));
-
-        assert_eq!(sink_rx_a.recv().await, Some(1));
-        assert_eq!(sink_rx_b.recv().await, Some(1));
-        assert_eq!(tx.receiver_count(), 2);
-
-        subscriptions.cancel_for_webview("main");
-        task_a.await.unwrap();
-        assert_eq!(tx.receiver_count(), 1);
-
-        // "tray"'s subscription is untouched: a new frame still reaches it.
-        tx.send_replace(Some(details(2)));
-        assert_eq!(sink_rx_b.recv().await, Some(2));
-
-        subscriptions.cancel_for_webview("tray");
-        task_b.await.unwrap();
-        assert_eq!(tx.receiver_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn cancelling_the_parent_token_ends_every_subscription() {
-        let (tx, rx) = watch::channel(Some(details(1)));
-        let subscriptions = ConnectionDetailSubscriptions::new();
-        let root = CancellationToken::new();
-        let (_, cancel) = subscriptions.register(&root, "main".into());
-        let (sink_tx, mut sink_rx) = mpsc::unbounded_channel();
-        let task = spawn_forwarding(cancel, rx, RecordingSink(sink_tx));
-
-        assert_eq!(sink_rx.recv().await, Some(1));
-        assert_eq!(tx.receiver_count(), 1);
-
-        root.cancel();
-        task.await.unwrap();
-        assert_eq!(tx.receiver_count(), 0);
+    async fn retired_source_and_errors_explicitly_clear_display() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let stream = futures_util::stream::iter(vec![
+            Ok(None),
+            Err(nyanpasu_traffic::StoreError::Unsupported),
+        ])
+        .boxed();
+        forward_details(stream, Sink(tx)).await;
+        assert_eq!(rx.recv().await, Some(false));
+        assert_eq!(rx.recv().await, Some(false));
     }
 }

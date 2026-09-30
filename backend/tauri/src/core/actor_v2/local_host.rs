@@ -1,4 +1,3 @@
-#[cfg(target_os = "macos")]
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -12,14 +11,33 @@ use snafu::{ResultExt, Snafu};
 
 use crate::utils::path::PathResolver;
 
-pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
+pub async fn build(
+    paths: &PathResolver,
+    cancellation: tokio_util::sync::CancellationToken,
+    tasks: &tokio_util::task::TaskTracker,
+) -> Result<(
+    CoreControl,
+    nyanpasu_traffic::TrafficResult<nyanpasu_traffic::TrafficClient>,
+)> {
+    let traffic =
+        super::traffic_host::start(paths.app_data_dir().join("traffic"), cancellation.clone())
+            .await;
+    if let Err(error) = &traffic {
+        tracing::error!(%error, "local traffic recording unavailable");
+    }
+
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
+        cancel_token: cancellation.clone(),
         runtime_dir: Some(to_utf8(runtime_root.join("control"))?),
         local_ipc_policy: LocalIpcPolicy::Disable,
         ..ManagerOptions::default()
     };
-    let manager = CoreManager::builder(options);
+    let mut manager = CoreManager::builder(options);
+    if let Ok(client) = &traffic {
+        manager =
+            manager.lifecycle_sink(Arc::new(super::traffic_host::LifecycleSink(client.clone())));
+    }
 
     #[cfg(target_os = "macos")]
     let manager = manager.dns_controller(Arc::new(
@@ -29,13 +47,47 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
     ));
 
     let manager = manager.build().await?;
+    if let Ok(client) = &traffic {
+        tasks.spawn(super::traffic_host::selection_bridge(
+            manager.subscribe(),
+            client.clone(),
+            cancellation.clone(),
+        ));
+        tasks.spawn(super::traffic_host::context_bridge(
+            manager.subscribe_config_commits(),
+            client.clone(),
+            cancellation.clone(),
+        ));
+    }
+
     let source_dir = to_utf8(runtime_root.join("staging"))?;
     let working_dir = to_utf8(paths.app_data_dir().to_owned())?;
 
-    Ok(CoreControl::spawn(
-        manager,
+    let control = CoreControl::spawn(
+        manager.clone(),
         ControlOptions::new(source_dir, working_dir),
-    ))
+    );
+    let (owner_control, owner_traffic, token) = (control.clone(), traffic.clone(), cancellation);
+    // Exact process exits are cleanup of this host's already-started runtime.
+    // They reach traffic before its mailbox drain; cancellation refuses all
+    // new sampling/query/start work and never invents an exit from a watch.
+    tasks.spawn(async move {
+        token.cancelled().await;
+        if let Err(error) = owner_control.shutdown().await {
+            tracing::error!(%error,"local core control shutdown failed");
+            if owner_control.executor_is_closed()
+                && let Err(error) = manager.shutdown().await
+            {
+                tracing::error!(%error,"local runtime cleanup failed");
+            }
+        }
+        if let Ok(client) = owner_traffic
+            && let Err(error) = client.shutdown().await
+        {
+            tracing::warn!(%error,"local traffic shutdown failed");
+        }
+    });
+    Ok((control, traffic))
 }
 
 /// A failure of locating the binary a core is started from.
@@ -103,10 +155,18 @@ mod tests {
         let paths =
             PathResolver::with_base_dirs(root.path().join("config"), root.path().join("data"));
 
-        let control = build(&paths).await.unwrap();
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        let tasks = tokio_util::task::TaskTracker::new();
+        let (control, traffic) = build(&paths, cancellation.clone(), &tasks).await.unwrap();
 
         let _ = control.status();
         assert!(!control.executor_is_closed());
+        control.shutdown().await.unwrap();
+        cancellation.cancel();
+        tasks.close();
+        tasks.wait().await;
+        drop(traffic);
+        drop(control);
     }
 
     #[test]

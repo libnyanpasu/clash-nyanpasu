@@ -1,4 +1,3 @@
-use super::core::clash::ws::ClashConnectionsConnectorEvent;
 use crate::client::{
     effects::status::failure_text,
     ui_effects::ports::{
@@ -8,6 +7,8 @@ use crate::client::{
         WidgetError, WidgetExitedSnafu,
     },
 };
+use futures_util::StreamExt;
+use nyanpasu_traffic::TrafficSummary;
 
 use nyanpasu_egui::{
     ipc::{
@@ -23,11 +24,7 @@ use std::{
 };
 use tauri::utils::platform::current_exe;
 use tokio::{
-    sync::{
-        Mutex,
-        broadcast::{Receiver as BroadcastReceiver, error::RecvError as BroadcastRecvError},
-        oneshot,
-    },
+    sync::{Mutex, oneshot},
     task::JoinHandle,
     time::Instant,
 };
@@ -136,7 +133,7 @@ impl WidgetManager {
         manager
     }
 
-    fn register_listener(&self, mut receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>) {
+    fn register_listener(&self, client: crate::client::NyanpasuClient) {
         if self
             .listener_initd
             .load(std::sync::atomic::Ordering::Acquire)
@@ -146,23 +143,27 @@ impl WidgetManager {
         let signal = self.listener_initd.clone();
         let this = self.clone();
         tokio::spawn(async move {
+            let mut receiver = crate::core::clash::traffic::summary_stream(client);
             loop {
                 let received = tokio::select! {
-                    received = receiver.recv() => received,
+                    received = receiver.next() => received,
                     () = this.shutdown.cancelled() => break,
                 };
                 match received {
-                    Ok(event) => {
-                        if let Err(e) = this.handle_event(event).await {
-                            log::error!("Failed to handle event: {e}");
+                    Some(Ok(event)) => {
+                        if let Err(error) = this.handle_event(event).await {
+                            tracing::warn!(%error,"failed to update widget traffic");
                         }
                     }
-                    Err(e) => {
-                        log::error!("Error receiving event: {e}");
-                        if BroadcastRecvError::Closed == e {
-                            signal.store(false, std::sync::atomic::Ordering::Release);
-                            break;
+                    Some(Err(error)) => {
+                        tracing::warn!(%error,"widget traffic subscription unavailable");
+                        if let Err(error) = this.handle_event(None).await {
+                            tracing::warn!(%error,"failed to clear widget traffic");
                         }
+                    }
+                    None => {
+                        signal.store(false, std::sync::atomic::Ordering::Release);
+                        break;
                     }
                 }
             }
@@ -171,13 +172,19 @@ impl WidgetManager {
             .store(true, std::sync::atomic::Ordering::Release);
     }
 
-    async fn handle_event(
-        &self,
-        event: ClashConnectionsConnectorEvent,
-    ) -> Result<(), WidgetSendError> {
-        // we only care about the update event now
-        let ClashConnectionsConnectorEvent::Update(info) = event else {
-            return Ok(());
+    async fn handle_event(&self, event: Option<TrafficSummary>) -> Result<(), WidgetSendError> {
+        // The widget protocol has numeric display fields; unknown rates render
+        // as zero here while the traffic domain retains its unknown state.
+        let rate = event.as_ref().and_then(|event| event.current_rate.as_ref());
+        let statistic = StatisticMessage {
+            download_total: event
+                .as_ref()
+                .map_or(0, |event| event.session.core_reported_bytes.download.0),
+            upload_total: event
+                .as_ref()
+                .map_or(0, |event| event.session.core_reported_bytes.upload.0),
+            download_speed: rate.map_or(0, |rate| rate.download as u64),
+            upload_speed: rate.map_or(0, |rate| rate.upload as u64),
         };
         let link = {
             let mut instance = self.instance.lock().await;
@@ -190,18 +197,8 @@ impl WidgetManager {
             link.clone()
         };
         crate::utils::blocking::join(
-            tokio::task::spawn_blocking(move || {
-                send(
-                    &link,
-                    Message::UpdateStatistic(StatisticMessage {
-                        download_total: info.download_total,
-                        upload_total: info.upload_total,
-                        download_speed: info.download_speed,
-                        upload_speed: info.upload_speed,
-                    }),
-                )
-            })
-            .await,
+            tokio::task::spawn_blocking(move || send(&link, Message::UpdateStatistic(statistic)))
+                .await,
         )
     }
 
@@ -483,12 +480,12 @@ impl WidgetLink for IpcSender<Message> {
 /// desired value. The manager stops the widget itself once `shutdown` is
 /// cancelled; nothing stops it on drop.
 pub async fn setup(
-    ws_connections_receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>,
+    client: crate::client::NyanpasuClient,
     shutdown: CancellationToken,
     tasks: &TaskTracker,
 ) -> anyhow::Result<WidgetManager> {
     let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost), shutdown, tasks);
-    widget_manager.register_listener(ws_connections_receiver);
+    widget_manager.register_listener(client);
     Ok(widget_manager)
 }
 

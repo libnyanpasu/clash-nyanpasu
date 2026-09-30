@@ -23,6 +23,10 @@ rustc_version = '0.4'
 semver = '1.0'
 
 [dependencies]
+nyanpasu-traffic = { path = '../nyanpasu-runtime/crates/nyanpasu-traffic', features = [
+  'redb-store',
+  'specta'
+] }
 # Local Dependencies
 nyanpasu-ipc = { workspace = true }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [

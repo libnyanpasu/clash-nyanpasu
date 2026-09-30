@@ -10,7 +10,9 @@ import {
 } from '../src/provider/clash-connection-details-provider'
 
 const details = (sequence: number): ClashConnectionDetails_Serialize => ({
-  sequence,
+  sessionId: 'session',
+  revision: String(sequence),
+  freshness: 'Fresh',
   connections: [],
 })
 
@@ -44,14 +46,14 @@ function mockSubscriptions() {
       )
       return id
     }
-    if (cmd === 'unsubscribe_clash_connection_details') {
+    if (cmd === 'unsubscribe_traffic_subscription') {
       unsubscribed.push((args as { id: number }).id)
       return null
     }
     throw new Error(`Unexpected IPC command: ${cmd}`)
   })
 
-  const send = (id: number, frame: ClashConnectionDetails_Serialize) => {
+  const send = (id: number, frame: ClashConnectionDetails_Serialize | null) => {
     const channel = channels.get(id)!
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(window as any).__TAURI_INTERNALS__.runCallback(channel.id, {
@@ -121,6 +123,32 @@ test('two consumers share a single subscription', async ({
   expect(channels.size).toBe(1)
 })
 
+test('session revisions preserve large integers and retired streams clear details', async ({
+  onTestFinished,
+}) => {
+  const { channels, send } = mockSubscriptions()
+  const renders: unknown[] = []
+  const screen = await render(
+    <ClashConnectionDetailsProvider connectorState="connected">
+      <Consumer onRender={(data) => renders.push(data)} />
+    </ClashConnectionDetailsProvider>,
+  )
+  teardown(onTestFinished, screen)
+  await expect.poll(() => channels.size).toBe(1)
+  const current = { ...details(1), revision: '9007199254740993' }
+  send(0, current)
+  await expect.poll(() => renders.at(-1)).toEqual(current)
+  send(0, { ...current, revision: '9007199254740992' })
+  const next = { ...current, revision: '9007199254740994' }
+  send(0, next)
+  await expect.poll(() => renders.at(-1)).toEqual(next)
+  send(0, null)
+  await expect.poll(() => renders.at(-1)).toBe(null)
+  const replacement = { ...details(1), sessionId: 'replacement' }
+  send(0, replacement)
+  await expect.poll(() => renders.at(-1)).toEqual(replacement)
+})
+
 test('unsubscribing on the last unmount ends the subscription', async ({
   onTestFinished,
 }) => {
@@ -156,7 +184,7 @@ test('a consumer that unmounts before subscribe resolves still gets unsubscribed
         resolveSubscribe = resolve
       })
     }
-    if (cmd === 'unsubscribe_clash_connection_details') {
+    if (cmd === 'unsubscribe_traffic_subscription') {
       unsubscribed.push((args as { id: number }).id)
       return null
     }

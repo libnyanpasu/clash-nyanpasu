@@ -213,6 +213,7 @@ impl ServiceHostAdapter for FakeDaemon {
                 let detail = self.host.delegate.status().await.ok().and_then(|s| s.state);
                 Some(StatusResBody {
                     log_query_version: None,
+                    traffic_query_version: None,
                     version: Cow::Borrowed(*self.version.lock().unwrap()),
                     core_infos: CoreInfos {
                         instance_id: Some("residual".into()),

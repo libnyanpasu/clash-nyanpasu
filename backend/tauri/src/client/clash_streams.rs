@@ -1,12 +1,7 @@
-use std::sync::Arc;
-
-use tokio::sync::{broadcast, watch};
+use tokio::sync::broadcast;
 
 use super::{NyanpasuClient, Result};
-use crate::core::clash::ws::{
-    ClashConnectionDetails, ClashConnectionsConnectorEvent, ClashWsEvent, ClashWsKind,
-    ClashWsRecording, ClashWsSnapshot,
-};
+use crate::core::clash::ws::{ClashWsEvent, ClashWsKind, ClashWsRecording, ClashWsSnapshot};
 
 impl NyanpasuClient {
     pub async fn start_clash_streams(&self) -> Result<()> {
@@ -27,17 +22,7 @@ impl NyanpasuClient {
         self.inner.streams.clear_history(kind).await?;
         Ok(())
     }
-    pub fn subscribe_clash_connections(
-        &self,
-    ) -> broadcast::Receiver<ClashConnectionsConnectorEvent> {
-        self.inner.streams.subscribe()
-    }
     pub fn subscribe_clash_ws(&self) -> broadcast::Receiver<ClashWsEvent> {
         self.inner.streams.subscribe_ws()
-    }
-    pub fn subscribe_clash_connection_details(
-        &self,
-    ) -> watch::Receiver<Option<Arc<ClashConnectionDetails>>> {
-        self.inner.streams.subscribe_connection_details()
     }
 }

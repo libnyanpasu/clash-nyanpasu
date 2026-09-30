@@ -69,6 +69,8 @@ atomic_enum = '0.3.0'  # for atomic enum
 enumflags2 = '0.7'  # for enum flags
 backon = { version = '1.0.1', features = ['tokio-sleep'] }  # for backoff retry
 ractor = '0.16'
+inventory = '0.3'
+specta-serde = '0.0.12'
 
 # Data Structures
 dashmap = '6'
@@ -93,7 +95,8 @@ rfd = { version = '0.15', default-features = false, features = [
 rust-i18n = '4'
 
 # Networking Libraries
-axum = '0.8'
+axum = { version = '0.8', features = ['ws'] }
+tokio-tungstenite = '0.29'
 url = '2'
 mime = '0.3'
 reqwest = { workspace = true }
@@ -230,6 +233,7 @@ window-vibrancy = { version = '0.8.0' }
 # Strong typed api binding between typescript and rust
 # tauri-specta-query's current release line targets Specta rc26; this revision
 # is the compatible rc25 line used by the project today.
+specta-util = '0.0.12'
 specta-typescript = { version = '0.0.12', features = ['serde'] }
 tauri-specta = { git = 'https://github.com/specta-rs/tauri-specta.git', rev = '373c25d080aa0ba909bd23b2b559947079e8dc75', version = '2.0.0-rc.25', features = [
   'derive',
@@ -283,6 +287,8 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+http-body-util = '0.1'
+tower = { version = '0.5', features = ['util'] }
 axum = { version = '0.8', features = ['ws'] }
 mockall = '0.15'
 # Test-only protocol helpers + binary discovery for later process-lifecycle

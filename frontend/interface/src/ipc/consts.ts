@@ -6,9 +6,9 @@ import { getSystem } from '@interface/utils/get-system'
 export const OS = getSystem()
 
 /**
- * Nyanpasu backend event name, use tauri event api to listen this event
+ * Nyanpasu backend event name used by the shared event transport
  */
-export const NYANPASU_BACKEND_EVENT_NAME = 'nyanpasu://mutation'
+export { NYANPASU_BACKEND_EVENT_NAME } from './event-names'
 
 /**
  * Maximum connections history length, used by clash ws provider to limit connections history length

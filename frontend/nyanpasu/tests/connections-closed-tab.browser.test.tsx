@@ -70,8 +70,12 @@ test('lists closed connections and loads older pages at the end', async ({
   const newest = closed('b', 'example.com', 2_000)
   const requested: Array<ClosedCursor | null> = []
   mockIPC((command, args) => {
-    expect(command).toBe('query_traffic_closed_connections')
-    const { before } = args as { before: ClosedCursor | null }
+    expect(command).toBe('call_rpc')
+    expect((args as { method: string }).method).toBe(
+      'query_traffic_closed_connections',
+    )
+    const { before } = (args as { params: { before: ClosedCursor | null } })
+      .params
     requested.push(before)
     return before === null
       ? {
@@ -107,7 +111,8 @@ test('a search keeps loading older pages until it finds a match', async ({
 }) => {
   const newest = closed('b', 'example.com', 2_000)
   mockIPC((_, args) => {
-    const { before } = args as { before: ClosedCursor | null }
+    const { before } = (args as { params: { before: ClosedCursor | null } })
+      .params
     return before === null
       ? {
           connections: [newest],

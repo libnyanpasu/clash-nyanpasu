@@ -134,6 +134,7 @@ fn main() {
             .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
         tauri_build::try_build(attributes).expect("failed to run tauri-build");
     } else {
-        tauri_build::build();
+        let attributes = tauri_build::Attributes::new();
+        tauri_build::try_build(attributes).expect("failed to run tauri-build");
     }
 }

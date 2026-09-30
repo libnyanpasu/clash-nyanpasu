@@ -13,8 +13,12 @@ export default {
       (file) => !configFiles.some((config) => file.endsWith(config)),
     )
     if (filtered.length === 0) return []
+    // function tasks do not get the staged file list appended by lint-staged
     const files = filtered.join(' ')
-    return [`prettier --write ${files}`, `oxlint --fix ${files}`]
+    return [
+      `prettier --write ${files}`,
+      `oxlint --fix --no-error-on-unmatched-pattern ${files}`,
+    ]
   },
   'frontend/interface/**/*.{ts,tsx}': [
     'prettier --write',

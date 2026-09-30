@@ -4,7 +4,7 @@ import type {
   NetworkStatisticWidgetConfig,
   ProxyChangeBreakMode,
   StatisticWidgetVariant,
-} from './bindings'
+} from './rpc-bindings'
 
 export type NetworkStatisticWidgetOption = 'disabled' | StatisticWidgetVariant
 

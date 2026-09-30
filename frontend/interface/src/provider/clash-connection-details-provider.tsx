@@ -6,7 +6,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
-import { Channel } from '@tauri-apps/api/core'
+import { Channel, isTauri } from '@tauri-apps/api/core'
 import {
   commands,
   type ClashConnectionDetails_Deserialize,
@@ -107,6 +107,21 @@ export const ClashConnectionDetailsProvider = ({
 
   useEffect(() => {
     if (!hasSubscribers) return
+
+    if (!isTauri()) {
+      const source = new EventSource('/bridge/connection-details')
+      source.onmessage = (event) => {
+        try {
+          setFrame(JSON.parse(event.data) as ClashConnectionDetails_Serialize)
+        } catch (error) {
+          console.error('failed to decode connection details:', error)
+        }
+      }
+      return () => {
+        source.close()
+        setFrame(null)
+      }
+    }
 
     let disposed = false
     let subscriptionId: SubscriptionId | undefined

@@ -3,7 +3,7 @@ import type {
   Proxies_Serialize,
   ProxyGroupItem_Serialize,
   ProxyItem_Serialize,
-} from '../../interface/src/ipc/bindings'
+} from '../../interface/src/ipc/rpc-bindings'
 import { getGroupSelectedDelay } from '../src/components/proxies/group-delay.ts'
 
 const node = (name: string, delays: number[] = []): ProxyItem_Serialize => ({

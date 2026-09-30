@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, type ClosedCursor } from './bindings'
+import { commands, type ClosedCursor } from './rpc-bindings'
 
 const PAGE_SIZE = 200
 

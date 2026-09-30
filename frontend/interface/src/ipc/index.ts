@@ -1,3 +1,5 @@
+import { rpc } from './rpc'
+
 export * from './consts'
 export * from './use-server-port'
 export * from './use-clash-config'
@@ -27,12 +29,11 @@ export * from './use-core-dir'
 export * from './use-platform'
 export * from './use-system-accent-color'
 export * from './use-file-logs'
+export { rpc } from './rpc'
 export * from './use-traffic-closed-connections'
 export * from './use-traffic-summary'
 
-export { commands, events } from './bindings'
-export { mutations, queries } from './bindings'
-export type * from './bindings'
+export type * from './rpc-bindings'
 export type { ClashDelayOptions } from './use-clash-proxies'
 export {
   MutationUnconfirmedError,
@@ -41,8 +42,8 @@ export {
   unwrapQueryOptions,
 } from './query-options'
 
-export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
-export type { RuleProviderItem as ClashProviderRule } from './bindings'
+export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './rpc-bindings'
+export type { RuleProviderItem as ClashProviderRule } from './rpc-bindings'
 
 export {
   acceptConfigurationStatus,
@@ -50,3 +51,16 @@ export {
   sourceMessage,
 } from './configuration-status'
 export * from './use-profile-sync'
+
+export { commands, queries, mutations } from './rpc-bindings'
+export const events = rpc.events
+
+export type {
+  ClashConnection_Serialize,
+  ClashConnection_Deserialize,
+  ClashConnectionDetails_Serialize,
+  ClashConnectionDetails_Deserialize,
+  Connection_Serialize,
+  Connection_Deserialize,
+  ConnectionMetadataFields_Serialize,
+} from './bindings'

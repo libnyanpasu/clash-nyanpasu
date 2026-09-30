@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
+import { invokeMutation, unwrapQueryOptions } from './query-options'
 import {
   mutations,
   queries,
   type ClashApiConfig,
   type ClashGuardOverridesPatch_Deserialize,
-} from './bindings'
-import { invokeMutation, unwrapQueryOptions } from './query-options'
+} from './rpc-bindings'
 
 export const useClashConfig = () => {
   const queryClient = useQueryClient()

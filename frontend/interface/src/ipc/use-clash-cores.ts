@@ -1,14 +1,14 @@
 import { kebabCase } from 'es-toolkit'
 import { unwrapResult } from '@interface/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { invokeMutation, invokeQuery } from './query-options'
 import {
   mutations,
   queries,
   type ClashCore,
   type ClashCore_Deserialize,
   type ClashCore_Serialize,
-} from './bindings'
-import { invokeMutation, invokeQuery } from './query-options'
+} from './rpc-bindings'
 
 export const ClashCores = {
   clash: 'Clash Premium',

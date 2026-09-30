@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
+import { invokeMutation, invokeQuery } from './query-options'
 import {
   mutations,
   queries,
@@ -12,8 +13,7 @@ import {
   type ProfileSource_Serialize,
   type RemoteProfileOptionsPatch_Deserialize,
   type TransformKind,
-} from './bindings'
-import { invokeMutation, invokeQuery } from './query-options'
+} from './rpc-bindings'
 
 // ---- discriminant helpers (successors of the retired NormalizedProfile collapse) ----
 

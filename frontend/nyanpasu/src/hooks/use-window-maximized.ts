@@ -1,44 +1,39 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect } from 'react'
 import { isMacOS } from '@/consts'
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { listen, TauriEvent, UnlistenFn } from '@tauri-apps/api/event'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
-const appWindow = getCurrentWebviewWindow()
+const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 const IS_MAXIMIZED_QUERY_KEY = 'isMaximized'
 
 export default function useWindowMaximized() {
-  const unlistenRef = useRef<UnlistenFn | null>(null)
-
   const query = useSuspenseQuery({
     queryKey: [IS_MAXIMIZED_QUERY_KEY],
     queryFn: async () => {
+      if (!appWindow) return false
       // why maximized on macOS is fullscreen?
       if (isMacOS) {
-        return await appWindow.isFullscreen()
+        return await appWindow?.isFullscreen()
       }
 
-      return await appWindow.isMaximized()
+      return await appWindow?.isMaximized()
     },
   })
 
   const handleToggleMaximize = useCallback(async () => {
-    await appWindow.toggleMaximize()
+    await appWindow?.toggleMaximize()
     await query.refetch()
   }, [query])
 
   useEffect(() => {
-    listen(TauriEvent.WINDOW_RESIZED, async () => {
-      await query.refetch()
-    })
-      .then((unlisten) => {
-        unlistenRef.current = unlisten
-      })
-      .catch((error) => {
-        console.error(error)
-      })
-  }, [query])
+    const onResize = () => {
+      query.refetch()
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [query.refetch])
 
   return {
     isMaximized: query.data,

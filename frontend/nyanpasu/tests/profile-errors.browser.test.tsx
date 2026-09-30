@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { ErrorMessage } from '@/components/error-message'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -38,6 +38,9 @@ const items: ProfileItem_Serialize[] = [
     },
   },
 ]
+beforeEach(() => vi.stubGlobal('isTauri', true))
+afterEach(() => vi.unstubAllGlobals())
+
 const dialog = vi.hoisted(() => vi.fn().mockResolvedValue('Close'))
 vi.mock('@tauri-apps/plugin-dialog', () => ({ message: dialog }))
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
@@ -132,8 +135,9 @@ test('a rejected profile returns console output and transform reports with names
 })
 
 test('native error dialogs resolve names without losing the caller title or logs', async () => {
-  mockIPC((command) => {
-    expect(command).toBe('get_profiles')
+  mockIPC((command, args) => {
+    expect(command).toBe('call_rpc')
+    expect((args as { method: string }).method).toBe('get_profiles')
     return { items, current: 'p1', global_transforms: [] }
   })
   await message(`Activation failed\n${formatError(error)}`, {

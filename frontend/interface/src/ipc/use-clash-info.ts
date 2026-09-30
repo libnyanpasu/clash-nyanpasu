@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { queries } from './bindings'
 import { unwrapQueryOptions } from './query-options'
+import { rpc } from './rpc'
 
 /**
  * A hook that retrieves and returns clash information using react-query.
@@ -14,7 +14,10 @@ import { unwrapQueryOptions } from './query-options'
  */
 export const useClashInfo = () => {
   const query = useQuery(
-    unwrapQueryOptions(queries.getClashInfo(), queries.getClashInfo().queryFn!),
+    unwrapQueryOptions(
+      rpc.queries.getClashInfo(),
+      rpc.queries.getClashInfo().queryFn!,
+    ),
   )
 
   return {

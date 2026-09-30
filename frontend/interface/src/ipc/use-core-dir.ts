@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { queries } from './bindings'
 import { unwrapQueryOptions } from './query-options'
+import { rpc } from './rpc'
 
 export const useCoreDir = () => {
   const query = useQuery(
-    unwrapQueryOptions(queries.getCoreDir(), queries.getCoreDir().queryFn!),
+    unwrapQueryOptions(
+      rpc.queries.getCoreDir(),
+      rpc.queries.getCoreDir().queryFn!,
+    ),
   )
 
   return {

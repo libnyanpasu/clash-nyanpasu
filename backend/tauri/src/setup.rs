@@ -48,6 +48,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     jobs_capture: nyanpasu_jobs::LogCapture,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
+    let rpc_events = crate::unified_rpc::EventBus::new();
+    crate::unified_rpc::bridge_tauri_events(&app_handle, rpc_events.clone());
+    app.manage(rpc_events);
     let main_thread: Arc<dyn MainThreadExecutor> =
         Arc::new(TauriMainThread::new(app_handle.clone()));
     // The root of the shutdown. Created here rather than in the client: the
@@ -132,8 +135,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &tasks,
     )?;
     let traffic_store = open_traffic_store(&paths);
+    let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
+    app.manage(http_routes.clone());
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
+        http_frontend: Some(debug_http_frontend(&app_handle)?),
+        http_routes,
         jobs,
         logging: crate::client::logs::LoggingSetup {
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
@@ -194,6 +201,21 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(crate::server::ServerPort(server_port));
     app.manage(client);
 
+    Ok(())
+}
+
+/// Registers the unified RPC command table after `resolve_setup` has managed
+/// storage and the other Tauri state dependencies.
+pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Result<()> {
+    let dependencies = crate::unified_rpc::RpcDependencies {
+        client: (*app.state::<NyanpasuClient>()).clone(),
+        storage: (*app.state::<crate::core::storage::Storage>()).clone(),
+        events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
+    };
+    let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies)?;
+    app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()
+        .install(&rpc)?;
+    anyhow::ensure!(app.manage(rpc), "unified RPC state was already registered");
     Ok(())
 }
 
@@ -360,4 +382,33 @@ fn forward_actor_events(
 fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
     Utf8PathBuf::from_path_buf(path)
         .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
+}
+
+fn debug_http_frontend(
+    app: &tauri::AppHandle,
+) -> anyhow::Result<crate::server::debug_http::Frontend> {
+    use crate::server::debug_http::{Frontend, FrontendAssets};
+    if !cfg!(feature = "custom-protocol") {
+        if let Some(url) = &app.config().build.dev_url {
+            return Ok(Frontend::Dev(url.clone()));
+        }
+    }
+    struct TauriFrontendAssets(tauri::AssetResolver<tauri::Wry>);
+    impl FrontendAssets for TauriFrontendAssets {
+        fn get(&self, path: &str) -> Option<(String, Vec<u8>)> {
+            if !self
+                .0
+                .iter()
+                .any(|(key, _)| key.as_ref().trim_start_matches('/') == path)
+            {
+                return None;
+            }
+            self.0
+                .get(path.to_owned())
+                .map(|asset| (asset.mime_type, asset.bytes))
+        }
+    }
+    Ok(Frontend::Embedded(Arc::new(TauriFrontendAssets(
+        app.asset_resolver(),
+    ))))
 }

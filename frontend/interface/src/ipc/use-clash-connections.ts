@@ -4,8 +4,8 @@ import {
   useClashWSStatus,
 } from '@interface/provider/clash-ws-provider'
 import { unwrapResult } from '../utils'
-import { mutations } from './bindings'
 import { invokeMutation } from './query-options'
+import { mutations } from './rpc-bindings'
 
 // Deleting does not read the connection history, so callers that only close
 // connections do not re-render on every connection sample.

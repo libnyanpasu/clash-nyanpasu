@@ -3,9 +3,12 @@ import { renderHook } from 'vitest-browser-react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useReleaseChannel } from '../src/ipc/use-release-channel'
 
-const ipc = vi.hoisted(() => ({
-  invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
-}))
+const ipc = vi.hoisted(() => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {})
+  return {
+    invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
+  }
+})
 vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tauri-apps/api/core')>()),
   invoke: ipc.invoke,
@@ -18,8 +21,12 @@ async function setup(onTestFinished: TestContext['onTestFinished']) {
       mutations: { retry: false },
     },
   })
-  ipc.invoke.mockImplementation(async (command) => {
-    if (command === 'get_release_channel') return 'stable'
+  ipc.invoke.mockImplementation(async (command, args) => {
+    if (
+      command === 'call_rpc' &&
+      (args as { method: string }).method === 'get_release_channel'
+    )
+      return 'stable'
     throw new Error(`Unexpected command: ${command}`)
   })
   const hook = await renderHook(() => useReleaseChannel(), {
@@ -63,8 +70,9 @@ test('channel changes are displayed only after persistence succeeds', async ({
     await pending
   })
   await expect.poll(() => hook.result.current.query.data).toBe('beta')
-  expect(ipc.invoke).toHaveBeenCalledWith('set_release_channel', {
-    channel: 'beta',
+  expect(ipc.invoke).toHaveBeenCalledWith('call_rpc', {
+    method: 'set_release_channel',
+    params: { channel: 'beta' },
   })
 })
 

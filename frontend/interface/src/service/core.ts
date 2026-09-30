@@ -1,4 +1,5 @@
-import { commands, type ClashCore } from '../ipc/bindings'
+import { rpc } from '../ipc/rpc'
+import { type ClashCore } from '../ipc/rpc-bindings'
 import { unwrapResult } from '../utils'
 
 export interface Core {
@@ -21,7 +22,7 @@ export const fetchCoreVersion = async () => {
   return await Promise.all(
     VALID_CORE.map(async (item) => {
       try {
-        const version = unwrapResult(await commands.getCoreVersion(item.core))
+        const version = unwrapResult(await rpc.getCoreVersion(item.core))
         return { ...item, version }
       } catch (e) {
         console.error('failed to fetch core version', e)
@@ -32,7 +33,7 @@ export const fetchCoreVersion = async () => {
 }
 
 export const fetchLatestCore = async () => {
-  const results = unwrapResult(await commands.fetchLatestCoreVersions())
+  const results = unwrapResult(await rpc.fetchLatestCoreVersions())
 
   if (!results) {
     return VALID_CORE.map((item) => ({ ...item }))

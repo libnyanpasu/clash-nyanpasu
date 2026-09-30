@@ -80,6 +80,8 @@ pub struct ClientSetupArgs {
     pub jobs: nyanpasu_jobs::JobsClient,
     pub bundle_metadata: crate::bundle::BundleMetadata,
     pub logging: logs::LoggingSetup,
+    pub http_frontend: Option<crate::server::debug_http::Frontend>,
+    pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
     pub ui_sink: Arc<dyn UiEventSink>,
@@ -191,6 +193,7 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
+    debug_http: crate::server::debug_http::HttpServerClient,
     bundle_metadata: crate::bundle::BundleMetadata,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
@@ -227,6 +230,8 @@ impl NyanpasuClient {
             jobs,
             bundle_metadata,
             logging,
+            http_frontend,
+            http_routes,
             paths,
             runtime_paths,
             ui_sink,
@@ -319,6 +324,8 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
+            http_frontend,
+            http_routes,
             traffic_store,
             shutdown,
             tasks,
@@ -350,10 +357,23 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+        http_frontend: Option<crate::server::debug_http::Frontend>,
+        http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
         traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> anyhow::Result<Self> {
+        let debug_http =
+            crate::server::debug_http::HttpServerClient::spawn(http_frontend, http_routes).await?;
+        tasks.spawn({
+            let (http, token) = (debug_http.clone(), shutdown.child_token());
+            async move {
+                token.cancelled().await;
+                if let Err(error) = http.shutdown().await {
+                    tracing::warn!(%error, "debug HTTP server shutdown failed");
+                }
+            }
+        });
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         // The log client exposes no actor cell, so a tracked task stops it.
         tasks.spawn({
@@ -453,6 +473,7 @@ impl NyanpasuClient {
         };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
+                debug_http,
                 bundle_metadata,
                 app_logs,
                 jobs,
@@ -479,6 +500,22 @@ impl NyanpasuClient {
                 tasks,
             }),
         })
+    }
+
+    pub async fn debug_http_status(
+        &self,
+    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
+        self.inner.debug_http.status().await
+    }
+    pub async fn set_debug_http_enabled(
+        &self,
+        enabled: bool,
+    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
+        self.inner.debug_http.set_enabled(enabled).await
+    }
+    pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
+        self.inner.debug_http.set_enabled(false).await?;
+        Ok(())
     }
 
     pub async fn release_channel(&self) -> Result<crate::bundle::Channel> {
@@ -2154,6 +2191,8 @@ pub(crate) mod tests {
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             None,
+            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
+            None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
         )
@@ -2433,6 +2472,8 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logging: logs::test_setup(paths.app_logs_dir()),
+            http_frontend: None,
+            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -2784,6 +2825,8 @@ pub(crate) mod tests {
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             None,
+            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
+            None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
         )
@@ -2900,6 +2943,8 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logging: logs::test_setup(paths.app_logs_dir()),
+            http_frontend: None,
+            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -3885,6 +3930,8 @@ pub(crate) mod tests {
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+                None,
+                Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
                 None,
                 tokio_util::sync::CancellationToken::new(),
                 tokio_util::task::TaskTracker::new(),

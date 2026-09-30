@@ -2,7 +2,7 @@ import { Button, ButtonProps } from '@/components/ui/button'
 import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { commands } from '@nyanpasu/interface'
+import { rpc } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 
 const PathButton = ({
@@ -26,19 +26,19 @@ const PathButton = ({
 
 export default function PathUtilsCard() {
   const handleOpenConfigDirectory = useLockFn(async () => {
-    await commands.openAppConfigDir()
+    await rpc.openAppConfigDir()
   })
 
   const handleOpenDataDirectory = useLockFn(async () => {
-    await commands.openAppDataDir()
+    await rpc.openAppDataDir()
   })
 
   const handleOpenCoreDirectory = useLockFn(async () => {
-    await commands.openCoreDir()
+    await rpc.openCoreDir()
   })
 
   const handleOpenLogDirectory = useLockFn(async () => {
-    await commands.openLogsDir()
+    await rpc.openLogsDir()
   })
 
   return (

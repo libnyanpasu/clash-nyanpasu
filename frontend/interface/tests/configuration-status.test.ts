@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import type { ConfigurationStatus, SourceStatus } from '../src/ipc/bindings'
 import {
   acceptConfigurationStatus,
   attentionSources,
@@ -9,6 +8,7 @@ import {
   invokeMutation,
   MutationUnconfirmedError,
 } from '../src/ipc/query-options'
+import type { ConfigurationStatus, SourceStatus } from '../src/ipc/rpc-bindings'
 
 const status = (
   event_seq: number,

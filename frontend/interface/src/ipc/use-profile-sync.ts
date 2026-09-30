@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, queries, type RunCursorDto } from './bindings'
+import { commands, queries, type RunCursorDto } from './rpc-bindings'
 
 export function useProfileSyncStatus(uid: string) {
   const options = queries.getProfileSyncStatus(uid)

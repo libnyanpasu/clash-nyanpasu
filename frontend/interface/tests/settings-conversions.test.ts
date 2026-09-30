@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   BreakConnectionStrategy,
   ExternalControllerStrategy,
-} from '../src/ipc/bindings'
+} from '../src/ipc/rpc-bindings'
 import {
   breaksOnProxyChange,
   formatControllerAddress,

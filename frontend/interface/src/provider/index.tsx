@@ -4,7 +4,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query'
-import type { Degradation } from '../ipc/bindings'
+import type { Degradation } from '../ipc/rpc-bindings'
 import {
   ClashConnectionDetailsFreezeBoundary,
   ClashConnectionDetailsProvider,

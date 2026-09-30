@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { unwrapResult } from '../utils'
+import { advanceCursor, mergeLogRows } from './log-viewer-state'
+import { rpc } from './rpc'
 import {
-  commands,
   type Filter,
   type LogCursor,
   type LogError,
@@ -9,8 +10,7 @@ import {
   type LogPage,
   type LogRow,
   type LogSource,
-} from './bindings'
-import { advanceCursor, mergeLogRows } from './log-viewer-state'
+} from './rpc-bindings'
 
 type View = {
   rows: LogRow[]
@@ -61,7 +61,7 @@ export function useFileLogs(
     let rows: LogRow[] = []
     const currentFilter: Filter = JSON.parse(filterKey)
     const close = (id: string) =>
-      commands.closeLogSession(source, id).catch(() => {})
+      rpc.closeLogSession(source, id).catch(() => {})
     setView(empty())
 
     const poll = async () => {
@@ -71,7 +71,7 @@ export function useFileLogs(
       let delay = 1000
       try {
         if (!session) {
-          const files = unwrapResult(await commands.listLogFiles(source))
+          const files = unwrapResult(await rpc.listLogFiles(source))
           if (disposed) return
           setView((value) => ({ ...value, files }))
           if (!files.length) {
@@ -80,7 +80,7 @@ export function useFileLogs(
             return
           }
           const opened = unwrapResult(
-            await commands.openLogSession(source, {
+            await rpc.openLogSession(source, {
               request_id: crypto.randomUUID(),
               file,
             }),
@@ -95,7 +95,7 @@ export function useFileLogs(
           requestOlder && older && !floor ? 'before' : tail ? 'after' : 'latest'
         const requestEpoch = epoch
         const page = unwrapResult(
-          await commands.queryLogs(source, {
+          await rpc.queryLogs(source, {
             session,
             filter: currentFilter,
             direction,

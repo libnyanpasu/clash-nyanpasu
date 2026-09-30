@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import type { ClashWsEvent, ClashWsSnapshot } from '../src/ipc/bindings'
+import type { ClashWsEvent, ClashWsSnapshot } from '../src/ipc/rpc-bindings'
 import { applyClashWsEvent } from '../src/provider/clash-ws-state.ts'
 
 const snapshot = (sequence = 0): ClashWsSnapshot => ({

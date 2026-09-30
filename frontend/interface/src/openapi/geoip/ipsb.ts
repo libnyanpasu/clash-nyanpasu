@@ -17,7 +17,7 @@ export interface IPSBResponse {
 //   return useSWR(
 //     'https://api.ip.sb/geoip',
 //     async () =>
-//       unwrapResult(await commands.getIpsbAsn()) as unknown as IPSBResponse,
+//       unwrapResult(await rpc.getIpsbAsn()) as unknown as IPSBResponse,
 //     config,
 //   )
 // }

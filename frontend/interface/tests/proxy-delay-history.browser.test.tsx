@@ -1,25 +1,20 @@
 import { expect, test, vi, type TestContext } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { rpc } from '../src/ipc/rpc'
 import {
-  queries,
   type Proxies_Serialize,
   type ProxyGroupItem_Serialize,
   type ProxyItem_Serialize,
-} from '../src/ipc/bindings'
+} from '../src/ipc/rpc-bindings'
 import {
   useClashProxies,
   type ClashProxiesQuery,
 } from '../src/ipc/use-clash-proxies'
 
-const ipc = vi.hoisted(() => ({
-  invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
-}))
-
-vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@tauri-apps/api/core')>()),
-  invoke: ipc.invoke,
-}))
+const fetchRpc =
+  vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+vi.stubGlobal('fetch', fetchRpc)
 
 const node = (name: string): ProxyItem_Serialize => ({
   name,
@@ -59,10 +54,13 @@ async function setup(
       mutations: { retry: false },
     },
   })
-  ipc.invoke.mockImplementation(async (command) => {
-    if (command === 'get_proxies') return snapshot
-    if (command === 'clash_api_get_group_delay') return response
-    throw new Error(`Unexpected IPC command: ${command}`)
+  fetchRpc.mockImplementation(async (_input, init) => {
+    const { method } = JSON.parse(String(init?.body)) as { method: string }
+    if (method === 'get_proxies')
+      return { ok: true, json: async () => snapshot } as Response
+    if (method === 'clash_api_get_group_delay')
+      return { ok: true, json: async () => response } as Response
+    throw new Error(`Unexpected RPC command: ${method}`)
   })
   const hook = await renderHook(() => useClashProxies(), {
     wrapper: ({ children }) => (
@@ -75,10 +73,10 @@ async function setup(
     client.clear()
     vi.clearAllTimers()
     vi.useRealTimers()
-    ipc.invoke.mockReset()
+    fetchRpc.mockReset()
   })
   await expect.poll(() => hook.result.current.proxies.isSuccess).toBe(true)
-  const queryKey = queries.getProxies().queryKey
+  const queryKey = rpc.queries.getProxies().queryKey
   const data = () => client.getQueryData<ClashProxiesQuery>(queryKey)!
   const original = data()
   // Freeze only polling: React Query notifications and browser assertions keep
@@ -87,14 +85,21 @@ async function setup(
   await hook.act(async () => {
     await hook.result.current.updateGroupDelay.mutateAsync(['group'])
   })
-  expect(ipc.invoke).toHaveBeenCalledWith('clash_api_get_group_delay', {
-    group: 'group',
-    url: null,
-  })
+  expect(fetchRpc).toHaveBeenCalledWith(
+    '/bridge/rpc',
+    expect.objectContaining({
+      body: JSON.stringify({
+        method: 'clash_api_get_group_delay',
+        params: { group: 'group', url: null },
+      }),
+    }),
+  )
   expect(vi.getTimerCount()).toBe(0)
   // A polling refetch must not silently overwrite the response being asserted.
   expect(
-    ipc.invoke.mock.calls.filter(([command]) => command === 'get_proxies'),
+    fetchRpc.mock.calls.filter(
+      ([, init]) => JSON.parse(String(init?.body)).method === 'get_proxies',
+    ),
   ).toHaveLength(1)
   return { original, data }
 }
@@ -136,10 +141,13 @@ test('single node delay only replaces that node, keeping sibling identity', asyn
       mutations: { retry: false },
     },
   })
-  ipc.invoke.mockImplementation(async (command) => {
-    if (command === 'get_proxies') return snapshot
-    if (command === 'clash_api_get_proxy_delay') return { delay: 100 }
-    throw new Error(`Unexpected IPC command: ${command}`)
+  fetchRpc.mockImplementation(async (_input, init) => {
+    const { method } = JSON.parse(String(init?.body)) as { method: string }
+    if (method === 'get_proxies')
+      return { ok: true, json: async () => snapshot } as Response
+    if (method === 'clash_api_get_proxy_delay')
+      return { ok: true, json: async () => ({ delay: 100 }) } as Response
+    throw new Error(`Unexpected IPC command: ${method}`)
   })
   const hook = await renderHook(() => useClashProxies(), {
     wrapper: ({ children }) => (
@@ -150,10 +158,10 @@ test('single node delay only replaces that node, keeping sibling identity', asyn
     await hook.unmount()
     await client.cancelQueries()
     client.clear()
-    ipc.invoke.mockReset()
+    fetchRpc.mockReset()
   })
   await expect.poll(() => hook.result.current.proxies.isSuccess).toBe(true)
-  const queryKey = queries.getProxies().queryKey
+  const queryKey = rpc.queries.getProxies().queryKey
   const data = () => client.getQueryData<ClashProxiesQuery>(queryKey)!
   const original = data()
 
@@ -161,11 +169,15 @@ test('single node delay only replaces that node, keeping sibling identity', asyn
     await hook.result.current.updateProxiesDelay.mutateAsync(['tested', null])
   })
 
-  expect(ipc.invoke).toHaveBeenCalledWith('clash_api_get_proxy_delay', {
-    name: 'tested',
-    provider: null,
-    url: null,
-  })
+  expect(fetchRpc).toHaveBeenCalledWith(
+    '/bridge/rpc',
+    expect.objectContaining({
+      body: JSON.stringify({
+        method: 'clash_api_get_proxy_delay',
+        params: { name: 'tested', provider: null, url: null },
+      }),
+    }),
+  )
   expect(data().nodes.tested.history.map(({ delay }) => delay)).toEqual([
     42, 100,
   ])

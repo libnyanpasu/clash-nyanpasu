@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands } from './bindings'
+import { commands } from './rpc-bindings'
 
 /** The current traffic session: totals, connection counts and rate. */
 export function useTrafficSummary() {

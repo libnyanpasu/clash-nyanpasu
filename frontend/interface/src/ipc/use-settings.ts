@@ -7,6 +7,7 @@ import {
   type QueryKey,
 } from '@tanstack/react-query'
 import { unwrapResult, type Result } from '../utils'
+import { invokeMutation, unwrapQueryOptions } from './query-options'
 import {
   mutations,
   queries,
@@ -16,8 +17,7 @@ import {
   type MutationOutcome,
   type NyanpasuAppConfig_Serialize,
   type NyanpasuAppConfigPatch_Serialize,
-} from './bindings'
-import { invokeMutation, unwrapQueryOptions } from './query-options'
+} from './rpc-bindings'
 
 type ConfigQuery<TConfig> = {
   queryKey: QueryKey

@@ -4,7 +4,7 @@ use tauri::{Emitter, Manager};
 
 use super::main_thread::{HandOffToEventLoopSnafu, MainThreadError, MainThreadExecutor};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum StateChanged {
     NyanpasuConfig,

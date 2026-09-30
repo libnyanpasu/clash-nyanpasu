@@ -1,4 +1,4 @@
-import type { IpcError } from '../ipc/bindings'
+import type { IpcError } from '../ipc/rpc-bindings'
 
 export type Result<T, E> =
   { status: 'ok'; data: T } | { status: 'error'; error: E }
@@ -13,6 +13,15 @@ export function unwrapResult<T, E>(res: Result<T, E>): T {
     case 'ok':
       return res.data
     case 'error':
+      if (
+        typeof res.error === 'object' &&
+        res.error !== null &&
+        'message' in res.error
+      ) {
+        // Preserve machine-readable metadata while giving UI error handlers
+        // a useful Error message and string representation.
+        throw Object.assign(new Error(String(res.error.message)), res.error)
+      }
       throw res.error
     default: {
       const _exhaustive: never = res

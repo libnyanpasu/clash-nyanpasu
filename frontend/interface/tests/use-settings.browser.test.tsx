@@ -9,7 +9,7 @@ import type {
   ClashConfig,
   MutationOutcome,
   NyanpasuAppConfig_Serialize,
-} from '../src/ipc/bindings'
+} from '../src/ipc/rpc-bindings'
 import {
   useClashSetting,
   useClashSettings,
@@ -17,9 +17,12 @@ import {
   useSettings,
 } from '../src/ipc/use-settings'
 
-const ipc = vi.hoisted(() => ({
-  invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
-}))
+const ipc = vi.hoisted(() => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {})
+  return {
+    invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
+  }
+})
 vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tauri-apps/api/core')>()),
   invoke: ipc.invoke,
@@ -60,7 +63,9 @@ async function setup<T>(
       mutations: { retry: false },
     },
   })
-  ipc.invoke.mockImplementation(async (command) => {
+  ipc.invoke.mockImplementation(async (wireCommand, wireArgs) => {
+    expect(wireCommand).toBe('call_rpc')
+    const { method: command } = wireArgs as { method: string }
     switch (command) {
       case 'get_app_config':
         return appConfig
@@ -99,8 +104,9 @@ test('useSetting reads and patches a typed application field', async ({
     await hook.result.current.upsert('clash-rs')
   })
 
-  expect(ipc.invoke).toHaveBeenCalledWith('patch_app_config', {
-    patch: { core: 'clash-rs' },
+  expect(ipc.invoke).toHaveBeenCalledWith('call_rpc', {
+    method: 'patch_app_config',
+    params: { patch: { core: 'clash-rs' } },
   })
   expect(settled).toEqual([degraded])
 })
@@ -121,8 +127,9 @@ test('useSettings passes the mutation outcome through', async ({
   })
 
   expect(outcome).toEqual(degraded)
-  expect(ipc.invoke).toHaveBeenCalledWith('patch_app_config', {
-    patch: { theme_mode: 'light' },
+  expect(ipc.invoke).toHaveBeenCalledWith('call_rpc', {
+    method: 'patch_app_config',
+    params: { patch: { theme_mode: 'light' } },
   })
 })
 
@@ -141,8 +148,9 @@ test('useClashSetting sends only the changed sub-field', async ({
     await hook.result.current.upsert({ start_port: 7899 })
   })
 
-  expect(ipc.invoke).toHaveBeenCalledWith('patch_clash_config', {
-    patch: { mixed_port: { start_port: 7899 } },
+  expect(ipc.invoke).toHaveBeenCalledWith('call_rpc', {
+    method: 'patch_clash_config',
+    params: { patch: { mixed_port: { start_port: 7899 } } },
   })
   expect(settled).toEqual([degraded])
 })
@@ -162,8 +170,9 @@ test('useClashSetting clears an optional field with an explicit null', async ({
     await hook.result.current.upsert(null)
   })
 
-  expect(ipc.invoke).toHaveBeenCalledWith('patch_clash_config', {
-    patch: { socks_port: null },
+  expect(ipc.invoke).toHaveBeenCalledWith('call_rpc', {
+    method: 'patch_clash_config',
+    params: { patch: { socks_port: null } },
   })
   expect(settled).toEqual([degraded])
 })
@@ -204,7 +213,8 @@ test('useClashSettings passes the mutation outcome through', async ({
   })
 
   expect(outcome).toEqual(degraded)
-  expect(ipc.invoke).toHaveBeenCalledWith('patch_clash_config', {
-    patch: { enable_tun_mode: true },
+  expect(ipc.invoke).toHaveBeenCalledWith('call_rpc', {
+    method: 'patch_clash_config',
+    params: { patch: { enable_tun_mode: true } },
   })
 })

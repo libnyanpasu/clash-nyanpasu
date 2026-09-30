@@ -41,8 +41,12 @@ test('live state replaces admission history and selecting a run loads its logs',
     },
   }
   const requested: string[] = []
-  mockIPC((command, args) => {
-    const input = args as { uid: string; run: string }
+  mockIPC((wireCommand, args) => {
+    expect(wireCommand).toBe('call_rpc')
+    const { method: command, params: input } = args as {
+      method: string
+      params: { uid: string; run: string }
+    }
     expect(input.uid).toBe('p1')
     switch (command) {
       case 'get_profile_sync_status':

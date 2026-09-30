@@ -1,24 +1,20 @@
 import { PropsWithChildren, useEffect, useRef } from 'react'
 import { useQueryClient, type QueryKey } from '@tanstack/react-query'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { queries } from '../ipc/bindings'
-import { NYANPASU_BACKEND_EVENT_NAME } from '../ipc/consts'
-
-type EventPayload = 'nyanpasu_config' | 'clash_config' | 'proxies' | 'profiles'
+import { rpc } from '../ipc/rpc'
 
 const NYANPASU_CONFIG_MUTATION_KEYS: QueryKey[] = [
-  queries.getAppConfig().queryKey,
-  queries.getSysProxy().queryKey,
+  rpc.queries.getAppConfig().queryKey,
+  rpc.queries.getSysProxy().queryKey,
   // TODO: proxies hook refetch
   // TODO: profiles hook refetch
 ]
 
 const CLASH_CONFIG_MUTATION_KEYS: QueryKey[] = [
-  queries.clashApiGetVersion().queryKey,
-  queries.getClashConfig().queryKey,
-  queries.getClashInfo().queryKey,
-  queries.clashApiGetConfigs().queryKey,
-  queries.getProfiles().queryKey,
+  rpc.queries.clashApiGetVersion().queryKey,
+  rpc.queries.getClashConfig().queryKey,
+  rpc.queries.getClashInfo().queryKey,
+  rpc.queries.clashApiGetConfigs().queryKey,
+  rpc.queries.getProfiles().queryKey,
   // TODO: clash rules hook refetch
   // TODO: clash rules providers hook refetch
   // TODO: proxies hook refetch
@@ -28,10 +24,10 @@ const CLASH_CONFIG_MUTATION_KEYS: QueryKey[] = [
 ]
 
 const PROFILES_MUTATION_KEYS: QueryKey[] = [
-  queries.clashApiGetVersion().queryKey,
-  queries.getClashConfig().queryKey,
-  queries.getClashInfo().queryKey,
-  queries.getProfiles().queryKey,
+  rpc.queries.clashApiGetVersion().queryKey,
+  rpc.queries.getClashConfig().queryKey,
+  rpc.queries.getClashInfo().queryKey,
+  rpc.queries.getProfiles().queryKey,
   // TODO: clash rules hook refetch
   // TODO: clash rules providers hook refetch
   // TODO: proxies hook refetch
@@ -40,12 +36,12 @@ const PROFILES_MUTATION_KEYS: QueryKey[] = [
 ]
 
 const PROXIES_MUTATION_KEYS: QueryKey[] = [
-  queries.getProxies().queryKey,
-  queries.clashApiGetProvidersProxies().queryKey,
+  rpc.queries.getProxies().queryKey,
+  rpc.queries.clashApiGetProvidersProxies().queryKey,
 ]
 
 export const MutationProvider = ({ children }: PropsWithChildren) => {
-  const unlistenFn = useRef<UnlistenFn>(null)
+  const unlistenFn = useRef<(() => void) | null>(null)
 
   const queryClient = useQueryClient()
 
@@ -61,25 +57,29 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
 
   useEffect(() => {
     let disposed = false
-
-    listen<EventPayload>(NYANPASU_BACKEND_EVENT_NAME, ({ payload }) => {
-      console.log('MutationProvider', payload)
-
-      switch (payload) {
-        case 'nyanpasu_config':
-          refetchQueries(NYANPASU_CONFIG_MUTATION_KEYS)
-          break
-        case 'clash_config':
-          refetchQueries(CLASH_CONFIG_MUTATION_KEYS)
-          break
-        case 'profiles':
-          refetchQueries(PROFILES_MUTATION_KEYS)
-          break
-        case 'proxies':
-          refetchQueries(PROXIES_MUTATION_KEYS)
-          break
-      }
+    const stopResync = rpc.listenResync(() => {
+      queryClient.invalidateQueries().catch(console.error)
     })
+
+    rpc
+      .listenMutation((payload) => {
+        console.log('MutationProvider', payload)
+
+        switch (payload) {
+          case 'nyanpasu_config':
+            refetchQueries(NYANPASU_CONFIG_MUTATION_KEYS)
+            break
+          case 'clash_config':
+            refetchQueries(CLASH_CONFIG_MUTATION_KEYS)
+            break
+          case 'profiles':
+            refetchQueries(PROFILES_MUTATION_KEYS)
+            break
+          case 'proxies':
+            refetchQueries(PROXIES_MUTATION_KEYS)
+            break
+        }
+      })
       .then((unlisten) => {
         if (disposed) {
           unlisten()
@@ -94,6 +94,7 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
 
     return () => {
       disposed = true
+      stopResync()
       unlistenFn.current?.()
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps

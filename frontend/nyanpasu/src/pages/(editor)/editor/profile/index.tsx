@@ -7,10 +7,11 @@ import { useExperimentalThemeContext } from '@/components/providers/theme-provid
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
-import { commands, useProfileContent } from '@interface/ipc'
+import { rpc, useProfileContent } from '@interface/ipc'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { ask } from '@tauri-apps/plugin-dialog'
 import ActionButton from '../_modules/action-button'
@@ -20,7 +21,7 @@ import { useCurrentProfile } from '../_modules/hooks'
 import LoadingSkeleton from '../_modules/loading-skeleton'
 import { beforeEditorMount, MONACO_FONT_FAMILY } from '../_modules/utils'
 
-const currentWindow = getCurrentWebviewWindow()
+const currentWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 export const Route = createFileRoute('/(editor)/editor/profile/')({
   component: RouteComponent,
@@ -70,7 +71,7 @@ function RouteComponent() {
 
     await content.upsert.mutateAsync(editorValue)
 
-    await currentWindow.close()
+    await currentWindow?.close()
   })
 
   const handleSave = useLockFn(blockTask.execute)
@@ -98,7 +99,7 @@ function RouteComponent() {
       return
     }
 
-    await currentWindow.close()
+    await currentWindow?.close()
   })
 
   const handleReset = useLockFn(async () => {
@@ -141,7 +142,7 @@ function RouteComponent() {
               const url = match[0].startsWith('http')
                 ? match[0]
                 : `https://${match[0]}`
-              commands.openThat(url)
+              rpc.openThat(url)
               e.event.preventDefault()
               break
             }

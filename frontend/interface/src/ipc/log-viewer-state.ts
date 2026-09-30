@@ -1,4 +1,4 @@
-import type { LogCursor, LogRow } from './bindings'
+import type { LogCursor, LogRow } from './rpc-bindings'
 
 export const LOG_CACHE_ROWS = 5_000
 export const LOG_CACHE_BYTES = 4 * 1024 * 1024

@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { queries } from './bindings'
 import { unwrapQueryOptions } from './query-options'
+import { rpc } from './rpc'
 
 export const useIsAppImage = () => {
   return useQuery({
-    ...unwrapQueryOptions(queries.isAppimage(), queries.isAppimage().queryFn!),
+    ...unwrapQueryOptions(
+      rpc.queries.isAppimage(),
+      rpc.queries.isAppimage().queryFn!,
+    ),
     staleTime: Infinity,
   })
 }

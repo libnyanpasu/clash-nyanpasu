@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { mutations, queries } from './bindings'
 import { invokeMutation, unwrapQueryOptions } from './query-options'
+import { rpc } from './rpc'
 
 /**
  * A custom hook that manages profile content data fetching and updating.
@@ -27,8 +27,8 @@ import { invokeMutation, unwrapQueryOptions } from './query-options'
  */
 export const useProfileContent = (uid: string) => {
   const queryClient = useQueryClient()
-  const contentQuery = queries.readProfileFile(uid)
-  const saveProfile = mutations.saveProfileFile
+  const contentQuery = rpc.queries.readProfileFile(uid)
+  const saveProfile = rpc.mutations.saveProfileFile
 
   /**
    * A React Query hook that fetches profile content based on a user ID.

@@ -6,6 +6,7 @@ import {
   type QueryKey,
 } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
+import { invokeMutation, invokeQuery } from './query-options'
 import {
   mutations,
   queries,
@@ -13,8 +14,7 @@ import {
   type ProxyGroupItem_Serialize,
   type ProxyItem_Serialize,
   type ProxyItemHistory,
-} from './bindings'
-import { invokeMutation, invokeQuery } from './query-options'
+} from './rpc-bindings'
 
 export type ClashDelayOptions = {
   url?: string

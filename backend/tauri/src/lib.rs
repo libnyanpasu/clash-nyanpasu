@@ -17,6 +17,7 @@ mod service;
 mod setup;
 mod specta_export;
 mod state;
+mod unified_rpc;
 
 #[cfg(windows)]
 mod shutdown_hook;
@@ -195,30 +196,46 @@ pub fn run() -> std::io::Result<()> {
     // Until setup hands over an app handle, a panic can only end the process.
     install_panic_hook(None);
 
-    // setup specta
-    let (query_bindings, specta_builder) = specta_export::build_specta_builder();
+    // Keep the Tauri transport surface separate from the RPC schema.
+    let transport_builder = specta_export::build_transport_builder();
+    #[cfg(debug_assertions)]
+    let (query_bindings, rpc_schema_builder) = specta_export::build_specta_builder();
 
     #[cfg(debug_assertions)]
     {
         const SPECTA_BINDINGS_PATH: &str = "../../frontend/interface/src/ipc/bindings.ts";
+        const RPC_BINDINGS_PATH: &str = "../../frontend/interface/src/ipc/rpc-bindings.ts";
 
-        match specta_builder.export(
+        transport_builder
+            .export(
+                Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
+                SPECTA_BINDINGS_PATH,
+            )
+            .expect("Failed to export Tauri transport bindings");
+        match rpc_schema_builder.export(
             Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
-            SPECTA_BINDINGS_PATH,
+            RPC_BINDINGS_PATH,
         ) {
             Ok(_) => {
                 if let Err(e) =
-                    specta_export::append_query_bindings(SPECTA_BINDINGS_PATH, &query_bindings)
+                    specta_export::append_query_bindings(RPC_BINDINGS_PATH, &query_bindings)
                 {
                     panic!("Failed to append TanStack Query bindings: {e}");
                 }
+                specta_export::adapt_rpc_bindings(RPC_BINDINGS_PATH)
+                    .expect("Failed to generate RPC bindings");
                 let npx_command = if cfg!(target_os = "windows") {
                     "npx.cmd"
                 } else {
                     "npx"
                 };
                 let _ = std::process::Command::new(npx_command)
-                    .args(["prettier", "--write", SPECTA_BINDINGS_PATH])
+                    .args([
+                        "prettier",
+                        "--write",
+                        SPECTA_BINDINGS_PATH,
+                        RPC_BINDINGS_PATH,
+                    ])
                     .output();
                 log::debug!("Exported typescript bindings, path: {SPECTA_BINDINGS_PATH}");
             }
@@ -248,7 +265,7 @@ pub fn run() -> std::io::Result<()> {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .manage(utils::exit::ExitBoundary::default())
-        .invoke_handler(specta_builder.invoke_handler())
+        .invoke_handler(transport_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
@@ -266,7 +283,7 @@ pub fn run() -> std::io::Result<()> {
             }
         })
         .setup(move |app| {
-            specta_builder.mount_events(app);
+            transport_builder.mount_events(app);
             setup::setup(app, metadata, logger_reload, jobs_capture)
                 .context("Failed to setup the app")
                 .inspect_err(|e| {
@@ -293,6 +310,7 @@ pub fn run() -> std::io::Result<()> {
 
             install_panic_hook(Some(app.handle().clone()));
             resolve::resolve_setup(app);
+            setup::setup_unified_rpc(app).context("Failed to initialize unified RPC")?;
 
             // setup custom scheme
             let handle = app.handle().clone();

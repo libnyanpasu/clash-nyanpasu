@@ -8,15 +8,14 @@ import {
   type Context,
   type PropsWithChildren,
 } from 'react'
+import { rpc } from '../ipc/rpc'
 import {
-  commands,
-  events,
   type ClashConnectionsConnectorState,
   type ClashConnectionsSummary,
   type ClashWsEvent,
   type ClashWsKind,
   type ClashWsSnapshot,
-} from '../ipc/bindings'
+} from '../ipc/rpc-bindings'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
@@ -135,7 +134,7 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       syncing = true
       try {
         do {
-          const result = await commands.getClashWsSnapshot()
+          const result = await rpc.getClashWsSnapshot()
           if (disposed) return
           if (result.status === 'error') throw result.error
           if (!current || result.data.sequence >= current.sequence)
@@ -165,7 +164,7 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
 
     // Subscribe before requesting the snapshot. The bounded buffer plus sequence
     // checks also covers slow IPC, event loss, and StrictMode effect teardown.
-    events.clashWsEvent
+    rpc.events.clashWsEvent
       .listen(({ payload }) => {
         if (disposed) return
         if (syncing || !current) {
@@ -197,20 +196,23 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
         }
       })
 
+    const stopResync = rpc.listenResync(resync)
+
     return () => {
+      stopResync()
       disposed = true
       unlisten?.()
     }
   }, [])
 
   const clearHistory = useCallback(async (kind: ClashWsKind) => {
-    const result = await commands.clearClashWsHistory(kind)
+    const result = await rpc.clearClashWsHistory(kind)
     if (result.status === 'error') throw result.error
     // The sequenced history_cleared event orders this against later samples.
   }, [])
 
   // Snapshot updates keep the arrays of untouched kinds, so memoizing on them
-  // keeps each history context value stable across unrelated events.
+  // keeps each history context value stable across unrelated rpc.events.
   const connectionSnapshots = snapshot?.connections
   const logSnapshots = snapshot?.logs
   const trafficSnapshots = snapshot?.traffic

@@ -5,11 +5,32 @@
 use tauri_specta::{collect_commands, collect_events};
 use tauri_specta_query::{CommandSet, TanstackQueryFramework};
 
-use crate::{core, ipc, window};
+use crate::{core, ipc, unified_rpc, window};
+
+pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            unified_rpc::call_rpc,
+            ipc::subscribe_clash_connection_details,
+            ipc::unsubscribe_clash_connection_details
+        ])
+        .events(collect_events![
+            core::clash::ws::ClashWsEvent,
+            window::WindowMessageEvent,
+            window::WindowReadyEvent,
+            core::storage::StorageValueChangedEvent,
+            ipc::SchemeRequestReceivedEvent,
+            core::actor_v2::CoreStatusChangedEvent,
+            ipc::ConfigurationStatusChanged,
+            core::actor_v2::ServiceStatusChangedEvent
+        ])
+        .dangerously_cast_bigints_to_number()
+}
 
 pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wry>) {
     let command_set = CommandSet::<tauri::Wry>::new(
         collect_commands![
+            ipc::get_debug_http_status,
             // Read-only commands
             ipc::list_log_files,
             ipc::get_sys_proxy,
@@ -65,6 +86,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_system_accent_color,
         ],
         collect_commands![
+            ipc::set_debug_http_enabled,
             ipc::get_configuration_status,
             ipc::retry_configuration_runtime,
             ipc::retry_configuration_effect,
@@ -124,8 +146,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::mutate_proxies,
             ipc::set_clash_ws_recording,
             ipc::clear_clash_ws_history,
-            ipc::subscribe_clash_connection_details,
-            ipc::unsubscribe_clash_connection_details,
             ipc::save_window_size_state,
             ipc::create_main_window,
             ipc::create_debug_tray_menu_window,
@@ -156,6 +176,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     .typ::<nyanpasu_config::profile::ProfileMetadataPatch>()
     .typ::<nyanpasu_config::profile::RemoteProfileOptionsPatch>()
     .typ::<nyanpasu_config::profile::ProfileValidationError>()
+    .typ::<crate::client::StateChanged>()
     .build(TanstackQueryFramework::React);
 
     let (query_bindings, builder) = command_set;
@@ -176,15 +197,96 @@ pub(crate) fn append_query_bindings(
     Ok(())
 }
 
+pub(crate) fn adapt_rpc_bindings(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+    adapt_command_transport(path.as_ref())?;
+    adapt_event_transport(path)
+}
+
+fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
+
+    const ORIGINAL: &str = "import { invoke as __TAURI_INVOKE } from \"@tauri-apps/api/core\";";
+    const REPLACEMENT: &str =
+        "import { invokeRpcCommand as __RPC_INVOKE } from \"./command-transport\";";
+
+    let path = path.as_ref();
+    let source = std::fs::read_to_string(path)?;
+    if source.matches(ORIGINAL).count() != 1 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "tauri-specta invoke import changed; command transport was not installed",
+        ));
+    }
+    std::fs::write(
+        path,
+        source
+            .replacen(ORIGINAL, REPLACEMENT, 1)
+            .replace("__TAURI_INVOKE", "__RPC_INVOKE"),
+    )
+}
+
+fn adapt_event_transport(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
+
+    const EVENT_IMPORT: &str = "import * as __TAURI_EVENT from \"@tauri-apps/api/event\";";
+    const TRANSPORT_IMPORT: &str =
+        "import { emitHttpEvent, listenHttpEvent, onceHttpEvent } from \"./event-transport\";";
+    const EVENT_IMPL_START: &str = "type EventEmit<T> = [T] extends [null]";
+    const EVENT_IMPL_END: &str = "    return Object.assign(fn, base);\n}";
+    const RPC_EVENT_IMPL: &str = r#"type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;
+
+type RpcEvent<T> = { event: string; id: number; payload: T };
+type RpcEventCallback<T> = (event: RpcEvent<T>) => void;
+
+function makeEvent<T>(name: string, serialize?: (payload: T) => unknown, deserialize?: (payload: any) => T) {
+    const mapEvent = (cb: RpcEventCallback<T>) => (event: RpcEvent<any>) => cb({ ...event, payload: deserialize ? deserialize(event.payload) : event.payload });
+    const mapPayload = (payload: T) => serialize ? serialize(payload) : payload;
+    return {
+        listen: (cb: RpcEventCallback<T>) => listenHttpEvent(name, mapEvent(cb)),
+        once: (cb: RpcEventCallback<T>) => onceHttpEvent(name, mapEvent(cb)),
+        emit: ((payload: T) => emitHttpEvent(name, mapPayload(payload)) as unknown) as EventEmit<T>
+    };
+}"#;
+
+    let path = path.as_ref();
+    let source = std::fs::read_to_string(path)?;
+    if source.matches(EVENT_IMPORT).count() != 1
+        || source.matches(EVENT_IMPL_START).count() != 1
+        || source.matches(EVENT_IMPL_END).count() != 1
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "tauri-specta event bindings changed; event transport was not installed",
+        ));
+    }
+    let mut source = source.replacen(EVENT_IMPORT, TRANSPORT_IMPORT, 1);
+    let start = source.find(EVENT_IMPL_START).unwrap();
+    let end = source.find(EVENT_IMPL_END).unwrap() + EVENT_IMPL_END.len();
+    source.replace_range(start..end, RPC_EVENT_IMPL);
+    if source.contains("__TAURI_EVENT") || source.contains("@tauri-apps/api/") {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "RPC event binding still references Tauri",
+        ));
+    }
+    std::fs::write(path, source)
+}
+
 #[cfg(test)]
 mod tests {
     use specta_typescript::Typescript;
 
-    use super::{append_query_bindings, build_specta_builder};
+    use super::{
+        adapt_rpc_bindings, append_query_bindings, build_specta_builder, build_transport_builder,
+    };
 
     const BINDINGS_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../frontend/interface/src/ipc/bindings.ts"
+    );
+    const RPC_BINDINGS_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../frontend/interface/src/ipc/rpc-bindings.ts"
     );
 
     fn exported_type<'a>(generated: &'a str, name: &str) -> &'a str {
@@ -215,15 +317,22 @@ mod tests {
     /// `git diff --exit-code` after `pnpm test` (ci.yml test_unit job).
     #[test]
     fn export_typescript_bindings() {
-        let (query_bindings, builder) = build_specta_builder();
-        builder
+        build_transport_builder()
             .export(
                 Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
                 BINDINGS_PATH,
             )
-            .expect("failed to export typescript bindings");
-        append_query_bindings(BINDINGS_PATH, &query_bindings)
+            .expect("failed to export Tauri transport bindings");
+        let (query_bindings, builder) = build_specta_builder();
+        builder
+            .export(
+                Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
+                RPC_BINDINGS_PATH,
+            )
+            .expect("failed to export RPC schema bindings");
+        append_query_bindings(RPC_BINDINGS_PATH, &query_bindings)
             .expect("failed to append TanStack Query bindings");
+        adapt_rpc_bindings(RPC_BINDINGS_PATH).expect("failed to generate RPC bindings");
 
         let package_manager = if cfg!(target_os = "windows") {
             "pnpm.cmd"
@@ -231,13 +340,32 @@ mod tests {
             "pnpm"
         };
         let status = std::process::Command::new(package_manager)
-            .args(["exec", "prettier", "--write", BINDINGS_PATH])
+            .args([
+                "exec",
+                "prettier",
+                "--write",
+                BINDINGS_PATH,
+                RPC_BINDINGS_PATH,
+            ])
             .status()
             .expect("failed to spawn pnpm exec prettier");
         assert!(status.success(), "prettier --write failed on bindings.ts");
 
-        let generated =
+        let transport_generated =
             std::fs::read_to_string(BINDINGS_PATH).expect("bindings.ts must exist after export");
+        let generated = std::fs::read_to_string(RPC_BINDINGS_PATH)
+            .expect("rpc-bindings.ts must exist after export");
+        assert!(transport_generated.contains("invoke as __TAURI_INVOKE"));
+        assert!(transport_generated.contains("callRpc:"));
+        assert!(!transport_generated.contains("getProfiles:"));
+        assert!(generated.contains("invokeRpcCommand as __RPC_INVOKE"));
+        assert!(!generated.contains("__TAURI_INVOKE"));
+        let (_, queries) = generated.split_once("export const queries =").unwrap();
+        let (queries, mutations) = queries.split_once("export const mutations =").unwrap();
+        assert!(!queries.contains("setDebugHttpEnabled:"));
+        assert!(mutations.contains("setDebugHttpEnabled:"));
+        assert!(!generated.contains("__TAURI_EVENT"));
+        assert!(!generated.contains("@tauri-apps/api/"));
         // PR-3 T08: the profile IPC surface now speaks the domain types, so the
         // legacy `Profiles` / `RemoteProfileOptions` exports are retired. The
         // domain document/options types are asserted via their specta remote
@@ -468,13 +596,13 @@ mod tests {
         // strongly typed Connection with the two rate fields, and unknown
         // Mihomo fields are named (`_extra`) rather than flattened, so the
         // detail dialog can tell them apart from known fields (A0/A2).
-        let clash_connection = exported_type(&generated, "ClashConnection_Serialize");
+        let clash_connection = exported_type(&transport_generated, "ClashConnection_Serialize");
         assert_contains_all(
             clash_connection,
             "ClashConnection_Serialize",
             &["downloadSpeed", "uploadSpeed", "Connection_Serialize"],
         );
-        let connection = exported_type(&generated, "Connection_Serialize");
+        let connection = exported_type(&transport_generated, "Connection_Serialize");
         assert_contains_all(
             connection,
             "Connection_Serialize",

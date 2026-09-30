@@ -1976,9 +1976,11 @@ dependencies = [
  "futures-util",
  "glob",
  "hex",
+ "http-body-util",
  "humansize",
  "image",
  "indexmap 2.14.2",
+ "inventory",
  "itertools 0.15.0",
  "log",
  "md-5",
@@ -2037,7 +2039,9 @@ dependencies = [
  "smol-cancellation-token",
  "snafu",
  "specta",
+ "specta-serde",
  "specta-typescript",
+ "specta-util",
  "struct-patch",
  "strum",
  "sysinfo",
@@ -2063,7 +2067,9 @@ dependencies = [
  "time",
  "timeago",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
+ "tower",
  "tracing",
  "tracing-appender",
  "tracing-attributes",
@@ -5222,6 +5228,15 @@ name = "intrusive-collections"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4275b20e6057cd7733fd8df8a5a31701e4fe44497dad0f3fa0e1c4fb971506be"
+
+[[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
+]
 
 [[package]]
 name = "ipc-channel"

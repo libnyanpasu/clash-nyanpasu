@@ -13,12 +13,7 @@ import {
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
-import {
-  invokeMutation,
-  mutations,
-  queries,
-  unwrapQueryOptions,
-} from '@nyanpasu/interface'
+import { invokeMutation, rpc, unwrapQueryOptions } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { useQuery } from '@tanstack/react-query'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -33,8 +28,8 @@ enum TrayIconMode {
 const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
   const [iconVersion, setIconVersion] = useState(0)
 
-  const isIconSetQuery = queries.isTrayIconSet(mode)
-  const setTrayIcon = mutations.setTrayIcon
+  const isIconSetQuery = rpc.queries.isTrayIconSet(mode)
+  const setTrayIcon = rpc.mutations.setTrayIcon
   const isIconSet = useQuery(
     unwrapQueryOptions(isIconSetQuery, isIconSetQuery.queryFn!),
   )

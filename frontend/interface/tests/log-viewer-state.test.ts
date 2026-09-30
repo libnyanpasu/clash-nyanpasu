@@ -1,10 +1,10 @@
 import { expect, test } from 'vitest'
-import type { LogRow } from '../src/ipc/bindings'
 import {
   advanceCursor,
   LOG_CACHE_ROWS,
   mergeLogRows,
 } from '../src/ipc/log-viewer-state.ts'
+import type { LogRow } from '../src/ipc/rpc-bindings'
 
 const row = (offset: number, raw = ''): LogRow => ({
   id: `generation:${offset}`,

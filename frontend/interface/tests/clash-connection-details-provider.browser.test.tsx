@@ -1,4 +1,11 @@
-import { expect, test, type TestContext } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  expect,
+  test,
+  vi,
+  type TestContext,
+} from 'vitest'
 import { render } from 'vitest-browser-react'
 import { Channel } from '@tauri-apps/api/core'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
@@ -207,4 +214,38 @@ test('a frozen boundary keeps the frame it had when freezing started', async ({
 
   await screen.rerender(tree(false))
   await expect.poll(() => renders.at(-1)).toEqual(details(2))
+})
+
+beforeEach(() => vi.stubGlobal('isTauri', true))
+afterEach(() => vi.unstubAllGlobals())
+
+test('browser consumers share an SSE stream and release it on unmount', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('isTauri', false)
+  const streams: FakeSource[] = []
+  class FakeSource {
+    onmessage: ((event: MessageEvent<string>) => void) | null = null
+    close = vi.fn()
+    constructor(readonly url: string) {
+      streams.push(this)
+    }
+  }
+  vi.stubGlobal('EventSource', FakeSource)
+  const renders: unknown[] = []
+  const screen = await render(
+    <ClashConnectionDetailsProvider connectorState="connected">
+      <Consumer onRender={(data) => renders.push(data)} />
+      <Consumer onRender={() => {}} />
+    </ClashConnectionDetailsProvider>,
+  )
+  onTestFinished(() => screen.unmount())
+  await expect.poll(() => streams.length).toBe(1)
+  expect(streams[0].url).toBe('/bridge/connection-details')
+  streams[0].onmessage?.(
+    new MessageEvent('message', { data: JSON.stringify(details(3)) }),
+  )
+  await expect.poll(() => renders.at(-1)).toEqual(details(3))
+  await screen.unmount()
+  expect(streams[0].close).toHaveBeenCalledOnce()
 })

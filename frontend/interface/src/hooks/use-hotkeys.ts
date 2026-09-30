@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { mutations, queries } from '../ipc/bindings'
 import { invokeMutation, invokeQuery } from '../ipc/query-options'
+import { rpc } from '../ipc/rpc'
 import { unwrapResult } from '../utils'
 
 export function useHotkeys() {
   const queryClient = useQueryClient()
-  const hotkeysQuery = queries.getHotkeys()
-  const setHotkeys = mutations.setHotkeys
+  const hotkeysQuery = rpc.queries.getHotkeys()
+  const setHotkeys = rpc.mutations.setHotkeys
 
   const query = useQuery({
     queryKey: hotkeysQuery.queryKey,
@@ -26,7 +26,7 @@ export function useHotkeys() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queries.getHotkeys().queryKey,
+        queryKey: rpc.queries.getHotkeys().queryKey,
       })
     },
   })

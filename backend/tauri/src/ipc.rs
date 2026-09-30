@@ -1215,6 +1215,45 @@ pub async fn get_clash_ws_snapshot(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn get_traffic_summary(
+    client: tauri::State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_traffic::TrafficSummary> {
+    Ok(client.traffic_summary().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_usage(
+    client: tauri::State<'_, NyanpasuClient>,
+    group_by: nyanpasu_traffic::GroupBy,
+    limit: usize,
+) -> Result<nyanpasu_traffic::Usage> {
+    Ok(client.query_traffic_usage(group_by, limit).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_topology(
+    client: tauri::State<'_, NyanpasuClient>,
+    limit: usize,
+) -> Result<nyanpasu_traffic::Topology> {
+    Ok(client.query_traffic_topology(limit).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_closed_connections(
+    client: tauri::State<'_, NyanpasuClient>,
+    before: Option<nyanpasu_traffic::ClosedCursor>,
+    limit: usize,
+) -> Result<nyanpasu_traffic::ClosedPage> {
+    Ok(client
+        .query_traffic_closed_connections(before, limit)
+        .await?)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn set_clash_ws_recording(
     client: tauri::State<'_, NyanpasuClient>,
     kind: crate::core::clash::ws::ClashWsKind,

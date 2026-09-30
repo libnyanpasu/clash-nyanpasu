@@ -182,6 +182,26 @@ export const commands = {
     typedError<ClashWsSnapshot, IpcError>(
       __TAURI_INVOKE('get_clash_ws_snapshot'),
     ),
+  getTrafficSummary: () =>
+    typedError<TrafficSummary, IpcError>(__TAURI_INVOKE('get_traffic_summary')),
+  queryTrafficUsage: (groupBy: GroupBy, limit: number) =>
+    typedError<Usage, IpcError>(
+      __TAURI_INVOKE('query_traffic_usage', { groupBy, limit }),
+    ),
+  queryTrafficTopology: (limit: number) =>
+    typedError<Topology, IpcError>(
+      __TAURI_INVOKE('query_traffic_topology', { limit }),
+    ),
+  queryTrafficClosedConnections: (
+    before: {
+      closed_at: number
+      id: string
+    } | null,
+    limit: number,
+  ) =>
+    typedError<ClosedPage, IpcError>(
+      __TAURI_INVOKE('query_traffic_closed_connections', { before, limit }),
+    ),
   checkUpdate: () =>
     typedError<
       {
@@ -523,6 +543,11 @@ export type BuiltinStepKind =
   | 'finalizing'
   | 'core_controller'
 
+export type Bytes = {
+  upload: number
+  download: number
+}
+
 export type ClashApiConfig = {
   port: number | null
   mode: string | null
@@ -806,6 +831,26 @@ export type ClashWsUpdate =
   | { kind: 'memory_updated'; data: ClashWsMemory }
   | { kind: 'recording_changed'; data: ClashWsRecording }
   | { kind: 'history_cleared'; data: ClashWsKind }
+
+export type ClosedConnection = {
+  id: string
+  started_at: number
+  first_seen_at: number
+  closed_at: number
+  bytes: Bytes
+  dimensions: Dimensions
+}
+
+/**  Exclusive position for newest-first paging. */
+export type ClosedCursor = {
+  closed_at: number
+  id: string
+}
+
+export type ClosedPage = {
+  connections: ClosedConnection[]
+  next: ClosedCursor | null
+}
 
 /**
  *  Why a source transaction did not commit, classified once from the
@@ -1504,6 +1549,18 @@ export type DeviceInfo = {
   memory: string
 }
 
+export type Dimensions = {
+  /**  Process path or name. */
+  process: string
+  source: string
+  /**  Host, else destination IP. */
+  target: string
+  protocol: string
+  rule: RuleKey
+  /**  Clash wire order: exit first, outermost group last. */
+  chains: string[]
+}
+
 export type Direction = 'latest' | 'before' | 'after'
 
 export type DnsMode = 'normal' | 'fake-ip' | 'redir-host' | 'hosts' | 'Unknown'
@@ -1725,6 +1782,9 @@ export type GetSysProxyResponse = {
   bypass: string
   server: string
 }
+
+export type GroupBy =
+  'process' | 'source' | 'target' | 'protocol' | 'rule' | 'exit' | 'chain'
 
 /**
  *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
@@ -3290,6 +3350,12 @@ export type QueryLogs = {
   limit: number
 }
 
+/**  Whole bytes per second, rounded down. */
+export type Rate = {
+  upload: number
+  download: number
+}
+
 export type ReleaseChannel = 'stable' | 'beta' | 'nightly'
 
 export type RemoteProfileOptionsPatch =
@@ -3333,6 +3399,11 @@ export type RevisionIdInfo = {
   epoch: number
   generation: number
   effective_hash: string
+}
+
+export type RuleKey = {
+  kind: string
+  payload: string
 }
 
 export type RuleProviderItem = {
@@ -3940,9 +4011,52 @@ export type SystemDnsError =
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+export type Topology = {
+  paths: TopologyPath[]
+  nodes: TopologyNode[]
+  edges: TopologyEdge[]
+  other: Bytes
+}
+
+export type TopologyEdge = {
+  source: string
+  target: string
+  bytes: Bytes
+}
+
+export type TopologyKey = {
+  /**  Process, or the source IP when the process is unknown. */
+  source: string
+  rule: RuleKey
+  /**  Outermost group first, exit excluded. */
+  groups: string[]
+  exit: string
+}
+
+export type TopologyNode = {
+  id: string
+  layer: number
+  label: string
+  bytes: Bytes
+}
+
+export type TopologyPath = {
+  key: TopologyKey
+  bytes: Bytes
+}
+
 export type TrafficRate = {
   download: number
   upload: number
+}
+
+export type TrafficSummary = {
+  profile: string | null
+  started_at: number
+  last_sample_at: number | null
+  core_bytes: Bytes
+  active_connections: number
+  current_rate: Rate | null
 }
 
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
@@ -4015,6 +4129,18 @@ export type UpdaterSummary = {
   id: number
   state: UpdaterState
   downloader: DownloadStatus
+}
+
+export type Usage = {
+  total: Bytes
+  groups: UsageGroup[]
+  other: Bytes
+}
+
+export type UsageGroup = {
+  key: string
+  bytes: Bytes
+  current_rate: Rate | null
 }
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
@@ -4353,6 +4479,30 @@ export const queries = {
     queryOptions({
       queryKey: ['getClashWsSnapshot', ...args],
       queryFn: () => commands.getClashWsSnapshot(...args),
+    }),
+  getTrafficSummary: (...args: Parameters<typeof commands.getTrafficSummary>) =>
+    queryOptions({
+      queryKey: ['getTrafficSummary', ...args],
+      queryFn: () => commands.getTrafficSummary(...args),
+    }),
+  queryTrafficUsage: (...args: Parameters<typeof commands.queryTrafficUsage>) =>
+    queryOptions({
+      queryKey: ['queryTrafficUsage', ...args],
+      queryFn: () => commands.queryTrafficUsage(...args),
+    }),
+  queryTrafficTopology: (
+    ...args: Parameters<typeof commands.queryTrafficTopology>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficTopology', ...args],
+      queryFn: () => commands.queryTrafficTopology(...args),
+    }),
+  queryTrafficClosedConnections: (
+    ...args: Parameters<typeof commands.queryTrafficClosedConnections>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficClosedConnections', ...args],
+      queryFn: () => commands.queryTrafficClosedConnections(...args),
     }),
   checkUpdate: (...args: Parameters<typeof commands.checkUpdate>) =>
     queryOptions({

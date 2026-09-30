@@ -36,7 +36,7 @@ clash-api = { workspace = true }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-core = { path = '../nyanpasu-core' }
 nyanpasu-config = { path = '../nyanpasu-config' }
-nyanpasu-utils = { workspace = true }
+nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
 nyanpasu-egui = { path = '../nyanpasu-egui' }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
 

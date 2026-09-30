@@ -1,0 +1,28 @@
+[package]
+name = "nyanpasu-traffic"
+version = "0.1.0"
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = []
+specta = ["dep:specta"]
+test-support = []
+
+[dependencies]
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror.workspace = true
+specta = { version = "^2.0.0-rc.25", features = ["derive", "serde_json"], optional = true }
+
+[dev-dependencies]
+nyanpasu-traffic = { path = ".", default-features = false, features = ["test-support"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+specta-typescript = "0.0.12"
+specta-serde = "0.0.12"
+tempfile = "3"

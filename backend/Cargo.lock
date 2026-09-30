@@ -6679,7 +6679,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-jobs"
-version = "0.1.1-rc.1"
+version = "0.1.1-rc.2"
 dependencies = [
  "futures-util",
  "jiff",
@@ -6721,6 +6721,25 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "nyanpasu-traffic"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures-util",
+ "nyanpasu-traffic",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "specta",
+ "specta-serde",
+ "specta-typescript",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]

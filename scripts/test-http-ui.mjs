@@ -1,15 +1,26 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
-const url = process.argv[2];
+const entry = process.argv[2];
+const url = new URL(entry).origin;
 assert.ok(url, "Pass the running debug HTTP server URL");
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(url, { waitUntil: "domcontentloaded" });
+  for (
+    const path of [
+      "/bridge/rpc",
+      "/bridge/events",
+      "/bridge/connection-details",
+    ]
+  ) {
+    assert.equal((await page.request.get(`${url}${path}`)).status(), 401);
+  }
+  await page.goto(entry, { waitUntil: "domcontentloaded" });
   await page.waitForURL(`${url}/main/dashboard`, { timeout: 30000 });
+  assert.ok(!page.url().includes("access_token"));
   await page.goto(`${url}/main/settings/debug`, {
     waitUntil: "domcontentloaded",
   });
@@ -23,9 +34,9 @@ try {
   assert.equal(await toggle.isChecked(), true);
   assert.equal(
     await page
-      .getByRole("link", { name: url, exact: true })
+      .getByRole("link", { name: entry, exact: true })
       .getAttribute("href"),
-    url,
+    entry,
   );
   const result = await page.evaluate(async () => {
     const call = async (method, params = {}) => {
@@ -41,9 +52,14 @@ try {
     const files = await call("list_log_files", { source: "app" });
     const error = await call("list_log_files", { source: "service" });
     const domainError = await call("read_profile_file", { uid: "missing" });
+    const unsupported = await call("url_delay_test", {
+      url: "http://127.0.0.1/",
+    });
     await call("remove_storage_item", { key: "http-ui-test" });
-    return { storage, files, error, domainError };
+    return { storage, files, error, domainError, unsupported };
   });
+  assert.equal(result.unsupported.status, 501);
+  assert.equal(result.unsupported.data.kind, "unsupported");
   assert.equal(result.storage.status, 200);
   assert.equal(result.storage.data, "browser");
   assert.equal(result.files.status, 200);

@@ -189,10 +189,39 @@ struct Request {
     params: Value,
 }
 
+type CommandHandlers = Arc<HashMap<&'static str, (RpcHandler, TauriRpcHandler)>>;
+
 #[derive(Clone)]
 pub struct UnifiedRpc {
     dependencies: Arc<RpcDependencies>,
-    commands: Arc<HashMap<&'static str, (RpcHandler, TauriRpcHandler)>>,
+    commands: CommandHandlers,
+}
+
+/// Filled once by the composition root after the application facade exists.
+/// A weak dependency graph avoids an idle HTTP actor retaining its own client.
+#[derive(Default)]
+pub struct RpcHttpRoutes(std::sync::OnceLock<(std::sync::Weak<RpcDependencies>, CommandHandlers)>);
+impl RpcHttpRoutes {
+    pub fn install(&self, rpc: &UnifiedRpc) -> anyhow::Result<()> {
+        self.0
+            .set((Arc::downgrade(&rpc.dependencies), rpc.commands.clone()))
+            .map_err(|_| anyhow::anyhow!("HTTP routes already installed"))
+    }
+}
+impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
+    fn build(&self) -> anyhow::Result<Router> {
+        let (dependencies, commands) = self
+            .0
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("HTTP routes not installed"))?;
+        Ok(UnifiedRpc {
+            dependencies: dependencies
+                .upgrade()
+                .ok_or_else(|| anyhow::anyhow!("application has shut down"))?,
+            commands: commands.clone(),
+        }
+        .router())
+    }
 }
 
 impl UnifiedRpc {
@@ -364,7 +393,7 @@ async fn http_call(
         )
     })?;
     // Sessions are required only for owner-scoped commands; ordinary calls may
-    // also be made by CLI clients without a browser cookie.
+    // use an anonymous owner. The listener authenticates every request before dispatch.
     let owner = RpcOwner::http(&headers)
         .unwrap_or_else(|_| RpcOwner(format!("http:{}", uuid::Uuid::new_v4())));
     rpc.call(&request.method, owner, request.params)
@@ -426,6 +455,21 @@ mod tests {
                     r#"{"method":"missing","params":{}}"#,
                     StatusCode::NOT_FOUND,
                     Some("unknown_method"),
+                ),
+                (
+                    r#"{"method":"open_that","params":{"path":"https://example.com"}}"#,
+                    StatusCode::NOT_IMPLEMENTED,
+                    Some("unsupported"),
+                ),
+                (
+                    r#"{"method":"url_delay_test","params":{"url":"http://127.0.0.1/"}}"#,
+                    StatusCode::NOT_IMPLEMENTED,
+                    Some("unsupported"),
+                ),
+                (
+                    r#"{"method":"open_app_config_dir","params":{}}"#,
+                    StatusCode::NOT_IMPLEMENTED,
+                    Some("unsupported"),
                 ),
                 (
                     r#"{"method":"quit_application","params":{}}"#,
@@ -666,6 +710,8 @@ mod tests {
             crate::client::tests::TestControlEndpoint::succeeding(),
         );
         args.http_frontend = Some(Frontend::Embedded(Arc::new(Assets)));
+        let routes = Arc::new(RpcHttpRoutes::default());
+        args.http_routes = routes.clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
@@ -673,21 +719,35 @@ mod tests {
             events: EventBus::new(),
         })
         .unwrap();
+        routes.install(&rpc).unwrap();
         tauri::async_runtime::block_on(async {
             let url = client
-                .set_debug_http_enabled(true, rpc.router())
+                .set_debug_http_enabled(true)
                 .await
                 .unwrap()
                 .url
                 .unwrap();
             let http = reqwest::Client::builder().no_proxy().build().unwrap();
-            assert!(http.get(&url).send().await.unwrap().status().is_success());
+            let base = url::Url::parse(&url)
+                .unwrap()
+                .origin()
+                .ascii_serialization();
+            assert_eq!(
+                http.get(&base).send().await.unwrap().status(),
+                StatusCode::UNAUTHORIZED
+            );
+            assert_eq!(
+                http.get(&url).send().await.unwrap().status(),
+                StatusCode::UNAUTHORIZED
+            );
             client.request_shutdown();
             tokio::time::timeout(std::time::Duration::from_secs(5), client.wait_shutdown())
                 .await
                 .unwrap();
             assert!(http.get(url).send().await.is_err());
             assert!(client.debug_http_status().await.is_err());
+            drop(rpc);
+            assert!(crate::server::debug_http::HttpRoutes::build(&*routes).is_err());
         });
     }
 
@@ -714,6 +774,8 @@ mod tests {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
             ))),
         });
+        let routes = Arc::new(RpcHttpRoutes::default());
+        args.http_routes = routes.clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
@@ -721,9 +783,10 @@ mod tests {
             events: EventBus::new(),
         })
         .unwrap();
+        routes.install(&rpc).unwrap();
         tauri::async_runtime::block_on(async {
             let url = client
-                .set_debug_http_enabled(true, rpc.router())
+                .set_debug_http_enabled(true)
                 .await
                 .unwrap()
                 .url

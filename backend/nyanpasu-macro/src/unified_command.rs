@@ -4,6 +4,7 @@ use syn::{Error, FnArg, ItemFn, Pat, ReturnType, Type, spanned::Spanned};
 
 #[derive(Default)]
 pub struct Options {
+    http: bool,
     result: bool,
     owner: bool,
 }
@@ -14,9 +15,10 @@ impl syn::parse::Parse for Options {
         while !input.is_empty() {
             let option: syn::Ident = input.parse()?;
             match option.to_string().as_str() {
+                "http" => options.http = true,
                 "result" => options.result = true,
                 "owner" => options.owner = true,
-                _ => return Err(Error::new(option.span(), "expected result or owner")),
+                _ => return Err(Error::new(option.span(), "expected http, result or owner")),
             }
             if !input.is_empty() {
                 input.parse::<syn::Token![,]>()?;
@@ -65,7 +67,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let mut http_args = Vec::new();
     let mut fields = Vec::new();
     let mut field_names = Vec::new();
-    let mut http_supported = can_share_with_http(original, options.owner);
+    let mut http_supported = options.http && can_share_with_http(original, options.owner);
     let mut tauri_supported = true;
 
     for argument in implementation.sig.inputs.iter_mut() {
@@ -313,7 +315,13 @@ fn parser(fields: &[TokenStream], names: &[syn::Ident]) -> TokenStream {
 }
 
 fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
-    if !signature.generics.params.is_empty() || matches!(signature.output, ReturnType::Default) {
+    if signature
+        .generics
+        .params
+        .iter()
+        .any(|p| !matches!(p, syn::GenericParam::Lifetime(_)))
+        || matches!(signature.output, ReturnType::Default)
+    {
         return false;
     }
     for argument in &signature.inputs {
@@ -421,7 +429,7 @@ mod tests {
     #[test]
     fn explicit_result_alias_is_unwrapped_and_owner_is_injected() {
         let command = syn::parse_quote! {
-            #[nyanpasu_macro::rpc(result, owner)]
+            #[nyanpasu_macro::rpc(http, result, owner)]
             pub async fn query_logs(window: tauri::Window, request: Query) -> LogResult<Page> { todo!() }
         };
         let expanded = expand(command).unwrap().to_string();
@@ -437,13 +445,47 @@ mod tests {
 
     #[test]
     fn dependency_free_commands_can_use_http() {
-        let command = syn::parse_quote! { pub fn functions() -> Vec<String> { vec![] } };
+        let command = syn::parse_quote! { #[nyanpasu_macro::rpc(http)] pub fn functions() -> Vec<String> { vec![] } };
         assert!(
             !expand(command)
                 .unwrap()
                 .to_string()
                 .contains("RpcError :: unsupported")
         );
+    }
+
+    #[test]
+    fn http_requires_opt_in_and_accepts_only_lifetime_generics() {
+        for (source, supported) in [
+            (
+                "pub fn open_that(path: String) -> Result<()> { todo!() }",
+                false,
+            ),
+            (
+                "#[nyanpasu_macro::rpc(http)] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
+                true,
+            ),
+            (
+                "#[nyanpasu_macro::rpc(http)] pub fn generic<T>() -> Result<T> { todo!() }",
+                false,
+            ),
+            (
+                "#[nyanpasu_macro::rpc(http)] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
+                false,
+            ),
+            (
+                "#[nyanpasu_macro::rpc(http)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
+                false,
+            ),
+        ] {
+            let command: ItemFn = syn::parse_str(source).unwrap();
+            let expanded = expand(command).unwrap().to_string();
+            assert_eq!(
+                !expanded.contains("RpcError :: unsupported"),
+                supported,
+                "{source}"
+            );
+        }
     }
 
     #[test]

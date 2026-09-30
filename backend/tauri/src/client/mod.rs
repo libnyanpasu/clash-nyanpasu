@@ -81,6 +81,7 @@ pub struct ClientSetupArgs {
     pub bundle_metadata: crate::bundle::BundleMetadata,
     pub logging: logs::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
+    pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
     pub ui_sink: Arc<dyn UiEventSink>,
@@ -230,6 +231,7 @@ impl NyanpasuClient {
             bundle_metadata,
             logging,
             http_frontend,
+            http_routes,
             paths,
             runtime_paths,
             ui_sink,
@@ -323,6 +325,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             http_frontend,
+            http_routes,
             traffic_store,
             shutdown,
             tasks,
@@ -355,11 +358,13 @@ impl NyanpasuClient {
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
         http_frontend: Option<crate::server::debug_http::Frontend>,
+        http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
         traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> anyhow::Result<Self> {
-        let debug_http = crate::server::debug_http::HttpServerClient::spawn(http_frontend).await?;
+        let debug_http =
+            crate::server::debug_http::HttpServerClient::spawn(http_frontend, http_routes).await?;
         tasks.spawn({
             let (http, token) = (debug_http.clone(), shutdown.child_token());
             async move {
@@ -505,15 +510,11 @@ impl NyanpasuClient {
     pub async fn set_debug_http_enabled(
         &self,
         enabled: bool,
-        router: axum::Router,
     ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
-        self.inner.debug_http.set_enabled(enabled, router).await
+        self.inner.debug_http.set_enabled(enabled).await
     }
     pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
-        self.inner
-            .debug_http
-            .set_enabled(false, axum::Router::new())
-            .await?;
+        self.inner.debug_http.set_enabled(false).await?;
         Ok(())
     }
 
@@ -2190,6 +2191,7 @@ pub(crate) mod tests {
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             None,
+            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -2471,6 +2473,7 @@ pub(crate) mod tests {
             },
             logging: logs::test_setup(paths.app_logs_dir()),
             http_frontend: None,
+            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -2822,6 +2825,7 @@ pub(crate) mod tests {
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             None,
+            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -2940,6 +2944,7 @@ pub(crate) mod tests {
             },
             logging: logs::test_setup(paths.app_logs_dir()),
             http_frontend: None,
+            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             runtime_paths,
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -3926,6 +3931,7 @@ pub(crate) mod tests {
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
                 None,
+                Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
                 None,
                 tokio_util::sync::CancellationToken::new(),
                 tokio_util::task::TaskTracker::new(),

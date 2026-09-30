@@ -31,7 +31,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     let command_set = CommandSet::<tauri::Wry>::new(
         collect_commands![
             ipc::get_debug_http_status,
-            ipc::set_debug_http_enabled,
             // Read-only commands
             ipc::list_log_files,
             ipc::get_sys_proxy,
@@ -87,6 +86,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_system_accent_color,
         ],
         collect_commands![
+            ipc::set_debug_http_enabled,
             ipc::get_configuration_status,
             ipc::retry_configuration_runtime,
             ipc::retry_configuration_effect,
@@ -360,6 +360,10 @@ mod tests {
         assert!(!transport_generated.contains("getProfiles:"));
         assert!(generated.contains("invokeRpcCommand as __RPC_INVOKE"));
         assert!(!generated.contains("__TAURI_INVOKE"));
+        let (_, queries) = generated.split_once("export const queries =").unwrap();
+        let (queries, mutations) = queries.split_once("export const mutations =").unwrap();
+        assert!(!queries.contains("setDebugHttpEnabled:"));
+        assert!(mutations.contains("setDebugHttpEnabled:"));
         assert!(!generated.contains("__TAURI_EVENT"));
         assert!(!generated.contains("@tauri-apps/api/"));
         // PR-3 T08: the profile IPC surface now speaks the domain types, so the

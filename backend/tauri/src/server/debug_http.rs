@@ -32,10 +32,24 @@ pub struct DebugHttpStatus {
     pub url: Option<String>,
 }
 
+/// Infrastructure is assembled by the composition root, never by an enable command.
+pub trait HttpRoutes: Send + Sync + 'static {
+    fn build(&self) -> Result<Router>;
+}
+impl<F: Fn() -> Result<Router> + Send + Sync + 'static> HttpRoutes for F {
+    fn build(&self) -> Result<Router> {
+        self()
+    }
+}
+
+pub struct HttpServerArgs {
+    pub frontend: Option<Frontend>,
+    pub routes: Arc<dyn HttpRoutes>,
+}
+
 pub enum Message {
     SetEnabled {
         enabled: bool,
-        router: Router,
         reply: RpcReplyPort<Result<DebugHttpStatus>>,
     },
     Status(RpcReplyPort<DebugHttpStatus>),
@@ -52,6 +66,7 @@ struct Running {
 pub struct HttpServerActor;
 pub struct HttpServerState {
     frontend: Option<Frontend>,
+    routes: Arc<dyn HttpRoutes>,
     running: Option<Running>,
     generation: u64,
 }
@@ -82,15 +97,16 @@ impl HttpServerState {
 impl Actor for HttpServerActor {
     type Msg = Message;
     type State = HttpServerState;
-    type Arguments = Option<Frontend>;
+    type Arguments = HttpServerArgs;
 
     async fn pre_start(
         &self,
         _: ActorRef<Message>,
-        frontend: Option<Frontend>,
+        args: HttpServerArgs,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(HttpServerState {
-            frontend,
+            frontend: args.frontend,
+            routes: args.routes,
             running: None,
             generation: 0,
         })
@@ -115,11 +131,7 @@ impl Actor for HttpServerActor {
                     state.stop().await;
                 }
             }
-            Message::SetEnabled {
-                enabled,
-                router,
-                reply,
-            } => {
+            Message::SetEnabled { enabled, reply } => {
                 let result = if !enabled {
                     state.stop().await;
                     Ok(state.status())
@@ -134,13 +146,17 @@ impl Actor for HttpServerActor {
                         let listener =
                             TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
                         let authority = listener.local_addr()?.to_string();
-                        let url = format!("http://{authority}");
+                        let access_token = uuid::Uuid::new_v4().to_string();
+                        let url = format!("http://{authority}/?access_token={access_token}");
                         let cancellation = CancellationToken::new();
-                        let app = router
+                        let app = state
+                            .routes
+                            .build()?
                             .fallback_service(frontend_router(frontend, cancellation.clone())?)
                             .layer(middleware::from_fn_with_state(
                                 LocalSession {
                                     authority,
+                                    access_token,
                                     shutdown: cancellation.clone(),
                                 },
                                 local_session,
@@ -191,23 +207,18 @@ struct HttpServerClientInner {
     actor: ActorRef<Message>,
 }
 impl HttpServerClient {
-    pub async fn spawn(frontend: Option<Frontend>) -> Result<Self> {
+    pub async fn spawn(frontend: Option<Frontend>, routes: Arc<dyn HttpRoutes>) -> Result<Self> {
         Ok(Self(Arc::new(HttpServerClientInner {
-            actor: Actor::spawn(None, HttpServerActor, frontend).await?.0,
+            actor: Actor::spawn(None, HttpServerActor, HttpServerArgs { frontend, routes })
+                .await?
+                .0,
         })))
     }
-    pub async fn set_enabled(&self, enabled: bool, router: Router) -> Result<DebugHttpStatus> {
+    pub async fn set_enabled(&self, enabled: bool) -> Result<DebugHttpStatus> {
         match self
             .0
             .actor
-            .call(
-                |reply| Message::SetEnabled {
-                    enabled,
-                    router,
-                    reply,
-                },
-                Some(Duration::from_secs(10)),
-            )
+            .call(|reply| Message::SetEnabled { enabled, reply }, None)
             .await?
         {
             CallResult::Success(result) => result,
@@ -217,17 +228,12 @@ impl HttpServerClient {
         }
     }
     pub async fn shutdown(&self) -> Result<()> {
-        self.set_enabled(false, Router::new()).await?;
+        self.set_enabled(false).await?;
         self.0.actor.get_cell().drain_and_wait(None).await?;
         Ok(())
     }
     pub async fn status(&self) -> Result<DebugHttpStatus> {
-        match self
-            .0
-            .actor
-            .call(Message::Status, Some(Duration::from_secs(5)))
-            .await?
-        {
+        match self.0.actor.call(Message::Status, None).await? {
             CallResult::Success(result) => Ok(result),
             _ => anyhow::bail!("HTTP server status unavailable"),
         }
@@ -243,12 +249,13 @@ impl Drop for HttpServerClientInner {
 #[derive(Clone)]
 struct LocalSession {
     authority: String,
+    access_token: String,
     shutdown: CancellationToken,
 }
 
 async fn local_session(
     State(state): State<LocalSession>,
-    mut request: Request,
+    request: Request,
     next: Next,
 ) -> Response {
     let authority = &state.authority;
@@ -262,32 +269,49 @@ async fn local_session(
     {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let existing = request
+    let authenticated = request
         .headers()
         .get("cookie")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let valid = existing
+        .unwrap_or("")
         .split(';')
         .map(str::trim)
-        .find_map(|s| s.strip_prefix("nyanpasu_http_session="))
-        .is_some_and(|s| uuid::Uuid::parse_str(s).is_ok());
-    let cookie = if valid {
-        None
-    } else {
-        let session = uuid::Uuid::new_v4();
-        let value = format!("nyanpasu_http_session={session}");
-        request
-            .headers_mut()
-            .insert("cookie", HeaderValue::from_str(&value).unwrap());
-        Some(format!("{value}; HttpOnly; SameSite=Strict; Path=/"))
-    };
-    let mut response = next.run(request).await;
-    if let Some(cookie) = cookie {
+        .any(|c| c.strip_prefix("nyanpasu_http_access=") == Some(state.access_token.as_str()));
+    let bootstrap = request.method() == Method::GET
+        && request.uri().path() == "/"
+        && url::form_urlencoded::parse(request.uri().query().unwrap_or("").as_bytes())
+            .any(|(key, value)| key == "access_token" && value == state.access_token);
+    if bootstrap {
+        let mut response = axum::response::Redirect::to("/").into_response();
+        for cookie in [
+            format!(
+                "nyanpasu_http_access={}; HttpOnly; SameSite=Strict; Path=/",
+                state.access_token
+            ),
+            format!(
+                "nyanpasu_http_session={}; HttpOnly; SameSite=Strict; Path=/",
+                uuid::Uuid::new_v4()
+            ),
+        ] {
+            response
+                .headers_mut()
+                .append("set-cookie", cookie.parse().unwrap());
+        }
         response
             .headers_mut()
-            .insert("set-cookie", cookie.parse().unwrap());
+            .insert("cache-control", HeaderValue::from_static("no-store"));
+        response
+            .headers_mut()
+            .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+        return response;
     }
+    if !authenticated {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let mut response = next.run(request).await;
+    response
+        .headers_mut()
+        .insert("cache-control", HeaderValue::from_static("no-store"));
     let (parts, body) = response.into_parts();
     Response::from_parts(
         parts,
@@ -464,7 +488,7 @@ async fn proxy(
     let (parts, body) = request.into_parts();
     let mut builder = proxy.client.request(parts.method, target);
     for (name, value) in &parts.headers {
-        if !hop_header(name.as_str(), &parts.headers) {
+        if name != "cookie" && !hop_header(name.as_str(), &parts.headers) {
             builder = builder.header(name, value);
         }
     }
@@ -496,6 +520,48 @@ mod tests {
     use super::*;
     use axum::{body::to_bytes, http::Request as HttpRequest, routing::get};
     use tower::ServiceExt;
+
+    async fn cookie_from_entry(entry: &str) -> String {
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap()
+            .get(entry)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(response.headers()["location"], "/");
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        response
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .map(|v| {
+                let cookie = v.to_str().unwrap();
+                assert!(cookie.contains("HttpOnly; SameSite=Strict"));
+                cookie.split(';').next().unwrap().to_owned()
+            })
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+    async fn authenticated_client(entry: &str) -> (reqwest::Client, String) {
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", cookie_from_entry(entry).await.parse().unwrap());
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .default_headers(headers)
+            .build()
+            .unwrap();
+        (
+            client,
+            url::Url::parse(entry)
+                .unwrap()
+                .origin()
+                .ascii_serialization(),
+        )
+    }
 
     struct Assets;
     impl FrontendAssets for Assets {
@@ -566,27 +632,74 @@ mod tests {
 
     #[tokio::test]
     async fn actor_serializes_start_stop_and_rejects_foreign_origins() {
-        let server = HttpServerClient::spawn(Some(Frontend::Embedded(Arc::new(Assets))))
-            .await
-            .unwrap();
+        let server = HttpServerClient::spawn(
+            Some(Frontend::Embedded(Arc::new(Assets))),
+            Arc::new(|| Ok(Router::new().route("/bridge/test", get(|| async { "local rpc" })))),
+        )
+        .await
+        .unwrap();
         assert!(!server.status().await.unwrap().enabled);
-        let rpc = Router::new().route("/bridge/test", get(|| async { "local rpc" }));
-        let (first, second) = tokio::join!(
-            server.set_enabled(true, rpc.clone()),
-            server.set_enabled(true, rpc)
-        );
+        let (first, second) = tokio::join!(server.set_enabled(true), server.set_enabled(true));
         let first = first.unwrap();
         assert_eq!(first, second.unwrap());
-        let url = first.url.unwrap();
-        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let entry = first.url.unwrap();
+        let (client, url) = authenticated_client(&entry).await;
+        let unauthorized = reqwest::Client::builder().no_proxy().build().unwrap();
+        for path in [
+            "/",
+            "/assets/app.js",
+            "/bridge/rpc",
+            "/bridge/events",
+            "/bridge/connection-details",
+        ] {
+            assert_eq!(
+                unauthorized
+                    .get(format!("{url}{path}"))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::UNAUTHORIZED
+            );
+            assert_eq!(
+                unauthorized
+                    .get(format!("{url}{path}"))
+                    .header(
+                        "cookie",
+                        format!(
+                            "nyanpasu_http_access={}; nyanpasu_http_session={}",
+                            uuid::Uuid::new_v4(),
+                            uuid::Uuid::new_v4()
+                        )
+                    )
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        assert_eq!(
+            unauthorized
+                .post(format!("{url}/bridge/rpc"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            unauthorized
+                .get(format!("{url}/?access_token=invalid"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+
         let page = client.get(&url).send().await.unwrap();
         assert_eq!(page.status(), StatusCode::OK);
-        assert!(
-            page.headers()["set-cookie"]
-                .to_str()
-                .unwrap()
-                .contains("HttpOnly; SameSite=Strict")
-        );
         assert_eq!(
             client
                 .get(format!("{url}/bridge/test"))
@@ -618,36 +731,33 @@ mod tests {
                 .status(),
             StatusCode::FORBIDDEN
         );
-        assert!(
-            !server
-                .set_enabled(false, Router::new())
-                .await
-                .unwrap()
-                .enabled
-        );
+        assert!(!server.set_enabled(false).await.unwrap().enabled);
         assert!(client.get(&url).send().await.is_err());
-        assert!(
-            !server
-                .set_enabled(false, Router::new())
-                .await
-                .unwrap()
-                .enabled
+        assert!(!server.set_enabled(false).await.unwrap().enabled);
+        let restarted = server.set_enabled(true).await.unwrap();
+        let next_entry = restarted.url.unwrap();
+        assert_ne!(
+            url::Url::parse(&entry).unwrap().query(),
+            url::Url::parse(&next_entry).unwrap().query()
         );
-        assert!(
-            server
-                .set_enabled(true, Router::new())
-                .await
-                .unwrap()
-                .enabled
+        let next_url = url::Url::parse(&next_entry)
+            .unwrap()
+            .origin()
+            .ascii_serialization();
+        assert_eq!(
+            client.get(&next_url).send().await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
         );
-        server.set_enabled(false, Router::new()).await.unwrap();
+        let (next_client, next_url) = authenticated_client(&next_entry).await;
+        assert_eq!(
+            next_client.get(&next_url).send().await.unwrap().status(),
+            StatusCode::OK
+        );
+        server.set_enabled(false).await.unwrap();
     }
 
     #[tokio::test]
     async fn stopping_closes_an_open_event_stream() {
-        let server = HttpServerClient::spawn(Some(Frontend::Embedded(Arc::new(Assets))))
-            .await
-            .unwrap();
         let events = Router::new().route(
             "/bridge/events",
             get(|| async {
@@ -659,8 +769,14 @@ mod tests {
                 axum::response::Sse::new(ready.chain(futures::stream::pending()))
             }),
         );
-        let url = server.set_enabled(true, events).await.unwrap().url.unwrap();
-        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let server = HttpServerClient::spawn(
+            Some(Frontend::Embedded(Arc::new(Assets))),
+            Arc::new(move || Ok(events.clone())),
+        )
+        .await
+        .unwrap();
+        let entry = server.set_enabled(true).await.unwrap().url.unwrap();
+        let (client, url) = authenticated_client(&entry).await;
         let mut stream = client
             .get(format!("{url}/bridge/events"))
             .send()
@@ -668,7 +784,7 @@ mod tests {
             .unwrap()
             .bytes_stream();
         assert!(stream.next().await.unwrap().unwrap().starts_with(b"data:"));
-        server.set_enabled(false, Router::new()).await.unwrap();
+        server.set_enabled(false).await.unwrap();
         assert!(
             tokio::time::timeout(Duration::from_secs(1), stream.next())
                 .await
@@ -680,8 +796,10 @@ mod tests {
 
     #[tokio::test]
     async fn unavailable_frontend_keeps_server_disabled() {
-        let server = HttpServerClient::spawn(None).await.unwrap();
-        assert!(server.set_enabled(true, Router::new()).await.is_err());
+        let server = HttpServerClient::spawn(None, Arc::new(|| Ok(Router::new())))
+            .await
+            .unwrap();
+        assert!(server.set_enabled(true).await.is_err());
         assert!(!server.status().await.unwrap().enabled);
     }
 
@@ -691,6 +809,7 @@ mod tests {
             ws: Result<WebSocketUpgrade, axum::extract::ws::rejection::WebSocketUpgradeRejection>,
             request: Request,
         ) -> Response {
+            assert!(!request.headers().contains_key("cookie"));
             if let Ok(ws) = ws {
                 return ws
                     .protocols(["vite-hmr"])
@@ -719,19 +838,14 @@ mod tests {
                 .await
                 .unwrap();
         });
-        let server = HttpServerClient::spawn(Some(Frontend::Dev(base.parse().unwrap())))
-            .await
-            .unwrap();
-        let url = server
-            .set_enabled(
-                true,
-                Router::new().route("/bridge/test", get(|| async { "rpc" })),
-            )
-            .await
-            .unwrap()
-            .url
-            .unwrap();
-        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let server = HttpServerClient::spawn(
+            Some(Frontend::Dev(base.parse().unwrap())),
+            Arc::new(|| Ok(Router::new().route("/bridge/test", get(|| async { "rpc" })))),
+        )
+        .await
+        .unwrap();
+        let url = server.set_enabled(true).await.unwrap().url.unwrap();
+        let (client, url) = authenticated_client(&url).await;
         let response = client
             .get(format!("{url}/@vite/client?token=a"))
             .send()
@@ -763,6 +877,13 @@ mod tests {
         let mut request = format!("{}/?token=hmr", url.replace("http:", "ws:"))
             .into_client_request()
             .unwrap();
+        request.headers_mut().insert(
+            "cookie",
+            cookie_from_entry(&server.status().await.unwrap().url.unwrap())
+                .await
+                .parse()
+                .unwrap(),
+        );
         request
             .headers_mut()
             .insert("sec-websocket-protocol", "vite-hmr".parse().unwrap());
@@ -773,7 +894,7 @@ mod tests {
             ws.next().await.unwrap().unwrap(),
             WsMessage::Text("update".into())
         );
-        server.set_enabled(false, Router::new()).await.unwrap();
+        server.set_enabled(false).await.unwrap();
         assert!(
             tokio::time::timeout(Duration::from_secs(1), ws.next())
                 .await

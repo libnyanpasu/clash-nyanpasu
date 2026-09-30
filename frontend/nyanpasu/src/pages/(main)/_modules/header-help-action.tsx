@@ -10,10 +10,16 @@ import { m } from '@/paraglide/messages'
 import { formatEnvInfos } from '@/utils'
 import { rpc } from '@nyanpasu/interface'
 import { Link } from '@tanstack/react-router'
+import { isTauri } from '@tauri-apps/api/core'
+
+async function openHelpLink(url: string) {
+  if (isTauri()) return rpc.openThat(url)
+  window.location.assign(url)
+}
 
 const WikiItem = () => {
   const handleClick = useLockFn(async () => {
-    await rpc.openThat('https://nyanpasu.org')
+    await openHelpLink('https://nyanpasu.org')
   })
 
   return (
@@ -45,7 +51,7 @@ const IssuesItem = () => {
       template: 'bug_report.yaml',
     })
 
-    return rpc.openThat(
+    return openHelpLink(
       'https://github.com/libnyanpasu/clash-nyanpasu/issues/new?' +
         params.toString() +
         // envs can't be serialized

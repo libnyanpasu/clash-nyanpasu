@@ -135,9 +135,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &tasks,
     )?;
     let traffic_store = open_traffic_store(&paths);
+    let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
+    app.manage(http_routes.clone());
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         http_frontend: Some(debug_http_frontend(&app_handle)?),
+        http_routes,
         jobs,
         logging: crate::client::logs::LoggingSetup {
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
@@ -210,6 +213,8 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
     };
     let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies)?;
+    app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()
+        .install(&rpc)?;
     anyhow::ensure!(app.manage(rpc), "unified RPC state was already registered");
     Ok(())
 }

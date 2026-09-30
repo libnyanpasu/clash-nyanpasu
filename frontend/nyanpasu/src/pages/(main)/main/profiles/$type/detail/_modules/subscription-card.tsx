@@ -20,6 +20,7 @@ import {
   getRemoteSource,
   isTransformItem,
   useProfile,
+  useProfileSyncStatus,
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import UpdateOptionEditor from './update-option-editor'
@@ -32,10 +33,10 @@ export const SubscriptionCard = ({
   profile: ProfileItem_Serialize
 }) => {
   const { update } = useProfile()
+  const syncStatus = useProfileSyncStatus(profile.uid)
 
   const remote = getRemoteSource(profile)
   const updatedAt = remote?.updated_at ?? null
-  const updateIntervalMinutes = remote?.option.update_interval_minutes
   const expire = remote?.subscription?.expire
 
   const { progress, total, used } = useMemo(() => {
@@ -109,12 +110,12 @@ export const SubscriptionCard = ({
               })}
             </TooltipTrigger>
 
-            {updatedAt && updateIntervalMinutes ? (
+            {syncStatus.data?.next_run_at ? (
               <TooltipContent side="bottom">
                 {m.profile_subscription_next_update_at({
-                  next: dayjs(
-                    updatedAt * 1000 + updateIntervalMinutes * 60 * 1000,
-                  ).format('YYYY-MM-DD HH:mm:ss'),
+                  next: dayjs(syncStatus.data.next_run_at).format(
+                    'YYYY-MM-DD HH:mm:ss',
+                  ),
                 })}
               </TooltipContent>
             ) : null}

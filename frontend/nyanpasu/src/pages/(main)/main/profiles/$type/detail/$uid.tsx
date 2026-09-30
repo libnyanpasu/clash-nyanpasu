@@ -9,6 +9,7 @@ import ChianEditorCard from './_modules/chian-editor-card'
 import DetialHeader from './_modules/detial-header'
 import ProfileNameEditor from './_modules/profile-name-editor'
 import { SubscriptionCard } from './_modules/subscription-card'
+import { SyncHistoryCard } from './_modules/sync-history-card'
 
 export const Route = createFileRoute('/(main)/main/profiles/$type/detail/$uid')(
   {
@@ -51,6 +52,9 @@ function RouteComponent() {
 
         {isProxyProfile(currentProfile) && (
           <ChianEditorCard profile={currentProfile} />
+        )}
+        {isRemoteItem(currentProfile) && (
+          <SyncHistoryCard uid={currentProfile.uid} />
         )}
       </div>
     </>

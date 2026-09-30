@@ -13,6 +13,8 @@
     "resolveJsonModule": true,
     "types": ["node", "vitest/browser"],
     "paths": {
+      "react": ["./frontend/nyanpasu/node_modules/@types/react"],
+      "react/*": ["./frontend/nyanpasu/node_modules/@types/react/*"],
       "@/*": ["./frontend/nyanpasu/src/*"],
       "@interface/*": ["./frontend/interface/src/*"],
       "@nyanpasu/interface": ["./frontend/interface/src/index.ts"],

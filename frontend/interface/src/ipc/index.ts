@@ -47,3 +47,4 @@ export {
   attentionSources,
   sourceMessage,
 } from './configuration-status'
+export * from './use-profile-sync'

@@ -3775,6 +3775,8 @@ export type TrafficSummary = {
   last_sample_at: number | null
   core_bytes: Bytes
   active_connections: number
+  /**  Closed in this session, including those not flushed yet. */
+  closed_connections: number
   current_rate: Rate | null
 }
 

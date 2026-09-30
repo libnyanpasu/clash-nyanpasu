@@ -1,11 +1,10 @@
 use crate::{accounting::FlushBatch, model::*, ports::TrafficStore};
-use ::redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
+use ::redb::{Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{fmt::Display, fs, ops::Bound, path::Path};
 
 /// Statistics are disposable: a file written by another schema is wiped, never migrated.
 const SCHEMA_VERSION: u64 = 1;
-const MAX_PAGE: usize = 500;
 
 const VERSION_KEY: &str = "version";
 const META_KEY: &str = "meta";
@@ -169,7 +168,7 @@ impl TrafficStore for RedbTrafficStore {
         before: Option<&ClosedCursor>,
         limit: usize,
     ) -> TrafficResult<ClosedPage> {
-        let limit = limit.clamp(1, MAX_PAGE);
+        let limit = limit.clamp(1, MAX_CLOSED_PAGE);
         let txn = self.db.begin_read().map_err(storage)?;
         let table = txn.open_table(CLOSED).map_err(storage)?;
         let upper = before.map_or(Bound::Unbounded, |c| {
@@ -196,6 +195,12 @@ impl TrafficStore for RedbTrafficStore {
             None
         };
         Ok(ClosedPage { connections, next })
+    }
+
+    fn closed_count(&self) -> TrafficResult<u64> {
+        let txn = self.db.begin_read().map_err(storage)?;
+        let table = txn.open_table(CLOSED).map_err(storage)?;
+        table.len().map_err(storage)
     }
 
     fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>> {
@@ -261,11 +266,6 @@ fn decode<T: DeserializeOwned>(bytes: &[u8]) -> TrafficResult<T> {
 
 fn bytes_of((upload, download): (u64, u64)) -> Bytes {
     Bytes { upload, download }
-}
-
-/// Connections closed before the epoch sort first.
-fn closed_key(closed_at: i64) -> u64 {
-    u64::try_from(closed_at).unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -491,6 +491,72 @@ mod tests {
         let third = store.closed_connections(second.next.as_ref(), 2).unwrap();
         assert_eq!(ids(&third), ["a"]);
         assert_eq!(third.next, None);
+    }
+
+    #[test]
+    fn merged_pages_walk_stored_and_pending_connections_once() {
+        let dir = TempDir::new().unwrap();
+        let store = open(&dir);
+        store
+            .flush(&FlushBatch {
+                closed: vec![closed("b", 20), closed("d", 40), closed("f", 60)],
+                ..batch("p1")
+            })
+            .unwrap();
+        let pending = [
+            closed("g", 70),
+            closed("e", 50),
+            closed("c", 30),
+            closed("a", 10),
+        ];
+
+        let mut seen = Vec::new();
+        let mut before = None;
+        loop {
+            let stored = store.closed_connections(before.as_ref(), 2).unwrap();
+            let page = merge_closed_page(stored, &pending, before.as_ref(), 2);
+            seen.extend(page.connections.iter().map(|c| c.id.clone()));
+            match page.next {
+                Some(next) => before = Some(next),
+                None => break,
+            }
+        }
+        assert_eq!(seen, ["g", "f", "e", "d", "c", "b", "a"]);
+    }
+
+    #[test]
+    fn a_flush_between_pages_neither_skips_nor_repeats() {
+        let dir = TempDir::new().unwrap();
+        let store = open(&dir);
+        store
+            .flush(&FlushBatch {
+                closed: vec![closed("a", 10), closed("b", 20)],
+                ..batch("p1")
+            })
+            .unwrap();
+        let pending = vec![closed("c", 30), closed("d", 40)];
+
+        let stored = store.closed_connections(None, 2).unwrap();
+        let first = merge_closed_page(stored, &pending, None, 2);
+        let ids = |page: &ClosedPage| {
+            page.connections
+                .iter()
+                .map(|c| c.id.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&first), ["d", "c"]);
+
+        // The pending connections move to the store before the next page.
+        store
+            .flush(&FlushBatch {
+                closed: pending,
+                ..batch("p1")
+            })
+            .unwrap();
+        let before = first.next;
+        let stored = store.closed_connections(before.as_ref(), 2).unwrap();
+        let second = merge_closed_page(stored, &[], before.as_ref(), 2);
+        assert_eq!(ids(&second), ["b", "a"]);
     }
 
     #[test]

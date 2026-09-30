@@ -68,6 +68,10 @@ impl TrafficStore for FlakyStore {
         self.inner.closed_connections(before, limit)
     }
 
+    fn closed_count(&self) -> TrafficResult<u64> {
+        self.inner.closed_count()
+    }
+
     fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>> {
         self.inner.totals(group)
     }
@@ -460,6 +464,7 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
             next: None
         }
     );
+    assert_eq!(h.client.summary().await.unwrap().closed_connections, 0);
 
     // The next flush carries the wipe again.
     h.store.fail_flush(false);
@@ -522,7 +527,7 @@ async fn restart_with_another_profile_wipes_the_store() {
 }
 
 #[tokio::test]
-async fn closed_connections_appear_after_flush() {
+async fn closed_connections_appear_before_and_after_flush() {
     let h = Harness::new("p1").await;
     h.client
         .observe(Some(frame(
@@ -544,17 +549,23 @@ async fn closed_connections_appear_after_flush() {
         .await
         .unwrap();
 
+    // Not stored yet, but already listed ...
+    let pending = h.client.closed_connections(None, 10).await.unwrap();
     assert!(
-        h.client
+        h.store
             .closed_connections(None, 10)
-            .await
             .unwrap()
             .connections
             .is_empty()
     );
 
+    assert_eq!(h.client.summary().await.unwrap().closed_connections, 1);
+
+    // ... and listed once more after the flush moves it to the store.
     h.client.flush().await.unwrap();
     let page = h.client.closed_connections(None, 10).await.unwrap();
+    assert_eq!(page, pending);
+    assert_eq!(h.client.summary().await.unwrap().closed_connections, 1);
     assert_eq!(page.next, None);
     assert_eq!(page.connections.len(), 1);
     let closed = &page.connections[0];

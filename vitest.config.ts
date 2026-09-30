@@ -19,30 +19,38 @@ export default defineConfig({
       {
         plugins: [react()],
         resolve: {
-          alias: {
-            '@': path.resolve('frontend/nyanpasu/src'),
-            '@interface': path.resolve('frontend/interface/src'),
-            '@nyanpasu/interface': path.resolve(
-              'frontend/interface/src/index.ts',
-            ),
-            '@nyanpasu/utils': path.resolve('frontend/utils/src/index.ts'),
-            '@tauri-apps/api': path.resolve(
-              'frontend/interface/node_modules/@tauri-apps/api',
-            ),
-            '@tanstack/react-query': path.resolve(
-              'frontend/interface/node_modules/@tanstack/react-query',
-            ),
-            clsx: path.resolve('frontend/utils/node_modules/clsx'),
-            'react-use': path.resolve(
-              'frontend/interface/node_modules/react-use',
-            ),
-            'tailwind-merge': path.resolve(
-              'frontend/utils/node_modules/tailwind-merge',
-            ),
-            'vitest-browser-react': path.resolve(
-              'frontend/interface/node_modules/vitest-browser-react',
-            ),
-          },
+          alias: [
+            ...Object.entries({
+              '@': path.resolve('frontend/nyanpasu/src'),
+              '@interface': path.resolve('frontend/interface/src'),
+              '@nyanpasu/interface': path.resolve(
+                'frontend/interface/src/index.ts',
+              ),
+              '@nyanpasu/utils': path.resolve('frontend/utils/src/index.ts'),
+              '@tauri-apps/api': path.resolve(
+                'frontend/interface/node_modules/@tauri-apps/api',
+              ),
+              '@tanstack/react-query': path.resolve(
+                'frontend/interface/node_modules/@tanstack/react-query',
+              ),
+              clsx: path.resolve('frontend/utils/node_modules/clsx'),
+              'react-use': path.resolve(
+                'frontend/interface/node_modules/react-use',
+              ),
+              'tailwind-merge': path.resolve(
+                'frontend/utils/node_modules/tailwind-merge',
+              ),
+              'vitest-browser-react': path.resolve(
+                'frontend/interface/node_modules/vitest-browser-react',
+              ),
+            }).map(([find, replacement]) => ({ find, replacement })),
+            {
+              find: /^~icons\/.*$/,
+              replacement: path.resolve(
+                'frontend/nyanpasu/tests/icon-stub.tsx',
+              ),
+            },
+          ],
         },
         optimizeDeps: {
           include: [

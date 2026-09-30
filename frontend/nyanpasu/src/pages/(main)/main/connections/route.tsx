@@ -26,6 +26,7 @@ export const Route = createFileRoute('/(main)/main/connections')({
   component: RouteComponent,
   validateSearch: z.object({
     proxy: z.string().optional().nullable(),
+    status: z.enum(['active', 'closed']).optional(),
   }),
 })
 
@@ -72,10 +73,12 @@ const Item = ({
           asChild
         >
           <Link
+            from={Route.fullPath}
             to="."
-            search={{
+            search={(previous) => ({
+              ...previous,
               proxy: item,
-            }}
+            })}
           >
             <div className="text-md grid size-6 shrink-0 place-content-center">
               {icon}

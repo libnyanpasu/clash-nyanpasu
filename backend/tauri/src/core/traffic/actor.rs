@@ -11,7 +11,7 @@ use std::{
 use nyanpasu_traffic::{
     Bytes, ClosedCursor, ClosedPage, FlushBatch, Frame, GroupBy, Rate, Session, Topology,
     TopologyKey, TopologyPath, TrafficError, TrafficResult, TrafficStore, TrafficSummary, Usage,
-    UsageGroup, topology,
+    UsageGroup, merge_closed_page, topology,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
@@ -26,7 +26,7 @@ pub(super) enum Message {
     Observe(Frame, RpcReplyPort<()>),
     Disconnected(RpcReplyPort<()>),
     Flush(RpcReplyPort<()>),
-    Summary(RpcReplyPort<TrafficSummary>),
+    Summary(RpcReplyPort<TrafficResult<TrafficSummary>>),
     Usage(GroupBy, usize, RpcReplyPort<TrafficResult<Usage>>),
     Topology(usize, RpcReplyPort<TrafficResult<Topology>>),
     ClosedConnections(
@@ -110,7 +110,7 @@ impl Actor for TrafficActor {
                 let _ = reply.send(());
             }
             Message::Summary(reply) => {
-                let _ = reply.send(state.session.summary());
+                let _ = reply.send(state.summary().await);
             }
             Message::Usage(group, limit, reply) => {
                 let _ = reply.send(state.usage(group, limit).await);
@@ -159,6 +159,15 @@ impl State {
 
     // While the wipe is pending the store still holds the previous session, so the queries
     // below answer from memory alone.
+    async fn summary(&self) -> TrafficResult<TrafficSummary> {
+        let stored_closed = if self.session.reset_pending() {
+            0
+        } else {
+            blocking(&self.store, |store| store.closed_count()).await?
+        };
+        Ok(self.session.summary(stored_closed))
+    }
+
     async fn usage(&self, group: GroupBy, limit: usize) -> TrafficResult<Usage> {
         let stored = if self.session.reset_pending() {
             Vec::new()
@@ -194,16 +203,24 @@ impl State {
         cursor: Option<ClosedCursor>,
         limit: usize,
     ) -> TrafficResult<ClosedPage> {
-        if self.session.reset_pending() {
-            return Ok(ClosedPage {
+        let stored = if self.session.reset_pending() {
+            ClosedPage {
                 connections: Vec::new(),
                 next: None,
-            });
-        }
-        blocking(&self.store, move |store| {
-            store.closed_connections(cursor.as_ref(), limit)
-        })
-        .await
+            }
+        } else {
+            let before = cursor.clone();
+            blocking(&self.store, move |store| {
+                store.closed_connections(before.as_ref(), limit)
+            })
+            .await?
+        };
+        Ok(merge_closed_page(
+            stored,
+            self.session.pending_closed(),
+            cursor.as_ref(),
+            limit,
+        ))
     }
 }
 

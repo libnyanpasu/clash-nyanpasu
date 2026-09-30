@@ -27,6 +27,8 @@ export * from './use-core-dir'
 export * from './use-platform'
 export * from './use-system-accent-color'
 export * from './use-file-logs'
+export * from './use-traffic-closed-connections'
+export * from './use-traffic-summary'
 
 export { commands, events } from './bindings'
 export { mutations, queries } from './bindings'

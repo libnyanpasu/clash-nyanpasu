@@ -203,6 +203,65 @@ pub struct ClosedPage {
     pub next: Option<ClosedCursor>,
 }
 
+pub(crate) const MAX_CLOSED_PAGE: usize = 500;
+
+/// The store's key order for closed connections; connections closed before the epoch sort
+/// first.
+pub(crate) fn closed_key(closed_at: i64) -> u64 {
+    u64::try_from(closed_at).unwrap_or(0)
+}
+
+impl ClosedConnection {
+    fn cursor(&self) -> ClosedCursor {
+        ClosedCursor {
+            closed_at: self.closed_at,
+            id: self.id.clone(),
+        }
+    }
+
+    fn key(&self) -> (u64, &str) {
+        (closed_key(self.closed_at), &self.id)
+    }
+}
+
+impl ClosedCursor {
+    fn key(&self) -> (u64, &str) {
+        (closed_key(self.closed_at), &self.id)
+    }
+}
+
+/// Adds the closed connections that are not stored yet to a stored page, keeping its
+/// newest-first order and its cursor, so paging never skips or repeats a connection when a
+/// flush moves them into the store between pages.
+pub fn merge_closed_page(
+    stored: ClosedPage,
+    pending: &[ClosedConnection],
+    before: Option<&ClosedCursor>,
+    limit: usize,
+) -> ClosedPage {
+    let limit = limit.clamp(1, MAX_CLOSED_PAGE);
+    let before = before.map(ClosedCursor::key);
+    // The store's remaining entries sort below its page, so pending ones there belong to a
+    // later page, which starts from this page's last entry.
+    let floor = stored.next.as_ref().map(ClosedCursor::key);
+    let mut connections = stored.connections;
+    connections.extend(
+        pending
+            .iter()
+            .filter(|c| before.is_none_or(|b| c.key() < b) && floor.is_none_or(|f| c.key() > f))
+            .cloned(),
+    );
+    connections.sort_unstable_by(|a, b| b.key().cmp(&a.key()));
+    let more = connections.len() > limit || stored.next.is_some();
+    connections.truncate(limit);
+    let next = if more {
+        connections.last().map(ClosedConnection::cursor)
+    } else {
+        None
+    };
+    ClosedPage { connections, next }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct UsageGroup {
@@ -260,6 +319,8 @@ pub struct TrafficSummary {
     pub last_sample_at: Option<i64>,
     pub core_bytes: Bytes,
     pub active_connections: u64,
+    /// Closed in this session, including those not flushed yet.
+    pub closed_connections: u64,
     pub current_rate: Option<Rate>,
 }
 
@@ -323,6 +384,86 @@ mod tests {
 
         d.process = "unknown".into();
         assert_eq!(TopologyKey::from_dimensions(&d).source, "192.168.1.2");
+    }
+
+    fn closed(id: &str, closed_at: i64) -> ClosedConnection {
+        ClosedConnection {
+            id: id.into(),
+            started_at: 0,
+            first_seen_at: 0,
+            closed_at,
+            bytes: Bytes::default(),
+            dimensions: dims(&["DIRECT"]),
+        }
+    }
+
+    fn page(connections: Vec<ClosedConnection>, next: Option<&ClosedConnection>) -> ClosedPage {
+        ClosedPage {
+            connections,
+            next: next.map(ClosedConnection::cursor),
+        }
+    }
+
+    fn ids(page: &ClosedPage) -> Vec<&str> {
+        page.connections.iter().map(|c| c.id.as_str()).collect()
+    }
+
+    #[test]
+    fn pending_closed_connections_lead_a_complete_stored_page() {
+        let stored = page(vec![closed("b", 20), closed("a", 10)], None);
+        let merged = merge_closed_page(stored, &[closed("c", 30)], None, 10);
+        assert_eq!(ids(&merged), ["c", "b", "a"]);
+        assert_eq!(merged.next, None);
+    }
+
+    #[test]
+    fn a_truncated_merge_continues_after_its_last_entry() {
+        let stored = page(vec![closed("b", 20), closed("a", 10)], None);
+        let merged = merge_closed_page(stored, &[closed("c", 30)], None, 2);
+        assert_eq!(ids(&merged), ["c", "b"]);
+        assert_eq!(merged.next, Some(closed("b", 20).cursor()));
+    }
+
+    #[test]
+    fn pending_older_than_a_partial_stored_page_waits_for_a_later_page() {
+        let c = closed("c", 30);
+        let stored = page(vec![closed("d", 40), c.clone()], Some(&c));
+        let merged = merge_closed_page(stored, &[closed("e", 50), closed("a", 10)], None, 10);
+        assert_eq!(ids(&merged), ["e", "d", "c"]);
+        assert_eq!(merged.next, Some(c.cursor()));
+    }
+
+    #[test]
+    fn pending_at_or_after_the_cursor_is_skipped() {
+        let pending = [closed("c", 30), closed("b", 20), closed("a", 10)];
+        let merged = merge_closed_page(
+            page(Vec::new(), None),
+            &pending,
+            Some(&closed("b", 20).cursor()),
+            10,
+        );
+        assert_eq!(ids(&merged), ["a"]);
+        assert_eq!(merged.next, None);
+    }
+
+    #[test]
+    fn merged_ties_on_closed_at_fall_back_to_the_id() {
+        let stored = page(vec![closed("b", 20)], None);
+        let merged = merge_closed_page(stored, &[closed("c", 20), closed("a", 20)], None, 10);
+        assert_eq!(ids(&merged), ["c", "b", "a"]);
+    }
+
+    #[test]
+    fn merged_pages_clamp_the_limit() {
+        let pending: Vec<_> = (0..MAX_CLOSED_PAGE + 1)
+            .map(|i| closed(&format!("{i:04}"), 10))
+            .collect();
+        let merged = merge_closed_page(page(Vec::new(), None), &pending, None, usize::MAX);
+        assert_eq!(merged.connections.len(), MAX_CLOSED_PAGE);
+        assert!(merged.next.is_some());
+
+        let merged = merge_closed_page(page(Vec::new(), None), &pending, None, 0);
+        assert_eq!(merged.connections.len(), 1);
     }
 
     #[test]

@@ -220,6 +220,20 @@ impl TrafficStore for RedbTrafficStore {
         Ok(out)
     }
 
+    fn totals_of(&self, group: GroupBy, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>> {
+        let txn = self.db.begin_read().map_err(storage)?;
+        let table = txn.open_table(TOTALS).map_err(storage)?;
+        let name = group.name();
+
+        let mut out = Vec::new();
+        for key in keys {
+            if let Some(value) = table.get((name, key.as_str())).map_err(storage)? {
+                out.push((key.clone(), bytes_of(value.value())));
+            }
+        }
+        Ok(out)
+    }
+
     fn topology(&self) -> TrafficResult<Vec<(TopologyKey, Bytes)>> {
         let txn = self.db.begin_read().map_err(storage)?;
         let table = txn.open_table(TOPOLOGY).map_err(storage)?;
@@ -432,6 +446,34 @@ mod tests {
                 (topology_key("Node-B"), bytes(5, 5))
             ]
         );
+    }
+
+    #[test]
+    fn totals_of_reads_only_the_requested_keys() {
+        let dir = TempDir::new().unwrap();
+        let store = open(&dir);
+        store
+            .flush(&FlushBatch {
+                totals: vec![
+                    (GroupBy::Process, "curl".into(), bytes(1, 2)),
+                    (GroupBy::Process, "firefox".into(), bytes(7, 8)),
+                    (GroupBy::Target, "wget".into(), bytes(3, 4)),
+                ],
+                ..batch("p1")
+            })
+            .unwrap();
+
+        // Missing keys and keys of another group are left out.
+        assert_eq!(
+            store
+                .totals_of(
+                    GroupBy::Process,
+                    &["firefox".into(), "missing".into(), "wget".into()]
+                )
+                .unwrap(),
+            [("firefox".to_owned(), bytes(7, 8))]
+        );
+        assert_eq!(store.totals_of(GroupBy::Process, &[]).unwrap(), []);
     }
 
     #[test]

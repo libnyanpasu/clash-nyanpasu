@@ -195,6 +195,10 @@ export const commands = {
     typedError<Usage, IpcError>(
       __RPC_INVOKE('query_traffic_usage', { groupBy, after, limit }),
     ),
+  queryTrafficUsageByKeys: (groupBy: GroupBy, keys: string[]) =>
+    typedError<UsageGroup[], IpcError>(
+      __RPC_INVOKE('query_traffic_usage_by_keys', { groupBy, keys }),
+    ),
   queryTrafficTopology: (limit: number) =>
     typedError<Topology, IpcError>(
       __RPC_INVOKE('query_traffic_topology', { limit }),
@@ -4230,6 +4234,13 @@ export const queries = {
     queryOptions({
       queryKey: ['queryTrafficUsage', ...args],
       queryFn: () => commands.queryTrafficUsage(...args),
+    }),
+  queryTrafficUsageByKeys: (
+    ...args: Parameters<typeof commands.queryTrafficUsageByKeys>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficUsageByKeys', ...args],
+      queryFn: () => commands.queryTrafficUsageByKeys(...args),
     }),
   queryTrafficTopology: (
     ...args: Parameters<typeof commands.queryTrafficTopology>

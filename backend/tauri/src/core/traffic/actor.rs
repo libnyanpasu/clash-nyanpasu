@@ -3,7 +3,7 @@
 //! statistics, not a ledger.
 use std::{
     cmp::Ordering,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     hash::Hash,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -33,6 +33,11 @@ pub(super) enum Message {
         Option<UsageCursor>,
         usize,
         RpcReplyPort<TrafficResult<Usage>>,
+    ),
+    UsageByKeys(
+        GroupBy,
+        Vec<String>,
+        RpcReplyPort<TrafficResult<Vec<UsageGroup>>>,
     ),
     Topology(usize, RpcReplyPort<TrafficResult<Topology>>),
     ClosedConnections(
@@ -121,6 +126,9 @@ impl Actor for TrafficActor {
             Message::Usage(group, after, limit, reply) => {
                 let _ = reply.send(state.usage(group, after, limit).await);
             }
+            Message::UsageByKeys(group, keys, reply) => {
+                let _ = reply.send(state.usage_by_keys(group, keys).await);
+            }
             Message::Topology(limit, reply) => {
                 let _ = reply.send(state.topology(limit).await);
             }
@@ -195,6 +203,42 @@ impl State {
             after.as_ref(),
             limit,
         ))
+    }
+
+    /// In request order; keys without traffic are left out.
+    async fn usage_by_keys(
+        &self,
+        group: GroupBy,
+        mut keys: Vec<String>,
+    ) -> TrafficResult<Vec<UsageGroup>> {
+        let mut seen = HashSet::new();
+        keys.retain(|key| seen.insert(key.clone()));
+        let (stored, keys) = if self.session.reset_pending() {
+            (Vec::new(), keys)
+        } else {
+            blocking(&self.store, move |store| {
+                store.totals_of(group, &keys).map(|stored| (stored, keys))
+            })
+            .await?
+        };
+        let pending = keys.iter().filter_map(|key| {
+            self.session
+                .pending_total(group, key)
+                .map(|bytes| (key.clone(), bytes))
+        });
+        let mut totals = merge(stored, pending);
+        let mut rates = self.session.current_rate_by(group);
+        Ok(keys
+            .into_iter()
+            .filter_map(|key| {
+                let bytes = totals.remove(&key)?;
+                Some(UsageGroup {
+                    current_rate: rates.remove(&key),
+                    key,
+                    bytes,
+                })
+            })
+            .collect())
     }
 
     async fn topology(&self, limit: usize) -> TrafficResult<Topology> {

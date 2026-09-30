@@ -233,6 +233,10 @@ impl Session {
             .map(|(key, bytes)| (key.as_str(), *bytes))
     }
 
+    pub fn pending_total(&self, g: GroupBy, key: &str) -> Option<Bytes> {
+        self.pending_totals.get(&g)?.get(key).copied()
+    }
+
     pub fn pending_topology(&self) -> impl Iterator<Item = (&TopologyKey, Bytes)> {
         self.pending_topology
             .iter()
@@ -356,10 +360,7 @@ mod tests {
     }
 
     fn pending(session: &Session, g: GroupBy, key: &str) -> Option<Bytes> {
-        session
-            .pending_totals(g)
-            .find(|(k, _)| *k == key)
-            .map(|(_, b)| b)
+        session.pending_total(g, key)
     }
 
     #[test]

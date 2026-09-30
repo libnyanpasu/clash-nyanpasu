@@ -1335,6 +1335,17 @@ pub async fn query_traffic_usage(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
+pub async fn query_traffic_usage_by_keys(
+    client: tauri::State<'_, NyanpasuClient>,
+    group_by: nyanpasu_traffic::GroupBy,
+    keys: Vec<String>,
+) -> Result<Vec<nyanpasu_traffic::UsageGroup>> {
+    Ok(client.query_traffic_usage_by_keys(group_by, keys).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
 pub async fn query_traffic_topology(
     client: tauri::State<'_, NyanpasuClient>,
     limit: usize,

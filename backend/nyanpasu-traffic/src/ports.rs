@@ -18,5 +18,8 @@ pub trait TrafficStore: Send + Sync + 'static {
 
     fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>>;
 
+    /// The stored totals of the distinct `keys`; keys without traffic are left out.
+    fn totals_of(&self, group: GroupBy, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>>;
+
     fn topology(&self) -> TrafficResult<Vec<(TopologyKey, Bytes)>>;
 }

@@ -76,6 +76,10 @@ impl TrafficStore for FlakyStore {
         self.inner.totals(group)
     }
 
+    fn totals_of(&self, group: GroupBy, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>> {
+        self.inner.totals_of(group, keys)
+    }
+
     fn topology(&self) -> TrafficResult<Vec<(TopologyKey, Bytes)>> {
         self.inner.topology()
     }
@@ -382,6 +386,43 @@ async fn usage_pages_continue_after_the_cursor() {
         .await
         .unwrap();
     assert_eq!(keys(&last.groups), ["tie"]);
+}
+
+#[tokio::test]
+async fn usage_by_keys_merges_stored_and_pending_traffic() {
+    let h = Harness::new("p1").await;
+    h.client.observe(Some(a_first())).await.unwrap();
+    h.client.flush().await.unwrap();
+    h.client.observe(Some(a_second())).await.unwrap();
+
+    // `curl` has 100/200 stored and 50/60 pending; missing and repeated keys are not listed.
+    let usage = h
+        .client
+        .usage_by_keys(
+            GroupBy::Process,
+            vec!["missing".into(), "curl".into(), "curl".into()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        usage,
+        [UsageGroup {
+            key: "curl".into(),
+            bytes: bytes(150, 260),
+            current_rate: Some(Rate {
+                upload: 50,
+                download: 60
+            }),
+        }]
+    );
+
+    let rules = h
+        .client
+        .usage_by_keys(GroupBy::Rule, vec!["Match".into()])
+        .await
+        .unwrap();
+    assert_eq!(keys(&rules), ["Match"]);
+    assert_eq!(rules[0].bytes, bytes(150, 260));
 }
 
 #[tokio::test]

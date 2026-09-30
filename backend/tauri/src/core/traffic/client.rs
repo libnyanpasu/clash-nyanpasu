@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage, UsageCursor,
+    ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage, UsageCursor, UsageGroup,
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -64,6 +64,18 @@ impl TrafficClient {
     ) -> Result<Usage> {
         Ok(self
             .call(|reply| Message::Usage(group, after, limit, reply))
+            .await??)
+    }
+
+    /// The session so far of `keys` that have traffic, in request order, including what is not
+    /// flushed yet.
+    pub async fn usage_by_keys(
+        &self,
+        group: GroupBy,
+        keys: Vec<String>,
+    ) -> Result<Vec<UsageGroup>> {
+        Ok(self
+            .call(|reply| Message::UsageByKeys(group, keys, reply))
             .await??)
     }
 

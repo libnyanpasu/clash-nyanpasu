@@ -37,6 +37,7 @@ import {
   SettingsCardContent,
   SettingsCardFooter,
 } from '../../_modules/settings-card'
+import UpdateSourceSelector from './update-source-selector'
 
 const TITLE = 'Clash Nyanpasu~(∠・ω< )⌒☆'
 
@@ -45,6 +46,7 @@ const GITHUB_RELEASES_URL =
 
 const AutoCheckUpdate = () => {
   const { value, upsert, isPending } = useSetting('enable_auto_check_update')
+  const { isInstalling, isChecking } = useNyanpasuUpdate()
 
   return (
     <SwitchItem
@@ -52,6 +54,7 @@ const AutoCheckUpdate = () => {
       checked={value ?? true}
       onCheckedChange={(checked) => upsert(checked)}
       loading={isPending}
+      disabled={isPending || isInstalling || isChecking}
     >
       <p className="truncate">{m.settings_label_about_auto_check_updates()}</p>
     </SwitchItem>
@@ -59,8 +62,13 @@ const AutoCheckUpdate = () => {
 }
 
 const ReleaseChannelSelector = () => {
-  const { releaseChannel, setReleaseChannel, isChangingChannel, isChecking } =
-    useNyanpasuUpdate()
+  const {
+    releaseChannel,
+    setReleaseChannel,
+    isChangingChannel,
+    isChecking,
+    isInstalling,
+  } = useNyanpasuUpdate()
   const labels: Record<ReleaseChannel, string> = {
     stable: m.release_channel_stable(),
     beta: m.release_channel_beta(),
@@ -102,7 +110,8 @@ const ReleaseChannelSelector = () => {
           !releaseChannel ||
           releaseChannel === 'nightly' ||
           isChecking ||
-          isChangingChannel
+          isChangingChannel ||
+          isInstalling
         }
       >
         <SelectTrigger
@@ -142,9 +151,8 @@ const ReleaseChannelSelector = () => {
 const NewVersionModal = ({ children }: PropsWithChildren) => {
   const { action } = AboutRoute.useSearch()
 
-  const { newVersion } = useNyanpasuUpdate()
-
-  const [isInstalling, setIsInstalling] = useState(false)
+  const { newVersion, downloadNewVersion, isInstalling, setIsInstalling } =
+    useNyanpasuUpdate()
 
   const [contentLength, setContentLength] = useState(0)
   const [contentDownloaded, setContentDownloaded] = useState(0)
@@ -184,9 +192,12 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
       setIsInstalling(true)
 
       // Install the update. This will also restart the app on Windows!
-      await newVersion.download((e) => {
+      setContentDownloaded(0)
+      setContentLength(0)
+      const downloaded = await downloadNewVersion((e) => {
         switch (e.event) {
           case 'Started':
+            setContentDownloaded(0)
             setContentLength(e.data.contentLength || 0)
             break
           case 'Progress':
@@ -197,7 +208,7 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
 
       await commands.cleanupProcesses()
       // cleanup and stop core
-      await newVersion.install()
+      await downloaded.install()
       // On macOS and Linux you will need to restart the app manually.
       // You could use this step to display another confirmation dialog.
       await relaunch()
@@ -273,6 +284,7 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
             <Button
               variant="flat"
               loading={isInstalling}
+              disabled={!newVersion || isInstalling}
               onClick={handleUpdate}
             >
               {m.settings_label_about_update_to_update_button()}
@@ -293,6 +305,7 @@ export default function NyanpasuVersion() {
     isChecking,
     checkNewVersion,
     isSupported,
+    isInstalling,
   } = useNyanpasuUpdate()
 
   const handleUpdateToGithubReleases = useLockFn(
@@ -335,6 +348,8 @@ export default function NyanpasuVersion() {
         <SettingsCardFooter className="flex-col gap-2">
           <ReleaseChannelSelector />
 
+          <UpdateSourceSelector />
+
           <AutoCheckUpdate />
 
           {hasNewVersion ? (
@@ -349,6 +364,7 @@ export default function NyanpasuVersion() {
               className="w-full"
               onClick={handleCheckNewVersion}
               loading={isChecking}
+              disabled={isInstalling}
             >
               {m.settings_label_about_update()}
             </Button>

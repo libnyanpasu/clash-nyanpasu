@@ -7,10 +7,12 @@ use url::Url;
 mod clash_core;
 mod i18n;
 mod logging;
+mod update;
 mod widget;
 pub use clash_core::*;
 pub use i18n::*;
 pub use logging::*;
+pub use update::*;
 pub use widget::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
@@ -166,6 +168,10 @@ pub struct NyanpasuAppConfig {
     #[patch(attribute(specta(type = Option<Option<ReleaseChannel>>)))]
     pub release_channel: Option<ReleaseChannel>,
 
+    /// Enabled application update package download sources, in priority order.
+    #[serde(default = "default_update_sources")]
+    pub update_sources: Vec<UpdateSource>,
+
     /// 是否启用代理托盘选择
     #[patch(attribute(serde(alias = "clash_tray_selector")))]
     pub tray_selector_mode: ProxiesSelectorMode,
@@ -245,6 +251,7 @@ impl Default for NyanpasuAppConfig {
             max_log_file_size: default_max_log_file_size(),
             enable_auto_check_update: true,
             release_channel: None,
+            update_sources: default_update_sources(),
             tray_selector_mode: ProxiesSelectorMode::default(),
             always_on_top: false,
             tray_menu_mode: TrayMenuMode::default(),
@@ -264,6 +271,24 @@ impl Default for NyanpasuAppConfig {
 mod patch_tests {
     use super::*;
     use struct_patch::Status;
+
+    #[test]
+    fn update_sources_default_for_existing_configurations_and_keep_patch_order() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("update_sources");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.update_sources, default_update_sources());
+        let patch: NyanpasuAppConfigPatch =
+            serde_json::from_str(r#"{"update_sources":["github","nyanpasu"]}"#).unwrap();
+        assert_eq!(
+            patch.update_sources,
+            Some(vec![UpdateSource::Github, UpdateSource::Nyanpasu])
+        );
+        assert!(
+            serde_json::from_str::<NyanpasuAppConfigPatch>(r#"{"update_sources":["unknown"]}"#)
+                .is_err()
+        );
+    }
 
     #[test]
     fn release_channel_defaults_for_existing_configurations() {

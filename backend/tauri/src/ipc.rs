@@ -1461,10 +1461,16 @@ pub async fn close_log_session(
         .await
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct UpdateDownload {
+    source: nyanpasu_config::application::UpdateSource,
+    rid: tauri::ResourceId,
+}
+
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 // TODO: a copied from updater metadata, and should be moved a separate updater module
 pub struct UpdateWrapper {
-    rid: tauri::ResourceId,
+    downloads: Vec<UpdateDownload>,
     available: bool,
     current_version: String,
     version: String,
@@ -1536,22 +1542,37 @@ pub async fn check_update(
     }
     let updater = builder.build().context("failed to build updater")?;
     let update = updater.check().await.context("failed to check update")?;
-    Ok(update.map(|u| {
-        let mut wrapper = UpdateWrapper {
-            available: true,
-            current_version: u.current_version.clone(),
-            version: u.version.clone(),
-            date: u.date.and_then(|d| {
-                d.format(&time::format_description::well_known::Rfc3339)
-                    .ok()
-            }),
-            body: u.body.clone(),
-            raw_json: u.raw_json.clone(),
-            ..Default::default()
-        };
-        wrapper.rid = webview.resources_table().add(u);
-        wrapper
-    }))
+    update
+        .map(|u| {
+            let downloads = client.update_download_urls(&u.download_url)?;
+            let mut wrapper = UpdateWrapper {
+                available: true,
+                current_version: u.current_version.clone(),
+                version: u.version.clone(),
+                date: u.date.and_then(|d| {
+                    d.format(&time::format_description::well_known::Rfc3339)
+                        .ok()
+                }),
+                body: u.body.clone(),
+                raw_json: u.raw_json.clone(),
+                ..Default::default()
+            };
+            wrapper.downloads = downloads
+                .into_iter()
+                .map(|(source, url)| {
+                    let mut download = u.clone();
+                    // A source changes only the download route; every attempt must verify
+                    // against the same release version, signature and public key.
+                    download.download_url = url;
+                    UpdateDownload {
+                        source,
+                        rid: webview.resources_table().add(download),
+                    }
+                })
+                .collect();
+            Ok(wrapper)
+        })
+        .transpose()
 }
 
 #[nyanpasu_macro::rpc]

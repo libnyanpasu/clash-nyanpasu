@@ -14,6 +14,7 @@
     "types": ["node", "vite/client", "vitest/browser"],
     "paths": {
       "@/*": ["./frontend/nyanpasu/src/*"],
+      "@root/*": ["./*"],
       "react": ["./frontend/interface/node_modules/@types/react/index.d.ts"],
       "react/*": ["./frontend/interface/node_modules/@types/react/*"],
       "vitest-browser-react": [

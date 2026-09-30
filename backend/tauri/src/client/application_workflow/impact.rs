@@ -770,6 +770,14 @@ mod tests {
             },
             // Fields no runtime build and no effect owner reads.
             AppCase {
+                field: "update_sources",
+                mutate: |app| {
+                    app.update_sources = vec![nyanpasu_config::application::UpdateSource::Github]
+                },
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "release_channel",
                 mutate: |app| app.release_channel = Some(crate::bundle::Channel::Beta),
                 impact: RuntimeImpact::None,

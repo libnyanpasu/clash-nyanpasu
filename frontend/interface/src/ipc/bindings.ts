@@ -225,6 +225,7 @@ export type ConfigEnum<T> = T | string
 export type ConfigError =
   /**  A nightly build keeps its channel. */
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
+  | { kind: 'invalid_update_sources'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'workflow_not_ready' }
   | { kind: 'shutting_down'; domain: ConfigDomain }

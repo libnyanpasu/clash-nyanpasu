@@ -78,6 +78,10 @@ impl ApplicationClient {
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
+        nyanpasu_config::application::validate_update_sources(
+            &manager.snapshot_handle().load().state.update_sources,
+        )
+        .map_err(anyhow::Error::msg)?;
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
@@ -231,6 +235,53 @@ mod tests {
                 domain: ConfigDomain::Application
             })
         ));
+    }
+
+    #[tokio::test]
+    async fn update_sources_preserve_order_and_reject_invalid_writes() {
+        use nyanpasu_config::application::UpdateSource;
+        let (client, dir) = test_client().await;
+        let selected = vec![UpdateSource::Github, UpdateSource::Nyanpasu];
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.update_sources = Some(selected.clone());
+        assert_eq!(
+            client.patch(patch).await.unwrap().state.update_sources,
+            selected
+        );
+        let committed_version = client.snapshot().version;
+        for invalid in [vec![], vec![UpdateSource::Github, UpdateSource::Github]] {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.update_sources = Some(invalid.clone());
+            assert!(matches!(
+                client.patch(patch).await,
+                Err(ConfigError::InvalidUpdateSources { .. })
+            ));
+            let mut replacement = client.snapshot().state;
+            replacement.update_sources = invalid;
+            assert!(matches!(
+                client.replace(replacement).await,
+                Err(ConfigError::InvalidUpdateSources { .. })
+            ));
+            assert_eq!(client.snapshot().version, committed_version);
+            assert_eq!(client.snapshot().state.update_sources, selected);
+        }
+        drop(client);
+        let reloaded = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            crate::bundle::Channel::Stable,
+            temp_config_path(&dir),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(reloaded.snapshot().state.update_sources, selected);
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.update_sources = Some(vec![UpdateSource::Github]);
+        assert_eq!(
+            reloaded.patch(patch).await.unwrap().state.update_sources,
+            vec![UpdateSource::Github]
+        );
     }
 
     #[tokio::test]

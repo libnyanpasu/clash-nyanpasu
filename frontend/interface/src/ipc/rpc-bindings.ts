@@ -205,7 +205,7 @@ export const commands = {
   checkUpdate: () =>
     typedError<
       {
-        rid: number
+        downloads: UpdateDownload[]
         available: boolean
         current_version: string
         version: string
@@ -898,6 +898,7 @@ export type ConfigDomain = 'application' | 'clash' | 'profiles'
 export type ConfigError =
   /**  A nightly build keeps its channel. */
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
+  | { kind: 'invalid_update_sources'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'workflow_not_ready' }
   | { kind: 'shutting_down'; domain: ConfigDomain }
@@ -1938,6 +1939,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       max_log_file_size?: number | null
       enable_auto_check_update?: boolean | null
       release_channel?: ReleaseChannel | null
+      update_sources?: UpdateSource[] | null
       always_on_top?: boolean | null
       tray_menu_mode?: TrayMenuMode | null
       tray_menu_close_behavior?: TrayMenuCloseBehavior | null
@@ -1988,6 +1990,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   max_log_file_size?: number | null
   enable_auto_check_update?: boolean | null
   release_channel?: ReleaseChannel | null
+  update_sources?: UpdateSource[] | null
   tray_selector_mode?: ProxiesSelectorMode | null
   always_on_top?: boolean | null
   tray_menu_mode?: TrayMenuMode | null
@@ -2054,6 +2057,8 @@ export type NyanpasuAppConfig_Deserialize = {
   enable_auto_check_update: boolean
   /**  None in older configurations means the channel of the installed build. */
   release_channel?: ReleaseChannel | null
+  /**  Enabled application update package download sources, in priority order. */
+  update_sources?: UpdateSource[]
   /**  是否启用代理托盘选择 */
   tray_selector_mode: ProxiesSelectorMode
   /**  是否窗口置顶 */
@@ -2145,6 +2150,8 @@ export type NyanpasuAppConfig_Serialize = {
   enable_auto_check_update: boolean
   /**  None in older configurations means the channel of the installed build. */
   release_channel: ReleaseChannel | null
+  /**  Enabled application update package download sources, in priority order. */
+  update_sources: UpdateSource[]
   /**  是否启用代理托盘选择 */
   tray_selector_mode: ProxiesSelectorMode
   /**  是否窗口置顶 */
@@ -3827,8 +3834,15 @@ export type TrayMenuMode = 'native' | 'webview'
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 
-export type UpdateWrapper = {
+export type UpdateDownload = {
+  source: UpdateSource
   rid: number
+}
+
+export type UpdateSource = 'nyanpasu' | 'github'
+
+export type UpdateWrapper = {
+  downloads: UpdateDownload[]
   available: boolean
   current_version: string
   version: string

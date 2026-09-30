@@ -526,6 +526,17 @@ impl NyanpasuClient {
             .resolve(self.inner.application.snapshot().state.release_channel))
     }
 
+    pub(crate) fn update_download_urls(
+        &self,
+        announced: &url::Url,
+    ) -> Result<Vec<(nyanpasu_config::application::UpdateSource, url::Url)>> {
+        let app = self.inner.application.snapshot().state;
+        Ok(crate::bundle::update_download_urls(
+            announced,
+            &app.update_sources,
+        )?)
+    }
+
     pub async fn set_release_channel(
         &self,
         channel: crate::bundle::Channel,

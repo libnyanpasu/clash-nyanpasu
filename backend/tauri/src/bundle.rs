@@ -1,6 +1,7 @@
 pub use nyanpasu_config::application::ReleaseChannel as Channel;
 
 use anyhow::{Context, Result, bail};
+use nyanpasu_config::application::UpdateSource;
 use std::path::{Path, PathBuf};
 use tauri::utils::config::{Config, WebviewInstallMode};
 
@@ -113,6 +114,37 @@ pub fn update_endpoints(channel: Channel) -> Vec<String> {
             "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update{suffix}.json"
         ),
     ]
+}
+
+pub fn update_download_urls(
+    announced: &url::Url,
+    sources: &[UpdateSource],
+) -> Result<Vec<(UpdateSource, url::Url)>> {
+    nyanpasu_config::application::validate_update_sources(sources).map_err(anyhow::Error::msg)?;
+    if announced.scheme() != "https"
+        || !matches!(
+            announced.host_str(),
+            Some("github.com" | "nyanpasu-script.majokeiko.com")
+        )
+        || !announced
+            .path()
+            .starts_with("/libnyanpasu/clash-nyanpasu/releases/download/")
+    {
+        bail!("unsupported application update download URL: {announced}");
+    }
+    Ok(sources
+        .iter()
+        .map(|source| {
+            let mut url = announced.clone();
+            let host = match source {
+                UpdateSource::Nyanpasu => "nyanpasu-script.majokeiko.com",
+                UpdateSource::Github => "github.com",
+            };
+            url.set_host(Some(host))
+                .expect("update source hosts are valid");
+            (*source, url)
+        })
+        .collect())
 }
 
 pub fn is_newer_release(

@@ -122,6 +122,11 @@ impl ApplicationActor {
     ) -> Result<ApplicationSnapshot, ConfigError> {
         state.mutations.ensure_ready()?;
         Self::validate_channel(state, &mut next)?;
+        nyanpasu_config::application::validate_update_sources(&next.update_sources).map_err(
+            |reason| ConfigError::InvalidUpdateSources {
+                reason: reason.into(),
+            },
+        )?;
         let (version, impact) = {
             let current = state.manager.snapshot_handle().load();
             let impact = impact::runtime_impact(&current.state, &next, &hints, class);

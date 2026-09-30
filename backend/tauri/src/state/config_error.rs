@@ -25,6 +25,8 @@ pub enum ConfigError {
     /// A nightly build keeps its channel.
     #[snafu(display("cannot switch from the nightly release channel to {to:?}"))]
     LeaveNightlyChannel { to: ReleaseChannel },
+    #[snafu(display("the update source selection is invalid: {reason}"))]
+    InvalidUpdateSources { reason: String },
     #[snafu(display("the hotkey list is invalid"))]
     ValidateHotkeys { source: HotkeyParseError },
     #[snafu(context(false), display("the application workflow is not ready"))]

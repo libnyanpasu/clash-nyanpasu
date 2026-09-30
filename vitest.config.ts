@@ -22,6 +22,7 @@ export default defineConfig({
           alias: [
             ...Object.entries({
               '@': path.resolve('frontend/nyanpasu/src'),
+              '@root': path.resolve('.'),
               '@interface': path.resolve('frontend/interface/src'),
               '@nyanpasu/interface': path.resolve(
                 'frontend/interface/src/index.ts',

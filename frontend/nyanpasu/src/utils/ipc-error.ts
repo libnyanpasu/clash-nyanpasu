@@ -205,6 +205,8 @@ export function configErrorMessage(
   switch (error.kind) {
     case 'leave_nightly_channel':
       return m.error_config_leave_nightly_channel()
+    case 'invalid_update_sources':
+      return m.error_config_invalid_update_sources({ reason: error.reason })
     case 'validate_hotkeys':
       return hotkeyParseMessage(error.source)
     case 'workflow_not_ready':

@@ -157,6 +157,60 @@ fn release_channel_uses_compiled_feature_and_version() {
 }
 
 #[test]
+fn update_download_urls_keep_the_artifact_and_selected_priority() {
+    let path = "/libnyanpasu/clash-nyanpasu/releases/download/pre-release/Clash%20Nyanpasu_2.0.0_x64-setup.nsis.zip";
+    for origin in ["github.com", "nyanpasu-script.majokeiko.com"] {
+        let announced = url::Url::parse(&format!("https://{origin}{path}")).unwrap();
+        for sources in [
+            vec![UpdateSource::Github],
+            vec![UpdateSource::Nyanpasu],
+            vec![UpdateSource::Github, UpdateSource::Nyanpasu],
+            vec![UpdateSource::Nyanpasu, UpdateSource::Github],
+        ] {
+            let resolved = update_download_urls(&announced, &sources).unwrap();
+            assert_eq!(
+                resolved
+                    .iter()
+                    .map(|(source, _)| *source)
+                    .collect::<Vec<_>>(),
+                sources
+            );
+            for (source, url) in resolved {
+                assert_eq!(url.path(), path);
+                assert_eq!(
+                    url.host_str(),
+                    Some(match source {
+                        UpdateSource::Github => "github.com",
+                        UpdateSource::Nyanpasu => "nyanpasu-script.majokeiko.com",
+                    })
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn update_download_urls_reject_invalid_sources_and_unrecognized_artifacts() {
+    let valid = url::Url::parse(
+        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/v2.0.0/app.zip",
+    )
+    .unwrap();
+    for invalid in [vec![], vec![UpdateSource::Github, UpdateSource::Github]] {
+        assert!(update_download_urls(&valid, &invalid).is_err());
+    }
+    for invalid in [
+        "http://github.com/libnyanpasu/clash-nyanpasu/releases/download/v2.0.0/app.zip",
+        "https://example.com/libnyanpasu/clash-nyanpasu/releases/download/v2.0.0/app.zip",
+        "https://github.com/someone/another-app/releases/download/v2.0.0/app.zip",
+    ] {
+        assert!(
+            update_download_urls(&url::Url::parse(invalid).unwrap(), &[UpdateSource::Github])
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn release_channel_selects_feeds_without_changing_fixed_target() {
     for channel in [Channel::Stable, Channel::Beta, Channel::Nightly] {
         let endpoints = update_endpoints(channel);

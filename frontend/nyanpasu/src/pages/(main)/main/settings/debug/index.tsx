@@ -26,7 +26,6 @@ const PathUtilsSettings = () => {
       <SettingsLabel>{m.settings_label_debug()}</SettingsLabel>
 
       <PathUtilsCard />
-      <HttpServer />
     </div>
   )
 }
@@ -53,6 +52,8 @@ const AdvanceToolsSettings = () => {
               <BlockTaskViewer />
 
               <KVStorage />
+
+              <HttpServer />
             </>
           )}
         </AnimatePresence>

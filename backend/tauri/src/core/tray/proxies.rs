@@ -273,7 +273,7 @@ mod platform_impl {
                 }
             }
             ProxiesSelectorMode::Submenu => {
-                let mut submenu = 
+                let mut submenu =
                     SubmenuBuilder::with_id(app_handle, "select_proxy", t!("tray.select_proxy"));
                 for item in items {
                     submenu = submenu.item(&item);

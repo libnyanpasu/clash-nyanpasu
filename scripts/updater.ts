@@ -94,6 +94,7 @@ async function resolveUpdater(channel: ReleaseChannel) {
     platforms: await collectUpdaterPlatforms(
       latestRelease.assets,
       getSignature,
+      tag,
     ),
   };
 

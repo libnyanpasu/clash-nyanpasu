@@ -9,6 +9,44 @@ function asset(name: string): ReleaseAsset {
   return { name, browser_download_url: `https://example.com/${name}` };
 }
 
+function signature(version?: string, file = "app.zip"): string {
+  const comment = `timestamp:1\tfile:${file}${
+    version ? `\tversion:${version}` : ""
+  }`;
+  return btoa(
+    `untrusted comment: test\nsignature\ntrusted comment: ${comment}\nglobal signature\n`,
+  );
+}
+
+Deno.test("nightly manifest rejects installer versions and different build hashes", async () => {
+  for (const version of ["2.0.0", "2.0.0+alpha.83fbe50", "2.0.0-alpha+old"]) {
+    const name = "Clash.Nyanpasu_x64.nsis.zip";
+    await assertRejects(
+      () =>
+        collectUpdaterPlatforms(
+          [asset(name), asset(`${name}.sig`)],
+          () => Promise.resolve(signature(version)),
+          "v2.0.0-alpha+83fbe50",
+        ),
+      Error,
+      "Signed version mismatch",
+    );
+  }
+});
+
+Deno.test("matching signed versions and historical signatures remain usable", async () => {
+  for (const version of ["2.0.0-alpha+83fbe50", undefined]) {
+    const name = "Clash.Nyanpasu_x64.nsis.zip";
+    const signed = signature(version);
+    const platforms = await collectUpdaterPlatforms(
+      [asset(name), asset(`${name}.sig`)],
+      () => Promise.resolve(signed),
+      "v2.0.0-alpha+83fbe50",
+    );
+    assertEquals(platforms["windows-x86_64"].signature, signed);
+  }
+});
+
 Deno.test("one manifest contains all platforms and both Windows variants with paired signatures", async () => {
   const archives = [
     "Clash.Nyanpasu_2.0.0_x64-setup.nsis.zip",
@@ -29,8 +67,8 @@ Deno.test("one manifest contains all platforms and both Windows variants with pa
   const read: string[] = [];
   const platforms = await collectUpdaterPlatforms(assets, (url) => {
     read.push(url);
-    return Promise.resolve(`signature:${url}\n`);
-  });
+    return Promise.resolve(`${signature("2.0.0", url)}\n`);
+  }, "2.0.0");
   assertEquals(Object.keys(platforms).sort(), [...UPDATER_TARGETS].sort());
   const expected: Record<string, number> = {
     win64: 0,
@@ -47,7 +85,10 @@ Deno.test("one manifest contains all platforms and both Windows variants with pa
   };
   for (const [target, index] of Object.entries(expected)) {
     const url = `https://example.com/${archives[index]}`;
-    assertEquals(platforms[target], { url, signature: `signature:${url}.sig` });
+    assertEquals(platforms[target], {
+      url,
+      signature: signature("2.0.0", `${url}.sig`),
+    });
   }
   assertEquals(read.length, archives.length);
 });
@@ -61,10 +102,14 @@ Deno.test("fixed-only and standard-only assets do not masquerade as the other va
       ["Clash.Nyanpasu_x64.nsis.zip", ["win64", "windows-x86_64"]],
     ] as const
   ) {
-    const platforms = await collectUpdaterPlatforms([
-      asset(name),
-      asset(`${name}.sig`),
-    ], () => Promise.resolve("signature"));
+    const platforms = await collectUpdaterPlatforms(
+      [
+        asset(name),
+        asset(`${name}.sig`),
+      ],
+      () => Promise.resolve(signature("2.0.0")),
+      "2.0.0",
+    );
     assertEquals(Object.keys(platforms).sort(), [...targets].sort());
   }
 });
@@ -72,7 +117,12 @@ Deno.test("fixed-only and standard-only assets do not masquerade as the other va
 Deno.test("incomplete or ambiguous artifacts fail manifest generation", async () => {
   const name = "Clash.Nyanpasu_x64.nsis.zip";
   await assertRejects(
-    () => collectUpdaterPlatforms([asset(name)], () => Promise.resolve("sig")),
+    () =>
+      collectUpdaterPlatforms(
+        [asset(name)],
+        () => Promise.resolve("sig"),
+        "2.0.0",
+      ),
     Error,
     "Missing signature",
   );
@@ -81,6 +131,7 @@ Deno.test("incomplete or ambiguous artifacts fail manifest generation", async ()
       collectUpdaterPlatforms(
         [asset(name), asset(`${name}.sig`)],
         () => Promise.resolve(""),
+        "2.0.0",
       ),
     Error,
     "Empty signature",
@@ -90,6 +141,7 @@ Deno.test("incomplete or ambiguous artifacts fail manifest generation", async ()
       collectUpdaterPlatforms(
         [asset(name), asset(`${name}.sig`)],
         () => Promise.reject(new Error("download failed")),
+        "2.0.0",
       ),
     Error,
     "download failed",
@@ -102,7 +154,8 @@ Deno.test("incomplete or ambiguous artifacts fail manifest generation", async ()
         asset(`${name}.sig`),
         asset(duplicate),
         asset(`${duplicate}.sig`),
-      ], () => Promise.resolve("sig")),
+      ], () =>
+        Promise.resolve(signature("2.0.0")), "2.0.0"),
     Error,
     "Multiple updater archives",
   );

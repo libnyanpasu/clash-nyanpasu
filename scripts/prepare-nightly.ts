@@ -1,5 +1,5 @@
 import * as path from "jsr:@std/path";
-import { merge } from "npm:lodash-es";
+import { merge } from "npm:es-toolkit@1.52.0";
 import { consola } from "./utils/logger.ts";
 
 const cwd = Deno.cwd();

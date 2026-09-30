@@ -4,6 +4,8 @@
 //! fan-out to actor clients and adapters stays inside the executor. There is no
 //! lookup API here, so this is not a service locator.
 
+use nyanpasu_config::runtime::executor::ResolvedPortBindings;
+
 #[cfg(test)]
 use super::status::EffectHealth;
 use super::{
@@ -25,10 +27,6 @@ pub trait ApplicationEffectsPort: Send + Sync + 'static {
         revision: EffectRevision,
         plan: ApplicationEffectPlan,
     ) -> Vec<EffectStatus>;
-
-    /// Shutdown path: restores the system state the app found and drops its OS
-    /// registrations. Never fails.
-    async fn shutdown(&self) -> Vec<EffectStatus>;
 }
 
 /// Accepts every plan and changes nothing. The composition root now assembles
@@ -56,16 +54,12 @@ impl ApplicationEffectsPort for NoopApplicationEffects {
             })
             .collect()
     }
-
-    async fn shutdown(&self) -> Vec<EffectStatus> {
-        Vec::new()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::effects::{plan::ApplicationEffectInputs, status::degradation_of};
+    use crate::client::effects::plan::ApplicationEffectInputs;
     use nyanpasu_config::{application::NyanpasuAppConfig, clash::config::ClashConfig};
 
     #[tokio::test]
@@ -87,12 +81,58 @@ mod tests {
             assert_eq!(status.applied_revision, revision);
             assert_eq!(status.health, EffectHealth::Healthy);
         }
-        assert!(
-            statuses
-                .iter()
-                .all(|status| degradation_of(status).is_none()),
-            "a no-op port never degrades"
-        );
-        assert!(NoopApplicationEffects.shutdown().await.is_empty());
     }
+}
+
+/// Post-commit notification only: never a source-transaction vote.
+///
+/// One method per slice of [`ApplicationEffectInputs`], and each slice has
+/// exactly one sender: the serial owner of that domain. Nobody reads or
+/// forwards a sibling's slice; the effects owner combines them.
+///
+/// [`ApplicationEffectInputs`]: super::plan::ApplicationEffectInputs
+pub(crate) trait CommitNotifications: Send + Sync + 'static {
+    /// The application owner, once its commit has settled. `requested` names
+    /// the owners the request asked for even when their inputs did not move.
+    fn application_committed(
+        &self,
+        fields: super::plan::ApplicationEffectFields,
+        requested: Vec<super::plan::EffectKind>,
+    );
+
+    /// The clash config owner, once its commit has settled.
+    fn clash_committed(&self, fields: super::plan::ClashEffectFields);
+
+    /// The profiles owner. No effect reads the profiles, so a commit only asks
+    /// the tray for a partial refresh.
+    fn profiles_committed(&self);
+
+    /// The Runtime, after a mutation's Confirm or Cancel, a lifecycle command
+    /// or a recovery: the ports the core is bound to now. `refresh` asks the
+    /// tray for a partial refresh even when nothing it reads moved.
+    fn runtime_bound(&self, ports: Option<ResolvedPortBindings>, refresh: bool);
+
+    /// Hands every owner its complete desired value and rebuilds the tray.
+    /// StartupReconcile sends it once (T10 §1.9), with the ports it bound.
+    fn publish_full(&self, ports: Option<ResolvedPortBindings>);
+}
+
+#[cfg(test)]
+pub(crate) struct NoopCommitNotifications;
+#[cfg(test)]
+impl CommitNotifications for NoopCommitNotifications {
+    fn application_committed(
+        &self,
+        _: super::plan::ApplicationEffectFields,
+        _: Vec<super::plan::EffectKind>,
+    ) {
+    }
+
+    fn clash_committed(&self, _: super::plan::ClashEffectFields) {}
+
+    fn profiles_committed(&self) {}
+
+    fn runtime_bound(&self, _: Option<ResolvedPortBindings>, _: bool) {}
+
+    fn publish_full(&self, _: Option<ResolvedPortBindings>) {}
 }

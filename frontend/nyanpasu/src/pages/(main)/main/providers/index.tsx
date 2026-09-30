@@ -236,6 +236,7 @@ function RouteComponent() {
       message(`Update provider failed: \n ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })
@@ -258,6 +259,7 @@ function RouteComponent() {
       message(`Update provider failed: \n ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

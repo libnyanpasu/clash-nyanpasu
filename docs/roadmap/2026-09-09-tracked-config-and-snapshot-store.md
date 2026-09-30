@@ -1,5 +1,7 @@
 # 配置追踪与 Snapshot Store Roadmap
 
+> **部分已被取代（2026-09-28）：** §2 第 6 条、§8 验证矩阵与 §10 验证记录中“消费者 panic 不影响核心事务”已被 [Workflow 与生命周期精简计划](../plan/2026-09-28-workflow-lifecycle-simplification.md) 的 U5 取代：panic 即缺陷，提交通知中的 panic 继续传播（P1-6 `a548de7cb`）。P0.1 中“沿用 CoreClient 的有限超时”仍然有效：它是 IPC 边界期限，按精简计划 §10 保留到 PR-0。正文保持原样。
+
 日期：2026-09-09
 
 状态：P0 为当前审计修补；P1–P3 为后续交付，不能据此声称已经完成统一配置 wrapper。

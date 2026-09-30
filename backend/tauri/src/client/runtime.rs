@@ -11,12 +11,19 @@ use std::{
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
-use nyanpasu_config::application::ClashCore;
+use nyanpasu_config::{application::ClashCore, profile::ProfileId};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
+use snafu::{ResultExt, Snafu};
 
-use crate::{enhance::PostProcessingOutput, utils::path::PathResolver};
+use super::runtime_error::RuntimeError;
+use crate::{
+    core::actor_v2::api::ApiError,
+    enhance::PostProcessingOutput,
+    state::profiles::{ErrorPath, ProfilesError},
+    utils::path::PathResolver,
+};
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
@@ -37,12 +44,12 @@ impl RuntimeRevisionAllocator {
         Self(0)
     }
 
-    pub(crate) fn allocate(&mut self) -> anyhow::Result<RuntimeRevision> {
+    pub(crate) fn allocate(&mut self) -> RuntimeRevision {
         self.0 = self
             .0
             .checked_add(1)
-            .ok_or_else(|| anyhow::anyhow!("runtime revision space exhausted"))?;
-        Ok(RuntimeRevision(self.0))
+            .expect("a session cannot exhaust the u64 runtime revision space");
+        RuntimeRevision(self.0)
     }
 }
 
@@ -105,6 +112,42 @@ impl RuntimeSnapshot {
     }
 }
 
+/// What the core actually accepted, recorded the moment it confirms an apply
+/// and never derived from a file or an inspection (v2 §5.3/§5.4, C3).
+///
+/// It is deliberately decoupled from [`RuntimeSnapshot`]: `promoted` tracks a
+/// derived product file and `applied` waits for an effective-config
+/// inspection that may arrive late or not at all, so neither can serve as the
+/// baseline a recovery has to restore. This can.
+#[derive(Debug, Clone)]
+pub(in crate::client) struct RuntimeApplyReceipt {
+    /// Which build produced these bytes. Diagnostic: a restore targets the
+    /// document, not the revision that happened to carry it.
+    #[allow(dead_code)]
+    pub revision: RuntimeRevision,
+    /// The exact document the core accepted — the same bytes the validator
+    /// checked, never a re-serialization of the snapshot.
+    pub config_text: Arc<str>,
+    /// `nyanpasu_core_manager::payload_digest` of `config_text`: the change
+    /// identity the core verified on receipt.
+    pub config_digest: String,
+    pub target_core: ClashCore,
+    pub core_spec: nyanpasu_core_manager::CoreSpec,
+    pub host: crate::core::actor_v2::endpoint::ExecutionHost,
+    /// Whether the app wants this runtime running at all. A core the user
+    /// stopped is a target too, and a recovery must not start it.
+    pub run_intent: super::application_workflow::policy::CoreRunIntent,
+    pub local_ipc: nyanpasu_core_manager::LocalIpcSettings,
+    /// The binding this apply produced. A recovery may legitimately land on a
+    /// newer instance generation, so only its content identity is a target.
+    pub binding: crate::core::actor_v2::facade::AppliedConfigBinding,
+    /// The ports this apply bound. Confirming them is gated on this receipt.
+    pub ports: super::ports::CandidatePortBindings,
+    /// The committed target these bytes were built from, when the build had
+    /// one: what tells a running receipt from a newer target still owed.
+    pub target: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeLifecycleState {
     pub promoted: Option<Arc<RuntimeSnapshot>>,
@@ -113,44 +156,149 @@ pub struct RuntimeLifecycleState {
     pub(crate) pending: Option<Arc<RuntimeSnapshot>>,
 }
 
-/// One shared read/write boundary; watch is a private implementation detail.
+#[derive(Debug, Clone)]
+pub(crate) enum InspectionState {
+    Pending,
+    Ready,
+    Unavailable,
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::client) struct ConfirmedRuntime {
+    pub receipt: Arc<RuntimeApplyReceipt>,
+    pub artifact: Option<Arc<RuntimeSnapshot>>,
+    pub inspection: InspectionState,
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RuntimeStoreState {
+    promoted: Option<Arc<RuntimeSnapshot>>,
+    confirmed: Option<ConfirmedRuntime>,
+    transition: bool,
+}
+
+/// One associated record publishes the artifact, receipt and inspection state.
 #[derive(Clone)]
-pub(crate) struct RuntimeSnapshotStore(tokio::sync::watch::Sender<RuntimeLifecycleState>);
+pub(crate) struct RuntimeSnapshotStore(tokio::sync::watch::Sender<RuntimeStoreState>);
 
 impl Default for RuntimeSnapshotStore {
     fn default() -> Self {
-        Self(tokio::sync::watch::Sender::new(
-            RuntimeLifecycleState::default(),
-        ))
+        Self(tokio::sync::watch::Sender::new(RuntimeStoreState::default()))
     }
 }
 
 impl RuntimeSnapshotStore {
     pub(crate) fn read(&self) -> RuntimeLifecycleState {
-        self.0.borrow().clone()
+        let state = self.0.borrow();
+        let confirmed = state.confirmed.as_ref();
+        RuntimeLifecycleState {
+            promoted: state.promoted.clone(),
+            applied: confirmed
+                .filter(|c| c.available && matches!(c.inspection, InspectionState::Ready))
+                .and_then(|c| c.artifact.clone()),
+            pending: confirmed
+                .filter(|c| c.available && matches!(c.inspection, InspectionState::Pending))
+                .and_then(|c| c.artifact.clone()),
+        }
     }
+
     pub(crate) fn generated(&self, snapshot: Arc<RuntimeSnapshot>) {
         self.0.send_modify(|state| state.promoted = Some(snapshot));
     }
-    pub(crate) fn bind_applied(&self, snapshot: Arc<RuntimeSnapshot>) {
+
+    pub(in crate::client) fn generated_confirmed(&self, product: Arc<RuntimeSnapshot>) {
         self.0.send_modify(|state| {
-            if snapshot.applied_binding.is_some()
-                && state
-                    .promoted
-                    .as_ref()
-                    .is_some_and(|source| source.inspection_id == snapshot.inspection_id)
-            {
-                state.promoted = Some(snapshot.clone());
-                state.pending = Some(snapshot);
+            let inspected = state.confirmed.as_ref().and_then(|record| {
+                matches!(record.inspection, InspectionState::Ready)
+                    .then(|| record.artifact.clone())
+                    .flatten()
+            });
+            state.promoted = Some(
+                inspected
+                    .filter(|artifact| {
+                        artifact.identity_eq(&product)
+                            && artifact.applied_binding == product.applied_binding
+                    })
+                    .unwrap_or(product),
+            );
+        });
+    }
+
+    pub(in crate::client) fn record_confirmed_apply(
+        &self,
+        artifact: Option<Arc<RuntimeSnapshot>>,
+        receipt: Arc<RuntimeApplyReceipt>,
+    ) {
+        let artifact = artifact.map(|artifact| {
+            let mut rebound = artifact.without_effective_config();
+            rebound.applied_binding = Some(receipt.binding.clone());
+            Arc::new(rebound)
+        });
+        let inspection = if artifact.is_some() {
+            InspectionState::Pending
+        } else {
+            InspectionState::Unavailable
+        };
+        self.0.send_modify(|state| {
+            state.confirmed = Some(ConfirmedRuntime {
+                receipt,
+                artifact,
+                inspection,
+                available: true,
+            })
+        });
+    }
+
+    pub(in crate::client) fn begin_transition(&self) {
+        self.0.send_modify(|state| state.transition = true);
+    }
+
+    pub(in crate::client) fn accept_transition(&self) {
+        self.0.send_modify(|state| {
+            state.transition = false;
+        });
+    }
+
+    pub(in crate::client) fn confirmed(&self) -> Option<ConfirmedRuntime> {
+        self.0.borrow().confirmed.clone()
+    }
+
+    pub(in crate::client) fn accepted_binding(&self) -> Option<Arc<RuntimeApplyReceipt>> {
+        let state = self.0.borrow();
+        (!state.transition)
+            .then(|| state.confirmed.as_ref())
+            .flatten()
+            .filter(|record| record.available)
+            .map(|record| record.receipt.clone())
+    }
+
+    pub(in crate::client) fn last_confirmed_runtime_receipt(
+        &self,
+    ) -> Option<Arc<RuntimeApplyReceipt>> {
+        self.confirmed().map(|record| record.receipt)
+    }
+
+    pub(crate) fn invalidate(&self) {
+        self.0.send_modify(|state| {
+            if let Some(record) = &mut state.confirmed {
+                record.available = false;
             }
         });
     }
+
     pub(crate) fn applied(&self, source_id: &str, snapshot: Arc<RuntimeSnapshot>) {
         self.0.send_modify(|state| {
-            if !state.pending.as_ref().is_some_and(|pending| {
-                pending.inspection_id == source_id
-                    && pending.applied_binding == snapshot.applied_binding
-            }) {
+            let Some(record) = &mut state.confirmed else {
+                return;
+            };
+            if !record.available
+                || !record
+                    .artifact
+                    .as_ref()
+                    .is_some_and(|artifact| artifact.inspection_id == source_id)
+                || snapshot.applied_binding.as_ref() != Some(&record.receipt.binding)
+            {
                 return;
             }
             if state
@@ -160,25 +308,62 @@ impl RuntimeSnapshotStore {
             {
                 state.promoted = Some(snapshot.clone());
             }
-            state.applied = Some(snapshot);
-            state.pending = None;
+            record.artifact = Some(snapshot);
+            record.inspection = InspectionState::Ready;
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bind_applied(&self, snapshot: Arc<RuntimeSnapshot>) {
+        let Some(binding) = &snapshot.applied_binding else {
+            return;
+        };
+        let mut receipt = tests::receipt(snapshot.revision.get());
+        receipt.binding = binding.clone();
+        self.record_confirmed_apply(Some(snapshot), Arc::new(receipt));
+    }
+
+    #[cfg(test)]
+    pub(in crate::client) fn confirm_applied(&self, receipt: Arc<RuntimeApplyReceipt>) {
+        self.record_confirmed_apply(None, receipt);
     }
 }
 
-pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+/// A failure of publishing the derived runtime config file.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[snafu(visibility(pub(crate)))]
+pub enum PublishRuntimeError {
+    #[snafu(display("could not create the runtime directory {path}"))]
+    CreateRuntimeDirectory {
+        path: ErrorPath,
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("could not write the runtime config {path}"))]
+    WriteRuntimeConfig {
+        path: ErrorPath,
+        #[serde(skip)]
+        source: atomicwrites::Error<std::io::Error>,
+    },
+}
+
+pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> Result<(), PublishRuntimeError> {
     if let Some(parent) = product.parent() {
-        tokio::fs::create_dir_all(parent).await?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .context(CreateRuntimeDirectorySnafu { path: parent })?;
     }
-    let product = product.to_path_buf();
+    let path = product.to_path_buf();
     let bytes = bytes.to_vec();
-    tokio::task::spawn_blocking(move || {
-        atomicwrites::AtomicFile::new(&product, atomicwrites::OverwriteBehavior::AllowOverwrite)
-            .write(|file| std::io::Write::write_all(file, &bytes))
-    })
-    .await?
-    .map_err(|error| anyhow::anyhow!("failed to promote runtime config: {error}"))?;
-    Ok(())
+    let written = crate::utils::blocking::join(
+        tokio::task::spawn_blocking(move || {
+            atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite)
+                .write(|file| std::io::Write::write_all(file, &bytes))
+        })
+        .await,
+    );
+    written.context(WriteRuntimeConfigSnafu { path: product })
 }
 
 #[derive(Debug, Clone)]
@@ -366,90 +551,200 @@ fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
         .map_err(|path| anyhow::anyhow!("runtime path is not UTF-8: {}", path.display()))
 }
 
-/// Public mutation wire (PR-4S S08 / plan §12): state is committed first; post-
-/// commit side-effect failures degrade instead of erroring.
-///
-/// Final wire is only `applied` / `committed_degraded` — no `_v1` alias.
+/// A source commit and its critical runtime result. Peripheral owners settle separately.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct CommitReceipt {
+    pub operation_id: Option<String>,
+    pub domain: String,
+    pub source_version: u64,
+    pub runtime: RuntimeCommitStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeCommitStatus {
+    Applied,
+    Deferred,
+    SavedInactive,
+    Unchanged,
+    RecoveryRequired,
+}
+
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum MutationOutcome<T> {
-    Applied {
+    Committed {
         value: T,
+        commits: Vec<CommitReceipt>,
+        notifications_pending: bool,
     },
     CommittedDegraded {
         value: T,
+        commits: Vec<CommitReceipt>,
+        notifications_pending: bool,
         degradations: Vec<Degradation>,
     },
 }
 
 impl<T> MutationOutcome<T> {
-    /// Applied iff the degradation list is empty.
     pub fn from_parts(value: T, degradations: Vec<Degradation>) -> Self {
         if degradations.is_empty() {
-            Self::Applied { value }
+            Self::Committed {
+                value,
+                commits: Vec::new(),
+                notifications_pending: true,
+            }
         } else {
             Self::CommittedDegraded {
                 value,
+                commits: Vec::new(),
+                notifications_pending: true,
                 degradations,
             }
         }
     }
 
+    pub fn with_commit(mut self, receipt: CommitReceipt) -> Self {
+        match &mut self {
+            Self::Committed { commits, .. } | Self::CommittedDegraded { commits, .. } => {
+                commits.push(receipt)
+            }
+        }
+        self
+    }
+
+    pub fn append_commit_result(self, result: MutationOutcome<()>) -> Self {
+        let commits = match &result {
+            MutationOutcome::Committed { commits, .. }
+            | MutationOutcome::CommittedDegraded { commits, .. } => commits.clone(),
+        };
+        let mut outcome = self.extend_degradations(result.into_parts().1);
+        for commit in commits {
+            outcome = outcome.with_commit(commit);
+        }
+        outcome
+    }
+
     pub fn value(&self) -> &T {
         match self {
-            Self::Applied { value } | Self::CommittedDegraded { value, .. } => value,
+            Self::Committed { value, .. } | Self::CommittedDegraded { value, .. } => value,
         }
     }
 
-    #[allow(dead_code)]
     pub fn into_value(self) -> T {
-        match self {
-            Self::Applied { value } | Self::CommittedDegraded { value, .. } => value,
-        }
+        self.into_parts().0
     }
 
-    #[allow(dead_code)]
     pub fn degradations(&self) -> &[Degradation] {
         match self {
-            Self::Applied { .. } => &[],
+            Self::Committed { .. } => &[],
             Self::CommittedDegraded { degradations, .. } => degradations,
         }
     }
 
     pub fn into_parts(self) -> (T, Vec<Degradation>) {
         match self {
-            Self::Applied { value } => (value, Vec::new()),
+            Self::Committed { value, .. } => (value, Vec::new()),
             Self::CommittedDegraded {
                 value,
                 degradations,
+                ..
             } => (value, degradations),
         }
     }
 
-    /// Append degradations from a later committed step; Applied only when both
-    /// sides contributed none.
     pub fn extend_degradations(self, extra: Vec<Degradation>) -> Self {
+        let commits = match &self {
+            Self::Committed { commits, .. } | Self::CommittedDegraded { commits, .. } => {
+                commits.clone()
+            }
+        };
         let (value, mut degradations) = self.into_parts();
         degradations.extend(extra);
-        Self::from_parts(value, degradations)
+        let mut outcome = Self::from_parts(value, degradations);
+        for receipt in commits {
+            outcome = outcome.with_commit(receipt);
+        }
+        outcome
     }
 }
 
 /// Structured committed-degraded detail surfaced over IPC / Specta.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct Degradation {
     pub phase: DegradationPhase,
-    /// Stable snake_case code string (not a free-form English phrase).
-    pub code: String,
+    pub reason: DegradationReason,
+    /// The diagnostic text, for logs and the copied details; the frontend
+    /// localizes `reason`.
     pub message: String,
     pub retryable: bool,
+}
+
+/// Why a committed mutation is degraded. The frontend localizes each variant.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum DegradationReason {
+    /// The runtime owner stopped before the mutation settled, or settled it as
+    /// needing recovery.
+    RuntimeRecoveryRequired {
+        operation_id: Option<String>,
+        cause: Option<Arc<RuntimeError>>,
+    },
+    /// The runtime will apply the committed mutation later.
+    RuntimeDeferred {
+        cause: Arc<RuntimeError>,
+    },
+    RuntimeProductPublishFailed {
+        cause: Arc<RuntimeError>,
+    },
+    ServiceStopFailed {
+        cause: Arc<RuntimeError>,
+    },
+    ModeInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProfileInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProxyInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProxyCacheRefreshFailed,
+    JournalInvalid,
+    MaterializationDeferred,
+    CleanupDeferred,
+    ProfileAutoActivationFailed {
+        profile: ProfileId,
+        cause: Arc<ProfilesError>,
+    },
+}
+
+/// How closing the source instance's connections failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum InterruptFailure {
+    /// The Clash API belongs to a core instance that has since been retired.
+    Stale,
+    Unavailable,
+    Timeout,
+    Protocol,
+}
+
+impl From<&ApiError> for InterruptFailure {
+    fn from(error: &ApiError) -> Self {
+        match error {
+            ApiError::Stale => Self::Stale,
+            ApiError::Unavailable(_) => Self::Unavailable,
+            ApiError::Timeout => Self::Timeout,
+            ApiError::Protocol(_) => Self::Protocol,
+        }
+    }
 }
 
 /// Public degradation phases for mutation outcomes. Serde/Specta use snake_case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum DegradationPhase {
-    LegacyMirror,
     ProfileMaterialization,
     RuntimeBuild,
     RuntimeCheck,
@@ -462,14 +757,20 @@ pub enum DegradationPhase {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// A revision value for fixtures that need one but do not exercise the
+    /// allocator.
+    pub(crate) fn test_revision() -> RuntimeRevision {
+        RuntimeRevision(1)
+    }
 
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
         let mut allocator = RuntimeRevisionAllocator::new();
-        let first = allocator.allocate().expect("first revision");
-        let second = allocator.allocate().expect("second revision");
+        let first = allocator.allocate();
+        let second = allocator.allocate();
 
         assert_eq!(first.get(), 1);
         assert_eq!(second.get(), 2);
@@ -480,7 +781,7 @@ mod tests {
     fn mutation_outcome_applied_iff_degradations_empty() {
         let applied = MutationOutcome::from_parts("uid", Vec::new());
         assert!(
-            matches!(applied, MutationOutcome::Applied { .. }),
+            matches!(applied, MutationOutcome::Committed { .. }),
             "empty degradations must be Applied"
         );
         assert_eq!(applied.value(), &"uid");
@@ -489,7 +790,7 @@ mod tests {
             "uid",
             vec![Degradation {
                 phase: DegradationPhase::RuntimeBuild,
-                code: "runtime_rebuild_failed".into(),
+                reason: DegradationReason::JournalInvalid,
                 message: "boom".into(),
                 retryable: true,
             }],
@@ -503,7 +804,7 @@ mod tests {
         let merged =
             MutationOutcome::from_parts((), Vec::new()).extend_degradations(vec![Degradation {
                 phase: DegradationPhase::ProfileMaterialization,
-                code: "cleanup_deferred".into(),
+                reason: DegradationReason::CleanupDeferred,
                 message: "left behind".into(),
                 retryable: true,
             }]);
@@ -511,7 +812,10 @@ mod tests {
             matches!(merged, MutationOutcome::CommittedDegraded { .. }),
             "extend_degradations with extra must be CommittedDegraded"
         );
-        assert_eq!(merged.degradations()[0].code, "cleanup_deferred");
+        assert!(matches!(
+            merged.degradations()[0].reason,
+            DegradationReason::CleanupDeferred
+        ));
     }
 
     #[test]
@@ -526,14 +830,16 @@ mod tests {
     fn mutation_outcome_wire_uses_applied_and_committed_degraded() {
         let applied = MutationOutcome::from_parts((), Vec::new());
         let applied_json = serde_json::to_value(&applied).unwrap();
-        assert_eq!(applied_json["status"], "applied");
+        assert_eq!(applied_json["status"], "committed");
         assert!(applied_json.get("value").is_some());
 
         let degraded = MutationOutcome::from_parts(
             "p1",
             vec![Degradation {
                 phase: DegradationPhase::RuntimeBuild,
-                code: "runtime_rebuild_failed".into(),
+                reason: DegradationReason::ServiceStopFailed {
+                    cause: Arc::new(RuntimeError::ShuttingDown),
+                },
                 message: "check boom".into(),
                 retryable: true,
             }],
@@ -542,8 +848,11 @@ mod tests {
         assert_eq!(degraded_json["status"], "committed_degraded");
         assert_eq!(degraded_json["value"], "p1");
         assert_eq!(
-            degraded_json["degradations"][0]["code"],
-            "runtime_rebuild_failed"
+            degraded_json["degradations"][0]["reason"],
+            serde_json::json!({
+                "code": "service_stop_failed",
+                "cause": { "kind": "shutting_down" },
+            })
         );
         assert_eq!(degraded_json["degradations"][0]["phase"], "runtime_build");
         assert_eq!(degraded_json["degradations"][0]["retryable"], true);
@@ -570,6 +879,118 @@ mod tests {
     fn runtime_lifecycle_store_tracks_only_the_promoted_product() {
         let lifecycle = RuntimeLifecycleState::default();
         assert!(lifecycle.promoted.is_none());
+    }
+
+    fn binding() -> crate::core::actor_v2::facade::AppliedConfigBinding {
+        crate::core::actor_v2::facade::AppliedConfigBinding {
+            revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
+                epoch: 1,
+                generation: 3,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            generation: 0,
+        }
+    }
+
+    fn snapshot(revision: u64) -> Arc<RuntimeSnapshot> {
+        Arc::new(RuntimeSnapshot::from_data(
+            RuntimeRevision(revision),
+            ClashCore::default(),
+            Arc::from(&b"mode: rule\n"[..]),
+            RuntimeSnapshotData {
+                config: Mapping::new(),
+                exists_keys: Vec::new(),
+                postprocessing_output: PostProcessingOutput::default(),
+                inspection: Arc::new(super::super::runtime_inspection::tests::inspection_data()),
+            },
+        ))
+    }
+
+    /// v2 §5.6: the public runtime YAML is a derived product. An apply the
+    /// core confirmed is a fact about the core, so a product that was never
+    /// published must not erase it.
+    #[test]
+    fn an_apply_binds_even_when_no_product_was_promoted() {
+        let store = RuntimeSnapshotStore::default();
+        let mut bound = snapshot(1).as_ref().clone();
+        bound.applied_binding = Some(binding());
+        let bound = Arc::new(bound);
+
+        store.bind_applied(bound.clone());
+
+        let state = store.read();
+        assert!(
+            state.promoted.is_none(),
+            "nothing was published, so nothing is promoted"
+        );
+        assert_eq!(
+            state.pending.as_ref().map(|s| s.inspection_id.as_str()),
+            Some(bound.inspection_id.as_str()),
+            "the apply is recorded regardless of the product file"
+        );
+    }
+
+    #[test]
+    fn binding_a_snapshot_the_core_never_applied_records_nothing() {
+        let store = RuntimeSnapshotStore::default();
+        store.bind_applied(snapshot(1));
+        assert!(store.read().pending.is_none());
+    }
+
+    /// V09 at the store level: the recovery baseline follows the confirmed
+    /// apply, never the inspection. `applied` stays empty while the receipt
+    /// advances twice.
+    #[test]
+    fn the_recovery_baseline_advances_with_each_confirmed_apply() {
+        let store = RuntimeSnapshotStore::default();
+        assert!(store.last_confirmed_runtime_receipt().is_none());
+
+        let first = Arc::new(receipt(1));
+        store.confirm_applied(first.clone());
+        let second = Arc::new(receipt(2));
+        store.confirm_applied(second);
+
+        assert_eq!(
+            store
+                .last_confirmed_runtime_receipt()
+                .expect("a confirmed apply")
+                .revision
+                .get(),
+            2,
+        );
+        assert!(
+            store.read().applied.is_none(),
+            "no inspection arrived, and the baseline did not wait for one"
+        );
+        assert_eq!(first.revision.get(), 1);
+    }
+
+    pub(super) fn receipt(revision: u64) -> RuntimeApplyReceipt {
+        RuntimeApplyReceipt {
+            revision: RuntimeRevision(revision),
+            config_text: Arc::from("mode: rule\n"),
+            config_digest: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
+            target_core: ClashCore::default(),
+            core_spec: nyanpasu_core_manager::CoreSpec {
+                kind: nyanpasu_core_manager::CoreKind::Mihomo,
+                binary_path: camino::Utf8PathBuf::from("fake-core"),
+                version: None,
+                features: Vec::new(),
+            },
+            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
+            local_ipc: nyanpasu_core_manager::LocalIpcSettings {
+                policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
+                keep_http_controller: true,
+            },
+            binding: binding(),
+            ports: crate::client::ports::SessionPortResolver::default()
+                .resolve_candidate(&crate::client::tests::test_clash_config())
+                .expect("default port strategies resolve"),
+            target: None,
+        }
     }
 
     #[test]

@@ -7,7 +7,7 @@ import { NYANPASU_BACKEND_EVENT_NAME } from '../ipc/consts'
 type EventPayload = 'nyanpasu_config' | 'clash_config' | 'proxies' | 'profiles'
 
 const NYANPASU_CONFIG_MUTATION_KEYS: QueryKey[] = [
-  queries.getVergeConfig().queryKey,
+  queries.getAppConfig().queryKey,
   queries.getSysProxy().queryKey,
   // TODO: proxies hook refetch
   // TODO: profiles hook refetch
@@ -15,6 +15,7 @@ const NYANPASU_CONFIG_MUTATION_KEYS: QueryKey[] = [
 
 const CLASH_CONFIG_MUTATION_KEYS: QueryKey[] = [
   queries.clashApiGetVersion().queryKey,
+  queries.getClashConfig().queryKey,
   queries.getClashInfo().queryKey,
   queries.clashApiGetConfigs().queryKey,
   queries.getProfiles().queryKey,
@@ -28,6 +29,7 @@ const CLASH_CONFIG_MUTATION_KEYS: QueryKey[] = [
 
 const PROFILES_MUTATION_KEYS: QueryKey[] = [
   queries.clashApiGetVersion().queryKey,
+  queries.getClashConfig().queryKey,
   queries.getClashInfo().queryKey,
   queries.getProfiles().queryKey,
   // TODO: clash rules hook refetch

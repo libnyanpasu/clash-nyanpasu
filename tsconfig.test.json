@@ -9,9 +9,11 @@
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
+    "allowJs": true,
     "resolveJsonModule": true,
     "types": ["node", "vitest/browser"],
     "paths": {
+      "@/*": ["./frontend/nyanpasu/src/*"],
       "@interface/*": ["./frontend/interface/src/*"],
       "@nyanpasu/interface": ["./frontend/interface/src/index.ts"],
       "@nyanpasu/interface/*": ["./frontend/interface/src/*"],
@@ -21,6 +23,7 @@
   },
   "include": [
     "vitest.config.ts",
+    "frontend/nyanpasu/src/services/types.d.ts",
     "frontend/*/tests/**/*.ts",
     "frontend/*/tests/**/*.tsx"
   ]

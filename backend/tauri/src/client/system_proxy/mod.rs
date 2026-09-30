@@ -1,12 +1,11 @@
 //! System proxy, PAC and auto-launch, owned by one actor behind a typed client.
 //!
 //! Callers never see a `ractor::ActorRef`: they hand a revision and the desired
-//! values in, and get one [`EffectStatus`] per effect back. Every call is
-//! bounded, because the effect owner is reached from an IPC command that has a
-//! user waiting on it.
+//! values in, and get one [`EffectStatus`] per effect back.
 
 mod actor;
 pub mod adapters;
+mod error;
 pub mod ports;
 
 #[cfg(test)]
@@ -15,24 +14,19 @@ mod tests;
 use std::time::Duration;
 
 use ractor::{Actor, ActorRef, rpc::CallResult};
-use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use self::{
-    actor::{ActorArgs, Message, SystemProxyActor, requested_kinds},
+    actor::{Message, SystemProxyActor, requested_kinds},
+    error::SystemProxyError,
     ports::OsProxyConfig,
 };
 use crate::client::effects::{
-    plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
+    plan::{ProxyGuardDesired, SystemProxyDesired},
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
 
 pub use self::actor::Args as SystemProxyArgs;
-
-/// Long enough for an OS write plus one PAC download attempt, short enough that
-/// a stuck platform API does not hold an IPC command open indefinitely.
-const SYSTEM_PROXY_RPC_TIMEOUT: Duration = Duration::from_secs(15);
-/// Shorter: the exit path cannot hang on a proxy that will not answer.
-const SYSTEM_PROXY_RESTORE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// What the actor currently holds. Nothing in the effect protocol needs it —
 /// that travels as [`EffectStatus`] — so today only the tests observe the
@@ -54,29 +48,24 @@ pub struct SystemProxyStatus {
 #[derive(Clone)]
 pub struct SystemProxyClient {
     actor: ActorRef<Message>,
-    /// Fired on the way into the restore. Owned here rather than inside the
-    /// actor because the whole point is to reach work that is already running
-    /// on the mailbox the restore has to get through.
-    cancel: CancellationToken,
 }
 
 impl SystemProxyClient {
-    pub async fn spawn(args: SystemProxyArgs) -> anyhow::Result<Self> {
-        let cancel = CancellationToken::new();
-        let (actor, _handle) = Actor::spawn(
-            None,
-            SystemProxyActor,
-            ActorArgs {
-                args,
-                cancel: cancel.clone(),
-            },
-        )
-        .await?;
-        Ok(Self { actor, cancel })
+    /// The actor puts back the proxy settings it found once `args.shutdown`
+    /// is cancelled, and `tasks` waits for that.
+    pub async fn spawn(args: SystemProxyArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
+        let shutdown = args.shutdown.clone();
+        let (actor, _handle) = Actor::spawn(None, SystemProxyActor, args).await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        Ok(Self { actor })
     }
 
     /// One plan's system-owned effects in a single round trip. `None` means the
     /// plan did not ask for that effect, so it is left exactly as it is.
+    ///
+    /// Unbounded on purpose: the only caller is the effects group, which must
+    /// stay occupied until the actor has settled this request. Giving up early
+    /// would free the group and let a retry queue behind work still running.
     pub async fn reconcile(
         &self,
         revision: EffectRevision,
@@ -99,22 +88,25 @@ impl SystemProxyClient {
                     auto_launch,
                     reply,
                 },
-                Some(SYSTEM_PROXY_RPC_TIMEOUT),
+                None,
             )
             .await;
 
         match call {
             Ok(CallResult::Success(statuses)) => statuses,
             other => {
-                // The actor keeps working through the message and will update
-                // its own applied revision, so this is retryable and says so.
                 tracing::warn!(
                     revision = revision.get(),
-                    "the system proxy actor did not answer within its bound: {other:?}"
+                    "the system proxy actor stopped before answering: {other:?}"
                 );
                 kinds
                     .into_iter()
-                    .map(|kind| timed_out(kind, revision))
+                    .map(|kind| EffectStatus {
+                        kind,
+                        desired_revision: revision,
+                        applied_revision: EffectRevision::default(),
+                        health: SystemProxyError::Stopped.health(),
+                    })
                     .collect()
             }
         }
@@ -122,17 +114,13 @@ impl SystemProxyClient {
 
     #[cfg_attr(not(test), allow(dead_code))]
     pub async fn status(&self) -> SystemProxyStatus {
-        match self
-            .actor
-            .call(Message::Status, Some(SYSTEM_PROXY_RPC_TIMEOUT))
-            .await
-        {
+        match self.actor.call(Message::Status, None).await {
             Ok(CallResult::Success(status)) => status,
             other => {
                 tracing::warn!("the system proxy actor did not report its status: {other:?}");
                 SystemProxyStatus {
                     applied_revision: EffectRevision::default(),
-                    health: timeout_health(),
+                    health: SystemProxyError::Stopped.health(),
                     desired: None,
                     applied_os_proxy: None,
                     guard_active: false,
@@ -143,46 +131,11 @@ impl SystemProxyClient {
         }
     }
 
-    pub async fn restore(&self) -> EffectStatus {
-        // Cancelled before the message is queued, not after: a PAC download
-        // owns the mailbox for as long as its retries last, which is far longer
-        // than the bound below, and the app would exit with its proxy still on.
-        self.cancel.cancel();
-        match self
-            .actor
-            .call(Message::Restore, Some(SYSTEM_PROXY_RESTORE_TIMEOUT))
-            .await
-        {
-            Ok(CallResult::Success(status)) => status,
-            other => {
-                tracing::warn!("the system proxy actor did not restore in time: {other:?}");
-                timed_out(EffectKind::SystemProxy, EffectRevision::default())
-            }
-        }
-    }
-
     /// Delivers one guard tick and waits for it to be handled, so a guard test
     /// synchronises on the mailbox instead of on a clock.
     #[cfg(test)]
     pub async fn tick_guard(&self) {
         let _ = self.actor.cast(Message::GuardTick);
         let _ = self.status().await;
-    }
-}
-
-fn timed_out(kind: EffectKind, revision: EffectRevision) -> EffectStatus {
-    EffectStatus {
-        kind,
-        desired_revision: revision,
-        applied_revision: EffectRevision::default(),
-        health: timeout_health(),
-    }
-}
-
-fn timeout_health() -> EffectHealth {
-    EffectHealth::Degraded {
-        code: "system_proxy_timeout",
-        message: "the system proxy actor did not answer within its bound".to_owned(),
-        retryable: true,
     }
 }

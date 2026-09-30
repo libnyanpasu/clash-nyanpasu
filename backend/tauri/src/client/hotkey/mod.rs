@@ -8,12 +8,13 @@
 
 mod actor;
 pub mod adapters;
+pub(crate) mod error;
 pub mod ports;
 
 #[cfg(test)]
 mod tests;
 
-use std::{collections::BTreeMap, time::Duration};
+use std::collections::BTreeMap;
 
 use nyanpasu_config::{
     application::NyanpasuAppConfigPatch,
@@ -23,11 +24,16 @@ use nyanpasu_config::{
     },
 };
 use ractor::{Actor, ActorRef, rpc::CallResult};
+use snafu::ResultExt as _;
+use tokio_util::task::TaskTracker;
 
 use self::{
     actor::{HotkeyActor, Message},
+    error::HotkeyEffectError,
     ports::{HotkeyAction, HotkeyBindings},
 };
+use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
+
 use super::{
     NyanpasuClient, Result,
     effects::{
@@ -38,11 +44,6 @@ use super::{
 };
 
 pub use self::actor::Args as HotkeyArgs;
-
-/// A grab is a window-server round trip, not a download: five seconds is far
-/// more than it takes and still short enough that an IPC command with a user
-/// waiting on it cannot hang.
-const HOTKEY_RPC_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The actor's private state, observable for tests and diagnostics. The effect
 /// protocol itself travels as [`EffectStatus`].
@@ -61,8 +62,12 @@ pub struct HotkeyClient {
 }
 
 impl HotkeyClient {
-    pub async fn spawn(args: HotkeyArgs) -> anyhow::Result<Self> {
+    /// The actor hands every accelerator back to the OS once `args.shutdown`
+    /// is cancelled, and `tasks` waits for that.
+    pub async fn spawn(args: HotkeyArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
+        let shutdown = args.shutdown.clone();
         let (actor, _handle) = Actor::spawn(None, HotkeyActor, args).await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self { actor })
     }
 
@@ -79,72 +84,45 @@ impl HotkeyClient {
                     desired,
                     reply,
                 },
-                Some(HOTKEY_RPC_TIMEOUT),
+                None,
             )
             .await
         {
             Ok(CallResult::Success(status)) => status,
             other => {
-                // The actor keeps working through the message and updates its
-                // own applied revision, so this is retryable and says so.
                 tracing::warn!(
                     revision = revision.get(),
-                    "the hotkey actor did not answer within its bound: {other:?}"
+                    "the hotkey actor stopped before answering: {other:?}"
                 );
-                timed_out(revision)
+                EffectStatus {
+                    kind: EffectKind::Hotkeys,
+                    desired_revision: revision,
+                    applied_revision: EffectRevision::default(),
+                    health: stopped_health(),
+                }
             }
         }
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
     pub async fn status(&self) -> HotkeyStatus {
-        match self
-            .actor
-            .call(Message::Status, Some(HOTKEY_RPC_TIMEOUT))
-            .await
-        {
+        match self.actor.call(Message::Status, None).await {
             Ok(CallResult::Success(status)) => status,
             other => {
                 tracing::warn!("the hotkey actor did not report its status: {other:?}");
                 HotkeyStatus {
                     applied_revision: EffectRevision::default(),
-                    health: timeout_health(),
+                    health: stopped_health(),
                     registered: BTreeMap::new(),
                 }
             }
         }
     }
-
-    pub async fn unregister_all(&self) -> EffectStatus {
-        match self
-            .actor
-            .call(Message::UnregisterAll, Some(HOTKEY_RPC_TIMEOUT))
-            .await
-        {
-            Ok(CallResult::Success(status)) => status,
-            other => {
-                tracing::warn!("the hotkey actor did not release its shortcuts in time: {other:?}");
-                timed_out(EffectRevision::default())
-            }
-        }
-    }
 }
 
-fn timed_out(revision: EffectRevision) -> EffectStatus {
-    EffectStatus {
-        kind: EffectKind::Hotkeys,
-        desired_revision: revision,
-        applied_revision: EffectRevision::default(),
-        health: timeout_health(),
-    }
-}
-
-fn timeout_health() -> EffectHealth {
-    EffectHealth::Degraded {
-        code: "hotkey_timeout",
-        message: "the hotkey actor did not answer within its bound".to_owned(),
-        retryable: true,
-    }
+/// Not retryable: an actor that is gone never answers a retry either.
+fn stopped_health() -> EffectHealth {
+    HotkeyEffectError::Stopped.health()
 }
 
 /// Rejects a hotkey list before anything is written.
@@ -155,9 +133,8 @@ fn timeout_health() -> EffectHealth {
 pub(crate) fn validate_bindings(
     raw: &[String],
     accelerators: &dyn ports::AcceleratorValidator,
-) -> Result<()> {
-    HotkeyBindings::parse(raw, accelerators)
-        .map_err(|error| super::ClientError::Anyhow(error.into()))?;
+) -> std::result::Result<(), ConfigError> {
+    HotkeyBindings::parse(raw, accelerators).context(ValidateHotkeysSnafu)?;
     Ok(())
 }
 
@@ -231,7 +208,7 @@ impl NyanpasuClient {
 fn log_degradations(outcome: &MutationOutcome<()>) {
     for degradation in outcome.degradations() {
         tracing::warn!(
-            code = %degradation.code,
+            reason = ?degradation.reason,
             message = %degradation.message,
             "a hotkey action committed with a degraded side effect"
         );

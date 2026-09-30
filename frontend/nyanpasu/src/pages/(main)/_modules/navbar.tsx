@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
+import type { FileRoutesByTo } from '@/route-tree.gen'
 import { useClashProxies } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import {
@@ -32,22 +33,28 @@ function NavbarButton<
   const TTo extends string | undefined = undefined,
   const TMaskFrom extends string = TFrom,
   const TMaskTo extends string = '',
->(
-  props: LinkComponentProps<
+>({
+  section,
+  ...props
+}: LinkComponentProps<'a', RegisteredRouter, TFrom, TTo, TMaskFrom, TMaskTo> & {
+  // Keeps the button active on every subpage of this route, not only the
+  // subpage the link opens.
+  section?: keyof FileRoutesByTo
+}) {
+  const matchRoute = useMatchRoute()
+
+  const linkProps = props as LinkComponentProps<
     'a',
     RegisteredRouter,
     TFrom,
     TTo,
     TMaskFrom,
     TMaskTo
-  >,
-) {
-  const matchRoute = useMatchRoute()
+  >
 
-  const isActive = !!matchRoute({
-    ...props,
-    fuzzy: true,
-  })
+  const isActive = !!matchRoute(
+    section ? { to: section, fuzzy: true } : { ...linkProps, fuzzy: true },
+  )
 
   return (
     <AnimatedTabsItem
@@ -57,7 +64,7 @@ function NavbarButton<
       isActive={isActive}
       asChild
     >
-      <Link {...props} />
+      <Link {...linkProps} />
     </AnimatedTabsItem>
   )
 }
@@ -120,6 +127,7 @@ export const DefaultNavbar = () => {
         <NavbarButton
           to="/main/proxies/group/$name"
           params={{ name: fristGroup }}
+          section="/main/proxies"
         >
           <Public />
 
@@ -138,6 +146,7 @@ export const DefaultNavbar = () => {
         params={{
           type: 'profile',
         }}
+        section="/main/profiles"
       >
         <GridViewOutlineRounded />
 
@@ -167,7 +176,7 @@ export const DefaultNavbar = () => {
         <NavbarLabel>{m.navbar_label_logs()}</NavbarLabel>
       </NavbarButton>
 
-      <NavbarButton to="/main/settings/system">
+      <NavbarButton to="/main/settings/system" section="/main/settings">
         <SettingsRounded />
 
         <NavbarLabel>{m.navbar_label_settings()}</NavbarLabel>
@@ -218,7 +227,7 @@ export const MobileNavbar = () => {
       </MoblieNavbarContainer>
 
       <MoblieNavbarContainer>
-        <NavbarButton to="/main/settings/system">
+        <NavbarButton to="/main/settings/system" section="/main/settings">
           <SettingsRounded />
         </NavbarButton>
 

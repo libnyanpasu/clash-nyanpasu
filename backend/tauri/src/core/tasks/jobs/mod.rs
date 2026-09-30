@@ -1,5 +1,4 @@
 mod events_rotate;
-mod logger;
 
 use super::task::{Task, TaskManager};
 use parking_lot::RwLock;

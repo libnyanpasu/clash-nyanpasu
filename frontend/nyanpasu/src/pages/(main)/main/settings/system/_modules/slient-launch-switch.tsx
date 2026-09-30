@@ -22,6 +22,7 @@ export default function SilentLaunchSwitch() {
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }

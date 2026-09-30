@@ -14,7 +14,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::list_log_files,
             ipc::get_sys_proxy,
             ipc::get_clash_info,
-            ipc::get_clash_logs,
             ipc::get_runtime_config,
             ipc::get_runtime_yaml,
             ipc::get_runtime_exists,
@@ -32,7 +31,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::fetch_latest_core_versions,
             ipc::inspect_updater,
             ipc::get_core_version,
-            ipc::get_verge_config,
+            ipc::get_app_config,
+            ipc::get_clash_config,
             ipc::get_hotkey_functions,
             ipc::get_profiles,
             ipc::read_profile_file,
@@ -52,12 +52,16 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_all_storage_items,
             ipc::get_hotkeys,
             ipc::get_core_dir,
-            ipc::get_clash_ws_connections_state,
             ipc::get_clash_ws_snapshot,
             ipc::check_update,
+            ipc::get_release_channel,
             ipc::get_system_accent_color,
         ],
         collect_commands![
+            ipc::get_configuration_status,
+            ipc::retry_configuration_runtime,
+            ipc::retry_configuration_effect,
+            ipc::set_release_channel,
             // Side-effecting commands
             ipc::open_log_session,
             ipc::query_logs,
@@ -69,17 +73,18 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::open_web_url,
             ipc::open_core_dir,
             ipc::restart_sidecar,
+            ipc::patch_app_config,
             ipc::patch_clash_config,
+            ipc::patch_runtime_overrides,
             ipc::change_clash_core,
             ipc::clash_api_delete_connections,
             ipc::clash_api_update_providers_rules,
             ipc::uwp::invoke_uwp_tool,
             ipc::update_core,
             ipc::collect_logs,
-            ipc::patch_verge_config,
             ipc::enhance_profiles,
             ipc::import_profile,
-            ipc::get_pending_deep_link,
+            ipc::take_pending_deep_links,
             ipc::create_profile,
             ipc::reorder_profile,
             ipc::reorder_profiles_by_list,
@@ -112,6 +117,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::mutate_proxies,
             ipc::set_clash_ws_recording,
             ipc::clear_clash_ws_history,
+            ipc::subscribe_clash_connection_details,
+            ipc::unsubscribe_clash_connection_details,
             ipc::save_window_size_state,
             ipc::create_main_window,
             ipc::create_debug_tray_menu_window,
@@ -121,13 +128,13 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ],
     )
     .events(collect_events![
-        core::clash::ClashConnectionsEvent,
         core::clash::ws::ClashWsEvent,
         window::WindowMessageEvent,
         window::WindowReadyEvent,
         core::storage::StorageValueChangedEvent,
         ipc::SchemeRequestReceivedEvent,
         core::actor_v2::CoreStatusChangedEvent,
+        ipc::ConfigurationStatusChanged,
         core::actor_v2::ServiceStatusChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
@@ -252,6 +259,13 @@ mod tests {
             "MutationOutcome",
             "Degradation",
             "DegradationPhase",
+            "DegradationReason",
+            "NyanpasuAppConfig",
+            "NyanpasuAppConfigPatch",
+            "ClashConfig",
+            "ClashConfigPatch",
+            "ClashGuardOverridesPatch",
+            "ClashApiConfig",
         ] {
             assert!(
                 generated.contains(&format!("export type {name}"))
@@ -269,6 +283,35 @@ mod tests {
             !generated.contains("export type CommitOutcome")
                 && !generated.contains("export interface CommitOutcome"),
             "old CommitOutcome wire must be removed from bindings"
+        );
+        assert!(
+            !generated.contains("export type PatchRuntimeConfig"),
+            "the whitelisted overrides DTO is replaced by ClashGuardOverridesPatch"
+        );
+        assert!(
+            !generated.contains("export type IVerge") && !generated.contains("export type Legacy"),
+            "no legacy verge DTO may stay on the wire"
+        );
+
+        // The plain `ClashConfig` name belongs to the typed persistent config,
+        // not to the clash-API `/configs` DTO.
+        let clash_config = exported_type(&generated, "ClashConfig");
+        assert_contains_all(
+            clash_config,
+            "ClashConfig",
+            &["overrides: ClashGuardOverrides", "mixed_port: PortStrategy"],
+        );
+        // The composite clash fields take nested patches, so edits of sibling
+        // sub-fields merge in the actor instead of replacing each other.
+        let clash_patch = exported_type(&generated, "ClashConfigPatch_Deserialize");
+        assert_contains_all(
+            clash_patch,
+            "ClashConfigPatch_Deserialize",
+            &[
+                "mixed_port?: PortStrategyPatch_Deserialize",
+                "external_controller?: ExternalControllerStrategyPatch_Deserialize",
+                "break_connection?: BreakConnectionStrategyPatch_Deserialize",
+            ],
         );
 
         for phase in ["Deserialize", "Serialize"] {
@@ -351,7 +394,7 @@ mod tests {
             mutation_outcome,
             "MutationOutcome",
             &[
-                "status: 'applied'",
+                "status: 'committed'",
                 "status: 'committed_degraded'",
                 "value: T",
                 "degradations:",
@@ -367,7 +410,19 @@ mod tests {
         assert_contains_all(
             degradation,
             "Degradation",
-            &["phase: DegradationPhase", "code:", "message:", "retryable:"],
+            &[
+                "phase: DegradationPhase",
+                "reason: DegradationReason",
+                "message:",
+                "retryable:",
+            ],
+        );
+
+        let reason = exported_type(&generated, "DegradationReason");
+        assert_contains_all(
+            reason,
+            "DegradationReason",
+            &["code: 'runtime_deferred'", "code: 'cleanup_deferred'"],
         );
 
         let phase = exported_type(&generated, "DegradationPhase");
@@ -375,7 +430,6 @@ mod tests {
             phase,
             "DegradationPhase",
             &[
-                "'legacy_mirror'",
                 "'profile_materialization'",
                 "'runtime_build'",
                 "'runtime_check'",
@@ -387,6 +441,10 @@ mod tests {
                 "'ui_effect'",
             ],
         );
+        assert!(
+            !generated.contains("legacy_mirror"),
+            "nothing constructs the legacy_mirror phase, so it may not return to the wire"
+        );
 
         // create/import must return the instantiated generic carrying ProfileId.
         assert!(
@@ -397,6 +455,27 @@ mod tests {
         assert!(
             generated.contains("MutationOutcome<null>"),
             "unit profile mutations must return MutationOutcome<null>"
+        );
+
+        // A2: the connection-detail Channel payload wraps clash-api's
+        // strongly typed Connection with the two rate fields, and unknown
+        // Mihomo fields are named (`_extra`) rather than flattened, so the
+        // detail dialog can tell them apart from known fields (A0/A2).
+        let clash_connection = exported_type(&generated, "ClashConnection_Serialize");
+        assert_contains_all(
+            clash_connection,
+            "ClashConnection_Serialize",
+            &["downloadSpeed", "uploadSpeed", "Connection_Serialize"],
+        );
+        let connection = exported_type(&generated, "Connection_Serialize");
+        assert_contains_all(
+            connection,
+            "Connection_Serialize",
+            &[
+                "chains: string[]",
+                "metadata: ConnectionMetadata_Serialize",
+                "_extra:",
+            ],
         );
     }
 }

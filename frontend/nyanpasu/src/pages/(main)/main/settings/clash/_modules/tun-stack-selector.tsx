@@ -10,7 +10,12 @@ import {
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { TunStack, useRuntimeProfile, useSetting } from '@nyanpasu/interface'
+import {
+  TunStack,
+  useClashSetting,
+  useRuntimeProfile,
+  useSetting,
+} from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -21,11 +26,11 @@ import {
 } from '../../_modules/settings-card'
 
 export default function TunStackSelector() {
-  const coreType = useSetting('clash_core')
+  const coreType = useSetting('core')
 
-  const tunStack = useSetting('tun_stack')
+  const tunStack = useClashSetting('tun_stack')
 
-  const enableTunMode = useSetting('enable_tun_mode')
+  const enableTunMode = useClashSetting('enable_tun_mode')
 
   const runtimeProfile = useRuntimeProfile()
 
@@ -66,6 +71,7 @@ export default function TunStackSelector() {
         message(`Change Tun Stack failed ! \n Error: ${formatError(error)}`, {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
     },

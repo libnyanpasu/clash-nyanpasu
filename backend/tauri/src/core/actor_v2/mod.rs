@@ -209,6 +209,13 @@ pub enum HandoffReport {
 }
 
 impl HandoffReport {
+    /// Whether ownership actually moved, and with it the obligation to
+    /// reconcile: a completed handoff leaves the runtime stopped, so a caller
+    /// whose own work then fails owes the compensation that puts it back.
+    pub fn completed(&self) -> bool {
+        matches!(self, Self::Completed { .. })
+    }
+
     /// Whether this handoff replaced an owner that never proved it stopped
     /// while it was last seen running.
     pub fn interrupted_running(&self) -> bool {
@@ -219,6 +226,23 @@ impl HandoffReport {
                 ..
             }
         )
+    }
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum SubmitFailure {
+    #[error("not submitted: {0}")]
+    NotSubmitted(CoreError),
+    #[error("submission outcome unknown: {0}")]
+    Unknown(CoreError),
+}
+
+impl std::ops::Deref for SubmitFailure {
+    type Target = CoreError;
+    fn deref(&self) -> &CoreError {
+        match self {
+            Self::NotSubmitted(error) | Self::Unknown(error) => error,
+        }
     }
 }
 
@@ -256,6 +280,14 @@ impl std::fmt::Debug for SubmitTicket {
 }
 
 pub enum CoreActorMessage {
+    /// The endpoint currently owning the runtime. Handed out so a read-only,
+    /// long-running call -- the advisory config check spawns a core binary --
+    /// runs outside the mailbox, exactly as `wait_operation` does. Racing a
+    /// handoff only means the check ran on the host that owned the runtime
+    /// when it started, which is what "advisory" allows.
+    ConnectedEndpoint {
+        reply: RpcReplyPort<Result<EndpointHandle, CoreError>>,
+    },
     EffectiveConfig {
         reply: RpcReplyPort<
             Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError>,
@@ -268,7 +300,7 @@ pub enum CoreActorMessage {
     /// handoff runs, no submit can land on the wrong host (I-R1).
     Submit {
         submission: CoreSubmission,
-        reply: RpcReplyPort<Result<SubmitTicket, CoreError>>,
+        reply: RpcReplyPort<Result<SubmitTicket, SubmitFailure>>,
     },
     /// Admission-time authoritative status read (F2): the router's cached
     /// projection is refreshed only by the 2s pump, so a caller that needs a
@@ -284,6 +316,15 @@ pub enum CoreActorMessage {
     ChangeHost {
         target: EndpointHandle,
         reply: RpcReplyPort<Result<HandoffReport, CoreError>>,
+    },
+    /// Whether the handoff begun from `generation` has been processed to
+    /// completion (T10 §1.11). The mailbox answers it only after that
+    /// handoff's `ChangeHost`, so only its stop leg can still be running. A
+    /// health read is not this evidence: `RefreshStatus` refuses a degraded
+    /// router, and a failed handoff whose source went down ends degraded.
+    HandoffSettled {
+        generation: ControllerGeneration,
+        reply: RpcReplyPort<bool>,
     },
     /// Pump feedback: a status frame from the endpoint of `generation`.
     EndpointEvent {
@@ -470,6 +511,7 @@ async fn stop_and_confirm(
     stop_wait: Duration,
 ) -> Result<Option<OperationInfo>, CoreError> {
     let submission = CoreSubmission {
+        expected_owner: None,
         envelope: CoreCommandEnvelope {
             operation_id: OperationId::generate(),
             command: CoreCommand::Stop,
@@ -648,6 +690,17 @@ impl Actor for CoreActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            CoreActorMessage::ConnectedEndpoint { reply } => {
+                let result = match &state.slot {
+                    EndpointSlot::Connected(endpoint) => Ok(endpoint.clone()),
+                    _ => Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        "core endpoint is not connected",
+                        true,
+                    )),
+                };
+                let _ = reply.send(result);
+            }
             CoreActorMessage::EffectiveConfig { reply } => {
                 let result = match &state.slot {
                     EndpointSlot::Connected(endpoint) => match tokio::time::timeout(
@@ -715,6 +768,18 @@ impl Actor for CoreActor {
                 let _ = reply.send(result);
             }
             CoreActorMessage::Submit { submission, reply } => {
+                if submission
+                    .expected_owner
+                    .is_some_and(|owner| owner != (state.projection().host, state.generation))
+                {
+                    let _ = reply.send(Err(SubmitFailure::NotSubmitted(CoreError::new(
+                        CoreErrorKind::RevisionConflict,
+                        "runtime owner changed after the baseline was captured",
+                        false,
+                    ))));
+                    return Ok(());
+                }
+                let contacted = matches!(state.slot, EndpointSlot::Connected(_));
                 let result = match &state.slot {
                     EndpointSlot::Connected(handle) => {
                         let endpoint = handle.clone();
@@ -774,7 +839,13 @@ impl Actor for CoreActor {
                         false,
                     )),
                 };
-                let _ = reply.send(result);
+                let _ = reply.send(result.map_err(|error| {
+                    if contacted {
+                        SubmitFailure::Unknown(error)
+                    } else {
+                        SubmitFailure::NotSubmitted(error)
+                    }
+                }));
             }
 
             CoreActorMessage::RefreshStatus { reply } => {
@@ -817,6 +888,15 @@ impl Actor for CoreActor {
 
             CoreActorMessage::ChangeHost { target, reply } => {
                 self.change_host(&myself, state, target, reply).await;
+            }
+
+            CoreActorMessage::HandoffSettled { generation, reply } => {
+                // Completed, refused, failed back to a working or a degraded
+                // source, or overtaken by shutdown: all of them are over. Only
+                // a stop leg still in flight from that generation is not.
+                let running = matches!(state.slot, EndpointSlot::HandingOff { .. })
+                    && state.generation == generation;
+                let _ = reply.send(!running);
             }
 
             CoreActorMessage::HandoffStopped {
@@ -1175,6 +1255,26 @@ impl CoreObserver {
 }
 
 impl CoreClient {
+    /// The endpoint owning the runtime right now, for a read-only call the
+    /// mailbox must not sit behind.
+    pub async fn connected_endpoint(&self) -> Result<EndpointHandle, CoreError> {
+        match self
+            .actor
+            .call(
+                |reply| CoreActorMessage::ConnectedEndpoint { reply },
+                Some(self.submit_budget),
+            )
+            .await
+        {
+            Ok(ractor::rpc::CallResult::Success(result)) => result,
+            _ => Err(CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "core actor did not answer the endpoint query",
+                true,
+            )),
+        }
+    }
+
     pub async fn effective_config(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
@@ -1222,6 +1322,28 @@ impl CoreClient {
     /// Spawns the router over its initial endpoint.
     pub async fn spawn(initial: EndpointHandle) -> Result<Self, ractor::SpawnErr> {
         Self::spawn_with_bounds(initial, PUMP_STATUS_TIMEOUT, STOP_WAIT).await
+    }
+
+    /// This client, giving up on a handoff after `handoff_budget`, as a
+    /// caller queued behind other mailbox work does: the handoff runs on, and
+    /// its answer goes unread.
+    #[cfg(test)]
+    pub(crate) fn impatient(mut self, handoff_budget: Duration) -> Self {
+        self.handoff_budget = handoff_budget;
+        self
+    }
+
+    /// Reports the current endpoint down, as its pump does once a status
+    /// read fails. Mid-handoff that is the source going away under its stop
+    /// leg; a test sends it rather than waiting out a pump interval.
+    #[cfg(test)]
+    pub(crate) fn report_endpoint_down(&self, reason: &str) {
+        self.actor
+            .cast(CoreActorMessage::EndpointDown {
+                generation: self.status().generation,
+                reason: reason.to_owned(),
+            })
+            .expect("the core router is running");
     }
 
     /// Same, with the two wait bounds injected. Only the tests need bounds
@@ -1279,7 +1401,7 @@ impl CoreClient {
         self.initial_endpoint.clone()
     }
 
-    pub async fn submit(&self, submission: CoreSubmission) -> Result<SubmitTicket, CoreError> {
+    pub async fn submit(&self, submission: CoreSubmission) -> Result<SubmitTicket, SubmitFailure> {
         self.call(
             |reply| CoreActorMessage::Submit { submission, reply },
             self.submit_budget,
@@ -1298,7 +1420,7 @@ impl CoreClient {
                 true,
             ),
         )
-        .await?
+        .await.map_err(SubmitFailure::Unknown)?
     }
 
     /// Authoritative status read, admission-time rather than the 2s-refresh
@@ -1338,6 +1460,26 @@ impl CoreClient {
             ),
         )
         .await?
+    }
+
+    /// Whether the handoff begun from `generation` has been processed to
+    /// completion: the completion evidence of an unanswered `change_host`,
+    /// the way `ServiceClient::command_settled` is for a service command.
+    /// Whether the router is healthy afterwards is a separate question.
+    pub async fn handoff_settled(
+        &self,
+        generation: ControllerGeneration,
+    ) -> Result<bool, CoreError> {
+        self.call(
+            |reply| CoreActorMessage::HandoffSettled { generation, reply },
+            self.submit_budget,
+            CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "the caller-side budget elapsed before the router answered whether the handoff finished; ask again once it responds",
+                true,
+            ),
+        )
+        .await
     }
 
     pub async fn shutdown(&self) -> Result<ShutdownReport, CoreError> {

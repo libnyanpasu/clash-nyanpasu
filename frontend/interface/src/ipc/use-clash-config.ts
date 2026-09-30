@@ -3,26 +3,24 @@ import { unwrapResult } from '../utils'
 import {
   mutations,
   queries,
-  type ClashConfig,
-  type PatchRuntimeConfig,
+  type ClashApiConfig,
+  type ClashGuardOverridesPatch_Deserialize,
 } from './bindings'
 import { invokeMutation, unwrapQueryOptions } from './query-options'
 
 export const useClashConfig = () => {
   const queryClient = useQueryClient()
   const configQuery = queries.clashApiGetConfigs()
-  const patchConfig = mutations.patchClashConfig
+  const patchConfig = mutations.patchRuntimeOverrides
 
-  const query = useQuery<ClashConfig | undefined>(
+  const query = useQuery<ClashApiConfig | undefined>(
     unwrapQueryOptions(configQuery, configQuery.queryFn!),
   )
 
   const upsert = useMutation({
     mutationKey: patchConfig.mutationKey,
-    mutationFn: async (payload: PatchRuntimeConfig & Partial<ClashConfig>) => {
-      return unwrapResult(
-        await invokeMutation(patchConfig, [payload as PatchRuntimeConfig]),
-      )
+    mutationFn: async (payload: ClashGuardOverridesPatch_Deserialize) => {
+      return unwrapResult(await invokeMutation(patchConfig, [payload]))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

@@ -1,9 +1,39 @@
+use serde::Serialize;
+use snafu::Snafu;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-use anyhow::Context as _;
+use snafu::{ResultExt as _, ensure};
+
+/// Why the system DNS cache could not be flushed. No variant is compiled out
+/// per platform, so the generated bindings do not depend on the build host.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[snafu(visibility(pub(crate)))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SystemDnsError {
+    /// The elevated flush could not be started: the user declined the prompt,
+    /// or the platform has no way to ask for elevation.
+    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
+    #[snafu(display("could not run {command} to flush the system DNS cache"))]
+    RunFlushCommand {
+        command: &'static str,
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    /// The flush ran and reported failure; declining the macOS authorization
+    /// dialog lands here too.
+    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
+    #[snafu(display("{command} did not succeed (exit code {code:?})"))]
+    FlushRejected {
+        command: &'static str,
+        code: Option<i32>,
+    },
+    #[cfg_attr(any(target_os = "windows", target_os = "macos"), allow(dead_code))]
+    #[snafu(display("flushing the system DNS cache is not supported on this platform"))]
+    Unsupported,
+}
 
 #[cfg_attr(test, mockall::automock)]
 pub trait SystemDnsCache: Send + Sync + 'static {
-    fn flush(&self) -> anyhow::Result<()>;
+    fn flush(&self) -> Result<(), SystemDnsError>;
 }
 
 #[derive(Debug, Default)]
@@ -15,51 +45,63 @@ const WINDOWS_PROGRAM: &str = "ipconfig.exe";
 const WINDOWS_ARGS: &[&str] = &["/flushdns"];
 
 #[cfg(target_os = "macos")]
+const MACOS_PROGRAM: &str = "/usr/bin/osascript";
+#[cfg(target_os = "macos")]
 const MACOS_SCRIPT: &str = concat!(
     "do shell script \"/usr/bin/dscacheutil -flushcache && ",
     "/usr/bin/killall -HUP mDNSResponder\" with administrator privileges"
 );
 
 impl SystemDnsCache for OsSystemDnsCache {
-    fn flush(&self) -> anyhow::Result<()> {
+    fn flush(&self) -> Result<(), SystemDnsError> {
         flush_system_dns_cache()
     }
 }
 
 #[cfg(target_os = "windows")]
-fn flush_system_dns_cache() -> anyhow::Result<()> {
+fn flush_system_dns_cache() -> Result<(), SystemDnsError> {
     let status = runas::Command::new(WINDOWS_PROGRAM)
         .args(WINDOWS_ARGS)
         .gui(true)
         .show(false)
         .status()
-        .context("failed to request permission to flush the Windows DNS cache")?;
+        .context(RunFlushCommandSnafu {
+            command: WINDOWS_PROGRAM,
+        })?;
 
-    ensure_success(status, "ipconfig /flushdns")
+    ensure_success(status, WINDOWS_PROGRAM)
 }
 
 #[cfg(target_os = "macos")]
-fn flush_system_dns_cache() -> anyhow::Result<()> {
-    let status = std::process::Command::new("/usr/bin/osascript")
+fn flush_system_dns_cache() -> Result<(), SystemDnsError> {
+    let status = std::process::Command::new(MACOS_PROGRAM)
         .args(["-e", MACOS_SCRIPT])
         .status()
-        .context("failed to request permission to flush the macOS DNS cache")?;
+        .context(RunFlushCommandSnafu {
+            command: MACOS_PROGRAM,
+        })?;
 
-    ensure_success(status, "macOS DNS cache flush")
+    ensure_success(status, MACOS_PROGRAM)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn flush_system_dns_cache() -> anyhow::Result<()> {
-    anyhow::bail!("flushing the system DNS cache is not supported on this platform")
+fn flush_system_dns_cache() -> Result<(), SystemDnsError> {
+    UnsupportedSnafu.fail()
 }
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-fn ensure_success(status: std::process::ExitStatus, operation: &str) -> anyhow::Result<()> {
-    if status.success() {
-        Ok(())
-    } else {
-        anyhow::bail!("{operation} failed with status {status}")
-    }
+fn ensure_success(
+    status: std::process::ExitStatus,
+    command: &'static str,
+) -> Result<(), SystemDnsError> {
+    ensure!(
+        status.success(),
+        FlushRejectedSnafu {
+            command,
+            code: status.code()
+        }
+    );
+    Ok(())
 }
 
 #[cfg(test)]
@@ -68,7 +110,7 @@ pub struct NoopSystemDnsCache;
 
 #[cfg(test)]
 impl SystemDnsCache for NoopSystemDnsCache {
-    fn flush(&self) -> anyhow::Result<()> {
+    fn flush(&self) -> Result<(), SystemDnsError> {
         Ok(())
     }
 }

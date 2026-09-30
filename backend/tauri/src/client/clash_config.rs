@@ -1,22 +1,24 @@
-use std::{sync::Arc, time::Duration};
+use crate::state::mutation::MutationCoordinator;
+use std::sync::Arc;
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
-use nyanpasu_core::state::PersistentStateManagerSetup;
+use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::{
-    ConditionalReplaceResult,
-    clash_config::{
-        ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
+use crate::{
+    client::application_workflow::mutation::ConfigDomain,
+    state::{
+        clash_config::{
+            ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
+        },
+        config_error::{ConfigError, OwnerStoppedSnafu},
     },
-    mirror::{ClashLegacyBridge, PreparedTypedReplace},
 };
-
-const CLASH_CONFIG_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct ClashConfigClient {
@@ -25,14 +27,18 @@ pub struct ClashConfigClient {
 
 struct ClashConfigClientInner {
     actor_ref: ActorRef<ClashConfigActorMessage>,
+    /// Committed state, read straight from the coordinator's store so a reader
+    /// never queues behind a mutation the actor is still holding open.
+    snapshot: StateSnapshot<ClashConfig>,
 }
 
 #[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
+        mutations: MutationCoordinator,
         config_path: Utf8PathBuf,
-        seed: ClashConfig,
-        bridge: Arc<dyn ClashLegacyBridge>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<ClashConfig>::builder()
@@ -45,34 +51,47 @@ impl ClashConfigClient {
                 .context("failed to load clash persistent state manager")?
         } else {
             setup
-                .from_state(seed)
+                .from_state(ClashConfig::default())
                 .await
                 .context("failed to initialize clash persistent state manager")?
         };
 
+        let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
             ClashConfigActor,
-            ClashConfigActorArgs { manager, bridge },
+            ClashConfigActorArgs {
+                manager,
+                mutations,
+                shutdown: shutdown.clone(),
+            },
         )
         .await
         .context("failed to spawn clash config actor")?
         .0;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
-            inner: Arc::new(ClashConfigClientInner { actor_ref }),
+            inner: Arc::new(ClashConfigClientInner {
+                actor_ref,
+                snapshot,
+            }),
         })
     }
 
-    pub async fn get(&self) -> anyhow::Result<ClashConfigSnapshot> {
-        self.call(
-            ClashConfigActorMessage::Get,
-            Some(CLASH_CONFIG_READ_TIMEOUT),
-        )
-        .await
+    /// The last committed clash config. Reads bypass the mailbox, so an
+    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    pub fn snapshot(&self) -> ClashConfigSnapshot {
+        ClashConfigSnapshot::from_versioned(&self.inner.snapshot.load())
     }
 
-    pub async fn patch(&self, patch: ClashConfigPatch) -> anyhow::Result<ClashConfigSnapshot> {
+    /// Read-only handle for collaborators that must observe committed state
+    /// without holding a client that could write it.
+    pub(crate) fn snapshot_handle(&self) -> StateSnapshot<ClashConfig> {
+        self.inner.snapshot.clone()
+    }
+
+    pub async fn patch(&self, patch: ClashConfigPatch) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
             |reply| ClashConfigActorMessage::Patch { patch, reply },
             None,
@@ -83,7 +102,7 @@ impl ClashConfigClient {
     pub async fn patch_overrides(
         &self,
         patch: ClashGuardOverridesPatch,
-    ) -> anyhow::Result<ClashConfigSnapshot> {
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
             |reply| ClashConfigActorMessage::PatchOverrides { patch, reply },
             None,
@@ -91,7 +110,7 @@ impl ClashConfigClient {
         .await
     }
 
-    pub async fn replace(&self, state: ClashConfig) -> anyhow::Result<ClashConfigSnapshot> {
+    pub async fn replace(&self, state: ClashConfig) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
             |reply| ClashConfigActorMessage::Replace { state, reply },
             None,
@@ -99,71 +118,25 @@ impl ClashConfigClient {
         .await
     }
 
-    pub(crate) async fn replace_if_version(
-        &self,
-        expected_version: u64,
-        state: ClashConfig,
-    ) -> anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>> {
-        let prepared = self.prepare_replace(state).await?;
-        self.replace_prepared_if_version(expected_version, prepared)
-            .await
-    }
-
-    pub(crate) async fn prepare_replace(
-        &self,
-        state: ClashConfig,
-    ) -> anyhow::Result<PreparedTypedReplace<ClashConfig>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ClashConfigActorMessage::PrepareReplace { state, reply },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash config actor call timed out"),
-        }
-    }
-
-    pub(crate) async fn replace_prepared_if_version(
-        &self,
-        expected_version: u64,
-        prepared: PreparedTypedReplace<ClashConfig>,
-    ) -> anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ClashConfigActorMessage::ReplacePreparedIfVersion {
-                    expected_version,
-                    prepared,
-                    reply,
-                },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash config actor call timed out"),
-        }
-    }
-
     async fn call<F>(
         &self,
         make: F,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<ClashConfigSnapshot>
+        timeout: Option<std::time::Duration>,
+    ) -> Result<ClashConfigSnapshot, ConfigError>
     where
-        F: FnOnce(RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>) -> ClashConfigActorMessage,
+        F: FnOnce(
+            RpcReplyPort<Result<ClashConfigSnapshot, ConfigError>>,
+        ) -> ClashConfigActorMessage,
     {
-        match self.inner.actor_ref.call(make, timeout).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash config actor call timed out"),
+        match self.inner.actor_ref.call(make, timeout).await {
+            Ok(CallResult::Success(result)) => result,
+            Ok(CallResult::SenderError) | Err(_) => OwnerStoppedSnafu {
+                domain: ConfigDomain::Clash,
+            }
+            .fail(),
+            Ok(CallResult::Timeout) => {
+                unreachable!("clash config calls are made without a timeout")
+            }
         }
     }
 }
@@ -177,21 +150,8 @@ impl Drop for ClashConfigClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::mirror::{NoopPreparedLegacyMirror, PreparedLegacyMirror};
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
-
-    struct NoopClashBridge;
-
-    impl ClashLegacyBridge for NoopClashBridge {
-        fn prepare(&self, _snap: &ClashConfig) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(NoopPreparedLegacyMirror))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<ClashConfig> {
-            Ok(ClashConfig::default())
-        }
-    }
 
     fn temp_config_path(dir: &TempDir) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(dir.path().join("clash-config.yaml"))
@@ -201,9 +161,10 @@ mod tests {
     async fn test_client() -> (ClashConfigClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
         let client = ClashConfigClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
             temp_config_path(&dir),
-            ClashConfig::default(),
-            Arc::new(NoopClashBridge),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("clash config client should be created");
@@ -214,7 +175,7 @@ mod tests {
     async fn get_patch_and_replace_clash_config() {
         let (client, _dir) = test_client().await;
 
-        let initial = client.get().await.expect("get should succeed");
+        let initial = client.snapshot();
         assert!(!initial.state.enable_tun_mode);
 
         let mut patch = ClashConfig::new_empty_patch();
@@ -230,40 +191,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_if_version_commits_matching_snapshot() {
-        let (client, _dir) = test_client().await;
-        let current = client.get().await.expect("get should succeed");
-        let mut next = current.state.clone();
-        next.enable_tun_mode = true;
-
-        let result = client
-            .replace_if_version(current.version, next)
-            .await
-            .expect("matching replace should succeed");
-        match result {
-            ConditionalReplaceResult::Replaced(snapshot) => {
-                assert_eq!(snapshot.version, current.version + 1);
-                assert!(snapshot.state.enable_tun_mode);
-            }
-            ConditionalReplaceResult::Conflict { actual_version } => {
-                panic!("unexpected conflict at version {actual_version}")
-            }
-        }
-    }
-    #[tokio::test]
     async fn concurrent_override_patches_preserve_unrelated_fields() {
         let (client, _dir) = test_client().await;
-        let before = serde_json::to_value(client.get().await.unwrap().state.overrides).unwrap();
+        let before = serde_json::to_value(client.snapshot().state.overrides).unwrap();
         let left = serde_json::from_value(serde_json::json!({"mode":"script"})).unwrap();
         let right = serde_json::from_value(serde_json::json!({"allow-lan":true})).unwrap();
         let (left, right) =
             tokio::join!(client.patch_overrides(left), client.patch_overrides(right));
         left.unwrap();
         right.unwrap();
-        let after = serde_json::to_value(client.get().await.unwrap().state.overrides).unwrap();
+        let after = serde_json::to_value(client.snapshot().state.overrides).unwrap();
         assert_eq!(after["mode"], "script");
         assert_eq!(after["allow-lan"], true);
         assert_eq!(after["secret"], before["secret"]);
         assert_eq!(after["ipv6"], before["ipv6"]);
+    }
+
+    /// Racing patches of sibling sub-fields of one composite field all land:
+    /// each nested patch is merged into the latest committed value.
+    #[tokio::test]
+    async fn concurrent_nested_patches_preserve_sibling_sub_fields() {
+        use nyanpasu_config::clash::config::clash_strategy::{
+            break_connection::ProxyChangeBreakMode, port::PortStrategyKind,
+        };
+
+        let (client, _dir) = test_client().await;
+        let before = client.snapshot().state;
+        let patch = |value| serde_json::from_value::<ClashConfigPatch>(value).unwrap();
+        let (proxy, profile, kind, port) = tokio::join!(
+            client.patch(patch(serde_json::json!({
+                "break_connection": { "on_proxy_change": "off" }
+            }))),
+            client.patch(patch(serde_json::json!({
+                "break_connection": { "on_profile_change": false }
+            }))),
+            client.patch(patch(serde_json::json!({
+                "mixed_port": { "kind": "random" }
+            }))),
+            client.patch(patch(serde_json::json!({
+                "mixed_port": { "start_port": 7899 }
+            }))),
+        );
+        proxy.unwrap();
+        profile.unwrap();
+        kind.unwrap();
+        port.unwrap();
+
+        let after = client.snapshot().state;
+        assert_eq!(
+            after.break_connection.on_proxy_change,
+            ProxyChangeBreakMode::Off
+        );
+        assert!(!after.break_connection.on_profile_change);
+        assert_eq!(
+            after.break_connection.on_mode_change,
+            before.break_connection.on_mode_change
+        );
+        assert_eq!(after.mixed_port.kind, PortStrategyKind::Random);
+        assert_eq!(after.mixed_port.start_port, 7899);
     }
 }

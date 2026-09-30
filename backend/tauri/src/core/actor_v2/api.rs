@@ -404,6 +404,7 @@ pub(crate) mod tests {
                 }),
                 state_changed_at: 0,
                 revision: None,
+                source_hash: None,
                 healthy: Some(true),
                 applied_kind: None,
             })

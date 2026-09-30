@@ -1,20 +1,21 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
-use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
-use nyanpasu_core::state::PersistentStateManagerSetup;
+use nyanpasu_config::state::{
+    PersistentState, PersistentStatePatch,
+    window::{WindowLabel, WindowState},
+};
+use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::{
-    ConditionalReplaceResult,
-    mirror::{PreparedTypedReplace, WindowLegacyBridge},
+    config_error::{ConfigError, SessionStateStoppedSnafu},
     session_state::{
         SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
     },
 };
-
-const SESSION_STATE_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct SessionStateClient {
@@ -23,14 +24,20 @@ pub struct SessionStateClient {
 
 struct SessionStateClientInner {
     actor_ref: ActorRef<SessionStateActorMessage>,
+    /// Committed state, read straight from the coordinator's store so a reader
+    /// never queues behind a mutation the actor is still holding open.
+    snapshot: StateSnapshot<PersistentState>,
 }
 
 #[allow(dead_code)]
 impl SessionStateClient {
+    /// The actor admits every request, the shutdown's final geometry save
+    /// included: `shutdown` only drains it, so whatever was queued before the
+    /// cancel is written before it stops.
     pub(crate) async fn new(
         config_path: Utf8PathBuf,
-        seed: PersistentState,
-        bridge: Arc<dyn WindowLegacyBridge>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<PersistentState>::builder()
@@ -43,116 +50,104 @@ impl SessionStateClient {
                 .context("failed to load session persistent state manager")?
         } else {
             setup
-                .from_state(seed)
+                .from_state(PersistentState::default())
                 .await
                 .context("failed to initialize session persistent state manager")?
         };
 
-        let actor_ref = Actor::spawn(
-            None,
-            SessionStateActor,
-            SessionStateActorArgs { manager, bridge },
-        )
-        .await
-        .context("failed to spawn session state actor")?
-        .0;
+        let snapshot = manager.snapshot_handle();
+        let actor_ref = Actor::spawn(None, SessionStateActor, SessionStateActorArgs { manager })
+            .await
+            .context("failed to spawn session state actor")?
+            .0;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
-            inner: Arc::new(SessionStateClientInner { actor_ref }),
+            inner: Arc::new(SessionStateClientInner {
+                actor_ref,
+                snapshot,
+            }),
         })
     }
 
-    pub async fn get(&self) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(
-            SessionStateActorMessage::Get,
-            Some(SESSION_STATE_READ_TIMEOUT),
-        )
-        .await
+    /// The last committed session state. Reads bypass the mailbox, so an
+    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    pub fn snapshot(&self) -> SessionStateSnapshot {
+        SessionStateSnapshot::from_versioned(&self.inner.snapshot.load())
     }
 
-    pub async fn patch(&self, patch: PersistentStatePatch) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(
-            |reply| SessionStateActorMessage::Patch { patch, reply },
-            None,
-        )
-        .await
+    /// The geometry the main window reopens with.
+    pub fn main_window_geometry(&self) -> Option<WindowState> {
+        main_window_geometry(&self.snapshot().state)
     }
 
-    pub async fn replace(&self, state: PersistentState) -> anyhow::Result<SessionStateSnapshot> {
-        self.call(
-            |reply| SessionStateActorMessage::Replace { state, reply },
-            None,
-        )
-        .await
-    }
-
-    pub(crate) async fn replace_if_version(
+    pub async fn save_main_window(
         &self,
-        expected_version: u64,
-        state: PersistentState,
-    ) -> anyhow::Result<ConditionalReplaceResult<SessionStateSnapshot>> {
-        let prepared = self.prepare_replace(state).await?;
-        self.replace_prepared_if_version(expected_version, prepared)
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> Result<SessionStateSnapshot, ConfigError> {
+        self.call(|reply| SessionStateActorMessage::SaveMainWindow {
+            geometry,
+            reply: Some(reply),
+        })
+        .await
+    }
+
+    /// Queues a save of the main window's geometry without waiting for it:
+    /// the actor writes it after what is already queued.
+    pub fn queue_main_window_save(
+        &self,
+        geometry: nyanpasu_config::state::window::WindowState,
+    ) -> Result<(), ConfigError> {
+        match self
+            .inner
+            .actor_ref
+            .cast(SessionStateActorMessage::SaveMainWindow {
+                geometry,
+                reply: None,
+            }) {
+            Ok(()) => Ok(()),
+            Err(_) => SessionStateStoppedSnafu.fail(),
+        }
+    }
+
+    pub async fn patch(
+        &self,
+        patch: PersistentStatePatch,
+    ) -> Result<SessionStateSnapshot, ConfigError> {
+        self.call(|reply| SessionStateActorMessage::Patch { patch, reply })
             .await
     }
 
-    pub(crate) async fn prepare_replace(
+    pub async fn replace(
         &self,
         state: PersistentState,
-    ) -> anyhow::Result<PreparedTypedReplace<PersistentState>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| SessionStateActorMessage::PrepareReplace { state, reply },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
-        }
+    ) -> Result<SessionStateSnapshot, ConfigError> {
+        self.call(|reply| SessionStateActorMessage::Replace { state, reply })
+            .await
     }
 
-    pub(crate) async fn replace_prepared_if_version(
-        &self,
-        expected_version: u64,
-        prepared: PreparedTypedReplace<PersistentState>,
-    ) -> anyhow::Result<ConditionalReplaceResult<SessionStateSnapshot>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| SessionStateActorMessage::ReplacePreparedIfVersion {
-                    expected_version,
-                    prepared,
-                    reply,
-                },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
-        }
-    }
-
-    async fn call<F>(
-        &self,
-        make: F,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<SessionStateSnapshot>
+    async fn call<F>(&self, make: F) -> Result<SessionStateSnapshot, ConfigError>
     where
-        F: FnOnce(RpcReplyPort<anyhow::Result<SessionStateSnapshot>>) -> SessionStateActorMessage,
+        F: FnOnce(
+            RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>,
+        ) -> SessionStateActorMessage,
     {
-        match self.inner.actor_ref.call(make, timeout).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
+        match self.inner.actor_ref.call(make, None).await {
+            Ok(CallResult::Success(result)) => result,
+            Ok(CallResult::SenderError) | Err(_) => SessionStateStoppedSnafu.fail(),
+            Ok(CallResult::Timeout) => {
+                unreachable!("session state calls are made without a timeout")
+            }
         }
     }
+}
+
+/// The entry `save_main_window` writes: the one under the main window label.
+fn main_window_geometry(state: &PersistentState) -> Option<WindowState> {
+    state
+        .window_state
+        .get(&WindowLabel(crate::consts::MAIN_WINDOW_LABEL.into()))
+        .cloned()
 }
 
 impl Drop for SessionStateClientInner {
@@ -164,26 +159,9 @@ impl Drop for SessionStateClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::mirror::{NoopPreparedLegacyMirror, PreparedLegacyMirror};
-    use nyanpasu_config::state::window::{WindowLabel, WindowState};
     use std::collections::BTreeMap;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
-
-    struct NoopWindowBridge;
-
-    impl WindowLegacyBridge for NoopWindowBridge {
-        fn prepare(
-            &self,
-            _snap: &PersistentState,
-        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(NoopPreparedLegacyMirror))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
-            Ok(PersistentState::default())
-        }
-    }
 
     fn temp_config_path(dir: &TempDir) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(dir.path().join("session-state.yaml"))
@@ -194,8 +172,8 @@ mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let client = SessionStateClient::new(
             temp_config_path(&dir),
-            PersistentState::default(),
-            Arc::new(NoopWindowBridge),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("session state client should be created");
@@ -206,7 +184,7 @@ mod tests {
     async fn get_patch_and_replace_session_state() {
         let (client, _dir) = test_client().await;
 
-        let initial = client.get().await.expect("get should succeed");
+        let initial = client.snapshot();
         assert!(initial.state.window_state.is_empty());
 
         let label = WindowLabel("main".into());
@@ -231,37 +209,58 @@ mod tests {
         assert!(replaced.state.window_state.is_empty());
     }
 
-    #[tokio::test]
-    async fn replace_if_version_commits_matching_snapshot() {
-        let (client, _dir) = test_client().await;
-        let current = client.get().await.expect("get should succeed");
-        let label = WindowLabel("main".into());
-        let next = PersistentState {
-            window_state: BTreeMap::from([(
-                label.clone(),
-                WindowState {
-                    width: 800,
-                    height: 600,
-                    x: 10,
-                    y: 20,
-                    maximized: false,
-                    fullscreen: false,
-                },
-            )]),
-        };
-
-        let result = client
-            .replace_if_version(current.version, next)
-            .await
-            .expect("matching replace should succeed");
-        match result {
-            ConditionalReplaceResult::Replaced(snapshot) => {
-                assert_eq!(snapshot.version, current.version + 1);
-                assert!(snapshot.state.window_state.contains_key(&label));
-            }
-            ConditionalReplaceResult::Conflict { actual_version } => {
-                panic!("unexpected conflict at version {actual_version}")
-            }
+    fn geometry(x: i32) -> WindowState {
+        WindowState {
+            width: 1024,
+            height: 768,
+            x,
+            y: 20,
+            maximized: false,
+            fullscreen: false,
         }
+    }
+
+    #[test]
+    fn main_window_geometry_reads_only_the_main_label() {
+        let state = PersistentState {
+            window_state: BTreeMap::from([
+                (WindowLabel("editor-css".into()), geometry(1)),
+                (WindowLabel("main".into()), geometry(2)),
+            ]),
+        };
+        assert_eq!(main_window_geometry(&state), Some(geometry(2)));
+
+        let without_main = PersistentState {
+            window_state: BTreeMap::from([(WindowLabel("editor-css".into()), geometry(1))]),
+        };
+        assert_eq!(main_window_geometry(&without_main), None);
+    }
+
+    #[tokio::test]
+    async fn a_saved_main_window_geometry_is_what_the_window_restores() {
+        let (client, _dir) = test_client().await;
+        assert_eq!(client.main_window_geometry(), None);
+
+        client
+            .save_main_window(geometry(42))
+            .await
+            .expect("saving the main window geometry should succeed");
+
+        assert_eq!(client.main_window_geometry(), Some(geometry(42)));
+    }
+
+    #[tokio::test]
+    async fn a_queued_geometry_save_is_written_before_the_next_request() {
+        let (client, _dir) = test_client().await;
+
+        client.queue_main_window_save(geometry(7)).unwrap();
+        // The mailbox is FIFO: a request sent afterwards is answered only once
+        // the queued save has been written.
+        client
+            .patch(PersistentState::new_empty_patch())
+            .await
+            .unwrap();
+
+        assert_eq!(client.main_window_geometry(), Some(geometry(7)));
     }
 }

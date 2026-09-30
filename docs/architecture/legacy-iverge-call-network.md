@@ -1,5 +1,7 @@
 # Legacy IVerge Call Network
 
+> **Historical record (2026-09-26).** Everything this baseline describes as current is gone: the `Config::*` accessors and `Draft`, the `bridge/` mirrors, the `IVerge` / `IClashTemp` IPC DTOs, `get_verge_config` / `patch_verge_config` and the `PatchRuntimeConfig` overrides command were removed by the legacy interface cleanup (actor-migration PR-7a/7b). The legacy on-disk schema survives only in `backend/tauri/src/core/migration/legacy_schema/`, where the typed config migration reads it to upgrade old installs. The text below is kept as written and is no longer maintained; see [the actor migration roadmap](../design/actor-migration-roadmap.md) §2 and §12 for the current state.
+
 This document is the Phase 0 baseline for the three-StateActor migration. It records the legacy `Config::*` call network and the field ownership map required before persistence ownership moves from mixed `IVerge` state to typed `nyanpasu-config` state.
 
 Phase 0 is intentionally metadata-only:

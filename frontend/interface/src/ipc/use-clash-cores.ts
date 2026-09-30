@@ -1,4 +1,4 @@
-import { kebabCase } from 'lodash-es'
+import { kebabCase } from 'es-toolkit'
 import { unwrapResult } from '@interface/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -118,7 +118,7 @@ export const useClashCores = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKey })
       queryClient.invalidateQueries({
-        queryKey: queries.getVergeConfig().queryKey,
+        queryKey: queries.getAppConfig().queryKey,
       })
       queryClient.invalidateQueries({
         queryKey: queries.clashApiGetVersion().queryKey,

@@ -2,19 +2,19 @@
   "_version": 1,
   "tray": {
     "copy_env": {
-      "cmd": "复制环境变量 (CMD)",
-      "ps": "复制环境变量 (PS)",
-      "sh": "复制环境变量 (SH)"
+      "cmd": "复制环境变量 (Cmd)",
+      "ps": "复制环境变量 (Pwsh)",
+      "sh": "复制环境变量 (Shell)"
     },
     "no_proxies": "无代理",
     "select_proxies": "选择代理",
-    "dashboard": "打开面板",
+    "dashboard": "显示 Clash Nyanpasu",
     "direct_mode": "直连模式",
     "global_mode": "全局模式",
     "more": {
       "menu": "更多",
-      "restart_app": "重启应用程序",
-      "restart_clash": "重启 Clash"
+      "restart_app": "重启 Clash Nyanpasu",
+      "restart_core": "重启 Clash 内核"
     },
     "open_dir": {
       "menu": "打开目录",
@@ -61,12 +61,5 @@
   },
   "break_when_proxy_change": "当代理切换时打断连接",
   "break_when_profile_change": "当配置文件切换时打断连接",
-  "break_when_mode_change": "当模式切换时打断连接",
-  "hotkey_error": {
-    "invalid_hotkey": "无效的快捷键：%{hotkey}",
-    "missing_super_key": "快捷键必须包含修饰键 (Cmd/Ctrl/Win/Meta)",
-    "malformed_entry": "快捷键条目格式错误：%{entry}",
-    "unknown_function": "未知的快捷键功能：%{function}",
-    "duplicate_accelerator": "快捷键 %{hotkey} 已分配给其他功能"
-  }
+  "break_when_mode_change": "当模式切换时打断连接"
 }

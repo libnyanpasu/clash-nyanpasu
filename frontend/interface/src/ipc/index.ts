@@ -18,6 +18,8 @@ export * from './use-profile'
 export * from './use-proxy-mode'
 export * from './use-runtime-profile'
 export * from './use-settings'
+export * from './settings-conversions'
+export * from './use-release-channel'
 export * from './use-system-proxy'
 export * from './use-system-service'
 export * from './use-service-prompt'
@@ -31,6 +33,7 @@ export { mutations, queries } from './bindings'
 export type * from './bindings'
 export type { ClashDelayOptions } from './use-clash-proxies'
 export {
+  MutationUnconfirmedError,
   invokeMutation,
   invokeQuery,
   unwrapQueryOptions,
@@ -38,3 +41,9 @@ export {
 
 export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
 export type { RuleProviderItem as ClashProviderRule } from './bindings'
+
+export {
+  acceptConfigurationStatus,
+  attentionSources,
+  sourceMessage,
+} from './configuration-status'

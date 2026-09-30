@@ -1,8 +1,7 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { AnimatePresence } from 'motion/react'
-import { ChangeEvent, useEffect, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
-import { z } from 'zod'
+import { ChangeEvent, useState } from 'react'
+import { Controller } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,10 +15,10 @@ import {
 import { m } from '@/paraglide/messages'
 import { formatError, sleep } from '@/utils'
 import { message } from '@/utils/notification'
-import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  useClashConfig,
+  formatControllerAddress,
   useClashInfo,
+  useClashSetting,
   useRuntimeProfile,
 } from '@nyanpasu/interface'
 import {
@@ -31,38 +30,31 @@ import {
   SettingsCardAnimatedItem,
   SettingsCardContent,
 } from '../../_modules/settings-card'
-
-const formSchema = z.object({
-  externalController: z.string(),
-})
+import { useExternalControllerForm } from './use-external-controller-form'
 
 export default function ExternalControllerConfig() {
   const [open, setOpen] = useState(false)
 
   const { data, refetch } = useClashInfo()
 
-  const { upsert } = useClashConfig()
+  const externalController = useClashSetting('external_controller')
+
+  // Edit the configured address, not the reported one: the reported server
+  // turns an unspecified bind host into loopback and may carry a port the core
+  // picked at runtime.
+  const configuredAddress = externalController.value
+    ? formatControllerAddress(externalController.value)
+    : ''
 
   const runtimeProfile = useRuntimeProfile()
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      externalController: data?.server || '',
-    },
-  })
-
-  useEffect(() => {
-    form.reset({
-      externalController: data?.server || '',
-    })
-  }, [data?.server, form])
-
-  const handleSubmit = form.handleSubmit(
-    async (data) => {
+  const { form, handleSubmit } = useExternalControllerForm(
+    configuredAddress,
+    async (address) => {
       try {
-        await upsert.mutateAsync({
-          'external-controller': data.externalController,
+        await externalController.upsert({
+          host: address.host,
+          port: { start_port: address.port },
         })
         await refetch()
 
@@ -75,14 +67,9 @@ export default function ExternalControllerConfig() {
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
-    },
-    (error) => {
-      message(formatError(error), {
-        title: 'Error',
-        kind: 'error',
-      })
     },
   )
 

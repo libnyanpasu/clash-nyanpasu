@@ -23,7 +23,30 @@ jobs:
         with:
           pattern: Clash.Nyanpasu-*
           path: ./release-assets
-          merge-multiple: true
+          merge-multiple: false
+
+      - name: Prepare release asset names
+        shell: python3 {0}
+        run: |
+          from pathlib import Path
+
+          root = Path("release-assets")
+          for source in sorted(root.glob("**/bundle/nsis-updater/*-setup.exe")):
+              target = source.with_name(source.name.removesuffix("-setup.exe") + "-updater.exe")
+              if target.exists():
+                  raise SystemExit(f"Cannot rename {source}: {target} already exists")
+              source.rename(target)
+              print(f"Renamed {source} to {target}")
+
+          assets = {}
+          for file in sorted(root.rglob("*")):
+              if not file.is_file():
+                  continue
+              if file.name in assets:
+                  raise SystemExit(
+                      f"Duplicate release asset {file.name}: {assets[file.name]} and {file}"
+                  )
+              assets[file.name] = file
 
       - name: Upload to release
         run: |

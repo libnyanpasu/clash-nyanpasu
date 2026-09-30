@@ -43,7 +43,7 @@ impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for FailAckSubscrib
     }
     async fn on_committed(&self, _change: StateChange<T>) -> Ack {
         if self.should_fail.load(Ordering::SeqCst) {
-            Ack::Failed(anyhow::anyhow!("forced ACK failure"))
+            Ack::Failed(crate::state::ack::test_ack_error("forced ACK failure"))
         } else {
             Ack::Ok
         }
@@ -111,7 +111,11 @@ async fn test_snapshot_not_updated_on_effect_failure() {
     assert_eq!(*handle.load(), 1);
 
     let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coord
-        .with_pending_state(&2, |_s| async { Err(anyhow::anyhow!("effect failed")) })
+        .with_pending_state(
+            &2,
+            |_s| async { Err(anyhow::anyhow!("effect failed")) },
+            |_committed: i32| async { Ok(()) },
+        )
         .await;
     assert!(result.is_err());
     assert_eq!(*handle.load(), 1);
@@ -124,8 +128,13 @@ async fn test_snapshot_updated_on_effect_success() {
     let mut coord = StateCoordinator::<i32>::builder().build(0);
     let handle = coord.snapshot_handle();
 
-    let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> =
-        coord.with_pending_state(&42, |_s| async { Ok(()) }).await;
+    let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coord
+        .with_pending_state(
+            &42,
+            |_s| async { Ok(()) },
+            |_committed: i32| async { Ok(()) },
+        )
+        .await;
     assert!(result.is_ok());
     assert_eq!(*handle.load(), 42);
 }
@@ -165,7 +174,7 @@ impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static> StateAc
         let derived = (self.combiner)(change.current().clone(), sibling.state.clone());
         match self.derived.write().await.upsert(derived).await {
             Ok(_) => Ack::Ok,
-            Err(e) => Ack::Failed(anyhow::anyhow!(e)),
+            Err(e) => Ack::Failed(crate::state::ack::test_ack_error(&e.to_string())),
         }
     }
 }
@@ -295,7 +304,7 @@ impl StateAckSubscriber<i32> for TriFanInAckSubscriber {
         };
         match self.derived.write().await.upsert((a, b, c)).await {
             Ok(_) => Ack::Ok,
-            Err(e) => Ack::Failed(anyhow::anyhow!(e)),
+            Err(e) => Ack::Failed(crate::state::ack::test_ack_error(&e.to_string())),
         }
     }
 }

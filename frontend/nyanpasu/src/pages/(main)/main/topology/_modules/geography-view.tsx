@@ -5,7 +5,7 @@ import worldMap from '@/assets/maps/world-map.json'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import parseTraffic from '@/utils/parse-traffic'
-import type { ClashConnectionItem } from '@nyanpasu/interface'
+import type { ClashConnection_Serialize } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { buildGeography } from './geography'
 import type { TopologyMetric } from './topology'
@@ -28,7 +28,7 @@ export default function GeographyView({
   selection,
   onSelect,
 }: {
-  connections: ClashConnectionItem[]
+  connections: ClashConnection_Serialize[]
   metric: TopologyMetric
   selection?: string
   onSelect: (code: string | undefined) => void

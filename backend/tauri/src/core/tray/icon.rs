@@ -132,7 +132,6 @@ pub fn on_scale_factor_changed(scale_factor: f64) {
     resize_images(scale_factor);
 }
 
-#[allow(dead_code)]
 pub fn get_icon(mode: &TrayIcon) -> Vec<u8> {
     let cache_file = crate::utils::dirs::cache_dir()
         .unwrap()
@@ -151,5 +150,25 @@ pub fn get_icon(mode: &TrayIcon) -> Vec<u8> {
             tracing::error!("invalid icon file: {:?}", cache_file);
             mode.raw_bytes().to_vec()
         }
+    }
+}
+
+/// Fails if `bytes` do not decode as a tray icon, as applying them to the
+/// tray would.
+pub fn check_icon(bytes: &[u8]) -> anyhow::Result<()> {
+    tauri::image::Image::from_bytes(bytes)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_bundled_icons_pass_the_check_and_a_corrupt_png_fails_it() {
+        for mode in TrayIcon::all_supported() {
+            check_icon(mode.raw_bytes()).unwrap();
+        }
+        assert!(check_icon(b"\x89PNG\r\n\x1a\nnot an image").is_err());
     }
 }

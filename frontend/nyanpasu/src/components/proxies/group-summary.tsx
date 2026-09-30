@@ -1,3 +1,4 @@
+import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import type {
   Proxies_Serialize,
@@ -17,14 +18,14 @@ export default function GroupSummary({
 
   return (
     <div className="text-on-surface-variant flex min-w-0 items-center gap-1.5 text-xs">
-      <span className="bg-secondary-container text-on-secondary-container shrink-0 rounded px-1.5 py-0.5 text-[10px]">
+      <span className="bg-secondary-container text-on-secondary-container shrink-0 rounded-full px-1.5 py-0.5 text-[10px]">
         {group.type}
       </span>
       {group.now && (
         <>
-          <span className="min-w-0 truncate" title={group.now}>
-            {group.now}
-          </span>
+          <div className="min-w-0 flex-1" title={group.now}>
+            <TextMarquee className="w-full">{group.now}</TextMarquee>
+          </div>
           <span className="ml-auto shrink-0 tabular-nums">
             {delay === undefined ? (
               <span title={m.proxies_delay_history_empty()}>—</span>

@@ -19,7 +19,7 @@ import {
 } from '../../_modules/settings-card'
 
 export default function TrayProxiesSelector() {
-  const { value, upsert } = useSetting('clash_tray_selector')
+  const { value, upsert } = useSetting('tray_selector_mode')
 
   const handleChange = useLockFn(async (mode: ProxiesSelectorMode) => {
     await upsert(mode)

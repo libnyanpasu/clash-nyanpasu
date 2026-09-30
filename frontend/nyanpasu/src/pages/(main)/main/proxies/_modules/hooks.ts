@@ -1,23 +1,15 @@
 import { useMemo } from 'react'
-import {
-  ClashProxiesQueryGroupItem,
-  useClashConnections,
-} from '@nyanpasu/interface'
+import { useClashConnections } from '@nyanpasu/interface'
+import { latestGroupTrafficSpeed } from './group-traffic-speed'
 
-export function useCurrentGroupConnection(
-  currentGroup?: ClashProxiesQueryGroupItem,
-) {
+export function useGroupTrafficSpeed(groupName?: string) {
   const { data: clashConnections } = useClashConnections()
 
-  return useMemo(() => {
-    if (!currentGroup?.name) {
-      return
-    }
-
-    return clashConnections
-      ?.at(-1)
-      ?.connections?.find((connection) =>
-        connection.chains.includes(currentGroup?.name),
-      )
-  }, [clashConnections, currentGroup?.name])
+  return useMemo(
+    () =>
+      groupName
+        ? latestGroupTrafficSpeed(clashConnections, groupName)
+        : { download: 0, upload: 0 },
+    [clashConnections, groupName],
+  )
 }

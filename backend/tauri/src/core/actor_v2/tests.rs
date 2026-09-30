@@ -22,7 +22,7 @@ use nyanpasu_ipc::api::{
 
 use super::{
     CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport, STOP_WAIT,
-    ShutdownReport,
+    ShutdownReport, SubmitFailure,
     endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost},
 };
 
@@ -164,6 +164,7 @@ fn snapshot(state: CoreStateDetail) -> CoreStatusSnapshot {
         state: Some(state),
         state_changed_at: 0,
         revision: None,
+        source_hash: None,
         healthy: None,
         applied_kind: None,
     }
@@ -229,6 +230,7 @@ impl ControlEndpoint for FakeEndpoint {
 
 fn reconcile_envelope() -> CoreSubmission {
     CoreSubmission {
+        expected_owner: None,
         envelope: CoreCommandEnvelope {
             operation_id: OperationId::generate(),
             command: CoreCommand::Recover,
@@ -270,6 +272,7 @@ async fn an_alpha_core_reaches_the_service_wire_intact() {
 
     client
         .submit(CoreSubmission {
+            expected_owner: None,
             envelope: envelope.clone(),
             core_type: Some(alpha.clone()),
         })
@@ -278,6 +281,7 @@ async fn an_alpha_core_reaches_the_service_wire_intact() {
     assert_eq!(*service.last_core_type.lock().unwrap(), Some(Some(alpha)));
 
     let request = super::endpoint::wire_submit_request(&CoreSubmission {
+        expected_owner: None,
         envelope,
         core_type: None,
     })
@@ -478,6 +482,7 @@ async fn a_lost_stop_result_with_an_unknown_status_is_not_a_stop_proof() {
         state: None,
         state_changed_at: 0,
         revision: None,
+        source_hash: None,
         healthy: None,
         applied_kind: None,
     });
@@ -765,6 +770,69 @@ async fn a_second_change_host_during_a_handoff_is_refused() {
     );
 
     client.shutdown().await.unwrap();
+}
+
+/// T10 §1.11: whether a handoff finished is answered by the handoff, not by
+/// the router's health. Its stop leg in flight is unfinished; a failed leg
+/// whose source went down meanwhile is finished although the degraded
+/// router it leaves refuses every status read, and so are a completed
+/// handoff and a shut-down router.
+#[tokio::test]
+async fn a_handoff_is_settled_by_its_own_completion_not_by_router_health() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let service = FakeEndpoint::new(
+        ExecutionHost::Service,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+    let generation = client.status().generation;
+    local.script_stop(StopScript::Failed {
+        kind: Some("apply_failed"),
+        retryable: false,
+    });
+    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
+    assert!(!client.handoff_settled(generation).await.unwrap());
+
+    // Queued ahead of the stop leg's own answer, as the source's pump would.
+    client
+        .actor
+        .cast(CoreActorMessage::EndpointDown {
+            generation,
+            reason: "the source stopped answering".into(),
+        })
+        .unwrap();
+    local.release_stop();
+    assert!(handoff.await.unwrap().is_err());
+    assert!(matches!(
+        client.status().connectivity,
+        EndpointConnectivity::Degraded {
+            desired: ExecutionHost::Local,
+            ..
+        }
+    ));
+    assert_eq!(
+        client.refresh_status().await.unwrap_err().kind,
+        Some(CoreErrorKind::BackendUnavailable)
+    );
+    assert!(client.handoff_settled(generation).await.unwrap());
+
+    let fresh = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    assert!(client.change_host(fresh).await.unwrap().completed());
+    assert!(client.handoff_settled(generation).await.unwrap());
+
+    client.shutdown().await.unwrap();
+    assert!(
+        client
+            .handoff_settled(client.status().generation)
+            .await
+            .unwrap()
+    );
 }
 
 /// Fencing use #2: a completion belonging to an abandoned handoff must not
@@ -1379,4 +1447,19 @@ async fn a_submit_queued_behind_other_work_is_reported_retryable_not_internal() 
         error.retryable,
         "mailbox residence must not turn a submit's caller-side timeout into a non-retryable Internal"
     );
+}
+
+#[tokio::test]
+async fn a_stale_owner_precondition_is_refused_before_endpoint_submission() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+    let mut submission = reconcile_envelope();
+    submission.expected_owner = Some((ExecutionHost::Local, 99));
+    let error = client.submit(submission).await.unwrap_err();
+    assert!(matches!(error, SubmitFailure::NotSubmitted(_)));
+    assert_eq!(local.submits.load(Ordering::SeqCst), 0);
+    client.shutdown().await.unwrap();
 }

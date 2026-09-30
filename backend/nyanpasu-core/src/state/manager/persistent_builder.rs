@@ -197,15 +197,24 @@ where
 
         let result = self
             .state_coordinator
-            .with_pending_state(&new_state, |_s| async move {
-                let mut buf = Vec::with_capacity(4096);
-                formatter.serialize(&mut buf, &builder_for_save, config_prefix.as_deref())?;
-                let file = AtomicFile::new(&config_path, AllowOverwrite);
-                tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-                    .await?
-                    .with_context(|| format!("failed to write config: {config_path}"))?;
-                Ok::<_, anyhow::Error>(())
-            })
+            .with_pending_state(
+                &new_state,
+                |_s| async move {
+                    let mut buf = Vec::with_capacity(4096);
+                    formatter.serialize(&mut buf, &builder_for_save, config_prefix.as_deref())?;
+                    let file = AtomicFile::new(&config_path, AllowOverwrite);
+                    tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
+                        .await
+                        .map_err(|error| match error.try_into_panic() {
+                            Ok(panic) => std::panic::resume_unwind(panic),
+                            Err(error) => error,
+                        })?
+                        .with_context(|| format!("failed to write config: {config_path}"))?;
+                    Ok::<_, anyhow::Error>(())
+                },
+                // A failed write leaves the old file in place.
+                |_committed| async { Ok(()) },
+            )
             .await;
 
         match result {
@@ -216,9 +225,13 @@ where
             Err(e) => match e {
                 WithEffectError::State(e) => Err(UpsertError::State(e)),
                 WithEffectError::Effect(e) => Err(UpsertError::WriteConfig(e)),
-                WithEffectError::EffectTimedOut(timeout) => Err(UpsertError::WriteConfig(
-                    anyhow::anyhow!("write config timed out after {timeout:?}"),
-                )),
+                WithEffectError::EffectRecovery {
+                    effect_error,
+                    recovery_error,
+                } => Err(UpsertError::ResourceRecovery {
+                    cause: anyhow::anyhow!("{effect_error}"),
+                    recovery_error,
+                }),
             },
         }
     }
@@ -311,7 +324,7 @@ mod tests {
 
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            Ack::Failed(anyhow::anyhow!("init ACK failed"))
+            Ack::Failed(crate::state::ack::test_ack_error("init ACK failed"))
         }
     }
 

@@ -1,10 +1,6 @@
-use nyanpasu_core_manager::{CoreError, OperationId};
-use nyanpasu_ipc::api::core::v2::{OperationOutputInfo, ReconcileOutcomeKind};
+use nyanpasu_core_manager::OperationId;
 
-use super::{
-    CoreLifecycleWorkflow,
-    ports::{PreparedRuntime, RuntimePreparationPort},
-};
+use super::CoreLifecycleWorkflow;
 use crate::core::{
     actor_v2::api::{ApiClient, ApiError},
     connections::{ConnectionScope, interrupt_connections},
@@ -26,10 +22,6 @@ struct PreparedInterruption {
     source: Result<Option<ApiClient>, ApiError>,
 }
 
-pub(in crate::client) struct RuntimeApplyOutcome {
-    pub interruption_error: Option<ApiError>,
-}
-
 impl CoreLifecycleWorkflow {
     pub async fn prepare_apply(
         &self,
@@ -49,17 +41,11 @@ impl CoreLifecycleWorkflow {
         }
     }
 
-    pub async fn apply(
-        &mut self,
-        prepared: PreparedRuntime,
+    pub async fn finish_interruption(
         context: RuntimeApplyContext,
-        preparation: &dyn RuntimePreparationPort,
-    ) -> Result<RuntimeApplyOutcome, CoreError> {
-        let report = self.apply_runtime(prepared, preparation).await?;
-        // A confirmed process replacement has already removed the source connections.
-        let replaced = matches!(&report.output, OperationOutputInfo::Reconciled(outcome)
-            if matches!(outcome.outcome, ReconcileOutcomeKind::Started | ReconcileOutcomeKind::Restarted | ReconcileOutcomeKind::Switched));
-        let interruption_error = if !replaced && let Some(interruption) = context.interruption {
+        replaced: bool,
+    ) -> Option<ApiError> {
+        if !replaced && let Some(interruption) = context.interruption {
             let result = match interruption.source {
                 Ok(Some(source)) => interrupt_connections(&source, &interruption.scope).await,
                 Ok(None) => Ok(()),
@@ -72,7 +58,6 @@ impl CoreLifecycleWorkflow {
             result.err()
         } else {
             None
-        };
-        Ok(RuntimeApplyOutcome { interruption_error })
+        }
     }
 }

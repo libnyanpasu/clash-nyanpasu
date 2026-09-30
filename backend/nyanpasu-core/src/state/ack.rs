@@ -28,43 +28,20 @@ pub enum AckPolicy {
     Advisory,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AckOptions {
-    pub timeout: Duration,
-    pub policy: AckPolicy,
-}
-
-impl AckOptions {
-    pub const fn required(timeout: Duration) -> Self {
-        Self {
-            timeout,
-            policy: AckPolicy::Required,
-        }
-    }
-
-    pub const fn advisory(timeout: Duration) -> Self {
-        Self {
-            timeout,
-            policy: AckPolicy::Advisory,
-        }
-    }
-}
-
-impl Default for AckOptions {
-    fn default() -> Self {
-        Self::required(Duration::from_secs(30))
-    }
-}
+/// The error a subscriber answers with. It is shared by the transaction's
+/// report, and the application that produced it recovers the concrete type
+/// with [`std::error::Error::downcast_ref`].
+pub type AckError = Arc<dyn std::error::Error + Send + Sync + 'static>;
 
 #[derive(Debug)]
 pub enum Ack {
     Ok,
     /// Successful ACK but with some degradation, e.g. degraded performance or partial failure that does not block the commit.
-    Degraded(String),
-    /// Reject with a message explaining the reason. This is a failure that should block the commit.
-    Rejected(String),
+    Degraded(AckError),
+    /// Reject with the reason. This is a failure that should block the commit.
+    Rejected(AckError),
     /// Failed with an error. This is a failure that should block the commit and may require investigation.
-    Failed(anyhow::Error),
+    Failed(AckError),
 }
 
 /// A unique identifier for a subscriber, used in logging and reporting. It can be a simple string or a more complex struct if needed.
@@ -103,9 +80,8 @@ impl PartialEq<&str> for SubscriberName<'_> {
 
 #[derive(Debug, Clone)]
 pub enum SubscriberFailureKind {
-    Rejected { reason: String },
-    Failed { error: Arc<anyhow::Error> },
-    TimedOut,
+    Rejected { reason: AckError },
+    Failed { error: AckError },
 }
 
 #[derive(Debug, Clone)]
@@ -116,9 +92,7 @@ pub struct SubscriberFailure {
 
 #[derive(Debug, Clone)]
 pub enum RollbackReason {
-    /// Global coordinator timeout waiting for required ACKs.
-    Timeout,
-    /// Any required ACK returned a failure status (rejected, failed, or timed out).
+    /// Any required ACK returned a failure status (rejected or failed).
     SubscriberFailed(Vec<SubscriberFailure>),
     /// An unexpected error occurred in the coordinator or during notification.
     CoordinatorError(Arc<anyhow::Error>),
@@ -138,23 +112,49 @@ pub enum RollbackReason {
 ///
 /// Unsafe patterns:
 /// - Cycle: A->B->A (mutual subscription)
+///
+/// # Rules for Required participants
+///
+/// A subscriber whose [`StateAckSubscriber::policy`] is [`AckPolicy::Required`]
+/// can veto the commit, so it runs inside the source owner's write, which holds
+/// the state's `&mut` for the whole transaction. The transaction has no deadline
+/// of its own: it waits for every answer, and a subscriber that never answers
+/// holds the source state for as long as that takes. Three rules keep that
+/// safe:
+///
+/// 1. **No RPC back to the source actor.** `on_prepare` runs while that actor
+///    is inside the write, so any call that has to reach it (a read, a patch, a
+///    status query) cannot make progress and hangs forever. Everything the
+///    participant needs must be captured before the transaction starts or
+///    carried in the [`StateChange`].
+/// 2. **Try must be cancel-safe.** The whole prepare fan-out is dropped when the
+///    owner's future is dropped (a panic or runtime teardown), so `on_prepare`
+///    may be cancelled at any await point. It must leave no half-applied effect
+///    that only its own return path would have cleaned up.
+/// 3. **Cancel must wait for the in-flight Try.** `on_rolled_back` for an
+///    attempt must not start undoing while that attempt's `on_prepare` is still
+///    running, or the undo races the effect it is undoing. The participant
+///    settles the in-flight attempt first, then compensates.
+///
+/// The commit decision itself is never carried by these notifications alone: a
+/// single-shot participant also holds a [`crate::state::DecisionHandle`], which
+/// stays readable when `on_committed` is dropped.
 #[async_trait::async_trait]
 pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
     /// A unique name for this subscriber, used in logging and reporting.
     fn name(&self) -> SubscriberName<'_>;
 
-    /// If true, the coordinator will skip this subscriber and treat it as if it acknowledged immediately.
-    fn is_shutdown(&self) -> bool {
-        false
-    }
-
-    /// Ack options for this subscriber. By default, it's required with a 30-second timeout.
-    fn ack_options(&self) -> AckOptions {
-        AckOptions::default()
+    /// Whether a failed prepare vetoes the commit. Required by default.
+    fn policy(&self) -> AckPolicy {
+        AckPolicy::Required
     }
 
     /// Required / advisory ACK
     /// The coordinator will wait for the ACK response before proceeding to the next subscriber or finalizing the commit.
+    ///
+    /// The coordinator never skips a subscriber. One that cannot serve the
+    /// change, for example because its service has stopped, answers
+    /// [`Ack::Failed`] or [`Ack::Rejected`] here.
     async fn on_prepare(&self, _change: StateChange<T>) -> Ack {
         Ack::Ok
     }
@@ -178,12 +178,8 @@ where
         (**self).name()
     }
 
-    fn is_shutdown(&self) -> bool {
-        (**self).is_shutdown()
-    }
-
-    fn ack_options(&self) -> AckOptions {
-        (**self).ack_options()
+    fn policy(&self) -> AckPolicy {
+        (**self).policy()
     }
 
     async fn on_prepare(&self, change: StateChange<T>) -> Ack {
@@ -199,32 +195,27 @@ where
     }
 }
 
+/// A participant taking part in state transactions.
+///
+/// Permanently registered subscribers and the single-shot participant of one
+/// transaction have the same shape; only their lifetime differs.
+pub type StateParticipant<T> = Arc<dyn StateAckSubscriber<T> + Send + Sync>;
+
 #[derive(Debug)]
 pub enum AckStatus {
     Acked,
-    Degraded {
-        message: String,
-    },
-    Rejected {
-        reason: String,
-    },
-    Failed {
-        error: Arc<anyhow::Error>,
-    },
-    TimedOut,
-    /// A Service is shutdown and cannot process ACKs, so the coordinator will skip waiting for it and treat it as if it acknowledged immediately.
-    SkippedShutdown,
+    Degraded { error: AckError },
+    Rejected { reason: AckError },
+    Failed { error: AckError },
 }
 
 impl From<Ack> for AckStatus {
     fn from(ack: Ack) -> Self {
         match ack {
             Ack::Ok => AckStatus::Acked,
-            Ack::Degraded(message) => AckStatus::Degraded { message },
-            Ack::Rejected(message) => AckStatus::Rejected { reason: message },
-            Ack::Failed(error) => AckStatus::Failed {
-                error: Arc::new(error),
-            },
+            Ack::Degraded(error) => AckStatus::Degraded { error },
+            Ack::Rejected(reason) => AckStatus::Rejected { reason },
+            Ack::Failed(error) => AckStatus::Failed { error },
         }
     }
 }
@@ -233,7 +224,6 @@ impl From<Ack> for AckStatus {
 pub struct SubscriberAck {
     pub name: SubscriberName<'static>,
     pub policy: AckPolicy,
-    pub timeout: Duration,
     pub elapsed: Duration,
     pub status: AckStatus,
 }
@@ -243,7 +233,7 @@ impl SubscriberAck {
         self.policy == AckPolicy::Required
             && matches!(
                 self.status,
-                AckStatus::Rejected { .. } | AckStatus::Failed { .. } | AckStatus::TimedOut
+                AckStatus::Rejected { .. } | AckStatus::Failed { .. }
             )
     }
 }
@@ -269,7 +259,7 @@ impl PrepareReport {
             a.policy == AckPolicy::Advisory
                 && matches!(
                     a.status,
-                    AckStatus::Rejected { .. } | AckStatus::Failed { .. } | AckStatus::TimedOut
+                    AckStatus::Rejected { .. } | AckStatus::Failed { .. }
                 )
         })
     }
@@ -279,6 +269,16 @@ impl PrepareReport {
             .iter()
             .any(|a| matches!(a.status, AckStatus::Degraded { .. }))
     }
+}
+
+/// An [`AckError`] carrying only a message, for tests that do not care about
+/// its type.
+#[cfg(test)]
+pub(crate) fn test_ack_error(message: &str) -> AckError {
+    #[derive(Debug, thiserror::Error)]
+    #[error("{0}")]
+    struct TestAckError(String);
+    Arc::new(TestAckError(message.to_owned()))
 }
 
 #[cfg(test)]
@@ -291,10 +291,9 @@ mod tests {
             subscriber_acks: vec![SubscriberAck {
                 name: "advisory".into(),
                 policy: AckPolicy::Advisory,
-                timeout: Duration::from_secs(1),
                 elapsed: Duration::from_millis(1),
                 status: AckStatus::Rejected {
-                    reason: "not acceptable".to_string(),
+                    reason: test_ack_error("not acceptable"),
                 },
             }],
         };

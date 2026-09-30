@@ -6,27 +6,33 @@ use nyanpasu_config::profile::{
 };
 use url::Url;
 
+use super::error::{ProfileFileError, SubscriptionFetchError};
+
 /// Filesystem access for materialized profile files. Paths are relative to the
 /// app profiles dir; resolution is the implementation's concern.
 #[cfg_attr(test, mockall::automock)]
 pub trait ProfileFsPort: Send + Sync + 'static {
-    fn read(&self, path: &ManagedProfilePath) -> anyhow::Result<String>;
-    fn write_atomic(&self, path: &ManagedProfilePath, content: &str) -> anyhow::Result<()>;
+    fn read(&self, path: &ManagedProfilePath) -> Result<String, ProfileFileError>;
+    fn write_atomic(
+        &self,
+        path: &ManagedProfilePath,
+        content: &str,
+    ) -> Result<(), ProfileFileError>;
     /// Idempotent: removing a missing file succeeds.
     #[allow(dead_code)]
-    fn remove(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
+    fn remove(&self, path: &ManagedProfilePath) -> Result<(), ProfileFileError>;
     /// Read an External binding target for Mirror synchronization.
-    fn read_external(&self, target: &ExternalProfilePath) -> anyhow::Result<String>;
+    fn read_external(&self, target: &ExternalProfilePath) -> Result<String, ProfileFileError>;
     /// Remote-updater write guard: the target must not be an unexpected
     /// symlink (clean-design §9 last paragraph).
-    fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
+    fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> Result<(), ProfileFileError>;
     /// Create or repair `path -> target` (External Symlink binding, clean-design §10.1).
     #[allow(dead_code)]
     fn ensure_symlink(
         &self,
         path: &ManagedProfilePath,
         target: &ExternalProfilePath,
-    ) -> anyhow::Result<()>;
+    ) -> Result<(), ProfileFileError>;
 }
 
 #[derive(Debug, Clone)]
@@ -49,14 +55,7 @@ pub trait SubscriptionFetcher: Send + Sync + 'static {
         &self,
         url: &Url,
         options: &RemoteProfileOptions,
-    ) -> anyhow::Result<FetchedSubscription>;
-}
-
-/// Background-commit rebuild signal (design §6.4). Fire-and-forget; debouncing
-/// is the receiver's concern.
-#[cfg_attr(test, mockall::automock)]
-pub trait RebuildNotifier: Send + Sync + 'static {
-    fn request_rebuild(&self);
+    ) -> Result<FetchedSubscription, SubscriptionFetchError>;
 }
 
 #[derive(Debug, Clone)]
@@ -167,38 +166,41 @@ pub(crate) trait ProfileMaterializationPort: Send + Sync + 'static {
         path: &ManagedProfilePath,
         resource: MaterializationResource,
         expected_revision: u64,
-    ) -> anyhow::Result<PreparedMaterialization>;
+    ) -> Result<PreparedMaterialization, ProfileFileError>;
 
     fn prepare_file_first(
         &self,
         path: &ManagedProfilePath,
         resource: MaterializationResource,
         expected_revision: u64,
-    ) -> anyhow::Result<PreparedMaterialization>;
+    ) -> Result<PreparedMaterialization, ProfileFileError>;
 
-    fn promote(&self, prepared: &PreparedMaterialization) -> anyhow::Result<()>;
+    fn promote(&self, prepared: &PreparedMaterialization) -> Result<(), ProfileFileError>;
 
-    fn complete(&self, prepared: &PreparedMaterialization) -> anyhow::Result<()>;
+    fn complete(&self, prepared: &PreparedMaterialization) -> Result<(), ProfileFileError>;
 
-    fn compensate(&self, prepared: &PreparedMaterialization) -> anyhow::Result<()>;
+    fn compensate(&self, prepared: &PreparedMaterialization) -> Result<(), ProfileFileError>;
 
     fn prepare_cleanup(
         &self,
         path: &ManagedProfilePath,
         expected_revision: u64,
-    ) -> anyhow::Result<PreparedCleanup>;
+    ) -> Result<PreparedCleanup, ProfileFileError>;
 
-    fn activate_cleanup(&self, cleanup: &PreparedCleanup) -> anyhow::Result<()>;
+    fn activate_cleanup(&self, cleanup: &PreparedCleanup) -> Result<(), ProfileFileError>;
 
-    fn cancel_cleanup(&self, cleanup: &PreparedCleanup) -> anyhow::Result<()>;
+    fn cancel_cleanup(&self, cleanup: &PreparedCleanup) -> Result<(), ProfileFileError>;
 
     fn retry_cleanup(
         &self,
         cleanup: &PreparedCleanup,
         profiles: &Profiles,
-    ) -> anyhow::Result<CleanupOutcome>;
+    ) -> Result<CleanupOutcome, ProfileFileError>;
 
-    fn reconcile(&self, profiles: &Profiles) -> anyhow::Result<MaterializationReconcileReport>;
+    fn reconcile(
+        &self,
+        profiles: &Profiles,
+    ) -> Result<MaterializationReconcileReport, ProfileFileError>;
 }
 
 #[cfg(test)]

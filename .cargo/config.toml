@@ -30,19 +30,19 @@
 # any build/CI step that sets RUSTFLAGS must also include `target-feature=+aes,...`.
 
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+aes,+sse2"]
+rustflags = ['-C', 'target-feature=+aes,+sse2']
 
 [target.aarch64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+aes,+neon"]
+rustflags = ['-C', 'target-feature=+aes,+neon']
 
 [target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "target-feature=+aes,+sse2"]
+rustflags = ['-C', 'target-feature=+aes,+sse2']
 
 [target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "target-feature=+aes,+neon"]
+rustflags = ['-C', 'target-feature=+aes,+neon']
 
 [target.x86_64-apple-darwin]
-rustflags = ["-C", "target-feature=+aes,+sse2"]
+rustflags = ['-C', 'target-feature=+aes,+sse2']
 
 [target.aarch64-apple-darwin]
-rustflags = ["-C", "target-feature=+aes,+neon"]
+rustflags = ['-C', 'target-feature=+aes,+neon']

@@ -1,19 +1,19 @@
 [package]
-name = "fake-core"
-version = "0.1.0"
+name = 'fake-core'
+version = '0.1.0'
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 publish = false
-description = "Test-only deterministic fake clash core binary (never packaged as a production sidecar)"
+description = 'Test-only deterministic fake clash core binary (never packaged as a production sidecar)'
 
 [lib]
-name = "fake_core"
-path = "src/lib.rs"
+name = 'fake_core'
+path = 'src/lib.rs'
 
 [[bin]]
-name = "fake-core"
-path = "src/main.rs"
+name = 'fake-core'
+path = 'src/main.rs'
 
 [dependencies]
 # Intentionally empty: std-only for cross-platform process lifecycle tests.

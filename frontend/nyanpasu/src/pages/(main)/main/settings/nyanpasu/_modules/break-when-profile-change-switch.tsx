@@ -3,7 +3,7 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useSetting } from '@nyanpasu/interface'
+import { useClashSetting } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -14,17 +14,20 @@ import {
 } from '../../_modules/settings-card'
 
 export default function BreakWhenProfileChangeSwitch() {
-  const breakWhenProfileChange = useSetting('break_when_profile_change')
+  const breakConnection = useClashSetting('break_connection')
+
+  const checked = Boolean(breakConnection.value?.on_profile_change)
 
   const handleChange = useLockFn(async () => {
     try {
-      await breakWhenProfileChange.upsert(!breakWhenProfileChange.value)
+      await breakConnection.upsert({ on_profile_change: !checked })
     } catch (error) {
       message(
         `Update break when profile change failed!\n Error: ${formatError(error)}`,
         {
           title: 'Error',
           kind: 'error',
+          error,
         },
       )
     }
@@ -45,9 +48,9 @@ export default function BreakWhenProfileChangeSwitch() {
           </ItemLabel>
 
           <Switch
-            checked={Boolean(breakWhenProfileChange.value)}
+            checked={checked}
             onCheckedChange={handleChange}
-            loading={breakWhenProfileChange.isPending}
+            loading={breakConnection.isPending}
           />
         </ItemContainer>
       </SettingsCardContent>

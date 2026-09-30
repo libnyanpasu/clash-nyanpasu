@@ -64,6 +64,7 @@ export default function ProfileNameEditor({
           message(`Update failed: \n ${formatError(error)}`, {
             title: 'Error',
             kind: 'error',
+            error,
           })
         }
       },

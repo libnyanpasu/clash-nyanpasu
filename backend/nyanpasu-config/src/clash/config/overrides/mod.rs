@@ -53,7 +53,7 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, specta::Type)))]
-#[patch(attribute(serde(rename_all = "kebab-case")))]
+#[patch(attribute(serde(default, rename_all = "kebab-case")))]
 #[serde(rename_all = "kebab-case")]
 pub struct ClashGuardOverrides {
     log_level: LogLevel,
@@ -80,6 +80,16 @@ impl Default for ClashGuardOverrides {
             tcp_concurrent: true,
             ipv6: false,
         }
+    }
+}
+
+impl ClashGuardOverrides {
+    pub fn secret(&self) -> &str {
+        &self.secret
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.mode
     }
 }
 

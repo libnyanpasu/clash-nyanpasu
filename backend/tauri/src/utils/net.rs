@@ -3,9 +3,9 @@ use std::time::Duration;
 use super::candy::get_reqwest_client;
 
 #[tracing_attributes::instrument]
-pub async fn url_delay_test(url: &str, expected_status: u16) -> Option<u64> {
+pub async fn url_delay_test(url: &str, expected_status: u16, self_proxy_port: u16) -> Option<u64> {
     // heat up
-    let client = get_reqwest_client().ok()?;
+    let client = get_reqwest_client(self_proxy_port).ok()?;
     let _ = tokio::time::timeout(Duration::from_secs(10), client.get(url).send())
         .await
         .ok()?
@@ -22,8 +22,8 @@ pub async fn url_delay_test(url: &str, expected_status: u16) -> Option<u64> {
 }
 
 #[tracing_attributes::instrument]
-pub async fn get_ipsb_asn() -> anyhow::Result<serde_json::Value> {
-    let client = get_reqwest_client()?;
+pub async fn get_ipsb_asn(self_proxy_port: u16) -> anyhow::Result<serde_json::Value> {
+    let client = get_reqwest_client(self_proxy_port)?;
     let response = client
         .get("https://api.ip.sb/geoip")
         .send()

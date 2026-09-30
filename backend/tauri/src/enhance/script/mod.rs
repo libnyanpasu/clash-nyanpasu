@@ -1,7 +1,8 @@
 pub mod adapter;
 mod js;
 mod lua;
-pub use lua::create_lua_context;
+pub use js::ScriptDirs;
+pub use lua::{create_lua_context, ordered_map};
 pub mod runner;
 pub use runner::RunnerManager;
 // TODO: add test

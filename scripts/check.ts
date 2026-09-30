@@ -303,15 +303,13 @@ const MIHOMO_ALPHA_ASSETS_URL =
   "https://github.com/MetaCubeX/mihomo/releases/expanded_assets/Prerelease-Alpha";
 
 const CLASH_RS_MANIFEST: ClashManifest = {
-  URL_PREFIX: "https://github.com/Watfaq/clash-rs/releases/download/",
+  URL_PREFIX: "https://github.com/ibigbug/clash-rs/releases/download/",
   VERSION: versionManifest.latest.clash_rs,
   ARCH_MAPPING: versionManifest.arch_template.clash_rs as ArchMapping,
 };
 
 const CLASH_RS_ALPHA_MANIFEST: ClashManifest = {
-  VERSION_URL:
-    "https://github.com/Watfaq/clash-rs/releases/download/latest/version.txt",
-  URL_PREFIX: "https://github.com/Watfaq/clash-rs/releases/download/latest",
+  URL_PREFIX: "https://github.com/ibigbug/clash-rs/releases/download/latest",
   ARCH_MAPPING: versionManifest.arch_template.clash_rs_alpha as ArchMapping,
 };
 
@@ -663,11 +661,8 @@ function getClashRustInfo(): BinInfo {
 }
 
 async function getClashRustAlphaInfo(): Promise<BinInfo> {
-  const { ARCH_MAPPING, VERSION_URL, URL_PREFIX } = CLASH_RS_ALPHA_MANIFEST;
-
-  const resp = await fetch(VERSION_URL!);
-  const version = normalizeVersion((await resp.text()).trim()) ??
-    versionManifest.latest.clash_rs_alpha;
+  const { ARCH_MAPPING, URL_PREFIX } = CLASH_RS_ALPHA_MANIFEST;
+  const version = versionManifest.latest.clash_rs_alpha;
   debugLog(`clash-rs-alpha version: ${version}`);
   const archLabel = mapArch(platform, arch);
   const name = ARCH_MAPPING[archLabel].replace("{}", version);

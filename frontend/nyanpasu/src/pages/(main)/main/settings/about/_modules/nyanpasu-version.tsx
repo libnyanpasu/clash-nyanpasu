@@ -13,6 +13,13 @@ import {
 } from '@/components/ui/modal'
 import { LinearProgress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { SwitchItem } from '@/components/ui/switch'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import {
@@ -22,7 +29,8 @@ import {
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { commands, useSetting } from '@nyanpasu/interface'
+import { commands, useSetting, type ReleaseChannel } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/utils'
 import { relaunch } from '@tauri-apps/plugin-process'
 import {
   SettingsCard,
@@ -47,6 +55,87 @@ const AutoCheckUpdate = () => {
     >
       <p className="truncate">{m.settings_label_about_auto_check_updates()}</p>
     </SwitchItem>
+  )
+}
+
+const ReleaseChannelSelector = () => {
+  const { releaseChannel, setReleaseChannel, isChangingChannel, isChecking } =
+    useNyanpasuUpdate()
+  const labels: Record<ReleaseChannel, string> = {
+    stable: m.release_channel_stable(),
+    beta: m.release_channel_beta(),
+    nightly: m.release_channel_nightly(),
+  }
+  const notices: Partial<Record<ReleaseChannel, string>> = {
+    stable: m.release_channel_stable_notice(),
+    nightly: m.release_channel_nightly_notice(),
+  }
+  const handleChange = useLockFn(async (channel: ReleaseChannel) => {
+    try {
+      await setReleaseChannel(channel)
+    } catch (error) {
+      message(formatError(error), { kind: 'error', error })
+    }
+  })
+  return (
+    <div
+      className={cn(
+        'flex w-full items-center justify-between gap-4',
+        'bg-surface-variant/30 dark:bg-surface-variant/10',
+        'min-h-16 rounded-[20px] px-4 py-3',
+      )}
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="truncate">{m.release_channel_label()}</p>
+
+        {/* nightly locks the selector, so explain why inline */}
+        {releaseChannel === 'nightly' && (
+          <p className="text-on-surface-variant text-xs">{notices.nightly}</p>
+        )}
+      </div>
+
+      <Select
+        variant="outlined"
+        value={releaseChannel ?? ''}
+        onValueChange={(value) => handleChange(value as ReleaseChannel)}
+        disabled={
+          !releaseChannel ||
+          releaseChannel === 'nightly' ||
+          isChecking ||
+          isChangingChannel
+        }
+      >
+        <SelectTrigger
+          className="h-10 w-32 flex-none py-2 data-disabled:cursor-not-allowed data-disabled:opacity-50"
+          aria-label={m.release_channel_label()}
+        >
+          <SelectValue className="truncate pr-4 text-sm">
+            {releaseChannel ? labels[releaseChannel] : null}
+          </SelectValue>
+        </SelectTrigger>
+
+        <SelectContent align="end" className="min-w-72">
+          {(Object.keys(labels) as ReleaseChannel[]).map((channel) => (
+            <SelectItem
+              key={channel}
+              value={channel}
+              textValue={labels[channel]}
+              className="h-auto min-h-12 py-3"
+            >
+              <span className="flex flex-col gap-0.5">
+                <span>{labels[channel]}</span>
+
+                {notices[channel] && (
+                  <span className="text-on-surface-variant text-xs">
+                    {notices[channel]}
+                  </span>
+                )}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   )
 }
 
@@ -116,6 +205,7 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
       console.error(e)
       message(formatError(e), {
         kind: 'error',
+        error: e,
         title: 'Error',
       })
     } finally {
@@ -243,6 +333,8 @@ export default function NyanpasuVersion() {
 
       {isSupported ? (
         <SettingsCardFooter className="flex-col gap-2">
+          <ReleaseChannelSelector />
+
           <AutoCheckUpdate />
 
           {hasNewVersion ? (
@@ -263,7 +355,9 @@ export default function NyanpasuVersion() {
           )}
         </SettingsCardFooter>
       ) : (
-        <SettingsCardFooter>
+        <SettingsCardFooter className="flex-col gap-2">
+          <ReleaseChannelSelector />
+
           <Button
             variant="flat"
             className="w-full"

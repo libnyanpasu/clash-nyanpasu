@@ -40,7 +40,7 @@ export const inputVariants = cva(
   [
     'peer',
     'w-full border-none p-0',
-    'bg-transparent placeholder-transparent outline-hidden',
+    'bg-transparent outline-hidden',
     'transition-[margin] duration-200',
   ],
   {
@@ -54,7 +54,8 @@ export const inputVariants = cva(
         false: '',
       },
       haveLabel: {
-        true: '',
+        // the label sits where the placeholder would render
+        true: 'placeholder:text-transparent',
         false: '',
       },
     },
@@ -178,7 +179,7 @@ export const inputLabelFieldsetVariants = cva('pointer-events-none', {
         // different material web border color, i think this looks better
         'group-data-[state=closed]:border-outline-variant',
         'group-data-[state=open]:border-primary',
-        'peer-not-focus:border-primary-container',
+        'peer-not-focus:border-outline-variant',
         'peer-focus:border-primary',
         // dark must be prefixed
         'dark:group-data-[state=closed]:border-outline-variant',

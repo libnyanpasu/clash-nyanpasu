@@ -59,4 +59,14 @@ pub struct RuntimeArtifact {
     pub graph: ConfigSnapshotsGraph,
     pub step_logs: Vec<StepLog>,
     pub applied_fields: IndexSet<String>,
+    /// Execution failures that the legacy lenient pipeline passed through.
+    /// Candidate validation must refuse these even when the final YAML parses.
+    pub transform_failures: Vec<TransformFailure>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TransformFailure {
+    Profile { id: String },
+    Builtin { name: String },
 }

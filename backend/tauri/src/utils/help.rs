@@ -1,4 +1,3 @@
-use crate::config::nyanpasu::ExternalControllerPortStrategy;
 use anyhow::{Context, Result, anyhow, bail};
 use display_info::DisplayInfo;
 use fast_image_resize::{
@@ -8,14 +7,14 @@ use fast_image_resize::{
 use fs_err as fs;
 use image::{ColorType, ImageEncoder, ImageReader, codecs::png::PngEncoder};
 use nanoid::nanoid;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
 use serde_yaml::{Mapping, Value};
 use std::{
     io::{BufWriter, Cursor},
     path::{Path, PathBuf},
     str::FromStr,
 };
-use tauri::{AppHandle, Manager, process::current_binary};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
@@ -54,26 +53,6 @@ pub fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
             path.display()
         ))?
         .to_owned())
-}
-
-/// save the data to the file
-/// can set `prefix` string to add some comments
-pub fn save_yaml<T: Serialize, P: AsRef<Path>>(
-    path: P,
-    data: &T,
-    prefix: Option<&str>,
-) -> Result<()> {
-    let path = path.as_ref();
-    let data_str = serde_yaml::to_string(data)?;
-
-    let yaml_str = match prefix {
-        Some(prefix) => format!("{prefix}\n\n{data_str}"),
-        None => data_str,
-    };
-
-    let path_str = path.as_os_str().to_string_lossy().to_string();
-    fs::write(path, yaml_str.as_bytes())
-        .with_context(|| format!("failed to save file \"{path_str}\""))
 }
 
 const ALPHABET: [char; 62] = [
@@ -154,30 +133,6 @@ pub fn detect_system_i18n_key() -> &'static str {
     nyanpasu_config::application::default_i18n_language().as_str()
 }
 
-pub fn get_clash_external_port(
-    strategy: &ExternalControllerPortStrategy,
-    port: u16,
-) -> anyhow::Result<u16> {
-    match strategy {
-        ExternalControllerPortStrategy::Fixed => {
-            if !port_scanner::local_port_available(port) {
-                bail!("Port {} is not available", port);
-            }
-        }
-        ExternalControllerPortStrategy::Random | ExternalControllerPortStrategy::AllowFallback => {
-            if ExternalControllerPortStrategy::AllowFallback == *strategy
-                && port_scanner::local_port_available(port)
-            {
-                return Ok(port);
-            }
-            let new_port = port_scanner::request_open_port()
-                .ok_or_else(|| anyhow!("Can't find an open port"))?;
-            return Ok(new_port);
-        }
-    }
-    Ok(port)
-}
-
 pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
     let img = ImageReader::new(Cursor::new(img))
         .with_guessed_format()?
@@ -240,62 +195,18 @@ pub fn get_max_scale_factor() -> f64 {
 }
 
 #[instrument(skip(app_handle))]
-pub fn cleanup_processes(app_handle: &AppHandle) {
-    let _ = super::resolve::save_window_state(app_handle, true);
-    // Managed Tauri state — no process-global client lookup. The lifecycle
-    // actor closes admission and drains active work before stopping the core,
-    // so exit cannot race a background dirty rebuild. Tauri ExitRequested is already
-    // off the main event-loop spin; block_on here matches the existing cleanup
-    // pattern (effect shutdown / core stop).
-    let client = app_handle
-        .try_state::<crate::client::NyanpasuClient>()
-        .map(|state| state.inner().clone());
-    let _ = nyanpasu_utils::runtime::block_on(async {
-        if let Some(client) = client.as_ref() {
-            // Before the core stops: the proxy this process installed points at
-            // a port that is about to close, so the settings the app found go
-            // back first.
-            for degradation in client.shutdown_application_effects().await {
-                log::error!(
-                    "failed to restore a system effect on exit: {} ({})",
-                    degradation.message,
-                    degradation.code
-                );
-            }
-            let _ = client.shutdown_logs().await;
-            let report = client.shutdown_core().await;
-            if let Err(error) = report.stop {
-                log::error!("failed to stop core: {error}");
-            }
-        }
-    });
-    #[cfg(windows)]
-    crate::shutdown_hook::set_ready_for_shutdown();
-}
-
-#[instrument(skip(app_handle))]
 pub fn quit_application(app_handle: &AppHandle) {
     app_handle.exit(0);
 }
 
+/// Exits through the exit boundary, which starts the relauncher once every
+/// owner has shut down.
 #[instrument(skip(app_handle))]
 pub fn restart_application(app_handle: &AppHandle) {
-    cleanup_processes(app_handle);
-    let env = app_handle.env();
-    let path = current_binary(&env).unwrap();
-    let arg = std::env::args().collect::<Vec<String>>();
-    let mut args = vec!["launch".to_string(), "--".to_string()];
-    // filter out the first arg
-    if arg.len() > 1 {
-        args.extend(arg.iter().skip(1).cloned());
-    }
-    tracing::info!("restart app: {:#?} with args: {:#?}", path, args);
-    std::process::Command::new(path)
-        .args(args)
-        .spawn()
-        .expect("application failed to start");
+    app_handle
+        .state::<super::exit::ExitBoundary>()
+        .request_restart();
     app_handle.exit(0);
-    std::process::exit(0);
 }
 
 #[macro_export]

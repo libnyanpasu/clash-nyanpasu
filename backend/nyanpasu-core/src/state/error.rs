@@ -1,5 +1,5 @@
 use super::{ack::PrepareReport, version::Version};
-use std::{fmt, time::Duration};
+use std::fmt;
 #[derive(thiserror::Error, Debug)]
 #[error("state prepared but required subscriber ACK failed")]
 pub struct PrepareAckError {
@@ -114,6 +114,11 @@ pub enum UpsertError {
     State(StateChangedError),
     #[error("write config error: {0}")]
     WriteConfig(anyhow::Error),
+    #[error("persistence failed ({cause}) and resource recovery failed: {recovery_error}")]
+    ResourceRecovery {
+        cause: anyhow::Error,
+        recovery_error: anyhow::Error,
+    },
 }
 
 impl UpsertError {
@@ -130,6 +135,8 @@ pub enum WithEffectError<E> {
     #[error("effect failed: {0}")]
     Effect(E),
 
-    #[error("effect timed out after {0:?}")]
-    EffectTimedOut(Duration),
+    #[error(
+        "effect failed ({effect_error}) and restoring local resources failed: {recovery_error}"
+    )]
+    EffectRecovery { effect_error: E, recovery_error: E },
 }

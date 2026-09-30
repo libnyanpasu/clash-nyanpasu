@@ -1,4 +1,4 @@
-import { isEqual, kebabCase } from 'lodash-es'
+import { isEqual, kebabCase } from 'es-toolkit'
 import {
   createContext,
   PropsWithChildren,
@@ -243,7 +243,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
         themeMode.value === ThemeMode.LIGHT ||
         themeMode.value === ThemeMode.DARK
       ) {
-        applyThemeMode(themeMode.value)
+        applyThemeMode(themeMode.value as ResolvedThemeMode)
       } else {
         // Setting value may still be loading; keep current class to avoid visual flicker.
       }

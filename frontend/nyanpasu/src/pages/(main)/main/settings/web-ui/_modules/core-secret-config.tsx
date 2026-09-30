@@ -83,6 +83,7 @@ export default function CoreSecretConfig() {
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
     },
@@ -90,6 +91,7 @@ export default function CoreSecretConfig() {
       message(formatError(error), {
         title: 'Error',
         kind: 'error',
+        error,
       })
     },
   )
@@ -110,6 +112,7 @@ export default function CoreSecretConfig() {
       message(formatError(error), {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

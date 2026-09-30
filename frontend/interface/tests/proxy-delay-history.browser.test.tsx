@@ -37,20 +37,22 @@ const group = (name: string): ProxyGroupItem_Serialize => ({
   ...node(name),
   type: 'Selector',
   now: 'tested',
-  all: [node('tested'), node('other')],
+  all: ['tested', 'other'],
 })
+
+function makeSnapshot(): Proxies_Serialize {
+  return {
+    global: group('GLOBAL'),
+    groups: [group('group')],
+    nodes: { tested: node('tested'), other: node('other') },
+  }
+}
 
 async function setup(
   response: Record<string, number>,
   onTestFinished: TestContext['onTestFinished'],
 ) {
-  const snapshot: Proxies_Serialize = {
-    global: group('GLOBAL'),
-    groups: [group('group')],
-    direct: node('DIRECT'),
-    proxies: [],
-    records: {},
-  }
+  const snapshot = makeSnapshot()
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity, gcTime: Infinity },
@@ -97,17 +99,17 @@ async function setup(
   return { original, data }
 }
 
-test('group delay preserves history of nodes absent from the response', async ({
+test('group delay replaces only the tested node, keeping the sibling identity', async ({
   onTestFinished,
 }) => {
   const { original, data } = await setup({ tested: 100 }, onTestFinished)
-  for (const group of [data().global, ...data().groups]) {
-    expect(group.all[0].history.map(({ delay }) => delay)).toEqual([42, 100])
-    expect(group.all[1].history).toEqual(original.global.all[1].history)
-  }
-  for (const group of [original.global, ...original.groups]) {
-    expect(group.all[0].history).toHaveLength(1)
-  }
+  expect(data().nodes.tested.history.map(({ delay }) => delay)).toEqual([
+    42, 100,
+  ])
+  // Only one `tested` object backs both `global.all` and `groups[0].all`, so
+  // it is replaced once, and the untouched sibling keeps its identity.
+  expect(data().nodes.other).toBe(original.nodes.other)
+  expect(original.nodes.tested.history).toHaveLength(1)
 })
 
 test('empty group responses retain all existing history', async ({
@@ -121,7 +123,51 @@ test('zero delay is retained as a failed sample', async ({
   onTestFinished,
 }) => {
   const { data } = await setup({ tested: 0 }, onTestFinished)
-  expect(data().groups[0].all[0].history.map(({ delay }) => delay)).toEqual([
-    42, 0,
+  expect(data().nodes.tested.history.map(({ delay }) => delay)).toEqual([42, 0])
+})
+
+test('single node delay only replaces that node, keeping sibling identity', async ({
+  onTestFinished,
+}) => {
+  const snapshot = makeSnapshot()
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity, gcTime: Infinity },
+      mutations: { retry: false },
+    },
+  })
+  ipc.invoke.mockImplementation(async (command) => {
+    if (command === 'get_proxies') return snapshot
+    if (command === 'clash_api_get_proxy_delay') return { delay: 100 }
+    throw new Error(`Unexpected IPC command: ${command}`)
+  })
+  const hook = await renderHook(() => useClashProxies(), {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  })
+  onTestFinished(async () => {
+    await hook.unmount()
+    await client.cancelQueries()
+    client.clear()
+    ipc.invoke.mockReset()
+  })
+  await expect.poll(() => hook.result.current.proxies.isSuccess).toBe(true)
+  const queryKey = queries.getProxies().queryKey
+  const data = () => client.getQueryData<ClashProxiesQuery>(queryKey)!
+  const original = data()
+
+  await hook.act(async () => {
+    await hook.result.current.updateProxiesDelay.mutateAsync(['tested', null])
+  })
+
+  expect(ipc.invoke).toHaveBeenCalledWith('clash_api_get_proxy_delay', {
+    name: 'tested',
+    provider: null,
+    url: null,
+  })
+  expect(data().nodes.tested.history.map(({ delay }) => delay)).toEqual([
+    42, 100,
   ])
+  expect(data().nodes.other).toBe(original.nodes.other)
 })

@@ -1,4 +1,4 @@
-import { isNumber } from 'lodash-es'
+import { isNumber } from 'es-toolkit'
 import { AnimatePresence } from 'motion/react'
 import { useCallback, useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
@@ -43,6 +43,7 @@ export default function ProxyGuardConfig() {
       message(formatError(error), {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

@@ -1,13 +1,11 @@
 #![cfg(target_os = "windows")]
 
-use crate::utils::dirs;
 use anyhow::{Result, bail};
 use deelevate::{PrivilegeLevel, Token};
 use runas::Command as RunasCommand;
-use std::process::Command as StdCommand;
+use std::{path::Path, process::Command as StdCommand};
 
-pub async fn invoke_uwptools() -> Result<()> {
-    let resource_dir = dirs::app_resources_dir()?;
+pub async fn invoke_uwptools(resource_dir: &Path) -> Result<()> {
     let tool_path = resource_dir.join("enableLoopback.exe");
 
     if !tool_path.exists() {

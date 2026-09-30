@@ -1,6 +1,7 @@
 pub mod ack;
 pub mod builder;
 pub mod coordinator;
+pub mod decision;
 pub mod error;
 pub mod manager;
 mod snapshot;
@@ -13,6 +14,7 @@ mod tests;
 pub use ack::*;
 pub use builder::*;
 pub use coordinator::*;
+pub use decision::{AbortResourceState, DecisionHandle, PersistenceIncident, StateDecision};
 pub use manager::*;
 pub use snapshot::*;
 pub use version::*;

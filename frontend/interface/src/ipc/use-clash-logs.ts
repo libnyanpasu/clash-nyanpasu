@@ -1,4 +1,7 @@
-import { useClashWSContext } from '@interface/provider/clash-ws-provider'
+import {
+  useClashWSHistory,
+  useClashWSStatus,
+} from '@interface/provider/clash-ws-provider'
 
 export type ClashLog = {
   type: string
@@ -7,7 +10,8 @@ export type ClashLog = {
 }
 
 export const useClashLogs = () => {
-  const { logs, isLoading, error, clearHistory } = useClashWSContext()
+  const logs = useClashWSHistory('logs')
+  const { isLoading, error, clearHistory } = useClashWSStatus()
 
   const clean = {
     mutateAsync: () => clearHistory('logs'),

@@ -99,7 +99,7 @@ pub(super) fn run_composition(
     // composition 自身 transforms：host=composition、role=Selected（composition
     // 只能被选中，不能作为成员——validate 保证）。
     for (index, transform_id) in composition.transforms.iter().enumerate() {
-        let (next, kind, entries) =
+        let (next, kind, entries, failed) =
             apply_transform(profiles, content, runner, transform_id, &working);
         let tag = OperatorTag::ScopedTransform {
             host_profile_id: composition_id.clone(),
@@ -108,6 +108,7 @@ pub(super) fn run_composition(
             transform_kind: kind,
             step_index: index as u32,
         };
+        logs.failed_profile(transform_id, failed);
         logs.extend(tag.node_key(), entries);
         builder.push(tag, next.clone())?;
         working = next;

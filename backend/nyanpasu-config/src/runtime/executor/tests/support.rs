@@ -10,7 +10,7 @@ use crate::{
         TransformDefinition,
     },
     runtime::{
-        executor::{PortError, ProfileContentSource, ScriptRunOutcome, ScriptRunner, StepLogEntry},
+        executor::{PortError, ProfileContentSource, ScriptRunner, StepLogEntry},
         value::ConfigValue,
     },
 };
@@ -72,20 +72,23 @@ pub struct FakeScriptRunner {
 }
 
 impl ScriptRunner for FakeScriptRunner {
-    fn run(&self, _runtime: ScriptRuntime, source: &str, config: &ConfigValue) -> ScriptRunOutcome {
+    fn run(
+        &self,
+        _runtime: ScriptRuntime,
+        source: &str,
+        config: &ConfigValue,
+        logs: &mut Vec<StepLogEntry>,
+    ) -> Result<ConfigValue, PortError> {
         match self.runs.get(source) {
-            Some(RunReply::Replace(json, logs)) => ScriptRunOutcome {
-                result: Ok(ConfigValue::try_from(json.clone()).expect("fake run json")),
-                logs: logs.clone(),
-            },
-            Some(RunReply::Fail(message, logs)) => ScriptRunOutcome {
-                result: Err(message.clone().into()),
-                logs: logs.clone(),
-            },
-            None => ScriptRunOutcome {
-                result: Ok(config.clone()),
-                logs: Vec::new(),
-            },
+            Some(RunReply::Replace(json, replies)) => {
+                logs.extend(replies.iter().cloned());
+                Ok(ConfigValue::try_from(json.clone()).expect("fake run json"))
+            }
+            Some(RunReply::Fail(message, replies)) => {
+                logs.extend(replies.iter().cloned());
+                Err(message.clone().into())
+            }
+            None => Ok(config.clone()),
         }
     }
 

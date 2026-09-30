@@ -4,8 +4,16 @@ use nyanpasu_config::runtime::{
     snapshot::{ConfigSnapshotsGraph, OperatorTag, SnapshotDiffHunk},
 };
 use serde::Serialize;
+use snafu::{OptionExt, ResultExt, ensure};
 
-use super::{NyanpasuClient, runtime::RuntimeSnapshot};
+use super::{
+    NyanpasuClient,
+    runtime::RuntimeSnapshot,
+    runtime_error::{
+        ConvertRuntimeConfigSnafu, NoRuntimeConfigSnafu, RuntimeError, RuntimeNodeNotFoundSnafu,
+        RuntimeSnapshotChangedSnafu, SerializeRuntimeConfigSnafu,
+    },
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeInspectionData {
@@ -105,6 +113,48 @@ impl RuntimeSnapshot {
         Ok(snapshot)
     }
 
+    /// The same build with the controller step taken back off.
+    ///
+    /// [`RuntimeSnapshot::with_effective_config`] *appends* the effective
+    /// document as a child of the finalizing node, so stamping a snapshot that
+    /// already carries one would inspect the same build twice. A verified
+    /// restore is exactly that case: the document is the one this build
+    /// produced, and only the instance running it has moved, so the controller
+    /// step has to come off before it can be taken again.
+    ///
+    /// Nothing is appended after that step, so it is always the last node and
+    /// dropping it leaves every other node's index — and therefore every link —
+    /// where it was. A build that was never stamped is returned unchanged.
+    pub(crate) fn without_effective_config(&self) -> Self {
+        use nyanpasu_config::runtime::snapshot::BuiltinStepKind;
+        let mut snapshot = self.clone();
+        if self.effective.is_none() {
+            return snapshot;
+        }
+        snapshot.effective = None;
+        snapshot.effective_host = None;
+        snapshot.inspection_id = nanoid::nanoid!();
+        let mut inspection = self.inspection.as_ref().clone();
+        let last = inspection.graph.nodes.len().saturating_sub(1);
+        if !matches!(
+            inspection.graph.nodes.get(last).map(|node| &node.tag),
+            Some(OperatorTag::BuiltinStep {
+                step: BuiltinStepKind::CoreController,
+                ..
+            })
+        ) {
+            return snapshot;
+        }
+        inspection.graph.nodes.truncate(last);
+        for node in &mut inspection.graph.nodes {
+            if let Some(next) = node.next.as_mut() {
+                next.retain(|child| *child as usize != last);
+            }
+        }
+        snapshot.inspection = std::sync::Arc::new(inspection);
+        snapshot
+    }
+
     fn inspection_summary(&self) -> RuntimeInspection {
         RuntimeInspection {
             snapshot_id: self.inspection_id.clone(),
@@ -151,24 +201,25 @@ impl RuntimeSnapshot {
         &self,
         snapshot_id: &str,
         node_id: u32,
-    ) -> anyhow::Result<RuntimeInspectionContent> {
-        anyhow::ensure!(
+    ) -> Result<RuntimeInspectionContent, RuntimeError> {
+        ensure!(
             self.inspection_id == snapshot_id,
-            "runtime snapshot changed; refresh the inspection"
+            RuntimeSnapshotChangedSnafu
         );
         let node = self
             .inspection
             .graph
             .nodes
             .get(node_id as usize)
-            .ok_or_else(|| anyhow::anyhow!("runtime snapshot node does not exist"))?;
-        let yaml = serde_yaml::to_string(&redact_config(node.snapshot.config.clone()))?;
+            .context(RuntimeNodeNotFoundSnafu { node_id })?;
+        let yaml = serde_yaml::to_string(&redact_config(node.snapshot.config.clone()))
+            .context(SerializeRuntimeConfigSnafu)?;
         Ok(RuntimeInspectionContent {
             diff: self
                 .inspection
                 .graph
                 .comparison_parent(node_id)
-                .map(|parent_id| -> anyhow::Result<_> {
+                .map(|parent_id| -> Result<_, RuntimeError> {
                     Ok(RuntimeInspectionDiff {
                         parent_id,
                         hunks: nyanpasu_config::runtime::snapshot::ConfigSnapshot::new_unchanged(
@@ -179,7 +230,8 @@ impl RuntimeSnapshot {
                                     .clone(),
                             ),
                         )
-                        .diff_yaml_to(&yaml)?,
+                        .diff_yaml_to(&yaml)
+                        .context(SerializeRuntimeConfigSnafu)?,
                     })
                 })
                 .transpose()?,
@@ -254,16 +306,38 @@ impl NyanpasuClient {
         &self,
         snapshot_id: &str,
         node_id: u32,
-    ) -> anyhow::Result<RuntimeInspectionContent> {
+    ) -> Result<RuntimeInspectionContent, RuntimeError> {
         let state = self.inner.application_workflow.runtime();
         let snapshot = [state.promoted, state.applied]
             .into_iter()
             .flatten()
             .find(|snapshot| snapshot.inspection_id == snapshot_id)
-            .ok_or_else(|| anyhow::anyhow!("runtime snapshot changed; refresh the inspection"))?;
+            .context(RuntimeSnapshotChangedSnafu)?;
         let snapshot_id = snapshot_id.to_owned();
-        tokio::task::spawn_blocking(move || snapshot.inspection_content(&snapshot_id, node_id))
-            .await?
+        crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || snapshot.inspection_content(&snapshot_id, node_id))
+                .await,
+        )
+    }
+
+    /// The promoted runtime configuration as the JSON the frontend renders.
+    pub async fn runtime_config(&self) -> Result<Option<serde_json::Value>, RuntimeError> {
+        let Some(state) = self.promoted_runtime().await else {
+            return Ok(None);
+        };
+        let yaml = serde_yaml::to_value(&state.config).context(SerializeRuntimeConfigSnafu)?;
+        Ok(Some(
+            serde_json::to_value(&yaml).context(ConvertRuntimeConfigSnafu)?,
+        ))
+    }
+
+    /// The promoted runtime configuration as YAML text.
+    pub async fn runtime_yaml(&self) -> Result<String, RuntimeError> {
+        let state = self
+            .promoted_runtime()
+            .await
+            .context(NoRuntimeConfigSnafu)?;
+        serde_yaml::to_string(&state.config).context(SerializeRuntimeConfigSnafu)
     }
 }
 
@@ -334,7 +408,7 @@ pub(crate) mod tests {
 
     fn snapshot() -> RuntimeSnapshot {
         RuntimeSnapshot::from_data(
-            RuntimeRevisionAllocator::new().allocate().unwrap(),
+            RuntimeRevisionAllocator::new().allocate(),
             ClashCore::default(),
             Arc::from(&b"mode: rule\n"[..]),
             RuntimeSnapshotData {

@@ -1,20 +1,21 @@
 import { useEffect, useRef } from 'react'
 import { m } from '@/paraglide/messages'
-import { parseInstallConfigDeepLink } from '@/utils/deep-link'
+import { parseInstallConfigDeepLink, receiveDeepLinks } from '@/utils/deep-link'
 import { message } from '@/utils/notification'
 import { commands, events, unwrapResult, useProfile } from '@nyanpasu/interface'
-import { type UnlistenFn } from '@tauri-apps/api/event'
 
 // Guard against duplicate registration across React StrictMode's double-mount
 // and against multiple hook consumers: only one global listener should exist.
 let listenerRegistered = false
 
 /**
- * Imports the profile described by an `install-config` deep link. Two delivery
- * paths are handled: the `scheme-request-received` Tauri event (running app or
- * secondary instance) and the backend's pending deep link drained once on
- * startup (cold start, where the event may fire before the listener registers).
- * Mount once near the app root.
+ * Imports the profile described by each `install-config` deep link, one at a
+ * time. The backend queues every link until a frontend takes it and pokes
+ * listeners through the `scheme-request-received` Tauri event, so a link that
+ * arrives before this hook listens, or while the webview reloads, is taken
+ * once it does. Because links are handled in turn, an import that hangs or a
+ * result dialog left open holds back later links, which stay queued in the
+ * backend meanwhile. Mount once, in the main window.
  */
 export function useDeepLinkImport() {
   const { create } = useProfile()
@@ -23,19 +24,11 @@ export function useDeepLinkImport() {
   const createRef = useRef(create)
   createRef.current = create
 
-  // Dedupe the same deep link arriving through both paths (event + pending
-  // command may fire near-simultaneously on startup). Guarded synchronously
-  // before the first await, so concurrent calls collapse to a single import.
-  const inFlight = useRef(new Set<string>())
-
   useEffect(() => {
     if (listenerRegistered) {
       return
     }
     listenerRegistered = true
-
-    let unlisten: UnlistenFn | undefined
-    let disposed = false
 
     const handleDeepLink = async (raw: string) => {
       const parsed = parseInstallConfigDeepLink(raw)
@@ -47,11 +40,6 @@ export function useDeepLinkImport() {
         })
         return
       }
-
-      if (inFlight.current.has(raw)) {
-        return
-      }
-      inFlight.current.add(raw)
 
       try {
         await createRef.current.mutateAsync({
@@ -70,46 +58,28 @@ export function useDeepLinkImport() {
         await message(m.deep_link_import_failed_message(), {
           title: m.deep_link_import_title(),
           kind: 'error',
+          error,
         })
-      } finally {
-        inFlight.current.delete(raw)
       }
     }
 
-    events.schemeRequestReceivedEvent
-      .listen(async (event) => {
-        await handleDeepLink(event.payload.url)
-      })
-      .then((fn) => {
-        // The effect may have been cleaned up before `listen` resolved.
-        if (disposed) {
-          fn()
-          return
-        }
-        unlisten = fn
-      })
-      .catch((error) => {
-        listenerRegistered = false
-        console.error('[deep-link] failed to register listener:', error)
-      })
-
-    // Cold start: the event may have been emitted before the listener above was
-    // registered, so drain the backend's pending deep link (take-and-clear) once.
-    commands
-      .getPendingDeepLink()
-      .then(async (result) => {
-        const pending = unwrapResult(result)
-        if (pending) {
-          await handleDeepLink(pending)
-        }
-      })
-      .catch((error) => {
-        console.error('[deep-link] failed to read pending deep link:', error)
-      })
+    const stop = receiveDeepLinks(
+      {
+        listen: (onPoke) =>
+          events.schemeRequestReceivedEvent.listen(onPoke).catch((error) => {
+            listenerRegistered = false
+            throw error
+          }),
+        take: async () => unwrapResult(await commands.takePendingDeepLinks()),
+      },
+      handleDeepLink,
+      (error) => {
+        console.error('[deep-link] delivery failed:', error)
+      },
+    )
 
     return () => {
-      disposed = true
-      unlisten?.()
+      stop()
       listenerRegistered = false
     }
   }, [])

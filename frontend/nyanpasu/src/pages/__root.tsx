@@ -13,6 +13,7 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy, useEffect, useRef } from 'react'
+import { useProfileLookup } from '@/components/profile-label'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
@@ -23,6 +24,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { degradationReasonMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
+import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
 import {
   events,
   NyanpasuProvider,
@@ -155,14 +157,18 @@ function localizeDegradationPhase(phase: DegradationPhase): string {
   }
 }
 
-function formatDegradationItem(degradation: Degradation): string {
+function formatDegradationItem(
+  degradation: Degradation,
+  profileLabel: ProfileLabel,
+): string {
   return m.mutation_degraded_item({
     phase: localizeDegradationPhase(degradation.phase),
-    detail: degradationReasonMessage(degradation.reason),
+    detail: degradationReasonMessage(degradation.reason, profileLabel),
   })
 }
 
 function MutationDegradationNotifier() {
+  const profiles = useProfileLookup()
   useEffect(
     () =>
       // setMutationDegradationHandler returns a disposer; useEffect cleanup
@@ -182,7 +188,13 @@ function MutationDegradationNotifier() {
           })
         }
 
-        const items = degradations.map(formatDegradationItem).join('; ')
+        const items = degradations
+          .map((degradation) =>
+            formatDegradationItem(degradation, (id) =>
+              profileDialogLabel(profiles, id),
+            ),
+          )
+          .join('; ')
         message(m.mutation_degraded_summary({ items }), {
           title: m.mutation_degraded_title(),
           kind: 'warning',
@@ -190,7 +202,7 @@ function MutationDegradationNotifier() {
           console.error('[mutation-degradation] failed to show warning', error)
         })
       }),
-    [],
+    [profiles],
   )
   return null
 }

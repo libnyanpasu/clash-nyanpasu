@@ -1,28 +1,38 @@
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import {
-  useProfile,
-  type ConfigExecutionRole,
-  type OperatorTag,
-  type ProfileItem_Serialize,
+import type {
+  ConfigExecutionRole,
+  OperatorTag,
+  ProfileItem_Serialize,
 } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/utils'
-import { useNavigate } from '@tanstack/react-router'
-import { profileTypeOf } from '../../$type/_modules/utils'
+
+export type ProfileLabel = (id: string) => string
 
 /** A step label: plain text runs and references to profiles by id. */
 export type LabelPart = string | { profileId: string }
 
 export type ProfileLookup = Map<string, ProfileItem_Serialize>
 
-const profileTagClassName = cn(
-  'bg-tertiary-container text-on-tertiary-container',
-  'inline-block max-w-full rounded-md px-1.5 py-0.5 text-xs [overflow-wrap:anywhere]',
-)
+/** Preserve structured references through localized string interpolation. */
+export function profileMessageParts(
+  format: (label: ProfileLabel) => string,
+): LabelPart[] {
+  const ids: string[] = []
+  const text = format((id) => `\0${ids.push(id) - 1}\0`)
+  return text.split(/(\0\d+\0)/).map((part) => {
+    const match = /^\0(\d+)\0$/.exec(part)
+    return match && ids[Number(match[1])] !== undefined
+      ? { profileId: ids[Number(match[1])]! }
+      : part
+  })
+}
+
+export function profileDialogLabel(
+  profiles: ReadonlyMap<string, { name: string }>,
+  id: string,
+): string {
+  const name = profiles.get(id)?.name
+  return name ? `${name}（${id}）` : id
+}
 
 /** The selected profile needs no note, since its name is already shown. */
 function roleParts(role: ConfigExecutionRole): LabelPart[] {
@@ -122,63 +132,4 @@ export function stepParts(tag: OperatorTag): LabelPart[] {
   return subject === undefined
     ? [kind]
     : [`${kind} · `, subject, ...stepContext(tag)]
-}
-
-/** A profile that no longer exists falls back to its raw id. */
-export function profileName(profiles: ProfileLookup, id: string): string {
-  return profiles.get(id)?.name ?? id
-}
-
-export function partsText(parts: LabelPart[], profiles: ProfileLookup) {
-  return parts
-    .map((part) =>
-      typeof part === 'string' ? part : profileName(profiles, part.profileId),
-    )
-    .join('')
-}
-
-export function useProfileLookup(): ProfileLookup {
-  const { query } = useProfile()
-  return new Map(query.data?.items?.map((item) => [item.uid, item]) ?? [])
-}
-
-/** Opens the detail page of a profile; unknown ids are ignored. */
-export function useOpenProfile(profiles: ProfileLookup) {
-  const navigate = useNavigate()
-  return (id: string) => {
-    const profile = profiles.get(id)
-    if (!profile) return
-    navigate({
-      to: '/main/profiles/$type/detail/$uid',
-      params: { type: profileTypeOf(profile), uid: profile.uid },
-    })
-  }
-}
-
-export function StepLabel({
-  parts,
-  profiles,
-  onOpenProfile,
-}: {
-  parts: LabelPart[]
-  profiles: ProfileLookup
-  onOpenProfile: (id: string) => void
-}) {
-  return parts.map((part, index) =>
-    typeof part === 'string' ? (
-      part
-    ) : (
-      <Tooltip key={index}>
-        <TooltipTrigger asChild>
-          <span
-            className={profileTagClassName}
-            onDoubleClick={() => onOpenProfile(part.profileId)}
-          >
-            {profileName(profiles, part.profileId)}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="font-mono">{part.profileId}</TooltipContent>
-      </Tooltip>
-    ),
-  )
 }

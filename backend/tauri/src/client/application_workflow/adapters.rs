@@ -5,11 +5,11 @@ use crate::{
     enhance::{
         EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildError, RuntimeBuildInput,
         RuntimeBuilder, ScriptDirs, SerializeRuntimeConfigSnafu, StartScriptRunnerSnafu,
-        TransformsFailedSnafu, runtime_snapshot_data_from_artifact,
+        runtime_snapshot_data_from_artifact,
     },
 };
 use async_trait::async_trait;
-use snafu::{ResultExt, ensure};
+use snafu::ResultExt;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 pub(in crate::client) struct FsRuntimeBuildAdapter {
@@ -73,12 +73,9 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
                 resolved_ports,
             };
             let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
-            ensure!(
-                !strict_transforms || artifact.transform_failures.is_empty(),
-                TransformsFailedSnafu {
-                    failures: artifact.transform_failures.clone(),
-                }
-            );
+            if strict_transforms {
+                RuntimeBuilder::validate_transforms(&artifact)?;
+            }
             let data =
                 runtime_snapshot_data_from_artifact(artifact, &profiles, core, builtin_enabled)?;
             let yaml = format!(

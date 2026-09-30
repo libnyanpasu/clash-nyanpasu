@@ -3399,10 +3399,19 @@ export type RuntimeBuildError =
   | { kind: 'start_script_runner' }
   | { kind: 'validate_profiles'; errors: ProfileValidationError[] }
   | { kind: 'run_pipeline'; source: RuntimePipelineError }
-  | { kind: 'transforms_failed'; failures: TransformFailure[] }
+  | {
+      kind: 'transforms_failed'
+      failures: TransformFailure[]
+      logs: RuntimeBuildLog[]
+    }
   | { kind: 'serialize_final_config' }
   | { kind: 'config_not_mapping' }
   | { kind: 'serialize_runtime_config' }
+
+export type RuntimeBuildLog = {
+  tag: OperatorTag
+  entries: StepLogEntry[]
+}
 
 /**
  *  Why no check ran. Every variant is a reason, never a verdict: an absent

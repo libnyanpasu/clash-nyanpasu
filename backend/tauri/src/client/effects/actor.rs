@@ -2,7 +2,9 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use nyanpasu_config::runtime::executor::ResolvedPortBindings;
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+#[cfg(test)]
+use ractor::RpcReplyPort;
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 use snafu::OptionExt as _;
 use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -65,12 +67,9 @@ impl Entry {
 pub(crate) struct EffectsClient {
     actor: ActorRef<Message>,
     status: watch::Receiver<EffectsSnapshot>,
-    #[cfg(test)]
-    jobs: nyanpasu_jobs::JobsClient,
 }
 
 pub(crate) struct EffectsArgs {
-    pub jobs: nyanpasu_jobs::JobsClient,
     pub port: Arc<dyn ApplicationEffectsPort>,
     pub ui: Arc<dyn UiEventSink>,
     pub initial: ApplicationEffectInputs,
@@ -84,6 +83,8 @@ struct Args {
     dependencies: EffectsArgs,
     status: watch::Sender<EffectsSnapshot>,
 }
+type WakeUp = tokio::task::JoinHandle<Result<(), ractor::MessagingErr<Message>>>;
+
 struct State {
     port: Arc<dyn ApplicationEffectsPort>,
     ui: Arc<dyn UiEventSink>,
@@ -95,9 +96,7 @@ struct State {
     active: [Option<tokio::task::JoinHandle<()>>; 3],
     status: watch::Sender<EffectsSnapshot>,
     shutdown: CancellationToken,
-    jobs: nyanpasu_jobs::JobsClient,
-    jobs_revision: u64,
-    retry_due: Option<tokio::time::Instant>,
+    retry_timer: Option<(tokio::time::Instant, WakeUp)>,
 }
 
 enum Message {
@@ -113,11 +112,12 @@ enum Message {
         kinds: Vec<EffectKind>,
         statuses: Vec<EffectStatus>,
     },
-    Tick,
-    JobRetryTick(RpcReplyPort<Result<(), nyanpasu_jobs::JobError>>),
+    Tick(tokio::time::Instant),
     RetryNow(EffectKind),
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
+    #[cfg(test)]
+    RetryDeadline(RpcReplyPort<Option<(tokio::time::Instant, tokio::task::Id)>>),
 }
 
 /// The part of [`ApplicationEffectInputs`] one owner sends. Each has a single
@@ -142,41 +142,22 @@ fn group(kind: EffectKind) -> usize {
 }
 
 impl State {
-    async fn arm_retry(&mut self, actor: &ActorRef<Message>) {
+    fn arm_retry(&mut self, actor: &ActorRef<Message>) {
         let due = if self.shutdown.is_cancelled() {
             None
         } else {
             self.entries.values().filter_map(|entry| entry.next).min()
         };
-        if self.retry_due == due {
+        if self.retry_timer.as_ref().map(|(at, _)| *at) == due {
             return;
         }
-        self.retry_due = due;
-        self.jobs_revision += 1;
-        let jobs = match due {
-            Some(at) => {
-                let delay_ms = crate::client::jobs::delay_ms(at);
-                let mut job = crate::client::jobs::wake_job(
-                    "effects",
-                    "effects/retry-wakeup",
-                    nyanpasu_jobs::Schedule::Once { delay_ms },
-                    actor.clone(),
-                    Message::JobRetryTick,
-                )
-                .expect("retry wake-up has valid input");
-                job.definition.version = self.jobs_revision;
-                vec![job]
-            }
-            None => Vec::new(),
-        };
-        if let Err(error) = self
-            .jobs
-            .reconcile("effects", self.jobs_revision, jobs)
-            .await
-        {
-            self.retry_due = None;
-            tracing::error!(%error, "failed to register effect retry wake-up");
+        if let Some((_, timer)) = self.retry_timer.take() {
+            timer.abort();
         }
+        self.retry_timer = due.map(|at| {
+            let wait = at.saturating_duration_since(tokio::time::Instant::now());
+            (at, actor.send_after(wait, move || Message::Tick(at)))
+        });
     }
 
     fn publish(&self) {
@@ -358,9 +339,7 @@ impl Actor for EffectsActor {
             active: [None, None, None],
             status: args.status,
             shutdown: args.dependencies.shutdown,
-            jobs: args.dependencies.jobs,
-            jobs_revision: 0,
-            retry_due: None,
+            retry_timer: None,
         })
     }
 
@@ -370,13 +349,6 @@ impl Actor for EffectsActor {
         message: Message,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
-        let (message, job_reply) = match message {
-            Message::JobRetryTick(reply) => {
-                state.retry_due = None;
-                (Message::Tick, Some(reply))
-            }
-            message => (message, None),
-        };
         match message {
             Message::Publish {
                 slice,
@@ -464,7 +436,14 @@ impl Actor for EffectsActor {
                 }
                 state.drive(&myself);
             }
-            Message::Tick if !state.shutdown.is_cancelled() => {
+            Message::Tick(at)
+                if !state.shutdown.is_cancelled()
+                    && state
+                        .retry_timer
+                        .as_ref()
+                        .is_some_and(|(due, _)| *due == at) =>
+            {
+                state.retry_timer = None;
                 let ready: Vec<_> = state
                     .entries
                     .iter()
@@ -482,17 +461,22 @@ impl Actor for EffectsActor {
                 state.retry(kind, false);
                 state.drive(&myself);
             }
-            Message::Tick | Message::RetryNow(_) => {}
-            Message::JobRetryTick(_) => unreachable!(),
+            Message::Tick(_) | Message::RetryNow(_) => {}
+            #[cfg(test)]
+            Message::RetryDeadline(reply) => {
+                let _ = reply.send(
+                    state
+                        .retry_timer
+                        .as_ref()
+                        .map(|(at, timer)| (*at, timer.id())),
+                );
+            }
             #[cfg(test)]
             Message::Barrier(reply) => {
                 let _ = reply.send(());
             }
         }
-        state.arm_retry(&myself).await;
-        if let Some(reply) = job_reply {
-            let _ = reply.send(Ok(()));
-        }
+        state.arm_retry(&myself);
         Ok(())
     }
 
@@ -501,6 +485,9 @@ impl Actor for EffectsActor {
         _: ActorRef<Message>,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
+        if let Some((_, timer)) = state.retry_timer.take() {
+            timer.abort();
+        }
         // Awaited, never aborted: a group's owner is part way through work it
         // has to finish, and the drain refuses the `Completed` it would send.
         for task in state.active.iter_mut().filter_map(Option::take) {
@@ -517,8 +504,6 @@ impl Actor for EffectsActor {
 impl EffectsClient {
     pub async fn spawn(args: EffectsArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
         let shutdown = args.shutdown.clone();
-        #[cfg(test)]
-        let jobs = args.jobs.clone();
         let (status, receiver) = watch::channel(EffectsSnapshot::default());
         let (actor, _) = Actor::spawn(
             None,
@@ -533,8 +518,6 @@ impl EffectsClient {
         Ok(Self {
             actor,
             status: receiver,
-            #[cfg(test)]
-            jobs,
         })
     }
 
@@ -561,6 +544,27 @@ impl EffectsClient {
         }
     }
     #[cfg(test)]
+    pub async fn retry_deadline(&self) -> Option<tokio::time::Instant> {
+        match self.actor.call(Message::RetryDeadline, None).await.unwrap() {
+            ractor::rpc::CallResult::Success(timer) => timer.map(|(at, _)| at),
+            _ => panic!("retry deadline reply dropped"),
+        }
+    }
+
+    #[cfg(test)]
+    pub async fn retry_timer_id(&self) -> tokio::task::Id {
+        match self.actor.call(Message::RetryDeadline, None).await.unwrap() {
+            ractor::rpc::CallResult::Success(Some((_, id))) => id,
+            _ => panic!("retry timer missing"),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn stale_tick(&self, at: tokio::time::Instant) {
+        self.actor.cast(Message::Tick(at)).unwrap();
+    }
+
+    #[cfg(test)]
     pub async fn barrier(&self) {
         assert!(matches!(
             self.actor
@@ -568,7 +572,6 @@ impl EffectsClient {
                 .await,
             Ok(ractor::rpc::CallResult::Success(()))
         ));
-        crate::client::jobs::settled_key(&self.jobs, "effects/retry-wakeup").await;
     }
 }
 

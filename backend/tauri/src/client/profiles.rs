@@ -117,15 +117,8 @@ impl ProfilesClient {
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
-        let jobs = crate::client::jobs::start(
-            profiles_path
-                .with_file_name(format!("jobs-{}.redb", nyanpasu_jobs::RunId::new_v4()))
-                .into_std_path_buf(),
-            crate::client::jobs::capture(),
-            shutdown.clone(),
-            tasks,
-        )
-        .await?;
+        // The journal must not lock directories used by filesystem fault fixtures.
+        let jobs = crate::client::jobs::test_client_with_owner(shutdown.clone(), tasks).await;
         Self::new_with_jobs(
             mutations,
             profiles_path,

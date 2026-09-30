@@ -32,8 +32,8 @@ pub(crate) async fn start(
     )?;
     let mut limits = Limits::default();
     limits.retention.per_job = DEFAULT_HISTORY_LIMIT;
-    // Application maintenance and retries must still run after suspend. Jobs
-    // coalesces elapsed interval slots; do not discard an overdue wake-up.
+    // Profile sync coalesces elapsed interval slots after suspend; do not
+    // discard an overdue sync.
     limits.lateness = std::time::Duration::MAX;
     let mut service = JobsService::start(Box::new(store), capture, limits)
         .with_subscriber(dispatch)
@@ -69,40 +69,6 @@ pub(crate) async fn wait(
     }
 }
 
-pub(crate) fn wake_job<M, F>(
-    scope: &str,
-    key: &str,
-    schedule: nyanpasu_jobs::Schedule,
-    actor: ractor::ActorRef<M>,
-    message: F,
-) -> Result<nyanpasu_jobs::Job, nyanpasu_jobs::Error>
-where
-    M: ractor::Message,
-    F: Fn(ractor::RpcReplyPort<Result<(), nyanpasu_jobs::JobError>>) -> M + Send + Sync + 'static,
-{
-    let mut definition = nyanpasu_jobs::JobDefinition::manual(key);
-    definition.scope = scope.into();
-    definition.schedule = schedule;
-    let message = std::sync::Arc::new(message);
-    nyanpasu_jobs::Job::new(definition, (), move |_, ()| {
-        let (actor, message) = (actor.clone(), message.clone());
-        async move {
-            match actor.call(|reply| message(reply), None).await {
-                Ok(ractor::rpc::CallResult::Success(result)) => result,
-                _ => Err(nyanpasu_jobs::JobError::new(
-                    "owner_stopped",
-                    "The task owner stopped",
-                )),
-            }
-        }
-    })
-}
-
-#[cfg(test)]
-pub(crate) async fn test_client() -> JobsClient {
-    test_client_with_owner(CancellationToken::new(), &TaskTracker::new()).await
-}
-
 #[cfg(test)]
 pub(crate) async fn test_client_with_owner(
     shutdown: CancellationToken,
@@ -126,13 +92,6 @@ pub(crate) async fn test_client_with_owner(
         }
     });
     client
-}
-
-pub(crate) fn delay_ms(at: tokio::time::Instant) -> u64 {
-    at.saturating_duration_since(tokio::time::Instant::now())
-        .as_nanos()
-        .div_ceil(1_000_000)
-        .min(u64::MAX as u128) as u64
 }
 
 #[derive(Debug, serde::Serialize, specta::Type)]
@@ -254,22 +213,6 @@ pub(crate) async fn settled(client: &JobsClient) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while !client.inspect().await.unwrap().active.is_empty() {
         assert!(std::time::Instant::now() < deadline, "jobs did not settle");
-        tokio::task::yield_now().await;
-    }
-}
-
-#[cfg(test)]
-pub(crate) async fn settled_key(client: &JobsClient, key: &str) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while client
-        .inspect()
-        .await
-        .unwrap()
-        .active
-        .iter()
-        .any(|run| run.job == key)
-    {
-        assert!(std::time::Instant::now() < deadline, "job did not settle");
         tokio::task::yield_now().await;
     }
 }

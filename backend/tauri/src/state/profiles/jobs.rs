@@ -174,29 +174,6 @@ impl ProfileJobs {
                 }
             })?);
         }
-        if running {
-            let mut definition = JobDefinition::manual("profiles/materialization-reconcile");
-            definition.scope = SCOPE.into();
-            definition.schedule = Schedule::Interval {
-                every_ms: 5 * 60_000,
-            };
-            let actor = actor.clone();
-            registrations.push(Job::new(definition, (), move |_, ()| {
-                let actor = actor.clone();
-                async move {
-                    match actor
-                        .call(ProfilesActorMessage::RunMaterializationReconcile, None)
-                        .await
-                    {
-                        Ok(CallResult::Success(Ok(()))) => Ok(()),
-                        _ => Err(JobError::new(
-                            "materialization_failed",
-                            "Profile materialization reconcile failed",
-                        )),
-                    }
-                }
-            })?);
-        }
         self.client.reconcile(SCOPE, revision, registrations).await
     }
 

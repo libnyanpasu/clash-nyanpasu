@@ -361,7 +361,6 @@ impl NyanpasuClient {
         let service_logs = logging.service;
         let effects = effects::actor::EffectsClient::spawn(
             effects::actor::EffectsArgs {
-                jobs: jobs.clone(),
                 port: effects,
                 ui: ui_sink,
                 initial: effects::plan::ApplicationEffectInputs::project(
@@ -376,7 +375,6 @@ impl NyanpasuClient {
         .await?;
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
-                jobs: jobs.clone(),
                 notifications: Arc::new(effects.clone()),
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
@@ -413,14 +411,12 @@ impl NyanpasuClient {
                 ports.clone(),
             )),
             Arc::new(application_workflow.clone()),
-            jobs.clone(),
             shutdown.child_token(),
             &tasks,
         )
         .await?;
         let proxies = crate::core::proxies::ProxiesClient::spawn(
             core_v2.clone(),
-            jobs.clone(),
             shutdown.child_token(),
             &tasks,
         )

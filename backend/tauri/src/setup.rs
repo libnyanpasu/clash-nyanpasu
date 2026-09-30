@@ -127,7 +127,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &paths,
         hotkey_tx,
         logger_reload,
-        jobs.clone(),
         &shutdown,
         &tasks,
     )?;
@@ -223,7 +222,6 @@ fn build_application_effects(
     paths: &PathResolver,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
-    jobs: nyanpasu_jobs::JobsClient,
     shutdown: &CancellationToken,
     tasks: &TaskTracker,
 ) -> anyhow::Result<(Arc<ApplicationEffectExecutor>, Arc<TauriWidgetController>)> {
@@ -251,7 +249,6 @@ fn build_application_effects(
 
     let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(
         SystemProxyArgs {
-            jobs,
             os: os_proxy,
             auto_launch: Arc::new(auto_launch),
             pac: Arc::new(pac),

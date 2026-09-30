@@ -42,6 +42,7 @@ struct Port {
     release: Notify,
     blocked: AtomicBool,
     fail: AtomicBool,
+    fail_kind: Option<EffectKind>,
     retryable: bool,
 }
 #[async_trait::async_trait]
@@ -69,7 +70,7 @@ impl ApplicationEffectsPort for Port {
                 applied_revision: revision,
                 health: if matches!(e, ApplicationEffect::SystemProxy(desired) if desired.enabled && desired.port.is_none()) {
                     EffectHealth::Degraded { code: EffectFailureCode::SystemProxyPortUnresolved, message: "no binding".into(), retryable: true }
-                } else if self.fail.load(Ordering::SeqCst) {
+                } else if self.fail.load(Ordering::SeqCst) && self.fail_kind.is_none_or(|kind| kind == e.kind()) {
                     EffectHealth::Degraded {
                         code: EffectFailureCode::LoggerRefreshFailed,
                         message: "failed".into(),
@@ -110,7 +111,6 @@ async fn graph(port: Arc<dyn ApplicationEffectsPort>) -> (EffectsClient, Shutdow
     let shutdown = Shutdown::new();
     let client = EffectsClient::spawn(
         EffectsArgs {
-            jobs: crate::client::jobs::test_client().await,
             port,
             ui: Arc::new(Ui),
             initial: inputs(),
@@ -127,13 +127,11 @@ async fn wait(
     predicate: impl Fn(&EffectsSnapshot) -> bool,
 ) -> EffectsSnapshot {
     let mut status = client.subscribe();
-    let result = tokio::time::timeout(Duration::from_secs(5), status.wait_for(predicate))
+    tokio::time::timeout(Duration::from_secs(5), status.wait_for(predicate))
         .await
         .unwrap()
         .unwrap()
-        .clone();
-    client.barrier().await;
-    result
+        .clone()
 }
 fn language(language: I18nLanguage) -> nyanpasu_config::application::NyanpasuAppConfigPatch {
     let mut patch = NyanpasuAppConfig::new_empty_patch();
@@ -560,7 +558,6 @@ fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
 
 #[tokio::test(start_paused = true)]
 async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget() {
-    let _clock = crate::client::jobs::explicit_test_time();
     use crate::client::convergence::ConvergenceHealth;
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),
@@ -634,6 +631,60 @@ async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget()
         0
     );
     shutdown.run().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn stale_retry_callback_keeps_the_replacement_timer_and_shutdown_cancels_it() {
+    use crate::client::convergence::ConvergenceHealth;
+    let port = Arc::new(Port {
+        fail: AtomicBool::new(true),
+        fail_kind: Some(EffectKind::Locale),
+        retryable: true,
+        ..Default::default()
+    });
+    let (client, shutdown) = graph(port.clone()).await;
+    let mut desired = inputs();
+    desired.app.language = I18nLanguage::Korean;
+    client.application_committed(desired.app, Vec::new());
+    wait(&client, |s| {
+        s.effects.iter().any(|effect| {
+            effect.status.kind == EffectKind::Locale
+                && effect.health == ConvergenceHealth::RetryScheduled
+        })
+    })
+    .await;
+    let first = client.retry_deadline().await.unwrap();
+    tokio::time::advance(Duration::from_millis(500)).await;
+    client.retry_now(EffectKind::Locale).unwrap();
+    wait(&client, |s| {
+        s.effects.iter().any(|effect| {
+            effect.status.kind == EffectKind::Locale
+                && effect.attempts == 2
+                && effect.health == ConvergenceHealth::RetryScheduled
+        })
+    })
+    .await;
+    let replacement = client.retry_deadline().await.unwrap();
+    assert!(replacement > first);
+    let identity = client.retry_timer_id().await;
+    client.stale_tick(first);
+    client.barrier().await;
+    assert_eq!(client.retry_deadline().await, Some(replacement));
+    assert_eq!(client.retry_timer_id().await, identity);
+    tokio::time::advance(replacement.saturating_duration_since(tokio::time::Instant::now())).await;
+    wait(&client, |s| {
+        s.effects.iter().any(|effect| {
+            effect.status.kind == EffectKind::Locale
+                && effect.attempts == 3
+                && effect.health == ConvergenceHealth::RetryScheduled
+        })
+    })
+    .await;
+    assert!(client.retry_deadline().await.is_some());
+    shutdown.run().await;
+    let calls = port.calls.lock().unwrap().len();
+    tokio::time::advance(Duration::from_secs(60)).await;
+    assert_eq!(port.calls.lock().unwrap().len(), calls);
 }
 
 #[tokio::test]

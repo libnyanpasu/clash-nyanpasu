@@ -4,6 +4,7 @@ pub mod download;
 pub mod manager;
 pub mod service;
 pub mod storage;
+pub mod traffic;
 pub mod tray;
 pub mod updater;
 #[cfg(windows)]

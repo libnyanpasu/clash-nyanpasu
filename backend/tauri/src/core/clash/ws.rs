@@ -49,6 +49,15 @@ pub struct ClashConnectionDetails {
     pub connections: Vec<ClashConnection>,
 }
 
+/// Raw `/connections` snapshot of every accepted sample, tagged with the
+/// instance of the API it arrived from. Unlike the details frame it is
+/// published unconditionally, so accounting never depends on the UI.
+#[derive(Debug, Clone)]
+pub struct ClashConnectionsFrame {
+    pub instance_id: String,
+    pub snapshot: clash_api::ConnectionsSnapshot,
+}
+
 #[derive(Debug, Clone, Type, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "kind", content = "data")]
@@ -250,6 +259,7 @@ struct Args {
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
     details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
+    frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
 }
 struct StreamsActor;
 struct State {
@@ -298,6 +308,7 @@ impl State {
         self.history = ClashWsHistory::default();
         self.previous = None;
         let _ = self.args.details.send_replace(None);
+        let _ = self.args.frames.send_replace(None);
         self.status(ClashConnectionsConnectorState::Disconnected);
         let _ = self
             .args
@@ -308,6 +319,17 @@ impl State {
             sequence: self.sequence,
             update: ClashWsUpdate::Reset(Box::new(self.snapshot())),
         });
+    }
+    fn publish_frame(&self, snapshot: clash_api::ConnectionsSnapshot) {
+        if let Some(api) = &self.api {
+            let _ = self
+                .args
+                .frames
+                .send_replace(Some(Arc::new(ClashConnectionsFrame {
+                    instance_id: api.instance_id().to_owned(),
+                    snapshot,
+                })));
+        }
     }
     fn accepts(&self, api: &ApiClient) -> bool {
         self.api
@@ -330,6 +352,7 @@ impl State {
                 let Some(derived) =
                     ConnectionRates::derive(self.previous.as_ref(), &sample, now, with_details)
                 else {
+                    self.publish_frame(sample);
                     return;
                 };
                 let summary = derived.summary;
@@ -361,6 +384,7 @@ impl State {
                                 connections,
                             })));
                 }
+                self.publish_frame(sample);
             }
             Sample::Log(sample) => {
                 let log = ClashWsLog {
@@ -628,6 +652,7 @@ impl Actor for StreamsActor {
                                 if status != ClashConnectionsConnectorState::Connected {
                                     state.previous = None;
                                     let _ = state.args.details.send_replace(None);
+                                    let _ = state.args.frames.send_replace(None);
                                 }
                                 state.status(status);
                             }
@@ -663,6 +688,7 @@ struct Inner {
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
     details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
+    frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
 }
 impl Drop for Inner {
     fn drop(&mut self) {
@@ -678,6 +704,7 @@ impl StreamsClient {
         let connections = broadcast::channel(16).0;
         let events = broadcast::channel(64).0;
         let details = watch::channel(None).0;
+        let frames = watch::channel(None).0;
         let (actor, _) = Actor::spawn(
             None,
             StreamsActor,
@@ -686,6 +713,7 @@ impl StreamsClient {
                 connections: connections.clone(),
                 events: events.clone(),
                 details: details.clone(),
+                frames: frames.clone(),
             },
         )
         .await?;
@@ -695,6 +723,7 @@ impl StreamsClient {
             connections,
             events,
             details,
+            frames,
         })))
     }
     async fn call<T: Send + 'static>(
@@ -742,6 +771,14 @@ impl StreamsClient {
         &self,
     ) -> watch::Receiver<Option<Arc<ClashConnectionDetails>>> {
         self.0.details.subscribe()
+    }
+    /// The latest raw connections snapshot of every accepted sample,
+    /// independent of recording flags and detail subscribers; `None` until
+    /// the first sample and again after every reset.
+    pub fn subscribe_connection_frames(
+        &self,
+    ) -> watch::Receiver<Option<Arc<ClashConnectionsFrame>>> {
+        self.0.frames.subscribe()
     }
 }
 
@@ -1037,6 +1074,86 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(details.borrow().is_none());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn connection_frames_carry_the_instance_id_and_reset_clears_them() {
+        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
+        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let client =
+            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
+        let mut events = client.subscribe_ws();
+        let mut frames = client.subscribe_connection_frames();
+        client.start().await.unwrap();
+        connected(&mut events).await;
+        client
+            .set_recording(ClashWsKind::Connections, false)
+            .await
+            .unwrap();
+        let api = core.api_client().await.unwrap();
+        assert!(
+            deliver(
+                &client.0.actor,
+                1,
+                Delivery::Sample(api.clone(), sample(100))
+            )
+            .await
+        );
+        tokio::time::timeout(Duration::from_secs(3), frames.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        let frame = frames.borrow_and_update().clone().unwrap();
+        assert_eq!(frame.instance_id, "first-process");
+        assert_eq!(frame.snapshot.download_total, 100);
+
+        // A sample the live derivation drops is still a real core frame.
+        assert!(
+            deliver(
+                &client.0.actor,
+                1,
+                Delivery::Sample(api.clone(), sample(-1))
+            )
+            .await
+        );
+        tokio::time::timeout(Duration::from_secs(3), frames.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        let frame = frames.borrow_and_update().clone().unwrap();
+        assert_eq!(frame.snapshot.download_total, -1);
+
+        // A dropped socket clears the frame without a full reset.
+        assert!(
+            deliver(
+                &client.0.actor,
+                1,
+                Delivery::State(api.clone(), ClashConnectionsConnectorState::Disconnected)
+            )
+            .await
+        );
+        tokio::time::timeout(Duration::from_secs(3), frames.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(frames.borrow_and_update().is_none());
+
+        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(200))).await);
+        tokio::time::timeout(Duration::from_secs(3), frames.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(frames.borrow_and_update().is_some());
+
+        assert!(deliver(&client.0.actor, 1, Delivery::Invalidated).await);
+        tokio::time::timeout(Duration::from_secs(3), frames.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(frames.borrow().is_none());
         server.abort();
     }
 

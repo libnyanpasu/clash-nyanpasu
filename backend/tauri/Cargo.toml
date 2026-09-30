@@ -38,6 +38,7 @@ nyanpasu-core = { path = '../nyanpasu-core' }
 nyanpasu-config = { path = '../nyanpasu-config' }
 nyanpasu-utils = { workspace = true }
 nyanpasu-egui = { path = '../nyanpasu-egui' }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
 
 # Common Utilities
 tokio = { workspace = true, features = ['test-util'] }

@@ -1997,6 +1997,7 @@ dependencies = [
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
+ "nyanpasu-traffic",
  "nyanpasu-utils",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",

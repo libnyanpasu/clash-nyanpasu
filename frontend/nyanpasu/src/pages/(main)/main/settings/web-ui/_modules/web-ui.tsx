@@ -29,7 +29,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { rpc, useClashInfo, useSetting } from '@nyanpasu/interface'
+import { commands, useClashInfo, useClashSetting } from '@nyanpasu/interface'
 import {
   SettingsCard,
   SettingsCardAnimatedItem,
@@ -118,7 +118,7 @@ const EditItemButton = ({
 }: PropsWithChildren<{ defaultUrl?: string }>) => {
   const [open, setOpen] = useState(false)
 
-  const { value, upsert } = useSetting('web_ui_list')
+  const { value, upsert } = useClashSetting('web_ui_list')
 
   const labels = useUrlLabels()
 
@@ -157,6 +157,7 @@ const EditItemButton = ({
         message(formatError(error), {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
     },
@@ -164,6 +165,7 @@ const EditItemButton = ({
       message(formatError(error), {
         title: 'Error',
         kind: 'error',
+        error,
       })
     },
   )
@@ -243,10 +245,10 @@ const WebUIItem = ({ url }: { url: string }) => {
   const formattedUrl = useFormattedUrl(url)
 
   const handleOpen = useLockFn(async () => {
-    await rpc.openWebUrl(formattedUrl)
+    await commands.openWebUrl(formattedUrl)
   })
 
-  const { value, upsert } = useSetting('web_ui_list')
+  const { value, upsert } = useClashSetting('web_ui_list')
 
   const handleDelete = useLockFn(async () => {
     await upsert(value?.filter((item) => item !== url) || [])
@@ -292,7 +294,7 @@ const EmptyItem = () => {
 }
 
 export default function WebUI() {
-  const { value } = useSetting('web_ui_list')
+  const { value } = useClashSetting('web_ui_list')
 
   return (
     <div className="space-y-3">

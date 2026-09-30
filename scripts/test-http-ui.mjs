@@ -13,6 +13,9 @@ try {
   await page.goto(`${url}/main/settings/debug`, {
     waitUntil: 'domcontentloaded',
   })
+  const advanced = page.locator('[data-slot="allow-lan-switch-container"]').filter({ hasText: 'Advance Tools' }).getByRole('switch')
+  await advanced.waitFor({ timeout: 30000 })
+  if (!(await advanced.isChecked())) await advanced.click()
   const toggle = page.getByRole('switch', { name: 'Axum HTTP server' })
   await toggle.waitFor({ timeout: 30000 })
   assert.equal(await toggle.isDisabled(), true)
@@ -36,14 +39,17 @@ try {
     const storage = await call('get_storage_item', { key: 'http-ui-test' })
     const files = await call('list_log_files', { source: 'app' })
     const error = await call('list_log_files', { source: 'service' })
+    const domainError = await call('read_profile_file', { uid: 'missing' })
     await call('remove_storage_item', { key: 'http-ui-test' })
-    return { storage, files, error }
+    return { storage, files, error, domainError }
   })
   assert.equal(result.storage.status, 200)
   assert.equal(result.storage.data, 'browser')
   assert.equal(result.files.status, 200)
   assert.ok(Array.isArray(result.files.data))
   assert.equal(result.error.data.domain_error, 'unsupported')
+  assert.equal(result.domainError.data.domain_error.kind.domain, 'profiles')
+  assert.equal(typeof result.domainError.data.domain_error.detail, 'string')
   assert.deepEqual(
     errors,
     [],

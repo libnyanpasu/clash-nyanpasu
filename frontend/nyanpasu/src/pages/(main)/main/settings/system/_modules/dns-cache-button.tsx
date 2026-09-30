@@ -24,7 +24,7 @@ export default function DnsCacheButton() {
     } catch (error) {
       await message(
         `${m.settings_system_proxy_dns_cache_failed()}: ${formatError(error)}`,
-        { kind: 'error' },
+        { kind: 'error', error },
       )
     }
   })

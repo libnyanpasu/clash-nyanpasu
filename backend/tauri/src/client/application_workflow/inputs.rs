@@ -31,20 +31,18 @@ pub(in crate::client) struct RuntimeInputs {
 }
 
 impl RuntimeInputs {
-    pub fn target_key(&self) -> anyhow::Result<String> {
+    /// `None` when a projection cannot be serialized: a target with no
+    /// identity is never treated as equal to another one.
+    pub fn target_key(&self) -> Option<String> {
         let projections = (
-            impact::application_target(&self.app).ok_or_else(|| {
-                anyhow::anyhow!("application runtime identity cannot be serialized")
-            })?,
-            impact::clash_target(&self.clash)
-                .ok_or_else(|| anyhow::anyhow!("clash runtime identity cannot be serialized"))?,
-            impact::profiles_target(&self.profiles)
-                .ok_or_else(|| anyhow::anyhow!("profiles runtime identity cannot be serialized"))?,
+            impact::application_target(&self.app)?,
+            impact::clash_target(&self.clash)?,
+            impact::profiles_target(&self.profiles)?,
             &self.content.0,
         );
-        Ok(nyanpasu_core_manager::payload_digest(&serde_json::to_vec(
-            &projections,
-        )?))
+        Some(nyanpasu_core_manager::payload_digest(
+            &serde_json::to_vec(&projections).ok()?,
+        ))
     }
 }
 

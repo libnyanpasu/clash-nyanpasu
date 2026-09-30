@@ -95,33 +95,33 @@ filter_unconventional = false
 split_commits = false
 # regex for parsing and grouping commits
 commit_parsers = [
-  { field = "author.name", pattern = "renovate\\[bot\\]", group = "Renovate", skip = true },
-  { field = "scope", pattern = "manifest", message = "^chore", skip = true },
-  { field = "breaking", pattern = "true", group = "💥 Breaking Changes" },
-  { message = "^feat", group = "✨ Features" },
-  { message = "^fix", group = "🐛 Bug Fixes" },
-  { message = "^doc", group = "📚 Documentation" },
-  { message = "^perf", group = "⚡ Performance Improvements" },
-  { message = "^refactor", group = "🔨 Refactor" },
-  { message = "^style", group = "💅 Styling" },
-  { message = "^test", group = "✅ Testing" },
+  { field = 'author.name', pattern = "renovate\\[bot\\]", group = 'Renovate', skip = true },
+  { field = 'scope', pattern = 'manifest', message = '^chore', skip = true },
+  { field = 'breaking', pattern = 'true', group = '💥 Breaking Changes' },
+  { message = '^feat', group = '✨ Features' },
+  { message = '^fix', group = '🐛 Bug Fixes' },
+  { message = '^doc', group = '📚 Documentation' },
+  { message = '^perf', group = '⚡ Performance Improvements' },
+  { message = '^refactor', group = '🔨 Refactor' },
+  { message = '^style', group = '💅 Styling' },
+  { message = '^test', group = '✅ Testing' },
   { message = "^chore\\(release\\): prepare for", skip = true },
-  { message = "^chore: bump version", skip = true },
-  { message = "^chore", group = "🧹 Miscellaneous Tasks" },
-  { body = ".*security", group = "🛡️ Security" },
-  { body = ".*", group = "Other (unconventional)", skip = true },
+  { message = '^chore: bump version', skip = true },
+  { message = '^chore', group = '🧹 Miscellaneous Tasks' },
+  { body = '.*security', group = '🛡️ Security' },
+  { body = '.*', group = 'Other (unconventional)', skip = true },
 ]
 # protect breaking changes from being skipped due to matching a skipping commit_parser
 protect_breaking_commits = false
 # filter out the commits that are not matched by commit parsers
 filter_commits = false
 # regex for matching git tags
-tag_pattern = "v[0-9].*"
+tag_pattern = 'v[0-9].*'
 # regex for skipping tags
-skip_tags = "v0.1.0-beta.1"
+skip_tags = 'v0.1.0-beta.1'
 # regex for ignoring tags
-ignore_tags = ""
+ignore_tags = ''
 # sort the tags topologically
 topo_order = false
 # sort the commits inside sections by oldest/newest order
-sort_commits = "newest"
+sort_commits = 'newest'

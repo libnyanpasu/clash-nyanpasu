@@ -1,8 +1,9 @@
 //! Result protocol for applied effects: per-effect health plus the revision
 //! bookkeeping that lets an owner drop a superseded reconcile.
 
+use serde::Serialize;
+
 use super::plan::EffectKind;
-use crate::client::runtime::{Degradation, DegradationPhase};
 
 /// Monotonic counter over committed desired configurations, allocated by the
 /// facade after a commit.
@@ -25,6 +26,61 @@ impl EffectRevision {
     }
 }
 
+/// Why an effect is not in its desired state, in the terms the UI localizes.
+///
+/// One value per kind of failure, named after the effect that failed. The
+/// owner that classifies a failure is the one that picks the code; the
+/// message beside it is only the diagnostic text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectFailureCode {
+    HotkeyInvalidBindings,
+    HotkeyPartialRegistration,
+    HotkeyShutDown,
+    HotkeyStopped,
+    LoggerRefreshFailed,
+    WidgetUnavailable,
+    WidgetApplyFailed,
+    TrayRefreshFailed,
+    EffectOwnerSilent,
+    ProxyGuardWaitingDependency,
+    AutoLaunchFailed,
+    PacDisableFailed,
+    PacApplyFailed,
+    PacUnsupported,
+    SystemProxyApplyFailed,
+    SystemProxyPortUnresolved,
+    SystemProxyRestoreFailed,
+    SystemProxyShutDown,
+    SystemProxyStopped,
+}
+
+impl EffectFailureCode {
+    /// The failure is a startup-ordering fact rather than a fault: the
+    /// effect is waiting for something that has not been resolved yet.
+    pub const fn waits_for_dependency(self) -> bool {
+        matches!(
+            self,
+            Self::WidgetUnavailable
+                | Self::SystemProxyPortUnresolved
+                | Self::ProxyGuardWaitingDependency
+        )
+    }
+}
+
+/// The diagnostic text of a failure: its message, then each cause down the
+/// chain. Unlike `Display` it keeps what the library underneath reported.
+pub fn failure_text(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut text = error.to_string();
+    let mut cause = error.source();
+    while let Some(next) = cause {
+        text.push_str(": ");
+        text.push_str(&next.to_string());
+        cause = next.source();
+    }
+    text
+}
+
 // Every variant but `Healthy` is constructed by the effect owners, which are
 // added one task at a time.
 #[allow(dead_code)]
@@ -33,8 +89,7 @@ pub enum EffectHealth {
     Pending,
     Healthy,
     Degraded {
-        /// Stable snake_case code, not a free-form phrase.
-        code: &'static str,
+        code: EffectFailureCode,
         message: String,
         retryable: bool,
     },
@@ -42,7 +97,7 @@ pub enum EffectHealth {
     Superseded,
     /// The platform or a dependency cannot provide the effect at all.
     Unsupported {
-        code: &'static str,
+        code: EffectFailureCode,
     },
 }
 
@@ -55,105 +110,22 @@ pub struct EffectStatus {
     pub health: EffectHealth,
 }
 
-/// Only a genuine failure degrades a mutation outcome. `Superseded` is the
-/// normal result of concurrency and `Unsupported` is a platform fact, so
-/// neither reaches the caller as a degradation.
-pub fn degradation_of(status: &EffectStatus) -> Option<Degradation> {
-    let EffectHealth::Degraded {
-        code,
-        message,
-        retryable,
-    } = &status.health
-    else {
-        return None;
-    };
-
-    Some(Degradation {
-        phase: phase_of(status.kind),
-        code: (*code).to_owned(),
-        message: message.clone(),
-        retryable: *retryable,
-    })
-}
-
-const fn phase_of(kind: EffectKind) -> DegradationPhase {
-    match kind {
-        EffectKind::Locale | EffectKind::Logger | EffectKind::Widget | EffectKind::Tray => {
-            DegradationPhase::UiEffect
-        }
-        EffectKind::AutoLaunch
-        | EffectKind::SystemProxy
-        | EffectKind::ProxyGuard
-        | EffectKind::Hotkeys => DegradationPhase::SystemEffect,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn status(kind: EffectKind, health: EffectHealth) -> EffectStatus {
-        EffectStatus {
-            kind,
-            desired_revision: EffectRevision::new(4),
-            applied_revision: EffectRevision::new(4),
-            health,
-        }
-    }
-
-    fn degraded() -> EffectHealth {
-        EffectHealth::Degraded {
-            code: "system_proxy_apply_failed",
-            message: "os refused".to_owned(),
-            retryable: true,
-        }
-    }
-
     #[test]
-    fn degradation_maps_system_kinds_to_system_effect_phase() {
-        for kind in [
-            EffectKind::AutoLaunch,
-            EffectKind::SystemProxy,
-            EffectKind::ProxyGuard,
-            EffectKind::Hotkeys,
-        ] {
-            let degradation = degradation_of(&status(kind, degraded()))
-                .unwrap_or_else(|| panic!("{kind:?} must degrade"));
-            assert_eq!(degradation.phase, DegradationPhase::SystemEffect);
-            assert_eq!(degradation.code, "system_proxy_apply_failed");
-            assert_eq!(degradation.message, "os refused");
-            assert!(degradation.retryable);
+    fn failure_text_joins_the_whole_chain() {
+        #[derive(Debug, snafu::Snafu)]
+        #[snafu(display("outer"))]
+        struct Outer {
+            source: std::io::Error,
         }
-    }
+        let error = Outer {
+            source: std::io::Error::other("inner"),
+        };
 
-    #[test]
-    fn degradation_maps_ui_kinds_to_ui_effect_phase() {
-        for kind in [
-            EffectKind::Locale,
-            EffectKind::Logger,
-            EffectKind::Widget,
-            EffectKind::Tray,
-        ] {
-            let degradation = degradation_of(&status(kind, degraded()))
-                .unwrap_or_else(|| panic!("{kind:?} must degrade"));
-            assert_eq!(degradation.phase, DegradationPhase::UiEffect);
-        }
-    }
-
-    #[test]
-    fn healthy_superseded_and_unsupported_produce_no_degradation() {
-        for health in [
-            EffectHealth::Healthy,
-            EffectHealth::Superseded,
-            EffectHealth::Unsupported {
-                code: "pac_unsupported",
-            },
-        ] {
-            assert_eq!(
-                degradation_of(&status(EffectKind::SystemProxy, health)),
-                None
-            );
-        }
+        assert_eq!(failure_text(&error), "outer: inner");
     }
 
     #[test]

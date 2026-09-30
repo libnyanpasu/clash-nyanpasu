@@ -1,4 +1,8 @@
 use super::super::runtime;
+use crate::{
+    client::runtime::PublishRuntimeError, core::actor_v2::local_host::CoreSpecError,
+    enhance::RuntimeBuildError,
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -7,11 +11,11 @@ pub(in crate::client) trait RuntimeBuildPort: Send + Sync + 'static {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
-    ) -> anyhow::Result<super::inputs::FrozenProfileContent>;
+    ) -> super::inputs::FrozenProfileContent;
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
-    ) -> anyhow::Result<nyanpasu_core_manager::CoreSpec>;
+    ) -> Result<nyanpasu_core_manager::CoreSpec, CoreSpecError>;
     /// Builds a candidate runtime from explicit inputs. The resolved ports are
     /// one of them: resolving inside the build would hide a probe that races
     /// the running core and would tie the build to a shared port cache.
@@ -21,8 +25,9 @@ pub(in crate::client) trait RuntimeBuildPort: Send + Sync + 'static {
         inputs: super::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> anyhow::Result<Arc<runtime::RuntimeSnapshot>>;
-    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()>;
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildError>;
+    async fn publish(&self, snapshot: &runtime::RuntimeSnapshot)
+    -> Result<(), PublishRuntimeError>;
 }
 
 /// One advisory check of a candidate runtime. The document is the built
@@ -35,8 +40,9 @@ pub(in crate::client) struct RuntimeCheckRequest<'a> {
 
 /// Why no check ran. Every variant is a reason, never a verdict: an absent
 /// check must not be reported as a passing one (v2 §2.4).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::client) enum RuntimeCheckUnavailable {
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(tag = "cause", rename_all = "snake_case")]
+pub enum RuntimeCheckUnavailable {
     /// No host owns the runtime, so there is nothing to check against.
     NoEndpoint { reason: String },
     /// The host owning the runtime exposes no check for this request.

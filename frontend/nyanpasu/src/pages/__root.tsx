@@ -15,7 +15,7 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy, useEffect, useRef } from 'react'
-import { ConfigurationStatusPanel } from '@/components/configuration-status'
+import { useProfileLookup } from '@/components/profile-label'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
@@ -23,7 +23,10 @@ import { ExperimentalThemeProvider } from '@/components/providers/theme-provider
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDeepLinkImport } from '@/hooks/use-deep-link-import'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
+import { degradationReasonMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
+import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
 import {
   NyanpasuProvider,
   rpc,
@@ -51,8 +54,14 @@ export const Catch = ({ error }: ErrorComponentProps) => {
       <p>Something went wrong... Caught in error boundary.</p>
 
       <pre className="overflow-x-auto font-mono whitespace-pre-wrap select-text">
-        {error.message}
-        {error.stack}
+        {error instanceof Error ? (
+          <>
+            {error.message}
+            {error.stack}
+          </>
+        ) : (
+          formatError(error)
+        )}
       </pre>
 
       <div className="flex items-center gap-2">
@@ -136,8 +145,6 @@ function WindowReveal() {
 
 function localizeDegradationPhase(phase: DegradationPhase): string {
   switch (phase) {
-    case 'legacy_mirror':
-      return m.mutation_degradation_phase_legacy_mirror()
     case 'profile_materialization':
       return m.mutation_degradation_phase_profile_materialization()
     case 'runtime_build':
@@ -163,31 +170,18 @@ function localizeDegradationPhase(phase: DegradationPhase): string {
   }
 }
 
-function localizeDegradationCode(code: string): string {
-  switch (code) {
-    case 'journal_invalid':
-      return m.mutation_degradation_code_journal_invalid()
-    case 'materialization_deferred':
-      return m.mutation_degradation_code_materialization_deferred()
-    case 'cleanup_deferred':
-      return m.mutation_degradation_code_cleanup_deferred()
-    case 'runtime_rebuild_failed':
-      return m.mutation_degradation_code_runtime_rebuild_failed()
-    case 'profile_auto_activation_failed':
-      return m.mutation_degradation_code_profile_auto_activation_failed()
-    default:
-      return m.mutation_degradation_code_unknown({ code })
-  }
-}
-
-function formatDegradationItem(degradation: Degradation): string {
+function formatDegradationItem(
+  degradation: Degradation,
+  profileLabel: ProfileLabel,
+): string {
   return m.mutation_degraded_item({
     phase: localizeDegradationPhase(degradation.phase),
-    detail: localizeDegradationCode(degradation.code),
+    detail: degradationReasonMessage(degradation.reason, profileLabel),
   })
 }
 
 function MutationDegradationNotifier() {
+  const profiles = useProfileLookup()
   useEffect(
     () =>
       // setMutationDegradationHandler returns a disposer; useEffect cleanup
@@ -197,17 +191,23 @@ function MutationDegradationNotifier() {
           return
         }
 
-        // Backend `message` is diagnostic-only; primary copy is phase + code.
+        // Backend `message` is diagnostic-only; primary copy is phase + reason.
         for (const degradation of degradations) {
           console.warn('[mutation-degradation]', {
             phase: degradation.phase,
-            code: degradation.code,
+            reason: degradation.reason,
             retryable: degradation.retryable,
             message: degradation.message,
           })
         }
 
-        const items = degradations.map(formatDegradationItem).join('; ')
+        const items = degradations
+          .map((degradation) =>
+            formatDegradationItem(degradation, (id) =>
+              profileDialogLabel(profiles, id),
+            ),
+          )
+          .join('; ')
         message(m.mutation_degraded_summary({ items }), {
           title: m.mutation_degraded_title(),
           kind: 'warning',
@@ -215,7 +215,7 @@ function MutationDegradationNotifier() {
           console.error('[mutation-degradation] failed to show warning', error)
         })
       }),
-    [],
+    [profiles],
   )
   return null
 }
@@ -235,10 +235,7 @@ export default function App() {
               <TooltipProvider>
                 <WindowReveal />
                 <MutationDegradationNotifier />
-                {(!appWindow || appWindow.label === 'main') && (
-                  <ConfigurationStatusPanel />
-                )}
-                {appWindow && <DeepLinkImport />}
+                {appWindow?.label === 'main' && <DeepLinkImport />}
                 <Outlet />
               </TooltipProvider>
             </CustomCssProvider>

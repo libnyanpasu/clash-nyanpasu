@@ -6,8 +6,8 @@
       "ps": "複製環境變數 (Pwsh)",
       "sh": "複製環境變數 (Shell)"
     },
-    "no_proxies": "無代理",
-    "select_proxies": "選取代理",
+    "no_proxies": "無 Proxy",
+    "select_proxies": "選取 Proxy",
     "dashboard": "顯示 Clash Nyanpasu",
     "direct_mode": "直連模式",
     "global_mode": "全域模式",
@@ -24,13 +24,13 @@
       "log_dir": "日誌目錄"
     },
     "proxy_action": {
-      "on": "開",
-      "off": "關"
+      "enabled": "已啟用",
+      "disabled": "已停用"
     },
-    "quit": "退出",
+    "quit": "結束",
     "rule_mode": "規則模式",
     "script_mode": "腳本模式",
-    "system_proxy": "系統代理",
+    "system_proxy": "系統 Proxy",
     "tun_mode": "TUN 模式"
   },
   "dialog": {
@@ -48,7 +48,7 @@
     "connection": {
       "interrupt": {
         "proxy": {
-          "label": "當代理切換時打斷連線"
+          "label": "當 Proxy 切換時打斷連線"
         },
         "profile": {
           "label": "當設定檔切換時打斷連線"
@@ -59,14 +59,7 @@
       }
     }
   },
-  "break_when_proxy_change": "當代理切換時打斷連線",
+  "break_when_proxy_change": "當 Proxy 切換時打斷連線",
   "break_when_profile_change": "當設定檔切換時打斷連線",
-  "break_when_mode_change": "當模式切換時打斷連線",
-  "hotkey_error": {
-    "invalid_hotkey": "無效的快速鍵：%{hotkey}",
-    "missing_super_key": "快速鍵必須包含修飾鍵 (Cmd/Ctrl/Win/Meta)",
-    "malformed_entry": "快速鍵條目格式錯誤：%{entry}",
-    "unknown_function": "未知的快速鍵功能：%{function}",
-    "duplicate_accelerator": "快速鍵 %{hotkey} 已指派給其他功能"
-  }
+  "break_when_mode_change": "當模式切換時打斷連線"
 }

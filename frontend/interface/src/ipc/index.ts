@@ -1,3 +1,5 @@
+import { rpc } from './rpc'
+
 export * from './consts'
 export * from './use-server-port'
 export * from './use-clash-config'
@@ -18,6 +20,7 @@ export * from './use-profile'
 export * from './use-proxy-mode'
 export * from './use-runtime-profile'
 export * from './use-settings'
+export * from './settings-conversions'
 export * from './use-release-channel'
 export * from './use-system-proxy'
 export * from './use-system-service'
@@ -40,4 +43,22 @@ export {
 export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './rpc-bindings'
 export type { RuleProviderItem as ClashProviderRule } from './rpc-bindings'
 
-export { acceptConfigurationStatus } from './configuration-status'
+export {
+  acceptConfigurationStatus,
+  attentionSources,
+  sourceMessage,
+} from './configuration-status'
+export * from './use-profile-sync'
+
+export { commands, queries, mutations } from './rpc-bindings'
+export const events = rpc.events
+
+export type {
+  ClashConnection_Serialize,
+  ClashConnection_Deserialize,
+  ClashConnectionDetails_Serialize,
+  ClashConnectionDetails_Deserialize,
+  Connection_Serialize,
+  Connection_Deserialize,
+  ConnectionMetadataFields_Serialize,
+} from './bindings'

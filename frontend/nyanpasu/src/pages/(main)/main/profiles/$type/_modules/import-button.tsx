@@ -1,114 +1,48 @@
-import CloudDownloadRounded from '~icons/material-symbols/cloud-download-rounded'
-import FileOpenRounded from '~icons/material-symbols/file-open-rounded'
 import NoteStackAddRounded from '~icons/material-symbols/note-stack-add-rounded'
-import { AnimatePresence } from 'motion/react'
-import { ComponentProps, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { useScrollArea } from '@/components/ui/scroll-area'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 import { ProfileType } from '../../_modules/consts'
 import { Action, Route as IndexRoute } from '../index'
-import ChainProfileImport from './chain-profile-import'
-import LocalProfileButton from './local-profile-button'
-import RemoteProfileButton from './remote-profile-button'
-
-const SelectButton = ({
-  className,
-  label,
-  ...props
-}: ComponentProps<typeof Button> & {
-  label?: string
-}) => {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          className={cn(
-            'flex size-10 items-center justify-center gap-2',
-            'bg-primary-container dark:bg-surface-variant/30',
-            className,
-          )}
-          variant="fab"
-          icon
-          {...props}
-        />
-      </TooltipTrigger>
-
-      {label && (
-        <TooltipContent side="left">
-          <span>{label}</span>
-        </TooltipContent>
-      )}
-    </Tooltip>
-  )
-}
-
-const ProxyProfileImport = () => {
-  const { isScrolling } = useScrollArea()
-
-  const { action } = IndexRoute.useSearch()
-
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    // for animation duration to open the modal
-    if (action === Action.ImportLocalProfile) {
-      setOpen(true)
-    }
-  }, [action])
-
-  const handleToggle = () => {
-    setOpen(!open)
-  }
-
-  // close the modal when scrolling
-  useEffect(() => {
-    if (isScrolling && open) {
-      setOpen(false)
-    }
-  }, [isScrolling, open])
-
-  return (
-    <div className="relative">
-      <Button className="z-10" variant="fab" icon onClick={handleToggle}>
-        <NoteStackAddRounded className="size-6" />
-      </Button>
-
-      <AnimatePresence initial={false}>
-        <div
-          className={cn(
-            'absolute flex w-full flex-col items-center gap-4',
-            'top-0 scale-0 opacity-0 transition-[top,opacity,scale] duration-300 ease-in-out',
-            open && '-top-28 scale-100 opacity-100',
-          )}
-        >
-          <RemoteProfileButton>
-            <SelectButton label={m.profile_import_remote_title()}>
-              <CloudDownloadRounded />
-            </SelectButton>
-          </RemoteProfileButton>
-
-          <LocalProfileButton>
-            <SelectButton label={m.profile_import_local_title()}>
-              <FileOpenRounded />
-            </SelectButton>
-          </LocalProfileButton>
-        </div>
-      </AnimatePresence>
-    </div>
-  )
-}
+import CreateProfileModal from './create-profile-modal'
+import type { CreateKind, CreateSource } from './create-profile-schema'
 
 export default function ImportButton() {
   const { type } = IndexRoute.useParams()
 
+  const { action } = IndexRoute.useSearch()
+
+  const navigate = IndexRoute.useNavigate()
+
   const isProxy = type === ProfileType.Profile
+
+  const [open, setOpen] = useState(false)
+
+  const [source, setSource] = useState<CreateSource>('remote')
+
+  useEffect(() => {
+    if (action !== Action.ImportLocalProfile) {
+      return
+    }
+
+    // wait for the route transition before opening the modal
+    const timeout = setTimeout(() => {
+      setSource('local')
+      setOpen(true)
+    }, 150)
+
+    return () => {
+      clearTimeout(timeout)
+    }
+  }, [action])
+
+  const handleOpenChange = (value: boolean) => {
+    setOpen(value)
+
+    if (!value && action !== null && action !== undefined) {
+      navigate({ search: { action: null } })
+    }
+  }
 
   return (
     <div
@@ -122,7 +56,24 @@ export default function ImportButton() {
         'group-data-[scroll-direction=down]/profiles-content:-bottom-18',
       )}
     >
-      {isProxy ? <ProxyProfileImport /> : <ChainProfileImport />}
+      <Button
+        variant="fab"
+        icon
+        onClick={() => {
+          // transforms are usually written from a template
+          setSource(isProxy ? 'remote' : 'local')
+          setOpen(true)
+        }}
+      >
+        <NoteStackAddRounded className="size-6" />
+      </Button>
+
+      <CreateProfileModal
+        open={open}
+        onOpenChange={handleOpenChange}
+        kind={isProxy ? 'file' : (type as CreateKind)}
+        source={source}
+      />
     </div>
   )
 }

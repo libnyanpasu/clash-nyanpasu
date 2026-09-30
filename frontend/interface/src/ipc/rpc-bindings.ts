@@ -14,11 +14,11 @@ import {
 /** Commands */
 export const commands = {
   getDebugHttpStatus: () =>
-    typedError<DebugHttpStatus, RpcError>(
+    typedError<DebugHttpStatus, IpcError>(
       __RPC_INVOKE('get_debug_http_status'),
     ),
   setDebugHttpEnabled: (enabled: boolean) =>
-    typedError<DebugHttpStatus, RpcError>(
+    typedError<DebugHttpStatus, IpcError>(
       __RPC_INVOKE('set_debug_http_enabled', { enabled }),
     ),
   listLogFiles: (source: LogSource) =>
@@ -30,18 +30,16 @@ export const commands = {
    *  server field is the combination of host and port
    */
   getSysProxy: () =>
-    typedError<GetSysProxyResponse, RpcError>(__RPC_INVOKE('get_sys_proxy')),
+    typedError<GetSysProxyResponse, IpcError>(__RPC_INVOKE('get_sys_proxy')),
   getClashInfo: () =>
-    typedError<ClashInfo, RpcError>(__RPC_INVOKE('get_clash_info')),
-  getClashLogs: () =>
-    typedError<string[], RpcError>(__RPC_INVOKE('get_clash_logs')),
+    typedError<ClashInfo, IpcError>(__RPC_INVOKE('get_clash_info')),
   /**  get the runtime config */
   getRuntimeConfig: () =>
-    typedError<any | null, RpcError>(__RPC_INVOKE('get_runtime_config')),
+    typedError<any | null, IpcError>(__RPC_INVOKE('get_runtime_config')),
   getRuntimeYaml: () =>
-    typedError<string, RpcError>(__RPC_INVOKE('get_runtime_yaml')),
+    typedError<string, IpcError>(__RPC_INVOKE('get_runtime_yaml')),
   getRuntimeExists: () =>
-    typedError<string[], RpcError>(__RPC_INVOKE('get_runtime_exists')),
+    typedError<string[], IpcError>(__RPC_INVOKE('get_runtime_exists')),
   inspectRuntime: () =>
     typedError<
       {
@@ -54,7 +52,7 @@ export const commands = {
         root_id: number
         nodes: RuntimeInspectionNode[]
       } | null,
-      RpcError
+      IpcError
     >(__RPC_INVOKE('inspect_runtime')),
   inspectAppliedRuntime: () =>
     typedError<
@@ -68,14 +66,14 @@ export const commands = {
         root_id: number
         nodes: RuntimeInspectionNode[]
       } | null,
-      RpcError
+      IpcError
     >(__RPC_INVOKE('inspect_applied_runtime')),
   inspectRuntimeNode: (snapshotId: string, nodeId: number) =>
-    typedError<RuntimeInspectionContent, RpcError>(
+    typedError<RuntimeInspectionContent, IpcError>(
       __RPC_INVOKE('inspect_runtime_node', { snapshotId, nodeId }),
     ),
   getPostprocessingOutput: () =>
-    typedError<PostProcessingOutput, RpcError>(
+    typedError<PostProcessingOutput, IpcError>(
       __RPC_INVOKE('get_postprocessing_output'),
     ),
   clashApiGetProxyDelay: (
@@ -83,75 +81,97 @@ export const commands = {
     provider: string | null,
     url: string | null,
   ) =>
-    typedError<DelayRes, RpcError>(
+    typedError<DelayRes, IpcError>(
       __RPC_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
     ),
   clashApiGetConfigs: () =>
-    typedError<ClashConfig, RpcError>(__RPC_INVOKE('clash_api_get_configs')),
+    typedError<ClashApiConfig, IpcError>(__RPC_INVOKE('clash_api_get_configs')),
   clashApiGetVersion: () =>
-    typedError<ClashVersion, RpcError>(__RPC_INVOKE('clash_api_get_version')),
+    typedError<ClashVersion, IpcError>(__RPC_INVOKE('clash_api_get_version')),
   clashApiGetRules: () =>
-    typedError<RulesRes, RpcError>(__RPC_INVOKE('clash_api_get_rules')),
+    typedError<RulesRes, IpcError>(__RPC_INVOKE('clash_api_get_rules')),
   clashApiGetProvidersRules: () =>
-    typedError<ProvidersRulesRes, RpcError>(
+    typedError<ProvidersRulesRes, IpcError>(
       __RPC_INVOKE('clash_api_get_providers_rules'),
     ),
   clashApiGetGroupDelay: (group: string, url: string | null) =>
-    typedError<{ [key in string]: number }, RpcError>(
+    typedError<{ [key in string]: number }, IpcError>(
       __RPC_INVOKE('clash_api_get_group_delay', { group, url }),
     ),
   clashApiGetProvidersProxies: () =>
-    typedError<ProvidersProxiesRes_Serialize, RpcError>(
+    typedError<ProvidersProxiesRes_Serialize, IpcError>(
       __RPC_INVOKE('clash_api_get_providers_proxies'),
     ),
   fetchLatestCoreVersions: () =>
-    typedError<ManifestVersionLatest, RpcError>(
+    typedError<ManifestVersionLatest, IpcError>(
       __RPC_INVOKE('fetch_latest_core_versions'),
     ),
   inspectUpdater: (updaterId: number) =>
-    typedError<UpdaterSummary, RpcError>(
+    typedError<UpdaterSummary, IpcError>(
       __RPC_INVOKE('inspect_updater', { updaterId }),
     ),
   getCoreVersion: (coreType: ClashCore_Deserialize) =>
-    typedError<string, RpcError>(
+    typedError<string, IpcError>(
       __RPC_INVOKE('get_core_version', { coreType }),
     ),
-  getVergeConfig: () =>
-    typedError<IVerge_Serialize, RpcError>(__RPC_INVOKE('get_verge_config')),
+  getAppConfig: () =>
+    typedError<NyanpasuAppConfig_Serialize, IpcError>(
+      __RPC_INVOKE('get_app_config'),
+    ),
+  getClashConfig: () =>
+    typedError<ClashConfig, IpcError>(__RPC_INVOKE('get_clash_config')),
   getHotkeyFunctions: () => __RPC_INVOKE<string[]>('get_hotkey_functions'),
   getProfiles: () =>
-    typedError<ProfileDocument_Serialize, RpcError>(
+    typedError<ProfileDocument_Serialize, IpcError>(
       __RPC_INVOKE('get_profiles'),
     ),
+  getProfileSyncStatus: (uid: ProfileId) =>
+    typedError<ProfileSyncStatus, IpcError>(
+      __RPC_INVOKE('get_profile_sync_status', { uid }),
+    ),
+  getProfileSyncRuns: (
+    uid: ProfileId,
+    after: {
+      sequence: string
+      id: string
+    } | null,
+  ) =>
+    typedError<RunPageDto, IpcError>(
+      __RPC_INVOKE('get_profile_sync_runs', { uid, after }),
+    ),
+  getProfileSyncLogs: (uid: ProfileId, run: string, after: string | null) =>
+    typedError<LogPageDto, IpcError>(
+      __RPC_INVOKE('get_profile_sync_logs', { uid, run, after }),
+    ),
   readProfileFile: (uid: ProfileId) =>
-    typedError<string, RpcError>(__RPC_INVOKE('read_profile_file', { uid })),
+    typedError<string, IpcError>(__RPC_INVOKE('read_profile_file', { uid })),
   getCustomAppDir: () =>
-    typedError<string | null, RpcError>(__RPC_INVOKE('get_custom_app_dir')),
+    typedError<string | null, IpcError>(__RPC_INVOKE('get_custom_app_dir')),
   statusService: () =>
-    typedError<ServiceStatusInfo_Serialize, RpcError>(
+    typedError<ServiceStatusInfo_Serialize, IpcError>(
       __RPC_INVOKE('status_service'),
     ),
-  isPortable: () => typedError<boolean, RpcError>(__RPC_INVOKE('is_portable')),
+  isPortable: () => typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
   getProxies: () =>
-    typedError<Proxies_Serialize, RpcError>(__RPC_INVOKE('get_proxies')),
+    typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
   collectEnvs: () =>
-    typedError<EnvInfo, RpcError>(__RPC_INVOKE('collect_envs')),
+    typedError<EnvInfo, IpcError>(__RPC_INVOKE('collect_envs')),
   getServerPort: () =>
-    typedError<number, RpcError>(__RPC_INVOKE('get_server_port')),
+    typedError<number, IpcError>(__RPC_INVOKE('get_server_port')),
   isTrayIconSet: (mode: TrayIcon) =>
-    typedError<boolean, RpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
+    typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
   getCoreStatus: () =>
-    typedError<CoreStatusInfo, RpcError>(__RPC_INVOKE('get_core_status')),
+    typedError<CoreStatusInfo, IpcError>(__RPC_INVOKE('get_core_status')),
   urlDelayTest: (url: string, expectedStatus: number) =>
-    typedError<number | null, RpcError>(
+    typedError<number | null, IpcError>(
       __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
     ),
-  getIpsbAsn: () => typedError<any, RpcError>(__RPC_INVOKE('get_ipsb_asn')),
-  isAppimage: () => typedError<boolean, RpcError>(__RPC_INVOKE('is_appimage')),
+  getIpsbAsn: () => typedError<any, IpcError>(__RPC_INVOKE('get_ipsb_asn')),
+  isAppimage: () => typedError<boolean, IpcError>(__RPC_INVOKE('is_appimage')),
   getServiceInstallPrompt: () =>
-    typedError<string, RpcError>(__RPC_INVOKE('get_service_install_prompt')),
+    typedError<string, IpcError>(__RPC_INVOKE('get_service_install_prompt')),
   getStorageItem: (key: string) =>
-    typedError<string | null, RpcError>(
+    typedError<string | null, IpcError>(
       __RPC_INVOKE('get_storage_item', { key }),
     ),
   /**
@@ -159,16 +179,32 @@ export const commands = {
    *  Internal storage entries used by other subsystems are excluded.
    */
   getAllStorageItems: () =>
-    typedError<StorageEntry[], RpcError>(__RPC_INVOKE('get_all_storage_items')),
-  getHotkeys: () => typedError<string[], RpcError>(__RPC_INVOKE('get_hotkeys')),
-  getCoreDir: () => typedError<string, RpcError>(__RPC_INVOKE('get_core_dir')),
-  getClashWsConnectionsState: () =>
-    typedError<ClashConnectionsConnectorState, RpcError>(
-      __RPC_INVOKE('get_clash_ws_connections_state'),
-    ),
+    typedError<StorageEntry[], IpcError>(__RPC_INVOKE('get_all_storage_items')),
+  getHotkeys: () => typedError<string[], IpcError>(__RPC_INVOKE('get_hotkeys')),
+  getCoreDir: () => typedError<string, IpcError>(__RPC_INVOKE('get_core_dir')),
   getClashWsSnapshot: () =>
-    typedError<ClashWsSnapshot, RpcError>(
+    typedError<ClashWsSnapshot, IpcError>(
       __RPC_INVOKE('get_clash_ws_snapshot'),
+    ),
+  getTrafficSummary: () =>
+    typedError<TrafficSummary, IpcError>(__RPC_INVOKE('get_traffic_summary')),
+  queryTrafficUsage: (groupBy: GroupBy, limit: number) =>
+    typedError<Usage, IpcError>(
+      __RPC_INVOKE('query_traffic_usage', { groupBy, limit }),
+    ),
+  queryTrafficTopology: (limit: number) =>
+    typedError<Topology, IpcError>(
+      __RPC_INVOKE('query_traffic_topology', { limit }),
+    ),
+  queryTrafficClosedConnections: (
+    before: {
+      closed_at: number
+      id: string
+    } | null,
+    limit: number,
+  ) =>
+    typedError<ClosedPage, IpcError>(
+      __RPC_INVOKE('query_traffic_closed_connections', { before, limit }),
     ),
   checkUpdate: () =>
     typedError<
@@ -181,24 +217,24 @@ export const commands = {
         body: string | null
         raw_json: any
       } | null,
-      RpcError
+      IpcError
     >(__RPC_INVOKE('check_update')),
   getReleaseChannel: () =>
-    typedError<ReleaseChannel, RpcError>(__RPC_INVOKE('get_release_channel')),
+    typedError<ReleaseChannel, IpcError>(__RPC_INVOKE('get_release_channel')),
   getSystemAccentColor: () =>
-    typedError<string | null, RpcError>(
+    typedError<string | null, IpcError>(
       __RPC_INVOKE('get_system_accent_color'),
     ),
   getConfigurationStatus: () =>
     __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
   retryConfigurationRuntime: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('retry_configuration_runtime')),
+    typedError<null, IpcError>(__RPC_INVOKE('retry_configuration_runtime')),
   retryConfigurationEffect: (kind: EffectKind) =>
-    typedError<null, RpcError>(
+    typedError<null, IpcError>(
       __RPC_INVOKE('retry_configuration_effect', { kind }),
     ),
   setReleaseChannel: (channel: ReleaseChannel) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('set_release_channel', { channel }),
     ),
   openLogSession: (source: LogSource, request: OpenLogs) =>
@@ -214,61 +250,54 @@ export const commands = {
       __RPC_INVOKE('close_log_session', { source, session }),
     ),
   flushSystemDnsCache: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('flush_system_dns_cache')),
+    typedError<null, IpcError>(__RPC_INVOKE('flush_system_dns_cache')),
   openAppConfigDir: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('open_app_config_dir')),
+    typedError<null, IpcError>(__RPC_INVOKE('open_app_config_dir')),
   openAppDataDir: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('open_app_data_dir')),
-  openLogsDir: () => typedError<null, RpcError>(__RPC_INVOKE('open_logs_dir')),
+    typedError<null, IpcError>(__RPC_INVOKE('open_app_data_dir')),
+  openLogsDir: () => typedError<null, IpcError>(__RPC_INVOKE('open_logs_dir')),
   openWebUrl: (url: string) =>
-    typedError<null, RpcError>(__RPC_INVOKE('open_web_url', { url })),
-  openCoreDir: () => typedError<null, RpcError>(__RPC_INVOKE('open_core_dir')),
+    typedError<null, IpcError>(__RPC_INVOKE('open_web_url', { url })),
+  openCoreDir: () => typedError<null, IpcError>(__RPC_INVOKE('open_core_dir')),
   /**  restart the sidecar */
   restartSidecar: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('restart_sidecar')),
-  /**  patch clash runtime config */
-  patchClashConfig: (payload: PatchRuntimeConfig_Deserialize) =>
-    typedError<MutationOutcome<null>, RpcError>(
-      __RPC_INVOKE('patch_clash_config', { payload }),
+    typedError<null, IpcError>(__RPC_INVOKE('restart_sidecar')),
+  patchAppConfig: (patch: NyanpasuAppConfigPatch_Deserialize) =>
+    typedError<MutationOutcome<null>, IpcError>(
+      __RPC_INVOKE('patch_app_config', { patch }),
     ),
-  changeClashCore: (
-    clashCore:
-      | 'clash'
-      | 'clash-premium'
-      | 'clash-rs'
-      | 'mihomo'
-      | 'clash-meta'
-      | 'mihomo-alpha'
-      | 'clash-rs-alpha'
-      | 'meow'
-      | null,
-  ) =>
-    typedError<null, RpcError>(
+  patchClashConfig: (patch: ClashConfigPatch_Deserialize) =>
+    typedError<MutationOutcome<null>, IpcError>(
+      __RPC_INVOKE('patch_clash_config', { patch }),
+    ),
+  /**  patch the clash guard overrides (mode, log level, LAN, IPv6, secret...) */
+  patchRuntimeOverrides: (patch: ClashGuardOverridesPatch_Deserialize) =>
+    typedError<MutationOutcome<null>, IpcError>(
+      __RPC_INVOKE('patch_runtime_overrides', { patch }),
+    ),
+  changeClashCore: (clashCore: ClashCore_Deserialize) =>
+    typedError<null, IpcError>(
       __RPC_INVOKE('change_clash_core', { clashCore }),
     ),
   clashApiDeleteConnections: (id: string | null) =>
-    typedError<null, RpcError>(
+    typedError<null, IpcError>(
       __RPC_INVOKE('clash_api_delete_connections', { id }),
     ),
   clashApiUpdateProvidersRules: (name: string) =>
-    typedError<null, RpcError>(
+    typedError<null, IpcError>(
       __RPC_INVOKE('clash_api_update_providers_rules', { name }),
     ),
   invokeUwpTool: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('invoke_uwp_tool')),
+    typedError<null, IpcError>(__RPC_INVOKE('invoke_uwp_tool')),
   updateCore: (coreType: ClashCore_Deserialize) =>
-    typedError<number, RpcError>(__RPC_INVOKE('update_core', { coreType })),
-  collectLogs: () => typedError<null, RpcError>(__RPC_INVOKE('collect_logs')),
-  patchVergeConfig: (payload: IVerge_Deserialize) =>
-    typedError<MutationOutcome<null>, RpcError>(
-      __RPC_INVOKE('patch_verge_config', { payload }),
-    ),
+    typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
+  collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
   /**
    *  Rebuild-only command: there is no prior state commit, so a failure is a
    *  plain error — the committed/degraded model (spec §6.2) does not apply.
    */
   enhanceProfiles: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('enhance_profiles')),
+    typedError<null, IpcError>(__RPC_INVOKE('enhance_profiles')),
   importProfile: (
     url: string,
     name: string | null,
@@ -278,30 +307,33 @@ export const commands = {
       self_proxy: boolean | null
       update_interval_minutes: number | null
     } | null,
+    transform:
+      { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
   ) =>
-    typedError<MutationOutcome<ProfileId>, RpcError>(
-      __RPC_INVOKE('import_profile', { url, name, option }),
+    typedError<MutationOutcome<ProfileId>, IpcError>(
+      __RPC_INVOKE('import_profile', { url, name, option, transform }),
     ),
   /**
-   *  Take and clear the pending cold-start deep link, if any. Called once by the
-   *  frontend during startup.
+   *  Take and clear the queued deep links, oldest first. The frontend calls it
+   *  once its [`SchemeRequestReceivedEvent`] listener is registered, and again on
+   *  every such event.
    */
-  getPendingDeepLink: () =>
-    typedError<string | null, RpcError>(__RPC_INVOKE('get_pending_deep_link')),
+  takePendingDeepLinks: () =>
+    typedError<string[], IpcError>(__RPC_INVOKE('take_pending_deep_links')),
   /**  create a new profile */
   createProfile: (
     request: NewProfileRequest_Deserialize,
     fileData: string | null,
   ) =>
-    typedError<MutationOutcome<ProfileId>, RpcError>(
+    typedError<MutationOutcome<ProfileId>, IpcError>(
       __RPC_INVOKE('create_profile', { request, fileData }),
     ),
   reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('reorder_profile', { activeId, overId }),
     ),
   reorderProfilesByList: (list: ProfileId[]) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('reorder_profiles_by_list', { list }),
     ),
   updateProfile: (
@@ -313,111 +345,115 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('update_profile', { uid, option }),
     ),
   deleteProfile: (uid: ProfileId) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('delete_profile', { uid }),
     ),
   activateProfile: (uid: string | null) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('activate_profile', { uid }),
     ),
   setGlobalTransforms: (ids: ProfileId[]) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('set_global_transforms', { ids }),
     ),
   setProfileValidFields: (fields: string[]) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('set_profile_valid_fields', { fields }),
     ),
   patchProfileMetadata: (
     uid: ProfileId,
     patch: ProfileMetadataPatch_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('patch_profile_metadata', { uid, patch }),
     ),
   patchRemoteProfileOptions: (
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('patch_remote_profile_options', { uid, patch }),
     ),
   replaceProfileDefinition: (
     uid: ProfileId,
     definition: ProfileDefinition_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('replace_profile_definition', { uid, definition }),
     ),
   viewProfile: (uid: ProfileId) =>
-    typedError<null, RpcError>(__RPC_INVOKE('view_profile', { uid })),
+    typedError<null, IpcError>(__RPC_INVOKE('view_profile', { uid })),
   saveProfileFile: (uid: ProfileId, fileData: string) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('save_profile_file', { uid, fileData }),
     ),
   setCustomAppDir: (path: string) =>
-    typedError<null, RpcError>(__RPC_INVOKE('set_custom_app_dir', { path })),
+    typedError<null, IpcError>(__RPC_INVOKE('set_custom_app_dir', { path })),
   installService: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('install_service')),
+    typedError<null, IpcError>(__RPC_INVOKE('install_service')),
   uninstallService: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('uninstall_service')),
-  startService: () => typedError<null, RpcError>(__RPC_INVOKE('start_service')),
-  stopService: () => typedError<null, RpcError>(__RPC_INVOKE('stop_service')),
+    typedError<null, IpcError>(__RPC_INVOKE('uninstall_service')),
+  startService: () => typedError<null, IpcError>(__RPC_INVOKE('start_service')),
+  stopService: () => typedError<null, IpcError>(__RPC_INVOKE('stop_service')),
   restartService: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('restart_service')),
+    typedError<null, IpcError>(__RPC_INVOKE('restart_service')),
   selectProxy: (group: string, name: string) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('select_proxy', { group, name }),
     ),
   updateProxyProvider: (name: string) =>
-    typedError<null, RpcError>(__RPC_INVOKE('update_proxy_provider', { name })),
+    typedError<null, IpcError>(__RPC_INVOKE('update_proxy_provider', { name })),
   restartApplication: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('restart_application')),
+    typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
   setTrayIcon: (mode: TrayIcon, path: string | null) =>
-    typedError<null, RpcError>(__RPC_INVOKE('set_tray_icon', { mode, path })),
+    typedError<null, IpcError>(__RPC_INVOKE('set_tray_icon', { mode, path })),
   openThat: (path: string) =>
-    typedError<null, RpcError>(__RPC_INVOKE('open_that', { path })),
+    typedError<null, IpcError>(__RPC_INVOKE('open_that', { path })),
+  /**
+   *  Shuts every owner down and returns with the app still running; the caller
+   *  then installs an update or relaunches.
+   */
   cleanupProcesses: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('cleanup_processes')),
+    typedError<null, IpcError>(__RPC_INVOKE('cleanup_processes')),
   setStorageItem: (key: string, value: string) =>
-    typedError<null, RpcError>(
+    typedError<null, IpcError>(
       __RPC_INVOKE('set_storage_item', { key, value }),
     ),
   removeStorageItem: (key: string) =>
-    typedError<null, RpcError>(__RPC_INVOKE('remove_storage_item', { key })),
+    typedError<null, IpcError>(__RPC_INVOKE('remove_storage_item', { key })),
   /**
    *  Debug: clears all frontend KV entries (keys with the `web:` prefix).
    *  Internal storage entries used by other subsystems are left intact.
    */
-  clearStorage: () => typedError<null, RpcError>(__RPC_INVOKE('clear_storage')),
+  clearStorage: () => typedError<null, IpcError>(__RPC_INVOKE('clear_storage')),
   setHotkeys: (hotkeys: string[]) =>
-    typedError<MutationOutcome<null>, RpcError>(
+    typedError<MutationOutcome<null>, IpcError>(
       __RPC_INVOKE('set_hotkeys', { hotkeys }),
     ),
   mutateProxies: () =>
-    typedError<Proxies_Serialize, RpcError>(__RPC_INVOKE('mutate_proxies')),
+    typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('mutate_proxies')),
   setClashWsRecording: (kind: ClashWsKind, enabled: boolean) =>
-    typedError<ClashWsRecording, RpcError>(
+    typedError<ClashWsRecording, IpcError>(
       __RPC_INVOKE('set_clash_ws_recording', { kind, enabled }),
     ),
   clearClashWsHistory: (kind: ClashWsKind) =>
-    typedError<null, RpcError>(
+    typedError<null, IpcError>(
       __RPC_INVOKE('clear_clash_ws_history', { kind }),
     ),
   saveWindowSizeState: (label: string) =>
-    typedError<null, RpcError>(
+    typedError<null, IpcError>(
       __RPC_INVOKE('save_window_size_state', { label }),
     ),
   createMainWindow: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('create_main_window')),
+    typedError<null, IpcError>(__RPC_INVOKE('create_main_window')),
   createDebugTrayMenuWindow: () =>
-    typedError<null, RpcError>(__RPC_INVOKE('create_debug_tray_menu_window')),
+    typedError<null, IpcError>(__RPC_INVOKE('create_debug_tray_menu_window')),
   createEditorWindow: (windowType: EditorWindowType, uid: string | null) =>
-    typedError<null, RpcError>(
+    typedError<null, IpcError>(
       __RPC_INVOKE('create_editor_window', { windowType, uid }),
     ),
   copyClashEnv: (envType: CopyEnvOption) =>
@@ -427,9 +463,6 @@ export const commands = {
 
 /** Events */
 export const events = {
-  clashConnectionsEvent: makeEvent<ClashConnectionsEvent>(
-    'clash-connections-event',
-  ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
@@ -451,7 +484,30 @@ export const events = {
 }
 
 /* Types */
-export type BreakWhenProxyChange = 'none' | 'chain' | 'all'
+export type BreakConnectionStrategy = {
+  /**  切换代理时中断连接 */
+  on_proxy_change: ProxyChangeBreakMode
+  /**  切换配置时中断连接 */
+  on_profile_change: boolean
+  /**  切换模式时中断连接 */
+  on_mode_change: boolean
+}
+
+export type BreakConnectionStrategyPatch =
+  | BreakConnectionStrategyPatch_Serialize
+  | BreakConnectionStrategyPatch_Deserialize
+
+export type BreakConnectionStrategyPatch_Deserialize = {
+  on_proxy_change?: ProxyChangeBreakMode | null
+  on_profile_change?: boolean | null
+  on_mode_change?: boolean | null
+}
+
+export type BreakConnectionStrategyPatch_Serialize = {
+  on_proxy_change?: ProxyChangeBreakMode | null
+  on_profile_change?: boolean | null
+  on_mode_change?: boolean | null
+}
 
 export type BuildInfo = {
   app_name: string
@@ -471,10 +527,16 @@ export type BuildInfo = {
 export type BuiltinStepKind =
   | 'guard_overrides'
   | 'whitelist_field_filter'
+  | 'include_all_expansion'
   | 'finalizing'
   | 'core_controller'
 
-export type ClashConfig = {
+export type Bytes = {
+  upload: number
+  download: number
+}
+
+export type ClashApiConfig = {
   port: number | null
   mode: string | null
   ipv6: boolean | null
@@ -489,20 +551,88 @@ export type ClashConfig = {
   secret: string | null
 }
 
-export type ClashConnectionsConnectorEvent =
-  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'update'; data: ClashConnectionsInfo }
+/**  Clash Related Config */
+export type ClashConfig = {
+  /**  Clash Overrides config, used to patch clash config directly */
+  overrides: ClashGuardOverrides
+  /**  clash tun mode */
+  enable_tun_mode: boolean
+  /**  web ui list */
+  web_ui_list: string[]
+  /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认关闭 */
+  enable_clash_fields: boolean
+  /**
+   *  在 Nyanpasu 侧按 mihomo 语义展开代理组的 `include-all*`，默认为真；
+   *  关闭时原样交给核心处理
+   */
+  expand_include_all?: boolean
+  /**  外部控制器端口策略 */
+  external_controller: ExternalControllerStrategy
+  clash_control_channel?: ClashControlChannel
+  clash_ipc_disable_http_controller?: boolean
+  /**  Mixed Proxy(Socks5, HTTP) Port Strategy */
+  mixed_port: PortStrategy
+  /**  Socks5 Proxy Port */
+  socks_port: PortStrategy | null
+  /**  HTTP Proxy Port */
+  http_port: PortStrategy | null
+  /**  断开连接策略 */
+  break_connection: BreakConnectionStrategy
+  /**  Tun 堆栈选择 */
+  tun_stack: TunStack
+}
+
+export type ClashConfigPatch =
+  ClashConfigPatch_Serialize | ClashConfigPatch_Deserialize
+
+export type ClashConfigPatch_Deserialize = {
+  overrides?: ClashGuardOverrides | null
+  enable_tun_mode?: boolean | null
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  expand_include_all?: boolean | null
+  external_controller?: ExternalControllerStrategyPatch_Deserialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port?: PortStrategyPatch_Deserialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  break_connection?: BreakConnectionStrategyPatch_Deserialize
+  tun_stack?: TunStack | null
+}
+
+export type ClashConfigPatch_Serialize = {
+  overrides?: ClashGuardOverrides | null
+  enable_tun_mode?: boolean | null
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  expand_include_all?: boolean | null
+  external_controller: ExternalControllerStrategyPatch_Serialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port: PortStrategyPatch_Serialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  break_connection: BreakConnectionStrategyPatch_Serialize
+  tun_stack?: TunStack | null
+}
 
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'
 
-export type ClashConnectionsEvent = ClashConnectionsConnectorEvent
-
-export type ClashConnectionsInfo = {
+/**  Pushed on every connection sample; size is independent of connection count. */
+export type ClashConnectionsSummary = {
   downloadTotal: number
   uploadTotal: number
   downloadSpeed: number
   uploadSpeed: number
+  memory: number | null
+  connectionCount: number
+  /**
+   *  Keyed by chain member name (group or node); summed over every
+   *  connection whose `chains` contains that name.
+   */
+  memberRates: { [key in string]: TrafficRate }
 }
 
 export type ClashControlChannel = 'prefer_ipc' | 'http_only'
@@ -525,6 +655,39 @@ export type ClashCore_Deserialize =
 export type ClashCore_Serialize =
   'clash' | 'clash-rs' | 'mihomo' | 'mihomo-alpha' | 'clash-rs-alpha' | 'meow'
 
+export type ClashGuardOverrides = {
+  'log-level': LogLevel
+  'allow-lan': boolean
+  mode: Mode
+  secret: string
+  'unified-delay': boolean
+  'tcp-concurrent': boolean
+  ipv6: boolean
+}
+
+export type ClashGuardOverridesPatch =
+  ClashGuardOverridesPatch_Serialize | ClashGuardOverridesPatch_Deserialize
+
+export type ClashGuardOverridesPatch_Deserialize = {
+  'log-level'?: LogLevel | null
+  'allow-lan'?: boolean | null
+  mode?: Mode | null
+  secret?: string | null
+  'unified-delay'?: boolean | null
+  'tcp-concurrent'?: boolean | null
+  ipv6?: boolean | null
+}
+
+export type ClashGuardOverridesPatch_Serialize = {
+  'log-level'?: LogLevel | null
+  'allow-lan'?: boolean | null
+  mode?: Mode | null
+  secret?: string | null
+  'unified-delay'?: boolean | null
+  'tcp-concurrent'?: boolean | null
+  ipv6?: boolean | null
+}
+
 export type ClashInfo = {
   /**  clash core port */
   port: number
@@ -540,23 +703,10 @@ export type ClashRule = {
   proxy: string
 }
 
-export type ClashStrategy = {
-  external_controller_port_strategy: ExternalControllerPortStrategy
-}
-
 export type ClashVersion = {
   version: string
   premium: boolean | null
   meta: boolean | null
-}
-
-export type ClashWsConnectionSnapshot = {
-  downloadTotal: number
-  uploadTotal: number
-  downloadSpeed: number
-  uploadSpeed: number
-  memory: number | null
-  connections: any | null
 }
 
 export type ClashWsEvent = {
@@ -588,7 +738,7 @@ export type ClashWsSnapshot = {
   sequence: number
   state: ClashConnectionsConnectorState
   recording: ClashWsRecording
-  connections: ClashWsConnectionSnapshot[]
+  connections: ClashConnectionsSummary[]
   logs: ClashWsLog[]
   traffic: ClashWsTraffic[]
   memory: ClashWsMemory[]
@@ -602,12 +752,60 @@ export type ClashWsTraffic = {
 export type ClashWsUpdate =
   | { kind: 'reset'; data: ClashWsSnapshot }
   | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'connections_updated'; data: ClashWsConnectionSnapshot }
+  | { kind: 'connections_updated'; data: ClashConnectionsSummary }
   | { kind: 'log_appended'; data: ClashWsLog }
   | { kind: 'traffic_updated'; data: ClashWsTraffic }
   | { kind: 'memory_updated'; data: ClashWsMemory }
   | { kind: 'recording_changed'; data: ClashWsRecording }
   | { kind: 'history_cleared'; data: ClashWsKind }
+
+export type ClosedConnection = {
+  id: string
+  started_at: number
+  first_seen_at: number
+  closed_at: number
+  bytes: Bytes
+  dimensions: Dimensions
+}
+
+/**  Exclusive position for newest-first paging. */
+export type ClosedCursor = {
+  closed_at: number
+  id: string
+}
+
+export type ClosedPage = {
+  connections: ClosedConnection[]
+  next: ClosedCursor | null
+}
+
+/**
+ *  Why a source transaction did not commit, classified once from the
+ *  persistence error and, when the Runtime took part, the receipt it settled
+ *  (U7). A source wraps it in its own domain error.
+ */
+export type CommitAborted =
+  /**  The yaml write failed; nothing committed. */
+  | { kind: 'write_config'; runtime: RuntimeAftermath }
+  /**  The write failed and so did the recovery of what the transaction staged. */
+  | { kind: 'recover_after_write_failure'; runtime: RuntimeAftermath }
+  /**  A required participant refused the candidate. */
+  | {
+      kind: 'runtime_refused'
+      errors: RuntimeError[]
+      runtime: RuntimeAftermath
+    }
+  /**  A required participant could not decide. */
+  | {
+      kind: 'runtime_failed'
+      errors: RuntimeError[]
+      runtime: RuntimeAftermath
+    }
+  /**
+   *  The coordinator refused before persisting: builder validation, or a CAS
+   *  mismatch the caller did not classify as its own version conflict.
+   */
+  | { kind: 'validate_state' }
 
 /**  A source commit and its critical runtime result. Peripheral owners settle separately. */
 export type CommitReceipt = {
@@ -615,6 +813,12 @@ export type CommitReceipt = {
   domain: string
   source_version: number
   runtime: RuntimeCommitStatus
+}
+
+export type CompletionDto = {
+  outcome: OutcomeDto
+  output: OutputDto
+  journal: JournalDto
 }
 
 export type CompositionConfig =
@@ -688,6 +892,27 @@ export type ConfigDefinition_Serialize =
       transforms?: ProfileId[]
     } & { source?: never })
 
+/**  Which source domain a mutation belongs to. */
+export type ConfigDomain = 'application' | 'clash' | 'profiles'
+
+export type ConfigError =
+  /**  A nightly build keeps its channel. */
+  | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
+  | { kind: 'validate_hotkeys'; source: HotkeyParseError }
+  | { kind: 'workflow_not_ready' }
+  | { kind: 'shutting_down'; domain: ConfigDomain }
+  /**  The owner's mailbox is closed, or it dropped the reply. */
+  | { kind: 'owner_stopped'; domain: ConfigDomain }
+  | {
+      kind: 'version_conflict'
+      domain: ConfigDomain
+      expected: number
+      actual: number
+    }
+  | { kind: 'commit'; domain: ConfigDomain; source: CommitAborted }
+  | { kind: 'persist_session_state' }
+  | { kind: 'session_state_stopped' }
+
 /**  Why a config pipeline is being executed. */
 export type ConfigExecutionRole =
   /**  The final config selected by `Profiles.current`. */
@@ -732,8 +957,9 @@ export type ConfigurationStatus = {
   source_versions: SourceVersions
   runtime: RuntimeConvergence
   effects: EffectConvergence[]
+  /**  The latest background-source receipt per profile. */
+  sources: SourceStatus[]
   active: string | null
-  queued: string[]
   recent_operations: OperationStatus[]
 }
 
@@ -763,6 +989,72 @@ export type CoreControllerInfo =
   | ({ UnixSocket: string } & { Http?: never; NamedPipe?: never })
   /**  Normalized base URL with any credentials removed. */
   | ({ Http: string } & { NamedPipe?: never; UnixSocket?: never })
+
+export type CoreErrorKind =
+  | 'native_store_unavailable'
+  /**  The operation needs a running core and there is none. */
+  | 'not_started'
+  /**  The operation needs a stopped core and one is running. */
+  | 'already_running'
+  /**
+   *  `expected_revision` did not match the running revision. Nothing was
+   *  applied; re-read `/status` for the current one and retry.
+   */
+  | 'revision_conflict'
+  /**
+   *  An epoch whose death could not be confirmed has latched the manager.
+   *  Every lifecycle operation is refused until a `Recover` submission clears it.
+   */
+  | 'quarantined'
+  /**  The core itself rejected the config in a dry run. */
+  | 'config_check_failed'
+  | 'config_not_found'
+  | 'binary_not_found'
+  /**  The config could not be parsed or canonicalized. */
+  | 'invalid_config'
+  /**
+   *  The config declares no external controller, so the core cannot be
+   *  health-probed.
+   */
+  | 'controller_missing'
+  /**  The apply failed and the previous revision was restored. */
+  | 'apply_failed'
+  /**  The apply failed and so did the rollback: no epoch is running. */
+  | 'apply_rollback_failed'
+  /**  A core process could not be proven dead; the manager is now quarantined. */
+  | 'stop_unconfirmed'
+  /**  The control plane is shutting down and admits no new operations. */
+  | 'shutting_down'
+  /**  The bounded operation queue is full; retry after in-flight work drains. */
+  | 'queue_full'
+  /**
+   *  The `OperationId` was already used with a different payload, or the
+   *  operation cannot run concurrently with one that owns the endpoint
+   *  (for example a host handoff in progress).
+   */
+  | 'operation_conflict'
+  /**
+   *  The control endpoint cannot be reached: transport failure, daemon not
+   *  running, or the endpoint is reconnecting. Retryable by definition.
+   */
+  | 'backend_unavailable'
+  /**
+   *  The control plane itself failed — an executor died or a reply channel
+   *  broke. Not retryable; the host must treat this as fatal.
+   */
+  | 'internal'
+
+/**
+ *  The wire mirror of a [`CoreError`], which is a foreign type without serde.
+ *  It is the only place a `CoreError` is unpacked for the frontend.
+ */
+export type CoreFailure = {
+  /**  `None` when the core manager did not classify the failure. */
+  kind: CoreErrorKind | null
+  message: string
+  retryable: boolean
+  operation_id: string | null
+}
 
 /**
  *  The manager's health observation for the active core. Absent while the
@@ -815,6 +1107,11 @@ export type CoreInfos_Serialize = {
   revision?: ConfigRevisionInfo | null
   detail?: CoreStateDetail | null
 }
+
+/**  A failure of locating the binary a core is started from. */
+export type CoreSpecError =
+  | { kind: 'find_core_binary'; core: string }
+  | { kind: 'core_binary_path_not_utf8'; core: string; path: string }
 
 export type CoreState = 'Running' | { Stopped: string | null }
 
@@ -912,6 +1209,12 @@ export type CoreStatusInfo = {
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
+/**  A failure of asking a core binary for its version. */
+export type CoreVersionError =
+  | { kind: 'run_core_version'; core: string }
+  | { kind: 'core_version_exit'; core: string }
+  | { kind: 'core_version_not_reported'; core: string }
+
 export type DebugHttpStatus = {
   enabled: boolean
   url: string | null
@@ -920,15 +1223,17 @@ export type DebugHttpStatus = {
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = {
   phase: DegradationPhase
-  /**  Stable snake_case code string (not a free-form English phrase). */
-  code: string
+  reason: DegradationReason
+  /**
+   *  The diagnostic text, for logs and the copied details; the frontend
+   *  localizes `reason`.
+   */
   message: string
   retryable: boolean
 }
 
 /**  Public degradation phases for mutation outcomes. Serde/Specta use snake_case. */
 export type DegradationPhase =
-  | 'legacy_mirror'
   | 'profile_materialization'
   | 'runtime_build'
   | 'runtime_check'
@@ -938,6 +1243,35 @@ export type DegradationPhase =
   | 'core_rollback'
   | 'system_effect'
   | 'ui_effect'
+
+/**  Why a committed mutation is degraded. The frontend localizes each variant. */
+export type DegradationReason =
+  /**
+   *  The runtime owner stopped before the mutation settled, or settled it as
+   *  needing recovery.
+   */
+  | {
+      code: 'runtime_recovery_required'
+      operation_id: string | null
+      cause: RuntimeError | null
+    }
+  /**  The runtime will apply the committed mutation later. */
+  | { code: 'runtime_deferred'; cause: RuntimeError }
+  | { code: 'runtime_product_publish_failed'; cause: RuntimeError }
+  | { code: 'service_stop_failed'; cause: RuntimeError }
+  | { code: 'mode_interruption_failed'; cause: InterruptFailure }
+  | { code: 'profile_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_cache_refresh_failed' }
+  | { code: 'journal_invalid' }
+  | { code: 'jobs_journal_unavailable' }
+  | { code: 'materialization_deferred' }
+  | { code: 'cleanup_deferred' }
+  | {
+      code: 'profile_auto_activation_failed'
+      profile: ProfileId
+      cause: ProfilesError
+    }
 
 export type DelayRes = {
   delay: number
@@ -951,6 +1285,18 @@ export type DeviceInfo = {
    *  Memory size in bytes
    */
   memory: string
+}
+
+export type Dimensions = {
+  /**  Process path or name. */
+  process: string
+  source: string
+  /**  Host, else destination IP. */
+  target: string
+  protocol: string
+  rule: RuleKey
+  /**  Clash wire order: exit first, outermost group last. */
+  chains: string[]
 }
 
 export type Direction = 'latest' | 'before' | 'after'
@@ -980,8 +1326,39 @@ export type EffectConvergence = {
   applied_revision: number
   attempts: number
   automatic_remaining: number
+  /**  What kind of failure the effect is in, for the UI to localize. */
+  code: EffectFailureCode | null
+  /**  The failure's diagnostic text, as the owner reported it. */
   message: string | null
 }
+
+/**
+ *  Why an effect is not in its desired state, in the terms the UI localizes.
+ *
+ *  One value per kind of failure, named after the effect that failed. The
+ *  owner that classifies a failure is the one that picks the code; the
+ *  message beside it is only the diagnostic text.
+ */
+export type EffectFailureCode =
+  | 'hotkey_invalid_bindings'
+  | 'hotkey_partial_registration'
+  | 'hotkey_shut_down'
+  | 'hotkey_stopped'
+  | 'logger_refresh_failed'
+  | 'widget_unavailable'
+  | 'widget_apply_failed'
+  | 'tray_refresh_failed'
+  | 'effect_owner_silent'
+  | 'proxy_guard_waiting_dependency'
+  | 'auto_launch_failed'
+  | 'pac_disable_failed'
+  | 'pac_apply_failed'
+  | 'pac_unsupported'
+  | 'system_proxy_apply_failed'
+  | 'system_proxy_port_unresolved'
+  | 'system_proxy_restore_failed'
+  | 'system_proxy_shut_down'
+  | 'system_proxy_stopped'
 
 /**
  *  Execution order of a plan. The ordering is load-bearing: the tray menu is
@@ -997,6 +1374,10 @@ export type EffectKind =
   | 'hotkeys'
   | 'widget'
   | 'tray'
+
+export type EffectsError =
+  /**  The owner's mailbox is closed: the app is exiting, or the owner died. */
+  { kind: 'effects_stopped' }
 
 export type EndpointConnectivity =
   | { kind: 'connected' }
@@ -1029,14 +1410,79 @@ export type EnvInfo = {
 }
 
 /**
+ *  A filesystem path as it appears in an error. The lossy conversion keeps it
+ *  serializable when the path is not valid UTF-8.
+ */
+export type ErrorPath = string
+
+/**
+ *  Evidence a mutation needed and did not have, before anything was tried.
+ *
+ *  Not a Try outcome. Nothing was submitted, so there is no result to classify
+ *  and this attempt made nothing less certain than it already was — which is
+ *  why it is a plain refusal the caller may retry (v2 §2.4, first row) and
+ *  never the isolated state §11.4 reserves for "结果可能已经执行".
+ */
+export type EvidenceGap =
+  /**
+   *  The core is mid-transition — starting, restarting, switching or
+   *  stopping. That is an answer, but not one that says what a candidate
+   *  would be applied on top of.
+   */
+  | 'core_transitioning'
+  /**
+   *  The host published no runtime state, or the read failed, and no stop
+   *  this workflow recorded settles the question either.
+   */
+  | 'baseline_unconfirmed'
+  /**
+   *  A core is running that this session never applied to, so no receipt
+   *  describes what it is running. The Try could be submitted, but its Cancel
+   *  would have nothing to put back — and a mutation that cannot be undone
+   *  must not be attempted (R10). The gap is known before anything is
+   *  submitted, which is what keeps it a refusal rather than the isolated
+   *  state a post-submission unknown earns.
+   */
+  | 'no_restorable_baseline'
+
+/**
  *  Which controller owns the runtime. The app perceives the difference in
  *  exactly two places: this tag on the endpoint slot, and the handoff
  *  protocol.
  */
 export type ExecutionHost = 'local' | 'service'
 
-export type ExternalControllerPortStrategy =
-  'fixed' | 'random' | 'allow_fallback'
+/**  What a path was required to be when it was not. */
+export type ExpectedNode =
+  | 'real_directory'
+  | 'regular_file'
+  /**  A regular file, or a symlink whose target is read as text. */
+  | 'hashable_target'
+  /**  Absent, a regular file, or a symlink. */
+  | 'replaceable_target'
+  /**  Anything but a directory. */
+  | 'removable_resource'
+  /**  Absent, or a symlink to the staged target. */
+  | 'ready_symlink'
+
+export type ExternalControllerStrategy = {
+  host: string
+  port: PortStrategy
+}
+
+export type ExternalControllerStrategyPatch =
+  | ExternalControllerStrategyPatch_Serialize
+  | ExternalControllerStrategyPatch_Deserialize
+
+export type ExternalControllerStrategyPatch_Deserialize = {
+  host?: string | null
+  port?: PortStrategyPatch_Deserialize
+}
+
+export type ExternalControllerStrategyPatch_Serialize = {
+  host?: string | null
+  port: PortStrategyPatch_Serialize
+}
 
 export type ExternalMode = 'symlink' | 'mirror'
 
@@ -1073,296 +1519,125 @@ export type GetSysProxyResponse = {
   server: string
 }
 
-/**  ### `verge.yaml` schema */
-export type IVerge = IVerge_Serialize | IVerge_Deserialize
+export type GroupBy =
+  'process' | 'source' | 'target' | 'protocol' | 'rule' | 'exit' | 'chain'
 
-/**  ### `verge.yaml` schema */
-export type IVerge_Deserialize =
-  | ({
-      /**  app listening port for app singleton */
-      app_singleton_port: number | null
-      /**
-       *  app log level
-       *  silent | error | warn | info | debug | trace
-       */
-      app_log_level: LoggingLevel_Deserialize | null
-      language: string | null
-      /**  `light` or `dark` or `system` */
-      theme_mode: string | null
-      /**  enable traffic graph default is true */
-      traffic_graph: boolean | null
-      /**  show memory info (only for Clash Meta) */
-      enable_memory_usage: boolean | null
-      /**  global ui framer motion effects */
-      lighten_animation_effects: boolean | null
-      /**  clash tun mode */
-      enable_tun_mode: boolean | null
-      /**  windows service mode */
-      enable_service_mode: boolean | null
-      /**  can the app auto startup */
-      enable_auto_launch: boolean | null
-      /**  not show the window on launch */
-      enable_silent_start: boolean | null
-      /**  set system proxy */
-      enable_system_proxy: boolean | null
-      /**  enable proxy guard */
-      enable_proxy_guard: boolean | null
-      /**  set system proxy bypass */
-      system_proxy_bypass: string | null
-      /**  theme setting */
-      theme_color: string | null
-      /**  web ui list */
-      web_ui_list: string[] | null
-      /**  clash core path */
-      clash_core: ClashCore_Deserialize | null
-      clash_control_channel: ClashControlChannel | null
-      clash_ipc_disable_http_controller: boolean | null
-      /**
-       *  hotkey map
-       *  format: {func},{key}
-       */
-      hotkeys: string[] | null
-      /**
-       *  切换代理时自动关闭连接 (已弃用)
-       * @deprecated use `break_when_proxy_change` instead
-       */
-      auto_close_connection: boolean | null
-      /**
-       *  切换代理时中断连接
-       *  None: 不中断
-       *  Chain: 仅中断使用该代理链的连接
-       *  All: 中断所有连接
-       */
-      break_when_proxy_change: BreakWhenProxyChange | null
-      /**
-       *  切换配置时中断连接
-       *  true: 中断所有连接
-       *  false: 不中断连接
-       */
-      break_when_profile_change: boolean | null
-      /**
-       *  切换模式时中断连接
-       *  true: 中断所有连接
-       *  false: 不中断连接
-       */
-      break_when_mode_change: boolean | null
-      /**  默认的延迟测试连接 */
-      default_latency_test: string | null
-      /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真 */
-      enable_clash_fields: boolean | null
-      /**  是否使用内部的脚本支持，默认为真 */
-      enable_builtin_enhanced: boolean | null
-      /**  proxy 页面布局 列数 */
-      proxy_layout_column: number | null
-      /**
-       *  日志清理
-       *  分钟数； 0 为不清理
-       * @deprecated use `max_log_files` instead
-       */
-      auto_log_clean: number | null
-      /**  日记轮转时间，单位：天 */
-      max_log_files: number | null
-      /**
-       *  window size and position
-       * @deprecated use `window_size_state` instead
-       */
-      window_size_position: (number | null)[] | null
-      window_size_state: WindowState | null
-      /**  是否启用随机端口 */
-      enable_random_port: boolean | null
-      /**  verge mixed port 用于覆盖 clash 的 mixed port */
-      verge_mixed_port: number | null
-      /**  Check update when app launch */
-      enable_auto_check_update: boolean | null
-      /**  Clash 相关策略 */
-      clash_strategy: ClashStrategy | null
-      /**  是否启用代理托盘选择 */
-      clash_tray_selector: ProxiesSelectorMode | null
-      always_on_top: boolean | null
-      /**
-       *  Tun 堆栈选择
-       *  TODO: 弃用此字段，转移到 clash config 里
-       */
-      tun_stack: TunStack | null
-      /**  是否启用网络统计信息浮窗 */
-      network_statistic_widget: NetworkStatisticWidgetConfig | null
-      /**
-       *  PAC URL for automatic proxy configuration
-       *  This field is used to set PAC proxy without exposing it to the frontend UI
-       */
-      pac_url: string | null
-      /**
-       *  enable tray text display on Linux systems
-       *  When enabled, shows proxy and TUN mode status as text next to the tray icon
-       *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-       */
-      enable_tray_text: boolean | null
-      /**
-       *  Window type to use when opening the app window
-       *  Main: opens new main window
-       */
-      window_type: WindowType | null
-      /**
-       *  Tray menu implementation mode
-       *  Native: use the OS system tray menu (default on non-Windows)
-       *  Webview: use a custom WebView window (default on Windows)
-       */
-      tray_menu_mode: TrayMenuMode | null
-      /**
-       *  Webview tray menu window dismiss behavior
-       *  Hide: hide the window on close (fast re-open, higher memory usage)
-       *  Close: destroy the window on close (slower re-open, lower memory usage)
-       */
-      tray_menu_close_behavior: TrayMenuCloseBehavior | null
-    } & {
-      /**  proxy guard interval */
-      proxy_guard_interval: number | null
-    })
+/**
+ *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
+ *  they are fixed by the configurations users already have.
+ */
+export type HotkeyAction =
+  | 'open_or_close_dashboard'
+  | 'clash_mode_rule'
+  | 'clash_mode_global'
+  | 'clash_mode_direct'
+  | 'clash_mode_script'
+  | 'toggle_system_proxy'
+  | 'enable_system_proxy'
+  | 'disable_system_proxy'
+  | 'toggle_tun_mode'
+  | 'enable_tun_mode'
+  | 'disable_tun_mode'
+
+/**
+ *  Why a hotkey list could not be accepted. Rejected before anything is
+ *  committed, so every variant names the entry the user has to fix.
+ */
+export type HotkeyParseError =
+  /**  Not the `"<function>,<accelerator>"` shape. */
+  | { kind: 'malformed_entry'; entry: string }
+  | { kind: 'unknown_function'; function: string }
+  /**  A `+` separated accelerator with an empty segment. */
+  | { kind: 'empty_key_segment'; accelerator: string }
+  /**
+   *  The platform's parser refused it; its text, which names the offending
+   *  key, reaches the user only through the copied detail. Boxed because
+   *  this module does not name the plugin.
+   */
+  | { kind: 'unsupported_accelerator'; accelerator: string }
+  | { kind: 'missing_super_key'; accelerator: string }
+  /**  The same accelerator was bound to two functions. */
   | {
-      /**  proxy guard interval */
-      proxy_guard_duration: number | null
+      kind: 'duplicate_accelerator'
+      accelerator: string
+      first: HotkeyAction
+      second: HotkeyAction
     }
 
-/**  ### `verge.yaml` schema */
-export type IVerge_Serialize = {
-  /**  app listening port for app singleton */
-  app_singleton_port: number | null
-  /**
-   *  app log level
-   *  silent | error | warn | info | debug | trace
-   */
-  app_log_level: LoggingLevel_Serialize | null
-  language: string | null
-  /**  `light` or `dark` or `system` */
-  theme_mode: string | null
-  /**  enable traffic graph default is true */
-  traffic_graph: boolean | null
-  /**  show memory info (only for Clash Meta) */
-  enable_memory_usage: boolean | null
-  /**  global ui framer motion effects */
-  lighten_animation_effects: boolean | null
-  /**  clash tun mode */
-  enable_tun_mode: boolean | null
-  /**  windows service mode */
-  enable_service_mode?: boolean | null
-  /**  can the app auto startup */
-  enable_auto_launch: boolean | null
-  /**  not show the window on launch */
-  enable_silent_start: boolean | null
-  /**  set system proxy */
-  enable_system_proxy: boolean | null
-  /**  enable proxy guard */
-  enable_proxy_guard: boolean | null
-  /**  set system proxy bypass */
-  system_proxy_bypass: string | null
-  /**  proxy guard interval */
-  proxy_guard_interval: number | null
-  /**  theme setting */
-  theme_color: string | null
-  /**  web ui list */
-  web_ui_list: string[] | null
-  /**  clash core path */
-  clash_core?: ClashCore_Serialize | null
-  clash_control_channel: ClashControlChannel | null
-  clash_ipc_disable_http_controller: boolean | null
-  /**
-   *  hotkey map
-   *  format: {func},{key}
-   */
-  hotkeys: string[] | null
-  /**
-   *  切换代理时自动关闭连接 (已弃用)
-   * @deprecated use `break_when_proxy_change` instead
-   */
-  auto_close_connection: boolean | null
-  /**
-   *  切换代理时中断连接
-   *  None: 不中断
-   *  Chain: 仅中断使用该代理链的连接
-   *  All: 中断所有连接
-   */
-  break_when_proxy_change: BreakWhenProxyChange | null
-  /**
-   *  切换配置时中断连接
-   *  true: 中断所有连接
-   *  false: 不中断连接
-   */
-  break_when_profile_change: boolean | null
-  /**
-   *  切换模式时中断连接
-   *  true: 中断所有连接
-   *  false: 不中断连接
-   */
-  break_when_mode_change: boolean | null
-  /**  默认的延迟测试连接 */
-  default_latency_test: string | null
-  /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真 */
-  enable_clash_fields: boolean | null
-  /**  是否使用内部的脚本支持，默认为真 */
-  enable_builtin_enhanced: boolean | null
-  /**  proxy 页面布局 列数 */
-  proxy_layout_column: number | null
-  /**
-   *  日志清理
-   *  分钟数； 0 为不清理
-   * @deprecated use `max_log_files` instead
-   */
-  auto_log_clean: number | null
-  /**  日记轮转时间，单位：天 */
-  max_log_files: number | null
-  /**
-   *  window size and position
-   * @deprecated use `window_size_state` instead
-   */
-  window_size_position?: (number | null)[] | null
-  window_size_state?: WindowState | null
-  /**  是否启用随机端口 */
-  enable_random_port: boolean | null
-  /**  verge mixed port 用于覆盖 clash 的 mixed port */
-  verge_mixed_port: number | null
-  /**  Check update when app launch */
-  enable_auto_check_update: boolean | null
-  /**  Clash 相关策略 */
-  clash_strategy: ClashStrategy | null
-  /**  是否启用代理托盘选择 */
-  clash_tray_selector: ProxiesSelectorMode | null
-  always_on_top: boolean | null
-  /**
-   *  Tun 堆栈选择
-   *  TODO: 弃用此字段，转移到 clash config 里
-   */
-  tun_stack: TunStack | null
-  /**  是否启用网络统计信息浮窗 */
-  network_statistic_widget?: NetworkStatisticWidgetConfig | null
-  /**
-   *  PAC URL for automatic proxy configuration
-   *  This field is used to set PAC proxy without exposing it to the frontend UI
-   */
-  pac_url?: string | null
-  /**
-   *  enable tray text display on Linux systems
-   *  When enabled, shows proxy and TUN mode status as text next to the tray icon
-   *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-   */
-  enable_tray_text: boolean | null
-  /**
-   *  Window type to use when opening the app window
-   *  Main: opens new main window
-   */
-  window_type: WindowType | null
-  /**
-   *  Tray menu implementation mode
-   *  Native: use the OS system tray menu (default on non-Windows)
-   *  Webview: use a custom WebView window (default on Windows)
-   */
-  tray_menu_mode: TrayMenuMode | null
-  /**
-   *  Webview tray menu window dismiss behavior
-   *  Hide: hide the window on close (fast re-open, higher memory usage)
-   *  Close: destroy the window on close (slower re-open, lower memory usage)
-   */
-  tray_menu_close_behavior: TrayMenuCloseBehavior | null
+/**
+ *  UI language of the application.
+ *
+ *  The serialized form is the canonical i18n key shared by every layer that
+ *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
+ *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  mixed-case spellings are still accepted on read through `serde(alias)`.
+ */
+export type I18nLanguage = I18nLanguage_Serialize | I18nLanguage_Deserialize
+
+/**
+ *  UI language of the application.
+ *
+ *  The serialized form is the canonical i18n key shared by every layer that
+ *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
+ *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  mixed-case spellings are still accepted on read through `serde(alias)`.
+ */
+export type I18nLanguage_Deserialize =
+  'en' | 'en-US' | 'ko' | 'ru' | 'zh-cn' | 'zh-CN' | 'zh-tw' | 'zh-TW'
+
+/**
+ *  UI language of the application.
+ *
+ *  The serialized form is the canonical i18n key shared by every layer that
+ *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
+ *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  mixed-case spellings are still accepted on read through `serde(alias)`.
+ */
+export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
+
+/**  A failure of installing a downloaded core binary over the installed one. */
+export type InstallCoreBinaryError =
+  | { kind: 'start_elevated_copy'; core: string; destination: ErrorPath }
+  | {
+      kind: 'elevated_copy_failed'
+      core: string
+      destination: ErrorPath
+      exit_code: number | null
+    }
+  | { kind: 'path_not_utf8'; path: ErrorPath }
+
+/**  How closing the source instance's connections failed. */
+export type InterruptFailure =
+  /**  The Clash API belongs to a core instance that has since been retired. */
+  'stale' | 'unavailable' | 'timeout' | 'protocol'
+
+/**  A failed command as the frontend receives it. */
+export type IpcError = {
+  /**  The domain failure; the frontend localizes it. */
+  kind: IpcErrorKind
+  /**  The error's own message, shown when `kind` cannot be localized. */
+  message: string
+  /**  The original error, copied by the user for diagnosis. */
+  detail: string
 }
+
+/**  The domain a command failed in. A domain joins once its errors are typed. */
+export type IpcErrorKind =
+  /**  Not classified into a domain; only `message` describes it. */
+  | { domain: 'unknown' }
+  | { domain: 'profiles'; error: ProfilesError }
+  | { domain: 'runtime'; error: RuntimeError }
+  | { domain: 'config'; error: ConfigError }
+  | { domain: 'storage'; error: StorageOperationError }
+  | { domain: 'system_dns'; error: SystemDnsError }
+  | { domain: 'system_proxy'; error: OsProxyError }
+  | { domain: 'effects'; error: EffectsError }
+
+export type JournalDto =
+  { kind: 'durable' } | { kind: 'degraded'; code: string }
 
 export type Level =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'unknown'
@@ -1402,6 +1677,15 @@ export type LogCursor = {
   offset: string
 }
 
+export type LogDto = {
+  run_id: string
+  sequence: string
+  time: string
+  level: string
+  target: string
+  fields: { [key in string]: string }
+}
+
 export type LogError =
   | 'unavailable'
   | 'unsupported'
@@ -1417,6 +1701,8 @@ export type LogFileInfo = {
   bytes: string
 }
 
+export type LogLevel = 'silent' | 'error' | 'warning' | 'info' | 'debug'
+
 export type LogPage = {
   rows: LogRow[]
   cursor: LogCursor
@@ -1430,6 +1716,11 @@ export type LogPage = {
   truncated: string
   indexed_bytes: string
   file_bytes: string
+}
+
+export type LogPageDto = {
+  items: LogDto[]
+  next: string | null
 }
 
 /**
@@ -1552,6 +1843,17 @@ export type ManifestVersionLatest = {
   meow: string
 }
 
+/**  What the materialization port was doing when it failed. */
+export type MaterializationOperation =
+  | 'prepare_file_first'
+  | 'compensate'
+  | 'complete'
+  | 'prepare_cleanup'
+  | 'activate_cleanup'
+  | 'cancel_cleanup'
+  | 'retry_cleanup'
+  | 'reconcile'
+
 /**  Stable read location used by parsers and processors. */
 export type MaterializedFile =
   MaterializedFile_Serialize | MaterializedFile_Deserialize
@@ -1570,6 +1872,8 @@ export type MaterializedFile_Serialize = {
   updated_at?: number | null
 }
 
+export type Mode = 'rule' | 'global' | 'direct' | 'script'
+
 export type MutationOutcome<T> =
   | {
       status: 'committed'
@@ -1585,7 +1889,8 @@ export type MutationOutcome<T> =
       degradations: Degradation[]
     }
 
-export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
+export type NetworkStatisticWidgetConfig =
+  { kind: 'disabled' } | { kind: 'enabled'; value: StatisticWidgetVariant }
 
 export type NewProfileRequest =
   NewProfileRequest_Serialize | NewProfileRequest_Deserialize
@@ -1600,6 +1905,280 @@ export type NewProfileRequest_Serialize = {
   metadata: ProfileMetadata_Serialize
   /**  Add rewrites the materialized path to `{uid}.{ext}`. */
   definition: ProfileDefinition_Serialize
+}
+
+/**  ### `verge.yaml` schema */
+export type NyanpasuAppConfig =
+  NyanpasuAppConfig_Serialize | NyanpasuAppConfig_Deserialize
+
+export type NyanpasuAppConfigPatch =
+  NyanpasuAppConfigPatch_Serialize | NyanpasuAppConfigPatch_Deserialize
+
+export type NyanpasuAppConfigPatch_Deserialize =
+  | ({
+      app_singleton_port?: number | null
+      app_log_level?: LoggingLevel_Deserialize | null
+      language?: I18nLanguage_Deserialize | null
+      theme_mode?: ThemeMode | null
+      traffic_graph?: boolean | null
+      enable_memory_usage?: boolean | null
+      lighten_animation_effects?: boolean | null
+      enable_service_mode?: boolean | null
+      enable_auto_launch?: boolean | null
+      enable_silent_start?: boolean | null
+      enable_system_proxy?: boolean | null
+      enable_proxy_guard?: boolean | null
+      system_proxy_bypass?: string | null
+      theme_color?: string
+      hotkeys?: string[] | null
+      default_latency_test?: string | null
+      enable_builtin_enhanced?: boolean | null
+      proxy_layout_column?: number | null
+      max_log_files?: number | null
+      max_log_file_size?: number | null
+      enable_auto_check_update?: boolean | null
+      release_channel?: ReleaseChannel | null
+      always_on_top?: boolean | null
+      tray_menu_mode?: TrayMenuMode | null
+      tray_menu_close_behavior?: TrayMenuCloseBehavior | null
+      network_statistic_widget?: NetworkStatisticWidgetConfig | null
+      pac_url?: string | null
+      enable_tray_text?: boolean | null
+      enable_tray_traffic?: boolean | null
+      use_legacy_ui?: boolean | null
+    } & {
+      proxy_guard_interval?: number | null
+    })
+  | ({
+      proxy_guard_duration?: number | null
+    } & {
+      core?: ClashCore_Deserialize | null
+    })
+  | ({
+      clash_core?: ClashCore_Deserialize | null
+    } & {
+      tray_selector_mode?: ProxiesSelectorMode | null
+    })
+  | {
+      clash_tray_selector?: ProxiesSelectorMode | null
+    }
+
+export type NyanpasuAppConfigPatch_Serialize = {
+  app_singleton_port?: number | null
+  app_log_level?: LoggingLevel_Serialize | null
+  language?: I18nLanguage_Serialize | null
+  theme_mode?: ThemeMode | null
+  traffic_graph?: boolean | null
+  enable_memory_usage?: boolean | null
+  lighten_animation_effects?: boolean | null
+  enable_service_mode?: boolean | null
+  enable_auto_launch?: boolean | null
+  enable_silent_start?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  theme_color?: string
+  core?: ClashCore_Serialize | null
+  hotkeys?: string[] | null
+  default_latency_test?: string | null
+  enable_builtin_enhanced?: boolean | null
+  proxy_layout_column?: number | null
+  max_log_files?: number | null
+  max_log_file_size?: number | null
+  enable_auto_check_update?: boolean | null
+  release_channel?: ReleaseChannel | null
+  tray_selector_mode?: ProxiesSelectorMode | null
+  always_on_top?: boolean | null
+  tray_menu_mode?: TrayMenuMode | null
+  tray_menu_close_behavior?: TrayMenuCloseBehavior | null
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  pac_url?: string | null
+  enable_tray_text?: boolean | null
+  enable_tray_traffic?: boolean | null
+  use_legacy_ui?: boolean | null
+}
+
+/**  ### `verge.yaml` schema */
+export type NyanpasuAppConfig_Deserialize = {
+  /**  app listening port for app singleton */
+  app_singleton_port: number
+  /**
+   *  app log level
+   *  silent | error | warn | info | debug | trace
+   */
+  app_log_level: LoggingLevel_Deserialize
+  language: I18nLanguage_Deserialize
+  /**  `light` or `dark` or `system` */
+  theme_mode: ThemeMode
+  /**  enable traffic graph */
+  traffic_graph: boolean
+  /**  show memory info (only for Clash Meta) */
+  enable_memory_usage: boolean
+  /**  global ui framer motion effects */
+  lighten_animation_effects: boolean
+  /**  service mode */
+  enable_service_mode: boolean
+  /**  can the app auto startup */
+  enable_auto_launch: boolean
+  /**  not show the window on launch */
+  enable_silent_start: boolean
+  /**  set system proxy */
+  enable_system_proxy: boolean
+  /**  enable proxy guard */
+  enable_proxy_guard: boolean
+  /**  set system proxy bypass */
+  system_proxy_bypass: string
+  /**  proxy guard interval */
+  proxy_guard_interval: number
+  /**  theme setting */
+  theme_color: string
+  /**  clash core path */
+  core: ClashCore_Deserialize
+  /**
+   *  hotkey map
+   *  format: {func},{key}
+   */
+  hotkeys: string[]
+  /**  默认的延迟测试连接 */
+  default_latency_test: string
+  /**  是否使用内部的脚本支持，默认为真 */
+  enable_builtin_enhanced: boolean
+  /**  proxy 页面布局 列数 */
+  proxy_layout_column: number
+  /**  最多保留的日志文件数 */
+  max_log_files: number
+  /**  单个日志文件的大小上限，单位：MiB */
+  max_log_file_size?: number
+  /**  Check update when app launch */
+  enable_auto_check_update: boolean
+  /**  None in older configurations means the channel of the installed build. */
+  release_channel?: ReleaseChannel | null
+  /**  是否启用代理托盘选择 */
+  tray_selector_mode: ProxiesSelectorMode
+  /**  是否窗口置顶 */
+  always_on_top: boolean
+  /**
+   *  托盘菜单模式：系统原生菜单还是 WebView 菜单
+   *  平台相关默认值：Windows 为 `webview`，其他平台 `native`
+   */
+  tray_menu_mode: TrayMenuMode
+  /**  WebView 托盘菜单窗口失焦时的行为：隐藏还是销毁 */
+  tray_menu_close_behavior: TrayMenuCloseBehavior
+  /**  是否启用网络统计信息浮窗 */
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  /**
+   *  PAC URL for automatic proxy configuration
+   *  This field is used to set PAC proxy without exposing it to the frontend UI
+   */
+  pac_url: string | null
+  /**
+   *  enable tray text display on Linux systems
+   *  When enabled, shows proxy and TUN mode status as text next to the tray icon
+   *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
+   */
+  enable_tray_text: boolean
+  /**
+   *  enable traffic information display in system tray
+   *  When enabled, shows upload/download speeds in the tray tooltip (macOS/Windows) or title (Linux)
+   */
+  enable_tray_traffic: boolean
+  /**
+   *  Use legacy UI (original UI at "/" route)
+   *  When true, opens legacy window; when false, opens new main window
+   */
+  use_legacy_ui: boolean
+}
+
+/**  ### `verge.yaml` schema */
+export type NyanpasuAppConfig_Serialize = {
+  /**  app listening port for app singleton */
+  app_singleton_port: number
+  /**
+   *  app log level
+   *  silent | error | warn | info | debug | trace
+   */
+  app_log_level: LoggingLevel_Serialize
+  language: I18nLanguage_Serialize
+  /**  `light` or `dark` or `system` */
+  theme_mode: ThemeMode
+  /**  enable traffic graph */
+  traffic_graph: boolean
+  /**  show memory info (only for Clash Meta) */
+  enable_memory_usage: boolean
+  /**  global ui framer motion effects */
+  lighten_animation_effects: boolean
+  /**  service mode */
+  enable_service_mode: boolean
+  /**  can the app auto startup */
+  enable_auto_launch: boolean
+  /**  not show the window on launch */
+  enable_silent_start: boolean
+  /**  set system proxy */
+  enable_system_proxy: boolean
+  /**  enable proxy guard */
+  enable_proxy_guard: boolean
+  /**  set system proxy bypass */
+  system_proxy_bypass: string
+  /**  proxy guard interval */
+  proxy_guard_interval: number
+  /**  theme setting */
+  theme_color: string
+  /**  clash core path */
+  core: ClashCore_Serialize
+  /**
+   *  hotkey map
+   *  format: {func},{key}
+   */
+  hotkeys: string[]
+  /**  默认的延迟测试连接 */
+  default_latency_test: string
+  /**  是否使用内部的脚本支持，默认为真 */
+  enable_builtin_enhanced: boolean
+  /**  proxy 页面布局 列数 */
+  proxy_layout_column: number
+  /**  最多保留的日志文件数 */
+  max_log_files: number
+  /**  单个日志文件的大小上限，单位：MiB */
+  max_log_file_size: number
+  /**  Check update when app launch */
+  enable_auto_check_update: boolean
+  /**  None in older configurations means the channel of the installed build. */
+  release_channel: ReleaseChannel | null
+  /**  是否启用代理托盘选择 */
+  tray_selector_mode: ProxiesSelectorMode
+  /**  是否窗口置顶 */
+  always_on_top: boolean
+  /**
+   *  托盘菜单模式：系统原生菜单还是 WebView 菜单
+   *  平台相关默认值：Windows 为 `webview`，其他平台 `native`
+   */
+  tray_menu_mode: TrayMenuMode
+  /**  WebView 托盘菜单窗口失焦时的行为：隐藏还是销毁 */
+  tray_menu_close_behavior: TrayMenuCloseBehavior
+  /**  是否启用网络统计信息浮窗 */
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  /**
+   *  PAC URL for automatic proxy configuration
+   *  This field is used to set PAC proxy without exposing it to the frontend UI
+   */
+  pac_url?: string | null
+  /**
+   *  enable tray text display on Linux systems
+   *  When enabled, shows proxy and TUN mode status as text next to the tray icon
+   *  When disabled, only shows status via icon changes (prevents text display issues on Wayland)
+   */
+  enable_tray_text: boolean
+  /**
+   *  enable traffic information display in system tray
+   *  When enabled, shows upload/download speeds in the tray tooltip (macOS/Windows) or title (Linux)
+   */
+  enable_tray_traffic: boolean
+  /**
+   *  Use legacy UI (original UI at "/" route)
+   *  When true, opens legacy window; when false, opens new main window
+   */
+  use_legacy_ui: boolean
 }
 
 export type OpenLogs = {
@@ -1679,6 +2258,27 @@ export type OperatorTag =
       }
     }
 
+/**
+ *  Why the platform proxy settings could not be read or written. The platform's
+ *  own error stays in `source`, boxed because this module does not name the
+ *  crate that produced it; it reaches the user through the copied detail.
+ */
+export type OsProxyError =
+  | { kind: 'read_os_proxy' }
+  | { kind: 'write_os_proxy'; enable: boolean; host: string; port: number }
+
+export type OutcomeDto =
+  | { kind: 'succeeded' }
+  | { kind: 'failed'; code: string; message: string }
+  | { kind: 'cancelled' }
+  | { kind: 'interrupted' }
+  | { kind: 'skipped' }
+
+export type OutputDto =
+  | { kind: 'json_text'; value: string }
+  | { kind: 'unavailable'; code: string }
+  | { kind: 'none' }
+
 export type OverlayTransform =
   OverlayTransform_Serialize | OverlayTransform_Deserialize
 
@@ -1690,21 +2290,43 @@ export type OverlayTransform_Serialize = {
   source: ProfileSource_Serialize
 }
 
-export type PatchRuntimeConfig =
-  PatchRuntimeConfig_Serialize | PatchRuntimeConfig_Deserialize
+export type PickPortError =
+  { kind: 'port_not_available'; port: number } | { kind: 'no_open_port' }
 
-export type PatchRuntimeConfig_Deserialize = {
-  'allow-lan'?: boolean | null
-  ipv6?: boolean | null
-  'log-level'?: string | null
-  mode?: string | null
+/**  The port a resolution was picking for. */
+export type PortField = 'mixed' | 'http' | 'socks' | 'external_controller'
+
+/**  A failure of resolving the ports a candidate runtime would bind. */
+export type PortResolveError = {
+  kind: 'resolve_port'
+  field: PortField
+  source: PickPortError
 }
 
-export type PatchRuntimeConfig_Serialize = {
-  'allow-lan'?: boolean | null
-  ipv6?: boolean | null
-  'log-level'?: string | null
-  mode?: string | null
+export type PortStrategy = {
+  /**  外部控制器端口策略类型 */
+  kind: PortStrategyKind
+  /**
+   *  外部控制器端口起始端口
+   *
+   *  用于固定或允许回退策略
+   */
+  start_port: number
+}
+
+export type PortStrategyKind = 'fixed' | 'random' | 'allow_fallback'
+
+export type PortStrategyPatch =
+  PortStrategyPatch_Serialize | PortStrategyPatch_Deserialize
+
+export type PortStrategyPatch_Deserialize = {
+  kind?: PortStrategyKind | null
+  start_port?: number | null
+}
+
+export type PortStrategyPatch_Serialize = {
+  kind?: PortStrategyKind | null
+  start_port?: number | null
 }
 
 /**  后处理输出 */
@@ -1716,6 +2338,13 @@ export type PostProcessingOutput = {
   /**  根据配置进行的分析建议 */
   advice: [LogSpan, string][]
 }
+
+/**  Downloaded or read content that is not a valid profile document. */
+export type ProfileContentError =
+  | { kind: 'not_yaml_mapping' }
+  | { kind: 'reserialize_yaml' }
+  | { kind: 'missing_proxies' }
+  | { kind: 'empty_script' }
 
 /**  Top-level semantic split. */
 export type ProfileDefinition =
@@ -1755,6 +2384,59 @@ export type ProfileDocument_Serialize = {
   valid: string[]
   items: ProfileItem_Serialize[]
 }
+
+/**
+ *  A failure of the profile filesystem, its materialization journals or its
+ *  private storage. One type for both the profile filesystem port and the
+ *  materialization port, whose implementations share their helpers.
+ */
+export type ProfileFileError =
+  | { kind: 'inspect_path'; path: ErrorPath }
+  | { kind: 'read_file'; path: ErrorPath }
+  | { kind: 'read_link'; path: ErrorPath }
+  | { kind: 'write_file'; path: ErrorPath }
+  | { kind: 'atomic_write'; path: ErrorPath }
+  | { kind: 'create_directory'; path: ErrorPath }
+  | { kind: 'remove_file'; path: ErrorPath }
+  | { kind: 'replace_file'; from: ErrorPath; to: ErrorPath }
+  | { kind: 'create_symlink'; link: ErrorPath; target: ErrorPath }
+  | { kind: 'list_directory'; path: ErrorPath }
+  | { kind: 'sync_directory'; path: ErrorPath }
+  | { kind: 'set_permissions'; path: ErrorPath }
+  | { kind: 'canonicalize_path'; path: ErrorPath }
+  | { kind: 'read_external_target'; target: ExternalProfilePath }
+  | { kind: 'parse_journal'; path: ErrorPath }
+  | { kind: 'serialize_journal' }
+  | { kind: 'reserved_path'; path: ErrorPath }
+  | { kind: 'path_escapes_profiles_dir'; path: ErrorPath; root: ErrorPath }
+  | { kind: 'no_parent_directory'; path: ErrorPath }
+  | { kind: 'unexpected_node'; path: ErrorPath; expected: ExpectedNode }
+  | { kind: 'unexpected_symlink'; path: ErrorPath }
+  | { kind: 'existing_file_blocks_symlink'; path: ErrorPath }
+  | { kind: 'symlink_target_not_utf8'; path: ErrorPath }
+  | { kind: 'invalid_external_path' }
+  | { kind: 'cleanup_tombstone_exists'; path: ErrorPath }
+  | { kind: 'journal_not_found'; operation_id: string }
+  | { kind: 'compensation_fenced'; path: ErrorPath }
+  | { kind: 'operation_id_invalid' }
+  | { kind: 'operation_id_exhausted' }
+  | { kind: 'journal_operation_id_mismatch' }
+  | { kind: 'journal_hash_invalid' }
+  | { kind: 'mixed_transaction_families' }
+  | { kind: 'conflicting_journal_payloads' }
+  | { kind: 'journal_destination_differs' }
+  | { kind: 'conflicting_cleanup_payloads' }
+  | { kind: 'multiple_staged_resources' }
+  | { kind: 'multiple_backups' }
+  | { kind: 'staged_hash_mismatch' }
+  | { kind: 'ready_symlink_mismatch' }
+  | { kind: 'staged_resource_missing' }
+  | { kind: 'promoted_hash_mismatch' }
+  | { kind: 'compensating_cannot_promote' }
+  | { kind: 'target_hash_mismatch' }
+  | { kind: 'not_completable' }
+  | { kind: 'cleanup_already_activated' }
+  | { kind: 'diverged_before_recovery' }
 
 /**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
 export type ProfileId = string
@@ -1895,6 +2577,15 @@ export type ProfileSubscriptionInfo = {
   download?: number | null
   total?: number | null
   expire?: number | null
+}
+
+export type ProfileSyncStatus = {
+  scheduled: boolean
+  next_run_at: string | null
+  active: RunDto[]
+  journal_degraded: boolean
+  registration_error: string | null
+  history_limit: number
 }
 
 export type ProfileValidationError =
@@ -2170,6 +2861,59 @@ export type ProfileValidationError =
       UnsupportedRemoteUrlScheme?: never
     })
 
+/**  What a profile command failed with. */
+export type ProfilesError =
+  | { kind: 'profile_not_found'; uid: ProfileId }
+  | { kind: 'profile_has_no_file'; uid: ProfileId }
+  | { kind: 'not_a_remote_profile'; uid: ProfileId }
+  | { kind: 'profile_file_not_writable'; uid: ProfileId }
+  | {
+      kind: 'profile_in_use'
+      uid: ProfileId
+      referrers: ProfileId[]
+      /**  Referenced by the document-level `current` selection. */
+      current: boolean
+      /**  Referenced by the document-level `global_transforms` list. */
+      global_transforms: boolean
+    }
+  | { kind: 'profile_id_collision'; uid: ProfileId }
+  | { kind: 'validation_failed'; errors: ProfileValidationError[] }
+  | { kind: 'reorder_list_size_mismatch'; expected: number; got: number }
+  | { kind: 'reorder_list_duplicate'; uid: ProfileId }
+  | { kind: 'revision_overflow' }
+  | { kind: 'invalid_subscription_url'; url: string }
+  | { kind: 'remote_profile_needs_import' }
+  | { kind: 'refresh_in_progress'; uid: ProfileId }
+  | { kind: 'fetch_subscription'; url: string; source: SubscriptionFetchError }
+  | { kind: 'profile_content_rejected'; source: ProfileContentError }
+  | { kind: 'profile_deleted_during_refresh'; uid: ProfileId }
+  | { kind: 'profile_changed_during_refresh'; uid: ProfileId }
+  | { kind: 'fingerprint_definition'; uid: ProfileId }
+  | { kind: 'read_profile_file'; uid: ProfileId; source: ProfileFileError }
+  | {
+      kind: 'profile_file_not_yaml'
+      uid: ProfileId
+      source: ProfileContentError
+    }
+  | { kind: 'profile_file_missing'; uid: ProfileId; path: ErrorPath }
+  | {
+      kind: 'read_external_profile'
+      target: ExternalProfilePath
+      source: ProfileFileError
+    }
+  | {
+      kind: 'materialization'
+      operation: MaterializationOperation
+      source: ProfileFileError
+    }
+  | { kind: 'version_conflict'; expected: number; actual: number }
+  | { kind: 'commit'; source: CommitAborted }
+  | { kind: 'workflow_not_ready' }
+  | { kind: 'profiles_actor_stopped' }
+  | { kind: 'profiles_reply_dropped' }
+  | { kind: 'blocking_task_cancelled' }
+  | { kind: 'shutting_down' }
+
 export type ProviderType = 'Proxy' | 'Rule' | string
 
 export type ProvidersProxiesRes =
@@ -2193,19 +2937,32 @@ export type ProxiesSelectorMode = 'hidden' | 'normal' | 'submenu'
 
 export type Proxies_Deserialize = {
   global: ProxyGroupItem_Deserialize
-  direct: ProxyItem_Deserialize
   groups: ProxyGroupItem_Deserialize[]
-  records: { [key in string]: ProxyItem_Deserialize }
-  proxies: ProxyItem_Deserialize[]
+  /**
+   *  Every `/proxies` entry plus every provider-owned node referenced by a
+   *  group, keyed by name. A node that belongs to several groups still has
+   *  exactly one entry here; groups reference it by name in `all`.
+   */
+  nodes: { [key in string]: ProxyItem_Deserialize }
 }
 
 export type Proxies_Serialize = {
   global: ProxyGroupItem_Serialize
-  direct: ProxyItem_Serialize
   groups: ProxyGroupItem_Serialize[]
-  records: { [key in string]: ProxyItem_Serialize }
-  proxies: ProxyItem_Serialize[]
+  /**
+   *  Every `/proxies` entry plus every provider-owned node referenced by a
+   *  group, keyed by name. A node that belongs to several groups still has
+   *  exactly one entry here; groups reference it by name in `all`.
+   */
+  nodes: { [key in string]: ProxyItem_Serialize }
 }
+
+export type ProxyChangeBreakMode =
+  | 'off'
+  /**  仅中断当前使用的代理组的连接 */
+  | 'proxy_group'
+  /**  中断所有连接 */
+  | 'all'
 
 export type ProxyGroupItem =
   ProxyGroupItem_Serialize | ProxyGroupItem_Deserialize
@@ -2215,7 +2972,7 @@ export type ProxyGroupItem_Deserialize = {
   type: string
   udp: boolean
   history: ProxyItemHistory[]
-  all: ProxyItem_Deserialize[]
+  all: string[]
   now: string | null
   provider: string | null
   alive: boolean | null
@@ -2230,7 +2987,7 @@ export type ProxyGroupItem_Serialize = {
   type: string
   udp: boolean
   history: ProxyItemHistory[]
-  all: ProxyItem_Serialize[]
+  all: string[]
   now: string | null
   provider: string | null
   alive: boolean | null
@@ -2302,12 +3059,23 @@ export type ProxyProviderItem_Serialize = {
   expectedStatus?: string | null
 }
 
+/**  A failure of publishing the derived runtime config file. */
+export type PublishRuntimeError =
+  | { kind: 'create_runtime_directory'; path: ErrorPath }
+  | { kind: 'write_runtime_config'; path: ErrorPath }
+
 export type QueryLogs = {
   session: string
   filter: Filter
   direction: Direction
   cursor: LogCursor | null
   limit: number
+}
+
+/**  Whole bytes per second, rounded down. */
+export type Rate = {
+  upload: number
+  download: number
 }
 
 export type ReleaseChannel = 'stable' | 'beta' | 'nightly'
@@ -2329,6 +3097,19 @@ export type RemoteProfileOptionsPatch_Serialize = {
   update_interval_minutes?: number | null
 }
 
+/**  Why the runtime baseline could not be put back. */
+export type RestoreFailure =
+  | { kind: 'move_host_back'; host: ExecutionHost; failure: CoreFailure }
+  | { kind: 'read_status'; failure: CoreFailure }
+  /**
+   *  The runtime could not be read once the restore request had answered;
+   *  `failure` is that request's own failure, if it had one.
+   */
+  | { kind: 'unobserved'; failure: CoreFailure | null }
+  | { kind: 'unverified'; failure: CoreFailure | null }
+  /**  The configuration the core ran before was never recorded. */
+  | { kind: 'not_recorded' }
+
 /**
  *  The compare-and-swap identity of a config revision.
  *
@@ -2342,20 +3123,10 @@ export type RevisionIdInfo = {
   effective_hash: string
 }
 
-export type RpcError = {
+export type RuleKey = {
   kind: string
-  message: string
-  code: string | null
-  retryable: boolean | null
-  operation_id: string | null
-  domain_error: RpcValue | null
+  payload: string
 }
-
-/**
- *  Specta 0.0.12 cannot recursively export `serde_json::Value` directly.
- *  Keep the JSON wire transparent while exporting it as TypeScript `any`.
- */
-export type RpcValue = any
 
 export type RuleProviderItem = {
   behavior: string | null
@@ -2371,13 +3142,92 @@ export type RulesRes = {
   rules: ClashRule[]
 }
 
+export type RunCursorDto = {
+  sequence: string
+  id: string
+}
+
+export type RunDto = {
+  id: string
+  job: string
+  definition_version: string
+  admission_sequence: string
+  trigger: string
+  scheduled_at: string | null
+  admitted_at: string
+  finished_at: string | null
+  state: RunStateDto
+  last_log_sequence: string
+  dropped_log_count: string
+}
+
+export type RunPageDto = {
+  items: RunDto[]
+  next: RunCursorDto | null
+}
+
+export type RunStateDto =
+  | { kind: 'admitted' }
+  | { kind: 'running' }
+  | { kind: 'cancelling' }
+  | { kind: 'finalizing' }
+  | { kind: 'finished'; completion: CompletionDto }
+
+/**
+ *  What became of the runtime after an aborted commit, from the receipt's
+ *  structured fields. `detail` is the receipt's operator diagnostics, never an
+ *  input to a decision.
+ */
+export type RuntimeAftermath =
+  /**  The runtime took no part, or the transaction withdrew before it did. */
+  | { kind: 'untouched' }
+  /**  The runtime went back to the previous configuration. */
+  | { kind: 'rolled_back' }
+  /**  Rolling the runtime back failed; recovery is required. */
+  | { kind: 'rollback_failed'; detail: RuntimeError }
+  /**  What the runtime is running is unknown and needs recovery. */
+  | { kind: 'unknown'; detail: RuntimeError }
+
+/**  A failure of building a runtime candidate from source config. */
+export type RuntimeBuildError =
+  | { kind: 'start_script_runner' }
+  | { kind: 'validate_profiles'; errors: ProfileValidationError[] }
+  | { kind: 'run_pipeline'; source: RuntimePipelineError }
+  | {
+      kind: 'transforms_failed'
+      failures: TransformFailure[]
+      logs: RuntimeBuildLog[]
+    }
+  | { kind: 'serialize_final_config' }
+  | { kind: 'config_not_mapping' }
+  | { kind: 'serialize_runtime_config' }
+
+export type RuntimeBuildLog = {
+  tag: OperatorTag
+  entries: StepLogEntry[]
+}
+
+/**
+ *  Why no check ran. Every variant is a reason, never a verdict: an absent
+ *  check must not be reported as a passing one (v2 §2.4).
+ */
+export type RuntimeCheckUnavailable =
+  /**  No host owns the runtime, so there is nothing to check against. */
+  | { cause: 'no_endpoint'; reason: string }
+  /**  The host owning the runtime exposes no check for this request. */
+  | { cause: 'host_unsupported'; host: ExecutionHost; reason: string }
+  /**  The host reads the candidate from disk and it could not be staged. */
+  | { cause: 'candidate_unavailable'; reason: string }
+  /**  The host has the capability but could not serve it. */
+  | {
+      cause: 'backend'
+      kind: CoreErrorKind | null
+      message: string
+      retryable: boolean
+    }
+
 export type RuntimeCommitStatus =
-  | 'applied'
-  | 'deferred'
-  | 'saved_inactive'
-  | 'unchanged'
-  | 'pending'
-  | 'recovery_required'
+  'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
 
 export type RuntimeConvergence = {
   health: ConvergenceHealth
@@ -2386,6 +3236,81 @@ export type RuntimeConvergence = {
   automatic_remaining: number
   message: string | null
 }
+
+/**  A failure of an operation on the running core or the runtime workflow. */
+export type RuntimeError =
+  /**  Refused at admission: nothing ran. */
+  | { kind: 'shutting_down' }
+  /**  Refused at admission: nothing ran. */
+  | { kind: 'isolated' }
+  /**  The workflow took the command and never answered, so it may have run. */
+  | { kind: 'owner_unresponsive'; operation_id: string }
+  /**  Refused at admission: the runtime owner is gone, so nothing ran. */
+  | { kind: 'owner_unavailable' }
+  /**  Refused at admission: the source transaction had already been decided. */
+  | { kind: 'source_settled' }
+  | { kind: 'apply_runtime'; failure: CoreFailure }
+  | { kind: 'stop_core'; failure: CoreFailure }
+  | { kind: 'recover_runtime'; failure: CoreFailure }
+  | { kind: 'recover_service_endpoint'; failure: CoreFailure }
+  | { kind: 'refresh_status'; failure: CoreFailure }
+  | { kind: 'install_service'; failure: CoreFailure }
+  | { kind: 'start_service'; failure: CoreFailure }
+  | { kind: 'stop_service'; failure: CoreFailure }
+  | { kind: 'restart_service'; failure: CoreFailure }
+  | { kind: 'uninstall_service'; failure: CoreFailure }
+  | { kind: 'move_host'; host: ExecutionHost; failure: CoreFailure }
+  /**  The service hosts the runtime; the local host must take it over first. */
+  | { kind: 'service_hosts_core' }
+  /**
+   *  An explicit start that could not put the core on its host; `reason` is
+   *  the diagnostic text of the convergence that gave up.
+   */
+  | { kind: 'core_not_started'; reason: string; retryable: boolean }
+  /**  An explicit recovery that could not settle the runtime. */
+  | { kind: 'recovery_unresolved'; reason: string }
+  | { kind: 'build_runtime'; source: RuntimeBuildError }
+  | { kind: 'publish_runtime'; source: PublishRuntimeError }
+  | { kind: 'resolve_port'; source: PortResolveError }
+  | { kind: 'resolve_core_binary'; source: CoreSpecError }
+  | { kind: 'install_core_binary'; source: InstallCoreBinaryError }
+  | { kind: 'prepare_service_install_prompt'; source: ServiceCommandError }
+  | { kind: 'read_core_version'; source: CoreVersionError }
+  /**
+   *  A candidate was refused before anything was submitted, for want of a
+   *  baseline to apply against.
+   */
+  | { kind: 'unsettled_baseline'; gap: EvidenceGap }
+  | {
+      kind: 'core_rejected_config'
+      core_kind: CoreErrorKind | null
+      message: string
+    }
+  | { kind: 'check_unavailable'; reason: RuntimeCheckUnavailable }
+  /**  The core restored its own previous configuration. */
+  | { kind: 'core_rolled_back'; reason: string | null }
+  /**  The submission ended unobserved, so it may have taken effect. */
+  | { kind: 'submission_unobserved'; failure: CoreFailure }
+  | { kind: 'handoff_owner_mismatch'; expected: ExecutionHost }
+  /**
+   *  A mutation that moved the runtime to the other host and failed there
+   *  could not put it back.
+   */
+  | { kind: 'handoff_not_restored'; failure: RestoreFailure }
+  /**  A cancelled mutation could not put the runtime back. */
+  | { kind: 'restore_failed'; failure: RestoreFailure }
+  /**
+   *  The store committed a mutation whose runtime target the workflow had
+   *  refused.
+   */
+  | { kind: 'committed_after_refusal'; operation_id: string }
+  /**  No runtime configuration has been built yet. */
+  | { kind: 'no_runtime_config' }
+  | { kind: 'serialize_runtime_config' }
+  | { kind: 'convert_runtime_config' }
+  /**  A newer build replaced the snapshot the inspection was opened on. */
+  | { kind: 'runtime_snapshot_changed' }
+  | { kind: 'runtime_node_not_found'; node_id: number }
 
 export type RuntimeInfos = {
   service_data_dir: string
@@ -2426,20 +3351,32 @@ export type RuntimeInspectionNode = {
 }
 
 /**
- *  Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
- *  link is received: either from a secondary instance while the app is already
- *  running, or on cold start once the window exists. The frontend listens for
- *  this to import the referenced `install-config` profile. On cold start the
- *  same URL is also stashed in [`PendingDeepLink`] and drained once via
- *  [`get_pending_deep_link`], covering the race where the event fires before the
- *  JS listener attaches.
+ *  Wire shape for the app's error channel: library sources are skipped and
+ *  reach the user only through the error's `Debug` detail.
+ */
+export type RuntimePipelineError =
+  | { kind: 'selected_profile_not_found'; profile: ProfileId }
+  | { kind: 'selected_profile_not_config'; profile: ProfileId }
+  | {
+      kind: 'composition_member_invalid'
+      composition: ProfileId
+      member: ProfileId
+      reason: string
+    }
+  | { kind: 'content_source'; profile: ProfileId; path: ManagedProfilePath }
+  | { kind: 'parse_profile'; profile: ProfileId; message: string }
+  | { kind: 'snapshot' }
+  /**  Theoretically unreachable invariant breaks (e.g. guard serialization). */
+  | { kind: 'internal'; message: string }
+
+/**
+ *  Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
+ *  link joins [`PendingDeepLinks`]. It carries no URL: it only asks a listening
+ *  frontend to take the queue through [`take_pending_deep_links`].
  *
  *  Event name: `scheme-request-received-event` (derived by `tauri_specta`).
  */
-export type SchemeRequestReceivedEvent = {
-  /**  The raw deep-link URL as received from the OS. */
-  url: string
-}
+export type SchemeRequestReceivedEvent = null
 
 export type ScriptRuntime = 'javascript' | 'lua'
 
@@ -2455,6 +3392,36 @@ export type ScriptTransform_Serialize = {
   source: ProfileSource_Serialize
   runtime: ScriptRuntime
 }
+
+/**  The elevated operations `nyanpasu-service` is asked to perform. */
+export type ServiceCommand =
+  'install' | 'update' | 'uninstall' | 'start' | 'stop' | 'restart'
+
+/**
+ *  A failure of running or querying the system service, including the bounds
+ *  the service actor puts on every call.
+ */
+export type ServiceCommandError =
+  | { kind: 'resolve_service_user' }
+  | { kind: 'resolve_service_dirs' }
+  | { kind: 'run_elevated'; command: ServiceCommand }
+  | {
+      kind: 'service_command_exit'
+      command: ServiceCommand
+      exit_code: number | null
+      signal: number | null
+    }
+  | { kind: 'run_service_status' }
+  | {
+      kind: 'service_status_exit'
+      exit_code: number | null
+      signal: number | null
+    }
+  | { kind: 'service_status_not_utf8' }
+  | { kind: 'parse_service_status' }
+  | { kind: 'timed_out'; limit_ms: number }
+  | { kind: 'still_running'; limit_ms: number }
+  | { kind: 'task_cancelled' }
 
 export type ServiceCompat =
   /**  daemon 未安装 / 未运行 / 未上报 server 信息，没有可判定的版本。 */
@@ -2592,6 +3559,30 @@ export type SnapshotDiffHunk = {
   lines: string[]
 }
 
+export type SourceOrigin =
+  'scheduled_refresh' | 'manual_refresh' | 'external_file'
+
+export type SourceOutcome =
+  | { kind: 'committed'; operation_id: string | null }
+  /**  Its result no longer applied to the profile and was dropped (V31). */
+  | { kind: 'superseded'; reason: string }
+  | { kind: 'failed'; message: string }
+  /**
+   *  The content reached the source transaction and was refused; nothing
+   *  was committed and an external file is never rewritten (V33).
+   */
+  | { kind: 'rejected'; code: string; message: string }
+
+export type SourceStatus = {
+  profile: ProfileId
+  name: string
+  origin: SourceOrigin
+  outcome: SourceOutcome
+  health: ConvergenceHealth
+  /**  Unix milliseconds. */
+  at: number
+}
+
 export type SourceVersions = {
   application: number
   clash: number
@@ -2601,6 +3592,8 @@ export type SourceVersions = {
 
 export type StateChanged =
   'nyanpasu_config' | 'clash_config' | 'profiles' | 'proxies'
+
+export type StatisticWidgetVariant = 'large' | 'small'
 
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize
 
@@ -2649,6 +3642,23 @@ export type StorageEntry = {
 }
 
 /**
+ *  What a storage operation failed with. Library causes stay in `source`
+ *  (skipped on the wire); they reach the user only through the copied detail.
+ *  A `key` is the storage key, which the web layer prefixes.
+ */
+export type StorageOperationError =
+  | { kind: 'open_database'; path: string }
+  | { kind: 'begin_transaction' }
+  | { kind: 'open_table' }
+  | { kind: 'read_item'; key: string }
+  | { kind: 'write_item'; key: string }
+  | { kind: 'remove_item'; key: string }
+  | { kind: 'list_items' }
+  | { kind: 'commit_transaction' }
+  | { kind: 'decode_value'; key: string }
+  | { kind: 'encode_value'; key: string }
+
+/**
  *  Event emitted to all windows when a storage value changes.
  *  Event name: `storage-value-changed-event`
  */
@@ -2657,6 +3667,16 @@ export type StorageValueChangedEvent = {
   /**  The new JSON-encoded value, or `None` if the key was removed. */
   value: string | null
 }
+
+/**
+ *  A failure to download a subscription. The URL is not repeated here: the
+ *  caller that knows it names it.
+ */
+export type SubscriptionFetchError =
+  | { kind: 'build_http_client' }
+  | { kind: 'request_subscription' }
+  | { kind: 'subscription_http_status'; status: number }
+  | { kind: 'read_subscription_body' }
 
 export type SubscriptionInfo =
   SubscriptionInfo_Serialize | SubscriptionInfo_Deserialize
@@ -2691,6 +3711,73 @@ export type SubscriptionInfo_Serialize = {
   expire: number
 }
 
+/**
+ *  Why the system DNS cache could not be flushed. No variant is compiled out
+ *  per platform, so the generated bindings do not depend on the build host.
+ */
+export type SystemDnsError =
+  /**
+   *  The elevated flush could not be started: the user declined the prompt,
+   *  or the platform has no way to ask for elevation.
+   */
+  | { kind: 'run_flush_command'; command: string }
+  /**
+   *  The flush ran and reported failure; declining the macOS authorization
+   *  dialog lands here too.
+   */
+  | { kind: 'flush_rejected'; command: string; code: number | null }
+  | { kind: 'unsupported' }
+
+export type ThemeMode = 'light' | 'dark' | 'system'
+
+export type Topology = {
+  paths: TopologyPath[]
+  nodes: TopologyNode[]
+  edges: TopologyEdge[]
+  other: Bytes
+}
+
+export type TopologyEdge = {
+  source: string
+  target: string
+  bytes: Bytes
+}
+
+export type TopologyKey = {
+  /**  Process, or the source IP when the process is unknown. */
+  source: string
+  rule: RuleKey
+  /**  Outermost group first, exit excluded. */
+  groups: string[]
+  exit: string
+}
+
+export type TopologyNode = {
+  id: string
+  layer: number
+  label: string
+  bytes: Bytes
+}
+
+export type TopologyPath = {
+  key: TopologyKey
+  bytes: Bytes
+}
+
+export type TrafficRate = {
+  download: number
+  upload: number
+}
+
+export type TrafficSummary = {
+  profile: string | null
+  started_at: number
+  last_sample_at: number | null
+  core_bytes: Bytes
+  active_connections: number
+  current_rate: Rate | null
+}
+
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition =
   TransformDefinition_Serialize | TransformDefinition_Deserialize
@@ -2715,6 +3802,9 @@ export type TransformDefinition_Serialize =
   /**  Imperative JS/Lua transform. */
   | { type: 'script'; source: ProfileSource_Serialize; runtime: ScriptRuntime }
 
+export type TransformFailure =
+  { kind: 'profile'; id: string } | { kind: 'builtin'; name: string }
+
 export type TransformKind =
   { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime }
 
@@ -2723,8 +3813,14 @@ export type TransformOwner =
 
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 
+/**  What happens to the WebView tray menu window when it loses focus. */
 export type TrayMenuCloseBehavior = 'hide' | 'close'
 
+/**
+ *  Whether the tray menu uses the system-native menu or the WebView menu.
+ *
+ *  Platform-dependent default: `Webview` on Windows, `Native` elsewhere.
+ */
 export type TrayMenuMode = 'native' | 'webview'
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
@@ -2746,13 +3842,24 @@ export type UpdaterState =
   | 'replacing'
   | 'restarting'
   | 'done'
-  | ({ pending: string } & { failed?: never })
-  | ({ failed: string } & { pending?: never })
+  | { failed: string }
 
 export type UpdaterSummary = {
   id: number
   state: UpdaterState
   downloader: DownloadStatus
+}
+
+export type Usage = {
+  total: Bytes
+  groups: UsageGroup[]
+  other: Bytes
+}
+
+export type UsageGroup = {
+  key: string
+  bytes: Bytes
+  current_rate: Rate | null
 }
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
@@ -2777,17 +3884,6 @@ export type WindowMessageEvent = {
 export type WindowReadyEvent = {
   label: string
 }
-
-export type WindowState = {
-  width: number
-  height: number
-  x: number
-  y: number
-  maximized: boolean
-  fullscreen: boolean
-}
-
-export type WindowType = 'main'
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(
@@ -2856,11 +3952,6 @@ export const queries = {
     queryOptions({
       queryKey: ['getClashInfo', ...args],
       queryFn: () => commands.getClashInfo(...args),
-    }),
-  getClashLogs: (...args: Parameters<typeof commands.getClashLogs>) =>
-    queryOptions({
-      queryKey: ['getClashLogs', ...args],
-      queryFn: () => commands.getClashLogs(...args),
     }),
   getRuntimeConfig: (...args: Parameters<typeof commands.getRuntimeConfig>) =>
     queryOptions({
@@ -2967,10 +4058,15 @@ export const queries = {
       queryKey: ['getCoreVersion', ...args],
       queryFn: () => commands.getCoreVersion(...args),
     }),
-  getVergeConfig: (...args: Parameters<typeof commands.getVergeConfig>) =>
+  getAppConfig: (...args: Parameters<typeof commands.getAppConfig>) =>
     queryOptions({
-      queryKey: ['getVergeConfig', ...args],
-      queryFn: () => commands.getVergeConfig(...args),
+      queryKey: ['getAppConfig', ...args],
+      queryFn: () => commands.getAppConfig(...args),
+    }),
+  getClashConfig: (...args: Parameters<typeof commands.getClashConfig>) =>
+    queryOptions({
+      queryKey: ['getClashConfig', ...args],
+      queryFn: () => commands.getClashConfig(...args),
     }),
   getHotkeyFunctions: (
     ...args: Parameters<typeof commands.getHotkeyFunctions>
@@ -2983,6 +4079,27 @@ export const queries = {
     queryOptions({
       queryKey: ['getProfiles', ...args],
       queryFn: () => commands.getProfiles(...args),
+    }),
+  getProfileSyncStatus: (
+    ...args: Parameters<typeof commands.getProfileSyncStatus>
+  ) =>
+    queryOptions({
+      queryKey: ['getProfileSyncStatus', ...args],
+      queryFn: () => commands.getProfileSyncStatus(...args),
+    }),
+  getProfileSyncRuns: (
+    ...args: Parameters<typeof commands.getProfileSyncRuns>
+  ) =>
+    queryOptions({
+      queryKey: ['getProfileSyncRuns', ...args],
+      queryFn: () => commands.getProfileSyncRuns(...args),
+    }),
+  getProfileSyncLogs: (
+    ...args: Parameters<typeof commands.getProfileSyncLogs>
+  ) =>
+    queryOptions({
+      queryKey: ['getProfileSyncLogs', ...args],
+      queryFn: () => commands.getProfileSyncLogs(...args),
     }),
   readProfileFile: (...args: Parameters<typeof commands.readProfileFile>) =>
     queryOptions({
@@ -3073,19 +4190,36 @@ export const queries = {
       queryKey: ['getCoreDir', ...args],
       queryFn: () => commands.getCoreDir(...args),
     }),
-  getClashWsConnectionsState: (
-    ...args: Parameters<typeof commands.getClashWsConnectionsState>
-  ) =>
-    queryOptions({
-      queryKey: ['getClashWsConnectionsState', ...args],
-      queryFn: () => commands.getClashWsConnectionsState(...args),
-    }),
   getClashWsSnapshot: (
     ...args: Parameters<typeof commands.getClashWsSnapshot>
   ) =>
     queryOptions({
       queryKey: ['getClashWsSnapshot', ...args],
       queryFn: () => commands.getClashWsSnapshot(...args),
+    }),
+  getTrafficSummary: (...args: Parameters<typeof commands.getTrafficSummary>) =>
+    queryOptions({
+      queryKey: ['getTrafficSummary', ...args],
+      queryFn: () => commands.getTrafficSummary(...args),
+    }),
+  queryTrafficUsage: (...args: Parameters<typeof commands.queryTrafficUsage>) =>
+    queryOptions({
+      queryKey: ['queryTrafficUsage', ...args],
+      queryFn: () => commands.queryTrafficUsage(...args),
+    }),
+  queryTrafficTopology: (
+    ...args: Parameters<typeof commands.queryTrafficTopology>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficTopology', ...args],
+      queryFn: () => commands.queryTrafficTopology(...args),
+    }),
+  queryTrafficClosedConnections: (
+    ...args: Parameters<typeof commands.queryTrafficClosedConnections>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficClosedConnections', ...args],
+      queryFn: () => commands.queryTrafficClosedConnections(...args),
     }),
   checkUpdate: (...args: Parameters<typeof commands.checkUpdate>) =>
     queryOptions({
@@ -3177,10 +4311,20 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.restartSidecar>) =>
       commands.restartSidecar(...input),
   }),
+  patchAppConfig: mutationOptions({
+    mutationKey: ['patchAppConfig'],
+    mutationFn: (input: Parameters<typeof commands.patchAppConfig>) =>
+      commands.patchAppConfig(...input),
+  }),
   patchClashConfig: mutationOptions({
     mutationKey: ['patchClashConfig'],
     mutationFn: (input: Parameters<typeof commands.patchClashConfig>) =>
       commands.patchClashConfig(...input),
+  }),
+  patchRuntimeOverrides: mutationOptions({
+    mutationKey: ['patchRuntimeOverrides'],
+    mutationFn: (input: Parameters<typeof commands.patchRuntimeOverrides>) =>
+      commands.patchRuntimeOverrides(...input),
   }),
   changeClashCore: mutationOptions({
     mutationKey: ['changeClashCore'],
@@ -3214,11 +4358,6 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.collectLogs>) =>
       commands.collectLogs(...input),
   }),
-  patchVergeConfig: mutationOptions({
-    mutationKey: ['patchVergeConfig'],
-    mutationFn: (input: Parameters<typeof commands.patchVergeConfig>) =>
-      commands.patchVergeConfig(...input),
-  }),
   enhanceProfiles: mutationOptions({
     mutationKey: ['enhanceProfiles'],
     mutationFn: (input: Parameters<typeof commands.enhanceProfiles>) =>
@@ -3229,10 +4368,10 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.importProfile>) =>
       commands.importProfile(...input),
   }),
-  getPendingDeepLink: mutationOptions({
-    mutationKey: ['getPendingDeepLink'],
-    mutationFn: (input: Parameters<typeof commands.getPendingDeepLink>) =>
-      commands.getPendingDeepLink(...input),
+  takePendingDeepLinks: mutationOptions({
+    mutationKey: ['takePendingDeepLinks'],
+    mutationFn: (input: Parameters<typeof commands.takePendingDeepLinks>) =>
+      commands.takePendingDeepLinks(...input),
   }),
   createProfile: mutationOptions({
     mutationKey: ['createProfile'],

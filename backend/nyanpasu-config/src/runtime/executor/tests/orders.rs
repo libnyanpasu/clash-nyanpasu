@@ -40,6 +40,7 @@ pub fn base_inputs<'a>(
             },
             windows_fake_ip_filter: false,
         },
+        expand_include_all: true,
         builtin_transforms,
     }
 }
@@ -121,11 +122,18 @@ fn selected_file_config_records_canonical_mainline() {
     assert!(matches!(
         tags[6],
         OperatorTag::BuiltinStep {
+            step: BuiltinStepKind::IncludeAllExpansion,
+            ..
+        }
+    ));
+    assert!(matches!(
+        tags[7],
+        OperatorTag::BuiltinStep {
             step: BuiltinStepKind::Finalizing,
             ..
         }
     ));
-    assert_eq!(artifact.graph.nodes.len(), 7);
+    assert_eq!(artifact.graph.nodes.len(), 8);
 
     // 语义断言：scoped + global 追加都生效，guard 覆盖 mode。
     let config = artifact.final_config.to_json();

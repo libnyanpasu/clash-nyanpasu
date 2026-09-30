@@ -11,12 +11,19 @@ use std::{
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
-use nyanpasu_config::application::ClashCore;
+use nyanpasu_config::{application::ClashCore, profile::ProfileId};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
+use snafu::{ResultExt, Snafu};
 
-use crate::{enhance::PostProcessingOutput, utils::path::PathResolver};
+use super::runtime_error::RuntimeError;
+use crate::{
+    core::actor_v2::api::ApiError,
+    enhance::PostProcessingOutput,
+    state::profiles::{ErrorPath, ProfilesError},
+    utils::path::PathResolver,
+};
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
@@ -37,12 +44,12 @@ impl RuntimeRevisionAllocator {
         Self(0)
     }
 
-    pub(crate) fn allocate(&mut self) -> anyhow::Result<RuntimeRevision> {
+    pub(crate) fn allocate(&mut self) -> RuntimeRevision {
         self.0 = self
             .0
             .checked_add(1)
-            .ok_or_else(|| anyhow::anyhow!("runtime revision space exhausted"))?;
-        Ok(RuntimeRevision(self.0))
+            .expect("a session cannot exhaust the u64 runtime revision space");
+        RuntimeRevision(self.0)
     }
 }
 
@@ -136,6 +143,9 @@ pub(in crate::client) struct RuntimeApplyReceipt {
     pub binding: crate::core::actor_v2::facade::AppliedConfigBinding,
     /// The ports this apply bound. Confirming them is gated on this receipt.
     pub ports: super::ports::CandidatePortBindings,
+    /// The committed target these bytes were built from, when the build had
+    /// one: what tells a running receipt from a newer target still owed.
+    pub target: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -319,19 +329,41 @@ impl RuntimeSnapshotStore {
     }
 }
 
-pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+/// A failure of publishing the derived runtime config file.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[snafu(visibility(pub(crate)))]
+pub enum PublishRuntimeError {
+    #[snafu(display("could not create the runtime directory {path}"))]
+    CreateRuntimeDirectory {
+        path: ErrorPath,
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("could not write the runtime config {path}"))]
+    WriteRuntimeConfig {
+        path: ErrorPath,
+        #[serde(skip)]
+        source: atomicwrites::Error<std::io::Error>,
+    },
+}
+
+pub(crate) async fn write_product(product: &Path, bytes: &[u8]) -> Result<(), PublishRuntimeError> {
     if let Some(parent) = product.parent() {
-        tokio::fs::create_dir_all(parent).await?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .context(CreateRuntimeDirectorySnafu { path: parent })?;
     }
-    let product = product.to_path_buf();
+    let path = product.to_path_buf();
     let bytes = bytes.to_vec();
-    tokio::task::spawn_blocking(move || {
-        atomicwrites::AtomicFile::new(&product, atomicwrites::OverwriteBehavior::AllowOverwrite)
-            .write(|file| std::io::Write::write_all(file, &bytes))
-    })
-    .await?
-    .map_err(|error| anyhow::anyhow!("failed to promote runtime config: {error}"))?;
-    Ok(())
+    let written = crate::utils::blocking::join(
+        tokio::task::spawn_blocking(move || {
+            atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite)
+                .write(|file| std::io::Write::write_all(file, &bytes))
+        })
+        .await,
+    );
+    written.context(WriteRuntimeConfigSnafu { path: product })
 }
 
 #[derive(Debug, Clone)]
@@ -535,11 +567,10 @@ pub enum RuntimeCommitStatus {
     Deferred,
     SavedInactive,
     Unchanged,
-    Pending,
     RecoveryRequired,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum MutationOutcome<T> {
     Committed {
@@ -639,20 +670,82 @@ impl<T> MutationOutcome<T> {
 }
 
 /// Structured committed-degraded detail surfaced over IPC / Specta.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct Degradation {
     pub phase: DegradationPhase,
-    /// Stable snake_case code string (not a free-form English phrase).
-    pub code: String,
+    pub reason: DegradationReason,
+    /// The diagnostic text, for logs and the copied details; the frontend
+    /// localizes `reason`.
     pub message: String,
     pub retryable: bool,
+}
+
+/// Why a committed mutation is degraded. The frontend localizes each variant.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum DegradationReason {
+    /// The runtime owner stopped before the mutation settled, or settled it as
+    /// needing recovery.
+    RuntimeRecoveryRequired {
+        operation_id: Option<String>,
+        cause: Option<Arc<RuntimeError>>,
+    },
+    /// The runtime will apply the committed mutation later.
+    RuntimeDeferred {
+        cause: Arc<RuntimeError>,
+    },
+    RuntimeProductPublishFailed {
+        cause: Arc<RuntimeError>,
+    },
+    ServiceStopFailed {
+        cause: Arc<RuntimeError>,
+    },
+    ModeInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProfileInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProxyInterruptionFailed {
+        cause: InterruptFailure,
+    },
+    ProxyCacheRefreshFailed,
+    JournalInvalid,
+    JobsJournalUnavailable,
+    MaterializationDeferred,
+    CleanupDeferred,
+    ProfileAutoActivationFailed {
+        profile: ProfileId,
+        cause: Arc<ProfilesError>,
+    },
+}
+
+/// How closing the source instance's connections failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum InterruptFailure {
+    /// The Clash API belongs to a core instance that has since been retired.
+    Stale,
+    Unavailable,
+    Timeout,
+    Protocol,
+}
+
+impl From<&ApiError> for InterruptFailure {
+    fn from(error: &ApiError) -> Self {
+        match error {
+            ApiError::Stale => Self::Stale,
+            ApiError::Unavailable(_) => Self::Unavailable,
+            ApiError::Timeout => Self::Timeout,
+            ApiError::Protocol(_) => Self::Protocol,
+        }
+    }
 }
 
 /// Public degradation phases for mutation outcomes. Serde/Specta use snake_case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum DegradationPhase {
-    LegacyMirror,
     ProfileMaterialization,
     RuntimeBuild,
     RuntimeCheck,
@@ -677,8 +770,8 @@ pub(crate) mod tests {
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
         let mut allocator = RuntimeRevisionAllocator::new();
-        let first = allocator.allocate().expect("first revision");
-        let second = allocator.allocate().expect("second revision");
+        let first = allocator.allocate();
+        let second = allocator.allocate();
 
         assert_eq!(first.get(), 1);
         assert_eq!(second.get(), 2);
@@ -698,7 +791,7 @@ pub(crate) mod tests {
             "uid",
             vec![Degradation {
                 phase: DegradationPhase::RuntimeBuild,
-                code: "runtime_rebuild_failed".into(),
+                reason: DegradationReason::JournalInvalid,
                 message: "boom".into(),
                 retryable: true,
             }],
@@ -712,7 +805,7 @@ pub(crate) mod tests {
         let merged =
             MutationOutcome::from_parts((), Vec::new()).extend_degradations(vec![Degradation {
                 phase: DegradationPhase::ProfileMaterialization,
-                code: "cleanup_deferred".into(),
+                reason: DegradationReason::CleanupDeferred,
                 message: "left behind".into(),
                 retryable: true,
             }]);
@@ -720,7 +813,10 @@ pub(crate) mod tests {
             matches!(merged, MutationOutcome::CommittedDegraded { .. }),
             "extend_degradations with extra must be CommittedDegraded"
         );
-        assert_eq!(merged.degradations()[0].code, "cleanup_deferred");
+        assert!(matches!(
+            merged.degradations()[0].reason,
+            DegradationReason::CleanupDeferred
+        ));
     }
 
     #[test]
@@ -742,7 +838,9 @@ pub(crate) mod tests {
             "p1",
             vec![Degradation {
                 phase: DegradationPhase::RuntimeBuild,
-                code: "runtime_rebuild_failed".into(),
+                reason: DegradationReason::ServiceStopFailed {
+                    cause: Arc::new(RuntimeError::ShuttingDown),
+                },
                 message: "check boom".into(),
                 retryable: true,
             }],
@@ -751,8 +849,11 @@ pub(crate) mod tests {
         assert_eq!(degraded_json["status"], "committed_degraded");
         assert_eq!(degraded_json["value"], "p1");
         assert_eq!(
-            degraded_json["degradations"][0]["code"],
-            "runtime_rebuild_failed"
+            degraded_json["degradations"][0]["reason"],
+            serde_json::json!({
+                "code": "service_stop_failed",
+                "cause": { "kind": "shutting_down" },
+            })
         );
         assert_eq!(degraded_json["degradations"][0]["phase"], "runtime_build");
         assert_eq!(degraded_json["degradations"][0]["retryable"], true);
@@ -887,8 +988,9 @@ pub(crate) mod tests {
             },
             binding: binding(),
             ports: crate::client::ports::SessionPortResolver::default()
-                .resolve_candidate(&nyanpasu_config::clash::config::ClashConfig::default())
+                .resolve_candidate(&crate::client::tests::test_clash_config())
                 .expect("default port strategies resolve"),
+            target: None,
         }
     }
 

@@ -108,6 +108,10 @@ impl ApiClient {
         self.revoked.is_cancelled()
     }
 
+    pub(crate) fn instance_id(&self) -> &str {
+        &self.binding.instance_id
+    }
+
     pub(crate) fn same_instance(&self, other: &Self) -> bool {
         !self.is_revoked() && !other.is_revoked() && self.binding == other.binding
     }

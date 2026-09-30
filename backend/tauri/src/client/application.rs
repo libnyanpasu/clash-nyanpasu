@@ -5,14 +5,17 @@ use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_core::state::{PersistentStateManager, PersistentStateManagerSetup, StateSnapshot};
-use ractor::{Actor, ActorRef, RpcReplyPort};
+use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::{
-    ConditionalReplaceResult,
-    application::{
-        ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
+use crate::{
+    client::application_workflow::mutation::ConfigDomain,
+    state::{
+        application::{
+            ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,
+        },
+        config_error::{ConfigError, OwnerStoppedSnafu},
     },
-    mirror::{PreparedTypedReplace, VergeLegacyBridge},
 };
 
 #[derive(Clone)]
@@ -33,9 +36,10 @@ impl ApplicationClient {
         mutations: MutationCoordinator,
         build_channel: crate::bundle::Channel,
         config_path: Utf8PathBuf,
-        mut seed: NyanpasuAppConfig,
-        bridge: Arc<dyn VergeLegacyBridge>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
+        let mut seed = NyanpasuAppConfig::default();
         seed.release_channel = Some(build_channel.resolve(seed.release_channel));
         let should_load = config_path.exists();
         let setup = PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
@@ -63,7 +67,7 @@ impl ApplicationClient {
                 .context("failed to persist release channel")?;
         }
 
-        Self::from_manager(mutations, manager, bridge).await
+        Self::from_manager(mutations, manager, shutdown, tasks).await
     }
 
     /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
@@ -71,7 +75,8 @@ impl ApplicationClient {
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig>,
-        bridge: Arc<dyn VergeLegacyBridge>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
@@ -79,13 +84,14 @@ impl ApplicationClient {
             ApplicationActor,
             ApplicationActorArgs {
                 manager,
-                bridge,
                 mutations,
+                shutdown: shutdown.clone(),
             },
         )
         .await
         .context("failed to spawn application actor")?
         .0;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(ApplicationClientInner {
@@ -110,7 +116,7 @@ impl ApplicationClient {
     pub async fn patch(
         &self,
         patch: NyanpasuAppConfigPatch,
-    ) -> anyhow::Result<ApplicationSnapshot> {
+    ) -> Result<ApplicationSnapshot, ConfigError> {
         self.call(
             |reply| ApplicationActorMessage::Patch { patch, reply },
             None,
@@ -118,7 +124,10 @@ impl ApplicationClient {
         .await
     }
 
-    pub async fn replace(&self, state: NyanpasuAppConfig) -> anyhow::Result<ApplicationSnapshot> {
+    pub async fn replace(
+        &self,
+        state: NyanpasuAppConfig,
+    ) -> Result<ApplicationSnapshot, ConfigError> {
         self.call(
             |reply| ApplicationActorMessage::Replace { state, reply },
             None,
@@ -126,54 +135,26 @@ impl ApplicationClient {
         .await
     }
 
-    pub(crate) async fn replace_if_version(
-        &self,
-        expected_version: u64,
-        state: NyanpasuAppConfig,
-    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
-        let prepared = self.prepare_replace(state).await?;
-        self.replace_prepared_if_version(expected_version, prepared)
-            .await
-    }
-
-    pub(crate) async fn prepare_replace(
-        &self,
-        state: NyanpasuAppConfig,
-    ) -> anyhow::Result<PreparedTypedReplace<NyanpasuAppConfig>> {
-        super::actor_rpc::call(
-            &self.inner.actor_ref,
-            |reply| ApplicationActorMessage::PrepareReplace { state, reply },
-            None,
-        )
-        .await?
-    }
-
-    pub(crate) async fn replace_prepared_if_version(
-        &self,
-        expected_version: u64,
-        prepared: PreparedTypedReplace<NyanpasuAppConfig>,
-    ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
-        super::actor_rpc::call(
-            &self.inner.actor_ref,
-            |reply| ApplicationActorMessage::ReplacePreparedIfVersion {
-                expected_version,
-                prepared,
-                reply,
-            },
-            None,
-        )
-        .await?
-    }
-
     async fn call<F>(
         &self,
         make: F,
         timeout: Option<std::time::Duration>,
-    ) -> anyhow::Result<ApplicationSnapshot>
+    ) -> Result<ApplicationSnapshot, ConfigError>
     where
-        F: FnOnce(RpcReplyPort<anyhow::Result<ApplicationSnapshot>>) -> ApplicationActorMessage,
+        F: FnOnce(
+            RpcReplyPort<Result<ApplicationSnapshot, ConfigError>>,
+        ) -> ApplicationActorMessage,
     {
-        super::actor_rpc::call(&self.inner.actor_ref, make, timeout).await?
+        match self.inner.actor_ref.call(make, timeout).await {
+            Ok(CallResult::Success(result)) => result,
+            Ok(CallResult::SenderError) | Err(_) => OwnerStoppedSnafu {
+                domain: ConfigDomain::Application,
+            }
+            .fail(),
+            Ok(CallResult::Timeout) => {
+                unreachable!("application config calls are made without a timeout")
+            }
+        }
     }
 }
 
@@ -186,24 +167,8 @@ impl Drop for ApplicationClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::mirror::{NoopPreparedLegacyMirror, PreparedLegacyMirror};
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
-
-    struct NoopVergeBridge;
-
-    impl VergeLegacyBridge for NoopVergeBridge {
-        fn prepare(
-            &self,
-            _snap: &NyanpasuAppConfig,
-        ) -> anyhow::Result<Box<dyn PreparedLegacyMirror>> {
-            Ok(Box::new(NoopPreparedLegacyMirror))
-        }
-
-        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
-            Ok(NyanpasuAppConfig::default())
-        }
-    }
 
     fn temp_config_path(dir: &TempDir) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(dir.path().join("application.yaml"))
@@ -216,8 +181,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             crate::bundle::Channel::Stable,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .expect("application client should be created");
@@ -246,19 +211,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_if_version_rejects_stale_snapshot() {
-        let (client, _dir) = test_client().await;
-        let current = client.snapshot();
-        let mut replacement = current.state.clone();
-        replacement.enable_silent_start = true;
+    async fn a_write_after_shutdown_is_refused_as_shutting_down() {
+        let dir = tempdir().expect("tempdir should be created");
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let client = ApplicationClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            crate::bundle::Channel::Stable,
+            temp_config_path(&dir),
+            shutdown.clone(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .expect("application client should be created");
+        shutdown.cancel();
 
-        let result = client
-            .replace_if_version(current.version + 1, replacement)
-            .await
-            .expect("stale replace should return a conflict");
         assert!(matches!(
-            result,
-            ConditionalReplaceResult::Conflict { actual_version: 0 }
+            client.patch(NyanpasuAppConfig::new_empty_patch()).await,
+            Err(ConfigError::ShuttingDown {
+                domain: ConfigDomain::Application
+            })
         ));
     }
 
@@ -280,45 +251,29 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Stable,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
         for channel in [Channel::Stable, Channel::Beta] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.release_channel = Some(Some(channel));
-            assert!(reloaded.patch(patch).await.is_err());
+            assert!(matches!(
+                reloaded.patch(patch).await,
+                Err(ConfigError::LeaveNightlyChannel { to }) if to == channel
+            ));
             let mut replacement = NyanpasuAppConfig::default();
             replacement.release_channel = Some(channel);
-            assert!(reloaded.replace(replacement).await.is_err());
+            assert!(matches!(
+                reloaded.replace(replacement).await,
+                Err(ConfigError::LeaveNightlyChannel { to }) if to == channel
+            ));
         }
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(None);
         assert_eq!(
             reloaded.patch(patch).await.unwrap().state.release_channel,
-            Some(Channel::Nightly)
-        );
-    }
-
-    #[tokio::test]
-    async fn release_channel_revalidates_prepared_changes_at_commit() {
-        use crate::bundle::Channel;
-        let (client, _dir) = test_client().await;
-        let mut next = client.snapshot().state;
-        next.release_channel = Some(Channel::Beta);
-        let prepared = client.prepare_replace(next).await.unwrap();
-        let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.release_channel = Some(Some(Channel::Nightly));
-        let current = client.patch(patch).await.unwrap();
-        assert!(
-            client
-                .replace_prepared_if_version(current.version, prepared)
-                .await
-                .is_err()
-        );
-        assert_eq!(
-            client.snapshot().state.release_channel,
             Some(Channel::Nightly)
         );
     }
@@ -335,8 +290,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Nightly,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
@@ -360,8 +315,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Beta,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();
@@ -374,8 +329,8 @@ mod tests {
             crate::state::mutation::MutationCoordinator::isolated(),
             Channel::Beta,
             temp_config_path(&dir),
-            NyanpasuAppConfig::default(),
-            Arc::new(NoopVergeBridge),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
         )
         .await
         .unwrap();

@@ -20,27 +20,20 @@ const node = (name: string, delays: number[] = []): ProxyItem_Serialize => ({
 const group = (
   name: string,
   now: string | null,
-  all: ProxyItem_Serialize[],
+  all: string[],
 ): ProxyGroupItem_Serialize => ({ ...node(name), name, now, all })
 const snapshot = (
+  global: ProxyGroupItem_Serialize,
   groups: ProxyGroupItem_Serialize[],
-  records: Record<string, ProxyItem_Serialize> = {},
-): Proxies_Serialize => ({
-  direct: node('DIRECT'),
-  proxies: [],
-  global: group(
-    'GLOBAL',
-    groups[0]?.name ?? null,
-    groups.map((g) => ({ ...g, all: g.all.map((p) => p.name) })),
-  ),
-  groups,
-  records,
-})
+  nodes: Record<string, ProxyItem_Serialize>,
+): Proxies_Serialize => ({ global, groups, nodes })
 
 test('uses the selected member latest measurement, including failure and no history', () => {
+  const other = node('other', [10])
   const selected = node('selected', [30, 80])
-  const root = group('root', 'selected', [node('other', [10]), selected])
-  const data = snapshot([root])
+  const root = group('root', 'selected', ['other', 'selected'])
+  const nodes = { other, selected }
+  const data = snapshot(root, [root], nodes)
   expect(getGroupSelectedDelay(root, data)).toBe(80)
   selected.history.push({ time: '', delay: 0 })
   expect(getGroupSelectedDelay(root, data)).toBe(0)
@@ -50,34 +43,39 @@ test('uses the selected member latest measurement, including failure and no hist
   expect(getGroupSelectedDelay(root, data)).toBe(10)
 })
 
-test('resolves nested and global selections using live members instead of stale records', () => {
-  const root = group('root', 'auto', [node('auto', [999])])
-  const auto = group('auto', 'leaf', [node('leaf', [42])])
-  const data = snapshot([root, auto], { leaf: node('leaf', [900]) })
+test('resolves nested and global selections through the shared node record', () => {
+  const leaf = node('leaf', [42])
+  const auto = group('auto', 'leaf', ['leaf'])
+  const root = group('root', 'auto', ['auto'])
+  const nodes = { auto, leaf }
+  const data = snapshot(root, [root, auto], nodes)
   expect(getGroupSelectedDelay(root, data)).toBe(42)
   expect(getGroupSelectedDelay(data.global, data)).toBe(42)
-  auto.all = [node('leaf', [75])]
+  // Only one `leaf` object exists, so a new sample is visible from every path.
+  leaf.history.push({ time: '', delay: 75 })
   expect(getGroupSelectedDelay(root, data)).toBe(75)
 })
 
-test('resolves hidden groups through records and prefers updated member histories', () => {
-  const hidden = { ...node('hidden', [999]), all: ['leaf'], now: 'leaf' }
-  const root = group('root', 'hidden', [hidden])
-  const data = snapshot([root], { hidden, leaf: node('leaf', [42]) })
+test('resolves a hidden group that is not listed at the top level', () => {
+  const leaf = node('leaf', [42])
+  const hidden = group('hidden', 'leaf', ['leaf'])
+  const root = group('root', 'hidden', ['hidden'])
+  const nodes = { hidden, leaf }
+  const data = snapshot(root, [root], nodes)
   expect(getGroupSelectedDelay(root, data)).toBe(42)
-  data.groups.push(group('another', 'leaf', [node('leaf', [65])]))
-  expect(getGroupSelectedDelay(root, data)).toBe(65)
 })
 
 test('missing selections, unresolved nodes, and cycles have no selected latency', () => {
   const root = group('root', null, [])
-  const data = snapshot([root])
+  const data = snapshot(root, [root], {})
   expect(getGroupSelectedDelay(root, data)).toBe(undefined)
   root.now = 'missing'
   expect(getGroupSelectedDelay(root, data)).toBe(undefined)
   root.now = 'root'
   expect(getGroupSelectedDelay(root, data)).toBe(undefined)
+  const nested = group('nested', 'root', ['root'])
+  data.groups.push(nested)
+  data.nodes.nested = nested
   root.now = 'nested'
-  data.groups.push(group('nested', 'root', []))
   expect(getGroupSelectedDelay(root, data)).toBe(undefined)
 })

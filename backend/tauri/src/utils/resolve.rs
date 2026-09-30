@@ -1,63 +1,102 @@
 use crate::{
-    config::{
-        Config, IVerge,
-        nyanpasu::{ClashCore, TrayMenuCloseBehavior, WindowState},
-    },
-    core::{storage::Storage, tray::proxies, *},
+    client::{NyanpasuClient, application_workflow::startup::StartupOutcome},
+    core::tray::proxies,
     log_err,
-    utils::init,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
 use anyhow::Result;
+use nyanpasu_config::{
+    application::{ClashCore, TrayMenuCloseBehavior},
+    state::window::WindowState,
+};
 use semver::Version;
-use serde_yaml::Mapping;
+use serde::Serialize;
+use snafu::{ResultExt, Snafu, ensure};
 use std::{
     collections::HashMap,
-    net::TcpListener,
-    sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
-use tauri::{App, AppHandle, Emitter, Listener, Manager, async_runtime::block_on};
+use tauri::{App, AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::Event;
 
-static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
-static TRAY_MENU_PERSISTENT: AtomicBool = AtomicBool::new(false);
-/// Set to true only after the window has received Focused(true) at least once.
-/// Prevents spurious Focused(false) events during window creation from triggering
-/// hide/close before the user has ever seen the window.
-static TRAY_MENU_READY: AtomicBool = AtomicBool::new(false);
-/// Ignore focus-loss events until this unix timestamp in milliseconds.
-///
-/// Windows can emit Focused(true) immediately followed by Focused(false) while
-/// the shell is still finishing the tray right-click interaction. Without a
-/// short guard window, the webview tray menu flashes and is hidden/closed
-/// before it can be used.
-static TRAY_MENU_IGNORE_BLUR_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
+const TRAY_MENU_SHOW_BLUR_GRACE: Duration = Duration::from_millis(750);
+const TRAY_MENU_FOCUS_BLUR_GRACE: Duration = Duration::from_millis(250);
 
-const TRAY_MENU_SHOW_BLUR_GRACE_MS: u64 = 750;
-const TRAY_MENU_FOCUS_BLUR_GRACE_MS: u64 = 250;
-
-pub fn is_window_opened() -> bool {
-    OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 // 0 means no window open or windows is initialized
+/// Decides when the webview tray menu is dismissed on focus loss. The caller
+/// passes the time in, so the rules hold without a window.
+#[derive(Debug, Default)]
+struct TrayMenuFocus {
+    /// Set for the debug menu window, which stays open on focus loss.
+    persistent: bool,
+    /// Set to true only after the window has received Focused(true) at least once.
+    /// Prevents spurious Focused(false) events during window creation from triggering
+    /// hide/close before the user has ever seen the window.
+    ready: bool,
+    /// Ignore focus-loss events until this instant.
+    ///
+    /// Windows can emit Focused(true) immediately followed by Focused(false) while
+    /// the shell is still finishing the tray right-click interaction. Without a
+    /// short guard window, the webview tray menu flashes and is hidden/closed
+    /// before it can be used.
+    ignore_blur_until: Option<Instant>,
 }
 
-pub fn reset_window_open_counter() {
-    OPEN_WINDOWS_COUNTER.store(0, Ordering::Release);
+impl TrayMenuFocus {
+    /// The menu was shown at the cursor.
+    fn shown(&mut self, now: Instant) {
+        self.persistent = false;
+        self.ready = false;
+        self.ignore_blur_until = Some(now + TRAY_MENU_SHOW_BLUR_GRACE);
+    }
+
+    /// The debug menu window was opened.
+    fn shown_persistent(&mut self, now: Instant) {
+        self.persistent = true;
+        self.ignore_blur_until = Some(now + TRAY_MENU_SHOW_BLUR_GRACE);
+    }
+
+    fn focused(&mut self, now: Instant) {
+        self.ready = true;
+        self.ignore_blur_until = Some(now + TRAY_MENU_FOCUS_BLUR_GRACE);
+    }
+
+    /// Whether this focus loss dismisses the menu.
+    fn blurred(&mut self, now: Instant) -> bool {
+        if self.ignore_blur_until.is_some_and(|until| now < until) {
+            return false;
+        }
+        if !self.persistent && self.ready {
+            self.ready = false;
+            return true;
+        }
+        false
+    }
 }
 
-fn unix_time_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
-        .unwrap_or(0)
+/// The tray menu window's focus state, managed as Tauri state by the
+/// composition root.
+#[derive(Debug, Default)]
+pub struct TrayMenuWindowController {
+    focus: parking_lot::Mutex<TrayMenuFocus>,
 }
 
-fn ignore_tray_menu_blur_for(duration_ms: u64) {
-    TRAY_MENU_IGNORE_BLUR_UNTIL_MS.store(
-        unix_time_millis().saturating_add(duration_ms),
-        Ordering::Release,
-    );
+impl TrayMenuWindowController {
+    fn shown(&self) {
+        self.focus.lock().shown(Instant::now());
+    }
+
+    fn shown_persistent(&self) {
+        self.focus.lock().shown_persistent(Instant::now());
+    }
+
+    fn focused(&self) {
+        self.focus.lock().focused(Instant::now());
+    }
+
+    fn blurred(&self) -> bool {
+        self.focus.lock().blurred(Instant::now())
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -109,24 +148,6 @@ fn set_window_controls_pos(
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn find_unused_port() -> Result<u16> {
-    match TcpListener::bind("127.0.0.1:0") {
-        Ok(listener) => {
-            let port = listener.local_addr()?.port();
-            Ok(port)
-        }
-        Err(_) => {
-            let port = Config::verge()
-                .latest()
-                .verge_mixed_port
-                .unwrap_or(Config::clash().data().get_mixed_port());
-            log::warn!(target: "app", "use default port: {port}");
-            Ok(port)
-        }
-    }
-}
-
 /// handle something when start app
 pub fn resolve_setup(app: &mut App) {
     #[cfg(target_os = "macos")]
@@ -136,56 +157,48 @@ pub fn resolve_setup(app: &mut App) {
     WindowReadyEvent::listen(app, move |event| {
         let label = &event.payload.label;
         tracing::debug!("Window '{}' is ready", label);
+        #[cfg(target_os = "macos")]
         if label == crate::consts::MAIN_WINDOW_LABEL {
-            reset_window_open_counter();
-            #[cfg(target_os = "macos")]
             log_err!(ready_app_handle.run_on_main_thread(|| {
                 crate::utils::dock::macos::show_dock_icon();
             }));
         }
     });
 
-    handle::Handle::global().init(app.app_handle().clone());
-    crate::consts::setup_app_handle(app.app_handle().clone());
-
-    log_err!(init::init_resources());
-    {
-        let client = app.state::<crate::client::NyanpasuClient>();
-        log_err!(tauri::async_runtime::block_on(client.probe_service()));
-        // The core actor spawns on Local; persisted service mode only takes
-        // effect once the runtime is handed to the daemon, and that has to
-        // happen before the reconcile below picks a host to start the core on.
-        log_err!(tauri::async_runtime::block_on(
-            client.restore_execution_host()
-        ));
-    }
+    #[cfg(any(windows, target_os = "linux"))]
+    log::trace!("init system tray");
+    #[cfg(any(windows, target_os = "linux"))]
+    crate::core::tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
 
     {
         let client = app.state::<crate::client::NyanpasuClient>();
-        log::trace!("init config");
-        log_err!(tauri::async_runtime::block_on(client.reconcile_core()));
-
-        // FIXME(actor-migration): write the session ports back into the legacy
-        // mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
-        // observing the real ports during the BC window. The typed side is the
-        // single resolver (SessionPortResolver); prepare_external_controller_port
-        // double-resolution is removed. Remove after PR-4/PR-6 migrate those readers.
-        //
-        // After the reconcile, not before: the resolver only publishes a
-        // binding the core actually accepted, so mirroring earlier would
-        // either write nothing or advertise a port nothing is listening on.
-        if let Some(ports) = client.session_ports() {
-            Config::verge().data().patch_config(IVerge {
-                verge_mixed_port: Some(ports.mixed_port),
-                ..IVerge::default()
-            });
-            let mut mapping = Mapping::new();
-            mapping.insert("mixed-port".into(), ports.mixed_port.into());
-            if let Some(external_controller) = ports.external_controller.as_deref() {
-                mapping.insert("external-controller".into(), external_controller.into());
-            }
-            Config::clash().data().patch_config(mapping);
+        // TODO(startup): resolve_setup needs restructuring; startup_reconcile
+        // should not block setup. See
+        // docs/plan/2026-09-28-workflow-lifecycle-simplification.md §9.
+        let report = tauri::async_runtime::block_on(client.startup_reconcile());
+        if let Some(observation) = &report.observation {
+            log::info!(
+                target: "app",
+                "startup reconcile {} observed: desired {:?}, service {:?}, runtime {:?}",
+                report.operation_id,
+                observation.desired,
+                observation.service,
+                observation.runtime
+            );
         }
+        match &report.outcome {
+            StartupOutcome::Ready => {
+                log::info!(target: "app", "startup reconcile {}: ready", report.operation_id)
+            }
+            outcome => log::warn!(
+                target: "app",
+                "startup reconcile {}: {outcome:?}",
+                report.operation_id
+            ),
+        }
+        // Even an unsettled startup lets them run: what they change queues
+        // behind the startup command.
+        log_err!(client.start_background_sources());
     }
 
     log::trace!("init storage");
@@ -199,56 +212,13 @@ pub fn resolve_setup(app: &mut App) {
             .start_clash_streams()
     ));
 
-    #[cfg(any(windows, target_os = "linux"))]
-    log::trace!("init system tray");
-    #[cfg(any(windows, target_os = "linux"))]
-    tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
-    let app_handle = app.app_handle().clone();
-    app.listen("update_systray", move |_| {
-        // Fix the GTK should run on main thread issue
-        let app_handle_clone = app_handle.clone();
-        log_err!(app_handle.run_on_main_thread(move || {
-            log_err!(
-                tray::Tray::update_systray(&app_handle_clone),
-                "failed to update systray"
-            );
-        }));
-    });
-    log_err!(app.emit("update_systray", ()));
-
-    let silent_start = { Config::verge().data().enable_silent_start };
-    if !silent_start.unwrap_or(false) {
+    let silent_start = app
+        .state::<NyanpasuClient>()
+        .app_config_snapshot()
+        .enable_silent_start;
+    if !silent_start {
         create_window(app.app_handle());
         spawn_window_ready_timeout(app.app_handle().clone());
-    }
-
-    // Minimal startup wiring: one full reconcile hands the system proxy, PAC
-    // and auto-launch their desired values. Ordering this against silent start,
-    // panel restore and the panic path belongs to the startup/exit task.
-    log_err!(tauri::async_runtime::block_on(async {
-        let outcome = app
-            .state::<crate::client::NyanpasuClient>()
-            .reconcile_application_effects()
-            .await?;
-        for degradation in outcome.degradations() {
-            log::warn!(
-                target: "app",
-                "startup effect reconcile degraded {}: {}",
-                degradation.code,
-                degradation.message
-            );
-        }
-        <anyhow::Result<()>>::Ok(())
-    }));
-
-    log_err!(handle::Handle::update_systray_part());
-
-    // setup jobs
-    log::trace!("setup jobs");
-    {
-        let storage = app.state::<Storage>();
-        let storage = (*storage).clone();
-        log_err!(crate::core::tasks::setup(app, storage));
     }
 
     // test job
@@ -306,15 +276,10 @@ impl AppWindow for MainWindow {
             .center(true)
     }
 
-    fn get_window_state(&self) -> Option<WindowState> {
-        Config::verge().latest().window_size_state.clone()
-    }
-
-    fn set_window_state(&self, state: Option<WindowState>) {
-        Config::verge().data().patch_config(IVerge {
-            window_size_state: state,
-            ..IVerge::default()
-        });
+    fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState> {
+        app_handle
+            .try_state::<NyanpasuClient>()?
+            .main_window_geometry()
     }
 }
 
@@ -420,13 +385,9 @@ impl AppWindow for EditorWindow {
             .center(true)
     }
 
-    fn get_window_state(&self) -> Option<WindowState> {
+    fn get_window_state(&self, _app_handle: &AppHandle) -> Option<WindowState> {
         // EditorWindow does not remember window state
         None
-    }
-
-    fn set_window_state(&self, _state: Option<WindowState>) {
-        // EditorWindow does not remember window state
     }
 }
 
@@ -446,22 +407,11 @@ pub fn is_main_window_open(app_handle: &AppHandle) -> bool {
     MainWindow.is_open(app_handle)
 }
 
-pub fn save_main_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    if !save_to_file {
-        // TODO(actor-migration): temporary window geometry projection for resize events.
-        // Reason: window restoration still reads IVerge until T11.
-        // Remove when: window restore reads SessionStateClient directly.
-        return MainWindow.save_state(app_handle, false);
-    }
-    block_on(save_main_window_state_async(app_handle, true))
-}
-
 pub async fn save_main_window_state_async(
     app_handle: &AppHandle,
     _save_to_file: bool,
 ) -> Result<()> {
     if let Some(geometry) = MainWindow.capture_state(app_handle)? {
-        let geometry = serde_json::from_value(serde_json::to_value(geometry)?)?;
         app_handle
             .state::<crate::client::NyanpasuClient>()
             .save_main_window_geometry(geometry)
@@ -487,9 +437,15 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
     is_main_window_open(app_handle)
 }
 
-/// Save window state for the configured window type
-pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    save_main_window_state(app_handle, save_to_file)
+/// Queues a save of the main window's geometry, so the caller never waits
+/// for the write: it runs on the main thread.
+pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
+    if let Some(geometry) = MainWindow.capture_state(app_handle)? {
+        app_handle
+            .state::<NyanpasuClient>()
+            .queue_main_window_geometry_save(geometry)?;
+    }
+    Ok(())
 }
 
 /// Webview tray menu window
@@ -521,38 +477,24 @@ impl AppWindow for TrayMenuWindow {
             .decorations(false)
     }
 
-    fn get_window_state(&self) -> Option<WindowState> {
+    fn get_window_state(&self, _app_handle: &AppHandle) -> Option<WindowState> {
         None
     }
-
-    fn set_window_state(&self, _state: Option<WindowState>) {}
 }
 
 /// Register a window event handler that hides or closes the tray menu window on
-/// focus loss, unless TRAY_MENU_PERSISTENT is set to true.
-///
-/// TRAY_MENU_READY guards against spurious Focused(false) events that fire
-/// during window creation / OS tray interaction before the user sees the window.
+/// focus loss, as [`TrayMenuFocus`] decides.
 fn setup_tray_menu_focus_handler(win: &tauri::WebviewWindow<tauri::Wry>) {
     let win_clone = win.clone();
     win.on_window_event(move |event| match event {
         tauri::WindowEvent::Focused(true) => {
-            TRAY_MENU_READY.store(true, Ordering::Release);
-            ignore_tray_menu_blur_for(TRAY_MENU_FOCUS_BLUR_GRACE_MS);
+            win_clone.state::<TrayMenuWindowController>().focused();
         }
         tauri::WindowEvent::Focused(false) => {
-            let ignore_blur_until = TRAY_MENU_IGNORE_BLUR_UNTIL_MS.load(Ordering::Acquire);
-            if unix_time_millis() < ignore_blur_until {
-                return;
-            }
-
-            if !TRAY_MENU_PERSISTENT.load(Ordering::Acquire)
-                && TRAY_MENU_READY.load(Ordering::Acquire)
-            {
-                TRAY_MENU_READY.store(false, Ordering::Release);
-                let close_behavior = Config::verge()
-                    .latest()
-                    .tray_menu_close_behavior
+            if win_clone.state::<TrayMenuWindowController>().blurred() {
+                let close_behavior = win_clone
+                    .try_state::<NyanpasuClient>()
+                    .map(|client| client.app_config_snapshot().tray_menu_close_behavior)
                     .unwrap_or_default();
                 match close_behavior {
                     TrayMenuCloseBehavior::Close => {
@@ -570,8 +512,9 @@ fn setup_tray_menu_focus_handler(win: &tauri::WebviewWindow<tauri::Wry>) {
 
 /// Create a persistent tray menu window for debugging.
 pub fn create_debug_tray_menu_window(app_handle: &AppHandle) -> Result<()> {
-    TRAY_MENU_PERSISTENT.store(true, Ordering::Release);
-    ignore_tray_menu_blur_for(TRAY_MENU_SHOW_BLUR_GRACE_MS);
+    app_handle
+        .state::<TrayMenuWindowController>()
+        .shown_persistent();
 
     let params = WindowParamsBuilder::new()
         .param("persistent", "true")
@@ -599,9 +542,7 @@ pub fn show_tray_menu_window(
 ) -> Result<()> {
     use tauri::{Manager, PhysicalPosition};
 
-    TRAY_MENU_PERSISTENT.store(false, Ordering::Release);
-    TRAY_MENU_READY.store(false, Ordering::Release);
-    ignore_tray_menu_blur_for(TRAY_MENU_SHOW_BLUR_GRACE_MS);
+    app_handle.state::<TrayMenuWindowController>().shown();
 
     let win = match app_handle.get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL) {
         Some(existing) => existing,
@@ -762,22 +703,59 @@ pub fn is_editor_window_open(
     app_handle.get_webview_window(window.label()).is_some()
 }
 
+/// A failure of asking a core binary for its version.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CoreVersionError {
+    #[snafu(display("could not run the {core} core to read its version: {source}"))]
+    RunCoreVersion {
+        #[specta(type = String)]
+        core: ClashCore,
+        #[serde(skip)]
+        source: tauri_plugin_shell::Error,
+    },
+    #[snafu(display("the {core} core failed when asked for its version"))]
+    CoreVersionExit {
+        #[specta(type = String)]
+        core: ClashCore,
+    },
+    #[snafu(display("the {core} core did not report a version"))]
+    CoreVersionNotReported {
+        #[specta(type = String)]
+        core: ClashCore,
+    },
+}
+
 /// resolve core version
 // TODO: use enum instead
-pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore) -> Result<String> {
+pub async fn resolve_core_version(
+    app_handle: &AppHandle,
+    core_type: &ClashCore,
+) -> Result<String, CoreVersionError> {
     let shell = app_handle.shell();
-    let core = core_type.clone().to_string();
+    let core = core_type.binary_name();
+    let core_type = *core_type;
     log::debug!(target: "app", "check config in `{core}`");
     let cmd = match core_type {
         ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha | ClashCore::Meow => {
-            shell.sidecar(core)?.args(["-v"])
+            shell
+                .sidecar(core)
+                .context(RunCoreVersionSnafu { core: core_type })?
+                .args(["-v"])
         }
-        ClashCore::ClashRs | ClashCore::ClashRsAlpha => shell.sidecar(core)?.args(["-V"]),
+        ClashCore::ClashRs | ClashCore::ClashRsAlpha => shell
+            .sidecar(core)
+            .context(RunCoreVersionSnafu { core: core_type })?
+            .args(["-V"]),
     };
-    let out = cmd.output().await?;
-    if !out.status.success() {
-        return Err(anyhow::anyhow!("failed to get core version"));
-    }
+    let out = cmd
+        .output()
+        .await
+        .context(RunCoreVersionSnafu { core: core_type })?;
+    ensure!(
+        out.status.success(),
+        CoreVersionExitSnafu { core: core_type }
+    );
     let out = String::from_utf8_lossy(&out.stdout);
     log::trace!(target: "app", "get core version: {out:?}");
     let out = out.trim().split(' ').collect::<Vec<&str>>();
@@ -794,5 +772,76 @@ pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore)
             }
         }
     }
-    Err(anyhow::anyhow!("failed to get core version"))
+    CoreVersionNotReportedSnafu { core: core_type }.fail()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ms(millis: u64) -> Duration {
+        Duration::from_millis(millis)
+    }
+
+    #[test]
+    fn a_blur_before_the_first_focus_keeps_the_menu() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown(t0);
+        assert!(!focus.blurred(t0 + ms(10)), "within the show grace");
+        assert!(!focus.blurred(t0 + ms(1000)), "never focused");
+    }
+
+    #[test]
+    fn a_blur_right_after_focus_is_ignored_until_the_grace_ends() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown(t0);
+        focus.focused(t0 + ms(5));
+        assert!(!focus.blurred(t0 + ms(6)), "the shell's focus flicker");
+        assert!(!focus.blurred(t0 + ms(254)));
+        assert!(focus.blurred(t0 + ms(255)));
+    }
+
+    #[test]
+    fn a_focus_shortly_after_showing_shortens_the_grace() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown(t0);
+        focus.focused(t0 + ms(100));
+        assert!(
+            focus.blurred(t0 + ms(400)),
+            "the focus grace replaces the show grace"
+        );
+    }
+
+    #[test]
+    fn a_dismissal_waits_for_the_next_focus() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown(t0);
+        focus.focused(t0 + ms(10));
+        assert!(focus.blurred(t0 + ms(1000)));
+        assert!(!focus.blurred(t0 + ms(1001)));
+
+        focus.focused(t0 + ms(2000));
+        assert!(focus.blurred(t0 + ms(3000)));
+    }
+
+    #[test]
+    fn the_debug_menu_stays_open_until_shown_normally() {
+        let t0 = Instant::now();
+        let mut focus = TrayMenuFocus::default();
+        focus.shown_persistent(t0);
+        focus.focused(t0 + ms(10));
+        assert!(!focus.blurred(t0 + ms(1000)));
+
+        focus.shown(t0 + ms(2000));
+        assert!(
+            !focus.blurred(t0 + ms(3000)),
+            "showing again waits for a new focus"
+        );
+        focus.focused(t0 + ms(3000));
+        assert!(focus.blurred(t0 + ms(4000)));
+    }
 }

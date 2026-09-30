@@ -216,6 +216,11 @@ impl HttpServerClient {
             ),
         }
     }
+    pub async fn shutdown(&self) -> Result<()> {
+        self.set_enabled(false, Router::new()).await?;
+        self.0.actor.get_cell().drain_and_wait(None).await?;
+        Ok(())
+    }
     pub async fn status(&self) -> Result<DebugHttpStatus> {
         match self
             .0

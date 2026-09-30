@@ -14,6 +14,7 @@ export const useRulesProviderUpdate = (data: ClashRulesProviderQueryItem) => {
         message(`Update provider failed: \n ${formatError(error)}`, {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
     },

@@ -11,11 +11,6 @@
 //! the source state, and the runtime revision orders published views. None of
 //! them substitutes for another.
 
-// The production writers of these values are the three domain actors, which
-// move onto the participant in T6; until then only the workflow's own tests
-// construct one, so the lib build sees the plumbing without its producers.
-#![allow(dead_code)]
-
 use std::sync::Arc;
 
 use nyanpasu_config::{
@@ -26,23 +21,25 @@ use nyanpasu_core_manager::OperationId;
 use tokio::sync::oneshot;
 
 use super::{
-    impact::{MutationHints, RuntimeImpact},
-    policy::{CommandClass, CommandPolicy, TryCauseKind},
+    impact::{self, MutationHints, RuntimeImpact},
+    policy::{CommandClass, TryCauseKind},
 };
-use crate::{
-    client::runtime::{RuntimeApplyReceipt, RuntimeSnapshot},
-    core::actor_v2::facade::AppliedConfigBinding,
+use crate::client::{
+    runtime::{RuntimeApplyReceipt, RuntimeSnapshot},
+    runtime_error::{RuntimeError, ack_of},
 };
 
 /// Which source domain a mutation belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConfigDomain {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigDomain {
     Application,
     Clash,
     Profiles,
 }
 
-/// The candidate of one mutation together with the committed value it replaces.
+/// The candidate of one mutation, and the committed value it replaces where
+/// the Runtime reads that.
 ///
 /// The candidate comes from the `StateChange` of the transaction the workflow
 /// participates in, never from a read of the domain: at prepare time the store
@@ -55,7 +52,6 @@ pub(crate) enum DomainChange {
         candidate: Arc<NyanpasuAppConfig>,
     },
     Clash {
-        previous: Option<Arc<ClashConfig>>,
         candidate: Arc<ClashConfig>,
     },
     Profiles {
@@ -74,45 +70,61 @@ impl DomainChange {
     }
 }
 
-/// Binds one source-config type to the workflow's domain protocol.
-///
-/// The participant is generic over the state type so it can be handed to the
-/// owning `PersistentStateManager` unchanged; this trait is what lets it erase
-/// that type into a [`DomainChange`] the workflow can classify.
-pub(crate) trait MutationDomain: Clone + Send + Sync + 'static {
-    fn domain_change(change: StateChange<Self>) -> DomainChange;
-}
-
-impl MutationDomain for NyanpasuAppConfig {
-    fn domain_change(change: StateChange<Self>) -> DomainChange {
-        DomainChange::Application {
+// The participant is generic over the state type so it can be handed to the
+// owning `PersistentStateManager` unchanged; these erase that type for the
+// workflow.
+impl From<StateChange<NyanpasuAppConfig>> for DomainChange {
+    fn from(change: StateChange<NyanpasuAppConfig>) -> Self {
+        Self::Application {
             previous: change
                 .previous
                 .map(|previous| Arc::new(previous.state.clone())),
             candidate: change.current,
         }
+    }
+}
+
+impl From<StateChange<ClashConfig>> for DomainChange {
+    fn from(change: StateChange<ClashConfig>) -> Self {
+        Self::Clash {
+            candidate: change.current,
+        }
+    }
+}
+
+impl From<StateChange<Profiles>> for DomainChange {
+    fn from(change: StateChange<Profiles>) -> Self {
+        Self::Profiles {
+            previous: change
+                .previous
+                .map(|previous| Arc::new(previous.state.clone())),
+            candidate: change.current,
+        }
+    }
+}
+
+/// Lets a source classify its own candidate, whichever source-config type it
+/// owns.
+pub(crate) trait MutationDomain {
+    /// How far the candidate moves the runtime, read off the two documents.
+    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact;
+}
+
+impl MutationDomain for NyanpasuAppConfig {
+    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
+        impact::classify_application(previous, candidate)
     }
 }
 
 impl MutationDomain for ClashConfig {
-    fn domain_change(change: StateChange<Self>) -> DomainChange {
-        DomainChange::Clash {
-            previous: change
-                .previous
-                .map(|previous| Arc::new(previous.state.clone())),
-            candidate: change.current,
-        }
+    fn classify(previous: &Self, candidate: &Self, _: &MutationHints) -> RuntimeImpact {
+        impact::classify_clash(previous, candidate)
     }
 }
 
 impl MutationDomain for Profiles {
-    fn domain_change(change: StateChange<Self>) -> DomainChange {
-        DomainChange::Profiles {
-            previous: change
-                .previous
-                .map(|previous| Arc::new(previous.state.clone())),
-            candidate: change.current,
-        }
+    fn classify(previous: &Self, candidate: &Self, hints: &MutationHints) -> RuntimeImpact {
+        impact::classify_profiles(previous, candidate, hints)
     }
 }
 
@@ -124,51 +136,28 @@ pub(crate) struct MutationRequest {
     pub change: DomainChange,
     pub hints: MutationHints,
     pub class: CommandClass,
+    /// How far the source's own classification says the candidate moves the
+    /// runtime. The Runtime acts on it and never classifies again.
+    pub impact: RuntimeImpact,
     /// The authoritative decision of this transaction. It stays readable after
     /// the commit/rollback notification is dropped, which is what keeps
     /// `AwaitDecision` from hanging or guessing (v2 §3.3/§4.2).
     pub decision: DecisionHandle,
     /// Where the Try's verdict goes. `None` once it has been answered: exactly
     /// one verdict is ever sent, and a refusal before admission is one of them.
-    /// The receiving end disappears when the coordinator's ACK budget elapses
-    /// and the whole prepare fan-out is abandoned.
-    pub ack: Option<oneshot::Sender<TryAck>>,
+    /// The receiving end disappears when the whole prepare fan-out is dropped.
+    pub ack: Option<oneshot::Sender<Ack>>,
+    /// Where the settled attempt's receipt goes. The source waits for it once
+    /// its transaction has returned; a request refused before its Try drops it
+    /// unsent, which that wait reads as "the Runtime did nothing".
+    pub settle: Option<oneshot::Sender<MutationReceipt>>,
 }
 
 impl MutationRequest {
     /// Answers the source transaction's prepare.
-    pub fn answer(&mut self, ack: TryAck) {
+    pub fn answer(&mut self, ack: Ack) {
         if let Some(channel) = self.ack.take() {
             let _ = channel.send(ack);
-        }
-    }
-}
-
-/// One admitted mutation, carrying its authoritative source decision handle.
-pub(crate) struct MutationCommand {
-    pub request: MutationRequest,
-}
-
-/// The workflow's verdict on the critical part of a mutation, in the shape the
-/// state transaction consumes (v2 §4.4).
-///
-/// The payloads are diagnostics. Control flow reads the structured
-/// [`RuntimePrepareOutcome`] kept in the operation receipt, never these strings.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TryAck {
-    Ok,
-    Degraded(String),
-    Rejected(String),
-    Failed(String),
-}
-
-impl From<TryAck> for Ack {
-    fn from(ack: TryAck) -> Self {
-        match ack {
-            TryAck::Ok => Ack::Ok,
-            TryAck::Degraded(message) => Ack::Degraded(message),
-            TryAck::Rejected(message) => Ack::Rejected(message),
-            TryAck::Failed(message) => Ack::Failed(anyhow::anyhow!(message)),
         }
     }
 }
@@ -178,8 +167,11 @@ impl From<TryAck> for Ack {
 pub(crate) enum MutationStage {
     Preparing,
     TryingCritical,
+    // Never constructed; this predates the workflow cleanup and is left to
+    // its own change.
+    #[allow(dead_code)]
     AwaitDecision,
-    Confirming,
+    #[allow(dead_code)]
     Cancelling,
 }
 
@@ -208,8 +200,9 @@ pub(crate) enum KnownRuntimeState {
 /// and this attempt made nothing less certain than it already was — which is
 /// why it is a plain refusal the caller may retry (v2 §2.4, first row) and
 /// never the isolated state §11.4 reserves for "结果可能已经执行".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EvidenceGap {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceGap {
     /// The core is mid-transition — starting, restarting, switching or
     /// stopping. That is an answer, but not one that says what a candidate
     /// would be applied on top of.
@@ -240,12 +233,16 @@ pub(crate) enum RefusalCause {
 /// A critical Try that did not apply, typed by the stage that observed it.
 #[derive(Debug, Clone)]
 pub(crate) struct ApplyFailure {
+    // Never read; this predates the workflow cleanup and is left to its own
+    // change.
+    #[allow(dead_code)]
     pub stage: MutationStage,
     pub cause: RefusalCause,
-    pub message: String,
+    pub error: Arc<RuntimeError>,
 }
 
-/// Why a committed desired value is not the applied one.
+/// Why a committed desired value is not the applied one, as the status
+/// surface shows it.
 #[derive(Debug, Clone)]
 pub(crate) struct RetryableCause {
     pub stage: MutationStage,
@@ -261,25 +258,8 @@ pub(crate) struct AppliedCandidate {
     pub replaced: bool,
     pub receipt: Arc<RuntimeApplyReceipt>,
     pub product: Arc<RuntimeSnapshot>,
-}
-
-/// Everything a `RecoveryRequired` state has to remember (v2 §11.4).
-#[derive(Debug, Clone)]
-pub(crate) struct RecoveryContext {
-    pub operation_id: OperationId,
-    pub runtime_operation: Option<OperationId>,
-    pub domain: ConfigDomain,
-    pub stage: MutationStage,
-    /// The source commit decision this attempt reached, kept so an explicit
-    /// recovery can choose a direction instead of guessing one.
-    pub decision: DecisionHandle,
-    /// What was running before the attempt.
-    pub baseline: KnownRuntimeState,
-    /// What the attempt was trying to reach, when it got far enough to have one.
-    pub target: Option<Arc<RuntimeApplyReceipt>>,
-    /// The last binding the app could observe.
-    pub binding: Option<AppliedConfigBinding>,
-    pub error: String,
+    /// What the core answered, for an explicit start that reports it.
+    pub report: Box<crate::core::actor_v2::facade::ReconcileReport>,
 }
 
 /// How the critical part of one mutation ended (v2 §4.3).
@@ -290,43 +270,39 @@ pub(crate) enum RuntimePrepareOutcome {
     /// The candidate is safe to commit unapplied: every condition of
     /// `policy::disposition` held.
     Deferred {
-        baseline: KnownRuntimeState,
         /// The document that is committed but not running.
         digest: String,
         cause: RetryableCause,
+        error: Arc<RuntimeError>,
     },
     /// The user stopped the core. The candidate was validated and may be
-    /// saved, but nothing is started (R7).
-    SavedInactive,
-    /// Nothing critical was owed: a plain source save, with or without
-    /// peripheral owners to notify afterwards.
-    Saved,
+    /// saved, but nothing is started (R7). `identity` is the candidate's
+    /// target, which decides what the save does to an open target (T10 §1.7).
+    SavedInactive { identity: String },
     /// The candidate must not be committed, and the runtime is where it was.
     Rejected {
         cause: ApplyFailure,
+        // Never read; this predates the workflow cleanup and is left to its
+        // own change.
+        #[allow(dead_code)]
         restored: KnownRuntimeState,
     },
     /// What actually ran cannot be established, so no commit decision may be
-    /// derived from it.
-    RecoveryRequired(Box<RecoveryContext>),
+    /// derived from it. The attempt and its pending action say what is
+    /// unknown; this carries why.
+    RecoveryRequired(Arc<RuntimeError>),
 }
 
 impl RuntimePrepareOutcome {
-    /// The ACK this outcome owes the state transaction (v2 §4.4).
-    pub fn ack(&self) -> TryAck {
+    /// The ACK this outcome owes the state transaction (v2 §4.4). Control flow
+    /// reads the structured outcome kept in the operation receipt, never the
+    /// ACK; the source only reports it to the user.
+    pub fn ack(&self) -> Ack {
         match self {
-            Self::Applied(_) | Self::SavedInactive | Self::Saved => TryAck::Ok,
-            Self::Deferred { cause, .. } => TryAck::Degraded(cause.message.clone()),
-            Self::Rejected { cause, .. } => TryAck::Rejected(cause.message.clone()),
-            Self::RecoveryRequired(context) => TryAck::Failed(context.error.clone()),
-        }
-    }
-
-    /// The typed cause of a refusal, when this outcome is one.
-    pub fn refusal(&self) -> Option<RefusalCause> {
-        match self {
-            Self::Rejected { cause, .. } => Some(cause.cause),
-            _ => None,
+            Self::Applied(_) | Self::SavedInactive { .. } => Ack::Ok,
+            Self::Deferred { error, .. } => Ack::Degraded(ack_of(error.clone())),
+            Self::Rejected { cause, .. } => Ack::Rejected(ack_of(cause.error.clone())),
+            Self::RecoveryRequired(error) => Ack::Failed(ack_of(error.clone())),
         }
     }
 
@@ -334,8 +310,7 @@ impl RuntimePrepareOutcome {
         match self {
             Self::Applied(_) => MutationOutcomeKind::Applied,
             Self::Deferred { .. } => MutationOutcomeKind::Deferred,
-            Self::SavedInactive => MutationOutcomeKind::SavedInactive,
-            Self::Saved => MutationOutcomeKind::Saved,
+            Self::SavedInactive { .. } => MutationOutcomeKind::SavedInactive,
             Self::Rejected { .. } => MutationOutcomeKind::Rejected,
             Self::RecoveryRequired(_) => MutationOutcomeKind::RecoveryRequired,
         }
@@ -347,7 +322,6 @@ pub(crate) enum MutationOutcomeKind {
     Applied,
     Deferred,
     SavedInactive,
-    Saved,
     Rejected,
     RecoveryRequired,
 }
@@ -391,76 +365,74 @@ pub(crate) enum CheckRecord {
 /// The structured record of one attempt.
 ///
 /// This is where the cause and the status live. Nothing reads them back out of
-/// an `Ack::Degraded(String)` (v2 §4.4).
+/// an `Ack::Degraded` payload (v2 §4.4).
 #[derive(Debug, Clone)]
 pub(crate) struct MutationReceipt {
     pub degradations: Vec<crate::client::runtime::Degradation>,
     pub operation_id: OperationId,
     pub domain: ConfigDomain,
-    pub impact: RuntimeImpact,
-    pub policy: CommandPolicy,
     pub check: CheckRecord,
     pub outcome: MutationOutcomeKind,
-    /// Why a refused mutation was refused. The structured cause lives here, so
-    /// nothing has to read it back out of an ACK's message (v2 §4.4).
-    pub refusal: Option<RefusalCause>,
     pub conclusion: MutationConclusion,
     /// Diagnostics for the operator, never an input to a decision.
     pub detail: Option<String>,
+    /// What a deferral, an unknown outcome or a failed rollback was, for the
+    /// caller that reports it. `detail` is the same for the status surface.
+    pub cause: Option<Arc<RuntimeError>>,
 }
 
 /// A committed desired value the core is not running, with its automatic
 /// convergence budget (D11).
+///
+/// It carries no decision handle: its source is already committed, and a
+/// retry of it is never another source transaction.
 #[derive(Debug, Clone)]
 pub(crate) struct DeferredTarget {
     pub operation_id: OperationId,
+    pub origin: TargetOrigin,
     /// Identity of the complete runtime target, including captured content.
     /// Only a different target opens a new automatic budget. A manual save of
     /// the same target neither spends nor refills it (D11, V22).
-    pub digest: String,
-    pub baseline: KnownRuntimeState,
+    pub identity: String,
     pub cause: RetryableCause,
     pub attempts_remaining: u8,
     pub attempts: u32,
+    /// Consecutive attempts that ended waiting on a dependency. Counted apart
+    /// from the budget, which such attempts never spend, and reset only by an
+    /// application result or a new identity (T10 §1.8).
+    pub waits: u8,
     pub health: crate::client::convergence::ConvergenceHealth,
     pub next_attempt: Option<tokio::time::Instant>,
-    pub domain: ConfigDomain,
-    pub decision: DecisionHandle,
+}
+
+/// Where a committed target came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TargetOrigin {
+    /// A source mutation committed it unapplied.
+    Mutation,
+    /// The runtime has to be re-established from the committed configuration.
+    Reestablish(ReestablishCause),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReestablishCause {
+    Startup,
+    Recovery,
+    ExplicitStart,
 }
 
 /// What the workflow publishes about mutations, separate from the core
-/// lifecycle status so a diagnostic read never competes with admission.
+/// lifecycle status so a diagnostic read never competes with admission. It is
+/// a display: a source learns its own result from its settlement, never here.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MutationJournal {
     pub maintenance: Option<String>,
     pub event_seq: u64,
     pub completed: std::collections::VecDeque<MutationReceipt>,
-    pub recovery: Option<Box<RecoveryContext>>,
+    /// Why the execution domain is isolated, projected from the live attempt
+    /// and the pending action.
+    pub recovery: Option<super::attempt::RecoveryView>,
     pub deferred: Option<DeferredTarget>,
-}
-
-/// The separate budgets of one mutation (v2 §5.5).
-///
-/// They are deliberately not one number: waiting for admission, waiting for the
-/// source decision are different phases with independent bounds.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct MutationBudgets {
-    /// How long a Try may wait for the execution domain before the mutation is
-    /// refused outright. Refusing here is safe: nothing has been tried and
-    /// nothing has been committed.
-    pub admission: std::time::Duration,
-    /// How long `AwaitDecision` keeps waiting before the attempt is treated as
-    /// unresolved.
-    pub decision_wait: std::time::Duration,
-}
-
-impl Default for MutationBudgets {
-    fn default() -> Self {
-        Self {
-            admission: std::time::Duration::from_secs(10),
-            decision_wait: std::time::Duration::from_secs(120),
-        }
-    }
 }
 
 /// How many automatic convergence attempts a deferred target is allowed (D11).

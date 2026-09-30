@@ -1,5 +1,5 @@
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { useSetting } from '@nyanpasu/interface'
+import { useClashSetting, useSetting } from '@nyanpasu/interface'
 
 export const useSystemProxy = () => {
   const systemProxy = useSetting('enable_system_proxy')
@@ -15,7 +15,7 @@ export const useSystemProxy = () => {
 }
 
 export const useTunMode = () => {
-  const tunMode = useSetting('enable_tun_mode')
+  const tunMode = useClashSetting('enable_tun_mode')
 
   const blockTask = useBlockTask('tun-mode', async () => {
     await tunMode.upsert(!tunMode.value)

@@ -1,7 +1,6 @@
 use crate::{
-    config::*,
     core::migration::modules::profiles::ProfilesFormat,
-    utils::{dirs, help},
+    utils::{dirs, path::PathResolver},
 };
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
@@ -15,8 +14,7 @@ use std::{
     sync::Arc,
 };
 use tauri::utils::platform::current_exe;
-mod logging;
-pub use logging::refresh_logger;
+pub mod logging;
 
 pub fn run_pending_migrations() -> Result<()> {
     let current_exe = current_exe()?;
@@ -125,31 +123,10 @@ pub fn init_config() -> Result<()> {
     //     }
     // }
 
-    // init log
-    logging::init().unwrap();
-
     crate::log_err!(dirs::app_profiles_dir().map(|profiles_dir| {
         if !profiles_dir.exists() {
             let _ = fs::create_dir_all(&profiles_dir);
         }
-    }));
-
-    crate::log_err!(dirs::clash_guard_overrides_path().map(|path| {
-        if !path.exists() {
-            help::save_yaml(
-                &path,
-                &IClashTemp::template().0,
-                Some("# Clash Nyanpasuasu"),
-            )?;
-        }
-        <Result<()>>::Ok(())
-    }));
-
-    crate::log_err!(dirs::nyanpasu_config_path().map(|path| {
-        if !path.exists() {
-            help::save_yaml(&path, &IVerge::template(), Some("# Clash Nyanpasu"))?;
-        }
-        <Result<()>>::Ok(())
     }));
 
     crate::log_err!(dirs::profiles_path().map(|path| {
@@ -172,16 +149,15 @@ pub fn init_config() -> Result<()> {
 }
 
 /// initialize app resources
-/// after tauri setup
-pub fn init_resources() -> Result<()> {
-    let app_dir = dirs::app_data_dir()?;
-    let res_dir = dirs::app_resources_dir()?;
+pub fn init_resources(paths: &PathResolver) -> Result<()> {
+    let app_dir = paths.app_data_dir();
+    let res_dir = paths.app_resources_dir()?;
 
     if !app_dir.exists() {
-        let _ = fs::create_dir_all(&app_dir);
+        let _ = fs::create_dir_all(app_dir);
     }
     if !res_dir.exists() {
-        let _ = fs::create_dir_all(&res_dir);
+        let _ = fs::create_dir_all(res_dir);
     }
 
     #[cfg(target_os = "windows")]

@@ -1,13 +1,19 @@
 //! Owns peripheral desired state and independent, coalesced execution groups.
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use futures_util::FutureExt;
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
+use nyanpasu_config::runtime::executor::ResolvedPortBindings;
+#[cfg(test)]
+use ractor::RpcReplyPort;
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use snafu::OptionExt as _;
 use tokio::sync::watch;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
+    error::{EffectsError, EffectsStoppedSnafu},
     plan::{
-        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind, TrayRefresh,
+        ApplicationEffect, ApplicationEffectFields, ApplicationEffectInputs, ApplicationEffectPlan,
+        ClashEffectFields, EffectKind, TrayRefresh,
     },
     ports::{ApplicationEffectsPort, CommitNotifications},
     status::{EffectHealth, EffectRevision, EffectStatus},
@@ -67,6 +73,9 @@ pub(crate) struct EffectsArgs {
     pub port: Arc<dyn ApplicationEffectsPort>,
     pub ui: Arc<dyn UiEventSink>,
     pub initial: ApplicationEffectInputs,
+    /// Once cancelled, nothing new is queued, retried or started; the groups
+    /// already running are awaited before the actor stops.
+    pub shutdown: CancellationToken,
 }
 
 struct EffectsActor;
@@ -74,22 +83,25 @@ struct Args {
     dependencies: EffectsArgs,
     status: watch::Sender<EffectsSnapshot>,
 }
+type WakeUp = tokio::task::JoinHandle<Result<(), ractor::MessagingErr<Message>>>;
+
 struct State {
     port: Arc<dyn ApplicationEffectsPort>,
     ui: Arc<dyn UiEventSink>,
+    /// The latest slice of each owner, side by side.
     desired: ApplicationEffectInputs,
     revision: u64,
     pending: BTreeMap<EffectKind, ApplicationEffect>,
     entries: BTreeMap<EffectKind, Entry>,
     active: [Option<tokio::task::JoinHandle<()>>; 3],
     status: watch::Sender<EffectsSnapshot>,
-    closed: bool,
-    timer: tokio::task::JoinHandle<()>,
+    shutdown: CancellationToken,
+    retry_timer: Option<(tokio::time::Instant, WakeUp)>,
 }
 
 enum Message {
     Publish {
-        inputs: Box<ApplicationEffectInputs>,
+        slice: Slice,
         refresh: bool,
         full: bool,
         requested: Vec<EffectKind>,
@@ -100,11 +112,24 @@ enum Message {
         kinds: Vec<EffectKind>,
         statuses: Vec<EffectStatus>,
     },
-    Tick,
+    Tick(tokio::time::Instant),
     RetryNow(EffectKind),
-    Shutdown(RpcReplyPort<Vec<EffectStatus>>),
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
+    #[cfg(test)]
+    RetryDeadline(RpcReplyPort<Option<(tokio::time::Instant, tokio::task::Id)>>),
+}
+
+/// The part of [`ApplicationEffectInputs`] one owner sends. Each has a single
+/// serial sender, so the slice that arrives last is its owner's latest, and
+/// replacing only that part of `desired` needs no version to order it.
+enum Slice {
+    Application(Box<ApplicationEffectFields>),
+    Clash(ClashEffectFields),
+    Ports(Option<ResolvedPortBindings>),
+    /// No effect reads the profiles: their commit only asks for a tray
+    /// refresh.
+    Profiles,
 }
 
 fn group(kind: EffectKind) -> usize {
@@ -117,6 +142,24 @@ fn group(kind: EffectKind) -> usize {
 }
 
 impl State {
+    fn arm_retry(&mut self, actor: &ActorRef<Message>) {
+        let due = if self.shutdown.is_cancelled() {
+            None
+        } else {
+            self.entries.values().filter_map(|entry| entry.next).min()
+        };
+        if self.retry_timer.as_ref().map(|(at, _)| *at) == due {
+            return;
+        }
+        if let Some((_, timer)) = self.retry_timer.take() {
+            timer.abort();
+        }
+        self.retry_timer = due.map(|at| {
+            let wait = at.saturating_duration_since(tokio::time::Instant::now());
+            (at, actor.send_after(wait, move || Message::Tick(at)))
+        });
+    }
+
     fn publish(&self) {
         let event_seq = self.status.borrow().event_seq + 1;
         self.status.send_replace(EffectsSnapshot {
@@ -156,7 +199,10 @@ impl State {
                 .iter()
                 .any(|effect| effect.kind() == EffectKind::Tray)
         {
-            effects.push(ApplicationEffect::Tray(TrayRefresh::Part));
+            effects.push(ApplicationEffect::Tray(
+                TrayRefresh::Part,
+                self.desired.tray_view(),
+            ));
         }
         if effects.is_empty() {
             return;
@@ -165,11 +211,13 @@ impl State {
         let revision = EffectRevision::new(self.revision);
         for mut effect in effects {
             let kind = effect.kind();
-            if matches!(
-                self.pending.get(&kind),
-                Some(ApplicationEffect::Tray(TrayRefresh::Full))
-            ) {
-                effect = ApplicationEffect::Tray(TrayRefresh::Full);
+            if let ApplicationEffect::Tray(refresh, _) = &mut effect
+                && matches!(
+                    self.pending.get(&kind),
+                    Some(ApplicationEffect::Tray(TrayRefresh::Full, _))
+                )
+            {
+                *refresh = TrayRefresh::Full;
             }
             let entry = self.entries.entry(kind).or_insert_with(|| Entry::new(kind));
             if changed.contains(&kind) {
@@ -216,6 +264,12 @@ impl State {
     }
 
     fn drive(&mut self, myself: &ActorRef<Message>) {
+        // A group that completes during the shutdown starts nothing new: what
+        // is still pending belongs to an app that is leaving.
+        if self.shutdown.is_cancelled() {
+            self.publish();
+            return;
+        }
         for index in 0..3 {
             if self.active[index].is_some() {
                 continue;
@@ -247,17 +301,12 @@ impl State {
             let ui = self.ui.clone();
             let actor = myself.clone();
             self.active[index] = Some(tokio::spawn(async move {
-                let work = async {
-                    if index == 2 {
-                        ui.refresh_clash();
-                    }
-                    port.apply(revision, ApplicationEffectPlan::from_effects(effects))
-                        .await
-                };
-                let statuses = std::panic::AssertUnwindSafe(work)
-                    .catch_unwind()
-                    .await
-                    .unwrap_or_default();
+                if index == 2 {
+                    ui.refresh_clash();
+                }
+                let statuses = port
+                    .apply(revision, ApplicationEffectPlan::from_effects(effects))
+                    .await;
                 let _ = actor.cast(Message::Completed {
                     group: index,
                     revision,
@@ -277,7 +326,7 @@ impl Actor for EffectsActor {
 
     async fn pre_start(
         &self,
-        myself: ActorRef<Message>,
+        _myself: ActorRef<Message>,
         args: Args,
     ) -> Result<State, ActorProcessingErr> {
         Ok(State {
@@ -289,8 +338,8 @@ impl Actor for EffectsActor {
             entries: BTreeMap::new(),
             active: [None, None, None],
             status: args.status,
-            closed: false,
-            timer: myself.send_interval(Duration::from_millis(250), || Message::Tick),
+            shutdown: args.dependencies.shutdown,
+            retry_timer: None,
         })
     }
 
@@ -302,17 +351,24 @@ impl Actor for EffectsActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             Message::Publish {
-                inputs,
+                slice,
                 refresh,
                 full,
                 requested,
-            } if !state.closed => {
+            } if !state.shutdown.is_cancelled() => {
+                let mut inputs = state.desired.clone();
+                match slice {
+                    Slice::Application(app) => inputs.app = *app,
+                    Slice::Clash(clash) => inputs.clash = clash,
+                    Slice::Ports(ports) => inputs.ports = ports,
+                    Slice::Profiles => {}
+                }
                 let changed: Vec<_> = ApplicationEffectPlan::diff(&state.desired, &inputs)
                     .effects()
                     .iter()
                     .map(ApplicationEffect::kind)
                     .collect();
-                state.enqueue(*inputs, refresh, full);
+                state.enqueue(inputs, refresh, full);
                 for kind in requested {
                     if !changed.contains(&kind) {
                         state.retry(kind, false);
@@ -326,7 +382,7 @@ impl Actor for EffectsActor {
                 revision,
                 kinds,
                 statuses,
-            } if !state.closed => {
+            } => {
                 state.active[completed_group] = None;
                 for kind in kinds {
                     let entry = state.entries.get_mut(&kind).unwrap();
@@ -334,29 +390,17 @@ impl Actor for EffectsActor {
                     if entry.status.desired_revision != revision {
                         continue;
                     }
-                    match statuses.iter().find(|s| s.kind == kind) {
-                        Some(status) if status.health == EffectHealth::Healthy => {
-                            entry.status.applied_revision = revision;
-                            entry.status.health = EffectHealth::Healthy;
-                        }
-                        Some(status) => entry.status.health = status.health.clone(),
-                        None => {
-                            entry.status.health = EffectHealth::Degraded {
-                                code: "effect_owner_silent",
-                                message: format!("{kind:?} returned no result"),
-                                retryable: false,
-                            }
-                        }
+                    let status = statuses
+                        .iter()
+                        .find(|s| s.kind == kind)
+                        .expect("the effects port reports one status per effect");
+                    if status.health == EffectHealth::Healthy {
+                        entry.status.applied_revision = revision;
                     }
+                    entry.status.health = status.health.clone();
                     entry.health = match &entry.status.health {
                         EffectHealth::Healthy => ConvergenceHealth::Healthy,
-                        EffectHealth::Degraded {
-                            code:
-                                "widget_unavailable"
-                                | "system_proxy_port_unresolved"
-                                | "proxy_guard_waiting_dependency",
-                            ..
-                        } => {
+                        EffectHealth::Degraded { code, .. } if code.waits_for_dependency() => {
                             entry.budget.attempts = entry.budget.attempts.saturating_sub(1);
                             if entry.automatic {
                                 entry.budget.remaining += 1;
@@ -392,8 +436,14 @@ impl Actor for EffectsActor {
                 }
                 state.drive(&myself);
             }
-            Message::Completed { .. } => {}
-            Message::Tick if !state.closed => {
+            Message::Tick(at)
+                if !state.shutdown.is_cancelled()
+                    && state
+                        .retry_timer
+                        .as_ref()
+                        .is_some_and(|(due, _)| *due == at) =>
+            {
+                state.retry_timer = None;
                 let ready: Vec<_> = state
                     .entries
                     .iter()
@@ -407,29 +457,26 @@ impl Actor for EffectsActor {
                     state.drive(&myself);
                 }
             }
-            Message::RetryNow(kind) if !state.closed => {
+            Message::RetryNow(kind) if !state.shutdown.is_cancelled() => {
                 state.retry(kind, false);
                 state.drive(&myself);
             }
-            Message::Tick | Message::RetryNow(_) => {}
-            Message::Shutdown(reply) => {
-                state.closed = true;
-                state.timer.abort();
-                state.pending.clear();
-                for task in &mut state.active {
-                    if let Some(task) = task.take() {
-                        task.abort();
-                        let _ = task.await;
-                    }
-                }
-                state.publish();
-                let _ = reply.send(state.port.shutdown().await);
+            Message::Tick(_) | Message::RetryNow(_) => {}
+            #[cfg(test)]
+            Message::RetryDeadline(reply) => {
+                let _ = reply.send(
+                    state
+                        .retry_timer
+                        .as_ref()
+                        .map(|(at, timer)| (*at, timer.id())),
+                );
             }
             #[cfg(test)]
             Message::Barrier(reply) => {
                 let _ = reply.send(());
             }
         }
+        state.arm_retry(&myself);
         Ok(())
     }
 
@@ -438,10 +485,16 @@ impl Actor for EffectsActor {
         _: ActorRef<Message>,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
-        state.timer.abort();
-        for task in &mut state.active {
-            if let Some(task) = task.take() {
-                task.abort();
+        if let Some((_, timer)) = state.retry_timer.take() {
+            timer.abort();
+        }
+        // Awaited, never aborted: a group's owner is part way through work it
+        // has to finish, and the drain refuses the `Completed` it would send.
+        for task in state.active.iter_mut().filter_map(Option::take) {
+            if let Err(error) = task.await
+                && let Ok(panic) = error.try_into_panic()
+            {
+                std::panic::resume_unwind(panic);
             }
         }
         Ok(())
@@ -449,7 +502,8 @@ impl Actor for EffectsActor {
 }
 
 impl EffectsClient {
-    pub async fn spawn(args: EffectsArgs) -> anyhow::Result<Self> {
+    pub async fn spawn(args: EffectsArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
+        let shutdown = args.shutdown.clone();
         let (status, receiver) = watch::channel(EffectsSnapshot::default());
         let (actor, _) = Actor::spawn(
             None,
@@ -460,16 +514,18 @@ impl EffectsClient {
             },
         )
         .await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self {
             actor,
             status: receiver,
         })
     }
 
-    pub fn retry_now(&self, kind: EffectKind) -> anyhow::Result<()> {
+    pub fn retry_now(&self, kind: EffectKind) -> Result<(), EffectsError> {
         self.actor
             .cast(Message::RetryNow(kind))
-            .map_err(|error| anyhow::anyhow!("{error}"))
+            .ok()
+            .context(EffectsStoppedSnafu)
     }
     pub fn snapshot(&self) -> EffectsSnapshot {
         self.status.borrow().clone()
@@ -477,60 +533,71 @@ impl EffectsClient {
     pub fn subscribe(&self) -> watch::Receiver<EffectsSnapshot> {
         self.status.clone()
     }
-    pub fn reconcile(&self, inputs: ApplicationEffectInputs) {
+    fn publish(&self, slice: Slice, refresh: bool, full: bool, requested: Vec<EffectKind>) {
         if let Err(error) = self.actor.cast(Message::Publish {
-            inputs: Box::new(inputs),
-            refresh: true,
-            full: true,
-            requested: Vec::new(),
+            slice,
+            refresh,
+            full,
+            requested,
         }) {
-            tracing::warn!(%error, "effects reconcile could not be queued");
+            tracing::warn!(%error, "committed effects could not be queued");
         }
     }
-    pub async fn shutdown(&self) -> Vec<EffectStatus> {
-        match self
-            .actor
-            .call(Message::Shutdown, Some(Duration::from_secs(10)))
-            .await
-        {
-            Ok(CallResult::Success(statuses)) => statuses,
-            result => vec![EffectStatus {
-                kind: EffectKind::SystemProxy,
-                desired_revision: EffectRevision::default(),
-                applied_revision: EffectRevision::default(),
-                health: EffectHealth::Degraded {
-                    code: "effects_shutdown_unresolved",
-                    message: format!("{result:?}"),
-                    retryable: false,
-                },
-            }],
+    #[cfg(test)]
+    pub async fn retry_deadline(&self) -> Option<tokio::time::Instant> {
+        match self.actor.call(Message::RetryDeadline, None).await.unwrap() {
+            ractor::rpc::CallResult::Success(timer) => timer.map(|(at, _)| at),
+            _ => panic!("retry deadline reply dropped"),
         }
     }
+
+    #[cfg(test)]
+    pub async fn retry_timer_id(&self) -> tokio::task::Id {
+        match self.actor.call(Message::RetryDeadline, None).await.unwrap() {
+            ractor::rpc::CallResult::Success(Some((_, id))) => id,
+            _ => panic!("retry timer missing"),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn stale_tick(&self, at: tokio::time::Instant) {
+        self.actor.cast(Message::Tick(at)).unwrap();
+    }
+
     #[cfg(test)]
     pub async fn barrier(&self) {
         assert!(matches!(
             self.actor
                 .call(Message::Barrier, Some(Duration::from_secs(5)))
                 .await,
-            Ok(CallResult::Success(()))
+            Ok(ractor::rpc::CallResult::Success(()))
         ));
     }
 }
 
 impl CommitNotifications for EffectsClient {
-    fn committed(
-        &self,
-        inputs: ApplicationEffectInputs,
-        refresh: bool,
-        requested: Vec<EffectKind>,
-    ) {
-        if let Err(error) = self.actor.cast(Message::Publish {
-            inputs: Box::new(inputs),
-            refresh,
-            full: false,
+    fn application_committed(&self, fields: ApplicationEffectFields, requested: Vec<EffectKind>) {
+        self.publish(
+            Slice::Application(Box::new(fields)),
+            false,
+            false,
             requested,
-        }) {
-            tracing::warn!(%error, "committed effects could not be queued");
-        }
+        );
+    }
+
+    fn clash_committed(&self, fields: ClashEffectFields) {
+        self.publish(Slice::Clash(fields), false, false, Vec::new());
+    }
+
+    fn profiles_committed(&self) {
+        self.publish(Slice::Profiles, true, false, Vec::new());
+    }
+
+    fn runtime_bound(&self, ports: Option<ResolvedPortBindings>, refresh: bool) {
+        self.publish(Slice::Ports(ports), refresh, false, Vec::new());
+    }
+
+    fn publish_full(&self, ports: Option<ResolvedPortBindings>) {
+        self.publish(Slice::Ports(ports), true, true, Vec::new());
     }
 }

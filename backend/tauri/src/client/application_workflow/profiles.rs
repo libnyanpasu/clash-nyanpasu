@@ -8,14 +8,16 @@ pub(in crate::client) fn map_profile_degradation(
 ) -> runtime::Degradation {
     use crate::state::profiles::ports::ProfileDegradationCode;
 
-    let code = match degradation.code {
-        ProfileDegradationCode::JournalInvalid => "journal_invalid",
-        ProfileDegradationCode::MaterializationDeferred => "materialization_deferred",
-        ProfileDegradationCode::CleanupDeferred => "cleanup_deferred",
+    let reason = match degradation.code {
+        ProfileDegradationCode::JournalInvalid => runtime::DegradationReason::JournalInvalid,
+        ProfileDegradationCode::MaterializationDeferred => {
+            runtime::DegradationReason::MaterializationDeferred
+        }
+        ProfileDegradationCode::CleanupDeferred => runtime::DegradationReason::CleanupDeferred,
     };
     runtime::Degradation {
         phase: runtime::DegradationPhase::ProfileMaterialization,
-        code: code.into(),
+        reason,
         message: degradation.message.clone(),
         retryable: degradation.code.retryable(),
     }

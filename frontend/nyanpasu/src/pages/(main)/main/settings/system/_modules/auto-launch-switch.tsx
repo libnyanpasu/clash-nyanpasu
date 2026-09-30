@@ -20,6 +20,7 @@ export default function AutoLaunchSwitch() {
       message(`Activation Auto Launch failed!\n Error: ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
+        error,
       })
     }
   })

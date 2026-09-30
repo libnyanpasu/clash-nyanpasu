@@ -2,8 +2,12 @@
 use super::{
     NyanpasuClient,
     convergence::ConvergenceHealth,
-    effects::{plan::EffectKind, status::EffectHealth},
+    effects::{
+        plan::EffectKind,
+        status::{EffectFailureCode, EffectHealth},
+    },
 };
+use crate::state::profiles::sources::{SourceStatus, SourcesSnapshot};
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ConfigurationStatus {
@@ -12,8 +16,9 @@ pub struct ConfigurationStatus {
     pub source_versions: SourceVersions,
     pub runtime: RuntimeConvergence,
     pub effects: Vec<EffectConvergence>,
+    /// The latest background-source receipt per profile.
+    pub sources: Vec<SourceStatus>,
     pub active: Option<String>,
-    pub queued: Vec<String>,
     pub recent_operations: Vec<OperationStatus>,
 }
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -39,6 +44,9 @@ pub struct EffectConvergence {
     pub applied_revision: u64,
     pub attempts: u32,
     pub automatic_remaining: u8,
+    /// What kind of failure the effect is in, for the UI to localize.
+    pub code: Option<EffectFailureCode>,
+    /// The failure's diagnostic text, as the owner reported it.
     pub message: Option<String>,
 }
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -53,6 +61,7 @@ impl NyanpasuClient {
     pub fn configuration_status(&self) -> ConfigurationStatus {
         let journal = self.inner.application_workflow.mutation_journal();
         let effects = self.inner.effects.snapshot();
+        let sources = self.inner.profiles.sources();
         let execution = self.inner.application_workflow.status();
         let source_versions = SourceVersions {
             application: self.inner.application.snapshot().version,
@@ -66,10 +75,12 @@ impl NyanpasuClient {
                 operation_id: Some(recovery.operation_id.to_string()),
                 attempts: 0,
                 automatic_remaining: 0,
-                message: Some(recovery.error.clone()),
+                message: Some(recovery.reason.clone()),
             }
         } else if execution.uncertain {
-            RuntimeConvergence { health: ConvergenceHealth::RecoveryRequired, operation_id: execution.completed.back().map(|r| r.id.to_string()), attempts: 0, automatic_remaining: 0, message: Some("A lifecycle operation has an unresolved outcome; further mutations remain isolated.".into()) }
+            // An action is pending with no attempt behind it, so there is no
+            // recovery view whose operation it could name.
+            RuntimeConvergence { health: ConvergenceHealth::RecoveryRequired, operation_id: None, attempts: 0, automatic_remaining: 0, message: Some("A lifecycle operation has an unresolved outcome; further mutations remain isolated.".into()) }
         } else if let Some(deferred) = &journal.deferred {
             RuntimeConvergence {
                 health: deferred.health,
@@ -95,6 +106,7 @@ impl NyanpasuClient {
             maintenance: journal.maintenance.clone(),
             event_seq: journal.event_seq
                 + effects.event_seq
+                + sources.event_seq
                 + source_versions.application
                 + source_versions.clash
                 + source_versions.session
@@ -102,7 +114,6 @@ impl NyanpasuClient {
             source_versions,
             runtime,
             active: execution.active.map(|id| id.to_string()),
-            queued: execution.queued.iter().map(ToString::to_string).collect(),
             effects: effects
                 .effects
                 .iter()
@@ -113,13 +124,18 @@ impl NyanpasuClient {
                     applied_revision: progress.status.applied_revision.get(),
                     attempts: progress.attempts,
                     automatic_remaining: progress.automatic_remaining,
+                    code: match &progress.status.health {
+                        EffectHealth::Degraded { code, .. }
+                        | EffectHealth::Unsupported { code } => Some(*code),
+                        _ => None,
+                    },
                     message: match &progress.status.health {
                         EffectHealth::Degraded { message, .. } => Some(message.clone()),
-                        EffectHealth::Unsupported { code } => Some((*code).into()),
                         _ => None,
                     },
                 })
                 .collect(),
+            sources: sources.entries,
             recent_operations: journal
                 .completed
                 .iter()
@@ -139,10 +155,12 @@ impl NyanpasuClient {
     ) -> (
         tokio::sync::watch::Receiver<super::application_workflow::mutation::MutationJournal>,
         tokio::sync::watch::Receiver<super::effects::actor::EffectsSnapshot>,
+        tokio::sync::watch::Receiver<SourcesSnapshot>,
     ) {
         (
             self.inner.application_workflow.subscribe_mutations(),
             self.inner.effects.subscribe(),
+            self.inner.profiles.subscribe_sources(),
         )
     }
 }

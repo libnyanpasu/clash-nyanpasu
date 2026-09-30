@@ -1,18 +1,14 @@
 //! Pure projection + diff: which side effects a committed configuration change
-//! implies, and whether the runtime config has to be rebuilt.
+//! implies.
 
-use std::{collections::BTreeSet, time::Duration};
+use std::time::Duration;
 
 use nyanpasu_config::{
     application::{
-        I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig,
+        ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig,
         ProxiesSelectorMode, TrayMenuMode,
     },
-    clash::config::{
-        ClashConfig, ClashControlChannel,
-        clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
-        tun_stack::TunStack,
-    },
+    clash::config::{ClashConfig, overrides::Mode},
     runtime::executor::ResolvedPortBindings,
 };
 use struct_patch::Patch;
@@ -42,27 +38,59 @@ pub struct ApplicationEffectFields {
     pub language: I18nLanguage,
     pub app_log_level: LoggingLevel,
     pub max_log_files: usize,
+    pub max_log_file_size: u64,
     pub tray_selector_mode: ProxiesSelectorMode,
     pub tray_menu_mode: TrayMenuMode,
     pub enable_tray_text: bool,
     pub enable_tray_traffic: bool,
     pub network_statistic_widget: NetworkStatisticWidgetConfig,
+    pub core: ClashCore,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClashEffectFields {
+    pub mode: Mode,
     pub enable_tun_mode: bool,
-    pub tun_stack: TunStack,
-    pub mixed_port: PortStrategy,
-    pub socks_port: Option<PortStrategy>,
-    pub http_port: Option<PortStrategy>,
-    pub external_controller: ExternalControllerStrategy,
-    pub enable_clash_fields: bool,
-    pub clash_control_channel: ClashControlChannel,
-    pub clash_ipc_disable_http_controller: bool,
+}
+
+/// The application owner's slice: what it hands the effects owner after a
+/// commit.
+impl From<&NyanpasuAppConfig> for ApplicationEffectFields {
+    fn from(app: &NyanpasuAppConfig) -> Self {
+        Self {
+            enable_system_proxy: app.enable_system_proxy,
+            system_proxy_bypass: app.system_proxy_bypass.clone(),
+            enable_proxy_guard: app.enable_proxy_guard,
+            proxy_guard_interval: app.proxy_guard_interval,
+            pac_url: app.pac_url.clone(),
+            enable_auto_launch: app.enable_auto_launch,
+            hotkeys: app.hotkeys.clone(),
+            language: app.language,
+            app_log_level: app.app_log_level.clone(),
+            max_log_files: app.max_log_files,
+            max_log_file_size: app.max_log_file_size,
+            tray_selector_mode: app.tray_selector_mode,
+            tray_menu_mode: app.tray_menu_mode,
+            enable_tray_text: app.enable_tray_text,
+            enable_tray_traffic: app.enable_tray_traffic,
+            network_statistic_widget: app.network_statistic_widget,
+            core: app.core,
+        }
+    }
+}
+
+/// The clash config owner's slice.
+impl From<&ClashConfig> for ClashEffectFields {
+    fn from(clash: &ClashConfig) -> Self {
+        Self {
+            mode: clash.overrides.mode(),
+            enable_tun_mode: clash.enable_tun_mode,
+        }
+    }
 }
 
 impl ApplicationEffectInputs {
+    /// All three slices at once, for a reader that is not one of their owners.
     /// Ports come from the session resolver rather than the config, so this is
     /// a projection with three sources and not a `From` impl.
     pub fn project(
@@ -71,34 +99,8 @@ impl ApplicationEffectInputs {
         ports: Option<ResolvedPortBindings>,
     ) -> Self {
         Self {
-            app: ApplicationEffectFields {
-                enable_system_proxy: app.enable_system_proxy,
-                system_proxy_bypass: app.system_proxy_bypass.clone(),
-                enable_proxy_guard: app.enable_proxy_guard,
-                proxy_guard_interval: app.proxy_guard_interval,
-                pac_url: app.pac_url.clone(),
-                enable_auto_launch: app.enable_auto_launch,
-                hotkeys: app.hotkeys.clone(),
-                language: app.language,
-                app_log_level: app.app_log_level.clone(),
-                max_log_files: app.max_log_files,
-                tray_selector_mode: app.tray_selector_mode,
-                tray_menu_mode: app.tray_menu_mode,
-                enable_tray_text: app.enable_tray_text,
-                enable_tray_traffic: app.enable_tray_traffic,
-                network_statistic_widget: app.network_statistic_widget,
-            },
-            clash: ClashEffectFields {
-                enable_tun_mode: clash.enable_tun_mode,
-                tun_stack: clash.tun_stack,
-                mixed_port: clash.mixed_port.clone(),
-                socks_port: clash.socks_port.clone(),
-                http_port: clash.http_port.clone(),
-                external_controller: clash.external_controller.clone(),
-                enable_clash_fields: clash.enable_clash_fields,
-                clash_control_channel: clash.clash_control_channel,
-                clash_ipc_disable_http_controller: clash.clash_ipc_disable_http_controller,
-            },
+            app: app.into(),
+            clash: clash.into(),
             ports,
         }
     }
@@ -113,6 +115,7 @@ impl ApplicationEffectInputs {
             logger: LoggerDesired {
                 level: app.app_log_level.clone(),
                 max_files: app.max_log_files,
+                max_file_size: app.max_log_file_size,
             },
             auto_launch: app.enable_auto_launch,
             system_proxy: SystemProxyDesired {
@@ -130,14 +133,21 @@ impl ApplicationEffectInputs {
             tray_menu: TrayMenuDesired {
                 menu_mode: app.tray_menu_mode,
                 selector_mode: app.tray_selector_mode,
+                core: app.core,
             },
             tray_part: TrayPartDesired {
+                mode: self.clash.mode,
                 system_proxy: app.enable_system_proxy,
                 tun: self.clash.enable_tun_mode,
                 text: app.enable_tray_text,
                 traffic: app.enable_tray_traffic,
             },
         }
+    }
+
+    /// What the tray renders from this snapshot.
+    pub fn tray_view(&self) -> TrayView {
+        self.desired().tray_view()
     }
 }
 
@@ -194,22 +204,37 @@ pub struct ProxyGuardDesired {
 pub struct LoggerDesired {
     pub level: LoggingLevel,
     pub max_files: usize,
+    pub max_file_size: u64,
 }
 
 /// What a [`TrayRefresh::Full`] rebuild renders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TrayMenuDesired {
-    menu_mode: TrayMenuMode,
-    selector_mode: ProxiesSelectorMode,
+pub struct TrayMenuDesired {
+    pub menu_mode: TrayMenuMode,
+    pub selector_mode: ProxiesSelectorMode,
+    /// Only a Premium core offers the script mode item.
+    pub core: ClashCore,
 }
 
 /// What a [`TrayRefresh::Part`] redraw reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TrayPartDesired {
-    system_proxy: bool,
-    tun: bool,
-    text: bool,
-    traffic: bool,
+pub struct TrayPartDesired {
+    pub mode: Mode,
+    pub system_proxy: bool,
+    pub tun: bool,
+    pub text: bool,
+    pub traffic: bool,
+}
+
+/// Everything the tray renders, whichever of the two groups changed.
+///
+/// A part redraw still carries the menu inputs: the tray keeps the latest view
+/// and renders every later rebuild from it, including the ones it triggers
+/// itself when the proxy list changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrayView {
+    pub menu: TrayMenuDesired,
+    pub part: TrayPartDesired,
 }
 
 /// One field per trigger group: a group whose inputs changed produces the one
@@ -241,6 +266,15 @@ struct ApplicationDesired {
     tray_part: TrayPartDesired,
 }
 
+impl ApplicationDesired {
+    fn tray_view(&self) -> TrayView {
+        TrayView {
+            menu: self.tray_menu,
+            part: self.tray_part,
+        }
+    }
+}
+
 /// Every variant carries the full desired value, never a delta. Stale-effect
 /// protection depends on it: a newer revision may overwrite an older one
 /// wholesale, and a dropped effect loses nothing permanently.
@@ -253,7 +287,7 @@ pub enum ApplicationEffect {
     ProxyGuard(ProxyGuardDesired),
     Hotkeys(Vec<String>),
     Widget(NetworkStatisticWidgetConfig),
-    Tray(TrayRefresh),
+    Tray(TrayRefresh, TrayView),
 }
 
 impl ApplicationEffect {
@@ -266,7 +300,7 @@ impl ApplicationEffect {
             Self::ProxyGuard(_) => EffectKind::ProxyGuard,
             Self::Hotkeys(_) => EffectKind::Hotkeys,
             Self::Widget(_) => EffectKind::Widget,
-            Self::Tray(_) => EffectKind::Tray,
+            Self::Tray(..) => EffectKind::Tray,
         }
     }
 }
@@ -284,44 +318,17 @@ impl ApplicationEffectPlan {
 
     /// Incremental: fields that are equal in both snapshots produce nothing.
     pub fn diff(before: &ApplicationEffectInputs, after: &ApplicationEffectInputs) -> Self {
-        after.desired().into_patch_by_diff(before.desired()).into()
+        let desired = after.desired();
+        let tray = desired.tray_view();
+        Self::from_changes(desired.into_patch_by_diff(before.desired()), tray)
     }
 
     /// Full reconcile: the desired value of every effect, used at startup where
     /// no trustworthy "before" snapshot exists.
     pub fn full(after: &ApplicationEffectInputs) -> Self {
-        after.desired().into_patch().into()
-    }
-
-    /// Adds the desired value of every kind in `kinds` to this plan, taken from
-    /// `full`.
-    ///
-    /// Used to re-run effects whose previous dispatch degraded: a diff plan only
-    /// describes what changed, so a kind that failed earlier would otherwise
-    /// never be handed its value again. The `full` entry wins over a same-kind
-    /// entry already in the plan, because it is the wider of the two wherever
-    /// they differ (a full tray refresh subsumes a partial one) and the two are
-    /// projected from the same snapshot otherwise. The result keeps the
-    /// `EffectKind` ordering and holds at most one effect per kind.
-    pub fn with_retries(self, full: &ApplicationEffectPlan, kinds: &BTreeSet<EffectKind>) -> Self {
-        if kinds.is_empty() {
-            return self;
-        }
-
-        let mut effects: Vec<ApplicationEffect> = self
-            .effects
-            .into_iter()
-            .filter(|effect| !kinds.contains(&effect.kind()))
-            .collect();
-        effects.extend(
-            full.effects
-                .iter()
-                .filter(|effect| kinds.contains(&effect.kind()))
-                .cloned(),
-        );
-        effects.sort_by_key(ApplicationEffect::kind);
-
-        Self { effects }
+        let desired = after.desired();
+        let tray = desired.tray_view();
+        Self::from_changes(desired.into_patch(), tray)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -333,8 +340,10 @@ impl ApplicationEffectPlan {
     }
 }
 
-impl From<ApplicationDesiredChanges> for ApplicationEffectPlan {
-    fn from(changes: ApplicationDesiredChanges) -> Self {
+impl ApplicationEffectPlan {
+    /// `tray` is the whole view of the same snapshot: a change set only holds
+    /// the tray group that moved, and the tray effect carries both.
+    fn from_changes(changes: ApplicationDesiredChanges, tray: TrayView) -> Self {
         // Destructured without `..` on purpose: a new effect cannot be added to
         // `ApplicationDesired` without being mapped here.
         let ApplicationDesiredChanges {
@@ -361,97 +370,14 @@ impl From<ApplicationDesiredChanges> for ApplicationEffectPlan {
         // The menu is rendered with the locale, so a locale change is a menu
         // change. A full refresh rebuilds the menu and refreshes the parts on
         // its way out, so it subsumes a part refresh.
-        let tray = match (locale.is_some() || tray_menu.is_some(), tray_part.is_some()) {
+        let refresh = match (locale.is_some() || tray_menu.is_some(), tray_part.is_some()) {
             (true, _) => Some(TrayRefresh::Full),
             (false, true) => Some(TrayRefresh::Part),
             (false, false) => None,
         };
-        effects.extend(tray.map(ApplicationEffect::Tray));
+        effects.extend(refresh.map(|refresh| ApplicationEffect::Tray(refresh, tray)));
 
         Self { effects }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeApplyKind {
-    None,
-    Rebuild,
-    ControlChannel,
-}
-
-/// How the core is reached.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ControlChannelDesired {
-    channel: ClashControlChannel,
-    disable_http_controller: bool,
-}
-
-/// What the generated runtime config is built from.
-#[derive(Debug, Clone, PartialEq)]
-struct RuntimeRebuildDesired {
-    enable_tun_mode: bool,
-    tun_stack: TunStack,
-    mixed_port: PortStrategy,
-    socks_port: Option<PortStrategy>,
-    http_port: Option<PortStrategy>,
-    external_controller: ExternalControllerStrategy,
-    enable_clash_fields: bool,
-}
-
-/// The clash fields a running core reacts to, grouped by how it must react.
-#[derive(Debug, Clone, PartialEq, Patch)]
-#[patch(name = "ClashRuntimeChanges")]
-#[patch(attribute(derive(Debug, Clone, Default, PartialEq)))]
-struct ClashRuntimeDesired {
-    control_channel: ControlChannelDesired,
-    rebuild: RuntimeRebuildDesired,
-}
-
-impl ClashEffectFields {
-    fn runtime_desired(&self) -> ClashRuntimeDesired {
-        ClashRuntimeDesired {
-            control_channel: ControlChannelDesired {
-                channel: self.clash_control_channel,
-                disable_http_controller: self.clash_ipc_disable_http_controller,
-            },
-            rebuild: RuntimeRebuildDesired {
-                enable_tun_mode: self.enable_tun_mode,
-                tun_stack: self.tun_stack,
-                mixed_port: self.mixed_port.clone(),
-                socks_port: self.socks_port.clone(),
-                http_port: self.http_port.clone(),
-                external_controller: self.external_controller.clone(),
-                enable_clash_fields: self.enable_clash_fields,
-            },
-        }
-    }
-}
-
-/// How the running core must react to a committed clash-config change.
-///
-/// The core binary and the execution host are deliberately absent: both have
-/// dedicated facade operations whose queues this would race.
-pub fn runtime_apply_kind(
-    before: &ApplicationEffectInputs,
-    after: &ApplicationEffectInputs,
-) -> RuntimeApplyKind {
-    let ClashRuntimeChanges {
-        control_channel,
-        rebuild,
-    } = after
-        .clash
-        .runtime_desired()
-        .into_patch_by_diff(before.clash.runtime_desired());
-
-    // A control-channel change outranks a rebuild, matching `bridge/verge.rs`,
-    // which picks `apply_control_channel` over `rebuild_running_config`
-    // whenever both would apply.
-    if control_channel.is_some() {
-        RuntimeApplyKind::ControlChannel
-    } else if rebuild.is_some() {
-        RuntimeApplyKind::Rebuild
-    } else {
-        RuntimeApplyKind::None
     }
 }
 
@@ -464,9 +390,8 @@ mod tests {
             ProxiesSelectorMode, TrayMenuMode,
         },
         clash::config::{
-            ClashConfig, ClashControlChannel,
-            clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
-            tun_stack::TunStack,
+            ClashConfig,
+            overrides::{ClashGuardOverridesPatch, Mode},
         },
         runtime::executor::ResolvedPortBindings,
     };
@@ -485,22 +410,17 @@ mod tests {
                 language: I18nLanguage::English,
                 app_log_level: LoggingLevel::Info,
                 max_log_files: 7,
+                max_log_file_size: 10,
                 tray_selector_mode: ProxiesSelectorMode::Normal,
                 tray_menu_mode: TrayMenuMode::Native,
                 enable_tray_text: false,
                 enable_tray_traffic: false,
                 network_statistic_widget: NetworkStatisticWidgetConfig::Disabled,
+                core: ClashCore::Mihomo,
             },
             clash: ClashEffectFields {
+                mode: Mode::Rule,
                 enable_tun_mode: false,
-                tun_stack: TunStack::default(),
-                mixed_port: PortStrategy::new_allow_fallback(7890),
-                socks_port: None,
-                http_port: None,
-                external_controller: ExternalControllerStrategy::default(),
-                enable_clash_fields: true,
-                clash_control_channel: ClashControlChannel::PreferIpc,
-                clash_ipc_disable_http_controller: false,
             },
             ports: Some(ResolvedPortBindings {
                 mixed_port: 7890,
@@ -511,6 +431,12 @@ mod tests {
 
     fn kinds(plan: &ApplicationEffectPlan) -> Vec<EffectKind> {
         plan.effects().iter().map(ApplicationEffect::kind).collect()
+    }
+
+    /// A tray effect always carries the whole view of the snapshot it was
+    /// planned from.
+    fn tray(refresh: TrayRefresh, inputs: &ApplicationEffectInputs) -> ApplicationEffect {
+        ApplicationEffect::Tray(refresh, inputs.tray_view())
     }
 
     #[test]
@@ -614,22 +540,6 @@ mod tests {
     }
 
     #[test]
-    fn socks_port_removal_reports_rebuild() {
-        let mut before = inputs();
-        before.clash.socks_port = Some(PortStrategy::new_allow_fallback(1080));
-        let after = inputs();
-
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild
-        );
-        assert!(
-            ApplicationEffectPlan::diff(&before, &after).is_empty(),
-            "a clash port strategy is not an application effect input"
-        );
-    }
-
-    #[test]
     fn guard_interval_change_produces_only_proxy_guard() {
         let before = inputs();
         let mut after = inputs();
@@ -660,10 +570,7 @@ mod tests {
             plan.effects()[0],
             ApplicationEffect::Locale(I18nLanguage::SimplifiedChinese)
         );
-        assert_eq!(
-            plan.effects()[1],
-            ApplicationEffect::Tray(TrayRefresh::Full)
-        );
+        assert_eq!(plan.effects()[1], tray(TrayRefresh::Full, &after));
     }
 
     #[test]
@@ -678,10 +585,7 @@ mod tests {
             kinds(&plan),
             vec![EffectKind::SystemProxy, EffectKind::Tray]
         );
-        assert_eq!(
-            plan.effects()[1],
-            ApplicationEffect::Tray(TrayRefresh::Part)
-        );
+        assert_eq!(plan.effects()[1], tray(TrayRefresh::Part, &after));
     }
 
     #[test]
@@ -693,12 +597,12 @@ mod tests {
 
         let plan = ApplicationEffectPlan::diff(&before, &after);
 
-        let tray: Vec<_> = plan
+        let trays: Vec<_> = plan
             .effects()
             .iter()
             .filter(|effect| effect.kind() == EffectKind::Tray)
             .collect();
-        assert_eq!(tray, vec![&ApplicationEffect::Tray(TrayRefresh::Full)]);
+        assert_eq!(trays, vec![&tray(TrayRefresh::Full, &after)]);
     }
 
     #[test]
@@ -715,6 +619,7 @@ mod tests {
             ApplicationEffect::Logger(LoggerDesired {
                 level: LoggingLevel::Debug,
                 max_files: 7,
+                max_file_size: 10,
             })
         );
     }
@@ -788,7 +693,8 @@ mod tests {
 
     #[test]
     fn full_plan_contains_every_kind_with_full_tray() {
-        let plan = ApplicationEffectPlan::full(&inputs());
+        let inputs = inputs();
+        let plan = ApplicationEffectPlan::full(&inputs);
 
         assert_eq!(
             kinds(&plan),
@@ -805,7 +711,7 @@ mod tests {
         );
         assert_eq!(
             plan.effects().last(),
-            Some(&ApplicationEffect::Tray(TrayRefresh::Full))
+            Some(&tray(TrayRefresh::Full, &inputs))
         );
     }
 
@@ -817,7 +723,7 @@ mod tests {
         fn assert_case(
             label: &str,
             mutate: impl FnOnce(&mut ApplicationEffectInputs),
-            expected: &[ApplicationEffect],
+            expected: impl FnOnce(&ApplicationEffectInputs) -> Vec<ApplicationEffect>,
         ) {
             let before = inputs();
             let mut after = inputs();
@@ -827,7 +733,7 @@ mod tests {
 
             assert_eq!(
                 plan.effects(),
-                expected,
+                expected(&after),
                 "{label} alone must plan exactly its own effect"
             );
         }
@@ -835,76 +741,65 @@ mod tests {
         assert_case(
             "max_log_files",
             |after| after.app.max_log_files = 14,
-            &[ApplicationEffect::Logger(LoggerDesired {
-                level: LoggingLevel::Info,
-                max_files: 14,
-            })],
+            |_| {
+                vec![ApplicationEffect::Logger(LoggerDesired {
+                    level: LoggingLevel::Info,
+                    max_files: 14,
+                    max_file_size: 10,
+                })]
+            },
+        );
+        assert_case(
+            "max_log_file_size",
+            |after| after.app.max_log_file_size = 20,
+            |_| {
+                vec![ApplicationEffect::Logger(LoggerDesired {
+                    level: LoggingLevel::Info,
+                    max_files: 7,
+                    max_file_size: 20,
+                })]
+            },
         );
         assert_case(
             "tray_selector_mode",
             |after| after.app.tray_selector_mode = ProxiesSelectorMode::Submenu,
-            &[ApplicationEffect::Tray(TrayRefresh::Full)],
+            |after| vec![tray(TrayRefresh::Full, after)],
+        );
+        assert_case(
+            "core",
+            |after| after.app.core = ClashCore::ClashPremium,
+            |after| vec![tray(TrayRefresh::Full, after)],
+        );
+        assert_case(
+            "mode",
+            |after| after.clash.mode = Mode::Global,
+            |after| vec![tray(TrayRefresh::Part, after)],
         );
         assert_case(
             "enable_tray_text",
             |after| after.app.enable_tray_text = true,
-            &[ApplicationEffect::Tray(TrayRefresh::Part)],
+            |after| vec![tray(TrayRefresh::Part, after)],
         );
         assert_case(
             "enable_tray_traffic",
             |after| after.app.enable_tray_traffic = true,
-            &[ApplicationEffect::Tray(TrayRefresh::Part)],
+            |after| vec![tray(TrayRefresh::Part, after)],
         );
         assert_case(
             "enable_proxy_guard",
             |after| after.app.enable_proxy_guard = true,
-            &[ApplicationEffect::ProxyGuard(ProxyGuardDesired {
-                enabled: true,
-                interval: Duration::from_secs(30),
-            })],
+            |_| {
+                vec![ApplicationEffect::ProxyGuard(ProxyGuardDesired {
+                    enabled: true,
+                    interval: Duration::from_secs(30),
+                })]
+            },
         );
         assert_case(
             "enable_auto_launch",
             |after| after.app.enable_auto_launch = true,
-            &[ApplicationEffect::AutoLaunch(true)],
+            |_| vec![ApplicationEffect::AutoLaunch(true)],
         );
-    }
-
-    /// Same exposure on the rebuild group: none of these fields is an
-    /// application effect input, so each must rebuild and plan nothing.
-    #[test]
-    fn every_rebuild_field_reports_rebuild_on_its_own() {
-        fn assert_rebuild(label: &str, mutate: impl FnOnce(&mut ApplicationEffectInputs)) {
-            let before = inputs();
-            let mut after = inputs();
-            mutate(&mut after);
-
-            assert_eq!(
-                runtime_apply_kind(&before, &after),
-                RuntimeApplyKind::Rebuild,
-                "{label} alone must rebuild the runtime config"
-            );
-            assert!(
-                ApplicationEffectPlan::diff(&before, &after).is_empty(),
-                "{label} is not an application effect input"
-            );
-        }
-
-        assert_rebuild("tun_stack", |after| {
-            after.clash.tun_stack = TunStack::System
-        });
-        assert_rebuild("http_port", |after| {
-            after.clash.http_port = Some(PortStrategy::new_allow_fallback(7891));
-        });
-        assert_rebuild("external_controller", |after| {
-            after.clash.external_controller = ExternalControllerStrategy {
-                port: PortStrategy::new_allow_fallback(9999),
-                ..ExternalControllerStrategy::default()
-            };
-        });
-        assert_rebuild("enable_clash_fields", |after| {
-            after.clash.enable_clash_fields = false;
-        });
     }
 
     #[test]
@@ -929,14 +824,11 @@ mod tests {
         let plan = ApplicationEffectPlan::diff(&before, &after);
 
         assert_eq!(kinds(&plan), vec![EffectKind::Tray]);
-        assert_eq!(
-            plan.effects()[0],
-            ApplicationEffect::Tray(TrayRefresh::Full)
-        );
+        assert_eq!(plan.effects()[0], tray(TrayRefresh::Full, &after));
     }
 
     #[test]
-    fn tun_toggle_alone_produces_part_tray_and_rebuild() {
+    fn tun_toggle_alone_produces_part_tray() {
         let before = inputs();
         let mut after = inputs();
         after.clash.enable_tun_mode = true;
@@ -944,165 +836,79 @@ mod tests {
         let plan = ApplicationEffectPlan::diff(&before, &after);
 
         assert_eq!(kinds(&plan), vec![EffectKind::Tray]);
-        assert_eq!(
-            plan.effects()[0],
-            ApplicationEffect::Tray(TrayRefresh::Part)
-        );
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild
-        );
+        assert_eq!(plan.effects()[0], tray(TrayRefresh::Part, &after));
     }
 
     #[test]
-    fn with_retries_of_an_empty_set_is_the_identity() {
-        let before = inputs();
-        let mut after = inputs();
-        after.app.language = I18nLanguage::Korean;
-        let plan = ApplicationEffectPlan::diff(&before, &after);
-        let full = ApplicationEffectPlan::full(&after);
-
-        assert_eq!(plan.clone().with_retries(&full, &BTreeSet::new()), plan);
-    }
-
-    #[test]
-    fn with_retries_inserts_missing_kinds_in_kind_order() {
-        let before = inputs();
-        let mut after = inputs();
-        after.app.language = I18nLanguage::Korean;
-        let plan = ApplicationEffectPlan::diff(&before, &after);
-        let full = ApplicationEffectPlan::full(&after);
-
-        let merged = plan.with_retries(
-            &full,
-            &BTreeSet::from([EffectKind::SystemProxy, EffectKind::Logger]),
-        );
-
-        assert_eq!(
-            kinds(&merged),
-            vec![
-                EffectKind::Locale,
-                EffectKind::Logger,
-                EffectKind::SystemProxy,
-                EffectKind::Tray,
-            ]
-        );
-        assert!(kinds(&merged).is_sorted(), "retries must keep plan order");
-    }
-
-    #[test]
-    fn with_retries_keeps_one_effect_per_kind() {
-        let before = inputs();
-        let mut after = inputs();
-        after.app.language = I18nLanguage::Korean;
-        let plan = ApplicationEffectPlan::diff(&before, &after);
-        let full = ApplicationEffectPlan::full(&after);
-
-        let merged = plan.with_retries(&full, &BTreeSet::from([EffectKind::Locale]));
-
-        assert_eq!(kinds(&merged), vec![EffectKind::Locale, EffectKind::Tray]);
-        assert_eq!(
-            merged.effects()[0],
-            ApplicationEffect::Locale(I18nLanguage::Korean)
-        );
-    }
-
-    #[test]
-    fn a_retried_tray_refresh_widens_a_partial_one() {
-        let before = inputs();
-        let mut after = inputs();
-        after.app.enable_system_proxy = true;
-        let plan = ApplicationEffectPlan::diff(&before, &after);
-        let full = ApplicationEffectPlan::full(&after);
-
-        assert_eq!(
-            plan.effects().last(),
-            Some(&ApplicationEffect::Tray(TrayRefresh::Part))
-        );
-
-        let merged = plan.with_retries(&full, &BTreeSet::from([EffectKind::Tray]));
-
-        assert_eq!(
-            kinds(&merged),
-            vec![EffectKind::SystemProxy, EffectKind::Tray]
-        );
-        assert_eq!(
-            merged.effects().last(),
-            Some(&ApplicationEffect::Tray(TrayRefresh::Full))
-        );
-    }
-
-    #[test]
-    fn runtime_apply_kind_prefers_control_channel_over_rebuild() {
-        let before = inputs();
-        let mut after = inputs();
-        after.clash.clash_control_channel = ClashControlChannel::HttpOnly;
-        after.clash.enable_tun_mode = true;
-
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::ControlChannel
-        );
-
-        let mut after = inputs();
-        after.clash.clash_ipc_disable_http_controller = true;
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::ControlChannel
-        );
-    }
-
-    #[test]
-    fn runtime_apply_kind_reports_rebuild_for_port_and_tun_changes() {
-        let before = inputs();
-
-        let mut after = inputs();
-        after.clash.mixed_port = PortStrategy::new_allow_fallback(7891);
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild,
-            "mixed port strategy changes must rebuild the runtime config"
-        );
-
-        let mut after = inputs();
-        after.clash.enable_tun_mode = true;
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild
-        );
-
-        let mut after = inputs();
-        after.clash.socks_port = Some(PortStrategy::new_allow_fallback(1080));
-        assert_eq!(
-            runtime_apply_kind(&before, &after),
-            RuntimeApplyKind::Rebuild
-        );
-
-        assert_eq!(
-            runtime_apply_kind(&before, &inputs()),
-            RuntimeApplyKind::None
-        );
-    }
-
-    #[test]
-    fn runtime_apply_kind_ignores_core_and_service_mode() {
+    fn service_mode_is_not_an_effect_input_and_core_only_shapes_the_tray() {
         let app = NyanpasuAppConfig::default();
-        let switched = NyanpasuAppConfig {
+        let clash = ClashConfig::default();
+        let before = ApplicationEffectInputs::project(&app, &clash, None);
+
+        let host_switched = NyanpasuAppConfig {
+            enable_service_mode: !app.enable_service_mode,
+            ..app.clone()
+        };
+        let after = ApplicationEffectInputs::project(&host_switched, &clash, None);
+        assert_eq!(
+            before, after,
+            "service mode may not enter the effect inputs"
+        );
+
+        // The core reaches the effects only through the tray menu it shapes.
+        let core_switched = NyanpasuAppConfig {
             core: match app.core {
                 ClashCore::Mihomo => ClashCore::ClashRs,
                 _ => ClashCore::Mihomo,
             },
-            enable_service_mode: !app.enable_service_mode,
+            ..app.clone()
+        };
+        let after = ApplicationEffectInputs::project(&core_switched, &clash, None);
+        assert_eq!(
+            ApplicationEffectPlan::diff(&before, &after).effects(),
+            [tray(TrayRefresh::Full, &after)]
+        );
+    }
+
+    #[test]
+    fn the_tray_view_reads_core_and_mode_from_the_typed_configs() {
+        let app = NyanpasuAppConfig {
+            core: ClashCore::ClashPremium,
+            tray_menu_mode: TrayMenuMode::Webview,
+            tray_selector_mode: ProxiesSelectorMode::Submenu,
+            enable_system_proxy: true,
+            enable_tray_text: true,
+            enable_tray_traffic: false,
             ..NyanpasuAppConfig::default()
         };
-        let clash = ClashConfig::default();
+        let mut clash = ClashConfig {
+            enable_tun_mode: true,
+            ..ClashConfig::default()
+        };
+        clash.overrides.apply(ClashGuardOverridesPatch {
+            mode: Some(Mode::Script),
+            ..ClashGuardOverridesPatch::default()
+        });
 
-        let before = ApplicationEffectInputs::project(&app, &clash, None);
-        let after = ApplicationEffectInputs::project(&switched, &clash, None);
+        let view = ApplicationEffectInputs::project(&app, &clash, None).tray_view();
 
-        assert_eq!(before, after, "neither field may enter the effect inputs");
-        assert_eq!(runtime_apply_kind(&before, &after), RuntimeApplyKind::None);
-        assert!(ApplicationEffectPlan::diff(&before, &after).is_empty());
+        assert_eq!(
+            view,
+            TrayView {
+                menu: TrayMenuDesired {
+                    menu_mode: TrayMenuMode::Webview,
+                    selector_mode: ProxiesSelectorMode::Submenu,
+                    core: ClashCore::ClashPremium,
+                },
+                part: TrayPartDesired {
+                    mode: Mode::Script,
+                    system_proxy: true,
+                    tun: true,
+                    text: true,
+                    traffic: false,
+                },
+            }
+        );
     }
 }
 
@@ -1129,7 +935,10 @@ pub(crate) fn requested_owners(
     if patch.language.is_some() {
         kinds.push(EffectKind::Locale);
     }
-    if patch.app_log_level.is_some() || patch.max_log_files.is_some() {
+    if patch.app_log_level.is_some()
+        || patch.max_log_files.is_some()
+        || patch.max_log_file_size.is_some()
+    {
         kinds.push(EffectKind::Logger);
     }
     if patch.network_statistic_widget.is_some() {

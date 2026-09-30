@@ -1,12 +1,12 @@
 import {
   createContext,
   PropsWithChildren,
-  useCallback,
   useContext,
-  useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { useLockFn } from '@/hooks/use-lock-fn'
+import { formatError } from '@/utils'
 
 type BlockTaskStatus = 'idle' | 'pending' | 'success' | 'error'
 
@@ -20,122 +20,132 @@ interface BlockTask<T = any> {
   endTime?: number
 }
 
-interface BlockTaskContextType {
-  tasks: Record<string, BlockTask>
-  run: <T>(key: string, fn: (...args: unknown[]) => Promise<T>) => Promise<T>
-  getTask: (key: string) => BlockTask | undefined
+interface BlockTaskStore {
+  getTasks: () => Record<string, BlockTask>
+  subscribe: (listener: () => void) => () => void
+  run: <T>(key: string, fn: () => Promise<T>) => Promise<T>
   clearTask: (key: string) => void
 }
 
-const BlockContext = createContext<BlockTaskContextType | null>(null)
+// Hooks subscribe through useSyncExternalStore with a per-key snapshot, so a
+// task update re-renders only the hooks reading that task instead of every
+// consumer of the provider (e.g. every proxy node during a delay test).
+const createBlockTaskStore = (): BlockTaskStore => {
+  let tasks: Record<string, BlockTask> = {}
+  const listeners = new Set<() => void>()
 
-export const useBlockTaskContext = () => {
-  const context = useContext(BlockContext)
+  const setTask = (key: string, task: BlockTask | undefined) => {
+    const next = { ...tasks }
 
-  if (!context) {
-    throw new Error('useBlockContext must be used within a BlockProvider')
+    if (task) {
+      next[key] = task
+    } else {
+      delete next[key]
+    }
+
+    tasks = next
+    listeners.forEach((listener) => listener())
   }
-
-  return context
-}
-
-export const useBlockTask = <T, Args extends unknown[] = []>(
-  key: string,
-  fn: (...args: Args) => Promise<T>,
-) => {
-  const { run, tasks } = useBlockTaskContext()
-
-  const execute = useLockFn(async (...args: Args) => {
-    return await run(key, () => fn(...args))
-  })
 
   return {
-    execute,
-    isPending: tasks[key]?.status === 'pending',
-    isSuccess: tasks[key]?.status === 'success',
-    isError: tasks[key]?.status === 'error',
-    data: tasks[key]?.data,
-    error: tasks[key]?.error,
-  }
-}
+    getTasks: () => tasks,
+    subscribe: (listener) => {
+      listeners.add(listener)
 
-export const BlockTaskProvider = ({ children }: PropsWithChildren) => {
-  const [tasks, setTasks] = useState<Record<string, BlockTask>>({})
-
-  const tasksRef = useRef<Record<string, BlockTask>>({})
-
-  const run = useCallback(
-    async <T,>(key: string, fn: () => Promise<T>): Promise<T> => {
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    run: async <T,>(key: string, fn: () => Promise<T>): Promise<T> => {
       const task: BlockTask<T> = {
         id: key,
         status: 'pending',
         startTime: Date.now(),
       }
 
-      setTasks((prev) => ({ ...prev, [key]: task }))
-      tasksRef.current[key] = task
+      setTask(key, task)
 
       try {
         const data = await fn()
 
-        const successTask: BlockTask<T> = {
+        setTask(key, {
           ...task,
           status: 'success',
           data,
           endTime: Date.now(),
-        }
-
-        setTasks((prev) => ({
-          ...prev,
-          [key]: successTask,
-        }))
-
-        tasksRef.current[key] = successTask
+        })
 
         return data
       } catch (error) {
-        const errorTask: BlockTask = {
+        setTask(key, {
           ...task,
           status: 'error',
-          error: error instanceof Error ? error : new Error(String(error)),
+          error:
+            error instanceof Error
+              ? error
+              : new Error(formatError(error), { cause: error }),
           endTime: Date.now(),
-        }
-
-        setTasks((prev) => ({
-          ...prev,
-          [key]: errorTask,
-        }))
-
-        tasksRef.current[key] = errorTask
+        })
 
         throw error
       }
     },
-    [],
+    clearTask: (key) => setTask(key, undefined),
+  }
+}
+
+const BlockContext = createContext<BlockTaskStore | null>(null)
+
+const useBlockTaskStore = () => {
+  const store = useContext(BlockContext)
+
+  if (!store) {
+    throw new Error('useBlockContext must be used within a BlockProvider')
+  }
+
+  return store
+}
+
+export const useBlockTaskContext = () => {
+  const store = useBlockTaskStore()
+
+  const tasks = useSyncExternalStore(store.subscribe, store.getTasks)
+
+  return {
+    tasks,
+    run: store.run,
+    getTask: (key: string): BlockTask | undefined => tasks[key],
+    clearTask: store.clearTask,
+  }
+}
+
+export const useBlockTask = <T, Args extends unknown[] = []>(
+  key: string,
+  fn: (...args: Args) => Promise<T>,
+) => {
+  const store = useBlockTaskStore()
+
+  const task = useSyncExternalStore(
+    store.subscribe,
+    () => store.getTasks()[key],
   )
 
-  const getTask = useCallback((key: string) => tasks[key], [tasks])
+  const execute = useLockFn(async (...args: Args) => {
+    return await store.run(key, () => fn(...args))
+  })
 
-  const clearTask = useCallback((key: string) => {
-    setTasks((prev) => {
-      const newTasks = { ...prev }
-      delete newTasks[key]
-      return newTasks
-    })
+  return {
+    execute,
+    isPending: task?.status === 'pending',
+    isSuccess: task?.status === 'success',
+    isError: task?.status === 'error',
+    data: task?.data,
+    error: task?.error,
+  }
+}
 
-    delete tasksRef.current[key]
-  }, [])
+export const BlockTaskProvider = ({ children }: PropsWithChildren) => {
+  const [store] = useState(createBlockTaskStore)
 
-  return (
-    <BlockContext.Provider
-      value={{
-        tasks,
-        run,
-        getTask,
-        clearTask,
-      }}
-    >
-      {children}
-    </BlockContext.Provider>
-  )
+  return <BlockContext.Provider value={store}>{children}</BlockContext.Provider>
 }

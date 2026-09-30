@@ -8,7 +8,7 @@ import {
 } from '@nyanpasu/interface/ipc'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
-import { useScrollArea } from '@/components/ui/scroll-area'
+import { useScrollAreaViewport } from '@/components/ui/scroll-area'
 import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
@@ -45,7 +45,13 @@ const DelayTestButton = () => {
   )
 }
 
-const ProxyButton = ({ proxy }: { proxy: ClashProxiesQueryProxyItem }) => {
+const ProxyButton = ({
+  proxy,
+  onSelect,
+}: {
+  proxy: ClashProxiesQueryProxyItem
+  onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
+}) => {
   const currentDelay = useMemo(() => {
     if (proxy.history.length > 0) {
       return proxy.history[proxy.history.length - 1].delay
@@ -55,7 +61,7 @@ const ProxyButton = ({ proxy }: { proxy: ClashProxiesQueryProxyItem }) => {
   }, [proxy.history])
 
   const handleClick = useLockFn(async () => {
-    await proxy.mutateSelect()
+    await onSelect(proxy)
   })
 
   return (
@@ -72,6 +78,7 @@ function RouteComponent() {
 
   const {
     proxies: { data: proxies },
+    selectProxy,
   } = useClashProxies()
 
   const { value: proxyMode } = useProxyMode()
@@ -84,7 +91,13 @@ function RouteComponent() {
     return proxies?.groups.find((group) => group.name === proxyGroupName)
   }, [proxies, proxyGroupName, proxyMode])
 
-  const { viewportRef } = useScrollArea()
+  const handleSelectProxy = async (proxy: ClashProxiesQueryProxyItem) => {
+    if (currentGroup) {
+      await selectProxy(currentGroup.name, proxy.name)
+    }
+  }
+
+  const { viewportRef } = useScrollAreaViewport()
 
   const virtualizer = useVirtualizer({
     count: currentGroup?.all?.length || 0,
@@ -114,7 +127,8 @@ function RouteComponent() {
         }}
       >
         {virtualItems.map((virtualItem) => {
-          const proxy = currentGroup?.all?.[virtualItem.index]
+          const name = currentGroup?.all?.[virtualItem.index]
+          const proxy = name ? proxies?.nodes[name] : undefined
 
           if (!proxy) {
             return null
@@ -133,9 +147,9 @@ function RouteComponent() {
               }}
               data-index={virtualItem.index}
               data-slot="proxies-virtual-item"
-              data-active={String(proxy.name === currentGroup?.now)}
+              data-active={String(name === currentGroup?.now)}
             >
-              <ProxyButton proxy={proxy} />
+              <ProxyButton proxy={proxy} onSelect={handleSelectProxy} />
             </div>
           )
         })}

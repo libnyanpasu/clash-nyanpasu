@@ -1,12 +1,13 @@
 use super::super::{
-    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
+    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck,
+    fs::try_exists,
+    legacy_schema::{IClashTemp, IVerge, typed_config_from_legacy_parts},
 };
-use crate::{
-    bridge::typed_config_from_legacy_parts,
-    config::{IClashTemp, IVerge},
-    utils::help,
-};
+use crate::utils::help;
 use anyhow::Context as _;
+use nyanpasu_config::{
+    application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
+};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Serialize, de::DeserializeOwned};
@@ -91,10 +92,17 @@ impl MigrationStep for SplitLegacyConfig {
     }
 
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
-        let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
-        let legacy_clash = read_legacy_clash_inputs(ctx)?;
-        let (application, session_state, clash_config) =
-            typed_config_from_legacy_parts(&legacy, &legacy_clash)?;
+        let (application, session_state, clash_config) = if has_legacy_inputs(ctx)? {
+            let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
+            let legacy_clash = read_legacy_clash_inputs(ctx)?;
+            typed_config_from_legacy_parts(&legacy, &legacy_clash)?
+        } else {
+            (
+                NyanpasuAppConfig::default(),
+                PersistentState::default(),
+                ClashConfig::default(),
+            )
+        };
 
         let application_yaml = serialize_yaml(&application)
             .context("failed to serialize migrated application config")?;
@@ -147,11 +155,13 @@ impl MigrationStep for RepairClashConfigPath {
         let clash_config = if previous_typed_path.exists() {
             read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&previous_typed_path)
                 .context("failed to read previous typed clash config")?
-        } else {
+        } else if has_legacy_inputs(ctx)? {
             let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
             let legacy_clash = read_legacy_clash_inputs(ctx)?;
             let (_, _, clash_config) = typed_config_from_legacy_parts(&legacy, &legacy_clash)?;
             clash_config
+        } else {
+            ClashConfig::default()
         };
 
         let clash_yaml =
@@ -330,14 +340,24 @@ fn validate_existing_application_and_session(ctx: &Ctx) -> Result<(), MigrationC
     Ok(())
 }
 
+/// Whether any legacy file is left to convert. Without one this is a fresh
+/// install, which starts from the typed defaults: the legacy templates only
+/// describe what the legacy app assumed for fields its files left out.
+fn has_legacy_inputs(ctx: &Ctx) -> Result<bool, MigrationCheckError> {
+    Ok(try_exists(&ctx.nyanpasu_config_path())?
+        || try_exists(&ctx.clash_guard_overrides_path())?
+        || classify_shared_clash_file(ctx)? == SharedClashFileState::LegacyRuntime)
+}
+
 fn read_legacy_verge(path: &Path) -> anyhow::Result<IVerge> {
     let mut merged = IVerge::template();
     if !path.exists() {
         return Ok(merged);
     }
 
-    let legacy: IVerge = read_yaml(path)
+    let mut legacy: IVerge = read_yaml(path)
         .with_context(|| format!("failed to read legacy config {}", path.display()))?;
+    legacy.migrate_auto_close_connection();
     merged.patch_config(legacy);
     Ok(merged)
 }
@@ -428,15 +448,8 @@ fn current_revision() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{IClashTemp, nyanpasu::WindowState as LegacyWindowState};
-    use nyanpasu_config::{
-        application::NyanpasuAppConfig,
-        clash::config::ClashConfig,
-        state::{
-            PersistentState,
-            window::{WindowLabel, WindowState},
-        },
-    };
+    use crate::core::migration::legacy_schema::WindowState as LegacyWindowState;
+    use nyanpasu_config::state::window::{WindowLabel, WindowState};
 
     fn test_ctx() -> (Ctx, tempfile::TempDir) {
         let temp = tempfile::tempdir().unwrap();
@@ -470,6 +483,57 @@ mod tests {
         write_yaml(path, &legacy);
     }
 
+    /// Every default mints its own controller secret, so it is left out.
+    fn without_secret(clash: &ClashConfig) -> Value {
+        let mut value = serde_yaml::to_value(clash).unwrap();
+        value["overrides"]
+            .as_mapping_mut()
+            .unwrap()
+            .remove("secret");
+        value
+    }
+
+    #[test]
+    fn split_legacy_config_on_fresh_install_writes_the_typed_defaults() {
+        let (mut ctx, _temp) = test_ctx();
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let application: NyanpasuAppConfig = read_typed(&ctx.application_config_path());
+        let session: PersistentState = read_typed(&ctx.session_state_path());
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        assert_eq!(
+            serde_yaml::to_value(&application).unwrap(),
+            serde_yaml::to_value(NyanpasuAppConfig::default()).unwrap()
+        );
+        assert_eq!(
+            serde_yaml::to_value(&session).unwrap(),
+            serde_yaml::to_value(PersistentState::default()).unwrap()
+        );
+        assert_eq!(
+            without_secret(&clash),
+            without_secret(&ClashConfig::default())
+        );
+    }
+
+    #[test]
+    fn repair_clash_config_path_without_legacy_inputs_writes_the_typed_default() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(
+            &ctx.application_config_path(),
+            &NyanpasuAppConfig::default(),
+        );
+        write_yaml(&ctx.session_state_path(), &PersistentState::default());
+
+        REPAIR_CLASH_CONFIG_PATH.run(&mut ctx).unwrap();
+
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        assert_eq!(
+            without_secret(&clash),
+            without_secret(&ClashConfig::default())
+        );
+    }
+
     #[test]
     fn legacy_runtime_clash_config_alone_detects_baseline_zero() {
         let (ctx, _temp) = test_ctx();
@@ -489,6 +553,32 @@ mod tests {
         let _: NyanpasuAppConfig = read_typed(&ctx.application_config_path());
         let _: PersistentState = read_typed(&ctx.session_state_path());
         let _: ClashConfig = read_typed(&ctx.clash_config_path());
+    }
+
+    #[test]
+    fn split_legacy_config_migrates_a_non_random_mixed_port_as_fixed() {
+        use nyanpasu_config::clash::config::clash_strategy::{PortStrategy, PortStrategyKind};
+
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(
+            &ctx.nyanpasu_config_path(),
+            &IVerge {
+                enable_random_port: Some(false),
+                verge_mixed_port: Some(7891),
+                ..IVerge::template()
+            },
+        );
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        assert_eq!(
+            clash.mixed_port,
+            PortStrategy {
+                kind: PortStrategyKind::Fixed,
+                start_port: 7891,
+            }
+        );
     }
 
     #[test]
@@ -621,6 +711,34 @@ mod tests {
 
         let session: PersistentState = read_typed(&ctx.session_state_path());
         assert!(session.window_state.is_empty());
+    }
+
+    /// `auto_close_connection` predates `break_when_proxy_change`. A document
+    /// with only the old field migrates by it, although the template it is
+    /// merged onto carries the new one; the new field wins when both are
+    /// present, and a document with neither keeps the default.
+    #[test]
+    fn split_legacy_config_migrates_the_deprecated_proxy_change_policy() {
+        use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
+
+        let cases = [
+            ("auto_close_connection: false\n", ProxyChangeBreakMode::Off),
+            ("auto_close_connection: true\n", ProxyChangeBreakMode::All),
+            (
+                "auto_close_connection: true\nbreak_when_proxy_change: none\n",
+                ProxyChangeBreakMode::Off,
+            ),
+            ("{}\n", ProxyChangeBreakMode::All),
+        ];
+        for (verge, expected) in cases {
+            let (mut ctx, _temp) = test_ctx();
+            std::fs::write(ctx.nyanpasu_config_path(), verge).unwrap();
+
+            SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+            let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+            assert_eq!(clash.break_connection.on_proxy_change, expected, "{verge}");
+        }
     }
 
     #[test]

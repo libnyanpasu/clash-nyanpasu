@@ -195,9 +195,6 @@ where
         let formatter = self.formatter.clone();
         let builder_for_save = builder.clone();
 
-        let inconsistent_path = self.config_path.clone();
-        let written = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let completed = written.clone();
         let result = self
             .state_coordinator
             .with_pending_state(
@@ -207,24 +204,16 @@ where
                     formatter.serialize(&mut buf, &builder_for_save, config_prefix.as_deref())?;
                     let file = AtomicFile::new(&config_path, AllowOverwrite);
                     tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-                        .await?
+                        .await
+                        .map_err(|error| match error.try_into_panic() {
+                            Ok(panic) => std::panic::resume_unwind(panic),
+                            Err(error) => error,
+                        })?
                         .with_context(|| format!("failed to write config: {config_path}"))?;
-                    completed.store(true, std::sync::atomic::Ordering::Release);
                     Ok::<_, anyhow::Error>(())
                 },
-                // This manager persists the *builder*, and a committed state
-                // that another writer produced does not identify the builder
-                // that produced it. There is nothing correct to write back, so
-                // the inconsistency is reported instead of being papered over.
-                |_committed| async move {
-                    if !written.load(std::sync::atomic::Ordering::Acquire) {
-                        return Ok(());
-                    }
-                    Err(anyhow::anyhow!(
-                        "cannot restore the config file: the committed state was produced by \
-                         another writer and its builder is unknown"
-                    ))
-                },
+                // A failed write leaves the old file in place.
+                |_committed| async { Ok(()) },
             )
             .await;
 
@@ -236,26 +225,12 @@ where
             Err(e) => match e {
                 WithEffectError::State(e) => Err(UpsertError::State(e)),
                 WithEffectError::Effect(e) => Err(UpsertError::WriteConfig(e)),
-                WithEffectError::EffectTimedOut(timeout) => Err(UpsertError::WriteConfig(
-                    anyhow::anyhow!("write config timed out after {timeout:?}"),
-                )),
                 WithEffectError::EffectRecovery {
                     effect_error,
                     recovery_error,
                 } => Err(UpsertError::ResourceRecovery {
                     cause: anyhow::anyhow!("{effect_error}"),
                     recovery_error,
-                }),
-                WithEffectError::Recovery {
-                    commit_error,
-                    recovery_error,
-                } => Err(UpsertError::Recovery {
-                    commit_error,
-                    recovery_error,
-                    inconsistent: InconsistentPersistence {
-                        config_path: inconsistent_path,
-                        local_write_completed: false,
-                    },
                 }),
             },
         }
@@ -349,7 +324,7 @@ mod tests {
 
         async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            Ack::Failed(anyhow::anyhow!("init ACK failed"))
+            Ack::Failed(crate::state::ack::test_ack_error("init ACK failed"))
         }
     }
 

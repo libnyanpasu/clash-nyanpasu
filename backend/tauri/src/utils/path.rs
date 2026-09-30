@@ -13,23 +13,18 @@
 //! and will be migrated to `PathResolver` in a follow-up change.
 //!
 //! Known remaining coupling, to be removed by the follow-up that makes
-//! `PathResolver` truly own path resolution:
-//!
-//! - [`PathResolver::from_env`] and the delegating helpers
-//!   ([`PathResolver::app_install_dir`], [`PathResolver::data_or_sidecar_path`],
-//!   [`PathResolver::single_instance_placeholder`]) still call into `dirs::*`
-//!   rather than resolving paths themselves.
-//! - [`PathResolver::app_resources_dir`] reaches `Handle::global()` through
-//!   `dirs::app_resources_dir`, so it still depends on the Tauri app handle.
-//! - The process-wide `Lazy<PathBuf>` caches `CUSTOM_SCRIPTS_DIR`
-//!   (`enhance/script/js.rs`) and `SERVICE_PATH` (`core/service/mod.rs`) are
-//!   resolved once at first use; after `migrate_home_dir_handler` relocates the
-//!   home directory they go stale until the process restarts. Folding these into
-//!   an injected `PathResolver` is tracked as follow-up cleanup.
+//! `PathResolver` truly own path resolution: [`PathResolver::from_env`] and the
+//! delegating helpers ([`PathResolver::app_install_dir`],
+//! [`PathResolver::data_or_sidecar_path`],
+//! [`PathResolver::single_instance_placeholder`]) still call into `dirs::*`
+//! rather than resolving paths themselves.
 
 use crate::utils::dirs;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+
+/// The service binary's name, without the platform's executable suffix.
+const SERVICE_BINARY: &str = "nyanpasu-service";
 
 /// Resolves application paths from a fixed pair of base directories.
 ///
@@ -40,6 +35,10 @@ use std::path::{Path, PathBuf};
 pub struct PathResolver {
     config_dir: PathBuf,
     data_dir: PathBuf,
+    /// The bundle's `resources` dir. Only Tauri knows where the bundle is, so
+    /// the composition root resolves it and hands it in. `None` when that
+    /// failed, and for resolvers built from explicit roots.
+    resources_dir: Option<PathBuf>,
 }
 
 #[allow(dead_code)]
@@ -49,10 +48,11 @@ impl PathResolver {
     /// Delegates to [`dirs::app_config_dir`] / [`dirs::app_data_dir`], which
     /// ensure the directories exist and honor the portable flag and Windows
     /// registry override.
-    pub fn from_env() -> Result<Self> {
+    pub fn from_env(resources_dir: Option<PathBuf>) -> Result<Self> {
         Ok(Self {
             config_dir: dirs::app_config_dir()?,
             data_dir: dirs::app_data_dir()?,
+            resources_dir,
         })
     }
 
@@ -62,6 +62,7 @@ impl PathResolver {
         Self {
             config_dir,
             data_dir,
+            resources_dir: None,
         }
     }
 
@@ -83,10 +84,18 @@ impl PathResolver {
         dirs::app_install_dir()
     }
 
-    /// The bundled `resources` dir. Requires the Tauri app handle, so it is
-    /// resolved on demand via [`dirs`].
-    pub fn app_resources_dir(&self) -> Result<PathBuf> {
-        dirs::app_resources_dir()
+    /// The `nyanpasu-service` binary, shipped next to the executable.
+    pub fn service_binary_path(&self) -> Result<PathBuf> {
+        Ok(self
+            .app_install_dir()?
+            .join(format!("{SERVICE_BINARY}{}", std::env::consts::EXE_SUFFIX)))
+    }
+
+    /// The bundled `resources` dir, as the composition root resolved it.
+    pub fn app_resources_dir(&self) -> Result<&Path> {
+        self.resources_dir
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("the bundled resources dir is unknown"))
     }
 
     // -- config-derived paths ----------------------------------------------
@@ -138,6 +147,11 @@ impl PathResolver {
         self.data_dir.join(dirs::STORAGE_DB)
     }
 
+    /// Durable job runs and their scoped journals.
+    pub fn jobs_path(&self) -> PathBuf {
+        self.data_dir.join("jobs.redb")
+    }
+
     /// `clash.pid` runtime file.
     pub fn clash_pid_path(&self) -> PathBuf {
         self.data_dir.join("clash.pid")
@@ -151,6 +165,11 @@ impl PathResolver {
     /// Cache directory (safe to clean up).
     pub fn cache_dir(&self) -> PathBuf {
         self.data_dir.join("cache")
+    }
+
+    /// Where the JavaScript runner writes the modules it runs.
+    pub fn scripts_dir(&self) -> PathBuf {
+        self.data_dir.join("scripts")
     }
 
     // -- delegating helpers -------------------------------------------------
@@ -215,6 +234,7 @@ mod tests {
         assert_eq!(r.clash_pid_path(), Path::new("/data").join("clash.pid"));
         assert_eq!(r.app_logs_dir(), Path::new("/data").join("logs"));
         assert_eq!(r.cache_dir(), Path::new("/data").join("cache"));
+        assert_eq!(r.scripts_dir(), Path::new("/data").join("scripts"));
     }
 
     #[test]
@@ -222,5 +242,24 @@ mod tests {
         let r = resolver();
         assert_eq!(r.app_config_dir(), Path::new("/cfg"));
         assert_eq!(r.app_data_dir(), Path::new("/data"));
+    }
+
+    #[test]
+    fn explicit_roots_know_no_bundle_resources() {
+        assert!(resolver().app_resources_dir().is_err());
+    }
+
+    #[test]
+    fn the_service_binary_sits_next_to_the_executable() {
+        let r = resolver();
+        let binary = r.service_binary_path().unwrap();
+        assert_eq!(
+            binary.parent(),
+            Some(r.app_install_dir().unwrap().as_path())
+        );
+        assert_eq!(
+            binary.file_name().unwrap().to_str(),
+            Some(format!("nyanpasu-service{}", std::env::consts::EXE_SUFFIX).as_str())
+        );
     }
 }

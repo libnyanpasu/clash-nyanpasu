@@ -1,11 +1,14 @@
 //! Actor-owned proxy cache shared by IPC and tray adapters.
 use std::{sync::Arc, time::Duration};
 
-use crate::client::runtime::{Degradation, DegradationPhase, MutationOutcome};
+use crate::client::runtime::{
+    Degradation, DegradationPhase, DegradationReason, InterruptFailure, MutationOutcome,
+};
 use anyhow::{Context, Result};
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::{sync::watch, time::Instant};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     actor_v2::{CoreClient, api::ApiClient},
@@ -44,6 +47,7 @@ struct Args {
     core: CoreClient,
     snapshots: watch::Sender<Option<Arc<Snapshot>>>,
     changes: watch::Sender<()>,
+    shutdown: CancellationToken,
 }
 struct State {
     core: CoreClient,
@@ -53,6 +57,7 @@ struct State {
     generation: u64,
     monitor: Option<tokio::task::JoinHandle<()>>,
     timer: Option<tokio::task::JoinHandle<()>>,
+    shutdown: CancellationToken,
 }
 impl Drop for State {
     fn drop(&mut self) {
@@ -182,7 +187,9 @@ impl State {
         if let Err(error) = interruption {
             degradations.push(Degradation {
                 phase: DegradationPhase::SystemEffect,
-                code: "proxy_interruption_failed".into(),
+                reason: DegradationReason::ProxyInterruptionFailed {
+                    cause: InterruptFailure::from(&error),
+                },
                 message: format!(
                     "proxy selected, but source-instance connection interruption failed: {error}"
                 ),
@@ -192,7 +199,7 @@ impl State {
         if let Err(error) = self.refresh(actor, api).await {
             degradations.push(Degradation {
                 phase: DegradationPhase::UiEffect,
-                code: "proxy_cache_refresh_failed".into(),
+                reason: DegradationReason::ProxyCacheRefreshFailed,
                 message: format!("proxy selected, but cache refresh failed: {error}"),
                 retryable: true,
             });
@@ -218,6 +225,7 @@ impl Actor for ProxiesActor {
             generation: 0,
             monitor: None,
             timer: None,
+            shutdown: args.shutdown,
         })
     }
     async fn post_start(
@@ -229,10 +237,7 @@ impl Actor for ProxiesActor {
             loop {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 if actor
-                    .call(
-                        |reply| Message::Read { force: true, reply },
-                        Some(Duration::from_secs(120)),
-                    )
+                    .call(|reply| Message::Read { force: true, reply }, None)
                     .await
                     .is_err()
                 {
@@ -248,6 +253,21 @@ impl Actor for ProxiesActor {
         message: Message,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
+        if state.shutdown.is_cancelled() {
+            match message {
+                Message::Read { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::Select { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::UpdateProvider { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::Refresh | Message::Invalidated(_) => {}
+            }
+            return Ok(());
+        }
         match message {
             Message::Read { force, reply } => {
                 if reply.is_closed() {
@@ -293,6 +313,16 @@ impl Actor for ProxiesActor {
         }
         Ok(())
     }
+    async fn post_stop(
+        &self,
+        _actor: ActorRef<Message>,
+        state: &mut State,
+    ) -> Result<(), ActorProcessingErr> {
+        if let Some(timer) = state.timer.take() {
+            timer.abort();
+        }
+        Ok(())
+    }
 }
 
 struct ClientInner {
@@ -308,7 +338,11 @@ impl Drop for ClientInner {
 #[derive(Clone)]
 pub(crate) struct ProxiesClient(Arc<ClientInner>);
 impl ProxiesClient {
-    pub async fn spawn(core: CoreClient) -> Result<Self> {
+    pub async fn spawn(
+        core: CoreClient,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<Self> {
         let (snapshots, snapshot_rx) = watch::channel(None);
         let (changes, changes_rx) = watch::channel(());
         let (actor, _) = Actor::spawn(
@@ -316,11 +350,13 @@ impl ProxiesClient {
             ProxiesActor,
             Args {
                 core,
+                shutdown: shutdown.clone(),
                 snapshots,
                 changes,
             },
         )
         .await?;
+        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner {
             actor,
             snapshots: snapshot_rx,
@@ -331,16 +367,8 @@ impl ProxiesClient {
         &self,
         message: impl FnOnce(RpcReplyPort<Result<T>>) -> Message,
     ) -> Result<T> {
-        match self
-            .0
-            .actor
-            .call(message, Some(Duration::from_secs(120)))
-            .await
-        {
+        match self.0.actor.call(message, None).await {
             Ok(ractor::rpc::CallResult::Success(result)) => result,
-            Ok(ractor::rpc::CallResult::Timeout) => anyhow::bail!(
-                "proxy actor timed out; an operation may still be running, do not replay mutations automatically"
-            ),
             _ => anyhow::bail!("proxy actor is unavailable"),
         }
     }
@@ -608,15 +636,18 @@ mod tests {
         let (url, server) = server(router).await;
         let endpoint = endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-        let client = ProxiesClient::spawn(core.clone()).await.unwrap();
+        let client =
+            ProxiesClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
         (client, core, endpoint, fixture, server)
     }
     #[tokio::test]
     async fn cache_ttl_and_provider_metadata_are_shared() {
         let (client, _core, _, fixture, server) = setup().await;
         let proxies = client.get(false).await.unwrap();
-        assert_eq!(proxies.groups[0].all[0].name, NODE);
-        assert_eq!(proxies.groups[0].all[0].provider.as_deref(), Some(PROVIDER));
+        assert_eq!(proxies.groups[0].all[0], NODE);
+        assert_eq!(proxies.nodes[NODE].provider.as_deref(), Some(PROVIDER));
         assert_eq!(
             client.providers().await.unwrap().providers[PROVIDER]
                 .subscription_info
@@ -670,8 +701,11 @@ mod tests {
             .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::All)
             .await
             .unwrap();
-        assert_eq!(outcome.degradations()[0].code, "proxy_cache_refresh_failed");
-        assert!(client.snapshot().records.is_empty());
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::ProxyCacheRefreshFailed
+        ));
+        assert!(client.snapshot().nodes.is_empty());
         assert_eq!(
             fixture
                 .calls
@@ -685,7 +719,7 @@ mod tests {
         fixture.calls.lock().unwrap().clear();
         let error = client.update_provider(PROVIDER.into()).await.unwrap_err();
         assert!(error.to_string().contains("provider update succeeded"));
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         assert_eq!(*fixture.calls.lock().unwrap(), ["update", "read"]);
         fixture.calls.lock().unwrap().clear();
         fixture.fail_mutation.store(true, Ordering::SeqCst);
@@ -726,10 +760,13 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(outcome.degradations().len(), 1);
-            assert_eq!(outcome.degradations()[0].code, "proxy_interruption_failed");
+            assert!(matches!(
+                outcome.degradations()[0].reason,
+                crate::client::runtime::DegradationReason::ProxyInterruptionFailed { .. }
+            ));
             assert!(!outcome.degradations()[0].retryable);
             assert_eq!(*fixture.selected.lock().unwrap(), NODE);
-            assert!(!client.snapshot().records.is_empty());
+            assert!(!client.snapshot().nodes.is_empty());
             server.abort();
         }
     }
@@ -754,7 +791,7 @@ mod tests {
         assert_eq!(outcome.degradations().len(), 2);
         assert!(fixture.closed.lock().unwrap().is_empty());
         assert_eq!(*fixture.calls.lock().unwrap(), ["select", "connections"]);
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         fixture.release.notify_one();
         server.abort();
     }
@@ -768,12 +805,12 @@ mod tests {
             binding.as_mut().unwrap().instance_id = "replacement".into();
         });
         core.api_client().await.unwrap();
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         tokio::time::timeout(Duration::from_secs(3), changes.changed())
             .await
             .unwrap()
             .unwrap();
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         server.abort();
     }
 
@@ -792,11 +829,11 @@ mod tests {
             .send_modify(|binding| binding.as_mut().unwrap().instance_id = "replacement".into());
         core.api_client().await.unwrap();
         assert!(waiting.await.unwrap().is_err());
-        assert!(client.snapshot().records.is_empty());
+        assert!(client.snapshot().nodes.is_empty());
         fixture.hold_read.store(false, Ordering::SeqCst);
         fixture.release.notify_one();
         client.get(false).await.unwrap();
-        assert!(!client.snapshot().records.is_empty());
+        assert!(!client.snapshot().nodes.is_empty());
         server.abort();
     }
     #[tokio::test]

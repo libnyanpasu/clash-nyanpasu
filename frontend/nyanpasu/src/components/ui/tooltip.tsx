@@ -73,6 +73,15 @@ export function TooltipContent({
   ...props
 }: TooltipContentProps) {
   const open = useContext(TooltipOpenContext)
+  // The portal stays mounted only while the tooltip is open or animating out.
+  // A closed tooltip mounting its portal re-renders it once more to find the
+  // container, which multiplies across grids of tooltip triggers.
+  const [present, setPresent] = useState(open)
+
+  if (open && !present) {
+    setPresent(true)
+  }
+
   const offset = {
     top: { y: 4 },
     right: { x: -4 },
@@ -80,9 +89,13 @@ export function TooltipContent({
     left: { x: 4 },
   }[side]
 
+  if (!present) {
+    return null
+  }
+
   return (
     <TooltipPrimitive.Portal forceMount>
-      <AnimatePresence>
+      <AnimatePresence onExitComplete={() => setPresent(false)}>
         {open ? (
           <TooltipPrimitive.Content
             key="tooltip-content"

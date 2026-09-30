@@ -1,4 +1,12 @@
-import { useState } from 'react'
+import ArticleRounded from '~icons/material-symbols/article-rounded'
+import { useEffect, useState } from 'react'
+import { ErrorMessage } from '@/components/error-message'
+import {
+  StepLabel,
+  stepParts,
+  useOpenProfile,
+  useProfileLookup,
+} from '@/components/profile-label'
 import { Button } from '@/components/ui/button'
 import {
   SegmentedButton,
@@ -7,15 +15,17 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
 import {
-  rpc,
+  events,
+  queries,
   unwrapQueryOptions,
-  type ConfigExecutionRole,
-  type OperatorTag,
   type RuntimeInspection,
   type RuntimeInspectionContent,
 } from '@nyanpasu/interface'
-import { skipToken, useQuery } from '@tanstack/react-query'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import LogLevelBadge from '../../logs/_modules/log-level-badge'
+import ChainGraph from './_modules/chain-graph'
+import ChangedFields from './_modules/changed-fields'
 import DiffViewer from './_modules/diff-viewer'
 import YamlViewer from './_modules/yaml-viewer'
 
@@ -23,83 +33,49 @@ export const Route = createFileRoute('/(main)/main/profiles/inspect')({
   component: RouteComponent,
 })
 
-function roleLabel(role: ConfigExecutionRole): string {
-  switch (role.kind) {
-    case 'selected':
-      return m.inspect_selected()
-    case 'composition_base':
-      return `${m.inspect_base()} → ${role.data.composition_id}`
-    case 'composition_contributor':
-      return `${m.inspect_contributor()} ${role.data.contributor_index + 1} → ${role.data.composition_id}`
-  }
-}
-
-function stepLabel(tag: OperatorTag): string {
-  switch (tag.kind) {
-    case 'bare_root':
-      return m.inspect_bare()
-    case 'file_config_root':
-      return `${m.inspect_file()} · ${tag.data.profile_id} (${roleLabel(tag.data.role)})`
-    case 'composition_root':
-      return `${m.inspect_composition()} · ${tag.data.profile_id}`
-    case 'extend_proxies_step':
-      return `${m.inspect_extend()} · ${tag.data.contributor_profile_id} → ${tag.data.composition_id}`
-    case 'scoped_transform':
-      return `${m.inspect_scoped()} · ${tag.data.transform_profile_id} → ${tag.data.host_profile_id} (${roleLabel(tag.data.role)})`
-    case 'global_transform':
-      return `${m.inspect_global()} · ${tag.data.transform_profile_id}`
-    case 'builtin_transform':
-      return `${m.inspect_builtin()} · ${tag.data.name}`
-    case 'builtin_step':
-      switch (tag.data.step) {
-        case 'guard_overrides':
-          return m.inspect_overrides()
-        case 'whitelist_field_filter':
-          return m.inspect_filter()
-        case 'core_controller':
-          return m.inspect_core_controller()
-        case 'finalizing':
-          return m.inspect_finalizing()
-      }
-  }
-}
-
 function RouteComponent() {
+  const queryClient = useQueryClient()
   const [appliedView, setAppliedView] = useState(false)
   const inspectionQuery = appliedView
-    ? rpc.queries.inspectAppliedRuntime()
-    : rpc.queries.inspectRuntime()
+    ? queries.inspectAppliedRuntime()
+    : queries.inspectRuntime()
   const inspection = useQuery({
     ...unwrapQueryOptions(inspectionQuery, inspectionQuery.queryFn!),
     refetchOnWindowFocus: false,
     retry: false,
   })
 
+  // Every rebuild or apply publishes a configuration status change, so the
+  // snapshots are refetched on it instead of by hand.
+  useEffect(() => {
+    const listener = events.configurationStatusChanged
+      .listen(() => {
+        for (const query of [
+          queries.inspectRuntime(),
+          queries.inspectAppliedRuntime(),
+        ]) {
+          queryClient.invalidateQueries({ queryKey: query.queryKey })
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      listener.then((unlisten) => unlisten?.())
+    }
+  }, [queryClient])
+
   return (
-    <section className="@container flex min-w-0 flex-1 flex-col gap-4 p-4 md:p-6">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">{m.inspect_title()}</h1>
-          <p className="text-on-surface-variant mt-1 text-sm">
-            {m.inspect_description()}
-          </p>
-        </div>
-        <Button
-          className="shrink-0"
-          onClick={() => inspection.refetch()}
-          loading={inspection.isFetching}
-        >
-          {m.inspect_refresh()}
-        </Button>
+    <section className="@container flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0">
+      <header className="bg-mixed-background sticky top-0 z-50 flex items-center justify-between gap-4 py-4">
+        <h1 className="text-lg font-bold">{m.inspect_title()}</h1>
+        <label className="flex items-center gap-2 text-sm">
+          {m.inspect_last_applied()}
+          <Switch checked={appliedView} onCheckedChange={setAppliedView} />
+        </label>
       </header>
-      <label className="flex items-center gap-2 text-sm">
-        <Switch checked={appliedView} onCheckedChange={setAppliedView} />
-        {m.inspect_last_applied()}
-      </label>
       {inspection.isPending && <p role="status">{m.inspect_loading()}</p>}
       {inspection.isError && (
         <p role="alert">
-          {m.inspect_error()} {String(inspection.error)}
+          {m.inspect_error()} <ErrorMessage error={inspection.error} />
         </p>
       )}
       {!inspection.isError && inspection.data === null && (
@@ -119,14 +95,19 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
   const [showAll, setShowAll] = useState(false)
   const [selectedId, setSelectedId] = useState<number>()
   const [view, setView] = useState('diff')
-  const nodes = showAll
-    ? snapshot.nodes
-    : snapshot.nodes.filter(
-        (node) => node.has_logs || (node.changed_fields?.length ?? 0) > 0,
-      )
+  const [stepsView, setStepsView] = useState('list')
+  const profiles = useProfileLookup()
+  const openProfile = useOpenProfile(profiles)
+  // The chain keeps every step so that its edges stay connected.
+  const nodes =
+    showAll || stepsView === 'chain'
+      ? snapshot.nodes
+      : snapshot.nodes.filter(
+          (node) => node.has_logs || (node.changed_fields?.length ?? 0) > 0,
+        )
   const selected = nodes.find((node) => node.id === selectedId) ?? nodes[0]
   const contentQuery = selected
-    ? rpc.queries.inspectRuntimeNode(snapshot.snapshot_id, selected.id)
+    ? queries.inspectRuntimeNode(snapshot.snapshot_id, selected.id)
     : null
   const content = useQuery<RuntimeInspectionContent>({
     queryKey: contentQuery?.queryKey ?? [
@@ -152,31 +133,72 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
             : m.inspect_generated()}{' '}
         · {snapshot.target_core} · {m.inspect_revision()} {snapshot.revision}
       </p>
-      <div className="grid min-w-0 gap-4 @[40rem]:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
-        <div className="flex min-w-0 flex-col gap-3">
-          <label className="flex items-center justify-between gap-2 text-sm">
-            {m.inspect_show_all()}
-            <Switch checked={showAll} onCheckedChange={setShowAll} />
-          </label>
-          <nav
-            aria-label={m.inspect_steps()}
-            className="flex max-h-[65vh] flex-col gap-1 overflow-auto"
+      {/* On wide layouts both columns share the remaining viewport height and
+          scroll inside, so a long diff or log does not move the step list. */}
+      <div className="grid min-w-0 gap-4 @[40rem]:min-h-[28rem] @[40rem]:grow @[40rem]:basis-0 @[40rem]:grid-cols-[20rem_minmax(0,1fr)] @[40rem]:grid-rows-[minmax(0,1fr)]">
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
+          <SegmentedButton
+            size="sm"
+            value={stepsView}
+            onValueChange={(value) => {
+              if (value) setStepsView(value)
+            }}
           >
-            {nodes.map((node) => (
-              <button
-                key={node.id}
-                type="button"
-                aria-current={selected?.id === node.id ? 'step' : undefined}
-                onClick={() => setSelectedId(node.id)}
-                className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary rounded-lg p-3 text-left text-sm focus-visible:outline-2"
-              >
-                <span className="text-on-surface-variant mr-2">
-                  #{node.id + 1}
-                </span>
-                {stepLabel(node.tag)}
-              </button>
-            ))}
-          </nav>
+            <SegmentedButtonItem value="list">
+              {m.inspect_view_list()}
+            </SegmentedButtonItem>
+            <SegmentedButtonItem value="chain">
+              {m.inspect_view_chain()}
+            </SegmentedButtonItem>
+          </SegmentedButton>
+          {stepsView === 'list' && (
+            <label className="flex items-center justify-between gap-2 text-sm">
+              {m.inspect_show_all()}
+              <Switch checked={showAll} onCheckedChange={setShowAll} />
+            </label>
+          )}
+          {stepsView === 'chain' ? (
+            <ChainGraph
+              nodes={nodes}
+              profiles={profiles}
+              onOpenProfile={openProfile}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+            />
+          ) : (
+            <nav
+              aria-label={m.inspect_steps()}
+              className="flex max-h-[65vh] flex-col gap-1 overflow-auto @[40rem]:max-h-none @[40rem]:min-h-0 @[40rem]:flex-1"
+            >
+              {nodes.map((node) => (
+                <button
+                  key={node.id}
+                  type="button"
+                  aria-current={selected?.id === node.id ? 'step' : undefined}
+                  onClick={() => setSelectedId(node.id)}
+                  className="hover:bg-surface-variant aria-[current=step]:bg-secondary-container focus-visible:outline-primary flex items-center gap-2 rounded-lg p-3 text-left text-sm focus-visible:outline-2"
+                >
+                  <span className="text-on-surface-variant shrink-0 self-start">
+                    #{node.id + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <StepLabel
+                      parts={stepParts(node.tag)}
+                      profiles={profiles}
+                      onOpenProfile={openProfile}
+                    />
+                  </span>
+                  {node.has_logs && (
+                    <ArticleRounded
+                      role="img"
+                      aria-label={m.inspect_logs()}
+                      className="text-on-surface-variant size-4 shrink-0"
+                    />
+                  )}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
         {!selected && (
           <p role="status" className="text-on-surface-variant text-sm">
@@ -184,18 +206,16 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
           </p>
         )}
         {selected && (
-          <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-h-0 min-w-0 flex-col gap-3">
             <h2 className="font-medium">
-              #{selected.id + 1} {stepLabel(selected.tag)}
+              #{selected.id + 1}{' '}
+              <StepLabel
+                parts={stepParts(selected.tag)}
+                profiles={profiles}
+                onOpenProfile={openProfile}
+              />
             </h2>
-            <div className="text-on-surface-variant text-sm">
-              {m.inspect_fields()}:{' '}
-              {selected.changed_fields === null
-                ? m.inspect_no_baseline()
-                : selected.changed_fields.length === 0
-                  ? m.inspect_unchanged()
-                  : selected.changed_fields.join(', ')}
-            </div>
+            <ChangedFields key={selected.id} fields={selected.changed_fields} />
             {showAll && selected.next.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span>{m.inspect_next()}</span>
@@ -209,13 +229,14 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
             {content.isPending && <p role="status">{m.inspect_loading()}</p>}
             {content.isError && (
               <p role="alert">
-                {m.inspect_content_error()} {String(content.error)}
+                {m.inspect_content_error()}{' '}
+                <ErrorMessage error={content.error} />
               </p>
             )}
             {content.isSuccess && (
               <>
                 <SegmentedButton
-                  className="max-w-sm"
+                  className="max-w-md"
                   size="sm"
                   value={view}
                   onValueChange={(value) => {
@@ -226,8 +247,39 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                   <SegmentedButtonItem value="diff">
                     {m.inspect_diff()}
                   </SegmentedButtonItem>
+                  <SegmentedButtonItem value="logs">
+                    {m.inspect_logs()}
+                    {content.data.logs.length > 0 &&
+                      ` (${content.data.logs.length})`}
+                  </SegmentedButtonItem>
                 </SegmentedButton>
-                {view === 'yaml' ? (
+                {view === 'logs' ? (
+                  content.data.logs.length === 0 ? (
+                    <p
+                      role="status"
+                      className="text-on-surface-variant text-sm"
+                    >
+                      {m.inspect_no_logs()}
+                    </p>
+                  ) : (
+                    <ol
+                      aria-label={m.inspect_logs()}
+                      className="bg-surface divide-outline-variant/50 h-[55vh] min-h-64 divide-y overflow-auto rounded-lg @[40rem]:h-auto @[40rem]:min-h-48 @[40rem]:flex-1"
+                    >
+                      {content.data.logs.map((log, index) => (
+                        <li
+                          key={index}
+                          className="flex items-start gap-3 px-3 py-2"
+                        >
+                          <LogLevelBadge>{log.level}</LogLevelBadge>
+                          <span className="text-on-surface min-w-0 flex-1 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
+                            {log.message}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )
+                ) : view === 'yaml' ? (
                   <YamlViewer
                     code={content.data.yaml}
                     label={m.inspect_yaml()}
@@ -245,18 +297,6 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                   <p role="status" className="text-on-surface-variant text-sm">
                     {m.inspect_diff_independent()}
                   </p>
-                )}
-                <h3 className="text-sm font-medium">{m.inspect_logs()}</h3>
-                {content.data.logs.length === 0 ? (
-                  <p className="text-on-surface-variant text-sm">
-                    {m.inspect_no_logs()}
-                  </p>
-                ) : (
-                  <pre className="bg-surface max-h-48 overflow-auto rounded-lg p-3 text-xs break-words whitespace-pre-wrap">
-                    {content.data.logs
-                      .map((log) => `[${log.level}] ${log.message}`)
-                      .join('\n')}
-                  </pre>
                 )}
               </>
             )}

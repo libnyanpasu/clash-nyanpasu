@@ -140,3 +140,38 @@ describe('rpc command facade', () => {
     },
   )
 })
+
+it.each(['desktop', 'http'])(
+  'preserves main domain errors and diagnostic details over %s',
+  async (transport) => {
+    vi.stubGlobal(
+      'window',
+      transport === 'desktop' ? { __TAURI_INTERNALS__: {} } : {},
+    )
+    const domainError = {
+      kind: {
+        domain: 'profiles',
+        error: { kind: 'profile_not_found', uid: 'missing' },
+      },
+      message: 'Profile missing',
+      detail: 'ProfileNotFound { uid: missing }',
+    }
+    const wire = {
+      kind: 'application_error',
+      message: domainError.message,
+      domain_error: domainError,
+    }
+    if (transport === 'desktop') invoke.mockRejectedValueOnce(wire)
+    else
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: false, json: async () => wire }),
+      )
+    const { rpc } = await import('../src/ipc/rpc')
+    const result = await rpc.getProfiles()
+    expect(result).toEqual({ status: 'error', error: domainError })
+    const { isIpcError, unwrapResult } = await import('../src/utils')
+    expect(isIpcError(domainError)).toBe(true)
+    expect(() => unwrapResult(result)).toThrow(domainError.message)
+  },
+)

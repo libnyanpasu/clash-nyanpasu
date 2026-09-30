@@ -132,8 +132,11 @@ Project rules:
 - Put infrastructure access behind adapter traits. Inject Tauri, OS, filesystem, network, process, and logging adapters into the actor or pure service that needs them.
 - The composition root spawns actors, wires dependencies, and returns `NyanpasuClient`. Do not use a ractor registry, actor name lookup, or raw `ActorRef` map as a replacement for dependency injection.
 - `NyanpasuClient` and typed actor clients should expose ordinary async Rust methods. Most callers should not use ractor APIs directly.
-- Prefer finite timeouts for cross-actor request/reply calls when the caller can report failure or degraded state.
+- In-process request/reply calls wait for the real result (no timeout). Only adapters that perform network IO define deadlines; IPC deadlines belong to the IPC client layer, not to its callers.
 - Avoid synchronous cross-actor cycles such as `StateActor -> CoreActor -> StateActor`.
+- A panic means the code reached a state it must not reach, so it interrupts execution. Do not write `catch_unwind` in production code, and do not turn a panicking task's `JoinError` into an ordinary error.
+- Run UI-thread work through the injected `MainThreadExecutor`; clients and actors do not call Tauri's main-thread APIs themselves.
+- Notifications flow downstream only, one domain's slice from that domain's serial owner. An owner never reads or forwards a sibling domain's snapshot, so dependencies form a tree, not a graph.
 
 If a mature ractor actor client already exists for a capability, use it instead of adding a new global singleton, raw channel loop, or direct Tauri-coupled service call.
 
@@ -235,7 +238,10 @@ Actor implementation rules:
 - Use request/reply for fallible operations and queries.
 - Use fire-and-forget only for events, notifications, or best-effort work.
 - Avoid cross-actor synchronous cycles.
-- Prefer finite timeouts for cross-actor RPCs where a caller can recover or report degradation.
+- Do not add in-process RPC timeouts; deadlines belong to network IO adapters and the IPC client layer.
+- The mailbox is the actor's only serialization. Do not build a second queue, scheduler, priority, or admission layer inside an actor; the handler awaits the whole command. State that is not an actor's uses a lock.
+- Waiters do not own operations: dropping a caller does not cancel work the owner has started; the owner runs it to a terminal state.
+- Shutdown is one root `CancellationToken` plus each owner's own cleanup: the handler refuses new work once the token is cancelled, and cleanup runs in `post_stop`. There is no global shutdown phase or budget.
 - Actor startup arguments must contain all dependencies required to build the actor state.
 - Do not share actor-owned mutable state with `Arc<Mutex<_>>` or `Arc<RwLock<_>>` unless it is a narrowly scoped implementation detail with a clear comment.
 
@@ -334,7 +340,7 @@ Preferred direction:
 1. Move state ownership into `StateActor` or a state manager owned by `StateActor`.
 2. Keep schema and patch operations in pure services or domain types.
 3. Generate runtime config from snapshots rather than mutating runtime globals.
-4. Commit state first, then trigger side effects through actor messages.
+4. Commit state first, then trigger side effects through actor messages. A Required participant (the runtime) is a vote before the commit, not a side effect; this rule covers ordinary side effects.
 5. Report post-commit side-effect failures as degraded results instead of silently rolling back persisted state.
 
 Avoid preserving old global configuration APIs. Prefer a migratable breaking change that updates callers to the new injected client/service API.

@@ -351,16 +351,19 @@ export const SelectValue = ({
           }),
         )}
       >
-        <legend
-          className={cn(
-            selectValuePlaceholderLegendVariants({
-              variant,
-              haveValue: haveValue || open,
-            }),
-          )}
-        >
-          {placeholder}
-        </legend>
+        {/* an empty legend would still cut a notch into the outlined border */}
+        {placeholder && (
+          <legend
+            className={cn(
+              selectValuePlaceholderLegendVariants({
+                variant,
+                haveValue: haveValue || open,
+              }),
+            )}
+          >
+            {placeholder}
+          </legend>
+        )}
       </fieldset>
 
       <div

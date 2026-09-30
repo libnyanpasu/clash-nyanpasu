@@ -1,81 +1,153 @@
 use crate::{
-    bridge::verge::LegacyVergeBridge,
-    client::{ClientError, NyanpasuClient},
-    config::*,
+    client::{
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
+        system_proxy::ports::OsProxyError,
+    },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
-    feat::{self, CopyEnvOption},
-    utils::{candy, collect::EnvInfo, dirs, help, resolve},
+    state::{
+        config_error::ConfigError,
+        profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
+    },
+    utils::{
+        candy,
+        collect::EnvInfo,
+        dirs, help,
+        proxy_env::{self, CopyEnvOption},
+        resolve,
+    },
 };
 use anyhow::Context;
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, path::PathBuf, result::Result as StdResult};
+use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
 
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 
-#[derive(Debug, thiserror::Error)]
-pub enum IpcError {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    SerdeYaml(#[from] serde_yaml::Error),
-    #[error(transparent)]
-    SerdeJson(#[from] serde_json::Error),
-    #[error(transparent)]
-    Tauri(#[from] tauri::Error),
-    #[error(transparent)]
-    Storage(#[from] StorageOperationError),
-    #[error(transparent)]
-    Anyhow(#[from] anyhow::Error),
-    #[error(transparent)]
-    Profiles(#[from] crate::state::profiles::actor::ProfilesError),
-    #[error(transparent)]
-    Core(#[from] nyanpasu_core_manager::CoreError),
-    #[error("{0}")]
-    Custom(String),
+impl std::fmt::Display for IpcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+impl std::error::Error for IpcError {}
+
+/// A failed command as the frontend receives it.
+#[derive(Debug, Serialize, specta::Type)]
+pub struct IpcError {
+    /// The domain failure; the frontend localizes it.
+    kind: IpcErrorKind,
+    /// The error's own message, shown when `kind` cannot be localized.
+    message: String,
+    /// The original error, copied by the user for diagnosis.
+    detail: String,
 }
 
-impl From<String> for IpcError {
-    fn from(s: String) -> Self {
-        IpcError::Custom(s)
+/// The domain a command failed in. A domain joins once its errors are typed.
+#[derive(Debug, Serialize, specta::Type)]
+#[serde(tag = "domain", content = "error", rename_all = "snake_case")]
+pub enum IpcErrorKind {
+    /// Not classified into a domain; only `message` describes it.
+    Unknown,
+    Profiles(Box<ProfilesError>),
+    Runtime(Box<RuntimeError>),
+    Config(Box<ConfigError>),
+    Storage(Box<StorageOperationError>),
+    SystemDns(Box<SystemDnsError>),
+    SystemProxy(Box<OsProxyError>),
+    Effects(Box<EffectsError>),
+}
+
+impl From<EffectsError> for IpcErrorKind {
+    fn from(error: EffectsError) -> Self {
+        Self::Effects(Box::new(error))
     }
 }
 
-impl From<ClientError> for IpcError {
-    fn from(err: ClientError) -> Self {
-        match err {
-            ClientError::Io(err) => IpcError::Io(err),
-            ClientError::SerdeYaml(err) => IpcError::SerdeYaml(err),
-            ClientError::SerdeJson(err) => IpcError::SerdeJson(err),
-            ClientError::Storage(err) => IpcError::Storage(err),
-            ClientError::Anyhow(err) => IpcError::Anyhow(err),
-            ClientError::Profiles(err) => IpcError::Profiles(err),
-            ClientError::Custom(err) => IpcError::Custom(err),
+impl From<OsProxyError> for IpcErrorKind {
+    fn from(error: OsProxyError) -> Self {
+        Self::SystemProxy(Box::new(error))
+    }
+}
+
+impl From<SystemDnsError> for IpcErrorKind {
+    fn from(error: SystemDnsError) -> Self {
+        Self::SystemDns(Box::new(error))
+    }
+}
+
+impl From<StorageOperationError> for IpcErrorKind {
+    fn from(error: StorageOperationError) -> Self {
+        Self::Storage(Box::new(error))
+    }
+}
+
+impl From<ConfigError> for IpcErrorKind {
+    fn from(error: ConfigError) -> Self {
+        Self::Config(Box::new(error))
+    }
+}
+
+impl From<RuntimeError> for IpcErrorKind {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(Box::new(error))
+    }
+}
+
+impl From<ProfilesError> for IpcErrorKind {
+    fn from(error: ProfilesError) -> Self {
+        Self::Profiles(Box::new(error))
+    }
+}
+
+impl From<ClientError> for IpcErrorKind {
+    fn from(error: ClientError) -> Self {
+        match error {
+            ClientError::Profiles(error) => Self::Profiles(Box::new(error)),
+            ClientError::Runtime(error) => Self::Runtime(Box::new(error)),
+            ClientError::Config(error) => Self::Config(Box::new(error)),
+            ClientError::Storage(error) => Self::Storage(Box::new(error)),
+            _ => Self::Unknown,
         }
     }
 }
 
-impl serde::Serialize for IpcError {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        crate::unified_rpc::RpcError::application_ref(self).serialize(serializer)
+impl<E> From<E> for IpcError
+where
+    E: std::fmt::Display + std::fmt::Debug,
+    IpcErrorKind: From<E>,
+{
+    fn from(error: E) -> Self {
+        Self {
+            message: error.to_string(),
+            detail: format!("{error:?}"),
+            kind: error.into(),
+        }
     }
 }
 
-impl specta::Type for IpcError {
-    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
-        crate::unified_rpc::RpcError::definition(types)
-    }
+macro_rules! unknown_domain {
+    ($($error:ty),* $(,)?) => {$(
+        impl From<$error> for IpcErrorKind {
+            fn from(_: $error) -> Self {
+                Self::Unknown
+            }
+        }
+    )*};
 }
+
+unknown_domain!(
+    String,
+    std::io::Error,
+    serde_yaml::Error,
+    serde_json::Error,
+    tauri::Error,
+    anyhow::Error,
+);
 
 type Result<T = ()> = StdResult<T, IpcError>;
 
@@ -98,7 +170,7 @@ pub struct GetSysProxyResponse {
 use crate::state::profiles::actor::NewProfileRequest;
 use nyanpasu_config::profile::{
     ProfileDefinition, ProfileId, ProfileMetadataPatch, Profiles as DomainProfiles,
-    RemoteProfileOptionsPatch,
+    RemoteProfileOptionsPatch, TransformKind,
 };
 
 #[nyanpasu_macro::rpc]
@@ -139,44 +211,53 @@ pub async fn import_profile(
     url: String,
     name: Option<String>,
     option: Option<RemoteProfileOptionsPatch>,
+    transform: Option<TransformKind>,
 ) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
-    let url = url::Url::parse(&url).context("failed to parse the url")?;
+    let url = snafu::ResultExt::context(
+        url::Url::parse(&url),
+        InvalidSubscriptionUrlSnafu { url: &url },
+    )?;
     // `name` carries deep-link intent (e.g. an install-config `name=` param);
     // when absent the facade derives the name from the url server-side. Return
     // MutationOutcome so a degraded post-import rebuild still carries the uid.
-    Ok(client.import_profile(url, name, option).await?)
+    Ok(client.import_profile(url, name, option, transform).await?)
 }
 
-/// Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
-/// link is received: either from a secondary instance while the app is already
-/// running, or on cold start once the window exists. The frontend listens for
-/// this to import the referenced `install-config` profile. On cold start the
-/// same URL is also stashed in [`PendingDeepLink`] and drained once via
-/// [`get_pending_deep_link`], covering the race where the event fires before the
-/// JS listener attaches.
+/// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
+/// link joins [`PendingDeepLinks`]. It carries no URL: it only asks a listening
+/// frontend to take the queue through [`take_pending_deep_links`].
 ///
 /// Event name: `scheme-request-received-event` (derived by `tauri_specta`).
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
-pub struct SchemeRequestReceivedEvent {
-    /// The raw deep-link URL as received from the OS.
-    pub url: String,
+pub struct SchemeRequestReceivedEvent;
+
+/// Deep links no frontend has taken yet, oldest first: the cold-start link from
+/// argv and every link a later instance forwards. A link leaves the queue only
+/// when a frontend takes it, so one that arrives while no frontend listens,
+/// before the window loads or while it reloads, waits for the next frontend
+/// to mount and drain it. Managed Tauri state, not a global singleton.
+#[derive(Debug, Default)]
+pub struct PendingDeepLinks(std::sync::Mutex<Vec<String>>);
+
+impl PendingDeepLinks {
+    pub fn push(&self, url: String) {
+        self.0.lock().unwrap().push(url);
+    }
+
+    /// Takes every queued link, oldest first, and leaves the queue empty.
+    pub fn take_all(&self) -> Vec<String> {
+        std::mem::take(&mut *self.0.lock().unwrap())
+    }
 }
 
-/// Deep-link URL captured on cold start (from argv) before the frontend could
-/// receive the [`SchemeRequestReceivedEvent`] event. The frontend drains it once
-/// on startup via [`get_pending_deep_link`], closing the race where the event is
-/// emitted before the JS listener has attached. Managed Tauri state, not a
-/// global singleton.
-#[derive(Default)]
-pub struct PendingDeepLink(pub std::sync::Mutex<Option<String>>);
-
-/// Take and clear the pending cold-start deep link, if any. Called once by the
-/// frontend during startup.
+/// Take and clear the queued deep links, oldest first. The frontend calls it
+/// once its [`SchemeRequestReceivedEvent`] listener is registered, and again on
+/// every such event.
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<String>> {
-    Ok(pending.0.lock().unwrap().take())
+pub async fn take_pending_deep_links(pending: State<'_, PendingDeepLinks>) -> Result<Vec<String>> {
+    Ok(pending.take_all())
 }
 
 /// create a new profile
@@ -211,6 +292,39 @@ pub async fn reorder_profiles_by_list(
     list: Vec<ProfileId>,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.reorder_profiles_by_list(list).await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_profile_sync_status(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+) -> Result<crate::client::jobs::ProfileSyncStatus> {
+    Ok(client.profile_sync_status(uid).await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_profile_sync_runs(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    after: Option<nyanpasu_jobs::dto::RunCursorDto>,
+) -> Result<nyanpasu_jobs::dto::RunPageDto> {
+    Ok(client.profile_sync_runs(uid, after).await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_profile_sync_logs(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    run: String,
+    after: Option<String>,
+) -> Result<nyanpasu_jobs::dto::LogPageDto> {
+    Ok(client.profile_sync_logs(uid, run, after).await?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -305,9 +419,9 @@ pub async fn view_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
 ) -> Result {
-    let path = client.get_profile_materialized_path(uid).await?;
+    let path = client.get_profile_materialized_path(uid.clone()).await?;
     if !path.exists() {
-        return Err(IpcError::Custom("profile file not found".into()));
+        return Err(ProfileFileMissingSnafu { uid, path: &path }.build().into());
     }
     help::open_file(app_handle, path)?;
     Ok(())
@@ -337,8 +451,8 @@ pub async fn save_profile_file(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<ClashInfo> {
-    Ok(client.get_clash_info().await?)
+pub fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<crate::client::ClashInfo> {
+    Ok(client.clash_info())
 }
 
 /// get the runtime config
@@ -350,32 +464,17 @@ pub async fn get_clash_info(client: State<'_, NyanpasuClient>) -> Result<ClashIn
 pub async fn get_runtime_config(
     client: State<'_, NyanpasuClient>,
 ) -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
-    let state = client.promoted_runtime().await;
-    match state.as_ref() {
-        Some(state) => {
-            let yaml_value = serde_yaml::to_value(&state.config)?;
-            let json_value = serde_json::to_value(&yaml_value)?;
-            let wrapped: specta_typescript::Any<serde_json::Value> =
-                serde_json::from_value(json_value)?;
-            Ok(Some(wrapped))
-        }
-        None => Ok(None),
-    }
+    Ok(client
+        .runtime_config()
+        .await?
+        .map(|config| serde_json::from_value(config).expect("a JSON value deserializes as itself")))
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
-    let state = client.promoted_runtime().await;
-    let mapping = (state
-        .as_ref()
-        .map(|state| &state.config)
-        .ok_or(anyhow::anyhow!("failed to parse config to yaml file"))
-        .and_then(|config| {
-            serde_yaml::to_string(config).context("failed to convert config to yaml")
-        }))?;
-    Ok(mapping)
+    Ok(client.runtime_yaml().await?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -446,11 +545,11 @@ pub async fn get_core_status(
 #[tauri::command]
 #[specta::specta]
 pub async fn url_delay_test(
-    http: State<'_, crate::utils::net::NetworkHttp>,
+    client: State<'_, NyanpasuClient>,
     url: String,
     expected_status: u16,
 ) -> Result<Option<u64>> {
-    Ok(crate::utils::net::url_delay_test(&*http.0, &url, expected_status).await)
+    Ok(crate::utils::net::url_delay_test(&url, expected_status, client.clash_info().port).await)
 }
 
 #[nyanpasu_macro::rpc]
@@ -459,55 +558,76 @@ pub async fn url_delay_test(
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
 // Any<> to avoid infinite type expansion.
 pub async fn get_ipsb_asn(
-    http: State<'_, crate::utils::net::NetworkHttp>,
+    client: State<'_, NyanpasuClient>,
 ) -> Result<specta_typescript::Any<serde_json::Value>> {
-    let value = crate::utils::net::get_ipsb_asn(&*http.0).await?;
+    let value = crate::utils::net::get_ipsb_asn(client.clash_info().port).await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
-pub struct PatchRuntimeConfig {
-    #[serde(default, rename = "allow-lan", skip_serializing_if = "Option::is_none")]
-    pub allow_lan: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ipv6: Option<bool>,
-    #[serde(default, rename = "log-level", skip_serializing_if = "Option::is_none")]
-    pub log_level: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mode: Option<String>,
+// ---- typed configuration commands (thin adapters over NyanpasuClient) ----
+
+use nyanpasu_config::{
+    application::{ClashCore, NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    clash::config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
+};
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_app_config(client: State<'_, NyanpasuClient>) -> Result<NyanpasuAppConfig> {
+    Ok(client.get_app_config().await?)
 }
 
-/// patch clash runtime config
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn patch_app_config(
+    client: State<'_, NyanpasuClient>,
+    patch: NyanpasuAppConfigPatch,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.patch_app_config(patch).await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_clash_config(client: State<'_, NyanpasuClient>) -> Result<ClashConfig> {
+    Ok(client.get_clash_config().await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn patch_clash_config(
+    client: State<'_, NyanpasuClient>,
+    patch: ClashConfigPatch,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.patch_clash_config(patch).await?)
+}
+
+/// patch the clash guard overrides (mode, log level, LAN, IPv6, secret...)
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 #[tracing_attributes::instrument(skip_all)]
-pub async fn patch_clash_config(
+pub async fn patch_runtime_overrides(
     client: State<'_, NyanpasuClient>,
-    payload: PatchRuntimeConfig,
+    patch: ClashGuardOverridesPatch,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
-    // Explicit-field whitelist so future DTO fields never auto-leak into logs.
+    // Explicit-field whitelist so future patch fields never auto-leak into
+    // logs; the secret is reported by presence only.
     tracing::debug!(
-        allow_lan = ?payload.allow_lan,
-        ipv6 = ?payload.ipv6,
-        log_level = ?payload.log_level,
-        mode = ?payload.mode,
-        "patch_clash_config"
+        log_level = ?patch.log_level,
+        allow_lan = ?patch.allow_lan,
+        mode = ?patch.mode,
+        secret = patch.secret.is_some(),
+        unified_delay = ?patch.unified_delay,
+        tcp_concurrent = ?patch.tcp_concurrent,
+        ipv6 = ?patch.ipv6,
+        "patch_runtime_overrides"
     );
-
-    let overrides = serde_yaml::from_value::<
-        nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
-    >(serde_yaml::to_value(payload)?)?;
-    Ok(client.patch_runtime_overrides(overrides).await?)
-}
-
-#[nyanpasu_macro::rpc]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_verge_config(legacy: State<'_, LegacyVergeBridge>) -> Result<IVerge> {
-    Ok(legacy.get_verge_config().await?)
+    Ok(client.patch_runtime_overrides(patch).await?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -523,30 +643,7 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_verge_config(
-    legacy: State<'_, LegacyVergeBridge>,
-    payload: IVerge,
-) -> Result<crate::client::runtime::MutationOutcome<()>> {
-    Ok(legacy.patch_verge_config(payload).await?)
-}
-
-#[nyanpasu_macro::rpc]
-#[tauri::command]
-#[specta::specta]
-pub async fn change_clash_core(
-    client: State<'_, NyanpasuClient>,
-    clash_core: Option<nyanpasu::ClashCore>,
-) -> Result {
-    let clash_core =
-        clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
-    let clash_core = match clash_core {
-        nyanpasu::ClashCore::ClashPremium => nyanpasu_config::application::ClashCore::ClashPremium,
-        nyanpasu::ClashCore::ClashRs => nyanpasu_config::application::ClashCore::ClashRs,
-        nyanpasu::ClashCore::Mihomo => nyanpasu_config::application::ClashCore::Mihomo,
-        nyanpasu::ClashCore::MihomoAlpha => nyanpasu_config::application::ClashCore::MihomoAlpha,
-        nyanpasu::ClashCore::ClashRsAlpha => nyanpasu_config::application::ClashCore::ClashRsAlpha,
-        nyanpasu::ClashCore::Meow => nyanpasu_config::application::ClashCore::Meow,
-    };
+pub async fn change_clash_core(client: State<'_, NyanpasuClient>, clash_core: ClashCore) -> Result {
     client.update_core(clash_core).await?;
     Ok(())
 }
@@ -565,8 +662,8 @@ pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
-    let current = (Sysproxy::get_system_proxy()).context("failed to get system proxy")?;
+pub async fn get_sys_proxy(client: State<'_, NyanpasuClient>) -> Result<GetSysProxyResponse> {
+    let current = client.get_os_proxy().await?;
 
     let server = format!("{}:{}", current.host, current.port);
 
@@ -585,19 +682,6 @@ pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
 pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result {
     client.flush_system_dns_cache().await?;
     Ok(())
-}
-
-#[nyanpasu_macro::rpc]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_clash_logs(client: State<'_, NyanpasuClient>) -> Result<VecDeque<String>> {
-    Ok(client
-        .clash_ws_snapshot()
-        .await?
-        .logs
-        .into_iter()
-        .map(|log| log.payload)
-        .collect())
 }
 
 #[nyanpasu_macro::rpc]
@@ -671,14 +755,11 @@ pub async fn fetch_latest_core_versions(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_version(
-    app_handle: AppHandle,
-    core_type: nyanpasu::ClashCore,
-) -> Result<String> {
-    match resolve::resolve_core_version(&app_handle, &core_type).await {
-        Ok(version) => Ok(version),
-        Err(err) => Err(IpcError::from(err)),
-    }
+pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
+    Ok(snafu::ResultExt::context(
+        resolve::resolve_core_version(&app_handle, &core_type).await,
+        crate::client::runtime_error::ReadCoreVersionSnafu,
+    )?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -710,10 +791,7 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn update_core(
-    client: State<'_, NyanpasuClient>,
-    core_type: nyanpasu::ClashCore,
-) -> Result<usize> {
+pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore) -> Result<usize> {
     Ok(client.download_core_update(core_type).await?)
 }
 
@@ -946,8 +1024,8 @@ pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn get_server_port() -> Result<u16> {
-    Ok(*crate::server::SERVER_PORT)
+pub fn get_server_port(port: State<'_, crate::server::ServerPort>) -> Result<u16> {
+    Ok(port.0)
 }
 
 #[cfg(not(windows))]
@@ -961,13 +1039,14 @@ pub async fn set_custom_app_dir(_path: String) -> Result {
 #[cfg(windows)]
 pub mod uwp {
     use super::Result;
-    use crate::core::win_uwp;
+    use crate::{core::win_uwp, utils::path::PathResolver};
+    use tauri::State;
 
     #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
-    pub async fn invoke_uwp_tool() -> Result {
-        (win_uwp::invoke_uwptools().await)?;
+    pub async fn invoke_uwp_tool(paths: State<'_, PathResolver>) -> Result {
+        (win_uwp::invoke_uwptools(paths.app_resources_dir()?).await)?;
         Ok(())
     }
 }
@@ -981,7 +1060,10 @@ pub async fn set_tray_icon(
     path: Option<PathBuf>,
 ) -> Result {
     (crate::core::tray::icon::set_icon(mode, path))?;
-    (crate::core::tray::Tray::update_part(&app_handle))?;
+    // Checked here, so a bad icon reaches the caller; only applying it to the
+    // tray is queued.
+    (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode)))?;
+    (crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART))?;
     Ok(())
 }
 
@@ -1084,11 +1166,23 @@ pub mod uwp {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt() -> Result<String> {
-    let args = (crate::core::service::control::get_service_install_args().await)?
-        .into_iter()
-        .map(|arg| arg.to_string_lossy().to_string())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let args = snafu::ResultExt::context(
+        crate::core::service::control::get_service_install_args().await,
+        crate::client::runtime_error::PrepareServiceInstallPromptSnafu,
+    )?
+    .into_iter()
+    .map(|arg| {
+        #[cfg(unix)]
+        {
+            format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''"))
+        }
+        #[cfg(windows)]
+        {
+            arg.to_string_lossy().to_string()
+        }
+    })
+    .collect::<Vec<_>>()
+    .join(" ");
     let mut prompt = format!("./nyanpasu-service {args}");
     if cfg!(not(windows)) {
         prompt = format!("sudo {prompt}");
@@ -1096,11 +1190,13 @@ pub async fn get_service_install_prompt() -> Result<String> {
     Ok(prompt)
 }
 
+/// Shuts every owner down and returns with the app still running; the caller
+/// then installs an update or relaunches.
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn cleanup_processes(app_handle: AppHandle) -> Result {
-    crate::utils::help::cleanup_processes(&app_handle);
+pub async fn cleanup_processes(app_handle: AppHandle) -> Result {
+    crate::utils::exit::clean_up(&app_handle).await;
     Ok(())
 }
 
@@ -1209,19 +1305,53 @@ pub fn clear_storage(storage: State<'_, Storage>) -> Result {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_clash_ws_connections_state(
+pub async fn get_clash_ws_snapshot(
     client: tauri::State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::ws::ClashConnectionsConnectorState> {
-    Ok(client.clash_ws_snapshot().await?.state)
+) -> Result<crate::core::clash::ws::ClashWsSnapshot> {
+    Ok(client.clash_ws_snapshot().await?)
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_clash_ws_snapshot(
+pub async fn get_traffic_summary(
     client: tauri::State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::ws::ClashWsSnapshot> {
-    Ok(client.clash_ws_snapshot().await?)
+) -> Result<nyanpasu_traffic::TrafficSummary> {
+    Ok(client.traffic_summary().await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_usage(
+    client: tauri::State<'_, NyanpasuClient>,
+    group_by: nyanpasu_traffic::GroupBy,
+    limit: usize,
+) -> Result<nyanpasu_traffic::Usage> {
+    Ok(client.query_traffic_usage(group_by, limit).await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_topology(
+    client: tauri::State<'_, NyanpasuClient>,
+    limit: usize,
+) -> Result<nyanpasu_traffic::Topology> {
+    Ok(client.query_traffic_topology(limit).await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_closed_connections(
+    client: tauri::State<'_, NyanpasuClient>,
+    before: Option<nyanpasu_traffic::ClosedCursor>,
+    limit: usize,
+) -> Result<nyanpasu_traffic::ClosedPage> {
+    Ok(client
+        .query_traffic_closed_connections(before, limit)
+        .await?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -1243,6 +1373,40 @@ pub async fn clear_clash_ws_history(
     kind: crate::core::clash::ws::ClashWsKind,
 ) -> Result {
     client.clear_clash_ws_history(kind).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn subscribe_clash_connection_details(
+    webview: tauri::Webview,
+    client: tauri::State<'_, NyanpasuClient>,
+    subscriptions: tauri::State<
+        '_,
+        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    >,
+    on_frame: tauri::ipc::Channel<crate::core::clash::ws::ClashConnectionDetails>,
+) -> Result<crate::core::clash::connection_details::SubscriptionId> {
+    let receiver = client.subscribe_clash_connection_details();
+    let parent = client.shutdown_child_token();
+    let (id, cancel) = subscriptions.register(&parent, webview.label().to_string());
+    client.spawn_tracked(
+        &cancel,
+        crate::core::clash::connection_details::forward_details(receiver, on_frame),
+    );
+    Ok(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn unsubscribe_clash_connection_details(
+    subscriptions: tauri::State<
+        '_,
+        crate::core::clash::connection_details::ConnectionDetailSubscriptions,
+    >,
+    id: crate::core::clash::connection_details::SubscriptionId,
+) -> Result {
+    subscriptions.unsubscribe(id);
     Ok(())
 }
 
@@ -1362,9 +1526,11 @@ pub async fn check_update(
             crate::bundle::is_newer_release(channel, &local, &remote, build_time)
         });
     // apply proxy
-    if let Ok(proxy) = get_self_proxy() {
-        builder = builder.proxy(proxy.parse().context("failed to parse proxy")?);
-    }
+    builder = builder.proxy(
+        get_self_proxy(client.clash_info().port)
+            .parse()
+            .context("failed to parse proxy")?,
+    );
     if let Ok(Some(proxy)) = get_system_proxy() {
         builder = builder.proxy(proxy.parse().context("failed to parse system proxy")?);
     }
@@ -1433,8 +1599,12 @@ pub fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn copy_clash_env(app_handle: AppHandle, env_type: CopyEnvOption) {
-    feat::copy_clash_env(&app_handle, &env_type);
+pub fn copy_clash_env(
+    app_handle: AppHandle,
+    client: State<'_, NyanpasuClient>,
+    env_type: CopyEnvOption,
+) {
+    proxy_env::copy_clash_env(&app_handle, client.clash_info().port, &env_type);
 }
 
 #[nyanpasu_macro::rpc]
@@ -1496,6 +1666,261 @@ pub fn retry_configuration_effect(
     kind: crate::client::effects::plan::EffectKind,
 ) -> Result<()> {
     Ok(client.retry_effect_now(kind)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
+    use nyanpasu_config::profile::ProfileId;
+    use nyanpasu_core::state::ReplaceIfVersionError;
+    use serde_json::json;
+    use snafu::IntoError;
+
+    use crate::{
+        client::{
+            effects::error::EffectsError, runtime_error::RuntimeError,
+            system_proxy::ports::OsProxyError,
+        },
+        state::{
+            mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
+            profiles::{ProfileFileError, SubscriptionFetchError},
+        },
+    };
+
+    fn wire(error: impl Into<ClientError>) -> serde_json::Value {
+        serde_json::to_value(IpcError::from(error.into())).unwrap()
+    }
+
+    #[test]
+    fn a_profiles_error_reaches_the_frontend_as_its_own_domain() {
+        let wire = wire(ProfilesError::ProfileNotFound {
+            uid: ProfileId("p1".into()),
+        });
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "profiles",
+                "error": { "kind": "profile_not_found", "uid": "p1" },
+            })
+        );
+        assert_eq!(wire["message"], "profile not found: p1");
+    }
+
+    #[test]
+    fn a_runtime_error_reaches_the_frontend_with_the_cores_own_kind() {
+        let failure = crate::client::runtime_error::ApplyRuntimeSnafu.into_error(
+            nyanpasu_core_manager::CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ApplyFailed,
+                "the core kept the previous configuration",
+                false,
+            ),
+        );
+        let wire = wire(failure);
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "runtime",
+                "error": {
+                    "kind": "apply_runtime",
+                    "failure": {
+                        "kind": "apply_failed",
+                        "message": "the core kept the previous configuration",
+                        "retryable": false,
+                        "operation_id": null,
+                    },
+                },
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(IpcError::from(super::RuntimeError::Isolated)).unwrap()["kind"],
+            json!({ "domain": "runtime", "error": { "kind": "isolated" } })
+        );
+    }
+
+    #[test]
+    fn a_dns_flush_failure_names_the_command_and_its_exit_code() {
+        let wire = serde_json::to_value(IpcError::from(SystemDnsError::FlushRejected {
+            command: "ipconfig.exe",
+            code: Some(5),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "system_dns",
+                "error": { "kind": "flush_rejected", "command": "ipconfig.exe", "code": 5 },
+            })
+        );
+    }
+
+    #[test]
+    fn a_stopped_effects_owner_reaches_the_frontend_as_its_own_domain() {
+        let wire = serde_json::to_value(IpcError::from(EffectsError::EffectsStopped)).unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({ "domain": "effects", "error": { "kind": "effects_stopped" } })
+        );
+    }
+
+    #[test]
+    fn a_failed_os_proxy_write_names_where_it_was_going() {
+        let wire = serde_json::to_value(IpcError::from(OsProxyError::WriteOsProxy {
+            enable: true,
+            host: "127.0.0.1".into(),
+            port: 7890,
+            source: "access denied".into(),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            wire["kind"],
+            json!({
+                "domain": "system_proxy",
+                "error": {
+                    "kind": "write_os_proxy",
+                    "enable": true,
+                    "host": "127.0.0.1",
+                    "port": 7890,
+                },
+            })
+        );
+        assert!(wire["detail"].as_str().unwrap().contains("access denied"));
+    }
+
+    #[test]
+    fn unit_variants_and_context_free_kinds_serialize_their_tag_only() {
+        assert_eq!(
+            wire(ProfilesError::ShuttingDown)["kind"],
+            json!({ "domain": "profiles", "error": { "kind": "shutting_down" } })
+        );
+        assert_eq!(
+            wire(ClientError::Custom("no domain".into()))["kind"],
+            json!({ "domain": "unknown" })
+        );
+    }
+
+    #[test]
+    fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
+        let fetch = wire(ProfilesError::FetchSubscription {
+            url: "https://sub.example/x".parse().unwrap(),
+            source: SubscriptionFetchError::SubscriptionHttpStatus { status: 404 },
+        });
+        assert_eq!(
+            fetch["kind"]["error"],
+            json!({
+                "kind": "fetch_subscription",
+                "url": "https://sub.example/x",
+                "source": { "kind": "subscription_http_status", "status": 404 },
+            })
+        );
+
+        let read = wire(ProfilesError::ReadProfileFile {
+            uid: ProfileId("p1".into()),
+            source: ProfileFileError::mock("disk full"),
+        });
+        assert_eq!(
+            read["kind"]["error"],
+            json!({
+                "kind": "read_profile_file",
+                "uid": "p1",
+                "source": { "kind": "write_file", "path": "mock" },
+            }),
+            "the io error stays out of the wire form"
+        );
+        assert!(
+            read["detail"].as_str().unwrap().contains("disk full"),
+            "and reaches the user through the copied detail: {}",
+            read["detail"]
+        );
+    }
+
+    #[test]
+    fn an_aborted_commit_names_what_became_of_the_runtime() {
+        let cause = ReplaceIfVersionError::WriteConfig(anyhow::anyhow!("disk full"));
+        let aborted = WriteConfigSnafu {
+            runtime: RuntimeAftermath::RollbackFailed {
+                detail: std::sync::Arc::new(RuntimeError::OwnerUnresponsive {
+                    operation_id: "op1".into(),
+                }),
+            },
+        }
+        .into_error(cause);
+        assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
+
+        let wire = wire(ProfilesError::Commit {
+            source: aborted,
+            cleanup_failures: Vec::new(),
+        });
+        assert_eq!(
+            wire["kind"]["error"],
+            json!({
+                "kind": "commit",
+                "source": {
+                    "kind": "write_config",
+                    "runtime": {
+                        "kind": "rollback_failed",
+                        "detail": { "kind": "owner_unresponsive", "operation_id": "op1" },
+                    },
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn a_version_conflict_does_not_serialize_its_cleanup_failures() {
+        let wire = wire(ProfilesError::VersionConflict {
+            expected: 3,
+            actual: 4,
+            cleanup_failures: vec![ProfilesError::ShuttingDown],
+        });
+        assert_eq!(
+            wire["kind"]["error"],
+            json!({ "kind": "version_conflict", "expected": 3, "actual": 4 })
+        );
+    }
+
+    #[test]
+    fn unclassified_error_serializes_message_and_original_error() {
+        let error = anyhow::anyhow!("disk full").context("failed to save the profile");
+        let wire = serde_json::to_value(IpcError::from(error)).unwrap();
+
+        assert_eq!(wire["kind"], serde_json::json!({ "domain": "unknown" }));
+        assert_eq!(wire["message"], "failed to save the profile");
+        let detail = wire["detail"].as_str().unwrap();
+        assert!(
+            detail.contains("failed to save the profile") && detail.contains("disk full"),
+            "detail keeps the whole source chain: {detail}"
+        );
+    }
+
+    #[test]
+    fn deep_links_queued_while_no_frontend_listens_are_taken_oldest_first() {
+        let pending = PendingDeepLinks::default();
+        assert!(pending.take_all().is_empty());
+
+        pending.push("clash://install-config?url=https%3A%2F%2Fa".into());
+        pending.push("clash://install-config?url=https%3A%2F%2Fb".into());
+        pending.push("clash://install-config?url=https%3A%2F%2Fa".into());
+        assert_eq!(
+            pending.take_all(),
+            [
+                "clash://install-config?url=https%3A%2F%2Fa",
+                "clash://install-config?url=https%3A%2F%2Fb",
+                "clash://install-config?url=https%3A%2F%2Fa",
+            ]
+        );
+        assert!(pending.take_all().is_empty(), "taking empties the queue");
+
+        pending.push("clash://install-config?url=https%3A%2F%2Fc".into());
+        assert_eq!(
+            pending.take_all(),
+            ["clash://install-config?url=https%3A%2F%2Fc"]
+        );
+    }
 }
 
 #[nyanpasu_macro::rpc]

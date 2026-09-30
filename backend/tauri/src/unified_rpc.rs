@@ -15,21 +15,15 @@ use serde_json::Value;
 use tauri::Manager;
 use tokio::sync::broadcast;
 
-use crate::{
-    bridge::verge::LegacyVergeBridge, client::NyanpasuClient, core::storage::Storage,
-    utils::net::NetworkHttp,
-};
+use crate::{client::NyanpasuClient, core::storage::Storage};
 
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
     pub storage: Storage,
-    pub legacy_verge: LegacyVergeBridge,
-    pub network_http: NetworkHttp,
     pub events: EventBus,
 }
 
 const EVENT_NAMES: &[&str] = &[
-    <crate::core::clash::ClashConnectionsEvent as tauri_specta::Event>::NAME,
     <crate::core::clash::ws::ClashWsEvent as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
     <crate::core::actor_v2::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
@@ -157,23 +151,12 @@ impl RpcError {
                 result.retryable = Some(core.retryable);
                 result.operation_id = core.operation_id.map(|id| id.to_string());
             }
-            if error
-                .downcast_ref::<crate::client::actor_rpc::ActorRpcError>()
-                .is_some()
-            {
-                result.code = Some("outcome_unknown".into());
-                result.retryable = Some(false);
+            if let Some(ipc) = error.downcast_ref::<crate::ipc::IpcError>() {
+                result.domain_error = serde_json::to_value(ipc)
+                    .ok()
+                    .map(|value| Box::new(RpcValue(value)));
             }
-            // Transparent wrappers can skip their inner error in Error::source().
-            source = match error.downcast_ref::<crate::ipc::IpcError>() {
-                Some(crate::ipc::IpcError::Core(inner)) => Some(inner),
-                Some(crate::ipc::IpcError::Anyhow(inner)) => Some(inner.as_ref()),
-                Some(crate::ipc::IpcError::Profiles(inner)) => Some(inner),
-                _ => match error.downcast_ref::<crate::state::profiles::ProfilesError>() {
-                    Some(crate::state::profiles::ProfilesError::RpcWait(inner)) => Some(inner),
-                    _ => error.source(),
-                },
-            };
+            source = error.source();
         }
         result
     }
@@ -240,6 +223,7 @@ impl UnifiedRpc {
         Router::new()
             .route("/bridge/rpc", post(http_call))
             .route("/bridge/events", get(http_events))
+            .route("/bridge/connection-details", get(http_connection_details))
             .with_state(self)
     }
 
@@ -265,6 +249,36 @@ impl UnifiedRpc {
             .ok_or_else(|| RpcError::unknown_method(method))?;
         (handler.1)(app, window, webview, params).await
     }
+}
+
+// Subscribe only while a page consumes full connection details. Dropping the
+// SSE body releases the watch receiver, just like a native channel teardown.
+async fn http_connection_details(State(rpc): State<UnifiedRpc>) -> impl IntoResponse {
+    let receiver = rpc.dependencies.client.subscribe_clash_connection_details();
+    Sse::new(connection_detail_events(receiver))
+        .keep_alive(axum::response::sse::KeepAlive::default())
+}
+
+fn connection_detail_events(
+    receiver: tokio::sync::watch::Receiver<
+        Option<Arc<crate::core::clash::ws::ClashConnectionDetails>>,
+    >,
+) -> impl futures::Stream<Item = Result<Event, Infallible>> {
+    stream::unfold((receiver, true), |(mut receiver, mut first)| async move {
+        loop {
+            if !first && receiver.changed().await.is_err() {
+                return None;
+            }
+            first = false;
+            let frame = receiver.borrow_and_update().clone();
+            if let Some(frame) = frame {
+                let event = Event::default()
+                    .json_data(frame.as_ref())
+                    .expect("connection details serialize");
+                return Some((Ok::<_, Infallible>(event), (receiver, false)));
+            }
+        }
+    })
 }
 
 #[tauri::command]
@@ -385,18 +399,10 @@ mod tests {
         )
         .unwrap();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
-        let legacy_verge = LegacyVergeBridge::new(
-            client.clone(),
-            Arc::new(crate::bridge::verge::ConfigLegacyVergeStore::default()),
-        );
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            legacy_verge,
-            network_http: NetworkHttp(Arc::new(crate::utils::net::ReqwestHttpGet::new(
-                reqwest::Client::new(),
-            ))),
             events: events.clone(),
         })
         .unwrap();
@@ -593,43 +599,96 @@ mod tests {
     fn errors_preserve_domain_codes_and_operation_identity() {
         use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
         let id = OperationId::generate();
-        for error in [
-            crate::ipc::IpcError::Core(
-                CoreError::new(CoreErrorKind::BackendUnavailable, "pending", false)
-                    .with_operation(id),
-            ),
-            crate::ipc::IpcError::Anyhow(
-                anyhow::Error::new(
-                    CoreError::new(CoreErrorKind::BackendUnavailable, "pending", false)
-                        .with_operation(id),
-                )
-                .context("request failed"),
-            ),
-        ] {
-            let wire = RpcError::application(error);
-            assert_eq!(wire.operation_id, Some(id.to_string()));
-            assert_eq!(wire.retryable, Some(false));
-            assert_eq!(
-                wire.code,
-                Some(CoreErrorKind::BackendUnavailable.to_string())
-            );
-        }
+        let wire = RpcError::application(
+            CoreError::new(CoreErrorKind::BackendUnavailable, "pending", false).with_operation(id),
+        );
+        assert_eq!(wire.operation_id, Some(id.to_string()));
+        assert_eq!(wire.retryable, Some(false));
+        assert_eq!(
+            wire.code,
+            Some(CoreErrorKind::BackendUnavailable.to_string())
+        );
+        let ipc = crate::ipc::IpcError::from(std::io::Error::other("request failed"));
+        let wire = RpcError::application(ipc);
+        let payload = serde_json::to_value(wire).unwrap();
+        assert_eq!(payload["domain_error"]["kind"]["domain"], "unknown");
+        assert_eq!(payload["domain_error"]["message"], "request failed");
+        assert!(payload["domain_error"]["detail"].is_string());
         let log = RpcError::application(nyanpasu_logging::LogError::SessionExpired);
         assert_eq!(
             serde_json::to_value(log).unwrap()["domain_error"],
             "session_expired"
         );
-        let timeout =
-            RpcError::application(crate::client::actor_rpc::ActorRpcError::OutcomeUnknown);
-        assert_eq!(timeout.code.as_deref(), Some("outcome_unknown"));
-        assert_eq!(timeout.retryable, Some(false));
-        let wrapped = crate::ipc::IpcError::Anyhow(anyhow::Error::new(
-            crate::client::actor_rpc::ActorRpcError::OutcomeUnknown,
-        ));
-        assert_eq!(
-            serde_json::to_value(wrapped).unwrap()["code"],
-            "outcome_unknown"
+    }
+
+    #[tokio::test]
+    async fn connection_details_send_current_and_new_frames_and_release_demand() {
+        use crate::core::clash::ws::ClashConnectionDetails;
+        let frame = |sequence| {
+            Some(Arc::new(ClashConnectionDetails {
+                sequence,
+                connections: Vec::new(),
+            }))
+        };
+        let (sender, receiver) = tokio::sync::watch::channel(frame(1));
+        let response = Sse::new(connection_detail_events(receiver)).into_response();
+        let mut body = response.into_body().into_data_stream();
+        assert_eq!(sender.receiver_count(), 1);
+        let first = body.next().await.unwrap().unwrap();
+        assert!(
+            std::str::from_utf8(&first)
+                .unwrap()
+                .contains("\"sequence\":1")
         );
+        sender.send(frame(2)).unwrap();
+        let next = body.next().await.unwrap().unwrap();
+        assert!(
+            std::str::from_utf8(&next)
+                .unwrap()
+                .contains("\"sequence\":2")
+        );
+        drop(body);
+        assert_eq!(sender.receiver_count(), 0);
+    }
+
+    #[test]
+    fn enabled_http_server_joins_application_shutdown() {
+        use crate::server::debug_http::{Frontend, FrontendAssets};
+        struct Assets;
+        impl FrontendAssets for Assets {
+            fn get(&self, _: &str) -> Option<(String, Vec<u8>)> {
+                Some(("text/html".into(), b"<html>debug</html>".to_vec()))
+            }
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let mut args = crate::client::tests::test_client_args_with_endpoint(
+            &directory,
+            crate::client::tests::TestControlEndpoint::succeeding(),
+        );
+        args.http_frontend = Some(Frontend::Embedded(Arc::new(Assets)));
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let rpc = UnifiedRpc::new(RpcDependencies {
+            client: client.clone(),
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            events: EventBus::new(),
+        })
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let url = client
+                .set_debug_http_enabled(true, rpc.router())
+                .await
+                .unwrap()
+                .url
+                .unwrap();
+            let http = reqwest::Client::builder().no_proxy().build().unwrap();
+            assert!(http.get(&url).send().await.unwrap().status().is_success());
+            client.request_shutdown();
+            tokio::time::timeout(std::time::Duration::from_secs(5), client.wait_shutdown())
+                .await
+                .unwrap();
+            assert!(http.get(url).send().await.is_err());
+            assert!(client.debug_http_status().await.is_err());
+        });
     }
 
     #[test]
@@ -659,13 +718,6 @@ mod tests {
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            legacy_verge: LegacyVergeBridge::new(
-                client.clone(),
-                Arc::new(crate::bridge::verge::ConfigLegacyVergeStore::default()),
-            ),
-            network_http: NetworkHttp(Arc::new(crate::utils::net::ReqwestHttpGet::new(
-                reqwest::Client::new(),
-            ))),
             events: EventBus::new(),
         })
         .unwrap();

@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import {
   useMutation,
   useQuery,
@@ -6,8 +7,9 @@ import {
 } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { invokeMutation, invokeQuery } from './query-options'
-import { rpc } from './rpc'
 import {
+  mutations,
+  queries,
   type Proxies_Serialize,
   type ProxyGroupItem_Serialize,
   type ProxyItem_Serialize,
@@ -19,49 +21,36 @@ export type ClashDelayOptions = {
   timeout?: number
 }
 
-export type ClashProxiesQueryHelperFn = {
-  mutateDelay: (options?: ClashDelayOptions) => Promise<void>
-}
+// Query data stays plain JSON: functions in it would defeat structural
+// sharing, so every refetch would hand every group and node a new identity.
+// Actions are returned by the hook instead.
+export type ClashProxiesQueryProxyItem = ProxyItem_Serialize
 
-export interface ClashProxiesQueryProxyItem
-  extends ProxyItem_Serialize, ClashProxiesQueryHelperFn {
-  mutateSelect: () => Promise<void>
-}
+export type ClashProxiesQueryGroupItem = ProxyGroupItem_Serialize
 
-export interface ClashProxiesQueryGroupItem
-  extends ProxyGroupItem_Serialize, ClashProxiesQueryHelperFn {
-  all: ClashProxiesQueryProxyItem[]
-}
+export type ClashProxiesQuery = Proxies_Serialize
 
-export interface ClashProxiesQuery extends Proxies_Serialize {
-  global: ClashProxiesQueryGroupItem
-  groups: ClashProxiesQueryGroupItem[]
-}
-
-// Create a new proxy item with updated history
-const createUpdatedProxy = (
-  proxy: ClashProxiesQueryProxyItem,
-  { name, delay }: { name: string; delay: number },
-) => {
-  if (proxy.name !== name) return proxy
-
-  const newHistory = [
-    ...proxy.history,
+// Append a delay sample to a node's history, returning a new node object.
+const withDelaySample = (
+  node: ClashProxiesQueryProxyItem,
+  delay: number,
+): ClashProxiesQueryProxyItem => ({
+  ...node,
+  history: [
+    ...node.history,
     { time: new Date().toISOString(), delay },
-  ] satisfies ProxyItemHistory[]
-
-  return { ...proxy, history: newHistory }
-}
+  ] satisfies ProxyItemHistory[],
+})
 
 export const useClashProxies = () => {
   const queryClient = useQueryClient()
-  const proxiesOptions = rpc.queries.getProxies()
-  const selectProxyMutation = rpc.mutations.selectProxy
+  const proxiesOptions = queries.getProxies()
+  const selectProxyCommand = mutations.selectProxy
 
-  const selectProxy = useMutation({
-    mutationKey: selectProxyMutation.mutationKey,
+  const { mutateAsync: mutateSelectProxy } = useMutation({
+    mutationKey: selectProxyCommand.mutationKey,
     mutationFn: async ({ group, name }: { group: string; name: string }) =>
-      unwrapResult(await invokeMutation(selectProxyMutation, [group, name])),
+      unwrapResult(await invokeMutation(selectProxyCommand, [group, name])),
   })
 
   const proxies = useQuery<ClashProxiesQuery | undefined>({
@@ -73,53 +62,26 @@ export const useClashProxies = () => {
         return
       }
 
-      // Create helper functions to reduce code duplication
-      const createProxyWithHelpers = (
-        proxy: ProxyItem_Serialize,
-        groupName: string,
-      ): ClashProxiesQueryProxyItem => ({
-        ...proxy,
-        mutateDelay: async (options?: ClashDelayOptions) => {
-          await updateProxiesDelay.mutateAsync([
-            proxy.name,
-            proxy.provider,
-            options,
-          ])
-        },
-        mutateSelect: async () => {
-          await selectProxy.mutateAsync({ group: groupName, name: proxy.name })
-          await proxies.refetch()
-        },
-      })
-
-      const createGroupWithHelpers = (
-        group: ProxyGroupItem_Serialize,
-      ): ClashProxiesQueryGroupItem => ({
-        ...group,
-        mutateDelay: async (options?: ClashDelayOptions) => {
-          await updateGroupDelay.mutateAsync([group.name, options])
-        },
-        all: group.all.map((proxy) =>
-          createProxyWithHelpers(proxy, group.name),
-        ),
-      })
-
-      // Apply helper functions to groups and global
-      const groups = result.groups
-        .filter((g) => !g.hidden)
-        .map(createGroupWithHelpers)
-      const global = createGroupWithHelpers(result.global)
-
-      // merge the results & type validation
-      const merged = {
+      return {
         ...result,
-        groups,
-        global,
+        groups: result.groups.filter((group) => !group.hidden),
       } satisfies ClashProxiesQuery
-
-      return merged
     },
   })
+
+  // Refetch through the client: reading any property of `proxies` during
+  // render makes it a tracked property, and the query then re-renders this
+  // hook only when a tracked property changes.
+  const selectProxy = useCallback(
+    async (group: string, name: string) => {
+      await mutateSelectProxy({ group, name })
+      await queryClient.refetchQueries({
+        queryKey: queries.getProxies().queryKey,
+        exact: true,
+      })
+    },
+    [mutateSelectProxy, queryClient],
+  )
 
   const getQueryData = () => {
     return queryClient.getQueryData(proxiesOptions.queryKey) as
@@ -138,11 +100,7 @@ export const useClashProxies = () => {
       const [name, provider, options] = args
       const res = unwrapResult(
         await invokeQuery(
-          rpc.queries.clashApiGetProxyDelay(
-            name,
-            provider,
-            options?.url ?? null,
-          ),
+          queries.clashApiGetProxyDelay(name, provider, options?.url ?? null),
         ),
       )
       return {
@@ -152,26 +110,15 @@ export const useClashProxies = () => {
     },
     onSuccess: ({ name, delay }) => {
       const oldData = getQueryData()
+      const node = oldData?.nodes[name]
 
-      if (!oldData) {
+      if (!oldData || !node) {
         return
       }
 
-      // Create new data structure with updated proxies
       const newData = {
         ...oldData,
-        global: {
-          ...oldData.global,
-          all: oldData.global.all.map((proxy) =>
-            createUpdatedProxy(proxy, { name, delay }),
-          ),
-        },
-        groups: oldData.groups.map((group) => ({
-          ...group,
-          all: group.all.map((proxy) =>
-            createUpdatedProxy(proxy, { name, delay }),
-          ),
-        })),
+        nodes: { ...oldData.nodes, [name]: withDelaySample(node, delay) },
       } satisfies ClashProxiesQuery
 
       setQueryData(newData)
@@ -189,7 +136,7 @@ export const useClashProxies = () => {
       return (
         unwrapResult(
           await invokeQuery(
-            rpc.queries.clashApiGetGroupDelay(group, options?.url ?? null),
+            queries.clashApiGetGroupDelay(group, options?.url ?? null),
           ),
         ) ?? {}
       )
@@ -209,32 +156,15 @@ export const useClashProxies = () => {
         return
       }
 
-      // Create new data structure with updated proxies
-      const newData = {
-        ...oldData,
-        global: {
-          ...oldData.global,
-          all: oldData.global.all.map((proxy) =>
-            Object.prototype.hasOwnProperty.call(data, proxy.name)
-              ? createUpdatedProxy(proxy, {
-                  name: proxy.name,
-                  delay: data[proxy.name],
-                })
-              : proxy,
-          ),
-        },
-        groups: oldData.groups.map((group) => ({
-          ...group,
-          all: group.all.map((proxy) =>
-            Object.prototype.hasOwnProperty.call(data, proxy.name)
-              ? createUpdatedProxy(proxy, {
-                  name: proxy.name,
-                  delay: data[proxy.name],
-                })
-              : proxy,
-          ),
-        })),
-      } satisfies ClashProxiesQuery
+      const nodes = { ...oldData.nodes }
+      for (const [name, delay] of Object.entries(data)) {
+        const node = nodes[name]
+        if (node) {
+          nodes[name] = withDelaySample(node, delay)
+        }
+      }
+
+      const newData = { ...oldData, nodes } satisfies ClashProxiesQuery
 
       setQueryData(newData)
     },
@@ -248,6 +178,7 @@ export const useClashProxies = () => {
 
   return {
     proxies,
+    selectProxy,
     updateProxiesDelay,
     updateGroupDelay,
   }

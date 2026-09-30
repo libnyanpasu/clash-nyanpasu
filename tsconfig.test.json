@@ -23,10 +23,12 @@
       "@nyanpasu/interface/*": ["./frontend/interface/src/*"],
       "@nyanpasu/utils": ["./frontend/utils/src/index.ts"],
       "@nyanpasu/utils/*": ["./frontend/utils/src/*"]
-    }
+    },
+    "allowJs": true
   },
   "include": [
     "vitest.config.ts",
+    "frontend/nyanpasu/src/services/types.d.ts",
     "frontend/*/tests/**/*.ts",
     "frontend/*/tests/**/*.tsx"
   ]

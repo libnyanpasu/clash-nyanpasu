@@ -1,5 +1,5 @@
 import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
-import { ComponentProps, MouseEvent, useMemo } from 'react'
+import { ComponentProps, memo, MouseEvent, useMemo } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
@@ -29,20 +29,26 @@ function FeatureChip({
   )
 }
 
-export default function ProxyNodeButton({
+// Memoized with stable actions: query data keeps unchanged nodes' identity
+// across refetches, so only nodes whose data changed re-render.
+export default memo(function ProxyNodeButton({
   proxy,
+  onSelect,
+  onDelayTest,
   ...props
-}: Omit<ComponentProps<typeof Button>, 'onClick' | 'children'> & {
+}: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'onSelect'> & {
   proxy: ClashProxiesQueryProxyItem
+  onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
+  onDelayTest: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
 }) {
   const handleSelectProxy = useLockFn(async () => {
-    await proxy.mutateSelect()
+    await onSelect(proxy)
   })
 
   const delayTask = useBlockTask(
     `proxy-delay-check-${proxy.name.toLowerCase()}`,
     async () => {
-      await proxy.mutateDelay()
+      await onDelayTest(proxy)
     },
   )
 
@@ -69,6 +75,14 @@ export default function ProxyNodeButton({
         variant="fab"
         className={cn(
           'flex w-full flex-col justify-center gap-1 px-2 text-left',
+          // The fab hover brightness filter would dim the nested chips and
+          // delay button too, so a state layer below the content tints only
+          // the card itself. It fades its color rather than its opacity:
+          // WebKit composites an opacity animation, which moves the content
+          // above it into layers and makes it jitter.
+          'isolate hover:filter-none!',
+          'before:absolute before:inset-0 before:-z-10 before:transition-colors',
+          'hover:before:bg-on-surface/5',
           'group-data-[active=true]:bg-primary-container/75',
           'dark:group-data-[active=true]:bg-surface-variant/50',
           'group-data-[active=false]:bg-on-background/3',
@@ -113,4 +127,4 @@ export default function ProxyNodeButton({
       </Button>
     </DelayHistory>
   )
-}
+})

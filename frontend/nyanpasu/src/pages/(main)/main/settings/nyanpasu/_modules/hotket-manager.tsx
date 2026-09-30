@@ -1,7 +1,7 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import EditOutlineRounded from '~icons/material-symbols/edit-outline-rounded'
 import ErrorRounded from '~icons/material-symbols/error-rounded'
-import { isEqual } from 'lodash-es'
+import { isEqual } from 'es-toolkit'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
@@ -55,6 +55,7 @@ const HotkeyItem = ({
 
       message(formatError(err), {
         kind: 'error',
+        error: err,
       })
       return false
     }

@@ -3,39 +3,118 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
+  type Context,
   type PropsWithChildren,
 } from 'react'
 import { rpc } from '../ipc/rpc'
 import {
+  type ClashConnectionsConnectorState,
+  type ClashConnectionsSummary,
   type ClashWsEvent,
   type ClashWsKind,
   type ClashWsSnapshot,
 } from '../ipc/rpc-bindings'
-import type { ClashConnection } from '../ipc/use-clash-connections'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
 import { applyClashWsEvent } from './clash-ws-state'
 
-const ClashWSContext = createContext<{
-  connections: ClashConnection[]
+type ClashWSHistory = {
+  connections: ClashConnectionsSummary[]
   logs: ClashLog[]
   traffic: ClashTraffic[]
   memory: ClashMemory[]
+}
+
+type ClashWSStatus = {
   isLoading: boolean
   error: unknown
+  state: ClashConnectionsConnectorState
   clearHistory: (kind: ClashWsKind) => Promise<void>
-} | null>(null)
+}
 
-export const useClashWSContext = () => {
-  const context = useContext(ClashWSContext)
+// One context per history kind: every ws event replaces the snapshot, but a
+// consumer only re-renders when its own history or the status changes.
+const ClashWSHistoryContexts: {
+  [K in ClashWsKind]: Context<ClashWSHistory[K] | null>
+} = {
+  connections: createContext<ClashConnectionsSummary[] | null>(null),
+  logs: createContext<ClashLog[] | null>(null),
+  traffic: createContext<ClashTraffic[] | null>(null),
+  memory: createContext<ClashMemory[] | null>(null),
+}
 
-  if (!context) {
-    throw new Error('useClashWSContext must be used in a ClashWSProvider')
+const ClashWSStatusContext = createContext<ClashWSStatus | null>(null)
+
+const useClashWSValue = <T,>(context: Context<T | null>) => {
+  const value = useContext(context)
+
+  if (value === null) {
+    throw new Error('Clash ws hooks must be used in a ClashWSProvider')
   }
 
-  return context
+  return value
+}
+
+export const useClashWSHistory = <K extends ClashWsKind>(kind: K) =>
+  useClashWSValue<ClashWSHistory[K]>(ClashWSHistoryContexts[kind])
+
+export const useClashWSStatus = () => useClashWSValue(ClashWSStatusContext)
+
+type ClashWSValues = {
+  [K in ClashWsKind]: ClashWSHistory[K] | null
+} & {
+  status: ClashWSStatus | null
+}
+
+const ClashWSValuesProvider = ({
+  values,
+  children,
+}: PropsWithChildren<{ values: ClashWSValues }>) => (
+  <ClashWSStatusContext.Provider value={values.status}>
+    <ClashWSHistoryContexts.connections.Provider value={values.connections}>
+      <ClashWSHistoryContexts.logs.Provider value={values.logs}>
+        <ClashWSHistoryContexts.traffic.Provider value={values.traffic}>
+          <ClashWSHistoryContexts.memory.Provider value={values.memory}>
+            {children}
+          </ClashWSHistoryContexts.memory.Provider>
+        </ClashWSHistoryContexts.traffic.Provider>
+      </ClashWSHistoryContexts.logs.Provider>
+    </ClashWSHistoryContexts.connections.Provider>
+  </ClashWSStatusContext.Provider>
+)
+
+// While `frozen`, re-provides the values captured when it turned on, so a
+// subtree that is on its way out (a page animating away) stops re-rendering
+// on every sample. Keep it mounted and toggle `frozen`: inserting it only
+// when freezing would remount the subtree.
+export const ClashWSFreezeBoundary = ({
+  frozen,
+  children,
+}: PropsWithChildren<{ frozen: boolean }>) => {
+  const live: ClashWSValues = {
+    connections: useContext(ClashWSHistoryContexts.connections),
+    logs: useContext(ClashWSHistoryContexts.logs),
+    traffic: useContext(ClashWSHistoryContexts.traffic),
+    memory: useContext(ClashWSHistoryContexts.memory),
+    status: useContext(ClashWSStatusContext),
+  }
+
+  const [captured, setCaptured] = useState<ClashWSValues | null>(null)
+
+  if (frozen && captured === null) {
+    setCaptured(live)
+  } else if (!frozen && captured !== null) {
+    setCaptured(null)
+  }
+
+  return (
+    <ClashWSValuesProvider values={(frozen && captured) || live}>
+      {children}
+    </ClashWSValuesProvider>
+  )
 }
 
 export const ClashWSProvider = ({ children }: PropsWithChildren) => {
@@ -83,9 +162,6 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       }
     }
 
-    const stopResync = rpc.listenResync(() => {
-      resync()
-    })
     // Subscribe before requesting the snapshot. The bounded buffer plus sequence
     // checks also covers slow IPC, event loss, and StrictMode effect teardown.
     rpc.events.clashWsEvent
@@ -120,9 +196,11 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
         }
       })
 
+    const stopResync = rpc.listenResync(resync)
+
     return () => {
-      disposed = true
       stopResync()
+      disposed = true
       unlisten?.()
     }
   }, [])
@@ -133,28 +211,39 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
     // The sequenced history_cleared event orders this against later samples.
   }, [])
 
-  const connections: ClashConnection[] = (snapshot?.connections ?? []).map(
-    (connection) => ({
-      ...connection,
-      memory: connection.memory ?? undefined,
-      connections:
-        (connection.connections as ClashConnection['connections']) ?? undefined,
-    }),
+  // Snapshot updates keep the arrays of untouched kinds, so memoizing on them
+  // keeps each history context value stable across unrelated rpc.events.
+  const connectionSnapshots = snapshot?.connections
+  const logSnapshots = snapshot?.logs
+  const trafficSnapshots = snapshot?.traffic
+  const memorySnapshots = snapshot?.memory
+
+  const connections = useMemo(
+    () => connectionSnapshots ?? [],
+    [connectionSnapshots],
+  )
+  const logs = useMemo(() => (logSnapshots ?? []) as ClashLog[], [logSnapshots])
+  const traffic = useMemo(
+    () => (trafficSnapshots ?? []) as ClashTraffic[],
+    [trafficSnapshots],
+  )
+  const memory = useMemo(
+    () => (memorySnapshots ?? []) as ClashMemory[],
+    [memorySnapshots],
+  )
+
+  const state = snapshot?.state ?? 'disconnected'
+  const status = useMemo(
+    () => ({ isLoading, error, state, clearHistory }),
+    [isLoading, error, state, clearHistory],
+  )
+
+  const values = useMemo(
+    () => ({ connections, logs, traffic, memory, status }),
+    [connections, logs, traffic, memory, status],
   )
 
   return (
-    <ClashWSContext.Provider
-      value={{
-        connections,
-        logs: (snapshot?.logs ?? []) as ClashLog[],
-        traffic: (snapshot?.traffic ?? []) as ClashTraffic[],
-        memory: (snapshot?.memory ?? []) as ClashMemory[],
-        isLoading,
-        error,
-        clearHistory,
-      }}
-    >
-      {children}
-    </ClashWSContext.Provider>
+    <ClashWSValuesProvider values={values}>{children}</ClashWSValuesProvider>
   )
 }

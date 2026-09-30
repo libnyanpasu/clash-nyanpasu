@@ -5,7 +5,17 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query'
 import type { Degradation } from '../ipc/rpc-bindings'
-import { ClashWSProvider, useClashWSContext } from './clash-ws-provider'
+import {
+  ClashConnectionDetailsFreezeBoundary,
+  ClashConnectionDetailsProvider,
+  useClashConnectionDetails,
+} from './clash-connection-details-provider'
+import {
+  ClashWSFreezeBoundary,
+  ClashWSProvider,
+  useClashWSHistory,
+  useClashWSStatus,
+} from './clash-ws-provider'
 import { MutationProvider } from './mutation-provider'
 
 let mutationDegradationHandler: ((degradations: Degradation[]) => void) | null =
@@ -55,14 +65,33 @@ const queryClient = new QueryClient({
   }),
 })
 
+// Bridges `ClashWSProvider`'s connector state into `ClashConnectionDetailsProvider`,
+// which otherwise has no dependency on `ClashWSProvider` (see its own props doc).
+const ConnectionDetailsBridge = ({ children }: PropsWithChildren) => {
+  const { state } = useClashWSStatus()
+  return (
+    <ClashConnectionDetailsProvider connectorState={state}>
+      {children}
+    </ClashConnectionDetailsProvider>
+  )
+}
+
 export const NyanpasuProvider = ({ children }: PropsWithChildren) => {
   return (
     <QueryClientProvider client={queryClient}>
       <MutationProvider>
-        <ClashWSProvider>{children}</ClashWSProvider>
+        <ClashWSProvider>
+          <ConnectionDetailsBridge>{children}</ConnectionDetailsBridge>
+        </ClashWSProvider>
       </MutationProvider>
     </QueryClientProvider>
   )
 }
 
-export { useClashWSContext }
+export {
+  ClashConnectionDetailsFreezeBoundary,
+  ClashWSFreezeBoundary,
+  useClashConnectionDetails,
+  useClashWSHistory,
+  useClashWSStatus,
+}

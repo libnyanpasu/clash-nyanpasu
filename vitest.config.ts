@@ -33,9 +33,6 @@ export default defineConfig({
               'frontend/interface/node_modules/@tanstack/react-query',
             ),
             clsx: path.resolve('frontend/utils/node_modules/clsx'),
-            'lodash-es': path.resolve(
-              'frontend/interface/node_modules/lodash-es',
-            ),
             'react-use': path.resolve(
               'frontend/interface/node_modules/react-use',
             ),
@@ -57,7 +54,6 @@ export default defineConfig({
             '@tauri-apps/api/event',
             '@tauri-apps/api/webviewWindow',
             'clsx',
-            'lodash-es',
             'react-use/esm/factory/createBreakpoint',
             'react-use/esm/useUpdateEffect',
             'tailwind-merge',

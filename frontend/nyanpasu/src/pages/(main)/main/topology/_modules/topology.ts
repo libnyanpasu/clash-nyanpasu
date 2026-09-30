@@ -1,4 +1,4 @@
-import type { ClashConnectionItem } from '@nyanpasu/interface'
+import type { ClashConnection_Serialize } from '@nyanpasu/interface'
 
 export type TopologyMetric = 'connections' | 'bytes'
 export type TopologyNode = {
@@ -20,7 +20,7 @@ export type TopologyLink = {
 
 // The intermediate column preserves all reported groups, in traversal order.
 // It describes the core's logical chain, not physical network hops.
-function dimensions(connection: ClashConnectionItem): (string | null)[] {
+function dimensions(connection: ClashConnection_Serialize): (string | null)[] {
   const metadata = connection.metadata
   return [
     metadata?.process || metadata?.sourceIP || null,
@@ -35,7 +35,7 @@ function dimensions(connection: ClashConnectionItem): (string | null)[] {
 }
 
 export function buildTopology(
-  connections: ClashConnectionItem[],
+  connections: ClashConnection_Serialize[],
   metric: TopologyMetric,
 ) {
   const limit = 7

@@ -1,17 +1,19 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, ops::ControlFlow};
 
 use crate::{
-    client::{NyanpasuClient, hotkey::ports::HotkeyAction},
-    config::{
-        Config,
-        nyanpasu::{ClashCore, TrayMenuMode},
-    },
-    feat::{self, CopyEnvOption},
+    client::{NyanpasuClient, effects::plan::TrayView, hotkey::ports::HotkeyAction},
     ipc, log_err,
-    utils::{help, resolve},
+    utils::{
+        help,
+        proxy_env::{self, CopyEnvOption},
+        resolve,
+    },
 };
 use anyhow::Result;
-use once_cell::sync::Lazy;
+use nyanpasu_config::{
+    application::{ClashCore, TrayMenuMode},
+    clash::config::overrides::Mode,
+};
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{
@@ -21,48 +23,82 @@ use tauri::{
 };
 use tracing_attributes::instrument;
 
+mod display;
+mod executor;
 pub mod icon;
 pub mod proxies;
-pub use self::icon::on_scale_factor_changed;
-use self::proxies::SystemTrayMenuProxiesExt;
+use self::{
+    display::{Paint, ProxySection, Publication, Shown, TrayDisplay},
+    executor::{Step, TrayQueue, TrayTarget},
+    proxies::SystemTrayMenuProxiesExt,
+};
+pub use self::{executor::TrayWork, icon::on_scale_factor_changed};
 
-#[cfg(target_os = "linux")]
-use std::sync::atomic::AtomicU16;
+/// Managed by the composition root before anything can build the tray.
+///
+/// Each lock is taken only to read or record, never held across a Tauri call
+/// or a `Tray::request`: the steps run on the main thread, where tray and menu
+/// event handlers read this state too, and none of these locks is
+/// re-entrant.
+pub struct TrayState<R: Runtime> {
+    /// The only input tray rendering reads. Replaced by every tray effect.
+    view: Mutex<TrayView>,
+    /// Tray work waiting for the drain. Narrow boundary state rather than an
+    /// actor: menu calls have to run on the main thread, which only takes
+    /// closures, and this queue is what keeps one drain at a time there.
+    queue: Mutex<TrayQueue>,
+    /// What the tray displays: the menu, its proxy selections and the node
+    /// behind each proxy item id, as one record that only a complete
+    /// publication replaces. Any failure after the live menu may have changed
+    /// leaves it unknown until a rebuild completes.
+    display: Mutex<TrayDisplay<Attached<R>>>,
+}
 
-struct TrayState<R: Runtime> {
-    menu: Mutex<Menu<R>>,
-    menu_mode: Mutex<TrayMenuMode>,
+/// A menu the tray icon holds, and the mode the icon was built for.
+struct Attached<R: Runtime> {
+    menu: Menu<R>,
+    mode: TrayMenuMode,
+}
+
+// Not derived: a derive would also require `R: Clone`.
+impl<R: Runtime> Clone for Attached<R> {
+    fn clone(&self) -> Self {
+        Self {
+            menu: self.menu.clone(),
+            mode: self.mode,
+        }
+    }
+}
+
+impl<R: Runtime> TrayState<R> {
+    pub fn new(view: TrayView) -> Self {
+        Self {
+            view: Mutex::new(view),
+            queue: Mutex::new(TrayQueue::default()),
+            display: Mutex::new(TrayDisplay::new()),
+        }
+    }
+}
+
+/// The view the tray renders, or `None` before the state is seeded.
+fn tray_view<R: Runtime>(app_handle: &AppHandle<R>) -> Option<TrayView> {
+    app_handle
+        .try_state::<TrayState<R>>()
+        .map(|state| *state.view.lock())
 }
 
 pub struct Tray {}
 
-fn get_tray_menu_mode() -> TrayMenuMode {
-    *Config::verge()
-        .latest()
-        .tray_menu_mode
-        .as_ref()
-        .unwrap_or(&TrayMenuMode::default())
-}
-
-static UPDATE_SYSTRAY_MUTEX: Lazy<parking_lot::Mutex<()>> =
-    Lazy::new(|| parking_lot::Mutex::new(()));
-
 const TRAY_ID: &str = "main-tray";
 
 #[cfg(target_os = "linux")]
-static LINUX_TRAY_ID: AtomicU16 = AtomicU16::new(0);
-// #[cfg(target_os = "linux")]
-// fn bump_tray_id() -> Cow<'static, str> {
-//     let id = LINUX_TRAY_ID.fetch_add(1, std::sync::atomic::Ordering::Release) + 1;
-//     Cow::Owned(format!("{}-{}", TRAY_ID, id))
-// }
+const LINUX_TRAY_ID: u16 = 0;
 
 #[inline]
 fn get_tray_id<'n>() -> Cow<'n, str> {
     #[cfg(target_os = "linux")]
     {
-        let id = LINUX_TRAY_ID.load(std::sync::atomic::Ordering::Acquire);
-        Cow::Owned(format!("{}-{}", TRAY_ID, id))
+        Cow::Owned(format!("{}-{}", TRAY_ID, LINUX_TRAY_ID))
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -159,24 +195,65 @@ fn get_tray_id<'n>() -> Cow<'n, str> {
 // }
 
 impl Tray {
-    #[instrument(skip(app_handle))]
-    pub fn tray_menu<R: Runtime>(app_handle: &AppHandle<R>) -> Result<Menu<R>> {
-        let version = env!("NYANPASU_VERSION");
-        let core = {
-            *Config::verge()
-                .latest()
-                .clash_core
-                .as_ref()
-                .unwrap_or(&ClashCore::default())
+    /// Stores the view that every later build and repaint renders.
+    pub fn store_view<R: Runtime>(app_handle: &AppHandle<R>, view: TrayView) {
+        match app_handle.try_state::<TrayState<R>>() {
+            Some(state) => *state.view.lock() = view,
+            None => tracing::warn!("a tray view arrived before the tray state was seeded"),
+        }
+    }
+
+    /// Asks for tray work. Any thread may ask, a running step included: the
+    /// work merges into the queue, and one drain on the main thread runs it.
+    ///
+    /// Requests made during a drain only merge work. A request made on an
+    /// idle main thread may run the drain inline: Tauri runs the task it
+    /// schedules there at once. Nothing is locked by then, and a running drain
+    /// keeps the queue scheduled, so a request from inside one never starts
+    /// another.
+    pub fn request(app_handle: &AppHandle<tauri::Wry>, work: TrayWork) -> tauri::Result<()> {
+        let Some(state) = app_handle.try_state::<TrayState<tauri::Wry>>() else {
+            tracing::warn!("the tray state is not seeded yet, dropping the tray work");
+            return Ok(());
         };
-        let mut menu = MenuBuilder::new(app_handle)
+        executor::request(&state.queue, work, || {
+            let handle = app_handle.clone();
+            app_handle.run_on_main_thread(move || Tray::drain(&handle))
+        })
+    }
+
+    /// Runs the queued tray work, on the main thread that `request` scheduled
+    /// it on.
+    fn drain(app_handle: &AppHandle<tauri::Wry>) {
+        let Some(state) = app_handle.try_state::<TrayState<tauri::Wry>>() else {
+            return;
+        };
+        executor::drain(
+            &state.queue,
+            &mut LiveTray {
+                app_handle,
+                state: state.inner(),
+            },
+        );
+    }
+
+    /// The menu for `view`, with its proxy section apart: that describes the
+    /// tray only once the menu is published.
+    #[instrument(skip(app_handle))]
+    fn tray_menu<R: Runtime>(
+        app_handle: &AppHandle<R>,
+        view: &TrayView,
+    ) -> Result<(Menu<R>, ProxySection)> {
+        let version = env!("NYANPASU_VERSION");
+        let (menu, section) = MenuBuilder::new(app_handle)
             .text("open_window", t!("tray.dashboard"))
-            .setup_proxies(app_handle)? // Setup the proxies menu
+            .setup_proxies(app_handle, view)?; // Setup the proxies menu
+        let mut menu = menu
             .separator()
             .check("rule_mode", t!("tray.rule_mode"))
             .check("global_mode", t!("tray.global_mode"))
             .check("direct_mode", t!("tray.direct_mode"));
-        if core == ClashCore::ClashPremium {
+        if view.menu.core == ClashCore::ClashPremium {
             menu = menu.check("script_mode", t!("tray.script_mode"));
         }
         menu = menu
@@ -215,35 +292,58 @@ impl Tray {
                     .build(app_handle)?,
             );
 
-        Ok(menu.build()?)
+        Ok((menu.build()?, section))
     }
 
-    #[instrument(skip(app_handle))]
-    pub fn update_systray(app_handle: &AppHandle<tauri::Wry>) -> Result<()> {
-        let _guard = UPDATE_SYSTRAY_MUTEX.lock();
+    /// Builds the menu for the stored view and publishes it.
+    #[instrument(skip(app_handle, state))]
+    fn rebuild(app_handle: &AppHandle<tauri::Wry>, state: &TrayState<tauri::Wry>) -> Result<()> {
+        let view = *state.view.lock();
+        // Built before the live tray is touched, so a failure here leaves the
+        // tray, and the record of it, as they were.
+        let (menu, section) = match Tray::tray_menu(app_handle, &view) {
+            Ok(built) => built,
+            Err(error) => {
+                state.display.lock().published(Publication::NotStarted);
+                return Err(error);
+            }
+        };
+        let mut attached = state.display.lock().attached();
+        let published = Tray::attach(app_handle, &view, menu, &mut attached);
+        let publication = match (&published, attached) {
+            (Ok(()), Some(attached)) => Publication::Complete { attached, section },
+            (_, attached) => Publication::Interrupted { attached },
+        };
+        state.display.lock().published(publication);
+        published?;
+        tracing::debug!("full update tray finished");
+        Ok(())
+    }
+
+    /// Puts `menu` on the tray and shows it. `attached` follows the menu
+    /// object the icon holds through every step, so a failure part-way still
+    /// says which one it holds.
+    fn attach(
+        app_handle: &AppHandle<tauri::Wry>,
+        view: &TrayView,
+        menu: Menu<tauri::Wry>,
+        attached: &mut Option<Attached<tauri::Wry>>,
+    ) -> Result<()> {
         let tray_id = get_tray_id();
-        let menu_mode = get_tray_menu_mode();
+        let menu_mode = view.menu.menu_mode;
         let use_native_menu = menu_mode == TrayMenuMode::Native;
-        let menu_mode_changed = app_handle
-            .try_state::<TrayState<tauri::Wry>>()
-            .is_some_and(|state| *state.menu_mode.lock() != menu_mode);
+        let menu_mode_changed = attached.as_ref().is_some_and(|held| held.mode != menu_mode);
         let tray = if menu_mode_changed {
             tracing::debug!("tray menu mode changed, recreating tray icon");
             let tray = app_handle.remove_tray_by_id(tray_id.as_ref());
             drop(tray);
+            *attached = None;
             None
         } else {
-            // if cfg!(target_os = "linux") {
-            //     tracing::debug!("removing tray by id: {}", tray_id);
-            //     let mut tray = app_handle.remove_tray_by_id(tray_id.as_ref());
-            //     tray.take(); // Drop the tray
-            //     tray_id = bump_tray_id();
-            //     tracing::debug!("bumped tray id to: {}", tray_id);
-            // }
             app_handle.tray_by_id(tray_id.as_ref())
         };
 
-        let menu = Tray::tray_menu(app_handle)?;
+        let mut refill = Ok(());
         let tray = match tray {
             None => {
                 let mut builder = TrayIconBuilder::with_id(tray_id);
@@ -266,117 +366,95 @@ impl Tray {
                         Tray::on_menu_item_event(app, event);
                     });
                 }
-                builder
+                let tray = builder
                     .on_tray_icon_event(|tray_icon, event| {
                         Tray::on_system_tray_event(tray_icon, event);
                     })
                     .show_menu_on_left_click(false)
-                    .build(app_handle)?
+                    .build(app_handle)?;
+                *attached = Some(Attached {
+                    menu,
+                    mode: menu_mode,
+                });
+                tray
             }
             Some(tray) => {
                 // This is a workaround for linux tray menu update. Due to the api disallow set_menu again
                 // and recreate tray icon will cause buggy tray. No icon and no menu.
                 // So this block is a dirty inheritance of the menu items from the previous tray menu.
                 if cfg!(target_os = "linux") {
-                    if use_native_menu {
-                        let state = app_handle.state::<TrayState<tauri::Wry>>();
-                        let previous_menu = state.menu.lock();
-                        if let Ok(items) = previous_menu.items() {
-                            tracing::debug!("removing previous tray menu items");
-                            for item in items {
-                                log_err!(previous_menu.remove(&item), "failed to remove menu item");
-                            }
+                    match attached.as_ref().map(|held| held.menu.clone()) {
+                        Some(previous_menu) if use_native_menu => {
+                            refill = refill_menu(&previous_menu, &menu);
                         }
-                        // migrate the menu items
-                        if let Ok(items) = menu.items() {
-                            tracing::debug!("migrating new tray menu items");
-                            for item in items {
-                                log_err!(previous_menu.append(&item), "failed to append menu item");
-                            }
+                        Some(_) => {}
+                        None => {
+                            *attached = Some(Attached {
+                                menu,
+                                mode: menu_mode,
+                            })
                         }
                     }
-                } else if use_native_menu {
-                    tray.set_menu(Some(menu.clone()))?;
                 } else {
-                    tray.set_menu(None::<tauri::menu::Menu<tauri::Wry>>)?;
+                    let native = use_native_menu.then(|| menu.clone());
+                    tray.set_menu(native)?;
+                    *attached = Some(Attached {
+                        menu,
+                        mode: menu_mode,
+                    });
                 }
                 tray
             }
         };
         tray.set_visible(true)?;
-        {
-            match app_handle.try_state::<TrayState<tauri::Wry>>() {
-                Some(state) if cfg!(not(target_os = "linux")) || menu_mode_changed => {
-                    tracing::debug!("replacing previous tray menu");
-                    *state.menu.lock() = menu;
-                    *state.menu_mode.lock() = menu_mode;
-                }
-                None => {
-                    tracing::debug!("creating new tray menu");
-                    app_handle.manage(TrayState {
-                        menu: Mutex::new(menu),
-                        menu_mode: Mutex::new(menu_mode),
-                    });
-                }
-                Some(state) => {
-                    *state.menu_mode.lock() = menu_mode;
-                }
-            }
-        }
-        tracing::debug!("full update tray finished");
-        Tray::update_part(app_handle)?;
-        Ok(())
+        refill
     }
 
-    #[instrument(skip(app_handle))]
-    pub fn update_part<R: Runtime>(app_handle: &AppHandle<R>) -> Result<()> {
-        let mode = crate::utils::config::get_current_clash_mode();
-        let core = {
-            *Config::verge()
-                .latest()
-                .clash_core
-                .as_ref()
-                .unwrap_or(&ClashCore::default())
-        };
-        let tray_id = get_tray_id();
-        tracing::debug!("updating tray part: {}", tray_id);
-        let Some(tray) = app_handle.tray_by_id(tray_id.as_ref()) else {
-            // Startup and tray recreation can request a partial refresh before
-            // the full refresh has installed the icon and menu.
-            tracing::debug!("tray not ready; full refresh will update it");
-            return Ok(());
-        };
-        let Some(state) = app_handle.try_state::<TrayState<R>>() else {
-            tracing::debug!("tray menu not ready; full refresh will update it");
-            return Ok(());
-        };
-        let menu = state.menu.lock();
-
-        let _ = menu
-            .get("rule_mode")
-            .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "rule").ok());
-        let _ = menu
-            .get("global_mode")
-            .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "global").ok());
-        let _ = menu
-            .get("direct_mode")
-            .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "direct").ok());
-        if core == ClashCore::ClashPremium {
-            let _ = menu
-                .get("script_mode")
-                .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "script").ok());
+    /// Repaints the checkmarks, icon and tooltip from the stored view.
+    #[instrument(skip(app_handle, state))]
+    fn repaint_part(
+        app_handle: &AppHandle<tauri::Wry>,
+        state: &TrayState<tauri::Wry>,
+    ) -> Result<ControlFlow<()>> {
+        let tray = app_handle.tray_by_id(get_tray_id().as_ref());
+        let paint = state.display.lock().paint();
+        // Checked before the icon is needed, so an icon that is gone gets a
+        // rebuild rather than a skipped repaint.
+        if executor::needs_rebuild(&paint, tray.is_some()) {
+            tracing::debug!("the tray menu is unknown or has no icon, rebuilding it instead");
+            Tray::request(app_handle, TrayWork::REBUILD)?;
+            return Ok(ControlFlow::Break(()));
         }
+        let (Paint::Menu(attached), Some(tray)) = (paint, tray) else {
+            // The first build renders the latest view, so a repaint that comes
+            // before it has nothing to repaint and nothing to lose.
+            tracing::debug!("the tray menu is not built yet, skipping the part refresh");
+            return Ok(ControlFlow::Break(()));
+        };
+        let menu = attached.menu;
+        let view = *state.view.lock();
+        let mode = view.part.mode;
 
         #[allow(unused_variables)]
-        let (system_proxy, tun_mode, enable_tray_text) = {
-            let verge = Config::verge();
-            let verge = verge.latest();
-            (
-                *verge.enable_system_proxy.as_ref().unwrap_or(&false),
-                *verge.enable_tun_mode.as_ref().unwrap_or(&false),
-                *verge.enable_tray_text.as_ref().unwrap_or(&false),
-            )
+        let (system_proxy, tun_mode, enable_tray_text) =
+            (view.part.system_proxy, view.part.tun, view.part.text);
+
+        // Every item here exists in a menu this tray built, so one that is
+        // missing or refuses its check leaves the menu unknown.
+        let check = |id: &str, checked: bool| {
+            menu.get(id)
+                .and_then(|item| item.as_check_menuitem()?.set_checked(checked).ok())
+                .is_some()
         };
+        let mut whole = check("rule_mode", mode == Mode::Rule)
+            & check("global_mode", mode == Mode::Global)
+            & check("direct_mode", mode == Mode::Direct);
+        if view.menu.core == ClashCore::ClashPremium {
+            whole &= check("script_mode", mode == Mode::Script);
+        }
+        whole &= check("system_proxy", system_proxy) & check("tun_mode", tun_mode);
+        let shown = if whole { Shown::Whole } else { Shown::Partly };
+        state.display.lock().repainted(None, shown);
 
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
@@ -393,17 +471,10 @@ impl Tray {
             let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon)?));
         }
 
-        let _ = menu
-            .get("system_proxy")
-            .and_then(|item| item.as_check_menuitem()?.set_checked(system_proxy).ok());
-        let _ = menu
-            .get("tun_mode")
-            .and_then(|item| item.as_check_menuitem()?.set_checked(tun_mode).ok());
-
         let switch_map = {
             let mut map = std::collections::HashMap::new();
-            map.insert(true, t!("tray.proxy_action.on"));
-            map.insert(false, t!("tray.proxy_action.off"));
+            map.insert(true, t!("tray.proxy_action.enabled"));
+            map.insert(false, t!("tray.proxy_action.disabled"));
             map
         };
 
@@ -432,7 +503,12 @@ impl Tray {
             }
         }
 
-        Ok(())
+        // A partial repaint left the menu unknown, and the next request
+        // rebuilds it.
+        Ok(match shown {
+            Shown::Whole => ControlFlow::Continue(()),
+            Shown::Partly => ControlFlow::Break(()),
+        })
     }
 
     /// Tray items and global shortcuts run the same actions, so they go
@@ -449,16 +525,16 @@ impl Tray {
             "open_window" => resolve::create_window(app_handle),
             "system_proxy" => dispatch_action(app_handle, HotkeyAction::ToggleSystemProxy),
             "tun_mode" => dispatch_action(app_handle, HotkeyAction::ToggleTunMode),
-            "copy_env_sh" => feat::copy_clash_env(app_handle, &CopyEnvOption::Shell),
+            "copy_env_sh" => copy_clash_env(app_handle, CopyEnvOption::Shell),
             #[cfg(target_os = "windows")]
-            "copy_env_cmd" => feat::copy_clash_env(app_handle, &CopyEnvOption::Cmd),
+            "copy_env_cmd" => copy_clash_env(app_handle, CopyEnvOption::Cmd),
             #[cfg(target_os = "windows")]
-            "copy_env_ps" => feat::copy_clash_env(app_handle, &CopyEnvOption::Pwsh),
+            "copy_env_ps" => copy_clash_env(app_handle, CopyEnvOption::Pwsh),
             "open_app_config_dir" => crate::log_err!(ipc::open_app_config_dir()),
             "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
             "open_logs_dir" => crate::log_err!(ipc::open_logs_dir()),
-            "restart_core" => feat::restart_clash_core(app_handle),
+            "restart_core" => restart_core(app_handle),
             "restart_app" => help::restart_application(app_handle),
             "quit" => {
                 help::quit_application(app_handle);
@@ -481,7 +557,9 @@ impl Tray {
                 button: MouseButton::Right,
                 position,
                 ..
-            } if get_tray_menu_mode() == TrayMenuMode::Webview => {
+            } if tray_view(tray_icon.app_handle())
+                .is_some_and(|view| view.menu.menu_mode == TrayMenuMode::Webview) =>
+            {
                 log_err!(
                     resolve::show_tray_menu_window(tray_icon.app_handle(), position),
                     "failed to show webview tray menu"
@@ -491,6 +569,90 @@ impl Tray {
             _ => {}
         }
     }
+}
+
+/// The live tray, as the drain runs it on the main thread.
+struct LiveTray<'a> {
+    app_handle: &'a AppHandle<tauri::Wry>,
+    state: &'a TrayState<tauri::Wry>,
+}
+
+impl TrayTarget for LiveTray<'_> {
+    type Menu = Attached<tauri::Wry>;
+
+    fn observe(&self) -> (Paint<Self::Menu>, bool) {
+        let paint = self.state.display.lock().paint();
+        let icon = self.app_handle.tray_by_id(get_tray_id().as_ref()).is_some();
+        (paint, icon)
+    }
+
+    fn run(&mut self, step: Step) -> ControlFlow<()> {
+        let ran = match step {
+            Step::Rebuild => Tray::rebuild(self.app_handle, self.state).map(ControlFlow::Continue),
+            Step::Part => Tray::repaint_part(self.app_handle, self.state),
+            Step::Proxies => proxies::repaint_proxies(self.app_handle, self.state),
+        };
+        ran.unwrap_or_else(|error| {
+            tracing::error!(?step, "tray step failed: {error:#}");
+            ControlFlow::Break(())
+        })
+    }
+}
+
+/// Replaces the items of the menu the Linux tray holds with those of `menu`,
+/// as far as it can. The menu object itself stays: GTK cannot take a new one.
+fn refill_menu(previous_menu: &Menu<tauri::Wry>, menu: &Menu<tauri::Wry>) -> Result<()> {
+    let mut whole = true;
+    if let Ok(items) = previous_menu.items() {
+        tracing::debug!("removing previous tray menu items");
+        for item in items {
+            let removed = previous_menu.remove(&item);
+            whole &= removed.is_ok();
+            log_err!(removed, "failed to remove menu item");
+        }
+    } else {
+        whole = false;
+    }
+    // migrate the menu items
+    if let Ok(items) = menu.items() {
+        tracing::debug!("migrating new tray menu items");
+        for item in items {
+            let appended = previous_menu.append(&item);
+            whole &= appended.is_ok();
+            log_err!(appended, "failed to append menu item");
+        }
+    } else {
+        whole = false;
+    }
+    anyhow::ensure!(whole, "the tray menu was only partly replaced");
+    Ok(())
+}
+
+/// Copies the proxy environment for the port the facade reports.
+fn copy_clash_env(app_handle: &AppHandle, option: CopyEnvOption) {
+    let Some(client) = app_handle.try_state::<NyanpasuClient>() else {
+        tracing::warn!("the tray copied the proxy env before the client was ready");
+        return;
+    };
+    proxy_env::copy_clash_env(app_handle, client.clash_info().port, &option);
+}
+
+/// Restarts the core from the tray menu.
+fn restart_core(app_handle: &AppHandle) {
+    let Some(client) = app_handle
+        .try_state::<NyanpasuClient>()
+        .map(|state| state.inner().clone())
+    else {
+        log::warn!(target: "app", "the core restart fired before the client was ready");
+        return;
+    };
+    // The clash view refresh follows from the effects every core lifecycle
+    // command publishes.
+    tauri::async_runtime::spawn(async move {
+        if let Err(err) = client.reconcile_core().await {
+            log::error!(target:"app", "{err:?}");
+        }
+    });
 }
 
 /// Runs a tray item through the facade, the same path a global shortcut takes.

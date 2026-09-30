@@ -11,13 +11,19 @@ use std::{sync::Arc, time::Duration};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, concurrency::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
+use snafu::{IntoError as _, ResultExt as _};
+
 use super::{
     SystemProxyStatus,
-    ports::{AutoLaunchPort, OsProxyConfig, OsProxyPort, PacPort},
+    error::{
+        ApplyAutoLaunchSnafu, ApplyPacKeepingStaleSnafu, ApplyPacSnafu, ApplyProxySnafu,
+        PacFallback, RestorePacSnafu, RestoreProxySnafu, ShutDownSnafu, SystemProxyError,
+    },
+    ports::{AutoLaunchPort, OsProxyConfig, OsProxyPort, PacError, PacPort},
 };
 use crate::client::effects::{
     plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
 
 /// The core only ever listens on loopback, so the proxy this app installs
@@ -41,8 +47,6 @@ pub(super) enum Message {
     },
     #[cfg_attr(not(test), allow(dead_code))]
     Status(RpcReplyPort<SystemProxyStatus>),
-    /// Exit path: put back the proxy settings this process found.
-    Restore(RpcReplyPort<EffectStatus>),
     /// Delivered by the guard timer, or by a test in place of one.
     GuardTick,
 }
@@ -54,22 +58,17 @@ pub struct Args {
     /// Production builds a real interval timer. Tests pass `false` and deliver
     /// `GuardTick` themselves, so a guard assertion never waits on a clock.
     pub schedule_guard_ticks: bool,
-}
-
-/// What the typed client hands the actor on top of the injected ports.
-pub(super) struct ActorArgs {
-    pub args: Args,
-    /// Fired by [`super::SystemProxyClient::restore`] before the restore
-    /// message is sent, so an in-flight PAC download stops occupying the
-    /// mailbox instead of outlasting the exit path.
-    pub cancel: CancellationToken,
+    /// Once cancelled, nothing writes the OS settings but the restore in
+    /// `post_stop`. It also reaches work already running on the mailbox, such
+    /// as a PAC download, so the restore behind it is not held back.
+    pub shutdown: CancellationToken,
 }
 
 pub(super) struct State {
     os: Arc<dyn OsProxyPort>,
     auto_launch: Arc<dyn AutoLaunchPort>,
     pac: Arc<dyn PacPort>,
-    cancel: CancellationToken,
+    shutdown: CancellationToken,
     schedule_guard_ticks: bool,
     /// Highest revision acted on, per capability. The facade's gate orders
     /// revisions; this is what protects the reconcile entry points that do not
@@ -109,7 +108,7 @@ struct AppliedRevisions {
 }
 
 impl AppliedRevisions {
-    fn of(&self, kind: EffectKind) -> EffectRevision {
+    fn revision(&self, kind: EffectKind) -> EffectRevision {
         match kind {
             EffectKind::SystemProxy => self.proxy,
             EffectKind::ProxyGuard => self.guard,
@@ -131,19 +130,18 @@ pub(super) struct SystemProxyActor;
 impl Actor for SystemProxyActor {
     type Msg = Message;
     type State = State;
-    type Arguments = ActorArgs;
+    type Arguments = Args;
 
     async fn pre_start(
         &self,
         _myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        let ActorArgs { args, cancel } = args;
         Ok(State {
             os: args.os,
             auto_launch: args.auto_launch,
             pac: args.pac,
-            cancel,
+            shutdown: args.shutdown,
             schedule_guard_ticks: args.schedule_guard_ticks,
             applied: AppliedRevisions::default(),
             health: EffectHealth::Healthy,
@@ -180,21 +178,19 @@ impl Actor for SystemProxyActor {
             Message::Status(reply) => {
                 let _ = reply.send(state.status());
             }
-            Message::Restore(reply) => {
-                let status = state.restore().await;
-                let _ = reply.send(status);
-            }
             Message::GuardTick => state.guard_tick().await,
         }
         Ok(())
     }
 
+    /// Exit path: puts back the proxy settings this process found. It runs
+    /// after the reconcile in flight, whose writes stop at the shutdown token.
     async fn post_stop(
         &self,
         _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        state.stop_guard();
+        state.restore().await;
         Ok(())
     }
 }
@@ -209,10 +205,9 @@ impl State {
         auto_launch: Option<bool>,
     ) -> Vec<EffectStatus> {
         let kinds = requested_kinds(proxy.is_some(), guard.is_some(), auto_launch.is_some());
-        // The token fires on the way into the restore, before its message is
-        // even queued, so a reconcile can arrive between the two. Either way
-        // the app is leaving and the restore owns the OS from here: applying a
-        // plan now would re-install the proxy that is about to be removed.
+        // A reconcile queued before the shutdown still reaches the mailbox.
+        // The app is leaving and the restore owns the OS from here: applying
+        // a plan now would re-install the proxy that is about to be removed.
         if self.shutting_down() {
             self.close_for_shutdown();
             tracing::debug!(
@@ -267,8 +262,7 @@ impl State {
                         self.degraded(
                             EffectKind::ProxyGuard,
                             revision,
-                            "proxy_guard_waiting_dependency",
-                            "the desired proxy has not been confirmed".into(),
+                            SystemProxyError::GuardWaitingDependency,
                         )
                     } else {
                         self.healthy(EffectKind::ProxyGuard, revision)
@@ -283,12 +277,11 @@ impl State {
         statuses
     }
 
-    /// Whether the exit path owns the OS settings from here. Every blocking
-    /// call this actor makes can return after the restore has already run or
-    /// given up waiting for the mailbox, so this is rechecked immediately
-    /// before each OS write rather than once per message.
+    /// Whether the exit path owns the OS settings from here. The shutdown can
+    /// begin during any blocking call this actor makes, so this is rechecked
+    /// immediately before each OS write rather than once per message.
     fn shutting_down(&self) -> bool {
-        self.closed || self.cancel.is_cancelled()
+        self.closed || self.shutdown.is_cancelled()
     }
 
     /// Every effect the plan asked for, refused because the app is exiting.
@@ -311,7 +304,7 @@ impl State {
     /// Takes ownership of a capability for this revision, or reports that a
     /// newer one already owns it.
     fn claim(&mut self, kind: EffectKind, revision: EffectRevision) -> bool {
-        let applied = self.applied.of(kind);
+        let applied = self.applied.revision(kind);
         if revision <= applied {
             tracing::debug!(
                 requested = revision.get(),
@@ -346,7 +339,7 @@ impl State {
         }
 
         // The read above blocks on the platform registration and can hand the
-        // turn back long after the restore ran; registering a login item then
+        // turn back after the shutdown began; registering a login item then
         // writes OS state on behalf of a plan the exit path already refused.
         if self.shutting_down() {
             self.close_for_shutdown();
@@ -354,15 +347,10 @@ impl State {
         }
 
         let port = self.auto_launch.clone();
-        match blocking(move || port.set_enabled(enabled)).await {
-            Ok(()) => self.healthy(EffectKind::AutoLaunch, revision),
-            Err(error) => self.degraded(
-                EffectKind::AutoLaunch,
-                revision,
-                "auto_launch_failed",
-                error.to_string(),
-            ),
-        }
+        let applied = blocking(move || port.set_enabled(enabled))
+            .await
+            .context(ApplyAutoLaunchSnafu { enabled });
+        self.settled(EffectKind::AutoLaunch, revision, applied)
     }
 
     async fn apply_system_proxy(
@@ -380,11 +368,11 @@ impl State {
             // Nothing of ours to turn off. Startup reconciles a full plan on
             // every launch, so writing a disabled value here would clear the
             // proxy the user or another tool had set.
-            let status = match self.disable_config() {
-                Some(config) => self.write_os_proxy(revision, config).await,
-                None => self.healthy(EffectKind::SystemProxy, revision),
+            let write = match self.disable_config() {
+                Some(config) => self.write_os_proxy(config).await,
+                None => Ok(()),
             };
-            return self.with_stale_pac(revision, stale_pac, status);
+            return self.with_stale_pac(revision, stale_pac, write);
         }
 
         match desired.pac_url.as_ref() {
@@ -394,11 +382,11 @@ impl State {
             }
             None => {
                 let stale_pac = self.disable_pac_if_active().await.err();
-                let status = match self.enable_config(&desired) {
-                    Some(config) => self.write_os_proxy(revision, config).await,
-                    None => self.port_unresolved(revision),
+                let write = match self.enable_config(&desired) {
+                    Some(config) => self.write_os_proxy(config).await,
+                    None => Err(SystemProxyError::PortUnresolved),
                 };
-                self.with_stale_pac(revision, stale_pac, status)
+                self.with_stale_pac(revision, stale_pac, write)
             }
         }
     }
@@ -409,24 +397,18 @@ impl State {
     fn with_stale_pac(
         &self,
         revision: EffectRevision,
-        stale_pac: Option<anyhow::Error>,
-        status: EffectStatus,
+        stale_pac: Option<PacError>,
+        write: Result<(), SystemProxyError>,
     ) -> EffectStatus {
-        let Some(error) = stale_pac else {
-            return status;
+        let error = match (stale_pac, write) {
+            (_, Err(error @ SystemProxyError::ShutDown)) => error,
+            (None, write) => return self.settled(EffectKind::SystemProxy, revision, write),
+            (Some(source), write) => SystemProxyError::ClearPac {
+                source,
+                write: write.err().map(Box::new),
+            },
         };
-        let message = match status.health {
-            EffectHealth::Degraded { message, .. } => {
-                format!("{error}; the proxy write beside it failed too: {message}")
-            }
-            _ => format!("{error}; the auto-config url is still installed"),
-        };
-        self.degraded(
-            EffectKind::SystemProxy,
-            revision,
-            "pac_disable_failed",
-            message,
-        )
+        self.degraded(EffectKind::SystemProxy, revision, error)
     }
 
     /// PAC and the plain proxy are two settings for the same thing, so a
@@ -446,11 +428,12 @@ impl State {
             let Some(fallback) = fallback else {
                 return self.port_unresolved(revision);
             };
-            let status = self.write_os_proxy(revision, fallback).await;
+            let write = self.write_os_proxy(fallback).await;
+            let status = self.settled(EffectKind::SystemProxy, revision, write);
             return match status.health {
                 EffectHealth::Healthy => EffectStatus {
                     health: EffectHealth::Unsupported {
-                        code: "pac_unsupported",
+                        code: EffectFailureCode::PacUnsupported,
                     },
                     ..status
                 },
@@ -458,7 +441,7 @@ impl State {
             };
         }
 
-        let applied = self.pac.apply(url, self.cancel.clone()).await;
+        let applied = self.pac.apply(url, self.shutdown.clone()).await;
         if applied.is_ok() {
             // Recorded before the shutdown check below: the url is installed
             // either way, and only this flag makes the restore clear it.
@@ -466,9 +449,9 @@ impl State {
         }
         // An error here is the download being abandoned by the shutdown, not
         // PAC refusing the url. Told apart by the token rather than by the
-        // error text, which the port is free to word however it likes. Writing
+        // error, which the port is free to word however it likes. Writing
         // the plain fallback now would install a proxy during teardown, and the
-        // blocking OS write can push the restore past its own bound.
+        // blocking OS write would hold the restore back.
         if self.shutting_down() {
             self.close_for_shutdown();
             return self.shut_down(EffectKind::SystemProxy, revision);
@@ -476,88 +459,62 @@ impl State {
 
         match applied {
             Ok(()) => self.healthy(EffectKind::SystemProxy, revision),
-            Err(error) => {
+            Err(source) => {
                 // Whatever url was installed before this attempt is still the
                 // one the OS resolves against, so it has to be cleared before
                 // the plain fallback can mean anything. The flag follows the
                 // OS, never the intent: clearing it on a failed disable is what
                 // let a later restore skip the PAC cleanup entirely.
                 let stale_pac = self.disable_pac_if_active().await.err();
-                let note = self.write_pac_fallback(revision, fallback).await;
-                match stale_pac {
-                    Some(disable_error) => self.degraded(
-                        EffectKind::SystemProxy,
-                        revision,
-                        "pac_disable_failed",
-                        format!(
-                            "{error}; the previously installed auto-config url could not be cleared either: {disable_error}; {note}"
-                        ),
-                    ),
-                    None => self.degraded(
-                        EffectKind::SystemProxy,
-                        revision,
-                        "pac_apply_failed",
-                        format!("{error}; {note}"),
-                    ),
-                }
+                let fallback = self.write_pac_fallback(fallback).await;
+                let error = match stale_pac {
+                    Some(stale) => ApplyPacKeepingStaleSnafu { stale, fallback }.into_error(source),
+                    None => ApplyPacSnafu { fallback }.into_error(source),
+                };
+                self.degraded(EffectKind::SystemProxy, revision, error)
             }
         }
     }
 
     /// Installs the plain proxy so a failed PAC transition still leaves the
-    /// user proxied, and describes the outcome for the degradation message.
-    async fn write_pac_fallback(
-        &mut self,
-        revision: EffectRevision,
-        fallback: Option<OsProxyConfig>,
-    ) -> String {
+    /// user proxied, and reports what became of it for the degradation.
+    async fn write_pac_fallback(&mut self, fallback: Option<OsProxyConfig>) -> PacFallback {
         let Some(config) = fallback else {
-            return "the direct proxy fallback was skipped because no port is resolved".to_owned();
+            return PacFallback::SkippedNoPort;
         };
-        match self.write_os_proxy(revision, config).await.health {
-            EffectHealth::Degraded { message, .. } => {
-                format!("the direct proxy fallback failed too: {message}")
-            }
-            _ => "the direct proxy fallback is installed instead".to_owned(),
+        match self.write_os_proxy(config).await {
+            Ok(()) => PacFallback::Installed,
+            Err(SystemProxyError::ShutDown) => PacFallback::SkippedShuttingDown,
+            Err(error) => PacFallback::Failed(Box::new(error)),
         }
     }
 
-    async fn write_os_proxy(
-        &mut self,
-        revision: EffectRevision,
-        config: OsProxyConfig,
-    ) -> EffectStatus {
+    /// Writes the proxy to the OS, or says why it did not. Recording the
+    /// capture and the applied value happens only on success.
+    async fn write_os_proxy(&mut self, config: OsProxyConfig) -> Result<(), SystemProxyError> {
         let captured = self.capture_original(config.enable).await;
-        // The capture reads the OS, and that read can outlast the restore's own
-        // bound: the exit path gives up waiting, the process finishes tearing
-        // down, and only then does this turn resume. Writing here would install
-        // a proxy after the settings the user had were already put back.
+        // The capture reads the OS, and the shutdown can begin while it blocks.
+        // The restore owns the settings from then on: writing here would only
+        // install a proxy for the restore to take back.
         if self.shutting_down() {
             self.close_for_shutdown();
-            return self.shut_down(EffectKind::SystemProxy, revision);
+            return ShutDownSnafu.fail();
         }
 
         let os = self.os.clone();
         let payload = config.clone();
-        match blocking(move || os.set(&payload)).await {
-            Ok(()) => {
-                // Committed only here, because the restore reads `original` as
-                // "the settings this process replaced". Recording a capture the
-                // install never got past would make the exit path disable a
-                // proxy someone else installed and this process never touched.
-                if let Some(captured) = captured {
-                    self.original.get_or_insert(captured);
-                }
-                self.current = Some(config);
-                self.healthy(EffectKind::SystemProxy, revision)
-            }
-            Err(error) => self.degraded(
-                EffectKind::SystemProxy,
-                revision,
-                "system_proxy_apply_failed",
-                error.to_string(),
-            ),
+        blocking(move || os.set(&payload))
+            .await
+            .context(ApplyProxySnafu)?;
+        // Committed only here, because the restore reads `original` as
+        // "the settings this process replaced". Recording a capture the
+        // install never got past would make the exit path disable a
+        // proxy someone else installed and this process never touched.
+        if let Some(captured) = captured {
+            self.original.get_or_insert(captured);
         }
+        self.current = Some(config);
+        Ok(())
     }
 
     /// Read once, immediately before the first enable, so what is restored on
@@ -585,7 +542,7 @@ impl State {
     /// confirms the transition: reporting PAC inactive while its url is still
     /// installed makes every later disable and the exit restore skip the
     /// cleanup, leaving the url behind after the app is gone.
-    async fn disable_pac_if_active(&mut self) -> anyhow::Result<()> {
+    async fn disable_pac_if_active(&mut self) -> Result<(), PacError> {
         if !self.pac_active {
             return Ok(());
         }
@@ -597,7 +554,7 @@ impl State {
         Ok(())
     }
 
-    async fn disable_pac(&self) -> anyhow::Result<()> {
+    async fn disable_pac(&self) -> Result<(), PacError> {
         let pac = self.pac.clone();
         blocking(move || pac.disable()).await
     }
@@ -633,8 +590,7 @@ impl State {
         self.degraded(
             EffectKind::SystemProxy,
             revision,
-            "system_proxy_port_unresolved",
-            "the session has not resolved a mixed port yet".to_owned(),
+            SystemProxyError::PortUnresolved,
         )
     }
 
@@ -675,9 +631,11 @@ impl State {
     /// Guard only the last confirmed setting. Converging a failed desired
     /// target belongs to EffectsActor's bounded budget, never this timer.
     async fn guard_tick(&mut self) {
-        // A tick queued before the restore must not re-install what it removed,
-        // and the token fires before that message is even queued, so a tick can
-        // sit ahead of the restore with `closed` still unset.
+        if self.guard_interval().is_none() {
+            return;
+        }
+        // A tick queued before the shutdown still reaches the mailbox, ahead
+        // of the restore, and must not re-install what the restore removes.
         if self.shutting_down() {
             self.close_for_shutdown();
             return;
@@ -696,10 +654,11 @@ impl State {
         if self.current.as_ref() != Some(&config) {
             return;
         }
-        let revision = self.applied.max();
-        let status = self.write_os_proxy(revision, config).await;
-        if let EffectHealth::Degraded { message, .. } = &status.health {
-            tracing::warn!(%message, "the proxy guard could not re-apply the system proxy");
+        if let Err(error) = self.write_os_proxy(config).await {
+            tracing::warn!(
+                error = %failure_text(&error),
+                "the proxy guard could not re-apply the system proxy"
+            );
         }
     }
 
@@ -715,7 +674,7 @@ impl State {
             .disable_pac_if_active()
             .await
             .err()
-            .map(|error| error.to_string());
+            .map(|source| RestorePacSnafu.into_error(source));
 
         let current = self.current.take();
         let write = match self.original.take() {
@@ -739,20 +698,15 @@ impl State {
 
         if let Some(config) = write {
             let os = self.os.clone();
-            if let Err(error) = blocking(move || os.set(&config)).await {
-                failure = Some(error.to_string());
+            if let Err(source) = blocking(move || os.set(&config)).await {
+                failure = Some(RestoreProxySnafu.into_error(source));
             }
         }
 
         let revision = self.applied.max();
         match failure {
             None => self.healthy(EffectKind::SystemProxy, revision),
-            Some(message) => self.degraded(
-                EffectKind::SystemProxy,
-                revision,
-                "system_proxy_restore_failed",
-                message,
-            ),
+            Some(error) => self.degraded(EffectKind::SystemProxy, revision, error),
         }
     }
 
@@ -772,7 +726,7 @@ impl State {
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied.of(kind),
+            applied_revision: self.applied.revision(kind),
             health: EffectHealth::Healthy,
         }
     }
@@ -780,16 +734,18 @@ impl State {
     /// Not retryable: nothing about this app's exit is going to change, and a
     /// retry would re-install the proxy the restore is removing.
     fn shut_down(&self, kind: EffectKind, revision: EffectRevision) -> EffectStatus {
-        EffectStatus {
-            kind,
-            desired_revision: revision,
-            applied_revision: self.applied.of(kind),
-            health: EffectHealth::Degraded {
-                code: "system_proxy_shut_down",
-                message: "the system proxy owner is shutting down and stopped accepting changes"
-                    .to_owned(),
-                retryable: false,
-            },
+        self.degraded(kind, revision, SystemProxyError::ShutDown)
+    }
+
+    fn settled(
+        &self,
+        kind: EffectKind,
+        revision: EffectRevision,
+        result: Result<(), SystemProxyError>,
+    ) -> EffectStatus {
+        match result {
+            Ok(()) => self.healthy(kind, revision),
+            Err(error) => self.degraded(kind, revision, error),
         }
     }
 
@@ -797,7 +753,7 @@ impl State {
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied.of(kind),
+            applied_revision: self.applied.revision(kind),
             health: EffectHealth::Superseded,
         }
     }
@@ -806,19 +762,22 @@ impl State {
         &self,
         kind: EffectKind,
         revision: EffectRevision,
-        code: &'static str,
-        message: String,
+        error: SystemProxyError,
     ) -> EffectStatus {
-        tracing::warn!(code, %message, ?kind, "a system effect failed after the config was committed");
+        // The exit path refusing work is expected, not a fault worth a warning.
+        if !matches!(error, SystemProxyError::ShutDown) {
+            tracing::warn!(
+                code = ?error.code(),
+                message = %failure_text(&error),
+                ?kind,
+                "a system effect failed after the config was committed"
+            );
+        }
         EffectStatus {
             kind,
             desired_revision: revision,
-            applied_revision: self.applied.of(kind),
-            health: EffectHealth::Degraded {
-                code,
-                message,
-                retryable: true,
-            },
+            applied_revision: self.applied.revision(kind),
+            health: error.health(),
         }
     }
 }
@@ -841,13 +800,10 @@ pub(super) fn requested_kinds(proxy: bool, guard: bool, auto_launch: bool) -> Ve
 
 /// The OS and auto-launch ports block. Running them on the mailbox turn would
 /// stall every other message behind a registry or `launchctl` write.
-async fn blocking<T, F>(work: F) -> anyhow::Result<T>
+async fn blocking<T, F>(work: F) -> T
 where
-    F: FnOnce() -> anyhow::Result<T> + Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    match tokio::task::spawn_blocking(work).await {
-        Ok(result) => result,
-        Err(error) => Err(anyhow::anyhow!("the system proxy worker panicked: {error}")),
-    }
+    crate::utils::blocking::join(tokio::task::spawn_blocking(work).await)
 }

@@ -1,5 +1,9 @@
 # PR-6 计划：通过 runtime apply options 解耦 profiles 与 core lifecycle
 
+> **状态修订（2026-09-26）：** 本文的失败策略与选择性 TCC 冲突时，以 [选择性 TCC v2 §2](2026-09-14-application-workflow-selective-tcc-v2.md#2-核心不变量与失败策略) 与 [roadmap §1.3](../design/actor-migration-roadmap.md#13-选择性-tcc-与提交后收敛) 的失败矩阵为准：关键 runtime 失败可以拒绝候选；外围效果在提交后执行，绝不回滚已提交的源配置。启动、关闭与恢复见 [T10 生命周期设计](../superpowers/specs/2026-09-25-tcc-t10-lifecycle/design.md)。正文保持原样，不再按此改写。
+
+> **已被取代（2026-09-28）：** §3 把原 lifecycle 队列与 tracked operation task 提升为 `ApplicationWorkflowActor` 的有界准入队列，以及任务 3、§7 中依赖它们的队列上限、调用方超时与 panic 测试，已被 [Workflow 与生命周期精简计划](2026-09-28-workflow-lifecycle-simplification.md) 取代：actor handler 直接 await 整条命令，mailbox 是唯一的串行化机制，panic 不再捕获（L3-2 `74b8621cc`）。关闭与 uncertain（隔离）门保留。正文保持原样。
+
 日期：2026-09-13。基线：`feat/pr6-proxies-updater-interruption @ 102304fdd`。
 
 状态：已实施并完成回归验证。设计基于目标分支的源码和原有测试契约；执行记录见第 9 节。

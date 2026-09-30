@@ -1,85 +1,59 @@
-import { merge } from 'lodash-es'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { unwrapResult } from '../utils'
+import { merge } from 'es-toolkit'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type MutationKey,
+  type QueryKey,
+} from '@tanstack/react-query'
+import { unwrapResult, type Result } from '../utils'
 import { invokeMutation, unwrapQueryOptions } from './query-options'
-import { rpc } from './rpc'
-import { type IVerge_Deserialize, type IVerge_Serialize } from './rpc-bindings'
+import {
+  mutations,
+  queries,
+  type ClashConfig,
+  type ClashConfigPatch_Deserialize,
+  type IpcError,
+  type MutationOutcome,
+  type NyanpasuAppConfig_Serialize,
+  type NyanpasuAppConfigPatch_Serialize,
+} from './rpc-bindings'
 
-/**
- * Custom hook for managing Verge configuration settings using React Query.
- * Provides functionality to fetch and update settings with automatic cache invalidation.
- *
- * @returns An object containing:
- * - query: UseQueryResult for fetching settings
- *   - data: Current Verge configuration
- *   - status: Query status ('loading', 'error', 'success')
- *   - error: Error object if query fails
- * - upsert: UseMutationResult for updating settings
- *   - mutate: Function to update configuration
- *   - status: Mutation status
- *
- * @example
- * ```tsx
- * const { query, upsert } = useSettings();
- *
- * // Get current settings
- * const settings = query.data;
- *
- * // Update settings
- * upsert.mutate({ theme: 'dark' });
- * ```
- */
-export const useSettings = () => {
+type ConfigQuery<TConfig> = {
+  queryKey: QueryKey
+  queryFn?: (
+    context: never,
+  ) => Result<TConfig, IpcError> | Promise<Result<TConfig, IpcError>>
+}
+
+type ConfigMutation<TPatch> = {
+  mutationKey?: MutationKey
+  mutationFn?: (
+    input: [TPatch],
+    context: never,
+  ) => Promise<Result<MutationOutcome<null>, IpcError>>
+}
+
+const useTypedConfig = <TConfig, TPatch>(
+  configQuery: ConfigQuery<TConfig>,
+  patchConfig: ConfigMutation<TPatch>,
+) => {
   const queryClient = useQueryClient()
-  const settingsQuery = rpc.queries.getVergeConfig()
-  const patchSettings = rpc.mutations.patchVergeConfig
 
-  /**
-   * A query hook that fetches Verge configuration settings.
-   * Uses React Query to manage the data fetching state.
-   *
-   * @returns UseQueryResult containing:
-   * - data: The unwrapped Verge configuration data
-   * - status: Current status of the query ('loading', 'error', 'success')
-   * - error: Error object if the query fails
-   * - other standard React Query properties
-   */
-  const query = useQuery(
-    unwrapQueryOptions(settingsQuery, settingsQuery.queryFn!),
-  )
+  const query = useQuery(unwrapQueryOptions(configQuery, configQuery.queryFn!))
 
-  /**
-   * Mutation hook for updating Verge configuration settings
-   *
-   * @remarks
-   * Uses React Query's useMutation to manage state and side effects
-   *
-   * @param options - Partial configuration options to update
-   * @returns Mutation object containing mutate function and mutation state
-   *
-   * @example
-   * ```ts
-   * const { mutate } = upsert();
-   * mutate({ theme: 'dark' });
-   * ```
-   */
   const upsert = useMutation({
-    mutationKey: patchSettings.mutationKey,
-    // Partial to allow for partial updates.
+    mutationKey: patchConfig.mutationKey,
     // Returns the whole MutationOutcome so the MutationCache can see
     // `committed_degraded`: a settings change whose side effects degraded is
     // still committed, so it stays on the success path. Do not collapse it to
     // a bare value.
-    mutationFn: async (options: Partial<IVerge_Serialize>) => {
-      return unwrapResult(
-        await invokeMutation(patchSettings, [
-          options as unknown as IVerge_Deserialize,
-        ]),
-      )
+    mutationFn: async (patch: TPatch) => {
+      return unwrapResult(await invokeMutation(patchConfig, [patch]))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: settingsQuery.queryKey,
+        queryKey: configQuery.queryKey,
       })
     },
   })
@@ -90,47 +64,37 @@ export const useSettings = () => {
   }
 }
 
-/**
- * A custom hook that manages a specific setting from the Verge configuration.
- *
- * @template K - The key type extending keyof IVerge
- * @param key - The specific setting key to manage
- * @returns An object containing:
- * - value: The current value of the specified setting
- * - upsert: Function to update the setting value
- * - Additional merged hook status properties
- *
- * @example
- * ```typescript
- * const { value, upsert } = useSetting('theme');
- * // value contains current theme setting
- * // upsert can be used to update theme setting
- * ```
- */
-export const useSetting = <K extends keyof IVerge_Serialize>(key: K) => {
-  const {
+const useTypedConfigField = <
+  TConfig,
+  TPatch,
+  K extends keyof TConfig & keyof TPatch,
+  TClearable extends keyof TPatch = never,
+>(
+  {
     query: { data, ...query },
     upsert: update,
-  } = useSettings()
-
-  /**
-   * The value retrieved from the data object using the specified key.
-   * May be undefined if either data is undefined or the key doesn't exist in data.
-   */
+  }: ReturnType<typeof useTypedConfig<TConfig, TPatch>>,
+  key: K,
+) => {
   const value = data?.[key]
 
   /**
-   * Updates a specific setting value in the Verge configuration
-   * @param value - The new value to be set for the specified key
-   * @returns void
-   * @remarks This function will not execute if the data is not available
+   * A composite field (for example `mixed_port`) takes a nested patch: pass
+   * only the sub-fields to change. Only a `TClearable` field (for example
+   * `socks_port`) takes `null`, which clears it; any other field reads JSON
+   * `null` as "not set", so the patch would silently change nothing.
+   * Does nothing until the config has loaded.
    */
-  const upsert = async (value: IVerge_Serialize[K]) => {
+  const upsert = async (
+    value: K extends TClearable
+      ? Exclude<TPatch[K], undefined>
+      : NonNullable<TPatch[K]>,
+  ) => {
     if (!data) {
       return
     }
 
-    await update.mutateAsync({ [key]: value } as Partial<IVerge_Serialize>)
+    await update.mutateAsync({ [key]: value } as TPatch)
   }
 
   return {
@@ -139,4 +103,75 @@ export const useSetting = <K extends keyof IVerge_Serialize>(key: K) => {
     // merge hook status
     ...merge(query, update),
   }
+}
+
+/**
+ * The application config (`NyanpasuAppConfig`).
+ *
+ * @example
+ * ```tsx
+ * const { query, upsert } = useSettings()
+ *
+ * upsert.mutate({ theme_mode: 'dark' })
+ * ```
+ */
+export const useSettings = () => {
+  return useTypedConfig<
+    NyanpasuAppConfig_Serialize,
+    NyanpasuAppConfigPatch_Serialize
+  >(queries.getAppConfig(), mutations.patchAppConfig)
+}
+
+/**
+ * One field of the application config, addressed by its typed name.
+ *
+ * @example
+ * ```tsx
+ * const { value, upsert } = useSetting('theme_mode')
+ * ```
+ */
+export const useSetting = <
+  K extends keyof NyanpasuAppConfig_Serialize &
+    keyof NyanpasuAppConfigPatch_Serialize,
+>(
+  key: K,
+) => {
+  return useTypedConfigField(useSettings(), key)
+}
+
+/**
+ * The persistent clash config (`ClashConfig`), not the live core `/configs`.
+ */
+export const useClashSettings = () => {
+  return useTypedConfig<ClashConfig, ClashConfigPatch_Deserialize>(
+    queries.getClashConfig(),
+    mutations.patchClashConfig,
+  )
+}
+
+/**
+ * The clash fields whose patch is a double option, so `null` clears them. The
+ * generated patch type cannot tell them apart from the other fields.
+ */
+type ClearableClashField = 'socks_port' | 'http_port'
+
+/**
+ * One field of the persistent clash config, addressed by its typed name.
+ *
+ * @example
+ * ```tsx
+ * const { value, upsert } = useClashSetting('enable_tun_mode')
+ * ```
+ */
+export const useClashSetting = <
+  K extends keyof ClashConfig & keyof ClashConfigPatch_Deserialize,
+>(
+  key: K,
+) => {
+  return useTypedConfigField<
+    ClashConfig,
+    ClashConfigPatch_Deserialize,
+    K,
+    ClearableClashField
+  >(useClashSettings(), key)
 }

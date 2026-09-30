@@ -26,12 +26,12 @@ export function useCurrentProfile(uid: string): {
     if (item) {
       let language = 'yaml'
       let extension = 'yaml'
-      let readOnly = false
+      // A remote source is overwritten by the next refresh.
+      const readOnly = isRemoteItem(item)
       let schemaType
 
       if (isConfigItem(item)) {
         schemaType = 'clash'
-        readOnly = isRemoteItem(item)
       } else if (isTransformItem(item)) {
         if (item.transform.type === 'overlay') {
           schemaType = 'merge'

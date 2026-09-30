@@ -1,21 +1,24 @@
-use crate::{
-    client::Result,
-    core::handle::{Message, StateChanged},
-};
+use serde::{Deserialize, Serialize};
+use snafu::ResultExt as _;
 use tauri::{Emitter, Manager};
 
-/// Abstracts the Tauri UI side-effects the client emits. The full surface
-/// mirrors `Handle`; PR-1 only exercises `refresh_clash`, the rest is consumed
-/// as commands migrate in later PRs.
+use super::main_thread::{HandOffToEventLoopSnafu, MainThreadError, MainThreadExecutor};
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum StateChanged {
+    NyanpasuConfig,
+    ClashConfig,
+    Profiles,
+    Proxies,
+}
+
+pub const STATE_CHANGED_URI: &str = "nyanpasu://mutation";
+
+/// Abstracts the Tauri UI side-effects the client emits.
 #[allow(dead_code)]
 pub trait UiEventSink: Send + Sync + 'static {
     fn state_changed(&self, state: StateChanged);
-
-    fn notice_message(&self, message: &Message);
-
-    fn update_systray(&self) -> Result<()>;
-
-    fn update_systray_part(&self) -> Result<()>;
 
     fn refresh_clash(&self) {
         self.state_changed(StateChanged::ClashConfig);
@@ -51,29 +54,29 @@ impl<R: tauri::Runtime> UiEventSink for TauriUiEventSink<R> {
             .app_handle
             .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
         {
-            crate::log_err!(window.emit("nyanpasu://mutation", state));
+            crate::log_err!(window.emit(STATE_CHANGED_URI, state));
         }
     }
+}
 
-    fn notice_message(&self, message: &Message) {
-        if let Some(window) = self
-            .app_handle
-            .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
-        {
-            crate::log_err!(window.emit("nyanpasu://notice-message", message));
-        }
+/// Hands work to the Tauri event loop's thread.
+#[derive(Clone)]
+pub struct TauriMainThread<R: tauri::Runtime = tauri::Wry> {
+    app_handle: tauri::AppHandle<R>,
+}
+
+impl<R: tauri::Runtime> TauriMainThread<R> {
+    pub fn new(app_handle: tauri::AppHandle<R>) -> Self {
+        Self { app_handle }
     }
+}
 
-    fn update_systray(&self) -> Result<()> {
+impl<R: tauri::Runtime> MainThreadExecutor for TauriMainThread<R> {
+    fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), MainThreadError> {
         self.app_handle
-            .emit("update_systray", ())
-            .map_err(anyhow::Error::from)?;
-        Ok(())
-    }
-
-    fn update_systray_part(&self) -> Result<()> {
-        crate::core::tray::Tray::update_part(&self.app_handle)?;
-        Ok(())
+            .run_on_main_thread(task)
+            .boxed()
+            .context(HandOffToEventLoopSnafu)
     }
 }
 
@@ -84,14 +87,4 @@ pub struct NoopUiEventSink;
 
 impl UiEventSink for NoopUiEventSink {
     fn state_changed(&self, _state: StateChanged) {}
-
-    fn notice_message(&self, _message: &Message) {}
-
-    fn update_systray(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn update_systray_part(&self) -> Result<()> {
-        Ok(())
-    }
 }

@@ -12,17 +12,50 @@ use nyanpasu_config::{
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
         BuiltinTransform, ExecutionTarget, GuardInputs, ProfileContentSource, ResolvedPortBindings,
-        RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner, TunFlavor,
-        TunParams, execute,
+        RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs, ScriptRunner, StepLogEntry,
+        TransformFailure, TunFlavor, TunParams, execute,
     },
 };
+use serde::Serialize;
+use snafu::{ResultExt, Snafu};
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Serialize, specta::Type)]
+pub struct RuntimeBuildLog {
+    pub tag: nyanpasu_config::runtime::snapshot::OperatorTag,
+    pub entries: Vec<StepLogEntry>,
+}
+
+/// A failure of building a runtime candidate from source config.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[snafu(visibility(pub(crate)))]
 pub enum RuntimeBuildError {
-    #[error("profiles snapshot failed validation: {0:?}")]
-    Validation(Vec<ProfileValidationError>),
-    #[error(transparent)]
-    Pipeline(#[from] RuntimePipelineError),
+    #[snafu(display("could not start the script runner"))]
+    StartScriptRunner {
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("profiles snapshot failed validation: {errors:?}"))]
+    ValidateProfiles { errors: Vec<ProfileValidationError> },
+    #[snafu(display("could not run the runtime pipeline: {source}"))]
+    RunPipeline { source: RuntimePipelineError },
+    #[snafu(display("runtime candidate contains failed transforms: {failures:?}"))]
+    TransformsFailed {
+        failures: Vec<TransformFailure>,
+        logs: Vec<RuntimeBuildLog>,
+    },
+    #[snafu(display("could not serialize the final config"))]
+    SerializeFinalConfig {
+        #[serde(skip)]
+        source: serde_yaml::Error,
+    },
+    #[snafu(display("the final config is not a mapping"))]
+    ConfigNotMapping,
+    #[snafu(display("could not render the runtime config"))]
+    SerializeRuntimeConfig {
+        #[serde(skip)]
+        source: serde_yaml::Error,
+    },
 }
 
 pub struct RuntimeBuildInput {
@@ -101,15 +134,40 @@ pub fn derive_tun_flavor(core: ClashCore, stack: TunStack) -> TunFlavor {
 pub struct RuntimeBuilder;
 
 impl RuntimeBuilder {
+    /// Retain diagnostics from the rejected candidate, which is never published.
+    pub fn validate_transforms(artifact: &RuntimeArtifact) -> Result<(), RuntimeBuildError> {
+        if artifact.transform_failures.is_empty() {
+            return Ok(());
+        }
+        let logs = artifact
+            .step_logs
+            .iter()
+            .map(|log| RuntimeBuildLog {
+                tag: artifact
+                    .graph
+                    .nodes
+                    .iter()
+                    .find(|node| node.key == log.key)
+                    .expect("executor logs must belong to a snapshot node")
+                    .tag
+                    .clone(),
+                entries: log.entries.clone(),
+            })
+            .collect();
+        Err(RuntimeBuildError::TransformsFailed {
+            failures: artifact.transform_failures.clone(),
+            logs,
+        })
+    }
+
     pub fn build(
         input: &RuntimeBuildInput,
         content: &dyn ProfileContentSource,
         scripts: &dyn ScriptRunner,
     ) -> Result<RuntimeArtifact, RuntimeBuildError> {
-        input
-            .profiles
-            .validate()
-            .map_err(RuntimeBuildError::Validation)?;
+        if let Err(errors) = input.profiles.validate() {
+            return ValidateProfilesSnafu { errors }.fail();
+        }
 
         let target = match &input.profiles.current {
             Some(uid) => ExecutionTarget::Selected(uid.clone()),
@@ -133,9 +191,10 @@ impl RuntimeBuilder {
                 flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
                 windows_fake_ip_filter: cfg!(windows),
             },
+            expand_include_all: input.clash.expand_include_all,
             builtin_transforms: &builtin_transforms,
         };
-        execute(&inputs, content, scripts).map_err(RuntimeBuildError::Pipeline)
+        execute(&inputs, content, scripts).context(RunPipelineSnafu)
     }
 }
 
@@ -145,7 +204,7 @@ mod tests {
     use nyanpasu_config::{
         profile::{ManagedProfilePath, ProfileId, ScriptRuntime},
         runtime::{
-            executor::{PortError, ScriptRunOutcome},
+            executor::{PortError, StepLogEntry},
             value::ConfigValue,
         },
     };
@@ -159,11 +218,14 @@ mod tests {
     }
     struct EchoRunner;
     impl ScriptRunner for EchoRunner {
-        fn run(&self, _: ScriptRuntime, _: &str, config: &ConfigValue) -> ScriptRunOutcome {
-            ScriptRunOutcome {
-                result: Ok(config.clone()),
-                logs: Vec::new(),
-            }
+        fn run(
+            &self,
+            _: ScriptRuntime,
+            _: &str,
+            config: &ConfigValue,
+            _: &mut Vec<StepLogEntry>,
+        ) -> Result<ConfigValue, PortError> {
+            Ok(config.clone())
         }
         fn eval_item_predicate(&self, _: &str, _: &ConfigValue) -> Result<bool, PortError> {
             Ok(true)
@@ -264,8 +326,48 @@ mod tests {
         input.profiles = Arc::new(profiles);
         assert!(matches!(
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner),
-            Err(RuntimeBuildError::Validation(_))
+            Err(RuntimeBuildError::ValidateProfiles { .. })
         ));
+    }
+
+    #[test]
+    fn build_failures_reach_the_wire_with_their_context() {
+        let error = RuntimeBuildError::RunPipeline {
+            source: RuntimePipelineError::SelectedProfileNotFound {
+                profile: ProfileId("ghost".into()),
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "run_pipeline",
+                "source": { "kind": "selected_profile_not_found", "profile": "ghost" },
+            })
+        );
+        let error = RuntimeBuildError::TransformsFailed {
+            failures: vec![
+                TransformFailure::Profile { id: "t1".into() },
+                TransformFailure::Builtin { name: "b".into() },
+            ],
+            logs: vec![RuntimeBuildLog {
+                tag: nyanpasu_config::runtime::snapshot::OperatorTag::BareRoot,
+                entries: vec![StepLogEntry::error("transform reported an error")],
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({
+                "kind": "transforms_failed",
+                "failures": [
+                    { "kind": "profile", "id": "t1" },
+                    { "kind": "builtin", "name": "b" },
+                ],
+                "logs": [{
+                    "tag": { "kind": "bare_root" },
+                    "entries": [{ "level": "error", "message": "transform reported an error" }],
+                }],
+            })
+        );
     }
 
     #[test]
@@ -285,7 +387,7 @@ mod tests {
     /// snapshot-file expansion is tracked as a T07 pre-flight follow-up.
     #[test]
     fn golden_selected_file_with_script_transform_end_to_end() {
-        use crate::enhance::{EnhanceScriptRunner, FsProfileContentSource};
+        use crate::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
         use nyanpasu_config::profile::{
             ConfigDefinition, FileConfig, LocalBinding, MaterializedFile, ProfileDefinition,
             ProfileItem, ProfileMetadata, ProfileSource, ScriptTransform, TransformDefinition,
@@ -351,7 +453,7 @@ mod tests {
         input.app.enable_builtin_enhanced = false; // isolate assembly + adapters
 
         let content = FsProfileContentSource::new(temp.path().to_path_buf());
-        let scripts = EnhanceScriptRunner::new().unwrap();
+        let scripts = EnhanceScriptRunner::new(ScriptDirs::under(temp.path())).unwrap();
         let artifact = RuntimeBuilder::build(&input, &content, &scripts).expect("end-to-end build");
 
         let yaml = serde_yaml::to_value(&*artifact.final_config).unwrap();
@@ -365,5 +467,36 @@ mod tests {
                 .any(|entry| entry.message.contains("scoped ran"))),
             "script logs must be anchored for the postprocessing_output consumer"
         );
+        RuntimeBuilder::validate_transforms(&artifact).unwrap();
+
+        std::fs::write(
+            temp.path().join("scr1.js"),
+            "function main(config) { console.log('before failure'); throw new Error('transform rejected'); }",
+        )
+        .unwrap();
+        let artifact = RuntimeBuilder::build(&input, &content, &scripts).unwrap();
+        let error = RuntimeBuilder::validate_transforms(&artifact).unwrap_err();
+        let wire = serde_json::to_value(&error).unwrap();
+        assert_eq!(wire["kind"], "transforms_failed");
+        let log = wire["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|log| log["tag"]["data"]["transform_profile_id"] == "scr1")
+            .expect("failed transform must keep its chain tag");
+        let entries = log["entries"].as_array().unwrap();
+        assert!(entries.iter().any(|entry| {
+            entry["message"]
+                .as_str()
+                .unwrap()
+                .contains("before failure")
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry["level"] == "error"
+                && entry["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("transform rejected")
+        }));
     }
 }

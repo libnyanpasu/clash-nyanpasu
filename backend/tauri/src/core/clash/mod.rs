@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-use specta::Type;
 use tauri_specta::Event;
 
 pub mod api;
+pub mod connection_details;
+pub mod connection_rates;
 pub mod proxies;
 pub mod ws;
 
@@ -64,9 +64,6 @@ fn dev_sidecar_binary_path(
     )
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Type, Event)]
-pub struct ClashConnectionsEvent(pub ws::ClashConnectionsConnectorEvent);
-
 // Tauri owns only event-forwarding tasks; stream state lives in StreamsActor.
 struct StreamEventBridge(Vec<tauri::async_runtime::JoinHandle<()>>);
 impl Drop for StreamEventBridge {
@@ -79,26 +76,12 @@ impl Drop for StreamEventBridge {
 
 pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Result<()> {
     use tokio::sync::broadcast::error::RecvError;
+    manager.manage(connection_details::ConnectionDetailSubscriptions::new());
     let client = manager
         .state::<crate::client::NyanpasuClient>()
         .inner()
         .clone();
-    let mut rx = client.subscribe_clash_connections();
     let mut ws_rx = client.subscribe_clash_ws();
-    let app = manager.app_handle().clone();
-    let connection_task = tauri::async_runtime::spawn(async move {
-        loop {
-            match rx.recv().await {
-                Ok(event) => {
-                    if let Err(error) = ClashConnectionsEvent(event).emit(&app) {
-                        tracing::warn!(%error, "failed to emit connections event");
-                    }
-                }
-                Err(RecvError::Lagged(_)) => continue,
-                Err(RecvError::Closed) => break,
-            }
-        }
-    });
     let app = manager.app_handle().clone();
     let ws_task = tauri::async_runtime::spawn(async move {
         loop {
@@ -121,6 +104,6 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
             }
         }
     });
-    manager.manage(StreamEventBridge(vec![connection_task, ws_task]));
+    manager.manage(StreamEventBridge(vec![ws_task]));
     Ok(())
 }

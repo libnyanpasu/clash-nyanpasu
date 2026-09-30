@@ -4,15 +4,17 @@
 
 use std::sync::{Arc, Mutex};
 
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
 use super::{
     HotkeyArgs, HotkeyClient,
     adapters::PlatformAcceleratorValidator,
     ports::{
         AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp,
-        HotkeyParseError, MockHotkeyActionSink, ShortcutRegistrar,
+        HotkeyParseError, MockHotkeyActionSink, ShortcutError, ShortcutRegistrar,
     },
 };
-use crate::client::effects::status::{EffectHealth, EffectRevision};
+use crate::client::effects::status::{EffectFailureCode, EffectHealth, EffectRevision};
 
 fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()
@@ -56,51 +58,65 @@ fn parse_accepts_the_legacy_func_comma_key_format() {
 
 #[test]
 fn parse_rejects_malformed_unknown_invalid_and_missing_super() {
-    assert_eq!(
-        HotkeyBindings::parse(&entries(&["open_or_close_dashboard"]), &AnyAccelerator),
-        Err(HotkeyParseError::MalformedEntry(
-            "open_or_close_dashboard".to_owned()
-        ))
+    let error =
+        HotkeyBindings::parse(&entries(&["open_or_close_dashboard"]), &AnyAccelerator).unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::MalformedEntry { entry } if entry == "open_or_close_dashboard"),
+        "{error:?}"
     );
-    assert_eq!(
-        HotkeyBindings::parse(&entries(&["make_coffee,Control+Q"]), &AnyAccelerator),
-        Err(HotkeyParseError::UnknownFunction("make_coffee".to_owned()))
+    let error =
+        HotkeyBindings::parse(&entries(&["make_coffee,Control+Q"]), &AnyAccelerator).unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::UnknownFunction { function } if function == "make_coffee"),
+        "{error:?}"
     );
-    assert_eq!(
-        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Control++"]), &AnyAccelerator),
-        Err(HotkeyParseError::InvalidAccelerator("Control++".to_owned()))
+    let error = HotkeyBindings::parse(&entries(&["toggle_tun_mode,Control++"]), &AnyAccelerator)
+        .unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::EmptyKeySegment { accelerator } if accelerator == "Control++"),
+        "{error:?}"
     );
-    assert_eq!(
-        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Q"]), &AnyAccelerator),
-        Err(HotkeyParseError::MissingSuperKey("Q".to_owned())),
-        "a bare key would swallow ordinary typing"
+    let error =
+        HotkeyBindings::parse(&entries(&["toggle_tun_mode,Q"]), &AnyAccelerator).unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::MissingSuperKey { accelerator } if accelerator == "Q"),
+        "a bare key would swallow ordinary typing: {error:?}"
     );
 }
 
 #[test]
 fn parse_rejects_duplicate_accelerator() {
-    assert_eq!(
-        HotkeyBindings::parse(
-            &entries(&["enable_tun_mode,Control+Q", "disable_tun_mode,Control+Q"]),
-            &AnyAccelerator,
+    let error = HotkeyBindings::parse(
+        &entries(&["enable_tun_mode,Control+Q", "disable_tun_mode,Control+Q"]),
+        &AnyAccelerator,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            HotkeyParseError::DuplicateAccelerator { accelerator, first, second }
+                if accelerator == "Control+Q"
+                    && *first == HotkeyAction::EnableTunMode
+                    && *second == HotkeyAction::DisableTunMode
         ),
-        Err(HotkeyParseError::DuplicateAccelerator(
-            "Control+Q".to_owned()
-        ))
+        "{error:?}"
     );
 }
 
 #[test]
 fn parse_rejects_what_the_platform_parser_refuses() {
-    assert_eq!(
-        HotkeyBindings::parse(
-            &entries(&["toggle_tun_mode,Control+DefinitelyNotAKey"]),
-            &PlatformAcceleratorValidator,
+    let error = HotkeyBindings::parse(
+        &entries(&["toggle_tun_mode,Control+DefinitelyNotAKey"]),
+        &PlatformAcceleratorValidator,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            HotkeyParseError::UnsupportedAccelerator { accelerator, .. }
+                if accelerator == "Control+DefinitelyNotAKey"
         ),
-        Err(HotkeyParseError::InvalidAccelerator(
-            "Control+DefinitelyNotAKey".to_owned()
-        )),
-        "the shape rules alone cannot tell a key name from a typo"
+        "the shape rules alone cannot tell a key name from a typo: {error:?}"
     );
     assert!(
         HotkeyBindings::parse(
@@ -132,15 +148,14 @@ fn equivalent_spellings_are_the_same_binding() {
         abbreviated.diff(&spelled_out).is_empty(),
         "rewriting a binding into the other spelling must not touch the OS"
     );
-    assert_eq!(
-        HotkeyBindings::parse(
-            &entries(&["enable_tun_mode,Ctrl+Q", "disable_tun_mode,Control+Q"]),
-            &PlatformAcceleratorValidator,
-        ),
-        Err(HotkeyParseError::DuplicateAccelerator(
-            "Control+Q".to_owned()
-        )),
-        "one grab cannot run two functions"
+    let error = HotkeyBindings::parse(
+        &entries(&["enable_tun_mode,Ctrl+Q", "disable_tun_mode,Control+Q"]),
+        &PlatformAcceleratorValidator,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&error, HotkeyParseError::DuplicateAccelerator { accelerator, .. } if accelerator == "Control+Q"),
+        "one grab cannot run two functions: {error:?}"
     );
 }
 
@@ -223,6 +238,7 @@ impl RecordingRegistrar {
     }
 }
 
+#[async_trait::async_trait]
 impl ShortcutRegistrar for RecordingRegistrar {
     fn validate(&self, accelerator: &str) -> Result<(), HotkeyParseError> {
         if self
@@ -232,17 +248,19 @@ impl ShortcutRegistrar for RecordingRegistrar {
             .iter()
             .any(|refused| refused == accelerator)
         {
-            return Err(HotkeyParseError::InvalidAccelerator(accelerator.to_owned()));
+            return Err(HotkeyParseError::EmptyKeySegment {
+                accelerator: accelerator.to_owned(),
+            });
         }
         Ok(())
     }
 
-    fn register(
+    async fn register(
         &self,
         accelerator: &str,
         action: HotkeyAction,
         sink: Arc<dyn HotkeyActionSink>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")
@@ -254,14 +272,17 @@ impl ShortcutRegistrar for RecordingRegistrar {
             .iter()
             .any(|failing| failing == accelerator)
         {
-            anyhow::bail!("the os refused the shortcut");
+            return Err(ShortcutError::RegisterShortcut {
+                accelerator: accelerator.to_owned(),
+                source: "the os refused the shortcut".into(),
+            });
         }
         *self.last_sink.lock().expect("sink") = Some(sink);
         *self.last_action.lock().expect("action") = Some(action);
         Ok(())
     }
 
-    fn unregister(&self, accelerator: &str) -> anyhow::Result<()> {
+    async fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")
@@ -273,12 +294,15 @@ impl ShortcutRegistrar for RecordingRegistrar {
             .iter()
             .any(|failing| failing == accelerator)
         {
-            anyhow::bail!("the os kept the shortcut");
+            return Err(ShortcutError::ReleaseShortcut {
+                accelerator: accelerator.to_owned(),
+                source: "the os kept the shortcut".into(),
+            });
         }
         Ok(())
     }
 
-    fn unregister_all(&self) -> anyhow::Result<()> {
+    async fn unregister_all(&self) -> Result<(), ShortcutError> {
         self.calls
             .lock()
             .expect("call log")
@@ -288,10 +312,23 @@ impl ShortcutRegistrar for RecordingRegistrar {
 }
 
 async fn client_with(registrar: Arc<RecordingRegistrar>) -> HotkeyClient {
-    HotkeyClient::spawn(HotkeyArgs {
-        registrar,
-        sink: Arc::new(MockHotkeyActionSink::new()),
-    })
+    owned_client(registrar, &CancellationToken::new(), &TaskTracker::new()).await
+}
+
+/// The same client, which releases its grabs once `shutdown` is cancelled.
+async fn owned_client(
+    registrar: Arc<RecordingRegistrar>,
+    shutdown: &CancellationToken,
+    tasks: &TaskTracker,
+) -> HotkeyClient {
+    HotkeyClient::spawn(
+        HotkeyArgs {
+            registrar,
+            sink: Arc::new(MockHotkeyActionSink::new()),
+            shutdown: shutdown.clone(),
+        },
+        tasks,
+    )
     .await
     .expect("the hotkey actor should start")
 }
@@ -375,7 +412,7 @@ async fn partial_registration_failure_degrades_and_keeps_successes() {
             ref message,
             retryable,
         } => {
-            assert_eq!(code, "hotkey_partial_registration");
+            assert_eq!(code, EffectFailureCode::HotkeyPartialRegistration);
             assert!(message.contains("1 of 2"), "{message}");
             assert!(message.contains("Control+B"), "{message}");
             assert!(retryable);
@@ -445,7 +482,7 @@ async fn reconcile_validates_every_binding_before_releasing_any() {
             ref message,
             retryable,
         } => {
-            assert_eq!(code, "hotkey_invalid_bindings");
+            assert_eq!(code, EffectFailureCode::HotkeyInvalidBindings);
             assert!(message.contains("Control+DefinitelyNotAKey"), "{message}");
             assert!(!retryable, "the list has to change before a retry can help");
         }
@@ -494,7 +531,8 @@ async fn stale_revision_is_superseded() {
 #[tokio::test]
 async fn exit_unregisters_all() {
     let registrar = RecordingRegistrar::new();
-    let client = client_with(registrar.clone()).await;
+    let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
+    let client = owned_client(registrar.clone(), &shutdown, &tasks).await;
     client
         .reconcile(
             EffectRevision::new(1),
@@ -503,27 +541,30 @@ async fn exit_unregisters_all() {
         .await;
     registrar.calls.lock().expect("call log").clear();
 
-    let status = client.unregister_all().await;
+    shutdown.cancel();
+    tasks.close();
+    tasks.wait().await;
 
-    assert_eq!(status.health, EffectHealth::Healthy);
     assert_eq!(registrar.calls(), vec!["unregister_all".to_owned()]);
-    assert!(client.status().await.registered.is_empty());
 }
 
 #[tokio::test]
-async fn reconcile_after_unregister_all_is_rejected() {
+async fn reconcile_after_the_cancel_is_rejected() {
     let registrar = RecordingRegistrar::new();
-    let client = client_with(registrar.clone()).await;
+    let (shutdown, tasks) = (CancellationToken::new(), TaskTracker::new());
+    let client = owned_client(registrar.clone(), &shutdown, &tasks).await;
     client
         .reconcile(
             EffectRevision::new(1),
             bindings(&["enable_tun_mode,Control+A"]),
         )
         .await;
-    client.unregister_all().await;
     registrar.calls.lock().expect("call log").clear();
 
-    // A plan admitted before the shutdown can still be in flight here.
+    shutdown.cancel();
+    tasks.close();
+    // Sent before this test yields, so it is queued ahead of the drain, the
+    // way a plan admitted before the shutdown can still be in flight.
     let status = client
         .reconcile(
             EffectRevision::new(2),
@@ -534,18 +575,17 @@ async fn reconcile_after_unregister_all_is_rejected() {
     assert_eq!(
         status.health,
         EffectHealth::Degraded {
-            code: "hotkey_shut_down",
-            message: "the hotkey owner released its shortcuts and stopped accepting changes"
-                .to_owned(),
+            code: EffectFailureCode::HotkeyShutDown,
+            message: "the hotkey owner is shutting down and stopped accepting changes".to_owned(),
             retryable: false,
         }
     );
-    assert!(
-        registrar.calls().is_empty(),
-        "an exiting process must not take a grab it will never give back: {:?}",
-        registrar.calls()
+    tasks.wait().await;
+    assert_eq!(
+        registrar.calls(),
+        vec!["unregister_all".to_owned()],
+        "an exiting process must not take a grab it will never give back"
     );
-    assert!(client.status().await.registered.is_empty());
 }
 
 #[tokio::test]
@@ -556,10 +596,14 @@ async fn callback_dispatches_action_to_sink() {
         .withf(|action| *action == HotkeyAction::ToggleSystemProxy)
         .times(1)
         .return_const(());
-    let client = HotkeyClient::spawn(HotkeyArgs {
-        registrar: registrar.clone(),
-        sink: Arc::new(sink),
-    })
+    let client = HotkeyClient::spawn(
+        HotkeyArgs {
+            registrar: registrar.clone(),
+            sink: Arc::new(sink),
+            shutdown: CancellationToken::new(),
+        },
+        &TaskTracker::new(),
+    )
     .await
     .expect("the hotkey actor should start");
 
@@ -584,11 +628,14 @@ mod facade {
     use nyanpasu_config::application::NyanpasuAppConfig;
     use tempfile::{TempDir, tempdir};
 
-    use super::super::ports::{HotkeyAction, MockWindowControl};
-    use crate::client::{
-        NyanpasuClient,
-        effects::ports::MockApplicationEffectsPort,
-        tests::{test_client_args_with_endpoint, test_idle_endpoint},
+    use super::super::ports::{HotkeyAction, HotkeyParseError, MockWindowControl};
+    use crate::{
+        client::{
+            ClientError, NyanpasuClient,
+            effects::ports::MockApplicationEffectsPort,
+            tests::{test_client_args_with_endpoint, test_idle_endpoint},
+        },
+        state::config_error::ConfigError,
     };
 
     fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
@@ -604,9 +651,12 @@ mod facade {
     /// A mode change would otherwise ask the core to drop connections, which
     /// the stub endpoint cannot answer.
     async fn disable_mode_interruption(client: &NyanpasuClient) {
+        use struct_patch::Patch as _;
         let mut config = client.get_clash_config().await.unwrap();
         config.break_connection.on_mode_change = false;
-        client.replace_clash_config(config).await.unwrap();
+        let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+        patch.break_connection = config.break_connection.into_patch();
+        client.patch_clash_config(patch).await.unwrap();
     }
 
     #[test]
@@ -720,7 +770,6 @@ mod facade {
         let dir = tempdir().expect("tempdir should be created");
         let mut effects = MockApplicationEffectsPort::new();
         effects.expect_apply().never();
-        effects.expect_shutdown().never();
         let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
         args.effects = Arc::new(effects);
         let client = NyanpasuClient::try_new_with_args(args).expect("client should construct");
@@ -734,8 +783,13 @@ mod facade {
                 .await
                 .expect_err("an accelerator the platform cannot parse must not be persisted");
             assert!(
-                error.to_string().contains("DefinitelyNotAKey"),
-                "unexpected error: {error}"
+                matches!(
+                    &error,
+                    ClientError::Config(ConfigError::ValidateHotkeys {
+                        source: HotkeyParseError::UnsupportedAccelerator { accelerator, .. },
+                    }) if accelerator == "Control+DefinitelyNotAKey"
+                ),
+                "unexpected error: {error:?}"
             );
             assert!(
                 client.get_app_config().await.unwrap().hotkeys.is_empty(),
@@ -758,8 +812,13 @@ mod facade {
                 .await
                 .expect_err("a hotkey without a modifier must not be persisted");
             assert!(
-                error.to_string().contains("super key"),
-                "unexpected error: {error}"
+                matches!(
+                    &error,
+                    ClientError::Config(ConfigError::ValidateHotkeys {
+                        source: HotkeyParseError::MissingSuperKey { accelerator },
+                    }) if accelerator == "Q"
+                ),
+                "unexpected error: {error:?}"
             );
             assert!(
                 client.get_app_config().await.unwrap().hotkeys.is_empty(),

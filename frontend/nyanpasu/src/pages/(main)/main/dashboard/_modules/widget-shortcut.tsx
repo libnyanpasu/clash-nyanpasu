@@ -12,6 +12,7 @@ import { m } from '@/paraglide/messages'
 import {
   useClashConfig,
   useClashCores,
+  useClashSetting,
   useCoreStatus,
   useSetting,
   useSystemProxy,
@@ -32,7 +33,7 @@ enum ProxyStatus {
 const ProxyTitleRow = () => {
   const { value: enableSystemProxy } = useSetting('enable_system_proxy')
 
-  const { value: enableTunMode } = useSetting('enable_tun_mode')
+  const { value: enableTunMode } = useClashSetting('enable_tun_mode')
 
   const { data: systemProxyStatus } = useSystemProxy()
 
@@ -206,7 +207,7 @@ const CoreStatusBadge = () => {
 const CurrentCoreCard = () => {
   const { query: clashCores } = useClashCores()
 
-  const { value: currentCoreKey } = useSetting('clash_core')
+  const { value: currentCoreKey } = useSetting('core')
 
   const currentCoreIcon = useCoreIcon(currentCoreKey)
 

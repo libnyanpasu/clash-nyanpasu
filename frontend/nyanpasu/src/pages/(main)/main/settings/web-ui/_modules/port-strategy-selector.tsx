@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
-import { ExternalControllerPortStrategy, useSetting } from '@nyanpasu/interface'
+import { useClashSetting, type PortStrategyKind } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -18,22 +18,18 @@ import {
 } from '../../_modules/settings-card'
 
 export default function PortStrategySelector() {
-  const { value, upsert } = useSetting('clash_strategy')
+  const { value, upsert } = useClashSetting('external_controller')
 
   const messages = {
     allow_fallback: m.settings_clash_settings_allow_fallback_label(),
     fixed: m.settings_clash_settings_fixed_label(),
     random: m.settings_clash_settings_random_label(),
-  } as Record<ExternalControllerPortStrategy, string>
+  } as Record<PortStrategyKind, string>
 
-  const current = value?.external_controller_port_strategy || 'allow_fallback'
+  const current = value?.port.kind || 'allow_fallback'
 
-  const handlePortStrategyChange = async (
-    value: ExternalControllerPortStrategy,
-  ) => {
-    await upsert({
-      external_controller_port_strategy: value,
-    })
+  const handlePortStrategyChange = async (kind: PortStrategyKind) => {
+    await upsert({ port: { kind } })
   }
 
   return (
@@ -67,9 +63,7 @@ export default function PortStrategySelector() {
             <DropdownMenuCheckboxItem
               checked={current === key}
               key={key}
-              onSelect={() =>
-                handlePortStrategyChange(key as ExternalControllerPortStrategy)
-              }
+              onSelect={() => handlePortStrategyChange(key as PortStrategyKind)}
             >
               {message}
             </DropdownMenuCheckboxItem>

@@ -2,18 +2,19 @@ import ArrowDownwardAltRounded from '~icons/material-symbols/arrow-downward-alt-
 import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-rounded'
 import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useDeferredValue, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { useScrollArea } from '@/components/ui/scroll-area'
+import { useScrollAreaViewport } from '@/components/ui/scroll-area'
 import {
   ClashProxiesQueryGroupItem,
+  ClashProxiesQueryProxyItem,
   useClashProxies,
   useProxyMode,
 } from '@nyanpasu/interface'
 import { useContainerBreakpointValue } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useCurrentGroupConnection } from '../_modules/hooks'
+import { useGroupTrafficSpeed } from '../_modules/hooks'
 import DelayTestButton from './_modules/delay-test-button'
 import GroupHeader from './_modules/group-header'
 import ProxyNodeButton from './_modules/proxy-node-button'
@@ -22,11 +23,50 @@ export const Route = createFileRoute('/(main)/main/proxies/group/$name')({
   component: RouteComponent,
 })
 
+// Every node card is as tall as the fab button's fixed h-14 plus the item's
+// p-1. A fixed size spares the virtualizer measuring each mounted card, which
+// forced a layout and a second render every time a group opened.
+const NODE_ITEM_HEIGHT = 64
+
+// Subscribes to connection samples on its own so each sample re-renders only
+// this label, not the node grid.
+function GroupTrafficSpeed({ groupName }: { groupName?: string }) {
+  const speed = useGroupTrafficSpeed(groupName)
+
+  return (
+    <>
+      <div className="flex items-center">
+        <ArrowDownwardAltRounded className="size-6" />
+
+        <span className="text-sm">
+          {filesize(speed.download, {
+            standard: 'iec',
+          })}
+          /s
+        </span>
+      </div>
+
+      <div className="flex items-center">
+        <ArrowUpwardAltRounded className="size-6" />
+
+        <span className="text-sm">
+          {filesize(speed.upload, {
+            standard: 'iec',
+          })}
+          /s
+        </span>
+      </div>
+    </>
+  )
+}
+
 function RouteComponent() {
   const { name: proxyGroupName } = Route.useParams()
 
   const {
     proxies: { data: proxies },
+    selectProxy,
+    updateProxiesDelay: { mutateAsync: mutateProxyDelay },
   } = useClashProxies()
 
   const { value: proxyMode } = useProxyMode()
@@ -39,7 +79,25 @@ function RouteComponent() {
     return proxies?.groups.find((group) => group.name === proxyGroupName)
   }, [proxies, proxyGroupName, proxyMode])
 
-  const { viewportRef } = useScrollArea()
+  const groupName = currentGroup?.name
+
+  const handleSelectProxy = useCallback(
+    async (proxy: ClashProxiesQueryProxyItem) => {
+      if (groupName) {
+        await selectProxy(groupName, proxy.name)
+      }
+    },
+    [groupName, selectProxy],
+  )
+
+  const handleDelayTest = useCallback(
+    async (proxy: ClashProxiesQueryProxyItem) => {
+      await mutateProxyDelay([proxy.name, proxy.provider])
+    },
+    [mutateProxyDelay],
+  )
+
+  const { viewportRef } = useScrollAreaViewport()
 
   // define the number of lanes based on the container breakpoint
   const lanes = useContainerBreakpointValue(
@@ -57,17 +115,22 @@ function RouteComponent() {
   const virtualizer = useVirtualizer({
     count: currentGroup?.all?.length || 0,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => 60,
+    estimateSize: () => NODE_ITEM_HEIGHT,
     overscan: 5,
     lanes,
-    measureElement: (element) => element?.getBoundingClientRect().height,
   })
 
   const virtualItems = virtualizer.getVirtualItems()
 
+  // Mounting the node cards is the bulk of opening a group. Router updates
+  // render synchronously, so the cards mount in a deferred render instead:
+  // the page commits and starts its transition at once, and React renders
+  // the cards in interruptible chunks right after.
+  const showNodes = useDeferredValue(true, false)
+
   const handleScrollToCurrentNode = useCallback(() => {
     const index = currentGroup?.all?.findIndex(
-      (proxy) => proxy.name === currentGroup?.now,
+      (name) => name === currentGroup?.now,
     )
 
     // unwarp undefined index
@@ -79,8 +142,6 @@ function RouteComponent() {
     }
   }, [currentGroup?.all, currentGroup?.now, virtualizer])
 
-  const currentGroupConnection = useCurrentGroupConnection(currentGroup)
-
   return (
     <>
       <GroupHeader>
@@ -91,27 +152,7 @@ function RouteComponent() {
             </div>
           </div>
 
-          <div className="flex items-center">
-            <ArrowDownwardAltRounded className="size-6" />
-
-            <span className="text-sm">
-              {filesize(currentGroupConnection?.download ?? 0, {
-                standard: 'iec',
-              })}
-              /s
-            </span>
-          </div>
-
-          <div className="flex items-center">
-            <ArrowUpwardAltRounded className="size-6" />
-
-            <span className="text-sm">
-              {filesize(currentGroupConnection?.upload ?? 0, {
-                standard: 'iec',
-              })}
-              /s
-            </span>
-          </div>
+          <GroupTrafficSpeed groupName={currentGroup?.name} />
         </div>
 
         <div className="flex-1" />
@@ -133,31 +174,37 @@ function RouteComponent() {
           height: `${virtualizer.getTotalSize()}px`,
         }}
       >
-        {virtualItems.map((virtualItem) => {
-          const proxy = currentGroup?.all?.[virtualItem.index]
+        {showNodes &&
+          virtualItems.map((virtualItem) => {
+            const name = currentGroup?.all?.[virtualItem.index]
+            const proxy = name ? proxies?.nodes[name] : undefined
 
-          if (!proxy) {
-            return null
-          }
+            if (!proxy) {
+              return null
+            }
 
-          return (
-            <div
-              key={virtualItem.index}
-              ref={virtualizer.measureElement}
-              className="group absolute top-0 left-0 p-1"
-              style={{
-                transform: `translateY(${virtualItem.start}px)`,
-                width: `${100 / lanes}%`,
-                left: `${virtualItem.lane * (100 / lanes)}%`,
-              }}
-              data-index={virtualItem.index}
-              data-slot="proxies-virtual-item"
-              data-active={String(proxy.name === currentGroup?.now)}
-            >
-              <ProxyNodeButton proxy={proxy} />
-            </div>
-          )
-        })}
+            return (
+              <div
+                key={virtualItem.index}
+                className="group absolute top-0 left-0 p-1"
+                style={{
+                  height: `${virtualItem.size}px`,
+                  transform: `translateY(${virtualItem.start}px)`,
+                  width: `${100 / lanes}%`,
+                  left: `${virtualItem.lane * (100 / lanes)}%`,
+                }}
+                data-index={virtualItem.index}
+                data-slot="proxies-virtual-item"
+                data-active={String(name === currentGroup?.now)}
+              >
+                <ProxyNodeButton
+                  proxy={proxy}
+                  onSelect={handleSelectProxy}
+                  onDelayTest={handleDelayTest}
+                />
+              </div>
+            )
+          })}
       </div>
 
       <DelayTestButton />

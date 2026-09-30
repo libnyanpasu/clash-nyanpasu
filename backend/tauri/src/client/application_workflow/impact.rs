@@ -1,16 +1,15 @@
 //! Pure impact classification for one configuration mutation.
 //!
-//! Two questions that must not be collapsed into one:
-//!
-//! - does the candidate move a *runtime build input*, so the critical part of
-//!   the mutation has to build, check and try it ([`RuntimeImpact`]);
-//! - which *peripheral owners* were handed new inputs, so only those may be
-//!   given a new desired target ([`ChangedOwnerInputs`]).
+//! One question: does the mutation reach the runtime, so its critical part has
+//! to build, check and try the candidate ([`runtime_impact`])? A source asks it
+//! before it opens its transaction, and only a mutation that does reach the
+//! runtime takes the Runtime owner into it. Which peripheral owners a commit
+//! hands new inputs is the effects owner's diff, not a question asked here.
 //!
 //! Every input is a parameter and every output is data: nothing here reads
-//! state, spawns work, or touches Tauri. The workflow composes the results.
+//! state, spawns work, or touches Tauri.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 
 use indexmap::IndexSet;
 use nyanpasu_config::{
@@ -24,12 +23,8 @@ use nyanpasu_config::{
     profile::{ManagedProfilePath, ProfileDefinition, ProfileId, Profiles},
 };
 
-use crate::{
-    client::effects::plan::{
-        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-    },
-    state::profiles::ProfilesActor,
-};
+use super::{mutation::MutationDomain, policy::CommandClass};
+use crate::state::profiles::ProfilesActor;
 
 /// How much of the running core a candidate forces to change.
 ///
@@ -40,11 +35,7 @@ use crate::{
 ///
 /// A rebuild and a control-channel change share one variant on purpose. Both
 /// come out of the same candidate and go to one reconcile, which picks reload
-/// or restart below the application layer (roadmap §6.2); this is where the
-/// classification stops copying [`runtime_apply_kind`], whose split exists so
-/// the facade can call one of two legacy entry points.
-///
-/// [`runtime_apply_kind`]: crate::client::effects::plan::runtime_apply_kind
+/// or restart below the application layer (roadmap §6.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum RuntimeImpact {
     /// No build input and no control-channel input moved. There is nothing
@@ -175,17 +166,20 @@ impl RequestedRuntimeFields {
         }
     }
 
-    /// The runtime-relevant fields a clash-config patch carries.
+    /// The runtime-relevant fields a clash-config patch carries. A composite
+    /// field takes a nested patch and is carried once any sub-field is.
     pub fn of_clash(patch: &ClashConfigPatch) -> Self {
+        use struct_patch::Status as _;
         Self {
             named: patch.overrides.is_some()
                 || patch.enable_clash_fields.is_some()
+                || patch.expand_include_all.is_some()
                 || patch.enable_tun_mode.is_some()
                 || patch.tun_stack.is_some()
-                || patch.mixed_port.is_some()
+                || !patch.mixed_port.is_empty()
                 || patch.socks_port.is_some()
                 || patch.http_port.is_some()
-                || patch.external_controller.is_some()
+                || !patch.external_controller.is_empty()
                 || patch.clash_control_channel.is_some()
                 || patch.clash_ipc_disable_http_controller.is_some(),
         }
@@ -263,7 +257,7 @@ impl MutationHints {
 /// - `enable_builtin_enhanced` gates that transform table.
 ///
 /// Every other field of [`NyanpasuAppConfig`] drives a peripheral owner or
-/// nothing at all, which is what [`ChangedOwnerInputs`] reports instead.
+/// nothing at all.
 #[derive(Debug, PartialEq, serde::Serialize)]
 struct ApplicationRuntimeInputs<'a> {
     enable_service_mode: bool,
@@ -271,14 +265,34 @@ struct ApplicationRuntimeInputs<'a> {
     enable_builtin_enhanced: bool,
 }
 
-impl<'a> ApplicationRuntimeInputs<'a> {
-    fn of(app: &'a NyanpasuAppConfig) -> Self {
-        Self {
-            enable_service_mode: app.enable_service_mode,
-            core: &app.core,
-            enable_builtin_enhanced: app.enable_builtin_enhanced,
-        }
+/// The fields of `app` the runtime reads, and nothing else.
+fn application_runtime_inputs(app: &NyanpasuAppConfig) -> ApplicationRuntimeInputs<'_> {
+    ApplicationRuntimeInputs {
+        enable_service_mode: app.enable_service_mode,
+        core: &app.core,
+        enable_builtin_enhanced: app.enable_builtin_enhanced,
     }
+}
+
+/// Whether a mutation reaches the runtime at all, and how far; `None` is a
+/// plain save the runtime takes no part in.
+///
+/// The request counts as much as the diff. An explicit switch, or a request
+/// that named a runtime field, owes the runtime a Try even when the documents
+/// are equal: re-selecting the running core or profile, or resubmitting an
+/// unconverged field, is a request for that runtime (R15), and a repeated mode
+/// switch still owes its connection interruption. A patch that spans runtime
+/// and other fields is one transaction and classifies as a whole.
+pub(crate) fn runtime_impact<T: MutationDomain>(
+    previous: &T,
+    candidate: &T,
+    hints: &MutationHints,
+    class: CommandClass,
+) -> Option<RuntimeImpact> {
+    let classified = T::classify(previous, candidate, hints);
+    let requested = class == CommandClass::ExplicitSwitch || hints.names_runtime_field();
+    (classified != RuntimeImpact::None || requested)
+        .then(|| classified.max(RuntimeImpact::Reconcile))
 }
 
 pub(crate) fn classify_application(
@@ -298,11 +312,21 @@ pub(crate) fn classify_application(
     }
 }
 
+/// Whether committing the candidate moves the runtime off the service host,
+/// which is what makes Confirm release the daemon.
+pub(crate) fn leaves_service_mode(
+    previous: &NyanpasuAppConfig,
+    candidate: &NyanpasuAppConfig,
+) -> bool {
+    classify_application(previous, candidate) == RuntimeImpact::HostSwitch
+        && !candidate.enable_service_mode
+}
+
 /// Every clash-config field the runtime build or the control channel reads.
 ///
 /// Enumerated from the real consumers rather than from a field whitelist:
 /// `RuntimeBuilder::build` reads `overrides`, `enable_clash_fields`,
-/// `enable_tun_mode` and `tun_stack`; `SessionPortResolver::resolve` turns the
+/// `expand_include_all`, `enable_tun_mode` and `tun_stack`; `SessionPortResolver::resolve` turns the
 /// four port strategies into the bindings written into the generated config;
 /// and `RuntimePreparation::prepare` turns the two channel fields into the
 /// core's local-IPC settings.
@@ -315,6 +339,7 @@ pub(crate) fn classify_application(
 struct ClashRuntimeInputs<'a> {
     overrides: &'a ClashGuardOverrides,
     enable_clash_fields: bool,
+    expand_include_all: bool,
     enable_tun_mode: bool,
     tun_stack: TunStack,
     mixed_port: &'a PortStrategy,
@@ -325,20 +350,20 @@ struct ClashRuntimeInputs<'a> {
     disable_http_controller: bool,
 }
 
-impl<'a> ClashRuntimeInputs<'a> {
-    fn of(clash: &'a ClashConfig) -> Self {
-        Self {
-            overrides: &clash.overrides,
-            enable_clash_fields: clash.enable_clash_fields,
-            enable_tun_mode: clash.enable_tun_mode,
-            tun_stack: clash.tun_stack,
-            mixed_port: &clash.mixed_port,
-            socks_port: clash.socks_port.as_ref(),
-            http_port: clash.http_port.as_ref(),
-            external_controller: &clash.external_controller,
-            control_channel: clash.clash_control_channel,
-            disable_http_controller: clash.clash_ipc_disable_http_controller,
-        }
+/// The fields of `clash` the runtime reads, and nothing else.
+fn clash_runtime_inputs(clash: &ClashConfig) -> ClashRuntimeInputs<'_> {
+    ClashRuntimeInputs {
+        overrides: &clash.overrides,
+        enable_clash_fields: clash.enable_clash_fields,
+        expand_include_all: clash.expand_include_all,
+        enable_tun_mode: clash.enable_tun_mode,
+        tun_stack: clash.tun_stack,
+        mixed_port: &clash.mixed_port,
+        socks_port: clash.socks_port.as_ref(),
+        http_port: clash.http_port.as_ref(),
+        external_controller: &clash.external_controller,
+        control_channel: clash.clash_control_channel,
+        disable_http_controller: clash.clash_ipc_disable_http_controller,
     }
 }
 
@@ -347,7 +372,7 @@ impl<'a> ClashRuntimeInputs<'a> {
 /// One verdict for build inputs and control-channel inputs alike: they are
 /// decided by the same candidate and settled by one reconcile (roadmap §6.2).
 pub(crate) fn classify_clash(previous: &ClashConfig, candidate: &ClashConfig) -> RuntimeImpact {
-    if ClashRuntimeInputs::of(previous) == ClashRuntimeInputs::of(candidate) {
+    if clash_runtime_inputs(previous) == clash_runtime_inputs(candidate) {
         RuntimeImpact::None
     } else {
         RuntimeImpact::Reconcile
@@ -381,7 +406,7 @@ pub(crate) fn classify_profiles(
     // `global_transforms` is compared as a list, not through the closure: the
     // closure is a set, and reordering the global transforms leaves it equal
     // while changing the order they run in.
-    if previous.current != candidate.current
+    if selection_changed(previous, candidate)
         || previous.global_transforms != candidate.global_transforms
         || previous.valid != candidate.valid
         || before != after
@@ -422,6 +447,12 @@ pub(crate) fn classify_profiles(
     RuntimeImpact::None
 }
 
+/// Whether the candidate selects a different current profile, which is what
+/// interrupts connections on a profile change.
+pub(crate) fn selection_changed(previous: &Profiles, candidate: &Profiles) -> bool {
+    previous.current != candidate.current
+}
+
 /// The runtime target a candidate asks for, as a stable identity.
 ///
 /// This is the same projection the classification above reads, and that is the
@@ -435,11 +466,11 @@ pub(crate) fn classify_profiles(
 /// `None` when the projection cannot be serialized. A target with no identity
 /// is never treated as equal to another one.
 pub(crate) fn application_target(candidate: &NyanpasuAppConfig) -> Option<String> {
-    digest(&ApplicationRuntimeInputs::of(candidate))
+    digest(&application_runtime_inputs(candidate))
 }
 
 pub(crate) fn clash_target(candidate: &ClashConfig) -> Option<String> {
-    digest(&ClashRuntimeInputs::of(candidate))
+    digest(&clash_runtime_inputs(candidate))
 }
 
 /// The profiles projection is the runtime dependency closure of the candidate
@@ -505,53 +536,10 @@ fn closure_files<'a>(
         .collect()
 }
 
-/// The peripheral owners whose *inputs* a candidate moves.
-///
-/// Only an owner listed here may be handed a new desired target (roadmap §9.1).
-/// A language change must not raise the system proxy's target generation: doing
-/// so would let any unrelated save reset that owner's retry budget.
-///
-/// This is not "the owner has converged". An owner absent here can still be
-/// holding a target it never managed to apply. That fact lives in the owner's
-/// own `EffectStatus`, where `applied_revision` trails `desired_revision`, and
-/// the scheduler combines the two — it is never folded into this projection,
-/// because then "nothing changed for you" and "you are behind" would be one
-/// indistinguishable signal.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ChangedOwnerInputs(BTreeSet<EffectKind>);
-
-impl ChangedOwnerInputs {
-    /// Reuses the effect plan's struct-patch diff, so an owner appears here on
-    /// exactly the inputs that would produce its effect.
-    pub fn diff(previous: &ApplicationEffectInputs, candidate: &ApplicationEffectInputs) -> Self {
-        Self(
-            ApplicationEffectPlan::diff(previous, candidate)
-                .effects()
-                .iter()
-                .map(ApplicationEffect::kind)
-                .collect(),
-        )
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Read by the post-commit dispatch that hands each owner its new target
-    /// (T7); the workflow itself only asks whether any owner moved.
-    #[allow(dead_code)]
-    pub fn contains(&self, kind: EffectKind) -> bool {
-        self.0.contains(&kind)
-    }
-
-    #[allow(dead_code)]
-    pub fn kinds(&self) -> &BTreeSet<EffectKind> {
-        &self.0
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
     use nyanpasu_config::{
         application::{
@@ -560,7 +548,15 @@ mod tests {
         },
         clash::config::{
             ClashConfigPatch,
-            clash_strategy::{break_connection::ProxyChangeBreakMode, port::PortStrategy},
+            clash_strategy::{
+                break_connection::{
+                    BreakConnectionStrategy, BreakConnectionStrategyPatch, ProxyChangeBreakMode,
+                },
+                port::{
+                    ExternalControllerStrategyPatch, PortStrategy, PortStrategyKind,
+                    PortStrategyPatch,
+                },
+            },
             overrides::{ClashGuardOverridesPatch, LogLevel, Mode},
         },
         profile::{
@@ -572,7 +568,10 @@ mod tests {
     use struct_patch::Patch as _;
 
     use crate::{
-        client::effects::status::{EffectHealth, EffectRevision, EffectStatus},
+        client::effects::{
+            plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
+            status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+        },
         enhance::golden_support,
     };
 
@@ -610,15 +609,19 @@ mod tests {
         )
     }
 
+    /// The owners the effect plan hands a new target, in kind order.
     fn owners(
         previous: &ApplicationEffectInputs,
         candidate: &ApplicationEffectInputs,
     ) -> Vec<EffectKind> {
-        ChangedOwnerInputs::diff(previous, candidate)
-            .kinds()
+        let mut kinds: Vec<EffectKind> = ApplicationEffectPlan::diff(previous, candidate)
+            .effects()
             .iter()
-            .copied()
-            .collect()
+            .map(ApplicationEffect::kind)
+            .collect();
+        kinds.sort();
+        kinds.dedup();
+        kinds
     }
 
     fn overrides_patch(patch: ClashGuardOverridesPatch) -> ClashConfig {
@@ -652,7 +655,8 @@ mod tests {
                 field: "core",
                 mutate: |app| app.core = ClashCore::ClashRs,
                 impact: RuntimeImpact::CoreSwap,
-                owners: &[],
+                // Only a Premium core offers the tray's script mode item.
+                owners: &[EffectKind::Tray],
             },
             AppCase {
                 field: "enable_builtin_enhanced",
@@ -677,6 +681,12 @@ mod tests {
             AppCase {
                 field: "max_log_files",
                 mutate: |app| app.max_log_files = 14,
+                impact: RuntimeImpact::None,
+                owners: &[EffectKind::Logger],
+            },
+            AppCase {
+                field: "max_log_file_size",
+                mutate: |app| app.max_log_file_size = 20,
                 impact: RuntimeImpact::None,
                 owners: &[EffectKind::Logger],
             },
@@ -919,7 +929,7 @@ mod tests {
             RuntimeImpact::None
         );
         assert!(
-            ChangedOwnerInputs::diff(
+            owners(
                 &effect_inputs(&base_app(), &clash),
                 &effect_inputs(&base_app(), &clash)
             )
@@ -1027,6 +1037,14 @@ mod tests {
             field: "enable_clash_fields",
             candidate: || ClashConfig {
                 enable_clash_fields: !base_clash().enable_clash_fields,
+                ..base_clash()
+            },
+            impact: RuntimeImpact::Reconcile,
+        },
+        ClashCase {
+            field: "expand_include_all",
+            candidate: || ClashConfig {
+                expand_include_all: !base_clash().expand_include_all,
                 ..base_clash()
             },
             impact: RuntimeImpact::Reconcile,
@@ -1164,6 +1182,28 @@ mod tests {
         assert_eq!(
             classify_clash(&base_clash(), &base_clash()),
             RuntimeImpact::None
+        );
+    }
+
+    #[test]
+    fn a_mode_change_is_both_a_rebuild_and_a_tray_input() {
+        let previous = base_clash();
+        let candidate = overrides_patch(ClashGuardOverridesPatch {
+            mode: Some(Mode::Direct),
+            ..ClashGuardOverridesPatch::default()
+        });
+        let app = base_app();
+
+        assert_eq!(
+            classify_clash(&previous, &candidate),
+            RuntimeImpact::Reconcile
+        );
+        assert_eq!(
+            owners(
+                &effect_inputs(&app, &previous),
+                &effect_inputs(&app, &candidate)
+            ),
+            vec![EffectKind::Tray],
         );
     }
 
@@ -1339,7 +1379,94 @@ mod tests {
         );
     }
 
-    /// Metadata is the SaveOnly case: no build stage reads it, not even for the
+    /// V13: whether a mutation reaches the runtime reads the request as much as
+    /// the diff, and a patch that spans both kinds of field is one mutation.
+    /// The profiles rows live with the profiles actor, which derives the hints
+    /// and class they are classified with.
+    #[test]
+    fn runtime_impact_reads_the_request_and_the_diff_together() {
+        let (save, switch) = (CommandClass::Save, CommandClass::ExplicitSwitch);
+        let unnamed = MutationHints::default();
+        let named = MutationHints {
+            requested: RequestedRuntimeFields::runtime(),
+            ..MutationHints::default()
+        };
+
+        let app = base_app();
+        let mut theme = app.clone();
+        theme.theme_mode = ThemeMode::Dark;
+        let mut host = app.clone();
+        host.enable_service_mode = true;
+        let mut mixed = theme.clone();
+        mixed.core = ClashCore::ClashRs;
+        for (case, candidate, class, hints, expected) in [
+            (
+                "relevant",
+                &host,
+                save,
+                &unnamed,
+                Some(RuntimeImpact::HostSwitch),
+            ),
+            ("irrelevant", &theme, save, &unnamed, None),
+            (
+                "mixed",
+                &mixed,
+                save,
+                &unnamed,
+                Some(RuntimeImpact::CoreSwap),
+            ),
+            (
+                "same core or host",
+                &app,
+                switch,
+                &unnamed,
+                Some(RuntimeImpact::Reconcile),
+            ),
+            (
+                "same field, named",
+                &app,
+                save,
+                &named,
+                Some(RuntimeImpact::Reconcile),
+            ),
+            ("same document, unnamed", &app, save, &unnamed, None),
+        ] {
+            assert_eq!(
+                runtime_impact(&app, candidate, hints, class),
+                expected,
+                "app: {case}"
+            );
+        }
+
+        let clash = base_clash();
+        let mut web_ui = clash.clone();
+        web_ui.web_ui_list.push("http://127.0.0.1:9090/ui".into());
+        let mode = overrides_patch(ClashGuardOverridesPatch {
+            mode: Some(Mode::Direct),
+            ..ClashGuardOverridesPatch::default()
+        });
+        let mut mixed = mode.clone();
+        mixed.web_ui_list = web_ui.web_ui_list.clone();
+        for (case, candidate, hints, expected) in [
+            ("relevant", &mode, &unnamed, Some(RuntimeImpact::Reconcile)),
+            ("irrelevant", &web_ui, &unnamed, None),
+            ("mixed", &mixed, &unnamed, Some(RuntimeImpact::Reconcile)),
+            (
+                "same field, named",
+                &clash,
+                &named,
+                Some(RuntimeImpact::Reconcile),
+            ),
+        ] {
+            assert_eq!(
+                runtime_impact(&clash, candidate, hints, save),
+                expected,
+                "clash: {case}"
+            );
+        }
+    }
+
+    /// Metadata is a plain save: no build stage reads it, not even for the
     /// profile that is running.
     #[test]
     fn profile_metadata_has_no_runtime_impact() {
@@ -1380,12 +1507,12 @@ mod tests {
         let mut candidate = base_app();
         candidate.language = I18nLanguage::SimplifiedChinese;
 
-        let changed = ChangedOwnerInputs::diff(
+        let changed = owners(
             &effect_inputs(&previous, &clash),
             &effect_inputs(&candidate, &clash),
         );
         assert!(
-            !changed.contains(EffectKind::SystemProxy),
+            !changed.contains(&EffectKind::SystemProxy),
             "a language change must not raise the system proxy's target"
         );
 
@@ -1396,7 +1523,7 @@ mod tests {
             desired_revision: EffectRevision::new(4),
             applied_revision: EffectRevision::new(3),
             health: EffectHealth::Degraded {
-                code: "system_proxy_apply_failed",
+                code: EffectFailureCode::SystemProxyApplyFailed,
                 message: "os refused".to_owned(),
                 retryable: true,
             },
@@ -1414,7 +1541,7 @@ mod tests {
 
         assert_eq!(classify_clash(&previous, &candidate), RuntimeImpact::None);
         assert!(
-            ChangedOwnerInputs::diff(
+            owners(
                 &effect_inputs(&app, &previous),
                 &effect_inputs(&app, &candidate)
             )
@@ -1460,7 +1587,7 @@ mod tests {
         assert!(
             !RequestedRuntimeFields::of_clash(&ClashConfigPatch {
                 web_ui_list: Some(vec!["http://127.0.0.1:9090/ui".into()]),
-                break_connection: Some(Default::default()),
+                break_connection: BreakConnectionStrategy::default().into_patch(),
                 ..ClashConfigPatch::default()
             })
             .names_any()
@@ -1474,7 +1601,7 @@ mod tests {
         assert_eq!(
             RequestedRuntimeFields::of_clash(&ClashConfigPatch {
                 enable_tun_mode: Some(true),
-                mixed_port: Some(PortStrategy::default()),
+                mixed_port: PortStrategy::default().into_patch(),
                 web_ui_list: Some(Vec::new()),
                 ..ClashConfigPatch::default()
             }),
@@ -1500,6 +1627,63 @@ mod tests {
             !RequestedRuntimeFields::of_clash_overrides(&ClashGuardOverridesPatch::default())
                 .names_any()
         );
+    }
+
+    /// A composite clash field is patched one sub-field at a time. Carrying any
+    /// sub-field names the field as carrying the whole value did, and the
+    /// verdict still comes from the committed candidate alone.
+    #[test]
+    fn a_nested_clash_patch_classifies_like_the_whole_value() {
+        let cases = [
+            (
+                "mixed_port.start_port",
+                ClashConfigPatch {
+                    mixed_port: PortStrategyPatch {
+                        start_port: Some(7891),
+                        ..PortStrategyPatch::default()
+                    },
+                    ..ClashConfigPatch::default()
+                },
+                RuntimeImpact::Reconcile,
+            ),
+            (
+                "external_controller.port.kind",
+                ClashConfigPatch {
+                    external_controller: ExternalControllerStrategyPatch {
+                        port: PortStrategyPatch {
+                            kind: Some(PortStrategyKind::Fixed),
+                            ..PortStrategyPatch::default()
+                        },
+                        ..ExternalControllerStrategyPatch::default()
+                    },
+                    ..ClashConfigPatch::default()
+                },
+                RuntimeImpact::Reconcile,
+            ),
+            (
+                "break_connection.on_mode_change",
+                ClashConfigPatch {
+                    break_connection: BreakConnectionStrategyPatch {
+                        on_mode_change: Some(false),
+                        ..BreakConnectionStrategyPatch::default()
+                    },
+                    ..ClashConfigPatch::default()
+                },
+                RuntimeImpact::None,
+            ),
+        ];
+        for (field, patch, impact) in cases {
+            let previous = base_clash();
+            let mut candidate = base_clash();
+            let requested = RequestedRuntimeFields::of_clash(&patch);
+            candidate.apply(patch);
+            assert_eq!(classify_clash(&previous, &candidate), impact, "{field}");
+            assert_eq!(
+                requested.names_any(),
+                impact != RuntimeImpact::None,
+                "{field} names its runtime field"
+            );
+        }
     }
 
     /// The profiles selection has no patch field: a request expresses it as an

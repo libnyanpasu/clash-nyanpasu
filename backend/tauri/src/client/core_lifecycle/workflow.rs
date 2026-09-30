@@ -3,17 +3,29 @@ use std::sync::Arc;
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
+use snafu::{ResultExt, ensure};
 
 use super::{
-    super::{SessionPortResolver, runtime},
+    super::{
+        SessionPortResolver,
+        runtime::{self, PublishRuntimeError},
+        runtime_error::{
+            ApplyRuntimeSnafu, InstallCoreBinarySnafu, InstallServiceSnafu, PublishRuntimeSnafu,
+            RecoverRuntimeSnafu, RecoverServiceEndpointSnafu, RefreshStatusSnafu,
+            ResolveCoreBinarySnafu, RestartServiceSnafu, RuntimeError, ServiceHostsCoreSnafu,
+            StartServiceSnafu, StopCoreSnafu, StopServiceSnafu, UninstallServiceSnafu,
+        },
+    },
     Command, Output,
     ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
 };
 use crate::core::actor_v2::{
     EndpointConnectivity, HandoffReport,
     endpoint::{ExecutionHost, wire_core_type_to_kind},
-    facade::{CoreFacade, ReconcileReport, ReconcileResult, RolledBackReport, UncertainReconcile},
-    service_actor::ServicePhase,
+    facade::{
+        CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
+        StopReport, UncertainReconcile,
+    },
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -27,10 +39,33 @@ pub(in crate::client) struct CoreLifecycleWorkflow {
     /// confirms a candidate when the core accepts it and ends the confirmed
     /// binding when the core stops.
     pub ports: Arc<SessionPortResolver>,
-    // A lost lower-level reply is not evidence its side effects have finished.
-    pub uncertain: bool,
     pub recovery: ServiceRecovery,
     pub closing: tokio_util::sync::CancellationToken,
+    /// Which host is proven to own the runtime. Only a reestablish attempt's
+    /// S2/S3, a completed host move and the constructor write it; a stop
+    /// never does (T10 §1.7).
+    pub ownership: Ownership,
+    /// The config dir this instance installs the daemon with. A daemon that
+    /// reports another one serves another instance of the app.
+    pub instance_config_dir: std::path::PathBuf,
+}
+
+/// Whether the application has proven which host owns the runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Ownership {
+    /// Nothing rules out a second instance on the other host.
+    Unproven,
+    /// `host` owns the runtime, and the other host is proven not to hold one.
+    Established { host: ExecutionHost },
+}
+
+/// The host `enable_service_mode` asks for.
+pub(in crate::client) fn desired_host(application: &NyanpasuAppConfig) -> ExecutionHost {
+    if application.enable_service_mode {
+        ExecutionHost::Service
+    } else {
+        ExecutionHost::Local
+    }
 }
 
 /// A connection retry budget, separate from the OS daemon restart budget the
@@ -43,10 +78,9 @@ pub(in crate::client) struct ServiceRecovery {
     attempts: u8,
     suppressed: bool,
     intent: CoreIntent,
-    /// Queued ticks coalesce into one flag, so a tick that arrived during a
-    /// long attempt would otherwise fire the next one immediately. This is
-    /// what makes the interval a floor between attempts rather than between
-    /// their starts.
+    /// Ticks queue up behind a long attempt, so the first one after it would
+    /// otherwise fire the next one immediately. This is what makes the
+    /// interval a floor between attempts rather than between their starts.
     next_attempt: Option<tokio::time::Instant>,
 }
 
@@ -99,10 +133,6 @@ impl ServiceRecovery {
     }
 }
 
-pub(in crate::client) fn domain_error(error: impl std::fmt::Display) -> CoreError {
-    CoreError::new(CoreErrorKind::Internal, error.to_string(), false)
-}
-
 /// What one submitted candidate did to the running core.
 ///
 /// The three answers are kept apart because they need opposite handling: an
@@ -130,63 +160,26 @@ impl CoreLifecycleWorkflow {
         &mut self,
         command: Command,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<Output, CoreError> {
+    ) -> Result<Output, RuntimeError> {
         match command {
             Command::RecoverServiceEndpoint => {
                 self.recover_service_endpoint(preparation).await?;
                 Ok(Output::Unit)
             }
-            Command::ApplyControlChannel => {
-                let status = self.core.refresh_status().await?;
-                if !matches!(
-                    status.snapshot.and_then(|s| s.state),
-                    Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
-                ) {
-                    self.reconcile(preparation).await?;
-                }
-                Ok(Output::Unit)
-            }
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
-            Command::RuntimeDirty => {
-                self.reconcile(preparation).await?;
-                Ok(Output::Unit)
-            }
-            Command::ChangeHost(host) => {
-                let report = self
-                    .core
-                    .change_execution_host(host)
+            #[cfg(test)]
+            Command::ChangeHost(host) => Ok(Output::Handoff(
+                self.move_execution_host(host)
                     .await
-                    .map_err(|failure| failure.error)?;
-                self.follow_host();
-                self.note_interrupted_core(report.interrupted_running());
-                Ok(Output::Handoff(report))
-            }
-            Command::SetExecutionHost(service_mode) => {
-                let effect = self.set_host(service_mode, preparation).await;
-                let degradations = effect.err().map_or_else(Vec::new, |error| {
-                    vec![runtime::Degradation {
-                        phase: runtime::DegradationPhase::SystemEffect,
-                        code: "service_host_transition_failed".into(),
-                        message: error.message,
-                        retryable: error.retryable,
-                    }]
-                });
-                Ok(Output::Mutation(runtime::MutationOutcome::from_parts(
-                    (),
-                    degradations,
-                )))
-            }
-            Command::RestoreExecutionHost => {
-                if self.application.load().state.enable_service_mode {
-                    let report = self.core.adopt_service_host().await?;
-                    self.recovery.rearm();
-                    self.note_interrupted_core(report.interrupted_running());
-                }
-                Ok(Output::Unit)
-            }
+                    .map_err(|failure| failure.error)
+                    .context(ApplyRuntimeSnafu)?,
+            )),
             Command::ReplaceCoreBinary(artifact) => {
-                self.replace_binary(artifact, preparation).await?;
-                Ok(Output::Unit)
+                Ok(if self.replace_binary(artifact, preparation).await? {
+                    Output::RestartWithheld
+                } else {
+                    Output::Unit
+                })
             }
             Command::StopCore => {
                 // A stop the user asked for outlives both its own failure and
@@ -194,52 +187,56 @@ impl CoreLifecycleWorkflow {
                 // Running when the endpoint degrades a moment later, and
                 // recovery must not read that as a reason to start the core.
                 self.recovery.intent = CoreIntent::Stopped;
-                let report = self.core.stop().await?;
+                let report = self.core.stop().await.context(StopCoreSnafu)?;
                 // Nothing holds those ports any more. A later reader must get
                 // "unavailable", never the endpoint the stopped core used.
                 self.ports.invalidate();
                 Ok(Output::Stop(report))
             }
-            Command::RecoverCore => Ok(Output::Recover(self.core.recover().await?)),
-            Command::ProbeService => {
-                Ok(Output::Service(Box::new(self.core.probe_service().await?)))
-            }
             Command::InstallService => {
-                self.core.install_service().await?;
+                self.core
+                    .install_service()
+                    .await
+                    .context(InstallServiceSnafu)?;
                 Ok(Output::Unit)
             }
             Command::StartService => {
-                self.core.start_service().await?;
+                self.core.start_service().await.context(StartServiceSnafu)?;
                 self.recovery.rearm();
                 Ok(Output::Unit)
             }
             Command::StopService => {
                 self.recovery.suppress();
-                self.core.stop_service().await?;
+                self.core.stop_service().await.context(StopServiceSnafu)?;
                 Ok(Output::Unit)
             }
             Command::RestartService => {
-                self.core.stop_service().await?;
-                self.core.start_service().await?;
+                self.core
+                    .stop_service()
+                    .await
+                    .context(RestartServiceSnafu)?;
+                self.core
+                    .start_service()
+                    .await
+                    .context(RestartServiceSnafu)?;
                 self.recovery.rearm();
                 Ok(Output::Unit)
             }
             Command::UninstallService => {
-                if self.core.core_status().host == ExecutionHost::Service {
-                    return Err(CoreError::new(
-                        CoreErrorKind::OperationConflict,
-                        "handoff to the local host before uninstalling the service",
-                        false,
-                    ));
-                }
+                ensure!(
+                    self.core.core_status().host != ExecutionHost::Service,
+                    ServiceHostsCoreSnafu
+                );
                 // Past the ownership guard the intent is committed, so a
                 // half-finished uninstall still suppresses recovery. A refusal
                 // above changed nothing and must leave the policy alone.
                 self.recovery.suppress();
-                self.core.uninstall_service().await?;
+                self.core
+                    .uninstall_service()
+                    .await
+                    .context(UninstallServiceSnafu)?;
                 Ok(Output::Unit)
             }
-            Command::Shutdown => Ok(Output::Shutdown(self.core.shutdown().await)),
         }
     }
 
@@ -313,6 +310,46 @@ impl CoreLifecycleWorkflow {
         self.recovery.intent == CoreIntent::Stopped
     }
 
+    /// An explicit start takes back the stop recorded before it (T10 §1.4).
+    /// A restoration still owed is not a stop, and stays owed; a stop asked
+    /// for after this is recorded, and honoured, again.
+    pub fn withdraw_stop_intent(&mut self) {
+        if self.recovery.intent == CoreIntent::Stopped {
+            self.recovery.intent = CoreIntent::Idle;
+        }
+    }
+
+    /// Whether a path that starts the core may do so (T10 §1.7): the proven
+    /// owner is both the host the router drives and the host the user asked
+    /// for.
+    pub fn start_permitted(&self) -> bool {
+        let desired = desired_host(&self.application.load().state);
+        self.ownership == Ownership::Established { host: desired }
+            && self.core.core_status().host == desired
+    }
+
+    /// Hands the runtime to a daemon that is already `Ready`, and never
+    /// converges one: no install, no daemon start, no elevation prompt
+    /// (T10 §1.3). Proving who owns the runtime afterwards is the caller's.
+    pub(in crate::client) async fn adopt_ready_service(
+        &mut self,
+    ) -> Result<HandoffReport, HostChangeFailure> {
+        let report = self.core.adopt_service_host().await?;
+        self.follow_host();
+        self.note_interrupted_core(report.interrupted_running());
+        Ok(report)
+    }
+
+    /// Stops a running core this session holds no receipt for, and ends the
+    /// binding it may be holding. The stop intent is left alone: retiring an
+    /// instance the application cannot vouch for is not the user asking for
+    /// a stop (T10 §1.4).
+    pub(in crate::client) async fn retire_unreceipted(&mut self) -> Result<StopReport, CoreError> {
+        let stopped = self.core.stop().await;
+        self.ports.invalidate();
+        stopped
+    }
+
     pub fn recovery_due(&self) -> bool {
         !self.recovery.suppressed
             && self.recovery.attempts < RECOVERY_BUDGET
@@ -327,14 +364,14 @@ impl CoreLifecycleWorkflow {
     async fn recover_service_endpoint(
         &mut self,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), RuntimeError> {
         if !self.recovery_due() {
             return Ok(());
         }
         self.recovery.attempts += 1;
         let result = self.recovery_attempt(preparation).await;
         self.recovery.next_attempt = Some(tokio::time::Instant::now() + super::RECOVERY_INTERVAL);
-        if result.as_ref().is_err_and(|e: &CoreError| !e.retryable) {
+        if result.as_ref().is_err_and(|e| !e.retryable()) {
             // Paused, not abandoned: a terminal failure ends the automatic
             // retries, and an explicit Service start still has a restoration
             // to finish.
@@ -351,12 +388,16 @@ impl CoreLifecycleWorkflow {
     async fn recovery_attempt(
         &mut self,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<(), CoreError> {
+    ) -> Result<(), RuntimeError> {
         if matches!(
             self.core.core_status().connectivity,
             EndpointConnectivity::Degraded { .. }
         ) {
-            let report = self.core.recover_service_endpoint(&self.closing).await?;
+            let report = self
+                .core
+                .recover_service_endpoint(&self.closing)
+                .await
+                .context(RecoverServiceEndpointSnafu)?;
             self.note_interrupted_core(report.interrupted_running());
         }
         if self.closing.is_cancelled() || self.recovery.intent != CoreIntent::Restore {
@@ -367,7 +408,8 @@ impl CoreLifecycleWorkflow {
         match self
             .core
             .refresh_status()
-            .await?
+            .await
+            .context(RefreshStatusSnafu)?
             .snapshot
             .and_then(|s| s.state)
         {
@@ -375,8 +417,10 @@ impl CoreLifecycleWorkflow {
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. }) => {
                 self.recovery.intent = CoreIntent::Idle;
             }
+            // Restoring the interrupted core is a start, and only a proven
+            // owner of the desired host may make it (T10 §1.7 #6).
             Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
-                if !self.closing.is_cancelled() =>
+                if !self.closing.is_cancelled() && self.start_permitted() =>
             {
                 // Every phase boundary this workflow owns is checked, but a
                 // cancel landing inside the build or the submission still
@@ -393,47 +437,24 @@ impl CoreLifecycleWorkflow {
         Ok(())
     }
 
-    async fn set_host(
-        &mut self,
-        service_mode: bool,
-        preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<(), CoreError> {
-        let host = if service_mode {
-            ExecutionHost::Service
-        } else {
-            ExecutionHost::Local
-        };
-        let report = self
-            .move_execution_host(host)
-            .await
-            .map_err(|failure| failure.error)?;
-        if matches!(report, HandoffReport::Completed { .. }) {
-            self.reconcile(preparation).await?;
-        }
-        if !service_mode
-            && !matches!(
-                self.core.service_status().phase,
-                ServicePhase::NotInstalled | ServicePhase::DaemonStopped
-            )
-        {
-            self.core.stop_service().await?;
-        }
-        Ok(())
-    }
-
     /// Moves ownership of the runtime to `host` and nothing else.
     ///
     /// A completed handoff leaves the runtime stopped awaiting a reconcile, so
     /// every caller owes one — with the candidate it is trying, or with the
-    /// baseline it is putting back. That is why this is separate from
-    /// [`CoreLifecycleWorkflow::set_host`], which follows it with the committed
-    /// configuration: a Try has a candidate that is not committed yet, and a
-    /// Cancel has a receipt rather than a configuration to rebuild (v2 §5.3).
+    /// baseline it is putting back. It never rebuilds the committed
+    /// configuration itself: a Try has a candidate that is not committed yet,
+    /// and a Cancel has a receipt rather than a configuration to rebuild
+    /// (v2 §5.3).
     pub(in crate::client) async fn move_execution_host(
         &mut self,
         host: ExecutionHost,
     ) -> Result<HandoffReport, crate::core::actor_v2::facade::HostChangeFailure> {
         let report = self.core.change_execution_host(host).await?;
+        // A completed handoff proved the source stopped before the target
+        // was adopted, which is the ownership proof itself.
+        if report.completed() {
+            self.ownership = Ownership::Established { host };
+        }
         // The host moved; whatever the caller does next is a follow-up effect
         // whose failure must not put the policy back on the old host.
         self.follow_host();
@@ -444,7 +465,7 @@ impl CoreLifecycleWorkflow {
     async fn reconcile(
         &mut self,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<ReconcileReport, CoreError> {
+    ) -> Result<ReconcileReport, RuntimeError> {
         let prepared = preparation.prepare_latest().await?;
         self.apply_runtime(prepared, preparation).await
     }
@@ -453,28 +474,32 @@ impl CoreLifecycleWorkflow {
         &mut self,
         prepared: PreparedRuntime,
         preparation: &dyn RuntimePreparationPort,
-    ) -> Result<ReconcileReport, CoreError> {
+    ) -> Result<ReconcileReport, RuntimeError> {
         preparation
             .publish(&prepared.snapshot)
             .await
-            .map_err(domain_error)?;
+            .context(PublishRuntimeSnafu)?;
         // Promoted means the product was published, not that the host applied it.
         self.runtime.generated(prepared.snapshot.clone());
-        let expected = self.core.refresh_status().await?;
+        let expected = self
+            .core
+            .refresh_status()
+            .await
+            .context(RefreshStatusSnafu)?;
         match self
             .submit_runtime(prepared, preparation, &expected)
             .await?
         {
             RuntimeSubmission::Applied { report, .. } => Ok(report),
             RuntimeSubmission::NotSubmitted(error) | RuntimeSubmission::Unchanged(error) => {
-                Err(error)
+                Err(error).context(ApplyRuntimeSnafu)
             }
-            RuntimeSubmission::RolledBack(report) => {
-                ReconcileResult::RolledBack(report).into_applied()
-            }
-            RuntimeSubmission::Unknown(uncertain) => {
-                ReconcileResult::Unknown(uncertain).into_applied()
-            }
+            RuntimeSubmission::RolledBack(report) => ReconcileResult::RolledBack(report)
+                .into_applied()
+                .context(ApplyRuntimeSnafu),
+            RuntimeSubmission::Unknown(uncertain) => ReconcileResult::Unknown(uncertain)
+                .into_applied()
+                .context(ApplyRuntimeSnafu),
         }
     }
 
@@ -492,18 +517,21 @@ impl CoreLifecycleWorkflow {
         prepared: PreparedRuntime,
         preparation: &dyn RuntimePreparationPort,
         expected: &crate::core::actor_v2::CoreStatusProjection,
-    ) -> Result<RuntimeSubmission, CoreError> {
+    ) -> Result<RuntimeSubmission, RuntimeError> {
         let PreparedRuntime {
             snapshot,
             intent,
             ports,
+            target,
         } = prepared;
         let spec = preparation
             .core_spec(&snapshot.target_core)
-            .map_err(|error| {
-                CoreError::new(CoreErrorKind::BinaryNotFound, error.to_string(), false)
-            })?;
-        let result = self.core.reconcile(&intent, spec.clone(), expected).await?;
+            .context(ResolveCoreBinarySnafu)?;
+        let result = self
+            .core
+            .reconcile(&intent, spec.clone(), expected)
+            .await
+            .context(ApplyRuntimeSnafu)?;
         // An unobserved outcome may still have applied: the core can already
         // be listening on the candidate's ports. The previously confirmed
         // binding then describes an instance that may no longer exist, and
@@ -549,6 +577,7 @@ impl CoreLifecycleWorkflow {
             local_ipc: intent.local_ipc,
             binding: report.applied.clone(),
             ports,
+            target,
         });
         self.runtime
             .record_confirmed_apply(Some(snapshot.clone()), receipt.clone());
@@ -585,19 +614,26 @@ impl CoreLifecycleWorkflow {
         &self,
         product: Arc<runtime::RuntimeSnapshot>,
         preparation: &dyn RuntimePreparationPort,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PublishRuntimeError> {
         preparation.publish(&product).await?;
         self.runtime.generated_confirmed(product);
         Ok(())
     }
 
+    /// Installs `artifact` and restarts the core when the replacement owes it
+    /// one. Returns whether that restart was withheld: it is a start, and
+    /// needs a proven owner of the desired host (T10 §1.7 #7).
     async fn replace_binary(
         &mut self,
         artifact: PreparedCoreBinary,
         preparation: &mut dyn RuntimePreparationPort,
-    ) -> Result<(), CoreError> {
-        let desired: crate::config::nyanpasu::ClashCore = self.application.load().state.core.into();
-        let status = self.core.refresh_status().await?;
+    ) -> Result<bool, RuntimeError> {
+        let desired = self.application.load().state.core;
+        let status = self
+            .core
+            .refresh_status()
+            .await
+            .context(RefreshStatusSnafu)?;
         let (state, applied_kind) = status
             .snapshot
             .map_or((None, None), |s| (s.state, s.applied_kind));
@@ -613,20 +649,23 @@ impl CoreLifecycleWorkflow {
             match self.core.stop().await {
                 Ok(_) => {}
                 Err(error) if error.kind == Some(CoreErrorKind::NotStarted) => {}
-                Err(error) => return Err(error),
+                Err(error) => return Err(error).context(StopCoreSnafu),
             }
             self.ports.invalidate();
         }
         // Stopped/NotStarted alone cannot prove quarantined processes are dead.
-        self.core.recover().await?;
+        self.core.recover().await.context(RecoverRuntimeSnafu)?;
         self.installer
             .install(&artifact)
             .await
-            .map_err(domain_error)?;
+            .context(InstallCoreBinarySnafu)?;
         if restart {
+            if !self.start_permitted() {
+                return Ok(true);
+            }
             artifact.progress.restarting();
             self.reconcile(preparation).await?;
         }
-        Ok(())
+        Ok(false)
     }
 }

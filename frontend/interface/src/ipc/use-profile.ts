@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { invokeMutation, invokeQuery } from './query-options'
-import { rpc } from './rpc'
 import {
+  mutations,
+  queries,
   type MutationOutcome,
   type NewProfileRequest_Deserialize,
   type ProfileDefinition_Deserialize,
@@ -11,6 +12,7 @@ import {
   type ProfileMetadataPatch_Deserialize,
   type ProfileSource_Serialize,
   type RemoteProfileOptionsPatch_Deserialize,
+  type TransformKind,
 } from './rpc-bindings'
 
 // ---- discriminant helpers (successors of the retired NormalizedProfile collapse) ----
@@ -25,15 +27,21 @@ export const isTransformItem = (
 ): item is Extract<ProfileItem_Serialize, { type: 'transform' }> =>
   item.type === 'transform'
 
-/** Remote = a File config whose source is a remote subscription. */
+/** The source of a File config or a Transform; Composition has none. */
+export const getProfileSource = (
+  item: ProfileItem_Serialize,
+): ProfileSource_Serialize | undefined => {
+  if (isTransformItem(item)) return item.transform.source
+  return item.config.type === 'file' ? item.config.source : undefined
+}
+
+/** Remote = a File config or Transform whose source is a remote URL. */
 export const getRemoteSource = (
   item: ProfileItem_Serialize,
-): Extract<ProfileSource_Serialize, { type: 'remote' }> | undefined =>
-  isConfigItem(item) &&
-  item.config.type === 'file' &&
-  item.config.source.type === 'remote'
-    ? item.config.source
-    : undefined
+): Extract<ProfileSource_Serialize, { type: 'remote' }> | undefined => {
+  const source = getProfileSource(item)
+  return source?.type === 'remote' ? source : undefined
+}
 
 export const isRemoteItem = (item: ProfileItem_Serialize): boolean =>
   getRemoteSource(item) !== undefined
@@ -69,6 +77,8 @@ export type CreateParams =
         /** Display name to pin (`custom_name`); `null`/omitted derives it from the URL server-side. */
         name?: string | null
         option?: RemoteProfileOptionsPatch_Deserialize | null
+        /** `null`/omitted imports a Config File; otherwise a Transform of this kind. */
+        transform?: TransformKind | null
       }
     }
   | {
@@ -78,18 +88,19 @@ export type CreateParams =
 
 export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   const queryClient = useQueryClient()
-  const profilesOptions = rpc.queries.getProfiles()
-  const importProfile = rpc.mutations.importProfile
-  const createProfile = rpc.mutations.createProfile
-  const updateProfile = rpc.mutations.updateProfile
-  const patchProfileMetadata = rpc.mutations.patchProfileMetadata
-  const patchRemoteProfileOptions = rpc.mutations.patchRemoteProfileOptions
-  const replaceProfileDefinition = rpc.mutations.replaceProfileDefinition
-  const viewProfile = rpc.mutations.viewProfile
-  const activateProfile = rpc.mutations.activateProfile
-  const setProfileValidFields = rpc.mutations.setProfileValidFields
-  const reorderProfilesByList = rpc.mutations.reorderProfilesByList
-  const deleteProfile = rpc.mutations.deleteProfile
+  const profilesOptions = queries.getProfiles()
+  const importProfile = mutations.importProfile
+  const createProfile = mutations.createProfile
+  const updateProfile = mutations.updateProfile
+  const patchProfileMetadata = mutations.patchProfileMetadata
+  const patchRemoteProfileOptions = mutations.patchRemoteProfileOptions
+  const replaceProfileDefinition = mutations.replaceProfileDefinition
+  const viewProfile = mutations.viewProfile
+  const activateProfile = mutations.activateProfile
+  const setProfileValidFields = mutations.setProfileValidFields
+  const setGlobalTransformsOptions = mutations.setGlobalTransforms
+  const reorderProfilesByList = mutations.reorderProfilesByList
+  const deleteProfile = mutations.deleteProfile
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: profilesOptions.queryKey })
 
@@ -116,7 +127,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
   })
 
-  // Profile rpc.mutations return the full MutationOutcome so MutationCache can
+  // Profile mutations return the full MutationOutcome so MutationCache can
   // observe `committed_degraded`. Do not collapse to bare values or legacy
   // `{ uid, rebuild }` shapes before React Query onSuccess.
   const create = useMutation({
@@ -130,6 +141,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
             params.data.url,
             params.data.name ?? null,
             params.data.option ?? null,
+            params.data.transform ?? null,
           ]),
         )
       }
@@ -215,6 +227,13 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     onSuccess: invalidate,
   })
 
+  const setGlobalTransforms = useMutation({
+    mutationKey: setGlobalTransformsOptions.mutationKey,
+    mutationFn: async (ids: ProfileId[]) =>
+      unwrapResult(await invokeMutation(setGlobalTransformsOptions, [ids])),
+    onSuccess: invalidate,
+  })
+
   const sort = useMutation({
     mutationKey: reorderProfilesByList.mutationKey,
     mutationFn: async (uids: ProfileId[]) =>
@@ -238,6 +257,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     replaceDefinition,
     activate,
     setValidFields,
+    setGlobalTransforms,
     sort,
     drop,
   }

@@ -18,6 +18,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
+  getRemoteSource,
   useProfile,
   type ProfileDefinition_Deserialize,
   type ProfileItem_Serialize,
@@ -28,12 +29,19 @@ const formSchema = z.object({
   url: z.httpUrl(),
 })
 
-const remoteFileOf = (profile: ProfileItem_Serialize) => {
-  if (profile.type !== 'config' || profile.config.type !== 'file') {
-    return undefined
+/** The definition with its remote source pointed at `url`. */
+const withRemoteUrl = (
+  profile: ProfileItem_Serialize,
+  url: string,
+): ProfileDefinition_Deserialize | undefined => {
+  const remote = getRemoteSource(profile)
+  if (!remote) return undefined
+  const source = { ...remote, url }
+  if (profile.type === 'transform') {
+    return { type: 'transform', transform: { ...profile.transform, source } }
   }
-  if (profile.config.source.type !== 'remote') return undefined
-  return { config: profile.config, source: profile.config.source }
+  if (profile.config.type !== 'file') return undefined
+  return { type: 'config', config: { ...profile.config, source } }
 }
 
 export default function SubscriptionUrlEditor({
@@ -46,7 +54,7 @@ export default function SubscriptionUrlEditor({
 
   const [open, setOpen] = useState(false)
 
-  const currentUrl = remoteFileOf(profile)?.source.url ?? ''
+  const currentUrl = getRemoteSource(profile)?.url ?? ''
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -68,15 +76,8 @@ export default function SubscriptionUrlEditor({
     form.handleSubmit(
       async ({ url }) => {
         try {
-          const remote = remoteFileOf(profile)
-          if (remote) {
-            const definition: ProfileDefinition_Deserialize = {
-              type: 'config',
-              config: {
-                ...remote.config,
-                source: { ...remote.source, url },
-              },
-            }
+          const definition = withRemoteUrl(profile, url)
+          if (definition) {
             await replaceDefinition.mutateAsync({
               uid: profile.uid,
               definition,
@@ -92,6 +93,7 @@ export default function SubscriptionUrlEditor({
           message(`Update failed: \n ${formatError(error)}`, {
             title: 'Error',
             kind: 'error',
+            error,
           })
         }
       },

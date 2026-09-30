@@ -3,7 +3,7 @@ import { useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { rpc } from '../ipc/rpc'
 
 const NYANPASU_CONFIG_MUTATION_KEYS: QueryKey[] = [
-  rpc.queries.getVergeConfig().queryKey,
+  rpc.queries.getAppConfig().queryKey,
   rpc.queries.getSysProxy().queryKey,
   // TODO: proxies hook refetch
   // TODO: profiles hook refetch
@@ -11,6 +11,7 @@ const NYANPASU_CONFIG_MUTATION_KEYS: QueryKey[] = [
 
 const CLASH_CONFIG_MUTATION_KEYS: QueryKey[] = [
   rpc.queries.clashApiGetVersion().queryKey,
+  rpc.queries.getClashConfig().queryKey,
   rpc.queries.getClashInfo().queryKey,
   rpc.queries.clashApiGetConfigs().queryKey,
   rpc.queries.getProfiles().queryKey,
@@ -24,6 +25,7 @@ const CLASH_CONFIG_MUTATION_KEYS: QueryKey[] = [
 
 const PROFILES_MUTATION_KEYS: QueryKey[] = [
   rpc.queries.clashApiGetVersion().queryKey,
+  rpc.queries.getClashConfig().queryKey,
   rpc.queries.getClashInfo().queryKey,
   rpc.queries.getProfiles().queryKey,
   // TODO: clash rules hook refetch

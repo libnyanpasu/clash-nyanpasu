@@ -82,6 +82,7 @@ impl ReleaseChannel {
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, specta::Type)))]
+#[patch(attribute(serde(default)))]
 pub struct NyanpasuAppConfig {
     /// app listening port for app singleton
     pub app_singleton_port: u16,
@@ -149,8 +150,12 @@ pub struct NyanpasuAppConfig {
     /// proxy 页面布局 列数
     pub proxy_layout_column: i32,
 
-    /// 日记轮转时间，单位：天
+    /// 最多保留的日志文件数
     pub max_log_files: usize,
+
+    /// 单个日志文件的大小上限，单位：MiB
+    #[serde(default = "default_max_log_file_size")]
+    pub max_log_file_size: u64,
 
     /// Check update when app launch
     pub enable_auto_check_update: bool,
@@ -158,6 +163,7 @@ pub struct NyanpasuAppConfig {
     /// None in older configurations means the channel of the installed build.
     #[serde(default)]
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<ReleaseChannel>>)))]
     pub release_channel: Option<ReleaseChannel>,
 
     /// 是否启用代理托盘选择
@@ -181,6 +187,7 @@ pub struct NyanpasuAppConfig {
     /// This field is used to set PAC proxy without exposing it to the frontend UI
     #[serde(skip_serializing_if = "Option::is_none")]
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<Url>>)))]
     pub pac_url: Option<Url>,
 
     /// enable tray text display on Linux systems
@@ -199,8 +206,16 @@ pub struct NyanpasuAppConfig {
     /// enable colored tray icons on macOS
     /// When enabled, uses colored icons instead of template icons to show proxy status
     /// When disabled, uses system template icons that adapt to light/dark mode
+    // Kept out of the TS bindings: a macOS-only field would make the generated
+    // bindings differ per platform, and CI checks their freshness on Linux.
     #[cfg(target_os = "macos")]
+    #[specta(skip)]
+    #[patch(attribute(specta(skip)))]
     pub enable_macos_colored_icons: bool,
+}
+
+fn default_max_log_file_size() -> u64 {
+    10
 }
 
 impl Default for NyanpasuAppConfig {
@@ -227,6 +242,7 @@ impl Default for NyanpasuAppConfig {
             enable_builtin_enhanced: true,
             proxy_layout_column: 0,
             max_log_files: 7,
+            max_log_file_size: default_max_log_file_size(),
             enable_auto_check_update: true,
             release_channel: None,
             tray_selector_mode: ProxiesSelectorMode::default(),
@@ -258,6 +274,14 @@ mod patch_tests {
         let patch: NyanpasuAppConfigPatch =
             serde_json::from_str(r#"{"release_channel":"beta"}"#).unwrap();
         assert_eq!(patch.release_channel, Some(Some(ReleaseChannel::Beta)));
+    }
+
+    #[test]
+    fn max_log_file_size_defaults_for_existing_configurations() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("max_log_file_size");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.max_log_file_size, 10);
     }
 
     /// The legacy field aliases carried over from the former derive-builder

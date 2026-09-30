@@ -1,4 +1,3 @@
-#[cfg(target_os = "macos")]
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -6,7 +5,10 @@ use camino::Utf8PathBuf;
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{
     ControlOptions, CoreControl, CoreKind, CoreManager, CoreSpec, LocalIpcPolicy, ManagerOptions,
+    native_store::{FsNativeStore, StoreOwner, legacy_kind},
 };
+use serde::Serialize;
+use snafu::{ResultExt, Snafu};
 
 use crate::utils::path::PathResolver;
 
@@ -17,7 +19,19 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
         local_ipc_policy: LocalIpcPolicy::Disable,
         ..ManagerOptions::default()
     };
-    let manager = CoreManager::builder(options);
+    let working_dir = to_utf8(paths.app_data_dir().to_owned())?;
+    let config_path = paths.application_config_path();
+    let config_path = if config_path.try_exists()? {
+        config_path
+    } else {
+        paths.nyanpasu_config_path()
+    };
+    let native_store = Arc::new(FsNativeStore::new(
+        working_dir.clone(),
+        StoreOwner::current(),
+        legacy_kind(&config_path)?,
+    ));
+    let manager = CoreManager::builder(options).native_store(native_store);
 
     #[cfg(target_os = "macos")]
     let manager = manager.dns_controller(Arc::new(
@@ -28,7 +42,6 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
 
     let manager = manager.build().await?;
     let source_dir = to_utf8(runtime_root.join("staging"))?;
-    let working_dir = to_utf8(paths.app_data_dir().to_owned())?;
 
     Ok(CoreControl::spawn(
         manager,
@@ -36,14 +49,33 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
     ))
 }
 
-pub fn core_spec(core: &ClashCore) -> Result<CoreSpec> {
+/// A failure of locating the binary a core is started from.
+#[derive(Debug, Snafu, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CoreSpecError {
+    #[snafu(display("could not find the {core} core binary"))]
+    FindCoreBinary {
+        #[specta(type = String)]
+        core: ClashCore,
+        #[serde(skip)]
+        source: std::io::Error,
+    },
+    #[snafu(display("the {core} core binary path is not valid UTF-8: {path}"))]
+    CoreBinaryPathNotUtf8 {
+        #[specta(type = String)]
+        core: ClashCore,
+        path: String,
+    },
+}
+
+pub fn core_spec(core: &ClashCore) -> Result<CoreSpec, CoreSpecError> {
     core_spec_with(core, crate::core::find_binary_path)
 }
 
 fn core_spec_with(
     core: &ClashCore,
     find_binary: impl FnOnce(&nyanpasu_utils::core::CoreType) -> std::io::Result<std::path::PathBuf>,
-) -> Result<CoreSpec> {
+) -> Result<CoreSpec, CoreSpecError> {
     let core_type = core.into();
     let kind = match core {
         ClashCore::ClashPremium => CoreKind::ClashPremium,
@@ -51,11 +83,17 @@ fn core_spec_with(
         ClashCore::Mihomo | ClashCore::MihomoAlpha => CoreKind::Mihomo,
         ClashCore::Meow => CoreKind::Meow,
     };
-    let binary_path = find_binary(&core_type)?;
+    let binary_path = find_binary(&core_type).context(FindCoreBinarySnafu { core: *core })?;
+    let binary_path = Utf8PathBuf::from_path_buf(binary_path).map_err(|path| {
+        CoreSpecError::CoreBinaryPathNotUtf8 {
+            core: *core,
+            path: path.to_string_lossy().into_owned(),
+        }
+    })?;
 
     Ok(CoreSpec {
         kind,
-        binary_path: to_utf8(binary_path)?,
+        binary_path,
         version: None,
         features: vec![],
     })
@@ -80,6 +118,20 @@ mod tests {
 
         let _ = control.status();
         assert!(!control.executor_is_closed());
+    }
+
+    #[tokio::test]
+    async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
+        let root = tempfile::TempDir::new().unwrap();
+        let paths = PathResolver::with_base_dirs(root.path().to_owned(), root.path().join("data"));
+        std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
+        std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
+
+        let control = build(&paths).await.unwrap();
+        assert!(!control.executor_is_closed());
+
+        std::fs::remove_file(paths.application_config_path()).unwrap();
+        assert!(build(&paths).await.is_err());
     }
 
     #[test]

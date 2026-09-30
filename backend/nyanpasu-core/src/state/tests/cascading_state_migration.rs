@@ -109,7 +109,7 @@ impl StateAckSubscriber<SourceConfig> for BridgeAckSubscriber {
         let mut mgr = self.b_manager.lock().await;
         match mgr.upsert(new_b).await {
             Ok(_) => Ack::Ok,
-            Err(e) => Ack::Failed(anyhow::anyhow!(e)),
+            Err(e) => Ack::Failed(crate::state::ack::test_ack_error(&e.to_string())),
         }
     }
 }

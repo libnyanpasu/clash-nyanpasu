@@ -7,14 +7,14 @@
       "sh": "Copy Env (Shell)"
     },
     "no_proxies": "No Proxies",
-    "select_proxies": "Select Proxies",
-    "dashboard": "Dashboard",
+    "select_proxy": "Select Proxy",
+    "dashboard": "Show Clash Nyanpasu",
     "direct_mode": "Direct Mode",
     "global_mode": "Global Mode",
     "more": {
       "menu": "More",
-      "restart_app": "Restart Nyanpasu",
-      "restart_core": "Restart Core"
+      "restart_app": "Restart Clash Nyanpasu",
+      "restart_core": "Restart Clash Core"
     },
     "open_dir": {
       "menu": "Open Dir",
@@ -24,8 +24,8 @@
       "log_dir": "Log Dir"
     },
     "proxy_action": {
-      "on": "On",
-      "off": "Off"
+      "enabled": "Enabled",
+      "disabled": "Disabled"
     },
     "quit": "Quit",
     "rule_mode": "Rule Mode",
@@ -61,12 +61,5 @@
   },
   "break_when_proxy_change": "Interrupt connections when proxy changes",
   "break_when_profile_change": "Interrupt connections when profile changes",
-  "break_when_mode_change": "Interrupt connections when mode changes",
-  "hotkey_error": {
-    "invalid_hotkey": "Invalid hotkey: %{hotkey}",
-    "missing_super_key": "Hotkey must contain a super key (Cmd/Ctrl/Win/Meta)",
-    "malformed_entry": "Malformed hotkey entry: %{entry}",
-    "unknown_function": "Unknown hotkey function: %{function}",
-    "duplicate_accelerator": "Hotkey %{hotkey} is already assigned to another function"
-  }
+  "break_when_mode_change": "Interrupt connections when mode changes"
 }

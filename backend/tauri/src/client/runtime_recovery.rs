@@ -100,7 +100,8 @@ pub(in crate::client) enum RecoveryMismatch {
         expected: String,
         observed: Option<String>,
     },
-    /// A different core is applied, or the host does not say which.
+    /// A different core is applied, or neither the host nor a confirmed
+    /// submission says which.
     Core {
         expected: Option<CoreKind>,
         observed: Option<CoreKind>,
@@ -189,16 +190,6 @@ pub(in crate::client) fn verify_recovery_target(
             });
         }
 
-        // The document hash says nothing about which binary is running it, and
-        // a host that does not report an applied kind has not proven anything.
-        let expected_kind = wire_core_type_to_kind(&(&receipt.target_core).into());
-        if observed.applied_kind.is_none() || observed.applied_kind != expected_kind {
-            reasons.push(RecoveryMismatch::Core {
-                expected: expected_kind,
-                observed: observed.applied_kind,
-            });
-        }
-
         // The local-IPC settings are submitted with the document and published
         // by neither host, so a revision that differs from the receipt only in
         // its control channel matches everything above. The host's own
@@ -211,6 +202,25 @@ pub(in crate::client) fn verify_recovery_target(
                 && observed.binding.as_ref() == Some(binding)
                 && matches!(observed.state, Some(CoreStateDetail::Running { epoch, .. }) if epoch == binding.revision.epoch)
         });
+
+        // The document hash says nothing about which binary is running it. A
+        // host that names the applied core must name the receipt's. One that
+        // does not (the service host) is proven by the confirmed submission
+        // instead: that submission carried the receipt's core, and the runtime
+        // switches any other core into a new epoch, so an instance still on
+        // the confirmed binding runs it. Without a confirmation nothing does.
+        let expected_kind = wire_core_type_to_kind(&(&receipt.target_core).into());
+        let kind_holds = match observed.applied_kind {
+            Some(_) => observed.applied_kind == expected_kind,
+            None => confirms_settings,
+        };
+        if !kind_holds {
+            reasons.push(RecoveryMismatch::Core {
+                expected: expected_kind,
+                observed: observed.applied_kind,
+            });
+        }
+
         if !confirms_settings {
             reasons.push(RecoveryMismatch::Submission {
                 confirmed: confirmed.cloned(),
@@ -259,8 +269,9 @@ mod tests {
                 generation: 3,
             },
             ports: crate::client::ports::SessionPortResolver::default()
-                .resolve_candidate(&nyanpasu_config::clash::config::ClashConfig::default())
+                .resolve_candidate(&crate::client::tests::test_clash_config())
                 .expect("default port strategies resolve"),
+            target: None,
         }
     }
 
@@ -408,23 +419,53 @@ mod tests {
         }));
     }
 
-    /// The right document under the wrong binary is not the target, and a host
-    /// that will not name the applied core has not proven it is the right one.
+    /// The right document under the wrong binary is not the target, even when
+    /// the submission was confirmed.
     #[test]
-    fn the_applied_core_must_be_named_and_match() {
-        let proof = confirmed("source-a");
+    fn a_named_core_must_match() {
         let mut wrong = running("source-a");
         wrong.applied_kind = Some(CoreKind::ClashRust);
         assert!(
-            !verify_recovery_target(&receipt(CoreRunIntent::Running), &wrong, Some(&proof))
-                .is_verified()
+            !verify_recovery_target(
+                &receipt(CoreRunIntent::Running),
+                &wrong,
+                Some(&confirmed("source-a"))
+            )
+            .is_verified()
         );
+    }
 
+    /// The service host never names the applied core. The confirmed
+    /// submission names it instead: it carried the receipt's core, and the
+    /// runtime starts a new epoch for any other one, so an instance on the
+    /// confirmed binding runs that core. Without a confirmation nothing does.
+    #[test]
+    fn an_unnamed_core_is_proven_only_by_the_confirmed_submission() {
         let mut unnamed = running("source-a");
         unnamed.applied_kind = None;
-        assert!(
-            !verify_recovery_target(&receipt(CoreRunIntent::Running), &unnamed, Some(&proof))
-                .is_verified()
+        assert_eq!(
+            verify_recovery_target(
+                &receipt(CoreRunIntent::Running),
+                &unnamed,
+                Some(&confirmed("source-a"))
+            ),
+            RecoveryVerification::Verified
+        );
+
+        let RecoveryVerification::Mismatch { reasons } =
+            verify_recovery_target(&receipt(CoreRunIntent::Running), &unnamed, None)
+        else {
+            panic!("an unnamed core with no confirmed submission is unproven");
+        };
+        assert_eq!(
+            reasons,
+            vec![
+                RecoveryMismatch::Core {
+                    expected: Some(CoreKind::Mihomo),
+                    observed: None,
+                },
+                RecoveryMismatch::Submission { confirmed: None },
+            ]
         );
     }
 

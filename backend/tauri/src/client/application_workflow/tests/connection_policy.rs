@@ -11,6 +11,7 @@ use nyanpasu_ipc::api::{
     core::v2::{CoreApiConnection, OperationInfo},
     status::{CoreControllerInfo, CoreStateDetail},
 };
+use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
 use crate::{
@@ -213,7 +214,7 @@ fn disabled_policy_and_non_mode_patches_do_not_close_connections() {
         config.break_connection.on_mode_change = false;
         f.client
             .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
-                break_connection: Some(config.break_connection),
+                break_connection: config.break_connection.into_patch(),
                 ..Default::default()
             })
             .await
@@ -238,7 +239,10 @@ fn failed_reconcile_never_closes_connections() {
             .await
             .unwrap();
         assert_eq!(outcome.degradations().len(), 1);
-        assert_eq!(outcome.degradations()[0].code, "runtime_deferred");
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
+        ));
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
     });
 }
@@ -258,7 +262,10 @@ fn replacement_at_the_same_url_never_receives_source_interruption() {
             if reported {
                 assert!(outcome.degradations().is_empty());
             } else {
-                assert_eq!(outcome.degradations()[0].code, "mode_interruption_failed");
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+                ));
             }
             assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
         });
@@ -276,7 +283,10 @@ fn close_failure_is_committed_degraded_and_not_replayed() {
             .await
             .unwrap();
         assert_eq!(outcome.degradations().len(), 1);
-        assert_eq!(outcome.degradations()[0].code, "mode_interruption_failed");
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+        ));
         assert!(!outcome.degradations()[0].retryable);
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
         assert_eq!(
@@ -305,7 +315,10 @@ fn missing_source_is_degraded_but_confirmed_stopped_startup_needs_no_close() {
             if stopped {
                 assert!(outcome.degradations().is_empty());
             } else {
-                assert_eq!(outcome.degradations()[0].code, "mode_interruption_failed");
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+                ));
             }
             assert_eq!(
                 *f.calls.events.lock().unwrap(),
@@ -345,7 +358,6 @@ fn lifecycle_work_cannot_overtake_pending_interruption() {
                     .await
             })
         };
-        super::barrier(&f.client.inner.application_workflow).await;
         assert!(!next.is_finished());
 
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
@@ -378,7 +390,10 @@ fn controller_rotation_invalidates_source_without_closing_through_new_credential
         f.endpoint.binding.lock().unwrap().as_mut().unwrap().secret = Some("rotated".into());
         f.calls.release.notify_one();
         let outcome = first.await.unwrap().unwrap();
-        assert_eq!(outcome.degradations()[0].code, "mode_interruption_failed");
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+        ));
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
     });
 }
@@ -453,7 +468,7 @@ fn profile_autoactivation_uses_policy_and_does_not_interrupt_an_existing_selecti
             config.break_connection.on_profile_change = enabled;
             f.client
                 .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
-                    break_connection: Some(config.break_connection),
+                    break_connection: config.break_connection.into_patch(),
                     ..Default::default()
                 })
                 .await
@@ -505,10 +520,10 @@ fn profile_reconcile_rejects_selection_but_interruption_failure_preserves_commit
                 assert!(f.client.get_profiles().await.unwrap().current.is_none());
                 assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
             } else {
-                assert_eq!(
-                    result.unwrap().degradations()[0].code,
-                    "profile_interruption_failed"
-                );
+                assert!(matches!(
+                    result.unwrap().degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
                 assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
                 assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
             }
@@ -528,10 +543,10 @@ fn profile_replacement_never_receives_source_interruption() {
             if reported {
                 assert!(outcome.degradations().is_empty());
             } else {
-                assert_eq!(
-                    outcome.degradations()[0].code,
-                    "profile_interruption_failed"
-                );
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
             }
             assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
         });
@@ -558,7 +573,6 @@ fn profile_mutations_cannot_overtake_pending_interruption() {
             let client = f.client.clone();
             tokio::spawn(async move { client.activate_profile(None).await })
         };
-        super::barrier(&f.client.inner.application_workflow).await;
         assert!(!next.is_finished());
 
         // The deselection is already committed; what queues is its apply.
@@ -605,10 +619,10 @@ fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
             if stopped {
                 assert!(outcome.degradations().is_empty());
             } else {
-                assert_eq!(
-                    outcome.degradations()[0].code,
-                    "profile_interruption_failed"
-                );
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
             }
             assert_eq!(
                 *f.calls.events.lock().unwrap(),
@@ -631,7 +645,7 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
         config.break_connection.on_profile_change = false;
         f.client
             .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
-                break_connection: Some(config.break_connection.clone()),
+                break_connection: config.break_connection.clone().into_patch(),
                 ..Default::default()
             })
             .await
@@ -642,7 +656,7 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
         config.break_connection.on_profile_change = true;
         f.client
             .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
-                break_connection: Some(config.break_connection),
+                break_connection: config.break_connection.into_patch(),
                 ..Default::default()
             })
             .await
@@ -661,7 +675,7 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
 }
 
 #[test]
-fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interruption() {
+fn cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_interruption() {
     let f = Fixture::new(false);
     tauri::async_runtime::block_on(async {
         let uid = add_profile(&f).await;
@@ -680,35 +694,26 @@ fn cancelled_profile_waiter_keeps_admission_and_dirty_does_not_replay_interrupti
         let active = workflow.status().active.unwrap();
         first.abort();
         assert!(first.await.unwrap_err().is_cancelled());
-        let mut dirty =
-            Box::pin(workflow.call(super::Command::Core(super::CoreCommand::RuntimeDirty)));
-        assert!(dirty.as_mut().now_or_never().is_none());
+        // Polling once sends the reconcile, so it waits behind the held
+        // interruption.
+        let mut reconcile = Box::pin(workflow.reconcile());
+        assert!(reconcile.as_mut().now_or_never().is_none());
         let next = {
             let client = f.client.clone();
             tokio::spawn(async move { client.activate_profile(None).await })
         };
-        let mut status = workflow.0.status.clone();
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            status.wait_for(|status| status.queued.len() == 1),
-        )
-        .await
-        .unwrap()
-        .unwrap();
         assert_eq!(workflow.status().active, Some(active));
         // The same-domain deselection is still waiting in the source actor.
         assert!(f.client.get_profiles().await.unwrap().current.is_some());
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
-        dirty.await.unwrap();
+        reconcile.await.unwrap();
         assert!(next.await.unwrap().unwrap().degradations().is_empty());
-        assert!(
-            workflow
-                .status()
-                .completed
-                .iter()
-                .any(|result| result.id == active && result.error.is_none())
-        );
+        assert!(workflow.mutation_journal().completed.iter().any(|receipt| {
+            receipt.operation_id == active
+                && receipt.conclusion
+                    == crate::client::application_workflow::mutation::MutationConclusion::Confirmed
+        }));
         assert_eq!(
             *f.calls.events.lock().unwrap(),
             ["reconcile", "close", "reconcile", "reconcile", "close"]
@@ -734,16 +739,16 @@ fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
         .unwrap();
         let mut next = Box::pin(f.client.activate_profile(None));
         assert!(next.as_mut().now_or_never().is_none());
-        let mut shutdown = Box::pin(f.client.shutdown_core());
+        f.client.request_shutdown();
+        let mut shutdown = Box::pin(f.client.wait_shutdown());
         assert!(shutdown.as_mut().now_or_never().is_none());
-        super::barrier(&f.client.inner.application_workflow).await;
         assert!(f.client.get_profiles().await.unwrap().current.is_some());
         assert!(shutdown.as_mut().now_or_never().is_none());
         f.calls.hold_close.store(false, Ordering::SeqCst);
         f.calls.release.notify_one();
         assert!(next.await.is_err());
         assert!(first.await.unwrap().unwrap().degradations().is_empty());
-        assert!(shutdown.await.stop.is_ok());
+        shutdown.await;
         assert_eq!(
             f.calls
                 .events
@@ -757,57 +762,6 @@ fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
     });
 }
 
-/// Admission failure in a second domain must leave its source unchanged.
-#[test]
-fn full_queue_rejects_a_source_patch_before_commit() {
-    let f = Fixture::new(false);
-    tauri::async_runtime::block_on(async {
-        let uid = add_profile(&f).await;
-        f.calls.hold_close.store(true, Ordering::SeqCst);
-        let first = {
-            let client = f.client.clone();
-            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
-        };
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            f.calls.entered.notified(),
-        )
-        .await
-        .unwrap();
-        let workflow = &f.client.inner.application_workflow;
-        for _ in 0..super::MAX_PENDING {
-            workflow
-                .0
-                .actor
-                .cast(super::Message::Request(super::Request {
-                    command: super::Command::Core(super::CoreCommand::Reconcile),
-                    response: super::Response {
-                        id: OperationId::generate(),
-                        reply: None,
-                    },
-                }))
-                .unwrap();
-        }
-        super::barrier(workflow).await;
-        assert_eq!(workflow.status().queued.len(), super::MAX_PENDING);
-        let before = f.client.inner.clash_config.snapshot().version;
-        assert!(
-            f.client
-                .patch_runtime_overrides(mode_patch())
-                .await
-                .is_err()
-        );
-        assert_eq!(f.client.inner.clash_config.snapshot().version, before);
-        let mut shutdown = Box::pin(f.client.shutdown_core());
-        assert!(shutdown.as_mut().now_or_never().is_none());
-        super::barrier(workflow).await;
-        f.calls.hold_close.store(false, Ordering::SeqCst);
-        f.calls.release.notify_one();
-        first.await.unwrap().unwrap();
-        assert!(shutdown.await.stop.is_ok());
-    });
-}
-
 #[derive(Default)]
 struct CountingInstaller(AtomicUsize);
 
@@ -816,7 +770,7 @@ impl crate::client::core_lifecycle::ports::BinaryInstaller for CountingInstaller
     async fn install(
         &self,
         _: &crate::client::core_lifecycle::ports::PreparedCoreBinary,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), crate::client::core_lifecycle::ports::InstallCoreBinaryError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -858,29 +812,26 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
                     .await
             })
         };
-        let mut status = f.client.inner.application_workflow.0.status.clone();
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            status.wait_for(|status| status.queued.len() == 1),
-        )
-        .await
-        .unwrap()
-        .unwrap();
-        let mut host = Box::pin(f.client.change_execution_host(ExecutionHost::Local));
+        // Polling once sends each request, so both wait behind the held
+        // interruption.
+        let mut host = Box::pin(
+            f.client
+                .inner
+                .application_workflow
+                .change_host(ExecutionHost::Local),
+        );
         assert!(host.as_mut().now_or_never().is_none());
         let staging = Arc::new(tempfile::tempdir().unwrap());
         let progress = Arc::new(super::Progress::default());
         let artifact = crate::client::core_lifecycle::ports::PreparedCoreBinary {
-            target: f.client.get_app_config().await.unwrap().core.into(),
+            target: f.client.get_app_config().await.unwrap().core,
             source: staging.path().join("prepared-core"),
             destination: f._dir.path().join("installed-core"),
             staging,
             progress: progress.clone(),
         };
-        let mut install = Box::pin(f.client.replace_core_binary(artifact));
+        let mut install = Box::pin(f.client.inner.application_workflow.replace_binary(artifact));
         assert!(install.as_mut().now_or_never().is_none());
-        super::barrier(&f.client.inner.application_workflow).await;
-        assert_eq!(f.client.inner.application_workflow.status().queued.len(), 3);
         // A queued Try has not committed its source.
         assert_eq!(
             serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
@@ -920,14 +871,15 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     async fn capture_content(
         &self,
         profiles: &nyanpasu_config::profile::Profiles,
-    ) -> anyhow::Result<super::super::inputs::FrozenProfileContent> {
+    ) -> super::super::inputs::FrozenProfileContent {
         self.delegate.capture_content(profiles).await
     }
 
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
-    ) -> anyhow::Result<nyanpasu_core_manager::CoreSpec> {
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    {
         self.delegate.core_spec(core)
     }
     async fn build(
@@ -936,12 +888,15 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> anyhow::Result<Arc<crate::client::runtime::RuntimeSnapshot>> {
+    ) -> Result<Arc<crate::client::runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError>
+    {
         self.inputs
             .lock()
             .unwrap()
             .push((inputs.profiles.clone(), inputs.clash.clone()));
-        anyhow::ensure!(!self.fail_build, "scripted build failure");
+        if self.fail_build {
+            return Err(crate::enhance::RuntimeBuildError::ConfigNotMapping);
+        }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
             .await
@@ -949,8 +904,10 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     async fn publish(
         &self,
         snapshot: &crate::client::runtime::RuntimeSnapshot,
-    ) -> anyhow::Result<()> {
-        anyhow::ensure!(!self.fail_publish, "scripted publish failure");
+    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+        if self.fail_publish {
+            return Err(super::scripted_publish_failure());
+        }
         self.delegate.publish(snapshot).await
     }
 }
@@ -960,7 +917,8 @@ impl RecordingBuilder {
         Arc::new(Self {
             delegate: super::adapters::FsRuntimeBuildAdapter {
                 profiles_dir: f.client.inner.profiles_dir.clone(),
-                paths: f.client.inner.runtime_paths.clone(),
+                paths: crate::client::tests::test_runtime_paths(&f._dir),
+                scripts: crate::enhance::ScriptDirs::under(f._dir.path()),
             },
             inputs: Mutex::new(Vec::new()),
             fail_build,
@@ -993,10 +951,10 @@ fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         let mut original = f.client.get_clash_config().await.unwrap();
         original.clash_control_channel = ClashControlChannel::HttpOnly;
         original.clash_ipc_disable_http_controller = false;
-        let mut newer = original.clone();
-        newer.clash_control_channel = ClashControlChannel::PreferIpc;
-        newer.clash_ipc_disable_http_controller = true;
-        f.client.replace_clash_config(newer).await.unwrap();
+        let mut newer = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+        newer.clash_control_channel = Some(ClashControlChannel::PreferIpc);
+        newer.clash_ipc_disable_http_controller = Some(true);
+        f.client.patch_clash_config(newer).await.unwrap();
         let builder = RecordingBuilder::new(&f, false, false);
         let mut preparation = super::RuntimePreparation::new(
             f.client.inner.application.snapshot_handle(),

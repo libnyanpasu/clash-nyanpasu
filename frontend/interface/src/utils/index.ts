@@ -1,3 +1,5 @@
+import type { IpcError } from '../ipc/rpc-bindings'
+
 export type Result<T, E> =
   { status: 'ok'; data: T } | { status: 'error'; error: E }
 
@@ -28,6 +30,17 @@ export function unwrapResult<T, E>(res: Result<T, E>): T {
       )
     }
   }
+}
+
+/** Whether a thrown value is the error payload of a failed command. */
+export function isIpcError(value: unknown): value is IpcError {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'kind' in value &&
+    typeof (value as IpcError).message === 'string' &&
+    typeof (value as IpcError).detail === 'string'
+  )
 }
 
 export * from './get-system'

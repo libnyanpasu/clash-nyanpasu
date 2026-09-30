@@ -16,6 +16,7 @@ export const useProxiesProviderUpdate = (
         message(`Update provider failed: \n ${formatError(error)}`, {
           title: 'Error',
           kind: 'error',
+          error,
         })
       }
     },

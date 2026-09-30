@@ -38,6 +38,16 @@ export async function highlightYaml(code: string) {
   })
 }
 
+/** Tokenizes YAML line by line, for renderers that lay out lines themselves. */
+export async function tokenizeYaml(code: string) {
+  const instance = await getShikiSingleton()
+  await instance.loadLanguage(import('shiki/langs/yaml.mjs'))
+  return instance.codeToTokens(code, {
+    lang: 'yaml',
+    themes: { light: 'min-light', dark: 'nord' },
+  }).tokens
+}
+
 export async function highlightJson(code: string) {
   const instance = await getShikiSingleton()
   await instance.loadLanguage(import('shiki/langs/json.mjs'))

@@ -9,24 +9,29 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior, replace_atomic};
 use nyanpasu_config::profile::{
     ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions, SubscriptionInfo,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
 use crate::{
-    state::profiles::ports::{
-        CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-        MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
-        ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
-        SubscriptionFetcher,
+    state::profiles::{
+        error::*,
+        ports::{
+            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+            MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
+            ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
+            ProfileMaterializationPort, SubscriptionFetcher,
+        },
     },
     utils::path::PathResolver,
 };
+
+type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
 
 const MATERIALIZATION_ROOT: &str = ".profile-materialization-v1";
 const ABSENT_HASH: &str = "b7c03610089b9f660990ee7db3290cc8d8564161b079319c9c7ba1f19dc2e190";
@@ -59,34 +64,34 @@ impl ProfileFileService {
         self
     }
 
-    fn resolve(&self, path: &ManagedProfilePath) -> anyhow::Result<PathBuf> {
-        if path
-            .as_path()
-            .components()
-            .any(|component| is_materialization_root_name(component.as_os_str()))
-        {
-            bail!("managed profile path uses reserved private storage");
-        }
+    fn resolve(&self, path: &ManagedProfilePath) -> Result<PathBuf> {
+        ensure!(
+            !path
+                .as_path()
+                .components()
+                .any(|component| is_materialization_root_name(component.as_os_str())),
+            ReservedPathSnafu { path }
+        );
 
         let full = self.paths.app_profiles_dir().join(path.as_path());
         self.validate_existing_parent_chain(&full)?;
         Ok(full)
     }
 
-    fn validate_existing_parent_chain(&self, full: &Path) -> anyhow::Result<()> {
+    fn validate_existing_parent_chain(&self, full: &Path) -> Result<()> {
         let root = self.paths.app_profiles_dir();
-        let relative = full.strip_prefix(&root).with_context(|| {
-            format!(
-                "profile path containment violation: {} escapes {}",
-                full.display(),
-                root.display()
-            )
-        })?;
+        let relative = full
+            .strip_prefix(&root)
+            .ok()
+            .context(PathEscapesProfilesDirSnafu {
+                path: full,
+                root: &root,
+            })?;
 
         match std::fs::symlink_metadata(&root) {
             Ok(metadata) => ensure_real_directory(&root, &metadata)?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error).context("inspect profiles directory"),
+            Err(error) => return Err(error).context(InspectPathSnafu { path: &root }),
         }
 
         #[cfg(windows)]
@@ -95,17 +100,16 @@ impl ProfileFileService {
             match std::fs::symlink_metadata(&private_root) {
                 Ok(metadata) => {
                     ensure_real_directory(&private_root, &metadata)?;
-                    Some(canonicalize_for_compare(&private_root).with_context(|| {
-                        format!(
-                            "canonicalize private materialization root {}",
-                            private_root.display()
-                        )
-                    })?)
+                    Some(canonicalize_for_compare(&private_root).context(
+                        CanonicalizePathSnafu {
+                            path: &private_root,
+                        },
+                    )?)
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
                 Err(error) => {
-                    return Err(error).with_context(|| {
-                        format!("inspect private root {}", private_root.display())
+                    return Err(error).context(InspectPathSnafu {
+                        path: &private_root,
                     });
                 }
             }
@@ -121,83 +125,77 @@ impl ProfileFileService {
                 Ok(metadata) => ensure_real_directory(&current, &metadata)?,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
                 Err(error) => {
-                    return Err(error)
-                        .with_context(|| format!("inspect profile parent {}", current.display()));
+                    return Err(error).context(InspectPathSnafu { path: &current });
                 }
             }
             #[cfg(windows)]
             if let Some(private_root) = &canonical_private_root {
-                let canonical_current = canonicalize_for_compare(&current).with_context(|| {
-                    format!("canonicalize profile parent {}", current.display())
-                })?;
-                if canonical_current.starts_with(private_root) {
-                    bail!("managed profile path uses reserved private storage");
-                }
+                let canonical_current = canonicalize_for_compare(&current)
+                    .context(CanonicalizePathSnafu { path: &current })?;
+                ensure!(
+                    !canonical_current.starts_with(private_root),
+                    ReservedPathSnafu { path: &current }
+                );
             }
         }
         #[cfg(windows)]
         if let Some(private_root) = &canonical_private_root {
             match std::fs::symlink_metadata(full) {
                 Ok(_) => {
-                    let canonical_full = canonicalize_for_compare(full).with_context(|| {
-                        format!("canonicalize profile target {}", full.display())
-                    })?;
-                    if canonical_full.starts_with(private_root) {
-                        bail!("managed profile path uses reserved private storage");
-                    }
+                    let canonical_full = canonicalize_for_compare(full)
+                        .context(CanonicalizePathSnafu { path: full })?;
+                    ensure!(
+                        !canonical_full.starts_with(private_root),
+                        ReservedPathSnafu { path: full }
+                    );
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
-                    return Err(error)
-                        .with_context(|| format!("inspect profile target {}", full.display()));
+                    return Err(error).context(InspectPathSnafu { path: full });
                 }
             }
         }
         Ok(())
     }
 
-    fn ensure_managed_parent(&self, full: &Path) -> anyhow::Result<()> {
+    fn ensure_managed_parent(&self, full: &Path) -> Result<()> {
         let root = self.ensure_profiles_root()?;
         let parent = full
             .parent()
-            .context("managed profile target has no parent")?;
+            .context(NoParentDirectorySnafu { path: full })?;
         self.ensure_directory_chain(&root, parent, false)
     }
 
-    fn ensure_profiles_root(&self) -> anyhow::Result<PathBuf> {
+    fn ensure_profiles_root(&self) -> Result<PathBuf> {
         let root = self.paths.app_profiles_dir();
-        let config_dir = root.parent().context("profiles directory has no parent")?;
+        let config_dir = root
+            .parent()
+            .context(NoParentDirectorySnafu { path: &root })?;
         ensure_real_directory_tree(config_dir)?;
 
         match std::fs::symlink_metadata(&root) {
             Ok(metadata) => ensure_real_directory(&root, &metadata)?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                std::fs::create_dir(&root)
-                    .with_context(|| format!("create profiles directory {}", root.display()))?;
-                let metadata = std::fs::symlink_metadata(&root)
-                    .with_context(|| format!("inspect profiles directory {}", root.display()))?;
+                std::fs::create_dir(&root).context(CreateDirectorySnafu { path: &root })?;
+                let metadata =
+                    std::fs::symlink_metadata(&root).context(InspectPathSnafu { path: &root })?;
                 ensure_real_directory(&root, &metadata)?;
                 sync_directory(config_dir)?;
                 sync_directory(&root)?;
             }
-            Err(error) => return Err(error).context("inspect profiles directory"),
+            Err(error) => return Err(error).context(InspectPathSnafu { path: &root }),
         }
         Ok(root)
     }
 
-    fn ensure_directory_chain(
-        &self,
-        root: &Path,
-        directory: &Path,
-        private: bool,
-    ) -> anyhow::Result<()> {
-        let relative = directory.strip_prefix(root).with_context(|| {
-            format!(
-                "profile path containment violation: {} escapes {}",
-                directory.display(),
-                root.display()
-            )
-        })?;
+    fn ensure_directory_chain(&self, root: &Path, directory: &Path, private: bool) -> Result<()> {
+        let relative = directory
+            .strip_prefix(root)
+            .ok()
+            .context(PathEscapesProfilesDirSnafu {
+                path: directory,
+                root,
+            })?;
         let mut current = root.to_path_buf();
         for component in relative.components() {
             current.push(component.as_os_str());
@@ -207,19 +205,15 @@ impl ProfileFileService {
                     false
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    std::fs::create_dir(&current).with_context(|| {
-                        format!("create profile directory {}", current.display())
-                    })?;
-                    let metadata = std::fs::symlink_metadata(&current).with_context(|| {
-                        format!("inspect profile directory {}", current.display())
-                    })?;
+                    std::fs::create_dir(&current)
+                        .context(CreateDirectorySnafu { path: &current })?;
+                    let metadata = std::fs::symlink_metadata(&current)
+                        .context(InspectPathSnafu { path: &current })?;
                     ensure_real_directory(&current, &metadata)?;
                     true
                 }
                 Err(error) => {
-                    return Err(error).with_context(|| {
-                        format!("inspect profile directory {}", current.display())
-                    });
+                    return Err(error).context(InspectPathSnafu { path: &current });
                 }
             };
             if created {
@@ -233,7 +227,7 @@ impl ProfileFileService {
         Ok(())
     }
 
-    fn ensure_materialization_layout(&self) -> anyhow::Result<PathBuf> {
+    fn ensure_materialization_layout(&self) -> Result<PathBuf> {
         let profiles_root = self.ensure_profiles_root()?;
         let root = profiles_root.join(MATERIALIZATION_ROOT);
         for relative in PRIVATE_DIRECTORIES {
@@ -248,8 +242,8 @@ fn canonicalize_for_compare(path: &Path) -> std::io::Result<PathBuf> {
 }
 
 #[allow(dead_code)]
-fn symlink_points_to(link: &Path, target: &Path) -> anyhow::Result<bool> {
-    let existing = std::fs::read_link(link)?;
+fn symlink_points_to(link: &Path, target: &Path) -> Result<bool> {
+    let existing = std::fs::read_link(link).context(ReadLinkSnafu { path: link })?;
     let existing = if existing.is_absolute() {
         existing
     } else {
@@ -389,34 +383,31 @@ enum StoredResource {
     Symlink { target: ExternalProfilePath },
 }
 
-fn ensure_real_directory(path: &Path, metadata: &std::fs::Metadata) -> anyhow::Result<()> {
-    if is_symlink_or_reparse(metadata) || !metadata.is_dir() {
-        bail!(
-            "profile directory is a symlink, reparse point, or non-directory: {}",
-            path.display()
-        );
-    }
+fn ensure_real_directory(path: &Path, metadata: &std::fs::Metadata) -> Result<()> {
+    ensure!(
+        !is_symlink_or_reparse(metadata) && metadata.is_dir(),
+        UnexpectedNodeSnafu {
+            path,
+            expected: ExpectedNode::RealDirectory
+        }
+    );
     Ok(())
 }
 
-fn ensure_real_directory_tree(path: &Path) -> anyhow::Result<()> {
+fn ensure_real_directory_tree(path: &Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) => ensure_real_directory(path, &metadata),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let parent = path
-                .parent()
-                .context("directory creation path has no parent")?;
+            let parent = path.parent().context(NoParentDirectorySnafu { path })?;
             ensure_real_directory_tree(parent)?;
             let created = match std::fs::create_dir(path) {
                 Ok(()) => true,
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
                 Err(error) => {
-                    return Err(error)
-                        .with_context(|| format!("create directory {}", path.display()));
+                    return Err(error).context(CreateDirectorySnafu { path });
                 }
             };
-            let metadata = std::fs::symlink_metadata(path)
-                .with_context(|| format!("inspect directory {}", path.display()))?;
+            let metadata = std::fs::symlink_metadata(path).context(InspectPathSnafu { path })?;
             ensure_real_directory(path, &metadata)?;
             if created {
                 sync_directory(parent)?;
@@ -424,28 +415,28 @@ fn ensure_real_directory_tree(path: &Path) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Err(error) => Err(error).with_context(|| format!("inspect directory {}", path.display())),
+        Err(error) => Err(error).context(InspectPathSnafu { path }),
     }
 }
 
 #[allow(unused_variables)]
-fn set_private_directory_permissions(path: &Path) -> anyhow::Result<()> {
+fn set_private_directory_permissions(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-            .with_context(|| format!("set private directory permissions for {}", path.display()))?;
+            .context(SetPermissionsSnafu { path })?;
     }
     Ok(())
 }
 
 #[allow(unused_variables)]
-fn set_private_file_permissions(path: &Path) -> anyhow::Result<()> {
+fn set_private_file_permissions(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-            .with_context(|| format!("set private file permissions for {}", path.display()))?;
+            .context(SetPermissionsSnafu { path })?;
     }
     Ok(())
 }
@@ -517,14 +508,14 @@ fn valid_operation_id(operation_id: &str) -> bool {
 }
 
 #[cfg(unix)]
-fn sync_directory(path: &Path) -> anyhow::Result<()> {
+fn sync_directory(path: &Path) -> Result<()> {
     std::fs::File::open(path)
         .and_then(|directory| directory.sync_all())
-        .with_context(|| format!("sync directory {}", path.display()))
+        .context(SyncDirectorySnafu { path })
 }
 
 #[cfg(not(unix))]
-fn sync_directory(_path: &Path) -> anyhow::Result<()> {
+fn sync_directory(_path: &Path) -> Result<()> {
     Ok(())
 }
 
@@ -573,7 +564,7 @@ impl ProfileFileService {
         root.join("cleanup/tombstones").join(operation_id)
     }
 
-    fn write_private_file_new(path: &Path, content: &[u8]) -> anyhow::Result<()> {
+    fn write_private_file_new(path: &Path, content: &[u8]) -> Result<()> {
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -581,13 +572,9 @@ impl ProfileFileService {
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
         }
-        let mut file = options
-            .open(path)
-            .with_context(|| format!("create private file {}", path.display()))?;
-        file.write_all(content)
-            .with_context(|| format!("write private file {}", path.display()))?;
-        file.sync_all()
-            .with_context(|| format!("sync private file {}", path.display()))?;
+        let mut file = options.open(path).context(WriteFileSnafu { path })?;
+        file.write_all(content).context(WriteFileSnafu { path })?;
+        file.sync_all().context(WriteFileSnafu { path })?;
         set_private_file_permissions(path)?;
         if let Some(parent) = path.parent() {
             sync_directory(parent)?;
@@ -595,83 +582,81 @@ impl ProfileFileService {
         Ok(())
     }
 
-    fn write_journal_new(path: &Path, journal: &MaterializationJournal) -> anyhow::Result<()> {
-        let content =
-            serde_yaml::to_string(journal).context("serialize materialization journal")?;
+    fn write_journal_new(path: &Path, journal: &MaterializationJournal) -> Result<()> {
+        let content = serde_yaml::to_string(journal).context(SerializeJournalSnafu)?;
         AtomicFile::new(path, OverwriteBehavior::DisallowOverwrite)
             .write(|file| file.write_all(content.as_bytes()))
-            .with_context(|| format!("write materialization journal {}", path.display()))?;
+            .context(AtomicWriteSnafu { path })?;
         set_private_file_permissions(path)?;
         sync_directory(path.parent().expect("journal has parent"))
     }
 
-    fn read_journal(path: &Path, operation_id: &str) -> anyhow::Result<MaterializationJournal> {
-        let metadata = std::fs::symlink_metadata(path)
-            .with_context(|| format!("inspect materialization journal {}", path.display()))?;
-        if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
-            bail!(
-                "materialization journal is not a regular file: {}",
-                path.display()
-            );
-        }
-        let content = std::fs::read_to_string(path)
-            .with_context(|| format!("read materialization journal {}", path.display()))?;
-        let journal: MaterializationJournal = serde_yaml::from_str(&content)
-            .with_context(|| format!("parse materialization journal {}", path.display()))?;
-        if journal.operation_id != operation_id || !valid_operation_id(&journal.operation_id) {
-            bail!("materialization journal operation id mismatch");
-        }
-        if journal
-            .managed_path
-            .as_path()
-            .components()
-            .any(|component| is_materialization_root_name(component.as_os_str()))
-        {
-            bail!("materialization journal targets reserved private storage");
-        }
-        if journal.hash.len() != 64 || !journal.hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            bail!("materialization journal hash is invalid");
-        }
+    fn read_journal(path: &Path, operation_id: &str) -> Result<MaterializationJournal> {
+        let metadata = std::fs::symlink_metadata(path).context(InspectPathSnafu { path })?;
+        ensure!(
+            !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+            UnexpectedNodeSnafu {
+                path,
+                expected: ExpectedNode::RegularFile
+            }
+        );
+        let content = std::fs::read_to_string(path).context(ReadFileSnafu { path })?;
+        let journal: MaterializationJournal =
+            serde_yaml::from_str(&content).context(ParseJournalSnafu { path })?;
+        ensure!(
+            journal.operation_id == operation_id && valid_operation_id(&journal.operation_id),
+            JournalOperationIdMismatchSnafu
+        );
+        ensure!(
+            !journal
+                .managed_path
+                .as_path()
+                .components()
+                .any(|component| is_materialization_root_name(component.as_os_str())),
+            ReservedPathSnafu {
+                path: &journal.managed_path
+            }
+        );
+        ensure!(
+            journal.hash.len() == 64 && journal.hash.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            JournalHashInvalidSnafu
+        );
         Ok(journal)
     }
 
-    fn remove_nofollow(path: &Path) -> anyhow::Result<()> {
+    fn remove_nofollow(path: &Path) -> Result<()> {
         match std::fs::symlink_metadata(path) {
             Ok(metadata) if metadata.is_dir() && !is_symlink_or_reparse(&metadata) => {
-                bail!(
-                    "refusing to remove directory as a profile resource: {}",
-                    path.display()
-                )
+                UnexpectedNodeSnafu {
+                    path,
+                    expected: ExpectedNode::RemovableResource,
+                }
+                .fail()
             }
             Ok(_) => {
-                std::fs::remove_file(path)
-                    .with_context(|| format!("remove profile resource {}", path.display()))?;
+                std::fs::remove_file(path).context(RemoveFileSnafu { path })?;
                 sync_directory(path.parent().expect("profile resource has parent"))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => {
-                Err(error).with_context(|| format!("inspect profile resource {}", path.display()))
-            }
+            Err(error) => Err(error).context(InspectPathSnafu { path }),
         }
     }
 
-    fn remove_private_regular(path: &Path) -> anyhow::Result<()> {
+    fn remove_private_regular(path: &Path) -> Result<()> {
         match std::fs::symlink_metadata(path) {
             Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_file() => {
-                bail!(
-                    "private materialization artifact is not a regular file: {}",
-                    path.display()
-                )
+                UnexpectedNodeSnafu {
+                    path,
+                    expected: ExpectedNode::RegularFile,
+                }
+                .fail()
             }
             Ok(_) => {
-                std::fs::remove_file(path)
-                    .with_context(|| format!("remove private artifact {}", path.display()))?;
+                std::fs::remove_file(path).context(RemoveFileSnafu { path })?;
                 sync_directory(path.parent().expect("private artifact has parent"))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => {
-                Err(error).with_context(|| format!("inspect private artifact {}", path.display()))
-            }
+            Err(error) => Err(error).context(InspectPathSnafu { path }),
         }
     }
 
@@ -684,47 +669,46 @@ impl ProfileFileService {
         }
     }
 
-    fn path_hash(path: &Path) -> anyhow::Result<String> {
+    fn path_hash(path: &Path) -> Result<String> {
         match std::fs::symlink_metadata(path) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
-                let target = std::fs::read_link(path)
-                    .with_context(|| format!("read managed symlink {}", path.display()))?;
+                let target = std::fs::read_link(path).context(ReadLinkSnafu { path })?;
                 let target = target
                     .to_str()
-                    .context("managed symlink target is not valid UTF-8")?;
+                    .context(SymlinkTargetNotUtf8Snafu { path })?;
                 Ok(hash_tagged(b"symlink", target.as_bytes()))
             }
-            Ok(metadata) if is_symlink_or_reparse(&metadata) => {
-                bail!(
-                    "managed target is an unsupported reparse point: {}",
-                    path.display()
-                )
+            Ok(metadata) if is_symlink_or_reparse(&metadata) => UnexpectedNodeSnafu {
+                path,
+                expected: ExpectedNode::HashableTarget,
             }
+            .fail(),
             Ok(metadata) if metadata.is_file() => {
-                let content = std::fs::read(path)
-                    .with_context(|| format!("read managed profile {}", path.display()))?;
+                let content = std::fs::read(path).context(ReadFileSnafu { path })?;
                 Ok(hash_tagged(b"file", &content))
             }
-            Ok(_) => bail!("managed target is not a file: {}", path.display()),
+            Ok(_) => UnexpectedNodeSnafu {
+                path,
+                expected: ExpectedNode::HashableTarget,
+            }
+            .fail(),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 Ok(ABSENT_HASH.to_owned())
             }
-            Err(error) => Err(error).with_context(|| format!("inspect {}", path.display())),
+            Err(error) => Err(error).context(InspectPathSnafu { path }),
         }
     }
 
-    fn ensure_replaceable_target(path: &Path) -> anyhow::Result<()> {
+    fn ensure_replaceable_target(path: &Path) -> Result<()> {
         match std::fs::symlink_metadata(path) {
             Ok(metadata) if metadata.file_type().is_symlink() || metadata.is_file() => Ok(()),
-            Ok(metadata) if is_symlink_or_reparse(&metadata) => {
-                bail!(
-                    "managed target is an unsupported reparse point: {}",
-                    path.display()
-                )
+            Ok(_) => UnexpectedNodeSnafu {
+                path,
+                expected: ExpectedNode::ReplaceableTarget,
             }
-            Ok(_) => bail!("managed target is not replaceable: {}", path.display()),
+            .fail(),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error).with_context(|| format!("inspect {}", path.display())),
+            Err(error) => Err(error).context(InspectPathSnafu { path }),
         }
     }
 
@@ -732,7 +716,7 @@ impl ProfileFileService {
         root: &Path,
         operation_id: &str,
         resource: &MaterializationResource,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         match resource {
             MaterializationResource::File { content } => Self::write_private_file_new(
                 &Self::stage_file_path(root, operation_id),
@@ -749,123 +733,138 @@ impl ProfileFileService {
         root: &Path,
         operation_id: &str,
         expected_hash: &str,
-    ) -> anyhow::Result<Option<StoredResource>> {
+    ) -> Result<Option<StoredResource>> {
         let file_path = Self::stage_file_path(root, operation_id);
         let link_path = Self::stage_link_path(root, operation_id);
         let file_metadata = match std::fs::symlink_metadata(&file_path) {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("inspect staged file {}", file_path.display()));
+                return Err(error).context(InspectPathSnafu { path: &file_path });
             }
         };
         let link_metadata = match std::fs::symlink_metadata(&link_path) {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => {
-                return Err(error).with_context(|| {
-                    format!(
-                        "inspect staged symlink specification {}",
-                        link_path.display()
-                    )
-                });
+                return Err(error).context(InspectPathSnafu { path: &link_path });
             }
         };
-        if file_metadata.is_some() && link_metadata.is_some() {
-            bail!("materialization has multiple staged resources");
-        }
+        ensure!(
+            file_metadata.is_none() || link_metadata.is_none(),
+            MultipleStagedResourcesSnafu
+        );
         if let Some(metadata) = file_metadata {
-            if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
-                bail!("staged file is not a regular file");
-            }
-            let content = std::fs::read(&file_path)?;
-            if hash_tagged(b"file", &content) != expected_hash {
-                bail!("staged file hash mismatch");
-            }
+            ensure!(
+                !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                UnexpectedNodeSnafu {
+                    path: &file_path,
+                    expected: ExpectedNode::RegularFile
+                }
+            );
+            let content = std::fs::read(&file_path).context(ReadFileSnafu { path: &file_path })?;
+            ensure!(
+                hash_tagged(b"file", &content) == expected_hash,
+                StagedHashMismatchSnafu
+            );
             return Ok(Some(StoredResource::File { path: file_path }));
         }
         if let Some(metadata) = link_metadata {
-            if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
-                bail!("staged symlink specification is not a regular file");
-            }
-            let target = std::fs::read_to_string(&link_path)?;
-            if hash_tagged(b"symlink", target.as_bytes()) != expected_hash {
-                bail!("staged symlink hash mismatch");
-            }
+            ensure!(
+                !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                UnexpectedNodeSnafu {
+                    path: &link_path,
+                    expected: ExpectedNode::RegularFile
+                }
+            );
+            let target =
+                std::fs::read_to_string(&link_path).context(ReadFileSnafu { path: &link_path })?;
+            ensure!(
+                hash_tagged(b"symlink", target.as_bytes()) == expected_hash,
+                StagedHashMismatchSnafu
+            );
             return Ok(Some(StoredResource::Symlink {
-                target: ExternalProfilePath::new(target)?,
+                target: ExternalProfilePath::new(target).context(InvalidExternalPathSnafu)?,
             }));
         }
         Ok(None)
     }
 
-    fn capture_backup(root: &Path, operation_id: &str, target: &Path) -> anyhow::Result<()> {
+    fn capture_backup(root: &Path, operation_id: &str, target: &Path) -> Result<()> {
         match std::fs::symlink_metadata(target) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
-                let link_target = std::fs::read_link(target)?;
+                let link_target =
+                    std::fs::read_link(target).context(ReadLinkSnafu { path: target })?;
                 let link_target = link_target
                     .to_str()
-                    .context("managed symlink target is not valid UTF-8")?;
+                    .context(SymlinkTargetNotUtf8Snafu { path: target })?;
                 Self::write_private_file_new(
                     &Self::backup_link_path(root, operation_id),
                     link_target.as_bytes(),
                 )
             }
-            Ok(metadata) if is_symlink_or_reparse(&metadata) => {
-                bail!(
-                    "managed target is an unsupported reparse point: {}",
-                    target.display()
-                )
+            Ok(metadata) if is_symlink_or_reparse(&metadata) => UnexpectedNodeSnafu {
+                path: target,
+                expected: ExpectedNode::HashableTarget,
             }
+            .fail(),
             Ok(metadata) if metadata.is_file() => {
-                let content = std::fs::read(target)?;
+                let content = std::fs::read(target).context(ReadFileSnafu { path: target })?;
                 Self::write_private_file_new(&Self::backup_file_path(root, operation_id), &content)
             }
-            Ok(_) => bail!("managed target is not a file: {}", target.display()),
+            Ok(_) => UnexpectedNodeSnafu {
+                path: target,
+                expected: ExpectedNode::HashableTarget,
+            }
+            .fail(),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error).with_context(|| format!("inspect {}", target.display())),
+            Err(error) => Err(error).context(InspectPathSnafu { path: target }),
         }
     }
 
-    fn read_backup_resource(
-        root: &Path,
-        operation_id: &str,
-    ) -> anyhow::Result<Option<StoredResource>> {
+    fn read_backup_resource(root: &Path, operation_id: &str) -> Result<Option<StoredResource>> {
         let file_path = Self::backup_file_path(root, operation_id);
         let link_path = Self::backup_link_path(root, operation_id);
         let file_metadata = match std::fs::symlink_metadata(&file_path) {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("inspect backup file {}", file_path.display()));
+                return Err(error).context(InspectPathSnafu { path: &file_path });
             }
         };
         let link_metadata = match std::fs::symlink_metadata(&link_path) {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("inspect backup link {}", link_path.display()));
+                return Err(error).context(InspectPathSnafu { path: &link_path });
             }
         };
-        if file_metadata.is_some() && link_metadata.is_some() {
-            bail!("materialization has multiple backups");
-        }
+        ensure!(
+            file_metadata.is_none() || link_metadata.is_none(),
+            MultipleBackupsSnafu
+        );
         if let Some(metadata) = file_metadata {
-            if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
-                bail!("backup file is not a regular file");
-            }
+            ensure!(
+                !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                UnexpectedNodeSnafu {
+                    path: &file_path,
+                    expected: ExpectedNode::RegularFile
+                }
+            );
             return Ok(Some(StoredResource::File { path: file_path }));
         }
         if let Some(metadata) = link_metadata {
-            if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
-                bail!("backup symlink specification is not a regular file");
-            }
-            let target = std::fs::read_to_string(&link_path)?;
+            ensure!(
+                !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                UnexpectedNodeSnafu {
+                    path: &link_path,
+                    expected: ExpectedNode::RegularFile
+                }
+            );
+            let target =
+                std::fs::read_to_string(&link_path).context(ReadFileSnafu { path: &link_path })?;
             return Ok(Some(StoredResource::Symlink {
-                target: ExternalProfilePath::new(target)?,
+                target: ExternalProfilePath::new(target).context(InvalidExternalPathSnafu)?,
             }));
         }
         Ok(None)
@@ -875,21 +874,31 @@ impl ProfileFileService {
         root: &Path,
         operation_id: &str,
         target: &ExternalProfilePath,
-    ) -> anyhow::Result<PathBuf> {
+    ) -> Result<PathBuf> {
         let ready = Self::ready_link_path(root, operation_id);
         match std::fs::symlink_metadata(&ready) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
-                if std::fs::read_link(&ready)? != target.as_path() {
-                    bail!("ready symlink target mismatch");
-                }
+                ensure!(
+                    std::fs::read_link(&ready).context(ReadLinkSnafu { path: &ready })?
+                        == target.as_path(),
+                    ReadySymlinkMismatchSnafu
+                );
             }
-            Ok(_) => bail!("ready symlink path is occupied by an unexpected node"),
+            Ok(_) => {
+                return UnexpectedNodeSnafu {
+                    path: &ready,
+                    expected: ExpectedNode::ReadySymlink,
+                }
+                .fail();
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                create_file_symlink(target.as_path(), &ready)
-                    .with_context(|| format!("create staged symlink {}", ready.display()))?;
+                create_file_symlink(target.as_path(), &ready).context(CreateSymlinkSnafu {
+                    link: &ready,
+                    target,
+                })?;
                 sync_directory(ready.parent().expect("ready symlink has parent"))?;
             }
-            Err(error) => return Err(error).context("inspect ready symlink"),
+            Err(error) => return Err(error).context(InspectPathSnafu { path: &ready }),
         }
         Ok(ready)
     }
@@ -900,14 +909,15 @@ impl ProfileFileService {
         operation_id: &str,
         target: &Path,
         expected_hash: &str,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         self.ensure_managed_parent(target)?;
         Self::ensure_replaceable_target(target)?;
         let Some(resource) = Self::read_staged_resource(root, operation_id, expected_hash)? else {
-            if Self::path_hash(target)? == expected_hash {
-                return Ok(());
-            }
-            bail!("staged resource is missing and target hash does not match");
+            ensure!(
+                Self::path_hash(target)? == expected_hash,
+                StagedResourceMissingSnafu
+            );
+            return Ok(());
         };
 
         // Static symlink/reparse validation is mandatory. A same-user parent
@@ -917,12 +927,9 @@ impl ProfileFileService {
             StoredResource::File { path } => {
                 self.ensure_managed_parent(target)?;
                 Self::ensure_replaceable_target(target)?;
-                replace_atomic(&path, target).with_context(|| {
-                    format!(
-                        "promote staged file {} -> {}",
-                        path.display(),
-                        target.display()
-                    )
+                replace_atomic(&path, target).context(ReplaceFileSnafu {
+                    from: &path,
+                    to: target,
                 })?;
             }
             StoredResource::Symlink {
@@ -931,26 +938,23 @@ impl ProfileFileService {
                 let ready = Self::create_ready_link(root, operation_id, &link_target)?;
                 self.ensure_managed_parent(target)?;
                 Self::ensure_replaceable_target(target)?;
-                replace_atomic(&ready, target).with_context(|| {
-                    format!(
-                        "promote staged symlink {} -> {}",
-                        ready.display(),
-                        target.display()
-                    )
+                replace_atomic(&ready, target).context(ReplaceFileSnafu {
+                    from: &ready,
+                    to: target,
                 })?;
             }
         }
-        if Self::path_hash(target)? != expected_hash {
-            bail!("promoted target hash mismatch");
-        }
+        ensure!(
+            Self::path_hash(target)? == expected_hash,
+            PromotedHashMismatchSnafu
+        );
         Ok(())
     }
 
-    fn backup_hash(root: &Path, operation_id: &str) -> anyhow::Result<String> {
+    fn backup_hash(root: &Path, operation_id: &str) -> Result<String> {
         match Self::read_backup_resource(root, operation_id)? {
             Some(StoredResource::File { path }) => {
-                let content = std::fs::read(&path)
-                    .with_context(|| format!("read backup file {}", path.display()))?;
+                let content = std::fs::read(&path).context(ReadFileSnafu { path: &path })?;
                 Ok(hash_tagged(b"file", &content))
             }
             Some(StoredResource::Symlink { target }) => {
@@ -960,11 +964,7 @@ impl ProfileFileService {
         }
     }
 
-    fn target_is_pre_promote(
-        root: &Path,
-        operation_id: &str,
-        target: &Path,
-    ) -> anyhow::Result<bool> {
+    fn target_is_pre_promote(root: &Path, operation_id: &str, target: &Path) -> Result<bool> {
         Ok(Self::path_hash(target)? == Self::backup_hash(root, operation_id)?)
     }
 
@@ -974,7 +974,7 @@ impl ProfileFileService {
         operation_id: &str,
         target: &Path,
         promoted_hash: &str,
-    ) -> anyhow::Result<bool> {
+    ) -> Result<bool> {
         let current_hash = Self::path_hash(target)?;
         if current_hash == Self::backup_hash(root, operation_id)? {
             return Ok(true);
@@ -987,15 +987,15 @@ impl ProfileFileService {
 
         match Self::read_backup_resource(root, operation_id)? {
             Some(StoredResource::File { path }) => {
-                let content = std::fs::read(&path)
-                    .with_context(|| format!("read backup file {}", path.display()))?;
+                let content = std::fs::read(&path).context(ReadFileSnafu { path: &path })?;
                 let restore = Self::restore_file_path(root, operation_id);
                 Self::remove_private_regular(&restore)?;
                 Self::write_private_file_new(&restore, &content)?;
                 self.ensure_managed_parent(target)?;
                 Self::ensure_replaceable_target(target)?;
-                replace_atomic(&restore, target).with_context(|| {
-                    format!("restore backup {} -> {}", path.display(), target.display())
+                replace_atomic(&restore, target).context(ReplaceFileSnafu {
+                    from: &restore,
+                    to: target,
                 })?;
             }
             Some(StoredResource::Symlink {
@@ -1004,12 +1004,9 @@ impl ProfileFileService {
                 let ready = Self::create_ready_link(root, operation_id, &link_target)?;
                 self.ensure_managed_parent(target)?;
                 Self::ensure_replaceable_target(target)?;
-                replace_atomic(&ready, target).with_context(|| {
-                    format!(
-                        "restore backup symlink {} -> {}",
-                        ready.display(),
-                        target.display()
-                    )
+                replace_atomic(&ready, target).context(ReplaceFileSnafu {
+                    from: &ready,
+                    to: target,
                 })?;
             }
             None if current_hash == promoted_hash => Self::remove_nofollow(target)?,
@@ -1018,7 +1015,7 @@ impl ProfileFileService {
         Ok(true)
     }
 
-    fn remove_private_artifacts(root: &Path, operation_id: &str) -> anyhow::Result<()> {
+    fn remove_private_artifacts(root: &Path, operation_id: &str) -> Result<()> {
         for path in [
             Self::stage_file_path(root, operation_id),
             Self::restore_file_path(root, operation_id),
@@ -1031,11 +1028,7 @@ impl ProfileFileService {
         Self::remove_nofollow(&Self::ready_link_path(root, operation_id))
     }
 
-    fn remove_operation_artifacts(
-        root: &Path,
-        operation_id: &str,
-        journal: &Path,
-    ) -> anyhow::Result<()> {
+    fn remove_operation_artifacts(root: &Path, operation_id: &str, journal: &Path) -> Result<()> {
         // Retire the journal first. A crash after this point leaves only safe,
         // unreferenced private files, which reconcile can reclaim; it never
         // leaves a journal whose only backup was already consumed.
@@ -1064,14 +1057,14 @@ impl ProfileFileService {
         })
     }
 
-    fn allocate_operation_id(root: &Path) -> anyhow::Result<String> {
+    fn allocate_operation_id(root: &Path) -> Result<String> {
         for _ in 0..16 {
             let operation_id = nanoid::nanoid!(16, &nanoid::alphabet::SAFE);
             if !Self::operation_id_in_use(root, &operation_id) {
                 return Ok(operation_id);
             }
         }
-        bail!("failed to allocate a unique profile materialization operation id")
+        OperationIdExhaustedSnafu.fail()
     }
 
     fn prepare_materialization(
@@ -1080,7 +1073,7 @@ impl ProfileFileService {
         resource: &MaterializationResource,
         expected_revision: u64,
         location: JournalLocation,
-    ) -> anyhow::Result<PreparedMaterialization> {
+    ) -> Result<PreparedMaterialization> {
         let root = self.ensure_materialization_layout()?;
         let target = self.resolve(path)?;
         self.ensure_managed_parent(&target)?;
@@ -1114,27 +1107,25 @@ impl ProfileFileService {
         &self,
         root: &Path,
         operation_id: &str,
-    ) -> anyhow::Result<Option<(JournalLocation, MaterializationJournal)>> {
-        if !valid_operation_id(operation_id) {
-            bail!("invalid profile materialization operation id");
-        }
+    ) -> Result<Option<(JournalLocation, MaterializationJournal)>> {
+        ensure!(valid_operation_id(operation_id), OperationIdInvalidSnafu);
         let mut found = Vec::new();
         for location in JournalLocation::ALL {
             let path = Self::journal_path(root, location, operation_id);
             match std::fs::symlink_metadata(&path) {
                 Ok(metadata) => {
-                    if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
-                        bail!(
-                            "materialization journal is not a regular file: {}",
-                            path.display()
-                        );
-                    }
+                    ensure!(
+                        !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+                        UnexpectedNodeSnafu {
+                            path: &path,
+                            expected: ExpectedNode::RegularFile
+                        }
+                    );
                     found.push((location, Self::read_journal(&path, operation_id)?, path));
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
-                    return Err(error)
-                        .with_context(|| format!("inspect journal {}", path.display()));
+                    return Err(error).context(InspectPathSnafu { path: &path });
                 }
             }
         }
@@ -1143,26 +1134,25 @@ impl ProfileFileService {
 
     fn converge_materialization_journals(
         mut found: Vec<(JournalLocation, MaterializationJournal, PathBuf)>,
-    ) -> anyhow::Result<Option<(JournalLocation, MaterializationJournal)>> {
+    ) -> Result<Option<(JournalLocation, MaterializationJournal)>> {
         let Some(family) = found.first().map(|(location, _, _)| location.family()) else {
             return Ok(None);
         };
-        if found
-            .iter()
-            .any(|(location, _, _)| location.family() != family)
-        {
-            bail!("materialization operation has mixed transaction families");
-        }
+        ensure!(
+            found
+                .iter()
+                .all(|(location, _, _)| location.family() == family),
+            MixedTransactionFamiliesSnafu
+        );
         found.sort_by_key(|(location, _, _)| location.rank());
         let (location, journal, _) = found
             .pop()
             .expect("non-empty materialization journal set has a preferred phase");
-        for (duplicate_location, duplicate_journal, duplicate_path) in found {
-            if duplicate_journal != journal {
-                bail!(
-                    "materialization operation has conflicting journal payloads in {duplicate_location:?}"
-                );
-            }
+        for (_, duplicate_journal, duplicate_path) in found {
+            ensure!(
+                duplicate_journal == journal,
+                ConflictingJournalPayloadsSnafu
+            );
             Self::remove_private_regular(&duplicate_path)?;
         }
         Ok(Some((location, journal)))
@@ -1172,18 +1162,19 @@ impl ProfileFileService {
     /// atomic same-filesystem phase transition. Do not use `move_atomic`: its
     /// hard-link/unlink fallback can leave duplicate phase artifacts.
     #[allow(dead_code)]
-    fn rename_journal_same_filesystem(source: &Path, destination: &Path) -> anyhow::Result<()> {
-        let metadata = std::fs::symlink_metadata(source)
-            .with_context(|| format!("inspect journal source {}", source.display()))?;
-        if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
-            bail!("journal source is not a regular file: {}", source.display());
-        }
-        std::fs::rename(source, destination).with_context(|| {
-            format!(
-                "atomically rename journal {} -> {}",
-                source.display(),
-                destination.display()
-            )
+    fn rename_journal_same_filesystem(source: &Path, destination: &Path) -> Result<()> {
+        let metadata =
+            std::fs::symlink_metadata(source).context(InspectPathSnafu { path: source })?;
+        ensure!(
+            !is_symlink_or_reparse(&metadata) && metadata.is_file(),
+            UnexpectedNodeSnafu {
+                path: source,
+                expected: ExpectedNode::RegularFile
+            }
+        );
+        std::fs::rename(source, destination).context(ReplaceFileSnafu {
+            from: source,
+            to: destination,
         })?;
         sync_directory(source.parent().expect("journal source has parent"))?;
         if source.parent() != destination.parent() {
@@ -1200,7 +1191,7 @@ impl ProfileFileService {
         source: &Path,
         destination: &Path,
         journal: &MaterializationJournal,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         #[cfg(windows)]
         {
             // `std::fs::rename` has no directory fsync equivalent on Windows.
@@ -1221,7 +1212,7 @@ impl ProfileFileService {
         operation_id: &str,
         from: JournalLocation,
         to: JournalLocation,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let source = Self::journal_path(root, from, operation_id);
         let destination = Self::journal_path(root, to, operation_id);
         let source_journal = Self::read_journal(&source, operation_id)?;
@@ -1229,17 +1220,21 @@ impl ProfileFileService {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 Self::advance_journal_phase(&source, &destination, &source_journal)
             }
-            Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_file() => bail!(
-                "journal destination is not a regular file: {}",
-                destination.display()
-            ),
-            Ok(_) => {
-                if Self::read_journal(&destination, operation_id)? != source_journal {
-                    bail!("journal destination has a different payload");
+            Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_file() => {
+                UnexpectedNodeSnafu {
+                    path: &destination,
+                    expected: ExpectedNode::RegularFile,
                 }
+                .fail()
+            }
+            Ok(_) => {
+                ensure!(
+                    Self::read_journal(&destination, operation_id)? == source_journal,
+                    JournalDestinationDiffersSnafu
+                );
                 Self::remove_private_regular(&source)
             }
-            Err(error) => Err(error).context("inspect journal destination"),
+            Err(error) => Err(error).context(InspectPathSnafu { path: &destination }),
         }
     }
 
@@ -1248,7 +1243,7 @@ impl ProfileFileService {
         operation_id: &str,
         from: CleanupPhase,
         to: CleanupPhase,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let source = Self::cleanup_path(root, from, operation_id);
         let destination = Self::cleanup_path(root, to, operation_id);
         let source_journal = Self::read_journal(&source, operation_id)?;
@@ -1256,17 +1251,21 @@ impl ProfileFileService {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 Self::advance_journal_phase(&source, &destination, &source_journal)
             }
-            Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_file() => bail!(
-                "cleanup journal destination is not a regular file: {}",
-                destination.display()
-            ),
-            Ok(_) => {
-                if Self::read_journal(&destination, operation_id)? != source_journal {
-                    bail!("cleanup journal destination has a different payload");
+            Ok(metadata) if is_symlink_or_reparse(&metadata) || !metadata.is_file() => {
+                UnexpectedNodeSnafu {
+                    path: &destination,
+                    expected: ExpectedNode::RegularFile,
                 }
+                .fail()
+            }
+            Ok(_) => {
+                ensure!(
+                    Self::read_journal(&destination, operation_id)? == source_journal,
+                    JournalDestinationDiffersSnafu
+                );
                 Self::remove_private_regular(&source)
             }
-            Err(error) => Err(error).context("inspect cleanup journal destination"),
+            Err(error) => Err(error).context(InspectPathSnafu { path: &destination }),
         }
     }
 
@@ -1274,7 +1273,7 @@ impl ProfileFileService {
         root: &Path,
         operation_id: &str,
         location: JournalLocation,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         Self::remove_operation_artifacts(
             root,
             operation_id,
@@ -1282,11 +1281,9 @@ impl ProfileFileService {
         )
     }
 
-    fn list_operation_ids(directory: &Path) -> anyhow::Result<Vec<String>> {
+    fn list_operation_ids(directory: &Path) -> Result<Vec<String>> {
         let mut operation_ids = Vec::new();
-        for entry in std::fs::read_dir(directory)
-            .with_context(|| format!("list private journal directory {}", directory.display()))?
-        {
+        for entry in std::fs::read_dir(directory).context(ListDirectorySnafu { path: directory })? {
             let Ok(entry) = entry else {
                 continue;
             };
@@ -1327,27 +1324,41 @@ impl ProfileFileService {
     fn locate_cleanup(
         root: &Path,
         operation_id: &str,
-    ) -> anyhow::Result<Option<(CleanupPhase, MaterializationJournal)>> {
-        if !valid_operation_id(operation_id) {
-            bail!("invalid profile cleanup operation id");
-        }
+    ) -> Result<Option<(CleanupPhase, MaterializationJournal)>> {
+        ensure!(valid_operation_id(operation_id), OperationIdInvalidSnafu);
         let pending_path = Self::cleanup_path(root, CleanupPhase::Pending, operation_id);
         let ready_path = Self::cleanup_path(root, CleanupPhase::Ready, operation_id);
         let pending = match std::fs::symlink_metadata(&pending_path) {
             Ok(metadata) if !is_symlink_or_reparse(&metadata) && metadata.is_file() => {
                 Some(Self::read_journal(&pending_path, operation_id)?)
             }
-            Ok(_) => bail!("pending cleanup journal is not a regular file"),
+            Ok(_) => {
+                return UnexpectedNodeSnafu {
+                    path: &pending_path,
+                    expected: ExpectedNode::RegularFile,
+                }
+                .fail();
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-            Err(error) => return Err(error).context("inspect pending cleanup journal"),
+            Err(error) => {
+                return Err(error).context(InspectPathSnafu {
+                    path: &pending_path,
+                });
+            }
         };
         let ready = match std::fs::symlink_metadata(&ready_path) {
             Ok(metadata) if !is_symlink_or_reparse(&metadata) && metadata.is_file() => {
                 Some(Self::read_journal(&ready_path, operation_id)?)
             }
-            Ok(_) => bail!("ready cleanup journal is not a regular file"),
+            Ok(_) => {
+                return UnexpectedNodeSnafu {
+                    path: &ready_path,
+                    expected: ExpectedNode::RegularFile,
+                }
+                .fail();
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-            Err(error) => return Err(error).context("inspect ready cleanup journal"),
+            Err(error) => return Err(error).context(InspectPathSnafu { path: &ready_path }),
         };
         match (pending, ready) {
             (None, None) => Ok(None),
@@ -1357,7 +1368,7 @@ impl ProfileFileService {
                 Self::remove_private_regular(&pending_path)?;
                 Ok(Some((CleanupPhase::Ready, ready)))
             }
-            (Some(_), Some(_)) => bail!("cleanup journals have conflicting payloads"),
+            (Some(_), Some(_)) => ConflictingCleanupPayloadsSnafu.fail(),
         }
     }
 
@@ -1375,7 +1386,7 @@ impl ProfileFileService {
             })
     }
 
-    fn remove_cleanup_tombstone(root: &Path, operation_id: &str) -> anyhow::Result<()> {
+    fn remove_cleanup_tombstone(root: &Path, operation_id: &str) -> Result<()> {
         #[cfg(windows)]
         {
             Self::remove_nofollow(&Self::cleanup_tombstone_path(root, operation_id))
@@ -1387,11 +1398,14 @@ impl ProfileFileService {
         }
     }
 
-    fn sweep_unreferenced_cleanup_tombstones(root: &Path) -> anyhow::Result<usize> {
+    fn sweep_unreferenced_cleanup_tombstones(root: &Path) -> Result<usize> {
         #[cfg(windows)]
         {
             let mut removed = 0;
-            for entry in std::fs::read_dir(root.join("cleanup/tombstones"))? {
+            let tombstones = root.join("cleanup/tombstones");
+            for entry in
+                std::fs::read_dir(&tombstones).context(ListDirectorySnafu { path: &tombstones })?
+            {
                 let Ok(entry) = entry else {
                     continue;
                 };
@@ -1421,7 +1435,7 @@ impl ProfileFileService {
         }
     }
 
-    fn sweep_unreferenced_artifacts(root: &Path) -> anyhow::Result<usize> {
+    fn sweep_unreferenced_artifacts(root: &Path) -> Result<usize> {
         let mut removed = 0;
         for (relative, permits_symlink) in [
             ("staging/files", false),
@@ -1430,7 +1444,10 @@ impl ProfileFileService {
             ("backup/files", false),
             ("backup/links", false),
         ] {
-            for entry in std::fs::read_dir(root.join(relative))? {
+            let directory = root.join(relative);
+            for entry in
+                std::fs::read_dir(&directory).context(ListDirectorySnafu { path: &directory })?
+            {
                 let Ok(entry) = entry else {
                     continue;
                 };
@@ -1459,32 +1476,22 @@ impl ProfileFileService {
         Ok(removed)
     }
 
-    fn remove_cleanup_target(
-        &self,
-        root: &Path,
-        operation_id: &str,
-        target: &Path,
-    ) -> anyhow::Result<()> {
+    fn remove_cleanup_target(&self, root: &Path, operation_id: &str, target: &Path) -> Result<()> {
         #[cfg(windows)]
         {
             let tombstone = Self::cleanup_tombstone_path(root, operation_id);
             match std::fs::symlink_metadata(&tombstone) {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Ok(_) => bail!("cleanup tombstone already exists: {}", tombstone.display()),
+                Ok(_) => return CleanupTombstoneExistsSnafu { path: &tombstone }.fail(),
                 Err(error) => {
-                    return Err(error).with_context(|| {
-                        format!("inspect cleanup tombstone {}", tombstone.display())
-                    });
+                    return Err(error).context(InspectPathSnafu { path: &tombstone });
                 }
             }
             self.ensure_managed_parent(target)?;
             Self::ensure_replaceable_target(target)?;
-            replace_atomic(target, &tombstone).with_context(|| {
-                format!(
-                    "move cleanup target {} to tombstone {}",
-                    target.display(),
-                    tombstone.display()
-                )
+            replace_atomic(target, &tombstone).context(ReplaceFileSnafu {
+                from: target,
+                to: &tombstone,
             })
         }
         #[cfg(not(windows))]
@@ -1494,7 +1501,7 @@ impl ProfileFileService {
         }
     }
 
-    fn remove_cleanup_journal(root: &Path, operation_id: &str) -> anyhow::Result<()> {
+    fn remove_cleanup_journal(root: &Path, operation_id: &str) -> Result<()> {
         Self::remove_private_regular(&Self::cleanup_path(
             root,
             CleanupPhase::Pending,
@@ -1506,60 +1513,59 @@ impl ProfileFileService {
     fn degradation(
         phase: ProfileDegradationPhase,
         code: ProfileDegradationCode,
-        error: anyhow::Error,
+        error: ProfileFileError,
     ) -> ProfileDegradation {
         ProfileDegradation {
             phase,
             code,
-            message: format!("{error:#}"),
+            message: snafu::Report::from_error(error).to_string(),
         }
     }
 }
 
 /// Parse and reserialize a YAML mapping so editor saves and File-config reads
 /// share one canonical shape (legacy `read_profile_file` normalization).
-pub fn normalize_yaml_document(content: &str) -> anyhow::Result<String> {
+pub fn normalize_yaml_document(content: &str) -> Result<String, ProfileContentError> {
     let mapping: serde_yaml::Mapping =
-        serde_yaml::from_str(content).context("document is not a YAML mapping")?;
-    serde_yaml::to_string(&mapping).context("failed to reserialize YAML mapping")
+        serde_yaml::from_str(content).context(NotYamlMappingSnafu)?;
+    serde_yaml::to_string(&mapping).context(ReserializeYamlSnafu)
 }
 
 impl ProfileFsPort for ProfileFileService {
-    fn read(&self, path: &ManagedProfilePath) -> anyhow::Result<String> {
+    fn read(&self, path: &ManagedProfilePath) -> Result<String> {
         let full = self.resolve(path)?;
-        std::fs::read_to_string(&full)
-            .with_context(|| format!("read profile file {}", full.display()))
+        std::fs::read_to_string(&full).context(ReadFileSnafu { path: &full })
     }
 
-    fn write_atomic(&self, path: &ManagedProfilePath, content: &str) -> anyhow::Result<()> {
+    fn write_atomic(&self, path: &ManagedProfilePath, content: &str) -> Result<()> {
         let full = self.resolve(path)?;
         self.ensure_managed_parent(&full)?;
         self.ensure_not_symlink(path)?;
         AtomicFile::new(&full, OverwriteBehavior::AllowOverwrite)
             .write(|file| file.write_all(content.as_bytes()))
-            .with_context(|| format!("atomic write {}", full.display()))
+            .context(AtomicWriteSnafu { path: &full })
     }
 
-    fn remove(&self, path: &ManagedProfilePath) -> anyhow::Result<()> {
+    fn remove(&self, path: &ManagedProfilePath) -> Result<()> {
         let full = self.resolve(path)?;
         Self::remove_nofollow(&full)
     }
 
-    fn read_external(&self, target: &ExternalProfilePath) -> anyhow::Result<String> {
-        std::fs::read_to_string(target.as_path())
-            .with_context(|| format!("read external profile target {target}"))
+    fn read_external(&self, target: &ExternalProfilePath) -> Result<String> {
+        std::fs::read_to_string(target.as_path()).context(ReadExternalTargetSnafu {
+            target: target.clone(),
+        })
     }
 
-    fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> anyhow::Result<()> {
+    fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> Result<()> {
         let full = self.resolve(path)?;
         match std::fs::symlink_metadata(&full) {
-            Ok(meta) if is_symlink_or_reparse(&meta) => bail!(
-                "refusing to write through unexpected symlink or reparse point at {}",
-                full.display()
-            ),
+            Ok(meta) if is_symlink_or_reparse(&meta) => {
+                UnexpectedSymlinkSnafu { path: &full }.fail()
+            }
             Ok(_) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e).with_context(|| format!("inspect profile file {}", full.display())),
+            Err(e) => Err(e).context(InspectPathSnafu { path: &full }),
         }
     }
 
@@ -1567,7 +1573,7 @@ impl ProfileFsPort for ProfileFileService {
         &self,
         path: &ManagedProfilePath,
         target: &ExternalProfilePath,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let full = self.resolve(path)?;
         self.ensure_managed_parent(&full)?;
         match std::fs::symlink_metadata(&full) {
@@ -1575,20 +1581,16 @@ impl ProfileFsPort for ProfileFileService {
                 if symlink_points_to(&full, target.as_path())? {
                     return Ok(());
                 }
-                std::fs::remove_file(&full)?;
+                std::fs::remove_file(&full).context(RemoveFileSnafu { path: &full })?;
             }
-            Ok(_) => bail!(
-                "existing non-symlink file at {}, refusing to replace",
-                full.display()
-            ),
+            Ok(_) => return ExistingFileBlocksSymlinkSnafu { path: &full }.fail(),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => Err(e).with_context(|| format!("inspect profile file {}", full.display()))?,
+            Err(e) => return Err(e).context(InspectPathSnafu { path: &full }),
         }
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_file(target.as_path(), &full)?;
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(target.as_path(), &full)?;
-        Ok(())
+        create_file_symlink(target.as_path(), &full).context(CreateSymlinkSnafu {
+            link: &full,
+            target,
+        })
     }
 }
 
@@ -1598,7 +1600,7 @@ impl ProfileMaterializationPort for ProfileFileService {
         path: &ManagedProfilePath,
         resource: MaterializationResource,
         expected_revision: u64,
-    ) -> anyhow::Result<PreparedMaterialization> {
+    ) -> Result<PreparedMaterialization> {
         self.prepare_materialization(
             path,
             &resource,
@@ -1612,7 +1614,7 @@ impl ProfileMaterializationPort for ProfileFileService {
         path: &ManagedProfilePath,
         resource: MaterializationResource,
         expected_revision: u64,
-    ) -> anyhow::Result<PreparedMaterialization> {
+    ) -> Result<PreparedMaterialization> {
         self.prepare_materialization(
             path,
             &resource,
@@ -1621,24 +1623,25 @@ impl ProfileMaterializationPort for ProfileFileService {
         )
     }
 
-    fn promote(&self, prepared: &PreparedMaterialization) -> anyhow::Result<()> {
+    fn promote(&self, prepared: &PreparedMaterialization) -> Result<()> {
         let root = self.ensure_materialization_layout()?;
         let operation_id = prepared.operation_id();
         let Some((mut location, journal)) = self.locate_materialization(&root, operation_id)?
         else {
-            bail!("materialization journal not found for operation {operation_id}");
+            return JournalNotFoundSnafu { operation_id }.fail();
         };
 
         if let Some(promoting) = location.promoting() {
             Self::transition_journal(&root, operation_id, location, promoting)?;
             location = promoting;
         }
-        if matches!(
-            location,
-            JournalLocation::StateCompensating | JournalLocation::FileCompensating
-        ) {
-            bail!("cannot promote a compensating materialization");
-        }
+        ensure!(
+            !matches!(
+                location,
+                JournalLocation::StateCompensating | JournalLocation::FileCompensating
+            ),
+            CompensatingCannotPromoteSnafu
+        );
 
         let target = self.resolve(&journal.managed_path)?;
         if Self::path_hash(&target)? != journal.hash {
@@ -1655,7 +1658,7 @@ impl ProfileMaterializationPort for ProfileFileService {
         Ok(())
     }
 
-    fn complete(&self, prepared: &PreparedMaterialization) -> anyhow::Result<()> {
+    fn complete(&self, prepared: &PreparedMaterialization) -> Result<()> {
         let root = self.ensure_materialization_layout()?;
         let operation_id = prepared.operation_id();
         let Some((mut location, journal)) = self.locate_materialization(&root, operation_id)?
@@ -1663,9 +1666,10 @@ impl ProfileMaterializationPort for ProfileFileService {
             return Ok(());
         };
         let target = self.resolve(&journal.managed_path)?;
-        if Self::path_hash(&target)? != journal.hash {
-            bail!("cannot complete materialization with a target hash mismatch");
-        }
+        ensure!(
+            Self::path_hash(&target)? == journal.hash,
+            TargetHashMismatchSnafu
+        );
         if location == JournalLocation::FilePromoting {
             Self::transition_journal(
                 &root,
@@ -1675,12 +1679,13 @@ impl ProfileMaterializationPort for ProfileFileService {
             )?;
             location = JournalLocation::FilePromoted;
         }
-        if !matches!(
-            location,
-            JournalLocation::StatePromoting | JournalLocation::FilePromoted
-        ) {
-            bail!("materialization is not in a completable phase");
-        }
+        ensure!(
+            matches!(
+                location,
+                JournalLocation::StatePromoting | JournalLocation::FilePromoted
+            ),
+            NotCompletableSnafu
+        );
         Self::remove_operation_artifacts(
             &root,
             operation_id,
@@ -1688,7 +1693,7 @@ impl ProfileMaterializationPort for ProfileFileService {
         )
     }
 
-    fn compensate(&self, prepared: &PreparedMaterialization) -> anyhow::Result<()> {
+    fn compensate(&self, prepared: &PreparedMaterialization) -> Result<()> {
         let root = self.ensure_materialization_layout()?;
         let operation_id = prepared.operation_id();
         let Some((mut location, journal)) = self.locate_materialization(&root, operation_id)?
@@ -1702,12 +1707,12 @@ impl ProfileMaterializationPort for ProfileFileService {
         }
 
         let target = self.resolve(&journal.managed_path)?;
-        if !self.restore_backup(&root, operation_id, &target, &journal.hash)? {
-            bail!(
-                "compensation fenced by diverged target at {}",
-                journal.managed_path
-            );
-        }
+        ensure!(
+            self.restore_backup(&root, operation_id, &target, &journal.hash)?,
+            CompensationFencedSnafu {
+                path: &journal.managed_path
+            }
+        );
         Self::remove_operation_artifacts(
             &root,
             operation_id,
@@ -1719,7 +1724,7 @@ impl ProfileMaterializationPort for ProfileFileService {
         &self,
         path: &ManagedProfilePath,
         expected_revision: u64,
-    ) -> anyhow::Result<PreparedCleanup> {
+    ) -> Result<PreparedCleanup> {
         let root = self.ensure_materialization_layout()?;
         let target = self.resolve(path)?;
         let operation_id = Self::allocate_operation_id(&root)?;
@@ -1736,7 +1741,7 @@ impl ProfileMaterializationPort for ProfileFileService {
         Ok(PreparedCleanup::new(operation_id))
     }
 
-    fn activate_cleanup(&self, cleanup: &PreparedCleanup) -> anyhow::Result<()> {
+    fn activate_cleanup(&self, cleanup: &PreparedCleanup) -> Result<()> {
         let root = self.ensure_materialization_layout()?;
         let operation_id = cleanup.operation_id();
         let Some((phase, _)) = Self::locate_cleanup(&root, operation_id)? else {
@@ -1751,10 +1756,9 @@ impl ProfileMaterializationPort for ProfileFileService {
             CleanupPhase::Pending,
             CleanupPhase::Ready,
         )
-        .with_context(|| format!("activate cleanup operation {operation_id}"))
     }
 
-    fn cancel_cleanup(&self, cleanup: &PreparedCleanup) -> anyhow::Result<()> {
+    fn cancel_cleanup(&self, cleanup: &PreparedCleanup) -> Result<()> {
         let root = self.ensure_materialization_layout()?;
         let operation_id = cleanup.operation_id();
         match Self::locate_cleanup(&root, operation_id)? {
@@ -1764,9 +1768,7 @@ impl ProfileMaterializationPort for ProfileFileService {
                 CleanupPhase::Pending,
                 operation_id,
             )),
-            Some((CleanupPhase::Ready, _)) => {
-                bail!("cannot cancel an activated cleanup operation")
-            }
+            Some((CleanupPhase::Ready, _)) => CleanupAlreadyActivatedSnafu.fail(),
         }
     }
 
@@ -1774,7 +1776,7 @@ impl ProfileMaterializationPort for ProfileFileService {
         &self,
         cleanup: &PreparedCleanup,
         profiles: &Profiles,
-    ) -> anyhow::Result<CleanupOutcome> {
+    ) -> Result<CleanupOutcome> {
         let root = self.ensure_materialization_layout()?;
         let operation_id = cleanup.operation_id();
         let Some((phase, journal)) = Self::locate_cleanup(&root, operation_id)? else {
@@ -1808,7 +1810,7 @@ impl ProfileMaterializationPort for ProfileFileService {
         Ok(CleanupOutcome::Removed)
     }
 
-    fn reconcile(&self, profiles: &Profiles) -> anyhow::Result<MaterializationReconcileReport> {
+    fn reconcile(&self, profiles: &Profiles) -> Result<MaterializationReconcileReport> {
         let root = self.ensure_materialization_layout()?;
         let revision = profiles.revision();
         let active_paths = Self::active_managed_paths(profiles);
@@ -1843,7 +1845,7 @@ impl ProfileMaterializationPort for ProfileFileService {
 
             for operation_id in operation_ids {
                 let prepared = PreparedMaterialization::new(operation_id.clone());
-                let recovered = (|| -> anyhow::Result<(usize, usize, usize, usize)> {
+                let recovered = (|| -> Result<(usize, usize, usize, usize)> {
                     let Some((actual_location, journal)) =
                         self.locate_materialization(&root, &operation_id)?
                     else {
@@ -1880,12 +1882,10 @@ impl ProfileMaterializationPort for ProfileFileService {
                                         )?;
                                         return Ok((1, 0, 0, 0));
                                     }
-                                    if !Self::target_is_pre_promote(&root, &operation_id, &target)?
-                                    {
-                                        bail!(
-                                            "active materialization target diverged before recovery"
-                                        );
-                                    }
+                                    ensure!(
+                                        Self::target_is_pre_promote(&root, &operation_id, &target)?,
+                                        DivergedBeforeRecoverySnafu
+                                    );
                                     // revision advanced past this journal while the target is
                                     // still pre-promote: the transaction was superseded or
                                     // rolled back. Compensate instead of applying stale staged
@@ -1980,7 +1980,7 @@ impl ProfileMaterializationPort for ProfileFileService {
             };
         for operation_id in pending_ids {
             let cleanup = PreparedCleanup::new(operation_id);
-            let result = (|| -> anyhow::Result<()> {
+            let result = (|| -> Result<()> {
                 let Some((_, journal)) = Self::locate_cleanup(&root, cleanup.operation_id())?
                 else {
                     return Ok(());
@@ -2038,7 +2038,7 @@ impl SubscriptionFetcher for ProfileFileService {
         &self,
         url: &Url,
         options: &RemoteProfileOptions,
-    ) -> anyhow::Result<FetchedSubscription> {
+    ) -> Result<FetchedSubscription, SubscriptionFetchError> {
         use backon::Retryable;
 
         let mut builder = reqwest::ClientBuilder::new()
@@ -2076,36 +2076,43 @@ impl SubscriptionFetcher for ProfileFileService {
             .user_agent
             .clone()
             .unwrap_or_else(|| format!("clash-nyanpasu/v{}", crate::utils::dirs::APP_VERSION));
-        let client = builder.user_agent(user_agent).build()?;
+        let client = builder
+            .user_agent(user_agent)
+            .build()
+            .context(BuildHttpClientSnafu)?;
 
         let device_info = crate::utils::hwid::get_device_info();
         let sanitize = crate::utils::hwid::sanitize_for_header;
         let perform = || async {
-            client
+            let resp = client
                 .get(url.as_str())
                 .header("x-hwid", &device_info.hwid)
                 .header("x-device-os", sanitize(&device_info.device_os))
                 .header("x-ver-os", sanitize(&device_info.os_version))
                 .header("x-device-model", sanitize(&device_info.device_model))
                 .send()
-                .await?
-                .error_for_status()
+                .await
+                .context(RequestSubscriptionSnafu)?;
+            let status = resp.status();
+            ensure!(
+                !(status.is_client_error() || status.is_server_error()),
+                SubscriptionHttpStatusSnafu {
+                    status: status.as_u16()
+                }
+            );
+            Ok(resp)
         };
         let resp = perform
             .retry(backon::ExponentialBuilder::default())
-            .when(|error: &reqwest::Error| {
-                !error.is_status()
-                    || error.status().is_some_and(|status| {
-                        !matches!(
-                            status,
-                            reqwest::StatusCode::FORBIDDEN
-                                | reqwest::StatusCode::NOT_FOUND
-                                | reqwest::StatusCode::UNAUTHORIZED
-                        )
-                    })
+            .when(|error: &SubscriptionFetchError| {
+                !matches!(
+                    error,
+                    SubscriptionFetchError::SubscriptionHttpStatus {
+                        status: 401 | 403 | 404
+                    }
+                )
             })
-            .await
-            .with_context(|| format!("subscription download failed: {url}"))?;
+            .await?;
 
         let subscription = parse_subscription_userinfo(resp.headers());
         let filename = parse_profile_title(resp.headers());
@@ -2113,7 +2120,7 @@ impl SubscriptionFetcher for ProfileFileService {
         let content = resp
             .text_with_charset("utf-8")
             .await
-            .with_context(|| format!("read subscription response body: {url}"))?;
+            .context(ReadSubscriptionBodySnafu)?;
         let content = if let Some(content) = content.strip_prefix('\u{feff}') {
             content.to_owned()
         } else {
@@ -2380,8 +2387,16 @@ mod tests {
         let err = service
             .write_atomic(&managed("nested/x.yaml"), "escaped: true\n")
             .unwrap_err();
-        let message = format!("{err:#}");
-        assert!(message.contains("symlink") || message.contains("reparse"));
+        assert!(
+            matches!(
+                err,
+                ProfileFileError::UnexpectedNode {
+                    expected: ExpectedNode::RealDirectory,
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
         assert!(!outside.join("x.yaml").exists());
     }
 
@@ -2743,7 +2758,10 @@ mod tests {
         service.write_atomic(&path, "foreign: true\n").unwrap();
         let error = service.compensate(&prepared).unwrap_err();
 
-        assert!(format!("{error:#}").contains("fenced"));
+        assert!(
+            matches!(error, ProfileFileError::CompensationFenced { .. }),
+            "{error:?}"
+        );
         assert_eq!(service.read(&path).unwrap(), "foreign: true\n");
         assert!(backup.exists());
         assert!(
@@ -2769,7 +2787,10 @@ mod tests {
         service.remove(&path).unwrap();
         let error = service.compensate(&prepared).unwrap_err();
 
-        assert!(format!("{error:#}").contains("fenced"));
+        assert!(
+            matches!(error, ProfileFileError::CompensationFenced { .. }),
+            "{error:?}"
+        );
         assert!(std::fs::symlink_metadata(service.resolve(&path).unwrap()).is_err());
         assert!(backup.exists());
         assert!(
@@ -3090,7 +3111,10 @@ mod tests {
         service.write_atomic(&path, "foreign: true\n").unwrap();
 
         let error = service.complete(&prepared).unwrap_err();
-        assert!(format!("{error:#}").contains("hash mismatch"));
+        assert!(
+            matches!(error, ProfileFileError::TargetHashMismatch),
+            "{error:?}"
+        );
         assert_eq!(service.read(&path).unwrap(), "foreign: true\n");
         assert!(
             service
@@ -3317,7 +3341,10 @@ mod tests {
             let error = service
                 .resolve(&managed(&format!("{name}/blocked.yaml")))
                 .unwrap_err();
-            assert!(format!("{error:#}").contains("reserved private storage"));
+            assert!(
+                matches!(error, ProfileFileError::ReservedPath { .. }),
+                "{error:?}"
+            );
         }
     }
 
@@ -3340,8 +3367,16 @@ mod tests {
         let error = service
             .prepare_state_first(&managed("blocked.yaml"), file_resource("x: 1\n"), 1)
             .unwrap_err();
-        let message = format!("{error:#}");
-        assert!(message.contains("symlink") || message.contains("reparse"));
+        assert!(
+            matches!(
+                error,
+                ProfileFileError::UnexpectedNode {
+                    expected: ExpectedNode::RealDirectory,
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
         assert!(outside_dir.read_dir().unwrap().next().is_none());
     }
 

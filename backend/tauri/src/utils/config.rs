@@ -1,16 +1,11 @@
 use anyhow::Result;
 use sysproxy::Sysproxy;
 
-use crate::config::Config;
-
-pub fn get_self_proxy() -> Result<String> {
-    let port = Config::verge()
-        .latest()
-        .verge_mixed_port
-        .unwrap_or(Config::clash().data().get_mixed_port());
-
-    let proxy_scheme = format!("http://127.0.0.1:{port}");
-    Ok(proxy_scheme)
+/// The app's own mixed port as a proxy URL. Callers pass the port the facade
+/// reports (`NyanpasuClient::clash_info`): the confirmed session binding, else
+/// the configured start port.
+pub fn get_self_proxy(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
 }
 
 pub fn get_system_proxy() -> Result<Option<String>> {
@@ -23,20 +18,10 @@ pub fn get_system_proxy() -> Result<Option<String>> {
     Ok(None)
 }
 
-pub fn get_current_clash_mode() -> String {
-    Config::clash()
-        .latest()
-        .0
-        .get("mode")
-        .map(|val| val.as_str().unwrap_or("rule"))
-        .unwrap_or("rule")
-        .to_owned()
-}
-
 pub trait NyanpasuReqwestProxyExt {
     fn swift_set_proxy(self, url: &str) -> Self;
 
-    fn swift_set_nyanpasu_proxy(self) -> Self;
+    fn swift_set_nyanpasu_proxy(self, self_proxy_port: u16) -> Self;
 }
 
 impl NyanpasuReqwestProxyExt for reqwest::ClientBuilder {
@@ -55,11 +40,8 @@ impl NyanpasuReqwestProxyExt for reqwest::ClientBuilder {
     }
 
     // TODO: 修改成按枚举配置
-    fn swift_set_nyanpasu_proxy(self) -> Self {
-        let mut builder = self;
-        if let Ok(proxy) = get_self_proxy() {
-            builder = builder.swift_set_proxy(&proxy);
-        }
+    fn swift_set_nyanpasu_proxy(self, self_proxy_port: u16) -> Self {
+        let mut builder = self.swift_set_proxy(&get_self_proxy(self_proxy_port));
         if let Ok(Some(proxy)) = get_system_proxy() {
             builder = builder.swift_set_proxy(&proxy);
         }

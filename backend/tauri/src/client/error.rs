@@ -15,7 +15,15 @@ pub enum ClientError {
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
     #[error(transparent)]
-    Profiles(#[from] crate::state::profiles::actor::ProfilesError),
+    Profiles(#[from] crate::state::profiles::ProfilesError),
+    #[error(transparent)]
+    Jobs(#[from] nyanpasu_jobs::Error),
+    #[error(transparent)]
+    Config(#[from] crate::state::config_error::ConfigError),
+    #[error(transparent)]
+    Runtime(#[from] super::RuntimeError),
+    #[error(transparent)]
+    Window(#[from] super::hotkey::ports::WindowError),
     #[error("{0}")]
     Custom(String),
 }

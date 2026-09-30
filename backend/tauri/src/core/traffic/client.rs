@@ -2,7 +2,9 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use nyanpasu_traffic::{ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage};
+use nyanpasu_traffic::{
+    ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage, UsageCursor,
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -52,10 +54,16 @@ impl TrafficClient {
         Ok(self.call(Message::Summary).await??)
     }
 
-    /// Top `limit` groups of the session so far, including what is not flushed yet.
-    pub async fn usage(&self, group: GroupBy, limit: usize) -> Result<Usage> {
+    /// `limit` groups of the session so far, heaviest first, strictly after `after`, including
+    /// what is not flushed yet.
+    pub async fn usage(
+        &self,
+        group: GroupBy,
+        after: Option<UsageCursor>,
+        limit: usize,
+    ) -> Result<Usage> {
         Ok(self
-            .call(|reply| Message::Usage(group, limit, reply))
+            .call(|reply| Message::Usage(group, after, limit, reply))
             .await??)
     }
 

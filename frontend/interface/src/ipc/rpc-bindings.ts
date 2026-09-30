@@ -184,9 +184,16 @@ export const commands = {
     ),
   getTrafficSummary: () =>
     typedError<TrafficSummary, IpcError>(__RPC_INVOKE('get_traffic_summary')),
-  queryTrafficUsage: (groupBy: GroupBy, limit: number) =>
+  queryTrafficUsage: (
+    groupBy: GroupBy,
+    after: {
+      bytes: Bytes
+      key: string
+    } | null,
+    limit: number,
+  ) =>
     typedError<Usage, IpcError>(
-      __RPC_INVOKE('query_traffic_usage', { groupBy, limit }),
+      __RPC_INVOKE('query_traffic_usage', { groupBy, after, limit }),
     ),
   queryTrafficTopology: (limit: number) =>
     typedError<Topology, IpcError>(
@@ -3869,7 +3876,15 @@ export type UpdaterSummary = {
 export type Usage = {
   total: Bytes
   groups: UsageGroup[]
+  /**  Groups ranked after this page. */
   other: Bytes
+  next: UsageCursor | null
+}
+
+/**  Exclusive position for heaviest-first paging of grouped usage: the last group of a page. */
+export type UsageCursor = {
+  bytes: Bytes
+  key: string
 }
 
 export type UsageGroup = {

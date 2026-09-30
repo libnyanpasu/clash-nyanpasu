@@ -2,6 +2,7 @@
 //! in batches. A failed flush is logged and its batch dropped; this is
 //! statistics, not a ledger.
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     hash::Hash,
     sync::Arc,
@@ -11,7 +12,7 @@ use std::{
 use nyanpasu_traffic::{
     Bytes, ClosedCursor, ClosedPage, FlushBatch, Frame, GroupBy, Rate, Session, Topology,
     TopologyKey, TopologyPath, TrafficError, TrafficResult, TrafficStore, TrafficSummary, Usage,
-    UsageGroup, merge_closed_page, topology,
+    UsageCursor, UsageGroup, merge_closed_page, topology,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
@@ -27,7 +28,12 @@ pub(super) enum Message {
     Disconnected(RpcReplyPort<()>),
     Flush(RpcReplyPort<()>),
     Summary(RpcReplyPort<TrafficResult<TrafficSummary>>),
-    Usage(GroupBy, usize, RpcReplyPort<TrafficResult<Usage>>),
+    Usage(
+        GroupBy,
+        Option<UsageCursor>,
+        usize,
+        RpcReplyPort<TrafficResult<Usage>>,
+    ),
     Topology(usize, RpcReplyPort<TrafficResult<Topology>>),
     ClosedConnections(
         Option<ClosedCursor>,
@@ -112,8 +118,8 @@ impl Actor for TrafficActor {
             Message::Summary(reply) => {
                 let _ = reply.send(state.summary().await);
             }
-            Message::Usage(group, limit, reply) => {
-                let _ = reply.send(state.usage(group, limit).await);
+            Message::Usage(group, after, limit, reply) => {
+                let _ = reply.send(state.usage(group, after, limit).await);
             }
             Message::Topology(limit, reply) => {
                 let _ = reply.send(state.topology(limit).await);
@@ -168,7 +174,12 @@ impl State {
         Ok(self.session.summary(stored_closed))
     }
 
-    async fn usage(&self, group: GroupBy, limit: usize) -> TrafficResult<Usage> {
+    async fn usage(
+        &self,
+        group: GroupBy,
+        after: Option<UsageCursor>,
+        limit: usize,
+    ) -> TrafficResult<Usage> {
         let stored = if self.session.reset_pending() {
             Vec::new()
         } else {
@@ -181,6 +192,7 @@ impl State {
         Ok(rank_usage(
             merge(stored, pending),
             self.session.current_rate_by(group),
+            after.as_ref(),
             limit,
         ))
     }
@@ -242,17 +254,36 @@ fn sum<'a>(bytes: impl IntoIterator<Item = &'a Bytes>) -> Bytes {
         .fold(Bytes::default(), |sum, bytes| sum.saturating_add(*bytes))
 }
 
-/// Top `limit` groups by traffic; the rest is folded into `other`.
+/// Heaviest first; equal traffic ranks by key.
+fn usage_rank((a_key, a): (&str, &Bytes), (b_key, b): (&str, &Bytes)) -> Ordering {
+    b.total().cmp(&a.total()).then_with(|| a_key.cmp(b_key))
+}
+
+/// The `limit` groups ranked after `after`, or the top ones; the rest after the page is folded
+/// into `other`.
 fn rank_usage(
     totals: HashMap<String, Bytes>,
     mut rates: HashMap<String, Rate>,
+    after: Option<&UsageCursor>,
     limit: usize,
 ) -> Usage {
     let total = sum(totals.values());
-    let mut ranked: Vec<(String, Bytes)> = totals.into_iter().collect();
-    ranked
-        .sort_by(|(a_key, a), (b_key, b)| b.total().cmp(&a.total()).then_with(|| a_key.cmp(b_key)));
+    let mut ranked: Vec<(String, Bytes)> = totals
+        .into_iter()
+        .filter(|(key, bytes)| {
+            after.is_none_or(|c| usage_rank((key, bytes), (&c.key, &c.bytes)) == Ordering::Greater)
+        })
+        .collect();
+    ranked.sort_by(|(a_key, a), (b_key, b)| usage_rank((a_key, a), (b_key, b)));
     let rest = ranked.split_off(limit.clamp(1, MAX_LIMIT).min(ranked.len()));
+    let next = if rest.is_empty() {
+        None
+    } else {
+        ranked.last().map(|(key, bytes)| UsageCursor {
+            bytes: *bytes,
+            key: key.clone(),
+        })
+    };
     Usage {
         total,
         groups: ranked
@@ -264,6 +295,7 @@ fn rank_usage(
             })
             .collect(),
         other: sum(rest.iter().map(|(_, bytes)| bytes)),
+        next,
     }
 }
 

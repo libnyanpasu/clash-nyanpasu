@@ -270,12 +270,22 @@ pub struct UsageGroup {
     pub current_rate: Option<Rate>,
 }
 
+/// Exclusive position for heaviest-first paging of grouped usage: the last group of a page.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct UsageCursor {
+    pub bytes: Bytes,
+    pub key: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Usage {
     pub total: Bytes,
     pub groups: Vec<UsageGroup>,
+    /// Groups ranked after this page.
     pub other: Bytes,
+    pub next: Option<UsageCursor>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

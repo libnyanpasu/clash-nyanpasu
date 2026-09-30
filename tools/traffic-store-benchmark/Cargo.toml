@@ -1,0 +1,33 @@
+[package]
+name = "traffic-store-benchmark"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0"
+publish = false
+
+[workspace]
+resolver = "2"
+
+[features]
+default = ["turso"]
+turso = ["dep:nyanpasu-traffic-turso"]
+
+[dependencies]
+nyanpasu-traffic-turso = { path = "../../backend/nyanpasu-traffic-turso", optional = true }
+
+[dev-dependencies]
+nyanpasu-traffic = { path = "../../backend/nyanpasu-traffic", features = ["test-support"] }
+async-trait = "0.1"
+futures-util = "0.3"
+ractor = "0.16"
+serde_json = "1"
+sysinfo = "0.39"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "unwind"

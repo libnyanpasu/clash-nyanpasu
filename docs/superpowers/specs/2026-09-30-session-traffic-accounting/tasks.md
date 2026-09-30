@@ -33,8 +33,12 @@ separate small PR; service and service IPC must remain free of traffic changes.
 - [x] App shutdown preserves remote sessions with unknown end/coverage gaps.
 - [x] Pure domain, store and actor tests pass on the revised layout.
 - [x] Changed-source format, application Clippy/type checks and frontend tests pass.
-- [ ] Independent review and per-PR scope/parent verification complete.
-- [ ] Replacement Draft PRs created and superseded drafts linked/closed.
+- [x] Independent review and per-PR scope/parent verification complete.
+- [x] Replacement branches split into buildable review slices.
+
+After publishing the final benchmark draft, link the stack and close the
+superseded application #5469 and runtime #433 drafts. Publication status is
+recorded in the PR descriptions; old branches are preserved without rewriting.
 
 ## Evidence and limits
 
@@ -113,3 +117,20 @@ The independent Turso workspace passed 12 tests against the same storage port,
 including shared contracts, integer boundaries, transaction cleanup and the
 durability configuration probe. Its SDK does not enter the application workspace.
 The copied adapter and lockfile match the tested sources exactly.
+
+## Benchmark and publication map
+
+The isolated harness compiles the application actor/client source directly.
+Its locked all-targets check and debug `1000-active` smoke passed for both redb
+and Turso after the final actor fixes. These are correctness checks, not updated
+performance measurements; the 24-run report remains explicitly historical.
+
+| Slice             | Draft PR                                                                 | Base                     |
+| ----------------- | ------------------------------------------------------------------------ | ------------------------ |
+| Runtime lifecycle | [runtime #434](https://github.com/libnyanpasu/nyanpasu-runtime/pull/434) | runtime main             |
+| Domain            | [#5470](https://github.com/libnyanpasu/clash-nyanpasu/pull/5470)         | main                     |
+| redb              | [#5471](https://github.com/libnyanpasu/clash-nyanpasu/pull/5471)         | feat/traffic-domain      |
+| Actor             | [#5472](https://github.com/libnyanpasu/clash-nyanpasu/pull/5472)         | feat/traffic-redb        |
+| Integration       | [#5473](https://github.com/libnyanpasu/clash-nyanpasu/pull/5473)         | feat/traffic-actor       |
+| Turso             | [#5474](https://github.com/libnyanpasu/clash-nyanpasu/pull/5474)         | feat/traffic-integration |
+| Benchmark         | this branch, feat/traffic-benchmark                                      | feat/traffic-turso       |

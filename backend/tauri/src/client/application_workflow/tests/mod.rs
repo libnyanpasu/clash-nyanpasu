@@ -370,7 +370,6 @@ async fn workflow_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
-            jobs: profiles.jobs(),
             notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
@@ -1332,7 +1331,6 @@ fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
         let updater = UpdaterClient::spawn(
             Arc::new(crate::core::updater::tests::ReadyBackend),
             Arc::new(f.client.inner.application_workflow.clone()),
-            crate::client::jobs::test_client().await,
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )

@@ -227,7 +227,6 @@ async fn spawn_owned(
 ) -> SystemProxyClient {
     SystemProxyClient::spawn(
         SystemProxyArgs {
-            jobs: crate::client::jobs::test_client().await,
             os,
             auto_launch,
             pac,
@@ -405,6 +404,32 @@ async fn disabling_restores_and_stops_guard() {
         "a guard with no proxy to re-apply must not keep a timer"
     );
     assert_eq!(status.guard_interval, None);
+}
+
+#[tokio::test]
+async fn disabling_guard_refuses_an_already_queued_tick() {
+    let os = RecordingOsProxy::new();
+    let client = spawn_with_os(os.clone()).await;
+    client
+        .reconcile(
+            rev(1),
+            Some(proxy(true, Some(7890))),
+            Some(guard(true, Duration::from_secs(10))),
+            None,
+        )
+        .await;
+    client
+        .reconcile(
+            rev(2),
+            None,
+            Some(guard(false, Duration::from_secs(10))),
+            None,
+        )
+        .await;
+    let writes = os.writes().len();
+    client.tick_guard().await;
+    assert!(!client.status().await.guard_active);
+    assert_eq!(os.writes().len(), writes);
 }
 
 #[tokio::test]

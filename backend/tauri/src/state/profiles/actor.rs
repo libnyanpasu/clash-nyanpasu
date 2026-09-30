@@ -97,6 +97,7 @@ pub struct ProfilesActorState {
     jobs: ProfileJobs,
     jobs_revision: u64,
     external_watchers: ExternalWatchers,
+    reconcile_task: Option<JoinHandle<()>>,
     sources: SourceLedger,
     shutdown: CancellationToken,
 }
@@ -303,7 +304,6 @@ pub enum ProfilesActorMessage {
     /// Arms the refresh scheduler (with catch-up), the external watchers and
     /// the materialization ticker. Only the first one after Held counts.
     StartProducers,
-    RunMaterializationReconcile(RpcReplyPort<Result<(), ProfilesError>>),
 }
 
 impl ProfilesActorMessage {
@@ -324,9 +324,6 @@ impl ProfilesActorMessage {
             | Self::PatchRemoteOptions { reply, .. }
             | Self::ImportRemote { reply, .. }
             | Self::ReplaceDefinition { reply, .. } => {
-                let _ = reply.send(Err(ProfilesError::ShuttingDown));
-            }
-            Self::RunMaterializationReconcile(reply) => {
                 let _ = reply.send(Err(ProfilesError::ShuttingDown));
             }
             Self::SetCurrentIfNone { reply, .. } => {
@@ -538,6 +535,21 @@ impl ProfilesActor {
         let snapshot = Self::current_state(state);
         Self::reconcile_committed(myself, state, &snapshot).await;
         state.jobs.catch_up(&snapshot).await;
+        let actor = myself.clone();
+        state.reconcile_task = Some(tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(5 * 60));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                if actor
+                    .cast(ProfilesActorMessage::ReconcileMaterializations)
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }));
     }
 
     /// Downloads and validates on a task the pending entry owns; the file is
@@ -1529,6 +1541,7 @@ impl Actor for ProfilesActor {
             jobs: args.jobs,
             jobs_revision: 1,
             external_watchers: ExternalWatchers::default(),
+            reconcile_task: None,
             sources: SourceLedger::new(args.sources),
             shutdown: args.shutdown,
         })
@@ -2314,12 +2327,6 @@ impl Actor for ProfilesActor {
                     }
                 }
             }
-            ProfilesActorMessage::RunMaterializationReconcile(reply) => {
-                let result = Self::reconcile_materializations(state)
-                    .await
-                    .map(|report| Self::log_reconcile_report(&report));
-                let _ = reply.send(result);
-            }
             ProfilesActorMessage::StartProducers => Self::start_producers(&myself, state).await,
         }
         Ok(())
@@ -2330,6 +2337,9 @@ impl Actor for ProfilesActor {
         _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
+        if let Some(timer) = state.reconcile_task.take() {
+            timer.abort();
+        }
         state.external_watchers.shutdown();
         // The downloads are cut short and awaited, so none outlives the actor;
         // their callers learn that the application is shutting down.

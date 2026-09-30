@@ -39,7 +39,6 @@ enum Message {
         reply: RpcReplyPort<Result<()>>,
     },
     Refresh,
-    ScheduledRefresh(RpcReplyPort<Result<(), nyanpasu_jobs::JobError>>),
     Invalidated(u64),
 }
 
@@ -48,7 +47,6 @@ struct Args {
     core: CoreClient,
     snapshots: watch::Sender<Option<Arc<Snapshot>>>,
     changes: watch::Sender<()>,
-    jobs: nyanpasu_jobs::JobsClient,
     shutdown: CancellationToken,
 }
 struct State {
@@ -58,12 +56,15 @@ struct State {
     cache: Option<Arc<Snapshot>>,
     generation: u64,
     monitor: Option<tokio::task::JoinHandle<()>>,
-    jobs: nyanpasu_jobs::JobsClient,
+    timer: Option<tokio::task::JoinHandle<()>>,
     shutdown: CancellationToken,
 }
 impl Drop for State {
     fn drop(&mut self) {
         if let Some(task) = self.monitor.take() {
+            task.abort();
+        }
+        if let Some(task) = self.timer.take() {
             task.abort();
         }
     }
@@ -223,7 +224,7 @@ impl Actor for ProxiesActor {
             cache: None,
             generation: 0,
             monitor: None,
-            jobs: args.jobs,
+            timer: None,
             shutdown: args.shutdown,
         })
     }
@@ -232,14 +233,18 @@ impl Actor for ProxiesActor {
         actor: ActorRef<Message>,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
-        let job = crate::client::jobs::wake_job(
-            "proxies",
-            "proxies/cache-refresh",
-            nyanpasu_jobs::Schedule::Interval { every_ms: 10_000 },
-            actor,
-            Message::ScheduledRefresh,
-        )?;
-        state.jobs.reconcile("proxies", 1, vec![job]).await?;
+        state.timer = Some(tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                if actor
+                    .call(|reply| Message::Read { force: true, reply }, None)
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }));
         Ok(())
     }
     async fn handle(
@@ -248,23 +253,22 @@ impl Actor for ProxiesActor {
         message: Message,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
-        match message {
-            Message::ScheduledRefresh(reply) => {
-                let result = if state.shutdown.is_cancelled() {
-                    Err(nyanpasu_jobs::JobError::new(
-                        "shutting_down",
-                        "Proxy owner is shutting down",
-                    ))
-                } else {
-                    state.read(&actor, true).await.map(|_| ()).map_err(|_| {
-                        nyanpasu_jobs::JobError::new(
-                            "proxy_refresh_failed",
-                            "Proxy cache refresh failed",
-                        )
-                    })
-                };
-                let _ = reply.send(result);
+        if state.shutdown.is_cancelled() {
+            match message {
+                Message::Read { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::Select { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::UpdateProvider { reply, .. } => {
+                    let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
+                }
+                Message::Refresh | Message::Invalidated(_) => {}
             }
+            return Ok(());
+        }
+        match message {
             Message::Read { force, reply } => {
                 if reply.is_closed() {
                     return Ok(());
@@ -309,6 +313,16 @@ impl Actor for ProxiesActor {
         }
         Ok(())
     }
+    async fn post_stop(
+        &self,
+        _actor: ActorRef<Message>,
+        state: &mut State,
+    ) -> Result<(), ActorProcessingErr> {
+        if let Some(timer) = state.timer.take() {
+            timer.abort();
+        }
+        Ok(())
+    }
 }
 
 struct ClientInner {
@@ -326,7 +340,6 @@ pub(crate) struct ProxiesClient(Arc<ClientInner>);
 impl ProxiesClient {
     pub async fn spawn(
         core: CoreClient,
-        jobs: nyanpasu_jobs::JobsClient,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> Result<Self> {
@@ -337,7 +350,6 @@ impl ProxiesClient {
             ProxiesActor,
             Args {
                 core,
-                jobs,
                 shutdown: shutdown.clone(),
                 snapshots,
                 changes,
@@ -624,14 +636,10 @@ mod tests {
         let (url, server) = server(router).await;
         let endpoint = endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-        let client = ProxiesClient::spawn(
-            core.clone(),
-            crate::client::jobs::test_client().await,
-            CancellationToken::new(),
-            &TaskTracker::new(),
-        )
-        .await
-        .unwrap();
+        let client =
+            ProxiesClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
+                .await
+                .unwrap();
         (client, core, endpoint, fixture, server)
     }
     #[tokio::test]

@@ -104,12 +104,13 @@ enum Message {
     /// refusal at entry refuses the whole mutation.
     BeginMutation(Box<MutationRequest>),
     RecoveryTick,
-    JobRecoveryTick(RpcReplyPort<Result<(), nyanpasu_jobs::JobError>>),
     /// The deferred target's next attempt may be due.
     ConvergenceTick,
-    JobConvergenceTick(RpcReplyPort<Result<(), nyanpasu_jobs::JobError>>),
+    ScheduledConvergenceTick(tokio::time::Instant),
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
+    #[cfg(test)]
+    ConvergenceDeadline(RpcReplyPort<Option<(tokio::time::Instant, tokio::task::Id)>>),
     /// Which owner the workflow holds proven.
     #[cfg(test)]
     Ownership(RpcReplyPort<Ownership>),
@@ -117,13 +118,14 @@ enum Message {
 
 struct ApplicationWorkflowActor;
 
+type WakeUp = tokio::task::JoinHandle<Result<(), ractor::MessagingErr<Message>>>;
+
 struct ApplicationWorkflowState {
     workflow: ApplicationWorkflow,
-    jobs: nyanpasu_jobs::JobsClient,
-    jobs_revision: u64,
+    recovery_timer: Option<tokio::task::JoinHandle<()>>,
     /// The one wake-up for the deferred target's next attempt, with the
     /// instant it was armed for.
-    convergence_due: Option<tokio::time::Instant>,
+    convergence_timer: Option<(tokio::time::Instant, WakeUp)>,
     schedule_ticks: bool,
     /// A child of the root shutdown token. Once cancelled, every command is
     /// refused at entry; the running one finishes first either way.
@@ -152,7 +154,6 @@ struct PublishedView {
 }
 
 pub(super) struct ApplicationWorkflowArgs {
-    pub jobs: nyanpasu_jobs::JobsClient,
     pub notifications: Arc<dyn super::effects::ports::CommitNotifications>,
     /// Read-only committed state. The workflow reads the three source domains
     /// and writes none of them.
@@ -180,7 +181,6 @@ pub(super) struct ApplicationWorkflowArgs {
 }
 
 struct ActorArgs {
-    jobs: nyanpasu_jobs::JobsClient,
     workflow: ApplicationWorkflow,
     status: watch::Sender<CoreLifecycleStatus>,
     journal: watch::Sender<MutationJournal>,
@@ -306,7 +306,7 @@ impl ApplicationWorkflowState {
     /// Arms the one wake-up for the deferred target's next attempt. Only a
     /// command moves `next_attempt`, and this runs after every message, so
     /// the wake-up follows each write.
-    async fn arm_convergence(&mut self, myself: &ActorRef<Message>) {
+    fn arm_convergence(&mut self, myself: &ActorRef<Message>) {
         let due = if self.schedule_ticks && self.automatic_work_allowed() {
             self.workflow
                 .deferred
@@ -315,35 +315,19 @@ impl ApplicationWorkflowState {
         } else {
             None
         };
-        if self.convergence_due == due {
+        if self.convergence_timer.as_ref().map(|(at, _)| *at) == due {
             return;
         }
-        self.convergence_due = due;
-        self.jobs_revision += 1;
-        let jobs = match due {
-            Some(at) => {
-                let delay_ms = crate::client::jobs::delay_ms(at);
-                let mut job = crate::client::jobs::wake_job(
-                    "runtime-convergence",
-                    "runtime/convergence",
-                    nyanpasu_jobs::Schedule::Once { delay_ms },
-                    myself.clone(),
-                    Message::JobConvergenceTick,
-                )
-                .expect("a bounded wake-up has valid input");
-                job.definition.version = self.jobs_revision;
-                vec![job]
-            }
-            None => Vec::new(),
-        };
-        if let Err(error) = self
-            .jobs
-            .reconcile("runtime-convergence", self.jobs_revision, jobs)
-            .await
-        {
-            self.convergence_due = None;
-            tracing::error!(%error, "failed to register runtime convergence wake-up");
+        if let Some((_, timer)) = self.convergence_timer.take() {
+            timer.abort();
         }
+        self.convergence_timer = due.map(|at| {
+            let wait = at.saturating_duration_since(tokio::time::Instant::now());
+            (
+                at,
+                myself.send_after(wait, move || Message::ScheduledConvergenceTick(at)),
+            )
+        });
     }
 
     fn publish_journal(&mut self, receipt: Option<mutation::MutationReceipt>) {
@@ -396,26 +380,13 @@ impl Actor for ApplicationWorkflowActor {
         myself: ActorRef<Message>,
         args: ActorArgs,
     ) -> Result<ApplicationWorkflowState, ActorProcessingErr> {
-        if args.schedule_ticks {
-            let job = crate::client::jobs::wake_job(
-                "runtime-recovery",
-                "runtime/recovery",
-                nyanpasu_jobs::Schedule::Interval {
-                    every_ms: RECOVERY_INTERVAL.as_millis() as u64,
-                },
-                myself.clone(),
-                Message::JobRecoveryTick,
-            )?;
-            args.jobs
-                .reconcile("runtime-recovery", 1, vec![job])
-                .await?;
-        }
         Ok(ApplicationWorkflowState {
             closing_token: args.workflow.lifecycle.closing.clone(),
             workflow: args.workflow,
-            jobs: args.jobs,
-            jobs_revision: 0,
-            convergence_due: None,
+            recovery_timer: args
+                .schedule_ticks
+                .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick)),
+            convergence_timer: None,
             schedule_ticks: args.schedule_ticks,
             status: args.status,
             journal: args.journal,
@@ -429,12 +400,21 @@ impl Actor for ApplicationWorkflowActor {
         message: Message,
         state: &mut ApplicationWorkflowState,
     ) -> Result<(), ActorProcessingErr> {
-        let (message, job_reply) = match message {
-            Message::JobRecoveryTick(reply) => (Message::RecoveryTick, Some(reply)),
-            Message::JobConvergenceTick(reply) => (Message::ConvergenceTick, Some(reply)),
-            message => (message, None),
+        let message = match message {
+            Message::ScheduledConvergenceTick(at) => {
+                if state
+                    .convergence_timer
+                    .as_ref()
+                    .is_none_or(|(due, _)| *due != at)
+                {
+                    return Ok(());
+                }
+                Message::ConvergenceTick
+            }
+            message => message,
         };
         match message {
+            Message::ScheduledConvergenceTick(_) => unreachable!(),
             Message::Request(request) => state.request(request).await,
             Message::BeginMutation(request) => state.begin_mutation(*request).await,
             Message::RecoveryTick => {
@@ -446,7 +426,9 @@ impl Actor for ApplicationWorkflowActor {
             Message::ConvergenceTick => {
                 // Whichever wake-up this was, it has fired: the target is read
                 // afresh, and the next one is armed from what it says.
-                state.convergence_due = None;
+                if let Some((_, timer)) = state.convergence_timer.take() {
+                    timer.abort();
+                }
                 if state.automatic_work_allowed()
                     && state
                         .workflow
@@ -459,7 +441,15 @@ impl Actor for ApplicationWorkflowActor {
                     state.run(command, Response::background()).await;
                 }
             }
-            Message::JobRecoveryTick(_) | Message::JobConvergenceTick(_) => unreachable!(),
+            #[cfg(test)]
+            Message::ConvergenceDeadline(reply) => {
+                let _ = reply.send(
+                    state
+                        .convergence_timer
+                        .as_ref()
+                        .map(|(at, timer)| (*at, timer.id())),
+                );
+            }
             #[cfg(test)]
             Message::Barrier(reply) => {
                 let _ = reply.send(());
@@ -469,10 +459,7 @@ impl Actor for ApplicationWorkflowActor {
                 let _ = reply.send(state.workflow.lifecycle.ownership);
             }
         }
-        state.arm_convergence(&myself).await;
-        if let Some(reply) = job_reply {
-            let _ = reply.send(Ok(()));
-        }
+        state.arm_convergence(&myself);
         Ok(())
     }
 
@@ -483,6 +470,12 @@ impl Actor for ApplicationWorkflowActor {
         _myself: ActorRef<Message>,
         state: &mut ApplicationWorkflowState,
     ) -> Result<(), ActorProcessingErr> {
+        if let Some((_, timer)) = state.convergence_timer.take() {
+            timer.abort();
+        }
+        if let Some(timer) = state.recovery_timer.take() {
+            timer.abort();
+        }
         if let Err(error) = state.workflow.lifecycle.core.shutdown().await.stop {
             tracing::warn!(%error, "the core was not proven stopped");
         }
@@ -571,7 +564,6 @@ impl ApplicationWorkflowClient {
             ApplicationWorkflowActor,
             ActorArgs {
                 workflow,
-                jobs: args.jobs,
                 status: status_tx,
                 journal: journal_tx,
                 schedule_ticks,

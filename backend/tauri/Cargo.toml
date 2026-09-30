@@ -32,6 +32,7 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
   'specta',
 ] }
 nyanpasu-core-manager = { workspace = true }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
 clash-api = { workspace = true }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-core = { path = '../nyanpasu-core' }
@@ -282,6 +283,7 @@ windows-core = '0.62'
 webview2-com = '0.39'
 
 [dev-dependencies]
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['test-support'] }
 axum = { version = '0.8', features = ['ws'] }
 mockall = '0.15'
 # Test-only protocol helpers + binary discovery for later process-lifecycle

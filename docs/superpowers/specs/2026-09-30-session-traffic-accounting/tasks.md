@@ -60,3 +60,11 @@ The architecture intentionally cannot collect while the application is absent.
 It does not impose a current-session disk quota or recover unobserved connections.
 No service release, new history/statistics page, or database migration UI is part
 of these PRs.
+
+## Application actor slice
+
+The actor/client/source implementation lives exclusively under tauri core.
+Fifteen targeted application tests passed on this slice with all features,
+including acknowledged source frames, storage recovery, stale generation fences,
+detach/reconnect, failed-start suspension and shutdown without inventing remote
+process exits. Composition and UI wiring remain a separate subsequent slice.

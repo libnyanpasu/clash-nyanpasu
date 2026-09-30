@@ -181,3 +181,23 @@ test('an unavailable traffic history explains the empty table', async ({
     .poll(() => container.textContent)
     .toContain(m.connections_closed_unavailable())
 })
+
+test('the mock connections setting replaces the traffic history', async ({
+  onTestFinished,
+}) => {
+  localStorage.setItem('debug-mock-connections', 'true')
+  mockIPC(() => ({ connections: [], next: null }))
+
+  const container = render(
+    <ClosedViewer
+      search=""
+      settingsOpen={false}
+      onSettingsOpenChange={() => {}}
+    />,
+    onTestFinished,
+  )
+
+  await expect
+    .poll(() => container.querySelectorAll('tbody tr').length)
+    .toBeGreaterThan(0)
+})

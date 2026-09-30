@@ -2,9 +2,14 @@ import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@/components/ui/segmented-button'
+import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
 import { useClashConnections, useTrafficSummary } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
+import {
+  mockActiveConnections,
+  mockClosedConnections,
+} from './mock-connections'
 
 export type ConnectionsStatus = 'active' | 'closed'
 
@@ -79,11 +84,21 @@ export default function ConnectionsStatusTabs(
 
   const { data: summary } = useTrafficSummary()
 
+  const mockNow = useMockConnectionsNow()
+
   return (
     <StatusTabs
       {...props}
-      activeCount={samples?.at(-1)?.connectionCount}
-      closedCount={summary?.closed_connections}
+      activeCount={
+        mockNow === null
+          ? samples?.at(-1)?.connectionCount
+          : mockActiveConnections(mockNow).length
+      }
+      closedCount={
+        mockNow === null
+          ? summary?.closed_connections
+          : mockClosedConnections(mockNow).length
+      }
     />
   )
 }

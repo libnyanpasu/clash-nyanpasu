@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import { memo, useCallback, useMemo } from 'react'
+import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
@@ -9,6 +10,7 @@ import {
 } from '@nyanpasu/interface'
 import { ChainCell, RuleCell, TextCell, TrafficCell } from './cells'
 import ConnectionsTable, { type ConnectionColumn } from './connections-table'
+import { mockClosedConnections } from './mock-connections'
 
 // The traffic history keeps the process path; the table shows its name.
 const processName = (process: string) => process.split('/').pop() || process
@@ -37,15 +39,19 @@ const ClosedViewer = memo(function ClosedViewer({
     fetchNextPage,
   } = useTrafficClosedConnections()
 
+  const mockNow = useMockConnectionsNow()
+
   const data = useMemo(
     () =>
-      (history?.pages ?? [])
-        .flatMap((page) => page.connections)
+      (mockNow === null
+        ? (history?.pages ?? []).flatMap((page) => page.connections)
+        : mockClosedConnections(mockNow)
+      )
         .filter((conn) =>
           proxy ? conn.dimensions.chains.includes(proxy) : true,
         )
         .filter((conn) => (search ? containsSearchTerm(conn, search) : true)),
-    [history, search, proxy],
+    [history, mockNow, search, proxy],
   )
 
   const handleEndReached = useCallback(() => {

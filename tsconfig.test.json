@@ -11,7 +11,7 @@
     "allowImportingTsExtensions": true,
     "allowJs": true,
     "resolveJsonModule": true,
-    "types": ["node", "vitest/browser"],
+    "types": ["node", "vite/client", "vitest/browser"],
     "paths": {
       "react": ["./frontend/nyanpasu/node_modules/@types/react"],
       "react/*": ["./frontend/nyanpasu/node_modules/@types/react/*"],

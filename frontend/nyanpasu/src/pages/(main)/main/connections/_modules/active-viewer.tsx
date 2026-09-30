@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import { memo, useMemo, useState } from 'react'
+import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
@@ -9,6 +10,7 @@ import {
 } from '@nyanpasu/interface'
 import { ChainCell, RuleCell, TextCell, TrafficCell } from './cells'
 import ConnectionsTable, { type ConnectionColumn } from './connections-table'
+import { mockActiveConnections } from './mock-connections'
 import TableRow, { ConnectionDetailModal } from './table-row'
 
 export type ConnectionRow = ClashConnection_Serialize & {
@@ -32,8 +34,13 @@ const ActiveViewer = memo(function ActiveViewer({
 }) {
   const { data: details } = useClashConnectionDetails()
 
+  const mockNow = useMockConnectionsNow()
+
   const data = useMemo<ConnectionRow[]>(() => {
-    const connections = details?.connections ?? []
+    const connections =
+      mockNow === null
+        ? (details?.connections ?? [])
+        : mockActiveConnections(mockNow)
 
     return connections
       .filter((conn) => (proxy ? conn.chains?.includes(proxy) : true))
@@ -42,7 +49,7 @@ const ActiveViewer = memo(function ActiveViewer({
         startMs: Date.parse(conn.start),
       }))
       .filter((c) => (search ? containsSearchTerm(c, search) : true))
-  }, [details, search, proxy])
+  }, [details, mockNow, search, proxy])
 
   const [detailId, setDetailId] = useState<string | null>(null)
 

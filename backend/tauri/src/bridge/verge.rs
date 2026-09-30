@@ -591,6 +591,7 @@ mod tests {
         let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths).unwrap();
         let (core_v2, service) = crate::client::tests::test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            http_frontend: None,
             bundle_metadata: crate::bundle::BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: false,

@@ -62,13 +62,15 @@ describe('rpc command facade', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(invokeHttpCommand('quit_application')).rejects.toBe(
-      'command `quit_application` is unavailable over experimental HTTP',
-    )
+    await expect(invokeHttpCommand('quit_application')).rejects.toEqual({
+      kind: 'unsupported',
+      message:
+        'command `quit_application` is unavailable over experimental HTTP',
+    })
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
-  it('keeps generated Result errors as strings and rejects transport failures', async () => {
+  it('preserves RPC error objects and rejects transport failures', async () => {
     vi.stubGlobal('window', {})
     const fetchMock = vi
       .fn()
@@ -89,10 +91,52 @@ describe('rpc command facade', () => {
     const { rpc } = await import('../src/ipc/rpc')
     await expect(rpc.getProfiles()).resolves.toEqual({
       status: 'error',
-      error: 'Bad input',
+      error: { kind: 'invalid_params', message: 'Bad input' },
     })
     await expect(rpc.getProfiles()).rejects.toThrow(
       'RPC returned a non-JSON response (HTTP 502)',
     )
   })
+  it.each(['desktop', 'http'])(
+    'preserves operation identity and log error codes over %s',
+    async (transport) => {
+      vi.stubGlobal(
+        'window',
+        transport === 'desktop' ? { __TAURI_INTERNALS__: {} } : {},
+      )
+      const coreError = {
+        kind: 'application_error',
+        message: 'pending',
+        code: 'backend_unavailable',
+        retryable: false,
+        operation_id: 'operation-1',
+        domain_error: null,
+      }
+      const logError = {
+        kind: 'application_error',
+        message: 'log session expired',
+        domain_error: 'session_expired',
+      }
+      if (transport === 'desktop') {
+        invoke.mockRejectedValueOnce(coreError).mockRejectedValueOnce(logError)
+      } else {
+        vi.stubGlobal(
+          'fetch',
+          vi
+            .fn()
+            .mockResolvedValueOnce({ ok: false, json: async () => coreError })
+            .mockResolvedValueOnce({ ok: false, json: async () => logError }),
+        )
+      }
+      const { rpc } = await import('../src/ipc/rpc')
+      await expect(rpc.restartSidecar()).resolves.toEqual({
+        status: 'error',
+        error: coreError,
+      })
+      await expect(rpc.listLogFiles('app')).resolves.toEqual({
+        status: 'error',
+        error: 'session_expired',
+      })
+    },
+  )
 })

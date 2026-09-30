@@ -1,8 +1,9 @@
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { useSetting } from '@nyanpasu/interface'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
-const appWindow = getCurrentWebviewWindow()
+const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 export type AsyncHandler<
   P extends unknown[] = [React.MouseEvent<HTMLButtonElement>],
@@ -29,11 +30,11 @@ export function useTrayClickHandler<
       try {
         await onClick?.(...args)
       } finally {
-        await appWindow.close()
+        await appWindow?.close()
       }
     } else {
       // Hide mode (default): hide immediately for fast visual response.
-      await appWindow.hide()
+      await appWindow?.hide()
       await onClick?.(...args)
     }
   })

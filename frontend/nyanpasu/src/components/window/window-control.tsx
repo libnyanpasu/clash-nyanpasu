@@ -10,9 +10,10 @@ import { Button, ButtonProps } from '@/components/ui/button'
 import useWindowMaximized from '@/hooks/use-window-maximized'
 import { useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
-const appWindow = getCurrentWebviewWindow()
+const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 const CtrlButton = ({ className, ...props }: ButtonProps) => {
   return (
@@ -33,7 +34,7 @@ const AlwaysOnTopButton = () => {
 
   const handleToggleAlwaysOnTop = useCallback(async () => {
     await upsertAlwaysOnTop(!alwaysOnTop)
-    await appWindow.setAlwaysOnTop(!alwaysOnTop)
+    await appWindow?.setAlwaysOnTop(!alwaysOnTop)
   }, [alwaysOnTop, upsertAlwaysOnTop])
 
   return (
@@ -63,7 +64,7 @@ const AlwaysOnTopButton = () => {
 
 const MinimizeButton = () => {
   const handleMinimize = useCallback(async () => {
-    await appWindow.minimize()
+    await appWindow?.minimize()
   }, [])
 
   return (
@@ -107,7 +108,7 @@ const CloseButton = ({
       }
     }
 
-    await appWindow.close()
+    await appWindow?.close()
   }, [beforeClose])
 
   return (
@@ -125,6 +126,7 @@ export default function WindowControl({
   hiddenAlwaysOnTop?: boolean
   beforeClose?: ComponentProps<typeof CloseButton>['beforeClose']
 }) {
+  if (!appWindow) return null
   return (
     <div
       className={cn('z-top flex gap-1', className)}

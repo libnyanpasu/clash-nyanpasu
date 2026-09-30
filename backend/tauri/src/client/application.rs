@@ -5,7 +5,7 @@ use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
 use nyanpasu_core::state::{PersistentStateManager, PersistentStateManagerSetup, StateSnapshot};
-use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use ractor::{Actor, ActorRef, RpcReplyPort};
 
 use crate::state::{
     ConditionalReplaceResult,
@@ -140,19 +140,12 @@ impl ApplicationClient {
         &self,
         state: NyanpasuAppConfig,
     ) -> anyhow::Result<PreparedTypedReplace<NyanpasuAppConfig>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ApplicationActorMessage::PrepareReplace { state, reply },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
-        }
+        super::actor_rpc::call(
+            &self.inner.actor_ref,
+            |reply| ApplicationActorMessage::PrepareReplace { state, reply },
+            None,
+        )
+        .await?
     }
 
     pub(crate) async fn replace_prepared_if_version(
@@ -160,23 +153,16 @@ impl ApplicationClient {
         expected_version: u64,
         prepared: PreparedTypedReplace<NyanpasuAppConfig>,
     ) -> anyhow::Result<ConditionalReplaceResult<ApplicationSnapshot>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ApplicationActorMessage::ReplacePreparedIfVersion {
-                    expected_version,
-                    prepared,
-                    reply,
-                },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
-        }
+        super::actor_rpc::call(
+            &self.inner.actor_ref,
+            |reply| ApplicationActorMessage::ReplacePreparedIfVersion {
+                expected_version,
+                prepared,
+                reply,
+            },
+            None,
+        )
+        .await?
     }
 
     async fn call<F>(
@@ -187,11 +173,7 @@ impl ApplicationClient {
     where
         F: FnOnce(RpcReplyPort<anyhow::Result<ApplicationSnapshot>>) -> ApplicationActorMessage,
     {
-        match self.inner.actor_ref.call(make, timeout).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("application actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("application actor call timed out"),
-        }
+        super::actor_rpc::call(&self.inner.actor_ref, make, timeout).await?
     }
 }
 

@@ -13,6 +13,14 @@ import {
 
 /** Commands */
 export const commands = {
+  getDebugHttpStatus: () =>
+    typedError<DebugHttpStatus, RpcError>(
+      __RPC_INVOKE('get_debug_http_status'),
+    ),
+  setDebugHttpEnabled: (enabled: boolean) =>
+    typedError<DebugHttpStatus, RpcError>(
+      __RPC_INVOKE('set_debug_http_enabled', { enabled }),
+    ),
   listLogFiles: (source: LogSource) =>
     typedError<LogFileInfo[], LogError>(
       __RPC_INVOKE('list_log_files', { source }),
@@ -22,18 +30,18 @@ export const commands = {
    *  server field is the combination of host and port
    */
   getSysProxy: () =>
-    typedError<GetSysProxyResponse, string>(__RPC_INVOKE('get_sys_proxy')),
+    typedError<GetSysProxyResponse, RpcError>(__RPC_INVOKE('get_sys_proxy')),
   getClashInfo: () =>
-    typedError<ClashInfo, string>(__RPC_INVOKE('get_clash_info')),
+    typedError<ClashInfo, RpcError>(__RPC_INVOKE('get_clash_info')),
   getClashLogs: () =>
-    typedError<string[], string>(__RPC_INVOKE('get_clash_logs')),
+    typedError<string[], RpcError>(__RPC_INVOKE('get_clash_logs')),
   /**  get the runtime config */
   getRuntimeConfig: () =>
-    typedError<any | null, string>(__RPC_INVOKE('get_runtime_config')),
+    typedError<any | null, RpcError>(__RPC_INVOKE('get_runtime_config')),
   getRuntimeYaml: () =>
-    typedError<string, string>(__RPC_INVOKE('get_runtime_yaml')),
+    typedError<string, RpcError>(__RPC_INVOKE('get_runtime_yaml')),
   getRuntimeExists: () =>
-    typedError<string[], string>(__RPC_INVOKE('get_runtime_exists')),
+    typedError<string[], RpcError>(__RPC_INVOKE('get_runtime_exists')),
   inspectRuntime: () =>
     typedError<
       {
@@ -46,7 +54,7 @@ export const commands = {
         root_id: number
         nodes: RuntimeInspectionNode[]
       } | null,
-      string
+      RpcError
     >(__RPC_INVOKE('inspect_runtime')),
   inspectAppliedRuntime: () =>
     typedError<
@@ -60,14 +68,14 @@ export const commands = {
         root_id: number
         nodes: RuntimeInspectionNode[]
       } | null,
-      string
+      RpcError
     >(__RPC_INVOKE('inspect_applied_runtime')),
   inspectRuntimeNode: (snapshotId: string, nodeId: number) =>
-    typedError<RuntimeInspectionContent, string>(
+    typedError<RuntimeInspectionContent, RpcError>(
       __RPC_INVOKE('inspect_runtime_node', { snapshotId, nodeId }),
     ),
   getPostprocessingOutput: () =>
-    typedError<PostProcessingOutput, string>(
+    typedError<PostProcessingOutput, RpcError>(
       __RPC_INVOKE('get_postprocessing_output'),
     ),
   clashApiGetProxyDelay: (
@@ -75,70 +83,75 @@ export const commands = {
     provider: string | null,
     url: string | null,
   ) =>
-    typedError<DelayRes, string>(
+    typedError<DelayRes, RpcError>(
       __RPC_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
     ),
   clashApiGetConfigs: () =>
-    typedError<ClashConfig, string>(__RPC_INVOKE('clash_api_get_configs')),
+    typedError<ClashConfig, RpcError>(__RPC_INVOKE('clash_api_get_configs')),
   clashApiGetVersion: () =>
-    typedError<ClashVersion, string>(__RPC_INVOKE('clash_api_get_version')),
+    typedError<ClashVersion, RpcError>(__RPC_INVOKE('clash_api_get_version')),
   clashApiGetRules: () =>
-    typedError<RulesRes, string>(__RPC_INVOKE('clash_api_get_rules')),
+    typedError<RulesRes, RpcError>(__RPC_INVOKE('clash_api_get_rules')),
   clashApiGetProvidersRules: () =>
-    typedError<ProvidersRulesRes, string>(
+    typedError<ProvidersRulesRes, RpcError>(
       __RPC_INVOKE('clash_api_get_providers_rules'),
     ),
   clashApiGetGroupDelay: (group: string, url: string | null) =>
-    typedError<{ [key in string]: number }, string>(
+    typedError<{ [key in string]: number }, RpcError>(
       __RPC_INVOKE('clash_api_get_group_delay', { group, url }),
     ),
   clashApiGetProvidersProxies: () =>
-    typedError<ProvidersProxiesRes_Serialize, string>(
+    typedError<ProvidersProxiesRes_Serialize, RpcError>(
       __RPC_INVOKE('clash_api_get_providers_proxies'),
     ),
   fetchLatestCoreVersions: () =>
-    typedError<ManifestVersionLatest, string>(
+    typedError<ManifestVersionLatest, RpcError>(
       __RPC_INVOKE('fetch_latest_core_versions'),
     ),
   inspectUpdater: (updaterId: number) =>
-    typedError<UpdaterSummary, string>(
+    typedError<UpdaterSummary, RpcError>(
       __RPC_INVOKE('inspect_updater', { updaterId }),
     ),
   getCoreVersion: (coreType: ClashCore_Deserialize) =>
-    typedError<string, string>(__RPC_INVOKE('get_core_version', { coreType })),
+    typedError<string, RpcError>(
+      __RPC_INVOKE('get_core_version', { coreType }),
+    ),
   getVergeConfig: () =>
-    typedError<IVerge_Serialize, string>(__RPC_INVOKE('get_verge_config')),
+    typedError<IVerge_Serialize, RpcError>(__RPC_INVOKE('get_verge_config')),
   getHotkeyFunctions: () => __RPC_INVOKE<string[]>('get_hotkey_functions'),
   getProfiles: () =>
-    typedError<ProfileDocument_Serialize, string>(__RPC_INVOKE('get_profiles')),
+    typedError<ProfileDocument_Serialize, RpcError>(
+      __RPC_INVOKE('get_profiles'),
+    ),
   readProfileFile: (uid: ProfileId) =>
-    typedError<string, string>(__RPC_INVOKE('read_profile_file', { uid })),
+    typedError<string, RpcError>(__RPC_INVOKE('read_profile_file', { uid })),
   getCustomAppDir: () =>
-    typedError<string | null, string>(__RPC_INVOKE('get_custom_app_dir')),
+    typedError<string | null, RpcError>(__RPC_INVOKE('get_custom_app_dir')),
   statusService: () =>
-    typedError<ServiceStatusInfo_Serialize, string>(
+    typedError<ServiceStatusInfo_Serialize, RpcError>(
       __RPC_INVOKE('status_service'),
     ),
-  isPortable: () => typedError<boolean, string>(__RPC_INVOKE('is_portable')),
+  isPortable: () => typedError<boolean, RpcError>(__RPC_INVOKE('is_portable')),
   getProxies: () =>
-    typedError<Proxies_Serialize, string>(__RPC_INVOKE('get_proxies')),
-  collectEnvs: () => typedError<EnvInfo, string>(__RPC_INVOKE('collect_envs')),
+    typedError<Proxies_Serialize, RpcError>(__RPC_INVOKE('get_proxies')),
+  collectEnvs: () =>
+    typedError<EnvInfo, RpcError>(__RPC_INVOKE('collect_envs')),
   getServerPort: () =>
-    typedError<number, string>(__RPC_INVOKE('get_server_port')),
+    typedError<number, RpcError>(__RPC_INVOKE('get_server_port')),
   isTrayIconSet: (mode: TrayIcon) =>
-    typedError<boolean, string>(__RPC_INVOKE('is_tray_icon_set', { mode })),
+    typedError<boolean, RpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
   getCoreStatus: () =>
-    typedError<CoreStatusInfo, string>(__RPC_INVOKE('get_core_status')),
+    typedError<CoreStatusInfo, RpcError>(__RPC_INVOKE('get_core_status')),
   urlDelayTest: (url: string, expectedStatus: number) =>
-    typedError<number | null, string>(
+    typedError<number | null, RpcError>(
       __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
     ),
-  getIpsbAsn: () => typedError<any, string>(__RPC_INVOKE('get_ipsb_asn')),
-  isAppimage: () => typedError<boolean, string>(__RPC_INVOKE('is_appimage')),
+  getIpsbAsn: () => typedError<any, RpcError>(__RPC_INVOKE('get_ipsb_asn')),
+  isAppimage: () => typedError<boolean, RpcError>(__RPC_INVOKE('is_appimage')),
   getServiceInstallPrompt: () =>
-    typedError<string, string>(__RPC_INVOKE('get_service_install_prompt')),
+    typedError<string, RpcError>(__RPC_INVOKE('get_service_install_prompt')),
   getStorageItem: (key: string) =>
-    typedError<string | null, string>(
+    typedError<string | null, RpcError>(
       __RPC_INVOKE('get_storage_item', { key }),
     ),
   /**
@@ -146,15 +159,17 @@ export const commands = {
    *  Internal storage entries used by other subsystems are excluded.
    */
   getAllStorageItems: () =>
-    typedError<StorageEntry[], string>(__RPC_INVOKE('get_all_storage_items')),
-  getHotkeys: () => typedError<string[], string>(__RPC_INVOKE('get_hotkeys')),
-  getCoreDir: () => typedError<string, string>(__RPC_INVOKE('get_core_dir')),
+    typedError<StorageEntry[], RpcError>(__RPC_INVOKE('get_all_storage_items')),
+  getHotkeys: () => typedError<string[], RpcError>(__RPC_INVOKE('get_hotkeys')),
+  getCoreDir: () => typedError<string, RpcError>(__RPC_INVOKE('get_core_dir')),
   getClashWsConnectionsState: () =>
-    typedError<ClashConnectionsConnectorState, string>(
+    typedError<ClashConnectionsConnectorState, RpcError>(
       __RPC_INVOKE('get_clash_ws_connections_state'),
     ),
   getClashWsSnapshot: () =>
-    typedError<ClashWsSnapshot, string>(__RPC_INVOKE('get_clash_ws_snapshot')),
+    typedError<ClashWsSnapshot, RpcError>(
+      __RPC_INVOKE('get_clash_ws_snapshot'),
+    ),
   checkUpdate: () =>
     typedError<
       {
@@ -166,22 +181,24 @@ export const commands = {
         body: string | null
         raw_json: any
       } | null,
-      string
+      RpcError
     >(__RPC_INVOKE('check_update')),
   getReleaseChannel: () =>
-    typedError<ReleaseChannel, string>(__RPC_INVOKE('get_release_channel')),
+    typedError<ReleaseChannel, RpcError>(__RPC_INVOKE('get_release_channel')),
   getSystemAccentColor: () =>
-    typedError<string | null, string>(__RPC_INVOKE('get_system_accent_color')),
+    typedError<string | null, RpcError>(
+      __RPC_INVOKE('get_system_accent_color'),
+    ),
   getConfigurationStatus: () =>
     __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
   retryConfigurationRuntime: () =>
-    typedError<null, string>(__RPC_INVOKE('retry_configuration_runtime')),
+    typedError<null, RpcError>(__RPC_INVOKE('retry_configuration_runtime')),
   retryConfigurationEffect: (kind: EffectKind) =>
-    typedError<null, string>(
+    typedError<null, RpcError>(
       __RPC_INVOKE('retry_configuration_effect', { kind }),
     ),
   setReleaseChannel: (channel: ReleaseChannel) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('set_release_channel', { channel }),
     ),
   openLogSession: (source: LogSource, request: OpenLogs) =>
@@ -197,21 +214,21 @@ export const commands = {
       __RPC_INVOKE('close_log_session', { source, session }),
     ),
   flushSystemDnsCache: () =>
-    typedError<null, string>(__RPC_INVOKE('flush_system_dns_cache')),
+    typedError<null, RpcError>(__RPC_INVOKE('flush_system_dns_cache')),
   openAppConfigDir: () =>
-    typedError<null, string>(__RPC_INVOKE('open_app_config_dir')),
+    typedError<null, RpcError>(__RPC_INVOKE('open_app_config_dir')),
   openAppDataDir: () =>
-    typedError<null, string>(__RPC_INVOKE('open_app_data_dir')),
-  openLogsDir: () => typedError<null, string>(__RPC_INVOKE('open_logs_dir')),
+    typedError<null, RpcError>(__RPC_INVOKE('open_app_data_dir')),
+  openLogsDir: () => typedError<null, RpcError>(__RPC_INVOKE('open_logs_dir')),
   openWebUrl: (url: string) =>
-    typedError<null, string>(__RPC_INVOKE('open_web_url', { url })),
-  openCoreDir: () => typedError<null, string>(__RPC_INVOKE('open_core_dir')),
+    typedError<null, RpcError>(__RPC_INVOKE('open_web_url', { url })),
+  openCoreDir: () => typedError<null, RpcError>(__RPC_INVOKE('open_core_dir')),
   /**  restart the sidecar */
   restartSidecar: () =>
-    typedError<null, string>(__RPC_INVOKE('restart_sidecar')),
+    typedError<null, RpcError>(__RPC_INVOKE('restart_sidecar')),
   /**  patch clash runtime config */
   patchClashConfig: (payload: PatchRuntimeConfig_Deserialize) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('patch_clash_config', { payload }),
     ),
   changeClashCore: (
@@ -226,22 +243,24 @@ export const commands = {
       | 'meow'
       | null,
   ) =>
-    typedError<null, string>(__RPC_INVOKE('change_clash_core', { clashCore })),
+    typedError<null, RpcError>(
+      __RPC_INVOKE('change_clash_core', { clashCore }),
+    ),
   clashApiDeleteConnections: (id: string | null) =>
-    typedError<null, string>(
+    typedError<null, RpcError>(
       __RPC_INVOKE('clash_api_delete_connections', { id }),
     ),
   clashApiUpdateProvidersRules: (name: string) =>
-    typedError<null, string>(
+    typedError<null, RpcError>(
       __RPC_INVOKE('clash_api_update_providers_rules', { name }),
     ),
   invokeUwpTool: () =>
-    typedError<null, string>(__RPC_INVOKE('invoke_uwp_tool')),
+    typedError<null, RpcError>(__RPC_INVOKE('invoke_uwp_tool')),
   updateCore: (coreType: ClashCore_Deserialize) =>
-    typedError<number, string>(__RPC_INVOKE('update_core', { coreType })),
-  collectLogs: () => typedError<null, string>(__RPC_INVOKE('collect_logs')),
+    typedError<number, RpcError>(__RPC_INVOKE('update_core', { coreType })),
+  collectLogs: () => typedError<null, RpcError>(__RPC_INVOKE('collect_logs')),
   patchVergeConfig: (payload: IVerge_Deserialize) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('patch_verge_config', { payload }),
     ),
   /**
@@ -249,7 +268,7 @@ export const commands = {
    *  plain error — the committed/degraded model (spec §6.2) does not apply.
    */
   enhanceProfiles: () =>
-    typedError<null, string>(__RPC_INVOKE('enhance_profiles')),
+    typedError<null, RpcError>(__RPC_INVOKE('enhance_profiles')),
   importProfile: (
     url: string,
     name: string | null,
@@ -260,7 +279,7 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<MutationOutcome<ProfileId>, string>(
+    typedError<MutationOutcome<ProfileId>, RpcError>(
       __RPC_INVOKE('import_profile', { url, name, option }),
     ),
   /**
@@ -268,21 +287,21 @@ export const commands = {
    *  frontend during startup.
    */
   getPendingDeepLink: () =>
-    typedError<string | null, string>(__RPC_INVOKE('get_pending_deep_link')),
+    typedError<string | null, RpcError>(__RPC_INVOKE('get_pending_deep_link')),
   /**  create a new profile */
   createProfile: (
     request: NewProfileRequest_Deserialize,
     fileData: string | null,
   ) =>
-    typedError<MutationOutcome<ProfileId>, string>(
+    typedError<MutationOutcome<ProfileId>, RpcError>(
       __RPC_INVOKE('create_profile', { request, fileData }),
     ),
   reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('reorder_profile', { activeId, overId }),
     ),
   reorderProfilesByList: (list: ProfileId[]) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('reorder_profiles_by_list', { list }),
     ),
   updateProfile: (
@@ -294,105 +313,111 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('update_profile', { uid, option }),
     ),
   deleteProfile: (uid: ProfileId) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('delete_profile', { uid }),
     ),
   activateProfile: (uid: string | null) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('activate_profile', { uid }),
     ),
   setGlobalTransforms: (ids: ProfileId[]) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('set_global_transforms', { ids }),
     ),
   setProfileValidFields: (fields: string[]) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('set_profile_valid_fields', { fields }),
     ),
   patchProfileMetadata: (
     uid: ProfileId,
     patch: ProfileMetadataPatch_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('patch_profile_metadata', { uid, patch }),
     ),
   patchRemoteProfileOptions: (
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('patch_remote_profile_options', { uid, patch }),
     ),
   replaceProfileDefinition: (
     uid: ProfileId,
     definition: ProfileDefinition_Deserialize,
   ) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('replace_profile_definition', { uid, definition }),
     ),
   viewProfile: (uid: ProfileId) =>
-    typedError<null, string>(__RPC_INVOKE('view_profile', { uid })),
+    typedError<null, RpcError>(__RPC_INVOKE('view_profile', { uid })),
   saveProfileFile: (uid: ProfileId, fileData: string) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('save_profile_file', { uid, fileData }),
     ),
   setCustomAppDir: (path: string) =>
-    typedError<null, string>(__RPC_INVOKE('set_custom_app_dir', { path })),
+    typedError<null, RpcError>(__RPC_INVOKE('set_custom_app_dir', { path })),
   installService: () =>
-    typedError<null, string>(__RPC_INVOKE('install_service')),
+    typedError<null, RpcError>(__RPC_INVOKE('install_service')),
   uninstallService: () =>
-    typedError<null, string>(__RPC_INVOKE('uninstall_service')),
-  startService: () => typedError<null, string>(__RPC_INVOKE('start_service')),
-  stopService: () => typedError<null, string>(__RPC_INVOKE('stop_service')),
+    typedError<null, RpcError>(__RPC_INVOKE('uninstall_service')),
+  startService: () => typedError<null, RpcError>(__RPC_INVOKE('start_service')),
+  stopService: () => typedError<null, RpcError>(__RPC_INVOKE('stop_service')),
   restartService: () =>
-    typedError<null, string>(__RPC_INVOKE('restart_service')),
+    typedError<null, RpcError>(__RPC_INVOKE('restart_service')),
   selectProxy: (group: string, name: string) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('select_proxy', { group, name }),
     ),
   updateProxyProvider: (name: string) =>
-    typedError<null, string>(__RPC_INVOKE('update_proxy_provider', { name })),
+    typedError<null, RpcError>(__RPC_INVOKE('update_proxy_provider', { name })),
   restartApplication: () =>
-    typedError<null, string>(__RPC_INVOKE('restart_application')),
+    typedError<null, RpcError>(__RPC_INVOKE('restart_application')),
   setTrayIcon: (mode: TrayIcon, path: string | null) =>
-    typedError<null, string>(__RPC_INVOKE('set_tray_icon', { mode, path })),
+    typedError<null, RpcError>(__RPC_INVOKE('set_tray_icon', { mode, path })),
   openThat: (path: string) =>
-    typedError<null, string>(__RPC_INVOKE('open_that', { path })),
+    typedError<null, RpcError>(__RPC_INVOKE('open_that', { path })),
   cleanupProcesses: () =>
-    typedError<null, string>(__RPC_INVOKE('cleanup_processes')),
+    typedError<null, RpcError>(__RPC_INVOKE('cleanup_processes')),
   setStorageItem: (key: string, value: string) =>
-    typedError<null, string>(__RPC_INVOKE('set_storage_item', { key, value })),
+    typedError<null, RpcError>(
+      __RPC_INVOKE('set_storage_item', { key, value }),
+    ),
   removeStorageItem: (key: string) =>
-    typedError<null, string>(__RPC_INVOKE('remove_storage_item', { key })),
+    typedError<null, RpcError>(__RPC_INVOKE('remove_storage_item', { key })),
   /**
    *  Debug: clears all frontend KV entries (keys with the `web:` prefix).
    *  Internal storage entries used by other subsystems are left intact.
    */
-  clearStorage: () => typedError<null, string>(__RPC_INVOKE('clear_storage')),
+  clearStorage: () => typedError<null, RpcError>(__RPC_INVOKE('clear_storage')),
   setHotkeys: (hotkeys: string[]) =>
-    typedError<MutationOutcome<null>, string>(
+    typedError<MutationOutcome<null>, RpcError>(
       __RPC_INVOKE('set_hotkeys', { hotkeys }),
     ),
   mutateProxies: () =>
-    typedError<Proxies_Serialize, string>(__RPC_INVOKE('mutate_proxies')),
+    typedError<Proxies_Serialize, RpcError>(__RPC_INVOKE('mutate_proxies')),
   setClashWsRecording: (kind: ClashWsKind, enabled: boolean) =>
-    typedError<ClashWsRecording, string>(
+    typedError<ClashWsRecording, RpcError>(
       __RPC_INVOKE('set_clash_ws_recording', { kind, enabled }),
     ),
   clearClashWsHistory: (kind: ClashWsKind) =>
-    typedError<null, string>(__RPC_INVOKE('clear_clash_ws_history', { kind })),
+    typedError<null, RpcError>(
+      __RPC_INVOKE('clear_clash_ws_history', { kind }),
+    ),
   saveWindowSizeState: (label: string) =>
-    typedError<null, string>(__RPC_INVOKE('save_window_size_state', { label })),
+    typedError<null, RpcError>(
+      __RPC_INVOKE('save_window_size_state', { label }),
+    ),
   createMainWindow: () =>
-    typedError<null, string>(__RPC_INVOKE('create_main_window')),
+    typedError<null, RpcError>(__RPC_INVOKE('create_main_window')),
   createDebugTrayMenuWindow: () =>
-    typedError<null, string>(__RPC_INVOKE('create_debug_tray_menu_window')),
+    typedError<null, RpcError>(__RPC_INVOKE('create_debug_tray_menu_window')),
   createEditorWindow: (windowType: EditorWindowType, uid: string | null) =>
-    typedError<null, string>(
+    typedError<null, RpcError>(
       __RPC_INVOKE('create_editor_window', { windowType, uid }),
     ),
   copyClashEnv: (envType: CopyEnvOption) =>
@@ -886,6 +911,11 @@ export type CoreStatusInfo = {
 }
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
+
+export type DebugHttpStatus = {
+  enabled: boolean
+  url: string | null
+}
 
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = {
@@ -2312,6 +2342,21 @@ export type RevisionIdInfo = {
   effective_hash: string
 }
 
+export type RpcError = {
+  kind: string
+  message: string
+  code: string | null
+  retryable: boolean | null
+  operation_id: string | null
+  domain_error: RpcValue | null
+}
+
+/**
+ *  Specta 0.0.12 cannot recursively export `serde_json::Value` directly.
+ *  Keep the JSON wire transparent while exporting it as TypeScript `any`.
+ */
+export type RpcValue = any
+
 export type RuleProviderItem = {
   behavior: string | null
   format: string | null
@@ -2783,6 +2828,20 @@ function makeEvent<T>(
 }
 
 export const queries = {
+  getDebugHttpStatus: (
+    ...args: Parameters<typeof commands.getDebugHttpStatus>
+  ) =>
+    queryOptions({
+      queryKey: ['getDebugHttpStatus', ...args],
+      queryFn: () => commands.getDebugHttpStatus(...args),
+    }),
+  setDebugHttpEnabled: (
+    ...args: Parameters<typeof commands.setDebugHttpEnabled>
+  ) =>
+    queryOptions({
+      queryKey: ['setDebugHttpEnabled', ...args],
+      queryFn: () => commands.setDebugHttpEnabled(...args),
+    }),
   listLogFiles: (...args: Parameters<typeof commands.listLogFiles>) =>
     queryOptions({
       queryKey: ['listLogFiles', ...args],

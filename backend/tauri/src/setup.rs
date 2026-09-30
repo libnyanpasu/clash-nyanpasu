@@ -89,6 +89,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         Arc::new(ConfigLegacyVergeStore::new(legacy_lock.clone()));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
+        http_frontend: Some(debug_http_frontend(&app_handle)?),
         logging: crate::client::logs::LoggingSetup {
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
                 paths.app_logs_dir(),
@@ -272,4 +273,33 @@ fn forward_actor_events(app_handle: tauri::AppHandle, client: NyanpasuClient) {
 fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
     Utf8PathBuf::from_path_buf(path)
         .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
+}
+
+fn debug_http_frontend(
+    app: &tauri::AppHandle,
+) -> anyhow::Result<crate::server::debug_http::Frontend> {
+    use crate::server::debug_http::{Frontend, FrontendAssets};
+    if !cfg!(feature = "custom-protocol") {
+        if let Some(url) = &app.config().build.dev_url {
+            return Ok(Frontend::Dev(url.clone()));
+        }
+    }
+    struct TauriFrontendAssets(tauri::AssetResolver<tauri::Wry>);
+    impl FrontendAssets for TauriFrontendAssets {
+        fn get(&self, path: &str) -> Option<(String, Vec<u8>)> {
+            if !self
+                .0
+                .iter()
+                .any(|(key, _)| key.as_ref().trim_start_matches('/') == path)
+            {
+                return None;
+            }
+            self.0
+                .get(path.to_owned())
+                .map(|asset| (asset.mime_type, asset.bytes))
+        }
+    }
+    Ok(Frontend::Embedded(Arc::new(TauriFrontendAssets(
+        app.asset_resolver(),
+    ))))
 }

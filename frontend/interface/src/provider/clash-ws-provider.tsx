@@ -83,6 +83,9 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       }
     }
 
+    const stopResync = rpc.listenResync(() => {
+      resync()
+    })
     // Subscribe before requesting the snapshot. The bounded buffer plus sequence
     // checks also covers slow IPC, event loss, and StrictMode effect teardown.
     rpc.events.clashWsEvent
@@ -119,6 +122,7 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
 
     return () => {
       disposed = true
+      stopResync()
       unlisten?.()
     }
   }, [])

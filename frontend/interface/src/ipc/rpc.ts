@@ -1,7 +1,7 @@
 import { listen } from '@tauri-apps/api/event'
 import * as tauri from './bindings'
 import { NYANPASU_BACKEND_EVENT_NAME } from './event-names'
-import { listenHttpEvent } from './event-transport'
+import { listenHttpEvent, listenHttpResync } from './event-transport'
 import * as api from './rpc-bindings'
 
 type StateChanged = api.StateChanged
@@ -14,6 +14,8 @@ export const rpc = {
   events: isTauri ? tauri.events : api.events,
   queries: api.queries,
   mutations: api.mutations,
+  listenResync: (callback: () => void) =>
+    isTauri ? () => {} : listenHttpResync(callback),
   listenMutation: (callback: (payload: StateChanged) => void) =>
     isTauri
       ? listen<StateChanged>(NYANPASU_BACKEND_EVENT_NAME, ({ payload }) =>

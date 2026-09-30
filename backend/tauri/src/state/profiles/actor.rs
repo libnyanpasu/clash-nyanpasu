@@ -91,6 +91,8 @@ pub enum ProfilesError {
     Revision(#[from] ProfileRevisionError),
     #[error("profile materialization failed: {0}")]
     Materialization(String),
+    #[error(transparent)]
+    RpcWait(#[from] crate::client::actor_rpc::ActorRpcError),
     #[error("profiles actor rpc failed: {0}")]
     Rpc(String),
 }

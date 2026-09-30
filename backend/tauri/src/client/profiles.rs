@@ -1,5 +1,5 @@
 //! Typed client for the ProfilesActor. Committed reads come from the state
-//! snapshot handle; writes go through the actor with no RPC timeout.
+//! snapshot handle; writes go through the actor with a finite response budget.
 
 use crate::state::mutation::MutationCoordinator;
 
@@ -12,7 +12,7 @@ use nyanpasu_config::profile::{
     RemoteProfileOptions, RemoteProfileOptionsPatch,
 };
 use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
-use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use ractor::{Actor, ActorRef, RpcReplyPort};
 
 use crate::{
     core::migration::modules::profiles::ProfilesFormat,
@@ -283,12 +283,9 @@ impl ProfilesClient {
         F: FnOnce(RpcReplyPort<Result<T, ProfilesError>>) -> ProfilesActorMessage,
         T: Send + 'static,
     {
-        match self.inner.actor_ref.call(make, timeout).await {
-            Ok(CallResult::Success(result)) => result,
-            Ok(CallResult::SenderError) => Err(ProfilesError::Rpc("reply dropped".into())),
-            Ok(CallResult::Timeout) => Err(ProfilesError::Rpc("call timed out".into())),
-            Err(e) => Err(ProfilesError::Rpc(e.to_string())),
-        }
+        super::actor_rpc::call(&self.inner.actor_ref, make, timeout)
+            .await
+            .map_err(ProfilesError::RpcWait)?
     }
 }
 

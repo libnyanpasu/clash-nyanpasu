@@ -12,6 +12,12 @@
     "resolveJsonModule": true,
     "types": ["node", "vitest/browser"],
     "paths": {
+      "@/*": ["./frontend/nyanpasu/src/*"],
+      "react": ["./frontend/interface/node_modules/@types/react/index.d.ts"],
+      "react/*": ["./frontend/interface/node_modules/@types/react/*"],
+      "vitest-browser-react": [
+        "./frontend/interface/node_modules/vitest-browser-react"
+      ],
       "@interface/*": ["./frontend/interface/src/*"],
       "@nyanpasu/interface": ["./frontend/interface/src/index.ts"],
       "@nyanpasu/interface/*": ["./frontend/interface/src/*"],

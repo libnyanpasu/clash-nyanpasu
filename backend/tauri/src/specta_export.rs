@@ -27,6 +27,8 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
 pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wry>) {
     let command_set = CommandSet::<tauri::Wry>::new(
         collect_commands![
+            ipc::get_debug_http_status,
+            ipc::set_debug_http_enabled,
             // Read-only commands
             ipc::list_log_files,
             ipc::get_sys_proxy,

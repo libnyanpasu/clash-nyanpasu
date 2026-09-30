@@ -1,3 +1,4 @@
+pub(crate) mod actor_rpc;
 mod application;
 pub mod application_workflow;
 mod clash_api;
@@ -77,6 +78,7 @@ pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
 pub struct ClientSetupArgs {
     pub bundle_metadata: crate::bundle::BundleMetadata,
     pub logging: logs::LoggingSetup,
+    pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
     pub bridges: LegacyBridgeSet,
@@ -222,6 +224,7 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
+    debug_http: crate::server::debug_http::HttpServerClient,
     bundle_metadata: crate::bundle::BundleMetadata,
     app_logs: nyanpasu_logging::LogsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
@@ -253,6 +256,7 @@ impl NyanpasuClient {
         let ClientSetupArgs {
             bundle_metadata,
             logging,
+            http_frontend,
             paths,
             runtime_paths,
             bridges,
@@ -333,6 +337,7 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
+            http_frontend,
         ))
     }
 
@@ -358,7 +363,9 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+        http_frontend: Option<crate::server::debug_http::Frontend>,
     ) -> anyhow::Result<Self> {
+        let debug_http = crate::server::debug_http::HttpServerClient::spawn(http_frontend).await?;
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         let service_logs = logging.service;
         let effects = effects::actor::EffectsClient::spawn(effects::actor::EffectsArgs {
@@ -412,6 +419,7 @@ impl NyanpasuClient {
         let streams = crate::core::clash::ws::StreamsClient::spawn(core_v2.clone()).await?;
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
+                debug_http,
                 bundle_metadata,
                 app_logs,
                 service_logs,
@@ -435,6 +443,26 @@ impl NyanpasuClient {
                 accelerators,
             }),
         })
+    }
+
+    pub async fn debug_http_status(
+        &self,
+    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
+        self.inner.debug_http.status().await
+    }
+    pub async fn set_debug_http_enabled(
+        &self,
+        enabled: bool,
+        router: axum::Router,
+    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
+        self.inner.debug_http.set_enabled(enabled, router).await
+    }
+    pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
+        self.inner
+            .debug_http
+            .set_enabled(false, axum::Router::new())
+            .await?;
+        Ok(())
     }
 
     pub async fn release_channel(&self) -> Result<crate::bundle::Channel> {
@@ -2301,6 +2329,7 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            None,
         )
         .await
         .unwrap()
@@ -2516,6 +2545,7 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logging: logs::test_setup(paths.app_logs_dir()),
+            http_frontend: None,
             paths,
             runtime_paths,
             bridges: LegacyBridgeSet {
@@ -2778,6 +2808,7 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            None,
         )
         .await
         .unwrap();
@@ -2932,6 +2963,7 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logging: logs::test_setup(paths.app_logs_dir()),
+            http_frontend: None,
             paths,
             runtime_paths,
             bridges: LegacyBridgeSet {
@@ -3780,6 +3812,7 @@ pub(crate) mod tests {
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+                None,
             )
             .await
             .unwrap();

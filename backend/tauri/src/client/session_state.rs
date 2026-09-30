@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
 use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
-use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use ractor::{Actor, ActorRef, RpcReplyPort};
 
 use crate::state::{
     ConditionalReplaceResult,
@@ -114,19 +114,12 @@ impl SessionStateClient {
         &self,
         state: PersistentState,
     ) -> anyhow::Result<PreparedTypedReplace<PersistentState>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| SessionStateActorMessage::PrepareReplace { state, reply },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
-        }
+        super::actor_rpc::call(
+            &self.inner.actor_ref,
+            |reply| SessionStateActorMessage::PrepareReplace { state, reply },
+            None,
+        )
+        .await?
     }
 
     pub(crate) async fn replace_prepared_if_version(
@@ -134,23 +127,16 @@ impl SessionStateClient {
         expected_version: u64,
         prepared: PreparedTypedReplace<PersistentState>,
     ) -> anyhow::Result<ConditionalReplaceResult<SessionStateSnapshot>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| SessionStateActorMessage::ReplacePreparedIfVersion {
-                    expected_version,
-                    prepared,
-                    reply,
-                },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
-        }
+        super::actor_rpc::call(
+            &self.inner.actor_ref,
+            |reply| SessionStateActorMessage::ReplacePreparedIfVersion {
+                expected_version,
+                prepared,
+                reply,
+            },
+            None,
+        )
+        .await?
     }
 
     async fn call<F>(
@@ -161,11 +147,7 @@ impl SessionStateClient {
     where
         F: FnOnce(RpcReplyPort<anyhow::Result<SessionStateSnapshot>>) -> SessionStateActorMessage,
     {
-        match self.inner.actor_ref.call(make, timeout).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("session state actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("session state actor call timed out"),
-        }
+        super::actor_rpc::call(&self.inner.actor_ref, make, timeout).await?
     }
 }
 

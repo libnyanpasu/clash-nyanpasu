@@ -17,10 +17,11 @@ import {
 } from '@material/material-color-utilities'
 import { useSetting } from '@nyanpasu/interface'
 import { alpha, darken, lighten } from '@nyanpasu/utils'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useLocalStorage } from '@uidotdev/usehooks'
 
-const appWindow = getCurrentWebviewWindow()
+const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 export const DEFAULT_COLOR = '#1867C0'
 
@@ -235,6 +236,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
         // Apply a synchronous system fallback first to avoid a light flash.
         applyThemeMode(getSystemThemeMode())
 
+        if (!appWindow) return
         const systemTheme = await appWindow.theme()
         applyThemeMode(
           systemTheme === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
@@ -254,6 +256,15 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
 
   // listen to theme changed event and change html theme mode
   useEffect(() => {
+    if (!appWindow) {
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const update = () => {
+        if (themeMode.value === ThemeMode.SYSTEM)
+          applyThemeMode(getSystemThemeMode())
+      }
+      media.addEventListener('change', update)
+      return () => media.removeEventListener('change', update)
+    }
     const unlisten = appWindow.onThemeChanged((e) => {
       if (themeMode.value === ThemeMode.SYSTEM) {
         applyThemeMode(

@@ -4,7 +4,9 @@ import {
   createRootRoute,
   ErrorComponentProps,
   Outlet,
+  redirect,
 } from '@tanstack/react-router'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import 'dayjs/locale/ko'
 import 'dayjs/locale/ru'
@@ -34,7 +36,7 @@ import {
 dayjs.extend(relativeTime)
 dayjs.extend(customParseFormat)
 
-const appWindow = getCurrentWebviewWindow()
+const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 export const Catch = ({ error }: ErrorComponentProps) => {
   return (
@@ -63,7 +65,7 @@ export const Catch = ({ error }: ErrorComponentProps) => {
 
         <button
           className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
-          onClick={() => appWindow.close()}
+          onClick={() => appWindow?.close()}
         >
           Close Window
         </button>
@@ -86,6 +88,11 @@ const TanStackRouterDevtools = import.meta.env.PROD
     )
 
 export const Route = createRootRoute({
+  beforeLoad: ({ location }) => {
+    if (!isTauri() && location.pathname === '/') {
+      throw redirect({ to: '/main/dashboard' })
+    }
+  },
   component: App,
   errorComponent: Catch,
   pendingComponent: Pending,
@@ -106,14 +113,20 @@ function WindowReveal() {
   }, [])
 
   useEffect(() => {
-    if ((query.isSuccess || query.isError) && !hasRevealed.current) {
+    if (
+      appWindow &&
+      (query.isSuccess || query.isError) &&
+      !hasRevealed.current
+    ) {
       hasRevealed.current = true
       Promise.all([
-        appWindow.show(),
-        appWindow.unminimize(),
-        appWindow.setFocus(),
+        appWindow?.show(),
+        appWindow?.unminimize(),
+        appWindow?.setFocus(),
       ]).finally(() => {
-        rpc.events.windowReadyEvent.emit({ label: appWindow.label })
+        rpc.events.windowReadyEvent.emit({
+          label: appWindow?.label ?? 'browser',
+        })
       })
     }
   }, [query.isSuccess, query.isError])
@@ -222,8 +235,10 @@ export default function App() {
               <TooltipProvider>
                 <WindowReveal />
                 <MutationDegradationNotifier />
-                {appWindow.label === 'main' && <ConfigurationStatusPanel />}
-                <DeepLinkImport />
+                {(!appWindow || appWindow.label === 'main') && (
+                  <ConfigurationStatusPanel />
+                )}
+                {appWindow && <DeepLinkImport />}
                 <Outlet />
               </TooltipProvider>
             </CustomCssProvider>

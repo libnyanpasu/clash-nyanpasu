@@ -1,9 +1,13 @@
 /* oxlint-disable no-throw-literal -- tauri-specta wraps string rejections in its Result return */
 import { commands as tauriCommands } from './bindings'
 
-interface RpcError {
+export interface RpcError {
   kind: string
   message: string
+  code?: string | null
+  retryable?: boolean | null
+  operation_id?: string | null
+  domain_error?: unknown
 }
 
 const rpcPath = '/bridge/rpc'
@@ -46,7 +50,7 @@ export async function invokeHttpCommand<T>(
   }
 
   if (!response.ok) {
-    if (isRpcError(body)) throw body.message
+    if (isRpcError(body)) throw body.domain_error ?? body
     throw new Error(`RPC failed with HTTP ${response.status}`)
   }
 
@@ -61,6 +65,6 @@ export async function invokeRpcCommand<T>(
     return invokeHttpCommand<T>(method, params)
   }
   const result = await tauriCommands.callRpc(method, params)
-  if (result.status === 'error') throw result.error.message
+  if (result.status === 'error') throw result.error.domain_error ?? result.error
   return result.data as T
 }

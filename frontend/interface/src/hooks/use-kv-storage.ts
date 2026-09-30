@@ -91,24 +91,34 @@ export function useKvStorage<T>(
     setValueState(getLocalCache(key, defaultValueRef.current))
     setIsLoading(true)
 
-    Promise.resolve(invokeQuery(rpc.queries.getStorageItem(key))).then(
-      (result) => {
-        if (result.status === 'ok') {
-          if (result.data !== null) {
-            try {
-              const parsed = JSON.parse(result.data)
-              const migrated = applyMigrate(parsed)
-              setValueState(migrated)
-              setLocalCache(key, migrated)
-            } catch {
-              // backend returned non-JSON; keep local cache
-            }
-          }
-
-          setIsLoading(false)
+    let disposed = false
+    const refresh = async () => {
+      try {
+        const result = await invokeQuery(rpc.queries.getStorageItem(key))
+        if (disposed) return
+        if (result.status === 'error') throw result.error
+        if (result.data === null) {
+          setValueState(defaultValueRef.current)
+          removeLocalCache(key)
+        } else {
+          const migrated = applyMigrate(JSON.parse(result.data))
+          setValueState(migrated)
+          setLocalCache(key, migrated)
         }
-      },
-    )
+      } catch (error) {
+        console.error('[useKvStorage] read failed:', error)
+      } finally {
+        if (!disposed) setIsLoading(false)
+      }
+    }
+    const stopResync = rpc.listenResync(() => {
+      refresh()
+    })
+    refresh()
+    return () => {
+      disposed = true
+      stopResync()
+    }
   }, [key, applyMigrate])
 
   // Listen for changes emitted from backend (any window).
@@ -205,7 +215,7 @@ export const kvStorageDebug = {
     const result = await invokeQuery(rpc.queries.getAllStorageItems())
 
     if (result.status === 'error') {
-      throw new Error(result.error)
+      throw result.error
     }
 
     return Object.fromEntries(
@@ -224,7 +234,7 @@ export const kvStorageDebug = {
     const result = await invokeMutation(rpc.mutations.clearStorage, [])
 
     if (result.status === 'error') {
-      throw new Error(result.error)
+      throw result.error
     }
   },
 }

@@ -2,7 +2,49 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Error, FnArg, ItemFn, Pat, ReturnType, Type, spanned::Spanned};
 
+#[derive(Default)]
+pub struct Options {
+    result: bool,
+    owner: bool,
+}
+
+impl syn::parse::Parse for Options {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut options = Self::default();
+        while !input.is_empty() {
+            let option: syn::Ident = input.parse()?;
+            match option.to_string().as_str() {
+                "result" => options.result = true,
+                "owner" => options.owner = true,
+                _ => return Err(Error::new(option.span(), "expected result or owner")),
+            }
+            if !input.is_empty() {
+                input.parse::<syn::Token![,]>()?;
+            }
+        }
+        Ok(options)
+    }
+}
+
+#[cfg(test)]
 pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
+    let options = item
+        .attrs
+        .iter()
+        .find(|attr| {
+            attr.path()
+                .segments
+                .last()
+                .is_some_and(|s| s.ident == "rpc")
+        })
+        .filter(|attr| matches!(attr.meta, syn::Meta::List(_)))
+        .map(|attr| attr.parse_args())
+        .transpose()?
+        .unwrap_or_default();
+    expand_with_options(item, options)
+}
+
+pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenStream> {
     let original = &item.sig;
     let name = &original.ident;
     let implementation_name = format_ident!("__unified_impl_{}", name);
@@ -23,7 +65,7 @@ pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
     let mut http_args = Vec::new();
     let mut fields = Vec::new();
     let mut field_names = Vec::new();
-    let mut http_supported = can_share_with_http(original);
+    let mut http_supported = can_share_with_http(original, options.owner);
     let mut tauri_supported = true;
 
     for argument in implementation.sig.inputs.iter_mut() {
@@ -59,10 +101,12 @@ pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
         } else if is_context_type(&argument.ty, "AppHandle") {
             wrapper_args.push(quote!(#ident));
             http_supported = false;
-        } else if is_context_type(&argument.ty, "Window") {
-            wrapper_args.push(quote!(#ident));
-            http_supported = false;
-        } else if is_context_type(&argument.ty, "Webview")
+        } else if options.owner && is_context_type(&argument.ty, "Window") {
+            *argument.ty = syn::parse_quote!(crate::unified_rpc::RpcOwner);
+            wrapper_args.push(quote!(crate::unified_rpc::RpcOwner::desktop(#ident.label())));
+            http_args.push(quote!(owner.clone()));
+        } else if is_context_type(&argument.ty, "Window")
+            || is_context_type(&argument.ty, "Webview")
             || is_context_type(&argument.ty, "WebviewWindow")
         {
             wrapper_args.push(quote!(#ident));
@@ -111,7 +155,7 @@ pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
         None,
     );
     let http_handler_body = if http_supported && !matches!(original.output, ReturnType::Default) {
-        let output = output_value(&http_call, &original.output);
+        let output = output_value(&http_call, &original.output, options.result);
         quote! {
             #http_parse
             let output = #output?;
@@ -140,6 +184,10 @@ pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
                 tauri_args.push(quote!(&*#state_name));
             } else if is_context_type(&argument.ty, "AppHandle") {
                 tauri_args.push(quote!(app.clone()));
+            } else if options.owner && is_context_type(&argument.ty, "Window") {
+                tauri_args.push(quote!(crate::unified_rpc::RpcOwner::desktop(
+                    window.label()
+                )));
             } else if is_context_type(&argument.ty, "Window") {
                 tauri_args.push(quote!(window.clone()));
             } else if is_context_type(&argument.ty, "Webview")
@@ -161,7 +209,7 @@ pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
             original.asyncness.is_some(),
             generic_args,
         );
-        let output = output_value(&tauri_call, &original.output);
+        let output = output_value(&tauri_call, &original.output, options.result);
         let parser = parser(&fields, &field_names);
         quote! {
             #(#cfg_attrs)*
@@ -203,6 +251,7 @@ pub fn expand(item: ItemFn) -> syn::Result<TokenStream> {
         #(#cfg_attrs)*
         fn #http_handler(
             dependencies: ::std::sync::Arc<crate::unified_rpc::RpcDependencies>,
+            owner: crate::unified_rpc::RpcOwner,
             params: ::serde_json::Value,
         ) -> crate::unified_rpc::RpcFuture {
             ::std::boxed::Box::pin(async move {
@@ -239,9 +288,9 @@ fn call(
     }
 }
 
-fn output_value(call: &TokenStream, output: &ReturnType) -> TokenStream {
+fn output_value(call: &TokenStream, output: &ReturnType, result: bool) -> TokenStream {
     match output {
-        ReturnType::Type(_, ty) if is_result(ty) => {
+        ReturnType::Type(_, ty) if result || is_result(ty) => {
             quote!(#call.map_err(crate::unified_rpc::RpcError::application))
         }
         ReturnType::Type(_, _) => quote!(Ok(#call)),
@@ -267,11 +316,10 @@ fn parser(fields: &[TokenStream], names: &[syn::Ident]) -> TokenStream {
     }
 }
 
-fn can_share_with_http(signature: &syn::Signature) -> bool {
+fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
     if !signature.generics.params.is_empty() || matches!(signature.output, ReturnType::Default) {
         return false;
     }
-    let mut has_dependency = false;
     for argument in &signature.inputs {
         let FnArg::Typed(argument) = argument else {
             return false;
@@ -291,12 +339,13 @@ fn can_share_with_http(signature: &syn::Signature) -> bool {
             {
                 return false;
             }
-            has_dependency = true;
+        } else if owner && is_context_type(&argument.ty, "Window") {
+            continue;
         } else if contains_reference(&argument.ty) || is_tauri_context(&argument.ty) {
             return false;
         }
     }
-    has_dependency
+    true
 }
 
 fn static_lifetime_args(signature: &syn::Signature, supported: &mut bool) -> Vec<TokenStream> {
@@ -377,6 +426,34 @@ fn is_result(ty: &Type) -> bool {
 mod tests {
     use super::expand;
     use syn::{Item, ItemFn};
+
+    #[test]
+    fn explicit_result_alias_is_unwrapped_and_owner_is_injected() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(result, owner)]
+            pub async fn query_logs(window: tauri::Window, request: Query) -> LogResult<Page> { todo!() }
+        };
+        let expanded = expand(command).unwrap().to_string();
+        assert!(
+            expanded.contains(
+                "__unified_impl_query_logs (owner . clone () , request) . await . map_err"
+            )
+        );
+        assert!(expanded.contains("RpcOwner :: desktop (window . label ())"));
+        assert!(!expanded.contains("RpcError :: unsupported"));
+        assert!(!expanded.contains("window : tauri :: Window , request : Query ,"));
+    }
+
+    #[test]
+    fn dependency_free_commands_can_use_http() {
+        let command = syn::parse_quote! { pub fn functions() -> Vec<String> { vec![] } };
+        assert!(
+            !expand(command)
+                .unwrap()
+                .to_string()
+                .contains("RpcError :: unsupported")
+        );
+    }
 
     #[test]
     fn every_ipc_rpc_command_has_a_desktop_dispatcher() {

@@ -5,7 +5,7 @@ use std::{collections::HashMap, convert::Infallible, future::Future, pin::Pin, s
 use axum::{
     Json, Router,
     extract::{Query, State, rejection::JsonRejection},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
 };
@@ -72,7 +72,32 @@ pub fn bridge_tauri_events(app: &tauri::AppHandle, events: EventBus) {
 }
 
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, RpcError>> + Send + 'static>>;
-pub type RpcHandler = fn(Arc<RpcDependencies>, Value) -> RpcFuture;
+#[derive(Clone)]
+pub struct RpcOwner(String);
+
+impl RpcOwner {
+    pub fn desktop(label: &str) -> Self {
+        Self(label.to_owned())
+    }
+    fn http(headers: &HeaderMap) -> Result<Self, RpcError> {
+        let cookie = headers
+            .get("cookie")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let session = cookie
+            .split(';')
+            .map(str::trim)
+            .find_map(|c| c.strip_prefix("nyanpasu_http_session="))
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .ok_or_else(|| RpcError::invalid_params("HTTP session cookie is missing"))?;
+        Ok(Self(format!("http:{session}")))
+    }
+    pub fn label(&self) -> &str {
+        &self.0
+    }
+}
+
+pub type RpcHandler = fn(Arc<RpcDependencies>, RpcOwner, Value) -> RpcFuture;
 pub type TauriRpcHandler = fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> RpcFuture;
 
 pub struct CommandEntry {
@@ -87,6 +112,10 @@ inventory::collect!(CommandEntry);
 pub struct RpcError {
     pub kind: &'static str,
     pub message: String,
+    pub code: Option<String>,
+    pub retryable: Option<bool>,
+    pub operation_id: Option<String>,
+    pub domain_error: Option<Box<RpcValue>>,
 }
 
 /// Specta 0.0.12 cannot recursively export `serde_json::Value` directly.
@@ -96,32 +125,68 @@ pub struct RpcError {
 pub struct RpcValue(#[specta(type = specta_typescript::Any)] Value);
 
 impl RpcError {
-    pub fn invalid_params(message: impl Into<String>) -> Self {
+    fn new(kind: &'static str, message: impl Into<String>) -> Self {
         Self {
-            kind: "invalid_params",
+            kind,
             message: message.into(),
+            code: None,
+            retryable: None,
+            operation_id: None,
+            domain_error: None,
         }
     }
+    pub fn invalid_params(message: impl Into<String>) -> Self {
+        Self::new("invalid_params", message)
+    }
 
-    pub fn application(error: impl std::fmt::Display) -> Self {
-        Self {
-            kind: "application_error",
-            message: error.to_string(),
+    pub fn application(error: impl std::error::Error + 'static) -> Self {
+        Self::application_ref(&error)
+    }
+
+    pub fn application_ref(error: &(dyn std::error::Error + 'static)) -> Self {
+        let mut result = Self::new("application_error", error.to_string());
+        let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
+        while let Some(error) = source {
+            if let Some(log) = error.downcast_ref::<nyanpasu_logging::LogError>() {
+                result.domain_error = serde_json::to_value(log)
+                    .ok()
+                    .map(|value| Box::new(RpcValue(value)));
+            }
+            if let Some(core) = error.downcast_ref::<nyanpasu_core_manager::CoreError>() {
+                result.code = core.kind.map(|kind| kind.to_string());
+                result.retryable = Some(core.retryable);
+                result.operation_id = core.operation_id.map(|id| id.to_string());
+            }
+            if error
+                .downcast_ref::<crate::client::actor_rpc::ActorRpcError>()
+                .is_some()
+            {
+                result.code = Some("outcome_unknown".into());
+                result.retryable = Some(false);
+            }
+            // Transparent wrappers can skip their inner error in Error::source().
+            source = match error.downcast_ref::<crate::ipc::IpcError>() {
+                Some(crate::ipc::IpcError::Core(inner)) => Some(inner),
+                Some(crate::ipc::IpcError::Anyhow(inner)) => Some(inner.as_ref()),
+                Some(crate::ipc::IpcError::Profiles(inner)) => Some(inner),
+                _ => match error.downcast_ref::<crate::state::profiles::ProfilesError>() {
+                    Some(crate::state::profiles::ProfilesError::RpcWait(inner)) => Some(inner),
+                    _ => error.source(),
+                },
+            };
         }
+        result
     }
 
     pub fn unsupported(name: &str) -> Self {
-        Self {
-            kind: "unsupported",
-            message: format!("command `{name}` is unavailable over experimental HTTP"),
-        }
+        Self::new(
+            "unsupported",
+            format!("command `{name}` is unavailable over HTTP"),
+        )
     }
 
     fn unknown_method(name: &str) -> Self {
-        Self {
-            kind: "unknown_method",
-            message: format!("unknown command `{name}`"),
-        }
+        Self::new("unknown_method", format!("unknown command `{name}`"))
     }
 
     fn status(&self) -> StatusCode {
@@ -178,12 +243,12 @@ impl UnifiedRpc {
             .with_state(self)
     }
 
-    async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
+    async fn call(&self, method: &str, owner: RpcOwner, params: Value) -> Result<Value, RpcError> {
         let handler = self
             .commands
             .get(method)
             .ok_or_else(|| RpcError::unknown_method(method))?;
-        (handler.0)(self.dependencies.clone(), params).await
+        (handler.0)(self.dependencies.clone(), owner, params).await
     }
 
     async fn call_tauri(
@@ -219,17 +284,21 @@ pub async fn call_rpc(
 
 #[derive(Deserialize)]
 struct EventRequest {
-    name: String,
+    name: Option<String>,
 }
 
 async fn http_events(
     State(rpc): State<UnifiedRpc>,
     Query(request): Query<EventRequest>,
 ) -> Response {
-    if !EVENT_NAMES.contains(&request.name.as_str()) {
+    if request
+        .name
+        .as_ref()
+        .is_some_and(|name| !EVENT_NAMES.contains(&name.as_str()))
+    {
         return (
             StatusCode::NOT_FOUND,
-            Json(RpcError::unknown_method(&request.name)),
+            Json(RpcError::unknown_method(request.name.as_deref().unwrap())),
         )
             .into_response();
     }
@@ -238,24 +307,40 @@ async fn http_events(
     let events = stream::unfold((receiver, name), |(mut receiver, name)| async move {
         loop {
             match receiver.recv().await {
-                Ok((event_name, payload)) if event_name == name => {
+                Ok((event_name, payload))
+                    if name.as_ref().is_none_or(|name| event_name == name) =>
+                {
+                    let payload = if name.is_some() {
+                        payload
+                    } else {
+                        serde_json::json!({"name": event_name, "payload": payload})
+                    };
                     let data = serde_json::to_string(&payload).ok()?;
                     return Some((
                         Ok::<Event, Infallible>(Event::default().data(data)),
                         (receiver, name),
                     ));
                 }
-                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Ok(_) => continue,
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    return Some((
+                        Ok(Event::default().event("resync").data("{}")),
+                        (receiver, name),
+                    ));
+                }
                 Err(broadcast::error::RecvError::Closed) => return None,
             }
         }
     });
     let ready = stream::once(async { Ok::<Event, Infallible>(Event::default().comment("ready")) });
-    Sse::new(ready.chain(events)).into_response()
+    Sse::new(ready.chain(events))
+        .keep_alive(axum::response::sse::KeepAlive::default())
+        .into_response()
 }
 
 async fn http_call(
     State(rpc): State<UnifiedRpc>,
+    headers: HeaderMap,
     request: Result<Json<Request>, JsonRejection>,
 ) -> Result<Json<Value>, (StatusCode, Json<RpcError>)> {
     let Json(request) = request.map_err(|error| {
@@ -264,7 +349,11 @@ async fn http_call(
             Json(RpcError::invalid_params(error.to_string())),
         )
     })?;
-    rpc.call(&request.method, request.params)
+    // Sessions are required only for owner-scoped commands; ordinary calls may
+    // also be made by CLI clients without a browser cookie.
+    let owner = RpcOwner::http(&headers)
+        .unwrap_or_else(|_| RpcOwner(format!("http:{}", uuid::Uuid::new_v4())));
+    rpc.call(&request.method, owner, request.params)
         .await
         .map(Json)
         .map_err(|error| (error.status(), Json(error)))
@@ -287,6 +376,14 @@ mod tests {
             &directory,
             crate::client::tests::TestControlEndpoint::succeeding(),
         );
+        std::fs::create_dir_all(args.paths.app_logs_dir()).unwrap();
+        std::fs::write(
+            args.paths
+                .app_logs_dir()
+                .join("clash-nyanpasu.2026-09-30.app.log"),
+            b"{\"level\":\"INFO\",\"fields\":{\"message\":\"rpc log\"}}\n",
+        )
+        .unwrap();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let legacy_verge = LegacyVergeBridge::new(
             client.clone(),
@@ -303,7 +400,7 @@ mod tests {
             events: events.clone(),
         })
         .unwrap();
-        assert_eq!(rpc.command_names().len(), 109);
+        assert!(rpc.command_names().contains(&"get_debug_http_status"));
         assert!(rpc.command_names().contains(&"get_profiles"));
         assert!(rpc.command_names().contains(&"quit_application"));
         let app = rpc.router();
@@ -345,6 +442,59 @@ mod tests {
                 let value: Value = serde_json::from_slice(&bytes).unwrap();
                 assert!(value.to_string().contains(expected.unwrap()));
             }
+            let files = rpc_for_test_call(
+                &app,
+                "list_log_files",
+                serde_json::json!({"source":"app"}),
+                None,
+            )
+            .await;
+            assert!(
+                files.1.is_array(),
+                "LogResult must be unwrapped: {:?}",
+                files
+            );
+            assert_eq!(files.1.as_array().unwrap().len(), 1);
+            let unsupported = rpc_for_test_call(
+                &app,
+                "list_log_files",
+                serde_json::json!({"source":"service"}),
+                None,
+            )
+            .await;
+            assert_eq!(unsupported.0, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(unsupported.1["domain_error"], "unsupported");
+            let pure =
+                rpc_for_test_call(&app, "get_hotkey_functions", serde_json::json!({}), None).await;
+            assert_eq!(pure.0, StatusCode::OK);
+            assert!(pure.1.is_array());
+            let cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
+            let open = rpc_for_test_call(
+                &app,
+                "open_log_session",
+                serde_json::json!({"source":"app", "request":{"request_id":"first", "file":null}}),
+                Some(&cookie),
+            )
+            .await;
+            assert_eq!(open.0, StatusCode::OK);
+            assert!(open.1["id"].is_string());
+            let query = serde_json::json!({"source":"app", "request":{"session":open.1["id"], "filter":nyanpasu_logging::Filter::default(),"direction":"latest","cursor":null,"limit":200}});
+            let other_cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
+            let foreign =
+                rpc_for_test_call(&app, "query_logs", query.clone(), Some(&other_cookie)).await;
+            assert_eq!(foreign.1["domain_error"], "session_expired");
+            let own = rpc_for_test_call(&app, "query_logs", query, Some(&cookie)).await;
+            assert_eq!(own.0, StatusCode::OK, "{:?}", own.1);
+            assert!(own.1.get("rows").is_some());
+            let close = rpc_for_test_call(
+                &app,
+                "close_log_session",
+                serde_json::json!({"source":"app", "session":open.1["id"]}),
+                Some(&cookie),
+            )
+            .await;
+            assert_eq!(close.0, StatusCode::OK);
+            assert!(close.1.is_null());
             let set = app.clone().oneshot(Request::post("/bridge/rpc")
             .header("content-type", "application/json")
             .body(Body::from(r#"{"method":"set_storage_item","params":{"key":"theme","value":"dark"}}"#)).unwrap())
@@ -372,6 +522,24 @@ mod tests {
             );
 
             let response = app
+                .clone()
+                .oneshot(Request::get("/bridge/events").body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            let mut stream = response.into_body().into_data_stream();
+            stream.next().await.unwrap().unwrap();
+            for sequence in 0..300 {
+                events.publish("nyanpasu://mutation", serde_json::json!(sequence));
+            }
+            let gap = stream.next().await.unwrap().unwrap();
+            assert!(std::str::from_utf8(&gap).unwrap().contains("event: resync"));
+            let event = stream.next().await.unwrap().unwrap();
+            assert!(
+                std::str::from_utf8(&event)
+                    .unwrap()
+                    .contains("nyanpasu://mutation")
+            );
+            let response = app
                 .oneshot(
                     Request::get("/bridge/events?name=clash-ws-event")
                         .body(Body::empty())
@@ -389,6 +557,143 @@ mod tests {
                 std::str::from_utf8(&frame)
                     .unwrap()
                     .contains("\"sequence\":1")
+            );
+        });
+    }
+    async fn rpc_for_test_call(
+        app: &Router,
+        method: &str,
+        params: Value,
+        cookie: Option<&str>,
+    ) -> (StatusCode, Value) {
+        let mut request = Request::post("/bridge/rpc").header("content-type", "application/json");
+        if let Some(cookie) = cookie {
+            request = request.header("cookie", cookie);
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                request
+                    .body(Body::from(
+                        serde_json::to_vec(&serde_json::json!({"method":method,"params":params}))
+                            .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        (status, value)
+    }
+
+    #[test]
+    fn errors_preserve_domain_codes_and_operation_identity() {
+        use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
+        let id = OperationId::generate();
+        for error in [
+            crate::ipc::IpcError::Core(
+                CoreError::new(CoreErrorKind::BackendUnavailable, "pending", false)
+                    .with_operation(id),
+            ),
+            crate::ipc::IpcError::Anyhow(
+                anyhow::Error::new(
+                    CoreError::new(CoreErrorKind::BackendUnavailable, "pending", false)
+                        .with_operation(id),
+                )
+                .context("request failed"),
+            ),
+        ] {
+            let wire = RpcError::application(error);
+            assert_eq!(wire.operation_id, Some(id.to_string()));
+            assert_eq!(wire.retryable, Some(false));
+            assert_eq!(
+                wire.code,
+                Some(CoreErrorKind::BackendUnavailable.to_string())
+            );
+        }
+        let log = RpcError::application(nyanpasu_logging::LogError::SessionExpired);
+        assert_eq!(
+            serde_json::to_value(log).unwrap()["domain_error"],
+            "session_expired"
+        );
+        let timeout =
+            RpcError::application(crate::client::actor_rpc::ActorRpcError::OutcomeUnknown);
+        assert_eq!(timeout.code.as_deref(), Some("outcome_unknown"));
+        assert_eq!(timeout.retryable, Some(false));
+        let wrapped = crate::ipc::IpcError::Anyhow(anyhow::Error::new(
+            crate::client::actor_rpc::ActorRpcError::OutcomeUnknown,
+        ));
+        assert_eq!(
+            serde_json::to_value(wrapped).unwrap()["code"],
+            "outcome_unknown"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires pnpm web:build and Playwright Chromium; optional NYANPASU_HTTP_UI_DEV_URL tests Vite proxy"]
+    fn browser_debug_page_and_real_rpc() {
+        use crate::server::debug_http::{Frontend, FrontendAssets};
+        struct Dist(std::path::PathBuf);
+        impl FrontendAssets for Dist {
+            fn get(&self, path: &str) -> Option<(String, Vec<u8>)> {
+                let bytes = std::fs::read(self.0.join(path)).ok()?;
+                let mime = tauri::utils::mime_type::MimeType::parse(&bytes, path);
+                Some((mime, bytes))
+            }
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let mut args = crate::client::tests::test_client_args_with_endpoint(
+            &directory,
+            crate::client::tests::TestControlEndpoint::succeeding(),
+        );
+        args.http_frontend = Some(match std::env::var("NYANPASU_HTTP_UI_DEV_URL") {
+            Ok(url) => Frontend::Dev(url.parse().unwrap()),
+            Err(_) => Frontend::Embedded(Arc::new(Dist(
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
+            ))),
+        });
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let rpc = UnifiedRpc::new(RpcDependencies {
+            client: client.clone(),
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            legacy_verge: LegacyVergeBridge::new(
+                client.clone(),
+                Arc::new(crate::bridge::verge::ConfigLegacyVergeStore::default()),
+            ),
+            network_http: NetworkHttp(Arc::new(crate::utils::net::ReqwestHttpGet::new(
+                reqwest::Client::new(),
+            ))),
+            events: EventBus::new(),
+        })
+        .unwrap();
+        tauri::async_runtime::block_on(async {
+            let url = client
+                .set_debug_http_enabled(true, rpc.router())
+                .await
+                .unwrap()
+                .url
+                .unwrap();
+            let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../scripts/test-http-ui.mjs");
+            let output = tokio::time::timeout(
+                std::time::Duration::from_secs(60),
+                tokio::process::Command::new("node")
+                    .arg(script)
+                    .arg(&url)
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await;
+            client.shutdown_debug_http().await.unwrap();
+            let output = output.unwrap().unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
             );
         });
     }

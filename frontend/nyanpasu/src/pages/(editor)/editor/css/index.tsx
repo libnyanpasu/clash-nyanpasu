@@ -7,12 +7,13 @@ import { registerCssDataSlotCompletion } from '@/utils/monaco-css'
 import { message } from '@/utils/notification'
 import MonacoEditor from '@monaco-editor/react'
 import { createFileRoute } from '@tanstack/react-router'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import ActionButton from '../_modules/action-button'
 import Header from '../_modules/header'
 import { MONACO_FONT_FAMILY } from '../_modules/utils'
 
-const currentWindow = getCurrentWebviewWindow()
+const currentWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 const EMPTY_CSS_TEMPLATE = `/* Welcome to Clash Nyanpasu CSS/LESS Editor! */
 /* You can write standard CSS or LESS syntax to customize the appearance of the app. */
@@ -53,7 +54,7 @@ function RouteComponent() {
     try {
       await customCss.upsert(editorValue)
       if (close) {
-        await currentWindow.close()
+        await currentWindow?.close()
       }
     } catch {
       await message(m.custom_css_save_error(), { kind: 'error' })
@@ -66,7 +67,7 @@ function RouteComponent() {
   })
 
   const handleCancel = useLockFn(async () => {
-    await currentWindow.close()
+    await currentWindow?.close()
   })
 
   return (

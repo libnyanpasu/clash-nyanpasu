@@ -15,6 +15,7 @@ import {
   type ReleaseChannel,
 } from '@nyanpasu/interface'
 import packageJson from '@root/package.json'
+import { isTauri } from '@tauri-apps/api/core'
 import { Update } from '@tauri-apps/plugin-updater'
 import { useBlockTask } from './block-task-provider'
 
@@ -57,13 +58,14 @@ export default function NyanpasuUpdateProvider({
   const { data: isAppImage } = useIsAppImage()
 
   // windows portable version does not support auto update
-  const isSupported = !isAppImage || !WIN_PORTABLE
+  const isSupported = isTauri() && (!isAppImage || !WIN_PORTABLE)
 
   const [hasNewVersion, setHasNewVersion] = useState(false)
 
   const [newVersion, setNewVersion] = useState<Update | null>(null)
 
   const blockTask = useBlockTask('check-nyanpasu-update', async () => {
+    if (!isSupported) return null
     const checkedChannel = channelRef.current
     const metadata = unwrapResult(await rpc.checkUpdate())
 
@@ -112,11 +114,11 @@ export default function NyanpasuUpdateProvider({
 
   // auto check update
   useEffect(() => {
-    if (enableAutoCheckUpdate && releaseChannel) {
+    if (isSupported && enableAutoCheckUpdate && releaseChannel) {
       blockTask.execute()
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
-  }, [enableAutoCheckUpdate, releaseChannel, blockTask.execute])
+  }, [isSupported, enableAutoCheckUpdate, releaseChannel, blockTask.execute])
 
   return (
     <NyanpasuUpdateContext.Provider

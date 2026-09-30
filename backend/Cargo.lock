@@ -2027,6 +2027,7 @@ dependencies = [
  "time",
  "timeago",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
  "tower",
  "tracing",

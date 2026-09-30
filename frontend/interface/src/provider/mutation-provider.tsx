@@ -55,6 +55,9 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
 
   useEffect(() => {
     let disposed = false
+    const stopResync = rpc.listenResync(() => {
+      queryClient.invalidateQueries().catch(console.error)
+    })
 
     rpc
       .listenMutation((payload) => {
@@ -89,6 +92,7 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
 
     return () => {
       disposed = true
+      stopResync()
       unlistenFn.current?.()
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps

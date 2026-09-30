@@ -262,6 +262,7 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
                     degradation.code
                 );
             }
+            let _ = client.shutdown_debug_http().await;
             let _ = client.shutdown_logs().await;
             let report = client.shutdown_core().await;
             if let Err(error) = report.stop {

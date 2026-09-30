@@ -7,7 +7,7 @@ use nyanpasu_config::clash::config::{
     ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
 };
 use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
-use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use ractor::{Actor, ActorRef, RpcReplyPort};
 
 use crate::state::{
     ConditionalReplaceResult,
@@ -128,19 +128,12 @@ impl ClashConfigClient {
         &self,
         state: ClashConfig,
     ) -> anyhow::Result<PreparedTypedReplace<ClashConfig>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ClashConfigActorMessage::PrepareReplace { state, reply },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash config actor call timed out"),
-        }
+        super::actor_rpc::call(
+            &self.inner.actor_ref,
+            |reply| ClashConfigActorMessage::PrepareReplace { state, reply },
+            None,
+        )
+        .await?
     }
 
     pub(crate) async fn replace_prepared_if_version(
@@ -148,23 +141,16 @@ impl ClashConfigClient {
         expected_version: u64,
         prepared: PreparedTypedReplace<ClashConfig>,
     ) -> anyhow::Result<ConditionalReplaceResult<ClashConfigSnapshot>> {
-        match self
-            .inner
-            .actor_ref
-            .call(
-                |reply| ClashConfigActorMessage::ReplacePreparedIfVersion {
-                    expected_version,
-                    prepared,
-                    reply,
-                },
-                None,
-            )
-            .await?
-        {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash config actor call timed out"),
-        }
+        super::actor_rpc::call(
+            &self.inner.actor_ref,
+            |reply| ClashConfigActorMessage::ReplacePreparedIfVersion {
+                expected_version,
+                prepared,
+                reply,
+            },
+            None,
+        )
+        .await?
     }
 
     async fn call<F>(
@@ -175,11 +161,7 @@ impl ClashConfigClient {
     where
         F: FnOnce(RpcReplyPort<anyhow::Result<ClashConfigSnapshot>>) -> ClashConfigActorMessage,
     {
-        match self.inner.actor_ref.call(make, timeout).await? {
-            CallResult::Success(result) => result,
-            CallResult::SenderError => anyhow::bail!("clash config actor reply dropped"),
-            CallResult::Timeout => anyhow::bail!("clash config actor call timed out"),
-        }
+        super::actor_rpc::call(&self.inner.actor_ref, make, timeout).await?
     }
 }
 

@@ -1,8 +1,9 @@
 import { RefObject, useEffect, useMemo, useState } from 'react'
 import createBreakpoint from 'react-use/esm/factory/createBreakpoint'
+import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
-const appWindow = getCurrentWebviewWindow()
+const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 export type Breakpoint = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
@@ -65,7 +66,10 @@ export const useBreakpointValue = <T>(
   useEffect(() => {
     let cancelled = false
 
-    appWindow.isMinimized().then((isMinimized) => {
+    const minimized = appWindow
+      ? appWindow.isMinimized()
+      : Promise.resolve(false)
+    minimized.then((isMinimized) => {
       if (cancelled || isMinimized) {
         return
       }

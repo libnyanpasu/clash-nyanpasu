@@ -91,7 +91,8 @@ rfd = { version = "0.15", default-features = false, features = [
 rust-i18n = "4"
 
 # Networking Libraries
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
+tokio-tungstenite = "0.29"
 url = "2"
 mime = "0.3"
 reqwest = { workspace = true }

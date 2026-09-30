@@ -11,6 +11,7 @@ import { SettingsTitle } from '../_modules/settings-title'
 import AdvanceToolsSwitch from './_modules/advance-tools-switch'
 import BlockTaskViewer from './_modules/block-task-viewer'
 import { useDebugContext } from './_modules/debug-provider'
+import HttpServer from './_modules/http-server'
 import KVStorage from './_modules/kv-storage'
 import PathUtilsCard from './_modules/path-utils-card'
 import WindowDebug from './_modules/window-debug'
@@ -25,6 +26,7 @@ const PathUtilsSettings = () => {
       <SettingsLabel>{m.settings_label_debug()}</SettingsLabel>
 
       <PathUtilsCard />
+      <HttpServer />
     </div>
   )
 }

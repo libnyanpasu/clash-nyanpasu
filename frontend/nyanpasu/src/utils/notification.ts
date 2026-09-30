@@ -1,3 +1,4 @@
+import { isTauri } from '@tauri-apps/api/core'
 import {
   MessageDialogOptions,
   message as tauriMessage,
@@ -43,6 +44,10 @@ export const notification = async ({
   if (!title) {
     throw new Error('missing message argument!')
   }
+  if (!isTauri()) {
+    window.alert(body ? `${title}: ${body}` : title)
+    return
+  }
   const permissionGranted = WIN_PORTABLE || (await checkPermission())
   if (WIN_PORTABLE || !permissionGranted) {
     await tauriMessage(body ? `${title}: ${body}` : title, {
@@ -62,6 +67,10 @@ export const message = async (
   value: string,
   options?: string | MessageDialogOptions | undefined,
 ) => {
+  if (!isTauri()) {
+    window.alert(value)
+    return
+  }
   if (typeof options === 'object') {
     await tauriMessage(value, {
       ...options,

@@ -67,14 +67,13 @@ impl serde::Serialize for IpcError {
     where
         S: serde::ser::Serializer,
     {
-        serializer.serialize_str(format!("{self:#?}").as_str())
+        crate::unified_rpc::RpcError::application_ref(self).serialize(serializer)
     }
 }
 
 impl specta::Type for IpcError {
     fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
-        let _ = types;
-        specta::datatype::DataType::Primitive(specta::datatype::Primitive::str)
+        crate::unified_rpc::RpcError::definition(types)
     }
 }
 
@@ -1249,7 +1248,7 @@ pub async fn clear_clash_ws_history(
 
 // Updater block
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(result)]
 #[tauri::command]
 #[specta::specta]
 pub async fn list_log_files(
@@ -1258,7 +1257,7 @@ pub async fn list_log_files(
 ) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
     client.list_log_files(source).await
 }
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(result, owner)]
 #[tauri::command]
 #[specta::specta]
 pub async fn open_log_session(
@@ -1271,7 +1270,7 @@ pub async fn open_log_session(
         .open_log_session(source, window.label().to_string(), request)
         .await
 }
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(result, owner)]
 #[tauri::command]
 #[specta::specta]
 pub async fn query_logs(
@@ -1284,7 +1283,7 @@ pub async fn query_logs(
         .query_logs(source, window.label().to_string(), request)
         .await
 }
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(result, owner)]
 #[tauri::command]
 #[specta::specta]
 pub async fn close_log_session(
@@ -1497,4 +1496,25 @@ pub fn retry_configuration_effect(
     kind: crate::client::effects::plan::EffectKind,
 ) -> Result<()> {
     Ok(client.retry_effect_now(kind)?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_debug_http_status(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::server::debug_http::DebugHttpStatus> {
+    Ok(client.debug_http_status().await?)
+}
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn set_debug_http_enabled(
+    client: State<'_, NyanpasuClient>,
+    rpc: State<'_, crate::unified_rpc::UnifiedRpc>,
+    enabled: bool,
+) -> Result<crate::server::debug_http::DebugHttpStatus> {
+    Ok(client
+        .set_debug_http_enabled(enabled, (*rpc).clone().router())
+        .await?)
 }

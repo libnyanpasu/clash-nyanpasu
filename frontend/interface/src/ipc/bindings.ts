@@ -457,6 +457,10 @@ export type RevisionIdInfo = {
 export type RpcError = {
   kind: string
   message: string
+  code: string | null
+  retryable: boolean | null
+  operation_id: string | null
+  domain_error: RpcValue | null
 }
 
 /**

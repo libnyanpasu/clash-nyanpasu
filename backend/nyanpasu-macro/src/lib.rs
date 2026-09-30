@@ -35,9 +35,9 @@ pub fn enum_wrapper_from(input: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let _ = parse_macro_input!(attr as syn::parse::Nothing);
+    let options = parse_macro_input!(attr as unified_command::Options);
     let item = parse_macro_input!(item as syn::ItemFn);
-    match unified_command::expand(item) {
+    match unified_command::expand_with_options(item, options) {
         Ok(tokens) => TokenStream::from(tokens),
         Err(error) => TokenStream::from(error.to_compile_error()),
     }

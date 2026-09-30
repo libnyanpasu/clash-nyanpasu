@@ -32,6 +32,7 @@ use crate::{
 };
 use anyhow::Context;
 use camino::Utf8PathBuf;
+use nyanpasu_traffic::{RedbTrafficStore, TrafficStore};
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -130,6 +131,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &shutdown,
         &tasks,
     )?;
+    let traffic_store = open_traffic_store(&paths);
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         jobs,
@@ -152,6 +154,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         effects,
         window: Arc::new(TauriWindowControl::new(app_handle.clone(), main_thread)),
         accelerators: Arc::new(PlatformAcceleratorValidator),
+        traffic_store,
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
     })
@@ -192,6 +195,31 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(client);
 
     Ok(())
+}
+
+/// Recording is optional, so a store that cannot be opened disables it rather
+/// than failing the launch. The history holds browsing targets, hence the
+/// owner-only directory.
+fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStore>> {
+    let dir = paths.app_data_dir().join("traffic");
+    let open = || -> anyhow::Result<RedbTrafficStore> {
+        std::fs::create_dir_all(&dir)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+        }
+        #[cfg(windows)]
+        nyanpasu_utils::io::atomic_fs::harden_windows_directory_acl(&dir)?;
+        Ok(RedbTrafficStore::open(&dir.join("traffic.redb"))?)
+    };
+    match open() {
+        Ok(store) => Some(Arc::new(store)),
+        Err(error) => {
+            tracing::error!(%error, "failed to open the traffic store; recording is disabled");
+            None
+        }
+    }
 }
 
 /// Carries pressed shortcuts from the OS callback into the facade.

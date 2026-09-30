@@ -24,6 +24,7 @@ pub(crate) mod runtime_recovery;
 mod session_state;
 mod system_dns;
 pub mod system_proxy;
+mod traffic;
 pub mod ui_effects;
 
 use self::{
@@ -90,6 +91,8 @@ pub struct ClientSetupArgs {
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    /// `None` disables traffic recording: the store could not be opened.
+    pub traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -203,6 +206,7 @@ struct NyanpasuClientInner {
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
     streams: crate::core::clash::ws::StreamsClient,
+    traffic: Option<crate::core::traffic::TrafficClient>,
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
@@ -234,6 +238,7 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
+            traffic_store,
             shutdown,
             tasks,
         } = args;
@@ -314,6 +319,7 @@ impl NyanpasuClient {
             effects,
             window,
             accelerators,
+            traffic_store,
             shutdown,
             tasks,
         ))
@@ -344,6 +350,7 @@ impl NyanpasuClient {
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+        traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> anyhow::Result<Self> {
@@ -427,6 +434,23 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        let traffic = match traffic_store {
+            Some(store) => Some(
+                crate::core::traffic::TrafficClient::spawn(
+                    crate::core::traffic::TrafficArgs {
+                        store,
+                        profiles: Arc::new(traffic::SelectedProfile::new(
+                            profiles.snapshot_handle(),
+                        )),
+                        frames: streams.subscribe_connection_frames(),
+                    },
+                    shutdown.child_token(),
+                    &tasks,
+                )
+                .await?,
+            ),
+            None => None,
+        };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 bundle_metadata,
@@ -444,6 +468,7 @@ impl NyanpasuClient {
                 core_api: core_v2,
                 proxies,
                 streams,
+                traffic,
                 updater,
                 system_dns,
                 os_proxy,
@@ -2128,6 +2153,7 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
         )
@@ -2422,6 +2448,7 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            traffic_store: None,
             shutdown,
             tasks,
         }
@@ -2756,6 +2783,7 @@ pub(crate) mod tests {
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
         )
@@ -2887,6 +2915,7 @@ pub(crate) mod tests {
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+            traffic_store: None,
             shutdown,
             tasks,
         })
@@ -3856,6 +3885,7 @@ pub(crate) mod tests {
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
+                None,
                 tokio_util::sync::CancellationToken::new(),
                 tokio_util::task::TaskTracker::new(),
             )

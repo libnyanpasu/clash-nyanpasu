@@ -429,6 +429,8 @@
   "connections_column_source": "Источник",
   "connections_column_destination": "IP назначения",
   "connections_column_type": "Тип",
+  "connections_column_settings": "Столбцы",
+  "connections_column_settings_reorder": "Перетащите, чтобы изменить порядок",
   "connections_field_metadata": "Метаданные",
   "connections_field_id": "ID",
   "connections_field_upload": "Отправлено",

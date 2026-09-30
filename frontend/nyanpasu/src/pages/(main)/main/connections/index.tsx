@@ -1,5 +1,6 @@
 import BoxOutlineRounded from '~icons/material-symbols/box-outline-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
+import ViewColumnRounded from '~icons/material-symbols/view-column-rounded'
 import dayjs from 'dayjs'
 import {
   memo,
@@ -35,6 +36,7 @@ import {
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
+  columnOrderingFeature,
   columnResizingFeature,
   columnSizingFeature,
   columnVisibilityFeature,
@@ -49,6 +51,8 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useLocalStorage } from '@uidotdev/usehooks'
+import { useColumnSettings } from './_modules/column-settings'
+import ColumnSettingsModal from './_modules/column-settings-modal'
 import TableRow, { ConnectionDetailModal } from './_modules/table-row'
 import { Route as IndexRoute } from './route'
 
@@ -64,6 +68,7 @@ const features = tableFeatures({
   columnSizingFeature,
   columnResizingFeature,
   columnVisibilityFeature,
+  columnOrderingFeature,
   sortedRowModel: createSortedRowModel(),
 })
 
@@ -75,7 +80,15 @@ export const Route = createFileRoute('/(main)/main/connections/')({
 
 // Memoized so a keystroke's urgent render skips the table; it re-renders
 // with the deferred search term, or on its own stream and route updates.
-const Viewer = memo(function Viewer({ search }: { search: string }) {
+const Viewer = memo(function Viewer({
+  search,
+  settingsOpen,
+  onSettingsOpenChange,
+}: {
+  search: string
+  settingsOpen: boolean
+  onSettingsOpenChange: (open: boolean) => void
+}) {
   const { proxy } = IndexRoute.useSearch()
 
   const [columnSizing, setColumnSizing] = useLocalStorage<ColumnSizingState>(
@@ -280,6 +293,18 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
     [search],
   )
 
+  const columnIds = useMemo(() => columns.map((column) => column.id), [columns])
+
+  const labels = useMemo(
+    () => new Map(columns.map((column) => [column.id, column.header])),
+    [columns],
+  )
+
+  const { order, visibility, setOrder, setVisibility } = useColumnSettings(
+    'connections-columns-active',
+    columnIds,
+  )
+
   const table = useTable({
     features,
     data,
@@ -289,8 +314,12 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
     getRowId: (row) => row.id,
     state: {
       columnSizing,
+      columnOrder: order,
+      columnVisibility: visibility,
     },
     onColumnSizingChange: handleColumnSizingChange,
+    onColumnOrderChange: setOrder,
+    onColumnVisibilityChange: setVisibility,
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
   })
@@ -338,8 +367,23 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
       : 0
   const tableRenderWidth = Math.max(tableBaseWidth, viewportWidth)
 
-  const detailModal = (
-    <ConnectionDetailModal data={detailRow} onClose={() => setDetailId(null)} />
+  const modals = (
+    <>
+      <ConnectionDetailModal
+        data={detailRow}
+        onClose={() => setDetailId(null)}
+      />
+
+      <ColumnSettingsModal
+        open={settingsOpen}
+        onOpenChange={onSettingsOpenChange}
+        labels={labels}
+        order={order}
+        visibility={visibility}
+        onOrderChange={setOrder}
+        onVisibilityChange={setVisibility}
+      />
+    </>
   )
 
   if (rows.length === 0) {
@@ -359,7 +403,7 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
           </p>
         </div>
 
-        {detailModal}
+        {modals}
       </>
     )
   }
@@ -470,7 +514,7 @@ const Viewer = memo(function Viewer({ search }: { search: string }) {
         </table>
       </div>
 
-      {detailModal}
+      {modals}
     </>
   )
 })
@@ -481,6 +525,8 @@ function RouteComponent() {
   // Filtering, highlighting and re-sorting every connection is heavy; typing
   // stays responsive while the table catches up with the latest term.
   const deferredSearch = useDeferredValue(search)
+
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const deleteConnections = useDeleteClashConnections()
 
@@ -493,7 +539,11 @@ function RouteComponent() {
       <RegisterContextMenu>
         <RegisterContextMenuTrigger asChild>
           <ScrollArea className="min-h-0 flex-1" scrollbars="both" type="hover">
-            <Viewer search={deferredSearch} />
+            <Viewer
+              search={deferredSearch}
+              settingsOpen={settingsOpen}
+              onSettingsOpenChange={setSettingsOpen}
+            />
           </ScrollArea>
         </RegisterContextMenuTrigger>
 
@@ -519,6 +569,16 @@ function RouteComponent() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={() => setSettingsOpen(true)} icon>
+              <ViewColumnRounded />
+            </Button>
+          </TooltipTrigger>
+
+          <TooltipContent>{m.connections_column_settings()}</TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>

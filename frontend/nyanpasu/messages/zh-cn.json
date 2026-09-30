@@ -472,6 +472,8 @@
   "connections_column_source": "来源",
   "connections_column_destination": "目标 IP",
   "connections_column_type": "类型",
+  "connections_column_settings": "列设置",
+  "connections_column_settings_reorder": "拖动以调整顺序",
   "connections_field_metadata": "元数据",
   "connections_field_id": "ID",
   "connections_field_upload": "上传",

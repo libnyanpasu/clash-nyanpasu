@@ -429,6 +429,8 @@
   "connections_column_source": "출발지",
   "connections_column_destination": "목적지 IP",
   "connections_column_type": "유형",
+  "connections_column_settings": "열 설정",
+  "connections_column_settings_reorder": "드래그하여 순서 변경",
   "connections_field_metadata": "메타데이터",
   "connections_field_id": "ID",
   "connections_field_upload": "업로드",

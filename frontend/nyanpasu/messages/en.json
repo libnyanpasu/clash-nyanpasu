@@ -472,6 +472,8 @@
   "connections_column_source": "Source",
   "connections_column_destination": "Destination IP",
   "connections_column_type": "Type",
+  "connections_column_settings": "Columns",
+  "connections_column_settings_reorder": "Drag to reorder",
   "connections_field_metadata": "Metadata",
   "connections_field_id": "ID",
   "connections_field_upload": "Upload",

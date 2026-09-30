@@ -472,6 +472,8 @@
   "connections_column_source": "來源",
   "connections_column_destination": "目標 IP",
   "connections_column_type": "類型",
+  "connections_column_settings": "欄位設定",
+  "connections_column_settings_reorder": "拖曳以調整順序",
   "connections_field_metadata": "元資料",
   "connections_field_id": "ID",
   "connections_field_upload": "上傳",

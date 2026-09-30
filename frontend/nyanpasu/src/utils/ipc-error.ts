@@ -510,6 +510,8 @@ function unsettledBaselineMessage(gap: EvidenceGap): string {
 
 function coreReasonMessage(kind: CoreErrorKind): string {
   switch (kind) {
+    case 'native_store_unavailable':
+      return m.error_runtime_core_reason_native_store_unavailable()
     case 'not_started':
       return m.error_runtime_core_reason_not_started()
     case 'already_running':

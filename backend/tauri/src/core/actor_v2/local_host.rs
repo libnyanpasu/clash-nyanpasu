@@ -1,4 +1,3 @@
-#[cfg(target_os = "macos")]
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -6,6 +5,7 @@ use camino::Utf8PathBuf;
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_core_manager::{
     ControlOptions, CoreControl, CoreKind, CoreManager, CoreSpec, LocalIpcPolicy, ManagerOptions,
+    native_store::{FsNativeStore, StoreOwner, legacy_kind},
 };
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
@@ -19,7 +19,19 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
         local_ipc_policy: LocalIpcPolicy::Disable,
         ..ManagerOptions::default()
     };
-    let manager = CoreManager::builder(options);
+    let working_dir = to_utf8(paths.app_data_dir().to_owned())?;
+    let config_path = paths.application_config_path();
+    let config_path = if config_path.try_exists()? {
+        config_path
+    } else {
+        paths.nyanpasu_config_path()
+    };
+    let native_store = Arc::new(FsNativeStore::new(
+        working_dir.clone(),
+        StoreOwner::current(),
+        legacy_kind(&config_path)?,
+    ));
+    let manager = CoreManager::builder(options).native_store(native_store);
 
     #[cfg(target_os = "macos")]
     let manager = manager.dns_controller(Arc::new(
@@ -30,7 +42,6 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
 
     let manager = manager.build().await?;
     let source_dir = to_utf8(runtime_root.join("staging"))?;
-    let working_dir = to_utf8(paths.app_data_dir().to_owned())?;
 
     Ok(CoreControl::spawn(
         manager,
@@ -107,6 +118,20 @@ mod tests {
 
         let _ = control.status();
         assert!(!control.executor_is_closed());
+    }
+
+    #[tokio::test]
+    async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
+        let root = tempfile::TempDir::new().unwrap();
+        let paths = PathResolver::with_base_dirs(root.path().to_owned(), root.path().join("data"));
+        std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
+        std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
+
+        let control = build(&paths).await.unwrap();
+        assert!(!control.executor_is_closed());
+
+        std::fs::remove_file(paths.application_config_path()).unwrap();
+        assert!(build(&paths).await.is_err());
     }
 
     #[test]

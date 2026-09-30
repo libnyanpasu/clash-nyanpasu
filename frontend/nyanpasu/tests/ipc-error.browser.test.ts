@@ -253,6 +253,32 @@ test('a core operation names what failed and why the core refused it', () => {
   ).toBe(m.error_runtime_stop_service())
 })
 
+test('unavailable native storage is explained for operations and refused mutations', () => {
+  const reason = m.error_runtime_core_reason_native_store_unavailable()
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'apply_runtime',
+        failure: {
+          kind: 'native_store_unavailable',
+          message: 'native storage failed',
+          retryable: false,
+          operation_id: null,
+        },
+      }),
+    ),
+  ).toBe(`${m.error_runtime_apply_runtime()} (${reason})`)
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'core_rejected_config',
+        core_kind: 'native_store_unavailable',
+        message: 'native storage failed',
+      }),
+    ),
+  ).toBe(`${m.error_runtime_core_rejected_config()} (${reason})`)
+})
+
 test('a refused admission is told apart from a failed operation', () => {
   expect(ipcErrorMessage(runtime({ kind: 'isolated' }))).toBe(
     m.error_runtime_isolated(),

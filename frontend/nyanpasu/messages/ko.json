@@ -340,6 +340,7 @@
   "error_runtime_handoff_not_restored": "코어 호스트 전환이 실패했으며 되돌리지 못했습니다. 복구가 필요합니다",
   "error_runtime_restore_failed": "이전 런타임 구성을 복원하지 못했습니다. 복구가 필요합니다",
   "error_runtime_committed_after_refusal": "저장된 구성과 런타임이 일치하지 않습니다. 복구가 필요합니다",
+  "error_runtime_core_reason_native_store_unavailable": "코어의 영구 저장소를 사용할 수 없습니다",
   "error_runtime_core_reason_not_started": "코어가 실행 중이 아닙니다",
   "error_runtime_core_reason_already_running": "코어가 이미 실행 중입니다",
   "error_runtime_core_reason_revision_conflict": "그동안 구성이 바뀌었습니다",

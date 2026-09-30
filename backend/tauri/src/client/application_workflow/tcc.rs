@@ -1635,6 +1635,7 @@ fn core_error_cause(kind: Option<CoreErrorKind>) -> TryCauseKind {
         // Observed, finished, and not going to change by itself.
         Some(
             CoreErrorKind::BinaryNotFound
+            | CoreErrorKind::NativeStoreUnavailable
             | CoreErrorKind::ApplyFailed
             | CoreErrorKind::NotStarted
             | CoreErrorKind::AlreadyRunning,

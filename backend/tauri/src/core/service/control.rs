@@ -142,20 +142,6 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, ServiceCommandE
     let config_dir = app_config_dir().context(ResolveServiceDirsSnafu)?;
     let app_dir = app_install_dir().context(ResolveServiceDirsSnafu)?;
 
-    #[cfg(not(windows))]
-    let args: Vec<OsString> = vec![
-        "install".into(),
-        "--user".into(),
-        user.into(),
-        "--nyanpasu-data-dir".into(),
-        format!("\"{}\"", data_dir.to_string_lossy()).into(),
-        "--nyanpasu-config-dir".into(),
-        format!("\"{}\"", config_dir.to_string_lossy()).into(),
-        "--nyanpasu-app-dir".into(),
-        format!("\"{}\"", app_dir.to_string_lossy()).into(),
-    ];
-
-    #[cfg(windows)]
     let args: Vec<OsString> = vec![
         "install".into(),
         "--user".into(),
@@ -191,7 +177,10 @@ async fn run_elevated(
             #[cfg(target_os = "macos")]
             {
                 use crate::utils::sudo::sudo;
-                let args = args.iter().map(|s| s.to_string_lossy()).collect::<Vec<_>>();
+                let args = args
+                    .iter()
+                    .map(|arg| format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''")))
+                    .collect::<Vec<_>>();
                 match sudo(service_binary.to_string_lossy(), &args) {
                     Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                     Err(e) => {
@@ -221,12 +210,17 @@ pub async fn install_service(service_binary: &Path) -> Result<(), ServiceCommand
 }
 
 pub async fn update_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
-    run_elevated(
-        ServiceCommand::Update,
-        service_binary,
-        vec!["update".into()],
-    )
-    .await
+    #[cfg(unix)]
+    let args = vec![
+        "update".into(),
+        "--user".into(),
+        whoami::username().context(ResolveServiceUserSnafu)?.into(),
+        "--nyanpasu-data-dir".into(),
+        app_data_dir().context(ResolveServiceDirsSnafu)?.into(),
+    ];
+    #[cfg(windows)]
+    let args = vec!["update".into()];
+    run_elevated(ServiceCommand::Update, service_binary, args).await
 }
 
 pub async fn uninstall_service(service_binary: &Path) -> Result<(), ServiceCommandError> {

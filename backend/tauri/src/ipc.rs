@@ -1077,7 +1077,16 @@ pub async fn get_service_install_prompt() -> Result<String> {
         crate::client::runtime_error::PrepareServiceInstallPromptSnafu,
     )?
     .into_iter()
-    .map(|arg| arg.to_string_lossy().to_string())
+    .map(|arg| {
+        #[cfg(unix)]
+        {
+            format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''"))
+        }
+        #[cfg(windows)]
+        {
+            arg.to_string_lossy().to_string()
+        }
+    })
     .collect::<Vec<_>>()
     .join(" ");
     let mut prompt = format!("./nyanpasu-service {args}");

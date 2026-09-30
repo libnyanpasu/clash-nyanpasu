@@ -383,6 +383,7 @@
   "error_runtime_handoff_not_restored": "核心代管切換失敗且無法復原，需要復原",
   "error_runtime_restore_failed": "無法還原先前的執行階段設定，需要復原",
   "error_runtime_committed_after_refusal": "已儲存的設定與執行階段不一致，需要復原",
+  "error_runtime_core_reason_native_store_unavailable": "核心持久化儲存無法使用",
   "error_runtime_core_reason_not_started": "核心未在執行",
   "error_runtime_core_reason_already_running": "核心已在執行",
   "error_runtime_core_reason_revision_conflict": "設定已被變更",

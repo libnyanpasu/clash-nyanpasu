@@ -1,19 +1,19 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { m } from '@/paraglide/messages'
-import type { OperatorTag, RuntimeInspectionNode } from '@nyanpasu/interface'
-import {
   partsText,
   profileName,
   stepKind,
   stepSubject,
   type LabelPart,
   type ProfileLookup,
-} from './step-label'
+} from '@/components/profile-label'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { m } from '@/paraglide/messages'
+import type { OperatorTag, RuntimeInspectionNode } from '@nyanpasu/interface'
 
 // Mermaid scopes this under the diagram's own id, so the rules win over its
 // default theme without leaking out. The tokens follow the app theme live.

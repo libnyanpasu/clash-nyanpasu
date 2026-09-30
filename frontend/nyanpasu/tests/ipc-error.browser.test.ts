@@ -195,7 +195,7 @@ test('an aborted commit says what became of the core', () => {
     }),
   ).toBe(
     m.error_commit_runtime_refused({
-      reason: m.error_runtime_unsettled_baseline_core_transitioning(),
+      reason: `${m.error_runtime_unsettled_baseline_core_transitioning()}\n\n${m.error_runtime_isolated()}`,
     }),
   )
   expect(
@@ -304,6 +304,7 @@ test('a failed build names the profile or the transform', () => {
         kind: 'build_runtime',
         source: {
           kind: 'transforms_failed',
+          logs: [],
           failures: [
             { kind: 'profile', id: 't1' },
             { kind: 'builtin', name: 'config_fixer' },

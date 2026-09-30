@@ -1,9 +1,9 @@
 import dayjs from 'dayjs'
 import { useState } from 'react'
+import { ErrorMessage } from '@/components/error-message'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { m } from '@/paraglide/messages'
-import { formatError } from '@/utils'
 import {
   useProfileSyncLogs,
   useProfileSyncRuns,
@@ -162,7 +162,7 @@ export function SyncHistoryCard({ uid }: { uid: string }) {
             role="alert"
             className="bg-error-container/40 text-on-error-container rounded-xl px-3 py-2 text-sm break-words"
           >
-            {formatError(error)}
+            <ErrorMessage error={error} />
           </p>
         )}
         {history.isPending ? (

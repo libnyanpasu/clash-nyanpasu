@@ -26,18 +26,22 @@ import type {
   StorageOperationError,
   SystemDnsError,
 } from '@nyanpasu/interface'
+import { stepParts, type ProfileLabel } from './profile-label'
 
 /** The simplest message for a failed command, localized by its domain. */
-export function ipcErrorMessage(error: IpcError): string {
+export function ipcErrorMessage(
+  error: IpcError,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
   switch (error.kind.domain) {
     case 'unknown':
       return error.message
     case 'profiles':
-      return profilesErrorMessage(error.kind.error)
+      return profilesErrorMessage(error.kind.error, profileLabel)
     case 'runtime':
-      return runtimeErrorMessage(error.kind.error)
+      return runtimeErrorMessage(error.kind.error, profileLabel)
     case 'config':
-      return configErrorMessage(error.kind.error)
+      return configErrorMessage(error.kind.error, profileLabel)
     case 'storage':
       return storageErrorMessage(error.kind.error)
     case 'system_dns':
@@ -53,7 +57,10 @@ export function ipcErrorMessage(error: IpcError): string {
  * Why a source's commit did not go through, with what became of the running
  * core. Shared by every domain that wraps `CommitAborted`.
  */
-export function commitAbortedMessage(error: CommitAborted): string {
+export function commitAbortedMessage(
+  error: CommitAborted,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
   const message = (() => {
     switch (error.kind) {
       case 'write_config':
@@ -62,11 +69,11 @@ export function commitAbortedMessage(error: CommitAborted): string {
         return m.error_commit_recover_after_write_failure()
       case 'runtime_refused':
         return m.error_commit_runtime_refused({
-          reason: firstRuntimeError(error.errors),
+          reason: runtimeErrorsMessage(error.errors, profileLabel),
         })
       case 'runtime_failed':
         return m.error_commit_runtime_failed({
-          reason: firstRuntimeError(error.errors),
+          reason: runtimeErrorsMessage(error.errors, profileLabel),
         })
       case 'validate_state':
         return m.error_commit_validate_state()
@@ -79,8 +86,13 @@ export function commitAbortedMessage(error: CommitAborted): string {
   return aftermath ? `${message} (${aftermath})` : message
 }
 
-function firstRuntimeError(errors: RuntimeError[]) {
-  return errors[0] ? runtimeErrorMessage(errors[0]) : ''
+function runtimeErrorsMessage(
+  errors: RuntimeError[],
+  profileLabel: ProfileLabel,
+) {
+  return errors
+    .map((error) => runtimeErrorMessage(error, profileLabel))
+    .join('\n\n')
 }
 
 function runtimeAftermathMessage(runtime: RuntimeAftermath) {
@@ -104,7 +116,10 @@ function hostOf(url: string) {
   }
 }
 
-export function profilesErrorMessage(error: ProfilesError): string {
+export function profilesErrorMessage(
+  error: ProfilesError,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
   switch (error.kind) {
     case 'profile_not_found':
       return m.error_profiles_profile_not_found()
@@ -171,7 +186,7 @@ export function profilesErrorMessage(error: ProfilesError): string {
     case 'version_conflict':
       return m.error_profiles_version_conflict()
     case 'commit':
-      return commitAbortedMessage(error.source)
+      return commitAbortedMessage(error.source, profileLabel)
     case 'workflow_not_ready':
       return m.error_profiles_workflow_not_ready()
     case 'profiles_actor_stopped':
@@ -183,7 +198,10 @@ export function profilesErrorMessage(error: ProfilesError): string {
   }
 }
 
-export function configErrorMessage(error: ConfigError): string {
+export function configErrorMessage(
+  error: ConfigError,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
   switch (error.kind) {
     case 'leave_nightly_channel':
       return m.error_config_leave_nightly_channel()
@@ -199,7 +217,7 @@ export function configErrorMessage(error: ConfigError): string {
     case 'version_conflict':
       return m.error_config_version_conflict()
     case 'commit':
-      return commitAbortedMessage(error.source)
+      return commitAbortedMessage(error.source, profileLabel)
     case 'persist_session_state':
       return m.error_config_persist_session_state()
   }
@@ -339,7 +357,10 @@ function profileFileMessage(error: ProfileFileError, fallback: string): string {
   }
 }
 
-export function runtimeErrorMessage(error: RuntimeError): string {
+export function runtimeErrorMessage(
+  error: RuntimeError,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
   switch (error.kind) {
     case 'shutting_down':
       return m.error_runtime_shutting_down()
@@ -407,7 +428,7 @@ export function runtimeErrorMessage(error: RuntimeError): string {
     case 'recovery_unresolved':
       return m.error_runtime_recovery_unresolved()
     case 'build_runtime':
-      return buildRuntimeMessage(error.source)
+      return buildRuntimeMessage(error.source, profileLabel)
     case 'publish_runtime':
       return m.error_runtime_publish_runtime({ path: error.source.path })
     case 'resolve_port':
@@ -526,22 +547,39 @@ function coreReasonMessage(kind: CoreErrorKind): string {
   }
 }
 
-function buildRuntimeMessage(error: RuntimeBuildError): string {
+function buildRuntimeMessage(
+  error: RuntimeBuildError,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
   switch (error.kind) {
     case 'start_script_runner':
       return m.error_runtime_build_start_script_runner()
     case 'validate_profiles':
       return m.error_runtime_build_validate_profiles()
     case 'run_pipeline':
-      return pipelineMessage(error.source)
+      return pipelineMessage(error.source, profileLabel)
     case 'transforms_failed':
-      return m.error_runtime_build_transforms_failed({
-        names: error.failures
-          .map((failure) =>
-            failure.kind === 'profile' ? failure.id : failure.name,
-          )
-          .join(', '),
-      })
+      return [
+        m.error_runtime_build_transforms_failed({
+          names: error.failures
+            .map((failure) =>
+              failure.kind === 'profile'
+                ? profileLabel(failure.id)
+                : failure.name,
+            )
+            .join(', '),
+        }),
+        ...error.logs.map((log) =>
+          [
+            stepParts(log.tag)
+              .map((part) =>
+                typeof part === 'string' ? part : profileLabel(part.profileId),
+              )
+              .join(''),
+            ...log.entries.map((entry) => `[${entry.level}] ${entry.message}`),
+          ].join('\n'),
+        ),
+      ].join('\n\n')
     case 'serialize_final_config':
     case 'config_not_mapping':
     case 'serialize_runtime_config':
@@ -549,24 +587,29 @@ function buildRuntimeMessage(error: RuntimeBuildError): string {
   }
 }
 
-function pipelineMessage(error: RuntimePipelineError): string {
+function pipelineMessage(
+  error: RuntimePipelineError,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
   switch (error.kind) {
     case 'selected_profile_not_found':
       return m.error_runtime_build_selected_profile_not_found({
-        profile: error.profile,
+        profile: profileLabel(error.profile),
       })
     case 'selected_profile_not_config':
       return m.error_runtime_build_selected_profile_not_config({
-        profile: error.profile,
+        profile: profileLabel(error.profile),
       })
     case 'composition_member_invalid':
       return m.error_runtime_build_composition_member_invalid({
-        composition: error.composition,
+        composition: profileLabel(error.composition),
       })
     case 'content_source':
-      return m.error_runtime_build_content_source({ profile: error.profile })
+      return m.error_runtime_build_content_source({
+        profile: profileLabel(error.profile),
+      })
     case 'parse_profile':
-      return m.error_runtime_build_parse_profile({ profile: error.profile })
+      return `${m.error_runtime_build_parse_profile({ profile: profileLabel(error.profile) })}\n${error.message}`
     case 'snapshot':
     case 'internal':
       return m.error_runtime_build_runtime()
@@ -653,21 +696,24 @@ export function effectFailureMessage(code: EffectFailureCode): string {
 }
 
 /** The simplest message for one degradation of a committed mutation. */
-export function degradationReasonMessage(reason: DegradationReason): string {
+export function degradationReasonMessage(
+  reason: DegradationReason,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
   switch (reason.code) {
     case 'runtime_recovery_required': {
       const summary = m.mutation_degradation_reason_runtime_recovery_required()
       return reason.cause
-        ? `${summary} (${runtimeErrorMessage(reason.cause)})`
+        ? `${summary} (${runtimeErrorMessage(reason.cause, profileLabel)})`
         : summary
     }
     case 'runtime_deferred':
       return m.mutation_degradation_reason_runtime_deferred({
-        reason: runtimeErrorMessage(reason.cause),
+        reason: runtimeErrorMessage(reason.cause, profileLabel),
       })
     case 'runtime_product_publish_failed':
     case 'service_stop_failed':
-      return runtimeErrorMessage(reason.cause)
+      return runtimeErrorMessage(reason.cause, profileLabel)
     case 'mode_interruption_failed':
     case 'profile_interruption_failed':
     case 'proxy_interruption_failed':
@@ -684,7 +730,7 @@ export function degradationReasonMessage(reason: DegradationReason): string {
       return m.mutation_degradation_reason_cleanup_deferred()
     case 'profile_auto_activation_failed':
       return m.mutation_degradation_reason_profile_auto_activation_failed({
-        reason: profilesErrorMessage(reason.cause),
+        reason: profilesErrorMessage(reason.cause, profileLabel),
       })
     default: {
       const _exhaustive: never = reason

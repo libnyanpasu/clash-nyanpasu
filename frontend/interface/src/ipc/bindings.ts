@@ -1189,6 +1189,7 @@ export type CoreControllerInfo =
   | ({ Http: string } & { NamedPipe?: never; UnixSocket?: never })
 
 export type CoreErrorKind =
+  | 'native_store_unavailable'
   /**  The operation needs a running core and there is none. */
   | 'not_started'
   /**  The operation needs a stopped core and one is running. */

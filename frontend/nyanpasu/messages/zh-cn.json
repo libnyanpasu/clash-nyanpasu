@@ -383,6 +383,7 @@
   "error_runtime_handoff_not_restored": "内核宿主切换失败且无法撤销，需要恢复",
   "error_runtime_restore_failed": "无法恢复之前的运行时配置，需要恢复",
   "error_runtime_committed_after_refusal": "已保存的配置与运行时不一致，需要恢复",
+  "error_runtime_core_reason_native_store_unavailable": "内核持久化存储不可用",
   "error_runtime_core_reason_not_started": "内核未在运行",
   "error_runtime_core_reason_already_running": "内核已在运行",
   "error_runtime_core_reason_revision_conflict": "配置已被更改",

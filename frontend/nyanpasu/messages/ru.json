@@ -340,6 +340,7 @@
   "error_runtime_handoff_not_restored": "Переключение хоста ядра не удалось и не было отменено; требуется восстановление",
   "error_runtime_restore_failed": "Не удалось восстановить прежнюю конфигурацию среды выполнения; требуется восстановление",
   "error_runtime_committed_after_refusal": "Сохранённая конфигурация и среда выполнения расходятся; требуется восстановление",
+  "error_runtime_core_reason_native_store_unavailable": "постоянное хранилище ядра недоступно",
   "error_runtime_core_reason_not_started": "ядро не запущено",
   "error_runtime_core_reason_already_running": "ядро уже запущено",
   "error_runtime_core_reason_revision_conflict": "конфигурация изменилась",

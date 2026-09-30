@@ -1,0 +1,20 @@
+use crate::{accounting::FlushBatch, model::*};
+
+/// Synchronous storage port; async callers go through `spawn_blocking`.
+pub trait TrafficStore: Send + Sync + 'static {
+    fn load(&self) -> TrafficResult<Option<(SessionMeta, Vec<ActiveConnection>)>>;
+
+    /// Applies `batch` in one transaction; see `FlushBatch::reset`.
+    fn flush(&self, batch: &FlushBatch) -> TrafficResult<()>;
+
+    /// Newest first, strictly before `before`.
+    fn closed_connections(
+        &self,
+        before: Option<&ClosedCursor>,
+        limit: usize,
+    ) -> TrafficResult<ClosedPage>;
+
+    fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>>;
+
+    fn topology(&self) -> TrafficResult<Vec<(TopologyKey, Bytes)>>;
+}

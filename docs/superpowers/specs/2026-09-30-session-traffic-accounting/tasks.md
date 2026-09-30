@@ -106,3 +106,10 @@ pending writes until their commit result is resolved. Regression coverage checks
 startup metadata-only residency, missing connections after lazy restoration and
 late genuine exits. Ordinary detached history no longer leaves a permanent error
 on a healthy current session; unresolved storage/lifecycle failures remain visible.
+
+## Isolated Turso adapter
+
+The independent Turso workspace passed 12 tests against the same storage port,
+including shared contracts, integer boundaries, transaction cleanup and the
+durability configuration probe. Its SDK does not enter the application workspace.
+The copied adapter and lockfile match the tested sources exactly.

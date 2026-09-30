@@ -88,8 +88,22 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let service_binary = paths
         .service_binary_path()
         .context("Failed to locate the service binary")?;
-    let (core_v2, service) = tauri::async_runtime::block_on(async {
-        let control = crate::core::actor_v2::local_host::build(&paths).await?;
+    let (core_v2, service, traffic) = tauri::async_runtime::block_on(async {
+        let traffic = crate::core::actor_v2::traffic_host::start(
+            paths.app_data_dir().join("traffic"),
+            shutdown.clone(),
+        )
+        .await;
+        if let Err(error) = &traffic {
+            tracing::error!(%error, "application traffic recording unavailable");
+        }
+        let control = crate::core::actor_v2::local_host::build(
+            &paths,
+            shutdown.clone(),
+            &tasks,
+            traffic.clone(),
+        )
+        .await?;
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
             Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
         let core = crate::core::actor_v2::CoreClient::spawn(local)
@@ -105,7 +119,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
                 .await
                 .context("Failed to spawn service actor")?;
-        anyhow::Ok((core, service))
+        if let Ok(client) = &traffic {
+            tasks.spawn(crate::core::actor_v2::traffic_host::api_bridge(
+                core.clone(),
+                client.clone(),
+                shutdown.clone(),
+            ));
+        }
+        anyhow::Ok((core, service, traffic))
     })?;
     // The sink end of the hotkey channel goes into the actor; the receiving end
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
@@ -145,6 +166,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         runtime_paths: runtime_paths.clone(),
         ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
         core_v2,
+        traffic,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
         os_proxy: os_proxy.clone(),
@@ -177,7 +199,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // the one place that has both. Its desired configuration arrives with the
     // startup effect reconcile like every other effect.
     let widget_manager = tauri::async_runtime::block_on(crate::widget::setup(
-        client.subscribe_clash_connections(),
+        client.clone(),
         shutdown.child_token(),
         &tasks,
     ))

@@ -8,6 +8,7 @@ import {
   type Context,
   type PropsWithChildren,
 } from 'react'
+import { Channel } from '@tauri-apps/api/core'
 import {
   commands,
   events,
@@ -16,11 +17,16 @@ import {
   type ClashWsEvent,
   type ClashWsKind,
   type ClashWsSnapshot,
+  type SubscriptionId,
+  type TrafficSummary,
+  type TrafficSummaryFrame,
 } from '../ipc/bindings'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
 import { applyClashWsEvent } from './clash-ws-state'
+
+export type ClashDisplayKind = ClashWsKind | 'connections' | 'traffic'
 
 type ClashWSHistory = {
   connections: ClashConnectionsSummary[]
@@ -33,13 +39,13 @@ type ClashWSStatus = {
   isLoading: boolean
   error: unknown
   state: ClashConnectionsConnectorState
-  clearHistory: (kind: ClashWsKind) => Promise<void>
+  clearHistory: (kind: ClashDisplayKind) => Promise<void>
 }
 
 // One context per history kind: every ws event replaces the snapshot, but a
 // consumer only re-renders when its own history or the status changes.
 const ClashWSHistoryContexts: {
-  [K in ClashWsKind]: Context<ClashWSHistory[K] | null>
+  [K in ClashDisplayKind]: Context<ClashWSHistory[K] | null>
 } = {
   connections: createContext<ClashConnectionsSummary[] | null>(null),
   logs: createContext<ClashLog[] | null>(null),
@@ -59,13 +65,13 @@ const useClashWSValue = <T,>(context: Context<T | null>) => {
   return value
 }
 
-export const useClashWSHistory = <K extends ClashWsKind>(kind: K) =>
+export const useClashWSHistory = <K extends ClashDisplayKind>(kind: K) =>
   useClashWSValue<ClashWSHistory[K]>(ClashWSHistoryContexts[kind])
 
 export const useClashWSStatus = () => useClashWSValue(ClashWSStatusContext)
 
 type ClashWSValues = {
-  [K in ClashWsKind]: ClashWSHistory[K] | null
+  [K in ClashDisplayKind]: ClashWSHistory[K] | null
 } & {
   status: ClashWSStatus | null
 }
@@ -120,6 +126,14 @@ export const ClashWSFreezeBoundary = ({
 
 export const ClashWSProvider = ({ children }: PropsWithChildren) => {
   const [snapshot, setSnapshot] = useState<ClashWsSnapshot>()
+  const [connectionSnapshots, setConnectionSnapshots] = useState<
+    ClashConnectionsSummary[]
+  >([])
+  const [trafficSnapshots, setTrafficSnapshots] = useState<ClashTraffic[]>([])
+  const [trafficState, setTrafficState] =
+    useState<ClashConnectionsConnectorState>('disconnected')
+  const [trafficError, setTrafficError] = useState<unknown>(null)
+  const [trafficLoading, setTrafficLoading] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
 
@@ -203,17 +217,100 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
     }
   }, [])
 
-  const clearHistory = useCallback(async (kind: ClashWsKind) => {
-    const result = await commands.clearClashWsHistory(kind)
-    if (result.status === 'error') throw result.error
-    // The sequenced history_cleared event orders this against later samples.
+  useEffect(() => {
+    let disposed = false
+    let subscriptionId: SubscriptionId | undefined
+    let session: string | undefined
+    let revision = -1n
+    const accept = (summary: TrafficSummary | null) => {
+      if (disposed) return
+      setTrafficLoading(false)
+      if (!summary) {
+        setTrafficState('disconnected')
+        // Only presentation caches are reset when a host stream retires.
+        setConnectionSnapshots([])
+        setTrafficSnapshots([])
+        return
+      }
+      const changed = session !== summary.session.id
+      if (!changed && BigInt(summary.revision) < revision) return
+      session = summary.session.id
+      revision = BigInt(summary.revision)
+      const known = summary.current_rate
+      setTrafficState(
+        summary.session.freshness === 'Fresh' ? 'connected' : 'disconnected',
+      )
+      // These numbers feed the existing display only; domain accounting stays decimal strings.
+      const frame: ClashConnectionsSummary = {
+        downloadTotal: Number(summary.session.core_reported_bytes.download),
+        uploadTotal: Number(summary.session.core_reported_bytes.upload),
+        downloadSpeed: known?.download ?? 0,
+        uploadSpeed: known?.upload ?? 0,
+        memory: null,
+        connectionCount: Number(summary.active_connections),
+        memberRates: Object.fromEntries(
+          Object.entries(summary.member_rates).map(([key, rate]) => [
+            key,
+            { download: rate?.download ?? 0, upload: rate?.upload ?? 0 },
+          ]),
+        ),
+      }
+      setConnectionSnapshots((history) =>
+        [...(changed ? [] : history), frame].slice(-32),
+      )
+      setTrafficSnapshots((history) =>
+        [
+          ...(changed ? [] : history),
+          { up: known?.upload ?? 0, down: known?.download ?? 0 },
+        ].slice(-32),
+      )
+    }
+    const channel = new Channel<TrafficSummaryFrame>()
+    channel.onmessage = (frame) => {
+      if (disposed) return
+      accept(frame.summary)
+      setTrafficError(frame.error)
+    }
+    commands
+      .subscribeTrafficSummary(channel)
+      .then((result) => {
+        if (result.status === 'error') {
+          if (!disposed) {
+            setTrafficError(result.error)
+            setTrafficLoading(false)
+          }
+          return
+        }
+        if (disposed) commands.unsubscribeTrafficSubscription(result.data)
+        else subscriptionId = result.data
+      })
+      .catch((error) => {
+        if (!disposed) {
+          setTrafficError(error)
+          setTrafficLoading(false)
+        }
+      })
+    return () => {
+      disposed = true
+      if (subscriptionId !== undefined)
+        commands.unsubscribeTrafficSubscription(subscriptionId)
+    }
   }, [])
 
-  // Snapshot updates keep the arrays of untouched kinds, so memoizing on them
-  // keeps each history context value stable across unrelated events.
-  const connectionSnapshots = snapshot?.connections
+  const clearHistory = useCallback(async (kind: ClashDisplayKind) => {
+    if (kind === 'connections') {
+      setConnectionSnapshots([])
+      return
+    }
+    if (kind === 'traffic') {
+      setTrafficSnapshots([])
+      return
+    }
+    const result = await commands.clearClashWsHistory(kind)
+    if (result.status === 'error') throw result.error
+  }, [])
+
   const logSnapshots = snapshot?.logs
-  const trafficSnapshots = snapshot?.traffic
   const memorySnapshots = snapshot?.memory
 
   const connections = useMemo(
@@ -230,10 +327,15 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
     [memorySnapshots],
   )
 
-  const state = snapshot?.state ?? 'disconnected'
+  const state = trafficState
   const status = useMemo(
-    () => ({ isLoading, error, state, clearHistory }),
-    [isLoading, error, state, clearHistory],
+    () => ({
+      isLoading: isLoading || trafficLoading,
+      error: error ?? trafficError,
+      state,
+      clearHistory,
+    }),
+    [isLoading, trafficLoading, error, trafficError, state, clearHistory],
   )
 
   const values = useMemo(

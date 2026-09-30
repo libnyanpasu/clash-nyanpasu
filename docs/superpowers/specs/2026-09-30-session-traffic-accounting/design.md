@@ -31,11 +31,15 @@ Application composition root
 ```
 
 - `backend/nyanpasu-traffic` contains domain records, deterministic accounting,
-  topology projection, storage/source/clock ports and storage adapters. It has no
+  topology projection, storage/source/clock ports and the default redb adapter. It has no
   actor, process supervisor, Tauri dependency, or service dependency.
 - `backend/tauri/src/core/traffic` owns the traffic actor, typed client, source
   adapter and collector tasks. Actor state is private; no globals or second
   scheduling queue are introduced.
+- `backend/nyanpasu-traffic-turso` is an isolated evaluation workspace. The
+  embedded SDK enables `parking_lot/send_guard`, which conflicts with the app
+  workspace's deadlock detection. It implements the same store port without
+  changing the application dependency graph.
 - The application facade exposes history independently of whether a controller
   is currently connected. A missing live controller does not erase local history.
 - The runtime changes, if needed, are only generic ordered process lifecycle
@@ -57,6 +61,14 @@ Suspend stops the application's collector, clears current rates, and marks
 coverage stale/unknown. It must not close remote connections with `CoreExited`
 or manufacture `ended_at`. Recovery preserves stored counters and records a gap.
 If a remote old instance can no longer be observed, its end remains unknown.
+
+The collector uses the existing revocable `ApiClient` capability. Each decoded
+frame passes the authoritative instance binding check before accounting, so a
+restart cannot charge a new process to the old session between bridge polls.
+A retired capability requires rebinding even if the connection DTO is unchanged.
+Context is refreshed before a new source starts; failed configuration reads clear
+context for newly observed connections. Existing connections keep the rule context
+at their original match unless their reported rule changes.
 
 App shutdown uses the root cancellation token and actor cleanup. Local owned
 process cleanup may still deliver a genuine Exited event; the application does
@@ -115,7 +127,12 @@ topology support Live, Session and UTC-aligned MinuteWindow scopes. Requests bou
 page sizes, group results and time windows. Wire byte counters are decimal-string
 u64 values; only existing display projections may convert to numeric UI values.
 
-Closed records are paged from disk, while active baselines remain in memory.
+Closed records are paged from disk. Only attached sessions retain full active
+baselines in the actor; detach releases them after preserving pending writes, and
+rebind loads that session's active records through existing paginated queries.
+Retired sessions retain lifecycle metadata rather than connection snapshots.
+The current recovery port still materializes historical active records transiently
+at startup; this change does not claim a bounded startup peak.
 Retention protects active, selected and latest ended sessions. The initial scope
 does not impose a hard disk quota or trim current-session detail. Cache budgets
 are not process RSS or disk-size guarantees.

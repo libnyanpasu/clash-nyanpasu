@@ -12,9 +12,15 @@ use snafu::{ResultExt, Snafu};
 
 use crate::utils::path::PathResolver;
 
-pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
+pub async fn build(
+    paths: &PathResolver,
+    cancellation: tokio_util::sync::CancellationToken,
+    tasks: &tokio_util::task::TaskTracker,
+    traffic: nyanpasu_traffic::TrafficResult<crate::core::traffic::TrafficClient>,
+) -> Result<CoreControl> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
+        cancel_token: cancellation.clone(),
         runtime_dir: Some(to_utf8(runtime_root.join("control"))?),
         local_ipc_policy: LocalIpcPolicy::Disable,
         ..ManagerOptions::default()
@@ -31,7 +37,11 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
         StoreOwner::current(),
         legacy_kind(&config_path)?,
     ));
-    let manager = CoreManager::builder(options).native_store(native_store);
+    let mut manager = CoreManager::builder(options).native_store(native_store);
+    if let Ok(client) = &traffic {
+        manager =
+            manager.lifecycle_sink(Arc::new(super::traffic_host::LifecycleSink(client.clone())));
+    }
 
     #[cfg(target_os = "macos")]
     let manager = manager.dns_controller(Arc::new(
@@ -43,10 +53,31 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
     let manager = manager.build().await?;
     let source_dir = to_utf8(runtime_root.join("staging"))?;
 
-    Ok(CoreControl::spawn(
-        manager,
+    let control = CoreControl::spawn(
+        manager.clone(),
         ControlOptions::new(source_dir, working_dir),
-    ))
+    );
+    let (owner_control, owner_traffic, token) = (control.clone(), traffic.clone(), cancellation);
+    // Exact process exits are cleanup of this host's already-started runtime.
+    // They reach traffic before its mailbox drain; cancellation refuses all
+    // new sampling/query/start work and never invents an exit from a watch.
+    tasks.spawn(async move {
+        token.cancelled().await;
+        if let Err(error) = owner_control.shutdown().await {
+            tracing::error!(%error,"local core control shutdown failed");
+            if owner_control.executor_is_closed()
+                && let Err(error) = manager.shutdown().await
+            {
+                tracing::error!(%error,"local runtime cleanup failed");
+            }
+        }
+        if let Ok(client) = owner_traffic
+            && let Err(error) = client.shutdown().await
+        {
+            tracing::warn!(%error,"local traffic shutdown failed");
+        }
+    });
+    Ok(control)
 }
 
 /// A failure of locating the binary a core is started from.
@@ -114,10 +145,24 @@ mod tests {
         let paths =
             PathResolver::with_base_dirs(root.path().join("config"), root.path().join("data"));
 
-        let control = build(&paths).await.unwrap();
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        let tasks = tokio_util::task::TaskTracker::new();
+        let control = build(
+            &paths,
+            cancellation.clone(),
+            &tasks,
+            Err(nyanpasu_traffic::StoreError::Unsupported),
+        )
+        .await
+        .unwrap();
 
         let _ = control.status();
         assert!(!control.executor_is_closed());
+        control.shutdown().await.unwrap();
+        cancellation.cancel();
+        tasks.close();
+        tasks.wait().await;
+        drop(control);
     }
 
     #[tokio::test]
@@ -127,11 +172,27 @@ mod tests {
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 
-        let control = build(&paths).await.unwrap();
+        let control = build(
+            &paths,
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+            Err(nyanpasu_traffic::StoreError::Unsupported),
+        )
+        .await
+        .unwrap();
         assert!(!control.executor_is_closed());
 
         std::fs::remove_file(paths.application_config_path()).unwrap();
-        assert!(build(&paths).await.is_err());
+        assert!(
+            build(
+                &paths,
+                tokio_util::sync::CancellationToken::new(),
+                &tokio_util::task::TaskTracker::new(),
+                Err(nyanpasu_traffic::StoreError::Unsupported)
+            )
+            .await
+            .is_err()
+        );
     }
 
     #[test]

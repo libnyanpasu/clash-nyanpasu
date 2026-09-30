@@ -47,44 +47,58 @@ impl TrafficSource for ClashTrafficSource {
             self.read_deadline,
         );
         Ok(Box::pin(stream.map(move |frame| {
-            let wall_time = clock.wall_time();
-            let monotonic_ns = clock.monotonic_ns();
             frame.and_then(|snapshot| {
-                let mut connections = Vec::new();
-                for c in snapshot.connections.unwrap_or_default() {
-                    let mut metadata = std::collections::BTreeMap::new();
-                    if let Some(m) = c.metadata {
-                        let value = serde_json::to_value(m.known).map_err(failure)?;
-                        if let Some(fields) = value.as_object() {
-                            metadata.extend(fields.iter().map(|(k, v)| (k.clone(), v.clone())));
-                        }
-                        metadata.extend(m.extra);
-                    }
-                    connections.push(ConnectionSample {
-                        id: c.id.to_string(),
-                        started_at: Some(c.start.to_rfc3339()),
-                        metadata,
-                        extra: c.extra.into_iter().collect(),
-                        upload: c.upload,
-                        download: c.download,
-                        rule: c.rule,
-                        rule_payload: c.rule_payload,
-                        chains: c.chains,
-                        provider_chains: c.provider_chains.unwrap_or_default(),
-                    })
-                }
-                Ok(Observation {
-                    instance_id: binding.instance_id.clone(),
+                observation_from_snapshot(
+                    snapshot,
+                    binding.instance_id.clone(),
                     generation,
-                    wall_time,
-                    monotonic_ns,
-                    upload_total: snapshot.upload_total,
-                    download_total: snapshot.download_total,
-                    connections,
-                })
+                    clock.as_ref(),
+                )
             })
         })))
     }
+}
+
+pub(crate) fn observation_from_snapshot(
+    snapshot: clash_api::ConnectionsSnapshot,
+    instance_id: String,
+    generation: UInt,
+    clock: &dyn Clock,
+) -> TrafficResult<Observation> {
+    let wall_time = clock.wall_time();
+    let monotonic_ns = clock.monotonic_ns();
+    let mut connections = Vec::new();
+    for c in snapshot.connections.unwrap_or_default() {
+        let mut metadata = std::collections::BTreeMap::new();
+        if let Some(m) = c.metadata {
+            let value = serde_json::to_value(m.known).map_err(failure)?;
+            if let Some(fields) = value.as_object() {
+                metadata.extend(fields.iter().map(|(k, v)| (k.clone(), v.clone())));
+            }
+            metadata.extend(m.extra);
+        }
+        connections.push(ConnectionSample {
+            id: c.id.to_string(),
+            started_at: Some(c.start.to_rfc3339()),
+            metadata,
+            extra: c.extra.into_iter().collect(),
+            upload: c.upload,
+            download: c.download,
+            rule: c.rule,
+            rule_payload: c.rule_payload,
+            chains: c.chains,
+            provider_chains: c.provider_chains.unwrap_or_default(),
+        });
+    }
+    Ok(Observation {
+        instance_id,
+        generation,
+        wall_time,
+        monotonic_ns,
+        upload_total: snapshot.upload_total,
+        download_total: snapshot.download_total,
+        connections,
+    })
 }
 
 fn read_deadline<T: Send + 'static>(

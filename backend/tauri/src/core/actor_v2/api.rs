@@ -116,24 +116,10 @@ impl ApiClient {
         self.revoked.cancelled().await;
     }
 
-    pub async fn connections_ws(
-        &self,
-    ) -> Result<ApiStream<clash_api::ConnectionsSnapshot>, ApiError> {
-        let stream = self
-            .execute(self.client.connections_ws(Default::default()))
-            .await?;
-        Ok(ApiStream::new(self.clone(), stream))
-    }
-
     pub async fn logs_ws(&self) -> Result<ApiStream<clash_api::LogEntry>, ApiError> {
         let stream = self
             .execute(self.client.logs_ws(Default::default()))
             .await?;
-        Ok(ApiStream::new(self.clone(), stream))
-    }
-
-    pub async fn traffic_ws(&self) -> Result<ApiStream<clash_api::Traffic>, ApiError> {
-        let stream = self.execute(self.client.traffic_ws()).await?;
         Ok(ApiStream::new(self.clone(), stream))
     }
 
@@ -224,6 +210,19 @@ impl ApiClient {
 
     pub async fn connections(&self) -> Result<clash_api::ConnectionsSnapshot, ApiError> {
         self.execute(self.client.connections()).await
+    }
+
+    pub(crate) fn instance_id(&self) -> &str {
+        &self.binding.instance_id
+    }
+
+    pub async fn connections_stream(
+        &self,
+        interval: Duration,
+    ) -> Result<ApiStream<clash_api::ConnectionsSnapshot>, ApiError> {
+        let query = clash_api::ConnectionStreamQuery::new(interval)?;
+        let stream = self.execute(self.client.connections_ws(query)).await?;
+        Ok(ApiStream::new(self.clone(), stream))
     }
 
     pub async fn close_connection(&self, id: uuid::Uuid) -> Result<(), ApiError> {
@@ -702,7 +701,7 @@ mod stream_tests {
     ) -> impl IntoResponse {
         ws.on_upgrade(move |mut socket| async move {
             socket
-                .send(Message::Text(r#"{"up":1,"down":2}"#.into()))
+                .send(Message::Text(r#"{"inuse":1,"oslimit":2}"#.into()))
                 .await
                 .unwrap();
             while socket.recv().await.is_some() {}
@@ -746,7 +745,7 @@ mod stream_tests {
         };
         let (closed, mut closed_rx) = mpsc::unbounded_channel();
         let router = Router::new()
-            .route("/traffic", get(idle))
+            .route("/memory", get(idle))
             .route(
                 "/configs",
                 get(|| async { Json(serde_json::json!({"mode":"rule"})) }),
@@ -763,8 +762,8 @@ mod stream_tests {
         let api = core.api_client().await.unwrap();
         tokio::time::timeout(Duration::from_secs(5), async {
             api.configs().await.unwrap();
-            let mut stream = api.traffic_ws().await.unwrap();
-            assert_eq!(stream.next().await.unwrap().unwrap().up.get(), 1);
+            let mut stream = api.memory_ws().await.unwrap();
+            assert_eq!(stream.next().await.unwrap().unwrap().in_use, 1);
             endpoint.binding.send_replace(None);
             assert!(matches!(stream.next().await, Some(Err(ApiError::Stale))));
             closed_rx.recv().await.unwrap();
@@ -779,19 +778,15 @@ mod stream_tests {
     async fn websocket_keeps_hot_patch_binding_and_releases_idle_socket_on_revocation() {
         for change in ["instance", "secret", "controller", "shutdown"] {
             let (closed, mut rx) = mpsc::unbounded_channel();
-            let (url, server) = server(
-                Router::new()
-                    .route("/traffic", get(idle))
-                    .with_state(closed),
-            )
-            .await;
+            let (url, server) =
+                server(Router::new().route("/memory", get(idle)).with_state(closed)).await;
             let endpoint = endpoint(url.clone());
             let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
             let api = core.api_client().await.unwrap();
-            let mut stream = api.traffic_ws().await.unwrap();
+            let mut stream = api.memory_ws().await.unwrap();
             endpoint.binding.send_modify(|_| {});
             assert!(core.api_client().await.unwrap().same_instance(&api));
-            assert_eq!(stream.next().await.unwrap().unwrap().up.get(), 1);
+            assert_eq!(stream.next().await.unwrap().unwrap().in_use, 1);
             if change == "shutdown" {
                 core.shutdown().await.unwrap();
             } else {

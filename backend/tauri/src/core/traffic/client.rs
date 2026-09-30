@@ -1,5 +1,8 @@
 use super::actor::{Message, StartArgs, TrafficActor, TrafficActorArgs};
-use nyanpasu_traffic::{model::*, ports::SourceBinding};
+use nyanpasu_traffic::{
+    model::*,
+    ports::{SourceBinding, TrafficSource},
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::sync::watch;
 #[derive(Clone)]
@@ -28,6 +31,10 @@ pub(crate) async fn call<T: Send + 'static>(
     }
 }
 impl TrafficClient {
+    #[cfg(test)]
+    pub(super) async fn resident_active(&self) -> TrafficResult<usize> {
+        call(&self.actor, Message::ResidentActive).await
+    }
     pub async fn start(args: TrafficActorArgs) -> TrafficResult<Self> {
         let (summary_tx, summary) = watch::channel(None);
         let (details, details_rx) = watch::channel(None);
@@ -97,7 +104,7 @@ impl TrafficClient {
     }
     pub fn notify_controller_bound(&self, binding: SourceBinding) -> TrafficResult<()> {
         self.actor
-            .cast(Message::Bind(binding, None))
+            .cast(Message::Bind(binding, None, None))
             .map_err(|e| StoreError::Unavailable(e.to_string()))
     }
     /// Stop collecting without asserting that the observed process exited.
@@ -122,7 +129,18 @@ impl TrafficClient {
         call(&self.actor, |p| Message::Start(new, None, Some(p))).await
     }
     pub async fn controller_bound(&self, binding: SourceBinding) -> TrafficResult<()> {
-        call(&self.actor, |p| Message::Bind(binding, Some(p))).await
+        call(&self.actor, |p| Message::Bind(binding, None, Some(p))).await
+    }
+    /// Bind an instance-fenced source for this worker without replacing the startup default.
+    pub async fn controller_bound_with_source(
+        &self,
+        binding: SourceBinding,
+        source: std::sync::Arc<dyn TrafficSource>,
+    ) -> TrafficResult<()> {
+        call(&self.actor, |p| {
+            Message::Bind(binding, Some(source), Some(p))
+        })
+        .await
     }
     pub async fn instance_exited(&self, end: SessionEnd) -> TrafficResult<CommitReceipt> {
         let session = self.session(end.session_id).await?;

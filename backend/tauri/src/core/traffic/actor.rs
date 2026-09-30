@@ -30,7 +30,11 @@ pub(crate) enum Message {
         Option<SourceBinding>,
         Option<RpcReplyPort<TrafficResult<SessionRecord>>>,
     ),
-    Bind(SourceBinding, Option<RpcReplyPort<TrafficResult<()>>>),
+    Bind(
+        SourceBinding,
+        Option<Arc<dyn TrafficSource>>,
+        Option<RpcReplyPort<TrafficResult<()>>>,
+    ),
     Detach(String, Option<RpcReplyPort<TrafficResult<()>>>),
     Exit(
         String,
@@ -57,11 +61,14 @@ pub(crate) enum Message {
     ),
     Usage(UsageQuery, RpcReplyPort<TrafficResult<UsageResult>>),
     Topology(TopologyQuery, RpcReplyPort<TrafficResult<TopologyResult>>),
+    #[cfg(test)]
+    ResidentActive(RpcReplyPort<TrafficResult<usize>>),
 }
 pub(crate) struct TrafficActor;
 struct Instance {
     session: SessionRecord,
     active: BTreeMap<String, ConnectionRecord>,
+    active_loaded: bool,
     rates: BTreeMap<String, Option<Rate>>,
     rate: Option<Rate>,
     context: Option<ConfigContext>,
@@ -124,6 +131,11 @@ impl State {
             return;
         }
         if let Some(i) = self.instances.get(id) {
+            if !i.active_loaded {
+                self.summary.send_replace(None);
+                self.details.send_replace(None);
+                return;
+            }
             self.summary.send_replace(Some(TrafficSummary {
                 session: i.session.clone(),
                 revision: i.session.position.sequence,
@@ -333,6 +345,38 @@ impl State {
             }
         }
     }
+    async fn load_active(store: &dyn TrafficStore, i: &mut Instance) -> TrafficResult<()> {
+        if i.active_loaded || i.session.ended_at.is_some() {
+            return Ok(());
+        }
+        let mut active = BTreeMap::new();
+        let mut cursor = None;
+        loop {
+            let page = store
+                .query_connections(ConnectionsQuery {
+                    session_id: i.session.id.clone(),
+                    filter: ConnectionFilter {
+                        status: Some(true),
+                        ..Default::default()
+                    },
+                    limit: 500,
+                    cursor,
+                })
+                .await?;
+            active.extend(
+                page.connections
+                    .into_iter()
+                    .map(|record| (record.id.clone(), record)),
+            );
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        i.active = active;
+        i.active_loaded = true;
+        Ok(())
+    }
     async fn start(
         &mut self,
         new: NewSession,
@@ -351,6 +395,7 @@ impl State {
             .or_insert_with(|| Instance {
                 session: session.clone(),
                 active: BTreeMap::new(),
+                active_loaded: session.observed_connections.0 == 0,
                 rates: BTreeMap::new(),
                 rate: None,
                 context: None,
@@ -364,6 +409,7 @@ impl State {
             });
 
         let instance = self.instances.get_mut(&id).expect("inserted instance");
+        Self::load_active(self.args.store.as_ref(), instance).await?;
         if instance
             .session
             .quality
@@ -390,7 +436,7 @@ impl State {
                 .context = context;
         }
         if let Some(binding) = binding {
-            self.bind(binding, actor).await?
+            self.bind(binding, None, actor).await?
         }
         self.publish(&id);
         let pruned = self
@@ -443,13 +489,36 @@ impl State {
         i.interval_valid = false;
         i.rate = None;
         i.rates.clear();
+        if let Some(pending) = i.pending.take() {
+            match self
+                .args
+                .store
+                .commit_observation(pending.commit.clone())
+                .await
+            {
+                Ok(_) => {
+                    i.session = pending.commit.session;
+                    i.active = pending.active;
+                }
+                Err(error) => {
+                    i.pending = Some(pending);
+                    i.error = Some(error.clone());
+                    i.session.freshness = Freshness::Unavailable;
+                    self.refresh_status();
+                    self.publish(id);
+                    return Err(error);
+                }
+            }
+        }
+        i.active.clear();
+        i.active_loaded = false;
+        if i.pending_end.is_none() {
+            i.error = None;
+        }
         if i.session.ended_at.is_none() {
             i.session.freshness = Freshness::Stale;
             accounting::add_quality(&mut i.session.quality, Quality::Gap);
             accounting::add_quality(&mut i.session.quality, Quality::LifecycleUnknown);
-            i.error = Some(StoreError::Unavailable(
-                "traffic collection detached".into(),
-            ));
         }
         self.refresh_status();
         self.publish(id);
@@ -458,10 +527,17 @@ impl State {
     async fn bind(
         &mut self,
         binding: SourceBinding,
+        source: Option<Arc<dyn TrafficSource>>,
         actor: ActorRef<Message>,
     ) -> TrafficResult<()> {
         let id = binding.instance_id.clone();
         let i = self.instances.get_mut(&id).ok_or(StoreError::NotFound)?;
+        if i.session.ended_at.is_some() || i.pending_end.is_some() {
+            return Err(StoreError::Conflict(
+                "cannot bind an exited instance".into(),
+            ));
+        }
+        Self::load_active(self.args.store.as_ref(), i).await?;
         Self::stop_worker(i).await;
         i.generation = UInt(
             i.generation
@@ -479,7 +555,7 @@ impl State {
             accounting::add_quality(&mut i.session.quality, Quality::Gap);
         }
         let cancel = self.args.cancellation.child_token();
-        let source = self.args.source.clone();
+        let source = source.unwrap_or_else(|| self.args.source.clone());
         let clock = self.args.clock.clone();
         let worker_cancel = cancel.clone();
         let worker_id = id.clone();
@@ -522,6 +598,14 @@ impl State {
             .ok_or(StoreError::NotFound)?;
         if i.session.ended_at.is_some() || i.generation != o.generation {
             return Err(StoreError::Conflict("stale source generation".into()));
+        }
+        if let Err(error) = Self::load_active(self.args.store.as_ref(), i).await {
+            i.error = Some(error.clone());
+            i.session.freshness = Freshness::Unavailable;
+            accounting::add_quality(&mut i.session.quality, Quality::StorageDegraded);
+            self.refresh_status();
+            self.publish(&o.instance_id);
+            return Err(error);
         }
         if let Some(pending) = i.pending.take() {
             match self
@@ -714,11 +798,8 @@ impl Actor for TrafficActor {
                 session.instance_id.clone(),
                 Instance {
                     session,
-                    active: recovered
-                        .active_connections
-                        .into_iter()
-                        .map(|r| (r.id.clone(), r))
-                        .collect(),
+                    active: BTreeMap::new(),
+                    active_loaded: false,
                     rates: BTreeMap::new(),
                     rate: None,
                     context: None,
@@ -726,9 +807,7 @@ impl Actor for TrafficActor {
                     interval_valid: false,
                     generation,
                     pending_end: None,
-                    error: Some(StoreError::Unavailable(
-                        "instance lifecycle is unconfirmed after recovery".into(),
-                    )),
+                    error: None,
                     pending: None,
                     worker: None,
                 },
@@ -762,7 +841,7 @@ impl Actor for TrafficActor {
         if state.args.cancellation.is_cancelled() && !owned_exit {
             match message {
                 Message::Select(_, Some(p))
-                | Message::Bind(_, Some(p))
+                | Message::Bind(_, _, Some(p))
                 | Message::Detach(_, Some(p))
                 | Message::Context(_, _, p)
                 | Message::Disconnected(_, _, _, p) => reply(p, Err(StoreError::Cancelled)),
@@ -776,6 +855,8 @@ impl Actor for TrafficActor {
                 Message::Connections(_, p) => reply(p, Err(StoreError::Cancelled)),
                 Message::Usage(_, p) => reply(p, Err(StoreError::Cancelled)),
                 Message::Topology(_, p) => reply(p, Err(StoreError::Cancelled)),
+                #[cfg(test)]
+                Message::ResidentActive(p) => reply(p, Err(StoreError::Cancelled)),
                 _ => {}
             }
             return Ok(());
@@ -796,6 +877,18 @@ impl Actor for TrafficActor {
             };
         }
         match message {
+            #[cfg(test)]
+            Message::ResidentActive(p) => reply(
+                p,
+                Ok(state
+                    .instances
+                    .values()
+                    .map(|i| {
+                        i.active.len()
+                            + i.pending.as_ref().map_or(0, |pending| pending.active.len())
+                    })
+                    .sum()),
+            ),
             Message::Select(id, port) => {
                 state.current = id.clone();
                 if let Some(id) = id.filter(|id| state.instances.contains_key(id)) {
@@ -832,13 +925,15 @@ impl Actor for TrafficActor {
                     reply(p, result)
                 }
             }
-            Message::Bind(binding, port) => {
+            Message::Bind(binding, source, port) => {
                 let result = if state.args.cancellation.is_cancelled() {
                     Err(StoreError::Cancelled)
                 } else {
-                    state.bind(binding.clone(), myself).await
+                    state.bind(binding.clone(), source, myself).await
                 };
-                if let Err(error) = &result {
+                if let Err(error) = &result
+                    && !matches!(error, StoreError::Conflict(_))
+                {
                     state.lifecycle_failure(&binding.instance_id, error);
                 }
                 if let Some(p) = port {

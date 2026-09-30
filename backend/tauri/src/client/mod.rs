@@ -24,6 +24,7 @@ pub(crate) mod runtime_recovery;
 mod session_state;
 mod system_dns;
 pub mod system_proxy;
+pub(crate) mod traffic;
 pub mod ui_effects;
 
 use self::{
@@ -83,6 +84,7 @@ pub struct ClientSetupArgs {
     pub runtime_paths: RuntimePaths,
     pub ui_sink: Arc<dyn UiEventSink>,
     pub core_v2: CoreClientV2,
+    pub traffic: nyanpasu_traffic::TrafficResult<crate::core::traffic::TrafficClient>,
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
@@ -201,6 +203,7 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
+    traffic: nyanpasu_traffic::TrafficResult<crate::core::traffic::TrafficClient>,
     proxies: crate::core::proxies::ProxiesClient,
     streams: crate::core::clash::ws::StreamsClient,
     updater: crate::core::updater::UpdaterClient,
@@ -227,6 +230,7 @@ impl NyanpasuClient {
             runtime_paths,
             ui_sink,
             core_v2,
+            traffic,
             service,
             system_dns,
             os_proxy,
@@ -316,6 +320,7 @@ impl NyanpasuClient {
             accelerators,
             shutdown,
             tasks,
+            traffic,
         ))
     }
 
@@ -346,6 +351,7 @@ impl NyanpasuClient {
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
+        traffic: nyanpasu_traffic::TrafficResult<crate::core::traffic::TrafficClient>,
     ) -> anyhow::Result<Self> {
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         // The log client exposes no actor cell, so a tracked task stops it.
@@ -442,6 +448,7 @@ impl NyanpasuClient {
                 profiles_dir,
                 application_workflow,
                 core_api: core_v2,
+                traffic,
                 proxies,
                 streams,
                 updater,
@@ -2130,6 +2137,7 @@ pub(crate) mod tests {
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
+            Err(nyanpasu_traffic::StoreError::Unsupported),
         )
         .await
         .unwrap()
@@ -2390,6 +2398,7 @@ pub(crate) mod tests {
         );
         let (core_v2, service) = test_v2_clients_with_endpoint(endpoint);
         ClientSetupArgs {
+            traffic: Err(nyanpasu_traffic::StoreError::Unsupported),
             jobs: std::thread::scope(|scope| {
                 scope
                     .spawn(|| {
@@ -2758,6 +2767,7 @@ pub(crate) mod tests {
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
+            Err(nyanpasu_traffic::StoreError::Unsupported),
         )
         .await
         .unwrap();
@@ -2855,6 +2865,7 @@ pub(crate) mod tests {
         );
         let (core_v2, service) = test_v2_clients();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            traffic: Err(nyanpasu_traffic::StoreError::Unsupported),
             jobs: std::thread::scope(|scope| {
                 scope
                     .spawn(|| {
@@ -3858,6 +3869,7 @@ pub(crate) mod tests {
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
                 tokio_util::sync::CancellationToken::new(),
                 tokio_util::task::TaskTracker::new(),
+                Err(nyanpasu_traffic::StoreError::Unsupported),
             )
             .await
             .unwrap();

@@ -381,6 +381,229 @@ struct FrameSource {
     opened: Notify,
 }
 #[tokio::test]
+async fn remote_uuid_history_is_unloaded_and_same_uuid_resumes_without_double_counting() {
+    let store = Arc::new(FaultStore::default());
+    let (c, _) = client(store.clone()).await;
+    let mut first = None;
+    for index in 0..20 {
+        let id = format!("remote-{index}");
+        let s = c.instance_started(new_session(&id)).await.unwrap();
+        if index == 0 {
+            first = Some(s.id);
+        }
+        c.set_current_instance(Some(id.clone())).await.unwrap();
+        c.observe(frame(&id, 1000, vec![sample("a", 10), sample("b", 10)]))
+            .await
+            .unwrap();
+        assert_eq!(c.resident_active().await.unwrap(), 2);
+        c.detach(id).await.unwrap();
+        assert_eq!(c.resident_active().await.unwrap(), 0);
+        assert!(c.subscribe_summary().borrow().is_none());
+        assert!(c.subscribe_status().borrow().is_none());
+    }
+    let first = first.unwrap();
+    c.instance_started(new_session("remote-0")).await.unwrap();
+    assert_eq!(c.resident_active().await.unwrap(), 2);
+    c.set_current_instance(Some("remote-0".into()))
+        .await
+        .unwrap();
+    let mut next = frame("remote-0", 3000, vec![sample("a", 15), sample("b", 15)]);
+    next.generation = UInt(1);
+    c.observe(next).await.unwrap();
+    let resumed = c.session(first.clone()).await.unwrap();
+    assert_eq!(resumed.attributed_bytes.upload, UInt(30));
+    assert_eq!(resumed.observed_connections, UInt(2));
+    assert!(resumed.ended_at.is_none());
+    c.detach("remote-0".into()).await.unwrap();
+    c.shutdown().await.unwrap();
+    let (reopened, _) = client(store.clone()).await;
+    assert_eq!(reopened.resident_active().await.unwrap(), 0);
+    assert!(
+        reopened
+            .session(first.clone())
+            .await
+            .unwrap()
+            .quality
+            .contains(&Quality::LifecycleUnknown)
+    );
+    // Direct typed observation also restores missing active baselines before diffing.
+    let mut direct = frame("remote-0", 4000, vec![sample("a", 20)]);
+    direct.generation = UInt(1);
+    reopened.observe(direct).await.unwrap();
+    assert_eq!(
+        reopened
+            .session(first.clone())
+            .await
+            .unwrap()
+            .attributed_bytes
+            .upload,
+        UInt(35)
+    );
+    assert!(matches!(
+        store
+            .inner
+            .connection(first.clone(), "b".into())
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        ConnectionStatus::Closed {
+            reason: CloseReason::MissingFromSnapshot,
+            ..
+        }
+    ));
+    reopened.detach("remote-0".into()).await.unwrap();
+    assert_eq!(reopened.resident_active().await.unwrap(), 0);
+    reopened
+        .instance_exited(SessionEnd {
+            session_id: first.clone(),
+            detected_at: UInt(5000),
+            reason: CloseReason::CoreExited,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened.session(first).await.unwrap().ended_at,
+        Some(UInt(5000))
+    );
+    reopened.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn detach_preserves_an_unresolved_commit_and_pending_exit_failure() {
+    let store = Arc::new(FaultStore::default());
+    let (c, _) = client(store.clone()).await;
+    let s = c.instance_started(new_session("remote")).await.unwrap();
+    c.observe(frame("remote", 1000, vec![sample("a", 10)]))
+        .await
+        .unwrap();
+    store.commit_fault.store(2, Ordering::SeqCst);
+    assert!(
+        c.observe(frame("remote", 2000, vec![sample("a", 15)]))
+            .await
+            .is_err()
+    );
+    store.commit_fault.store(1, Ordering::SeqCst);
+    assert!(c.detach("remote".into()).await.is_err());
+    assert_eq!(c.resident_active().await.unwrap(), 2);
+    assert!(c.subscribe_status().borrow().is_some());
+    c.detach("remote".into()).await.unwrap();
+    assert_eq!(c.resident_active().await.unwrap(), 0);
+    assert_eq!(
+        c.session(s.id.clone())
+            .await
+            .unwrap()
+            .attributed_bytes
+            .upload,
+        UInt(15)
+    );
+    store.end_fail.store(true, Ordering::SeqCst);
+    assert!(
+        c.instance_exited(SessionEnd {
+            session_id: s.id,
+            detected_at: UInt(3000),
+            reason: CloseReason::CoreExited
+        })
+        .await
+        .is_err()
+    );
+    c.detach("remote".into()).await.unwrap();
+    assert!(c.subscribe_status().borrow().is_some());
+    store.end_fail.store(false, Ordering::SeqCst);
+    c.shutdown().await.unwrap();
+}
+#[tokio::test]
+async fn binding_source_is_worker_local_and_cannot_revive_an_exited_session() {
+    let store = Arc::new(FaultStore::default());
+    let (default_sender, default_receiver) = tokio::sync::mpsc::channel(1);
+    let default_source = Arc::new(FrameSource {
+        receiver: tokio::sync::Mutex::new(Some(default_receiver)),
+        polls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        opened: Notify::new(),
+    });
+    let (bound_sender, bound_receiver) = tokio::sync::mpsc::channel(1);
+    let bound_source = Arc::new(FrameSource {
+        receiver: tokio::sync::Mutex::new(Some(bound_receiver)),
+        polls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        opened: Notify::new(),
+    });
+    let c = TrafficClient::start(TrafficActorArgs {
+        host: HostId("contract-host".into()),
+        source: default_source.clone(),
+        store,
+        clock: Arc::new(FakeClock::new(0, 0)),
+        cancellation: CancellationToken::new(),
+    })
+    .await
+    .unwrap();
+    let s = c.instance_started(new_session("instance")).await.unwrap();
+    let binding = SourceBinding {
+        instance_id: "instance".into(),
+        endpoint: SourceEndpoint::Http("http://unused".into()),
+        secret: None,
+    };
+    c.controller_bound_with_source(binding.clone(), bound_source.clone())
+        .await
+        .unwrap();
+    bound_source.opened.notified().await;
+    assert!(default_source.receiver.lock().await.is_some());
+    c.detach("instance".into()).await.unwrap();
+    assert!(bound_sender.is_closed());
+    c.controller_bound(binding.clone()).await.unwrap();
+    default_source.opened.notified().await;
+    assert!(!default_sender.is_closed());
+    c.instance_exited(SessionEnd {
+        session_id: s.id.clone(),
+        detected_at: UInt(2000),
+        reason: CloseReason::CoreExited,
+    })
+    .await
+    .unwrap();
+    assert!(default_sender.is_closed());
+    let before_late_bind = c.session(s.id.clone()).await.unwrap();
+    assert!(matches!(
+        c.controller_bound(binding.clone()).await,
+        Err(StoreError::Conflict(_))
+    ));
+    assert!(matches!(
+        c.controller_bound_with_source(binding, bound_source).await,
+        Err(StoreError::Conflict(_))
+    ));
+    let ended = c.session(s.id).await.unwrap();
+    assert_eq!(ended.ended_at, Some(UInt(2000)));
+    assert_eq!(ended.quality, before_late_bind.quality);
+    assert_eq!(ended.freshness, before_late_bind.freshness);
+    c.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn pending_exit_rejects_a_late_controller_binding() {
+    let store = Arc::new(FaultStore::default());
+    let (c, _) = client(store.clone()).await;
+    let s = c.instance_started(new_session("instance")).await.unwrap();
+    store.end_fail.store(true, Ordering::SeqCst);
+    assert!(
+        c.instance_exited(SessionEnd {
+            session_id: s.id,
+            detected_at: UInt(2000),
+            reason: CloseReason::CoreExited,
+        })
+        .await
+        .is_err()
+    );
+    assert!(matches!(
+        c.controller_bound(SourceBinding {
+            instance_id: "instance".into(),
+            endpoint: SourceEndpoint::Http("http://unused".into()),
+            secret: None,
+        })
+        .await,
+        Err(StoreError::Conflict(_))
+    ));
+    store.end_fail.store(false, Ordering::SeqCst);
+    c.shutdown().await.unwrap();
+}
+#[tokio::test]
 async fn detached_failed_start_retry_does_not_restart_collection() {
     let store = Arc::new(FaultStore::default());
     let (c, _) = client(store.clone()).await;

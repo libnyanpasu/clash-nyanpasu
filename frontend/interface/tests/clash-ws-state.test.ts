@@ -5,10 +5,8 @@ import { applyClashWsEvent } from '../src/provider/clash-ws-state.ts'
 const snapshot = (sequence = 0): ClashWsSnapshot => ({
   sequence,
   state: 'connected',
-  recording: { connections: true, logs: true, traffic: true, memory: true },
-  connections: [],
+  recording: { logs: true, memory: true },
   logs: [],
-  traffic: [],
   memory: [],
 })
 const log = (sequence: number, payload = String(sequence)): ClashWsEvent => ({

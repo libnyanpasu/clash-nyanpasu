@@ -20,6 +20,7 @@ const connection = (
   rulePayload: 'example.com',
   downloadSpeed: 0,
   uploadSpeed: 0,
+  rateKnown: true,
   _extra: {},
   ...overrides,
   // The null case exercises the core reporting no metadata for a connection.

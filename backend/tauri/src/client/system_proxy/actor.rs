@@ -8,7 +8,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, concurrency::JoinHandle};
+use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio_util::sync::CancellationToken;
 
 use snafu::{IntoError as _, ResultExt as _};
@@ -47,15 +47,17 @@ pub(super) enum Message {
     },
     #[cfg_attr(not(test), allow(dead_code))]
     Status(RpcReplyPort<SystemProxyStatus>),
-    /// Delivered by the guard timer, or by a test in place of one.
+    #[cfg(test)]
     GuardTick,
+    JobGuardTick(RpcReplyPort<Result<(), nyanpasu_jobs::JobError>>),
 }
 
 pub struct Args {
+    pub jobs: nyanpasu_jobs::JobsClient,
     pub os: Arc<dyn OsProxyPort>,
     pub auto_launch: Arc<dyn AutoLaunchPort>,
     pub pac: Arc<dyn PacPort>,
-    /// Production builds a real interval timer. Tests pass `false` and deliver
+    /// Production registers an interval job. Tests pass `false` and deliver
     /// `GuardTick` themselves, so a guard assertion never waits on a clock.
     pub schedule_guard_ticks: bool,
     /// Once cancelled, nothing writes the OS settings but the restore in
@@ -65,6 +67,8 @@ pub struct Args {
 }
 
 pub(super) struct State {
+    jobs: nyanpasu_jobs::JobsClient,
+    jobs_revision: u64,
     os: Arc<dyn OsProxyPort>,
     auto_launch: Arc<dyn AutoLaunchPort>,
     pac: Arc<dyn PacPort>,
@@ -87,7 +91,6 @@ pub(super) struct State {
     /// The interval the live timer was built with, so an unchanged reconcile
     /// does not tear it down and rebuild it.
     guard_running: Option<Duration>,
-    guard_job: Option<JoinHandle<()>>,
     /// Set by the restore. The original settings are back in place by then, so
     /// anything that would write the OS again is refused rather than undoing
     /// the exit path.
@@ -138,6 +141,8 @@ impl Actor for SystemProxyActor {
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(State {
+            jobs: args.jobs,
+            jobs_revision: 0,
             os: args.os,
             auto_launch: args.auto_launch,
             pac: args.pac,
@@ -151,7 +156,6 @@ impl Actor for SystemProxyActor {
             pac_active: false,
             guard: None,
             guard_running: None,
-            guard_job: None,
             closed: false,
         })
     }
@@ -178,7 +182,13 @@ impl Actor for SystemProxyActor {
             Message::Status(reply) => {
                 let _ = reply.send(state.status());
             }
-            Message::GuardTick => state.guard_tick().await,
+            #[cfg(test)]
+            Message::GuardTick => {
+                let _ = state.guard_tick().await;
+            }
+            Message::JobGuardTick(reply) => {
+                let _ = reply.send(state.guard_tick().await);
+            }
         }
         Ok(())
     }
@@ -273,7 +283,7 @@ impl State {
         }
         // Recomputed even when the plan carried no guard item: turning the
         // proxy off leaves the guard with nothing to re-apply.
-        self.refresh_guard(myself);
+        self.refresh_guard(myself).await;
         statuses
     }
 
@@ -297,7 +307,6 @@ impl State {
     /// and every later reconcile is refused.
     fn close_for_shutdown(&mut self) {
         self.closed = true;
-        self.stop_guard();
         self.guard_running = None;
     }
 
@@ -605,63 +614,82 @@ impl State {
         (guard.enabled && proxy_on).then(|| guard.interval.max(MIN_GUARD_INTERVAL))
     }
 
-    fn refresh_guard(&mut self, myself: &ActorRef<Message>) {
+    async fn refresh_guard(&mut self, myself: &ActorRef<Message>) {
         let interval = self.guard_interval();
         if interval == self.guard_running {
             return;
         }
-        // An interval change rebuilds the timer immediately instead of taking
-        // effect one full period late, and turning the guard off cancels the
-        // job instead of letting a last tick land.
-        self.stop_guard();
         self.guard_running = interval;
-        if let Some(interval) = interval
-            && self.schedule_guard_ticks
-        {
-            self.guard_job = Some(myself.send_interval(interval, || Message::GuardTick));
+        if !self.schedule_guard_ticks {
+            return;
         }
-    }
-
-    fn stop_guard(&mut self) {
-        if let Some(job) = self.guard_job.take() {
-            job.abort();
+        self.jobs_revision += 1;
+        let jobs = match interval {
+            Some(interval) => vec![
+                crate::client::jobs::wake_job(
+                    "system-proxy",
+                    "system-proxy/guard",
+                    nyanpasu_jobs::Schedule::Interval {
+                        every_ms: interval.as_millis().min(u64::MAX as u128) as u64,
+                    },
+                    myself.clone(),
+                    Message::JobGuardTick,
+                )
+                .expect("guard wake-up has valid input"),
+            ],
+            None => Vec::new(),
+        };
+        if let Err(error) = self
+            .jobs
+            .reconcile("system-proxy", self.jobs_revision, jobs)
+            .await
+        {
+            self.guard_running = None;
+            tracing::error!(%error, "failed to register system proxy guard");
         }
     }
 
     /// Guard only the last confirmed setting. Converging a failed desired
     /// target belongs to EffectsActor's bounded budget, never this timer.
-    async fn guard_tick(&mut self) {
+    async fn guard_tick(&mut self) -> Result<(), nyanpasu_jobs::JobError> {
+        if self.guard_interval().is_none() {
+            return Ok(());
+        }
         // A tick queued before the shutdown still reaches the mailbox, ahead
         // of the restore, and must not re-install what the restore removes.
         if self.shutting_down() {
             self.close_for_shutdown();
-            return;
+            return Ok(());
         }
         // Under PAC the OS holds an auto-config URL, not a proxy endpoint;
         // writing one every tick is what made the two settings fight.
         if self.pac_active {
-            return;
+            return Ok(());
         }
         let Some(desired) = self.desired.clone().filter(|desired| desired.enabled) else {
-            return;
+            return Ok(());
         };
         let Some(config) = self.enable_config(&desired) else {
-            return;
+            return Ok(());
         };
         if self.current.as_ref() != Some(&config) {
-            return;
+            return Ok(());
         }
         if let Err(error) = self.write_os_proxy(config).await {
             tracing::warn!(
                 error = %failure_text(&error),
                 "the proxy guard could not re-apply the system proxy"
             );
+            return Err(nyanpasu_jobs::JobError::new(
+                "proxy_guard_failed",
+                "System proxy guard failed",
+            ));
         }
+        Ok(())
     }
 
     async fn restore(&mut self) -> EffectStatus {
         self.closed = true;
-        self.stop_guard();
         self.guard = None;
         self.guard_running = None;
 

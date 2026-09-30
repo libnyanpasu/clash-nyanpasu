@@ -141,7 +141,9 @@ enum Message {
         Option<crate::core::download::DownloadStatus>,
     ),
     Finished(usize, Result<()>),
+    #[cfg(test)]
     Prune(Instant),
+    ScheduledPrune(RpcReplyPort<Result<(), nyanpasu_jobs::JobError>>),
 }
 
 struct Task {
@@ -151,6 +153,7 @@ struct Task {
     finished: Option<Instant>,
 }
 struct Args {
+    jobs: nyanpasu_jobs::JobsClient,
     backend: Arc<dyn UpdaterBackend>,
     installer: Arc<dyn CoreUpdateInstaller>,
     /// Once cancelled, nothing new is admitted and fetches and downloads end;
@@ -165,11 +168,9 @@ struct State {
     next_id: usize,
     fetch: Option<tokio::task::JoinHandle<()>>,
     fetch_waiters: Vec<RpcReplyPort<Result<ManifestVersionLatest>>>,
-    timer: tokio::task::JoinHandle<()>,
 }
 impl Drop for State {
     fn drop(&mut self) {
-        self.timer.abort();
         if let Some(task) = self.fetch.take() {
             task.abort();
         }
@@ -190,14 +191,14 @@ impl Actor for UpdaterActor {
         actor: ActorRef<Message>,
         args: Args,
     ) -> Result<State, ActorProcessingErr> {
-        let timer = tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(30)).await;
-                if actor.cast(Message::Prune(Instant::now())).is_err() {
-                    break;
-                }
-            }
-        });
+        let job = crate::client::jobs::wake_job(
+            "updater",
+            "updater/prune",
+            nyanpasu_jobs::Schedule::Interval { every_ms: 30_000 },
+            actor,
+            Message::ScheduledPrune,
+        )?;
+        args.jobs.reconcile("updater", 1, vec![job]).await?;
         Ok(State {
             args,
             manifest: ManifestVersion::default(),
@@ -206,7 +207,6 @@ impl Actor for UpdaterActor {
             next_id: 0,
             fetch: None,
             fetch_waiters: Vec::new(),
-            timer,
         })
     }
     async fn handle(
@@ -356,6 +356,25 @@ impl Actor for UpdaterActor {
                     task.finished = Some(Instant::now());
                 }
             }
+            Message::ScheduledPrune(reply) => {
+                let result = if state.args.shutdown.is_cancelled() {
+                    Err(nyanpasu_jobs::JobError::new(
+                        "shutting_down",
+                        "Updater is shutting down",
+                    ))
+                } else {
+                    let now = Instant::now();
+                    state.tasks.retain(|_, task| {
+                        task.worker.is_some()
+                            || task.finished.is_none_or(|finished| {
+                                now.saturating_duration_since(finished) < RETENTION
+                            })
+                    });
+                    Ok(())
+                };
+                let _ = reply.send(result);
+            }
+            #[cfg(test)]
             Message::Prune(now) => {
                 state.tasks.retain(|_, task| {
                     task.worker.is_some()
@@ -376,7 +395,6 @@ impl Actor for UpdaterActor {
         _actor: ActorRef<Message>,
         state: &mut State,
     ) -> Result<(), ActorProcessingErr> {
-        state.timer.abort();
         if let Some(fetch) = state.fetch.take() {
             fetch.abort();
             let _ = fetch.await;
@@ -407,6 +425,7 @@ impl UpdaterClient {
     pub async fn spawn(
         backend: Arc<dyn UpdaterBackend>,
         installer: Arc<dyn CoreUpdateInstaller>,
+        jobs: nyanpasu_jobs::JobsClient,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> Result<Self> {
@@ -416,6 +435,7 @@ impl UpdaterClient {
             Args {
                 backend,
                 installer,
+                jobs,
                 shutdown: shutdown.clone(),
             },
         )

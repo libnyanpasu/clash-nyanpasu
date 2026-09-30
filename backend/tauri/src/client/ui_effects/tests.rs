@@ -187,6 +187,7 @@ async fn executor_with_owners(
 ) -> ApplicationEffectExecutor {
     let system_proxy = SystemProxyClient::spawn(
         SystemProxyArgs {
+            jobs: crate::client::jobs::test_client().await,
             os,
             auto_launch: Arc::new(MockAutoLaunchPort::new()),
             pac,
@@ -550,6 +551,7 @@ fn widget_health(statuses: Vec<EffectStatus>) -> EffectHealth {
 /// is owned, a disable is a clean no-op.
 #[tokio::test(start_paused = true)]
 async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
+    let _clock = crate::client::jobs::explicit_test_time();
     let host = crate::widget::tests::FakeWidgetHost::blocking();
     host.refuse_release();
     let manager = crate::widget::WidgetManager::new(
@@ -746,6 +748,7 @@ impl PacPort for HeldPac {
 
 #[tokio::test(start_paused = true)]
 async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
+    let _clock = crate::client::jobs::explicit_test_time();
     use crate::client::{
         NoopUiEventSink,
         convergence::ConvergenceHealth,
@@ -777,6 +780,7 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     .await;
     let effects = EffectsClient::spawn(
         EffectsArgs {
+            jobs: crate::client::jobs::test_client().await,
             port: Arc::new(executor),
             ui: Arc::new(NoopUiEventSink),
             initial: proxied_inputs(NyanpasuAppConfig::default()),
@@ -803,8 +807,8 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     pac.started.notified().await;
 
     // Well past any RPC bound and every automatic retry delay. A paused clock
-    // runs each timer on the way, so any retry would have been submitted.
-    tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+    // makes every retry deadline overdue; the held owner still prevents a retry.
+    tokio::time::advance(std::time::Duration::from_secs(120)).await;
     effects.barrier().await;
     let proxy = |effects: &EffectsClient| {
         effects
@@ -926,6 +930,7 @@ async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
     .await;
     let effects = EffectsClient::spawn(
         EffectsArgs {
+            jobs: crate::client::jobs::test_client().await,
             port: Arc::new(executor),
             ui: Arc::new(NoopUiEventSink),
             initial: proxied_inputs(NyanpasuAppConfig::default()),
@@ -1207,6 +1212,7 @@ async fn the_owners_clean_up_independently_and_the_shutdown_waits_for_all() {
     let held = Arc::new(HeldEffects::default());
     let effects = EffectsClient::spawn(
         EffectsArgs {
+            jobs: crate::client::jobs::test_client().await,
             port: held.clone(),
             ui: Arc::new(NoopUiEventSink),
             initial: inputs(NyanpasuAppConfig::default()),
@@ -1277,6 +1283,7 @@ async fn effects_with_a_widget_starting(
     .await;
     let effects = EffectsClient::spawn(
         EffectsArgs {
+            jobs: crate::client::jobs::test_client().await,
             port: Arc::new(executor),
             ui: Arc::new(NoopUiEventSink),
             initial: inputs(NyanpasuAppConfig::default()),

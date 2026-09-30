@@ -131,6 +131,7 @@ async fn setup() -> (
     let client = UpdaterClient::spawn(
         backend.clone(),
         Arc::new(UnusedInstaller),
+        crate::client::jobs::test_client().await,
         shutdown.token.clone(),
         &shutdown.tasks,
     )
@@ -267,6 +268,7 @@ async fn the_shutdown_waits_for_an_install_in_progress() {
     let client = UpdaterClient::spawn(
         Arc::new(ReadyBackend),
         installer.clone(),
+        crate::client::jobs::test_client().await,
         shutdown.token.clone(),
         &shutdown.tasks,
     )
@@ -331,6 +333,7 @@ async fn the_shutdown_waits_for_an_extraction_in_progress() {
     let client = UpdaterClient::spawn(
         backend.clone(),
         Arc::new(UnusedInstaller),
+        crate::client::jobs::test_client().await,
         shutdown.token.clone(),
         &shutdown.tasks,
     )
@@ -418,6 +421,7 @@ async fn installing_client(
     let client = UpdaterClient::spawn(
         Arc::new(ReadyBackend),
         Arc::new(RecordingInstaller { installed, error }),
+        crate::client::jobs::test_client().await,
         CancellationToken::new(),
         &TaskTracker::new(),
     )

@@ -110,6 +110,7 @@ async fn graph(port: Arc<dyn ApplicationEffectsPort>) -> (EffectsClient, Shutdow
     let shutdown = Shutdown::new();
     let client = EffectsClient::spawn(
         EffectsArgs {
+            jobs: crate::client::jobs::test_client().await,
             port,
             ui: Arc::new(Ui),
             initial: inputs(),
@@ -126,11 +127,13 @@ async fn wait(
     predicate: impl Fn(&EffectsSnapshot) -> bool,
 ) -> EffectsSnapshot {
     let mut status = client.subscribe();
-    tokio::time::timeout(Duration::from_secs(5), status.wait_for(predicate))
+    let result = tokio::time::timeout(Duration::from_secs(5), status.wait_for(predicate))
         .await
         .unwrap()
         .unwrap()
-        .clone()
+        .clone();
+    client.barrier().await;
+    result
 }
 fn language(language: I18nLanguage) -> nyanpasu_config::application::NyanpasuAppConfigPatch {
     let mut patch = NyanpasuAppConfig::new_empty_patch();
@@ -557,6 +560,7 @@ fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
 
 #[tokio::test(start_paused = true)]
 async fn automatic_retries_are_bounded_and_manual_probe_does_not_refill_budget() {
+    let _clock = crate::client::jobs::explicit_test_time();
     use crate::client::convergence::ConvergenceHealth;
     let port = Arc::new(Port {
         fail: AtomicBool::new(true),

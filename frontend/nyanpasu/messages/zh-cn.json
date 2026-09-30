@@ -748,5 +748,6 @@
   "effect_failure_system_proxy_stopped": "系统代理服务未运行",
   "error_system_proxy_read_os_proxy": "无法读取系统代理",
   "error_system_proxy_write_os_proxy": "无法将系统代理更新为 {host}:{port}",
-  "error_effects_stopped": "配置服务未运行"
+  "error_effects_stopped": "配置服务未运行",
+  "profile_sync_journal_degraded": "同步日志不可用或已降级"
 }

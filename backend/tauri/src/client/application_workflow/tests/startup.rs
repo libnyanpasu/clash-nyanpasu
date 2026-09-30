@@ -404,6 +404,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            jobs: crate::client::jobs::test_client().await,
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),

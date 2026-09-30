@@ -674,6 +674,8 @@ export function degradationReasonMessage(reason: DegradationReason): string {
       return m.mutation_degradation_reason_interruption_failed()
     case 'proxy_cache_refresh_failed':
       return m.mutation_degradation_reason_proxy_cache_refresh_failed()
+    case 'jobs_journal_unavailable':
+      return m.profile_sync_journal_degraded()
     case 'journal_invalid':
       return m.mutation_degradation_reason_journal_invalid()
     case 'materialization_deferred':

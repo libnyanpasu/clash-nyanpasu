@@ -1,6 +1,6 @@
 use crate::{
     client::{NyanpasuClient, application_workflow::startup::StartupOutcome},
-    core::{storage::Storage, tray::proxies},
+    core::tray::proxies,
     log_err,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
@@ -219,14 +219,6 @@ pub fn resolve_setup(app: &mut App) {
     if !silent_start {
         create_window(app.app_handle());
         spawn_window_ready_timeout(app.app_handle().clone());
-    }
-
-    // setup jobs
-    log::trace!("setup jobs");
-    {
-        let storage = app.state::<Storage>();
-        let storage = (*storage).clone();
-        log_err!(crate::core::tasks::setup(app, storage));
     }
 
     // test job

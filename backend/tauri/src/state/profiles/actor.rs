@@ -1,7 +1,7 @@
 //! ProfilesActor: single owner of the profiles document.
 //! Tauri-free; every filesystem/network effect goes through the ports.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc};
 
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
@@ -34,19 +34,15 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     error::*,
+    jobs::{ProfileJobs, ProfileSyncContext},
     ports::{
         MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
         ProfileDegradation, ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
         ProfileMaterializationPort, SubscriptionFetcher,
     },
-    scheduler::{ExternalWatchers, RemoteUpdateScheduler},
+    scheduler::ExternalWatchers,
     sources::{SourceLedger, SourceOrigin, SourceOutcome, SourcesSnapshot},
 };
-
-/// Actor-owned recovery pass over durable materialization/cleanup journals.
-/// Background work only casts [`ProfilesActorMessage::ReconcileMaterializations`];
-/// the actor performs the blocking reconcile under message serialization.
-const MATERIALIZATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -81,6 +77,7 @@ pub struct ProfilesActorArgs {
     pub fetcher: Arc<dyn SubscriptionFetcher>,
     pub(crate) materialization: Arc<dyn ProfileMaterializationPort>,
     pub(crate) sources: watch::Sender<SourcesSnapshot>,
+    pub(crate) jobs: ProfileJobs,
     /// Once cancelled, every write and every producer is refused.
     pub shutdown: CancellationToken,
 }
@@ -97,10 +94,9 @@ pub struct ProfilesActorState {
     pending_imports: HashMap<ImportOperationToken, PendingImport>,
     next_import_token: u64,
     gate: ProducerGate,
-    scheduler: RemoteUpdateScheduler,
+    jobs: ProfileJobs,
+    jobs_revision: u64,
     external_watchers: ExternalWatchers,
-    /// Periodic journal recovery. Background task only casts; actor owns work.
-    reconcile_task: Option<JoinHandle<()>>,
     sources: SourceLedger,
     shutdown: CancellationToken,
 }
@@ -127,6 +123,7 @@ impl RefreshAttemptToken {
 }
 
 struct PendingRefresh {
+    context: Option<nyanpasu_jobs::JobContext>,
     token: RefreshAttemptToken,
     origin: RefreshOrigin,
     reply: Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>,
@@ -255,6 +252,12 @@ pub enum ProfilesActorMessage {
         patch: RemoteProfileOptionsPatch,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
+    SyncRemote {
+        uid: ProfileId,
+        patch: Option<RemoteProfileOptionsPatch>,
+        context: ProfileSyncContext,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
     RefreshRemote {
         uid: ProfileId,
         patch: Option<RemoteProfileOptionsPatch>,
@@ -300,6 +303,7 @@ pub enum ProfilesActorMessage {
     /// Arms the refresh scheduler (with catch-up), the external watchers and
     /// the materialization ticker. Only the first one after Held counts.
     StartProducers,
+    RunMaterializationReconcile(RpcReplyPort<Result<(), ProfilesError>>),
 }
 
 impl ProfilesActorMessage {
@@ -322,7 +326,13 @@ impl ProfilesActorMessage {
             | Self::ReplaceDefinition { reply, .. } => {
                 let _ = reply.send(Err(ProfilesError::ShuttingDown));
             }
+            Self::RunMaterializationReconcile(reply) => {
+                let _ = reply.send(Err(ProfilesError::ShuttingDown));
+            }
             Self::SetCurrentIfNone { reply, .. } => {
+                let _ = reply.send(Err(ProfilesError::ShuttingDown));
+            }
+            Self::SyncRemote { reply, .. } => {
                 let _ = reply.send(Err(ProfilesError::ShuttingDown));
             }
             Self::RefreshRemote { reply, .. } => {
@@ -492,44 +502,42 @@ impl ProfilesActor {
         }
     }
 
-    fn reconcile_committed(
+    async fn reconcile_committed(
         myself: &ActorRef<ProfilesActorMessage>,
         state: &mut ProfilesActorState,
         snapshot: &Profiles,
     ) {
         state.index = ProfileDependencyIndex::build(snapshot);
         state.sources.reconcile(snapshot);
+        state.jobs_revision += 1;
+        if let Err(error) = state
+            .jobs
+            .reconcile(
+                snapshot,
+                myself,
+                state.jobs_revision,
+                state.gate == ProducerGate::Running,
+            )
+            .await
+        {
+            tracing::error!(%error, "failed to reconcile profile jobs");
+        }
         if state.gate == ProducerGate::Running {
-            state.scheduler.reconcile(snapshot, myself, false);
             state.external_watchers.reconcile(snapshot, myself);
         }
     }
 
-    fn start_producers(myself: &ActorRef<ProfilesActorMessage>, state: &mut ProfilesActorState) {
+    async fn start_producers(
+        myself: &ActorRef<ProfilesActorMessage>,
+        state: &mut ProfilesActorState,
+    ) {
         if state.gate != ProducerGate::Held {
             return;
         }
         state.gate = ProducerGate::Running;
         let snapshot = Self::current_state(state);
-        state.scheduler.reconcile(&snapshot, myself, true);
-        state.external_watchers.reconcile(&snapshot, myself);
-
-        let actor = myself.clone();
-        state.reconcile_task = Some(tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(MATERIALIZATION_RECONCILE_INTERVAL);
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            // Startup already reconciled in pre_start; skip the immediate first tick.
-            ticker.tick().await;
-            loop {
-                ticker.tick().await;
-                if actor
-                    .cast(ProfilesActorMessage::ReconcileMaterializations)
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        }));
+        Self::reconcile_committed(myself, state, &snapshot).await;
+        state.jobs.catch_up(&snapshot).await;
     }
 
     /// Downloads and validates on a task the pending entry owns; the file is
@@ -540,16 +548,19 @@ impl ProfilesActor {
         url: url::Url,
         option: RemoteProfileOptions,
         definition: ProfileDefinition,
+        context: Option<nyanpasu_jobs::JobContext>,
         settle: impl FnOnce(RefreshOutcome) + Send + 'static,
     ) -> JoinHandle<()> {
-        tokio::spawn(async move {
+        let download = async move {
             let fetch = async {
+                tracing::info!(target: "nyanpasu::profile_sync", stage = "download", "Downloading profile");
                 let fetched = fetcher
                     .fetch(&url, &option)
                     .await
                     .context(FetchSubscriptionSnafu { url: url.clone() })?;
                 Self::validate_fetched_content(&definition, &fetched.content)
                     .context(ProfileContentRejectedSnafu)?;
+                tracing::info!(target: "nyanpasu::profile_sync", stage = "validated", "Profile content validated");
                 Ok::<_, ProfilesError>(fetched)
             };
             let outcome = match fetch.await {
@@ -562,7 +573,13 @@ impl ProfilesActor {
                 Err(error) => RefreshOutcome::Failed { error },
             };
             settle(outcome);
-        })
+        };
+        match context {
+            Some(context) => context
+                .spawn(download)
+                .expect("the running sync owns an open child scope"),
+            None => tokio::spawn(download),
+        }
     }
 
     fn record_source(
@@ -771,7 +788,7 @@ impl ProfilesActor {
         let (snapshot, (receipt, runtime_degradations)) =
             Self::persist_candidate(state, expected_version, &before, candidate, hints, class)
                 .await?;
-        Self::reconcile_committed(myself, state, &snapshot);
+        Self::reconcile_committed(myself, state, &snapshot).await;
         Ok(CommitReport {
             snapshot,
             degradations: Vec::new(),
@@ -1238,7 +1255,7 @@ impl ProfilesActor {
             settlement,
         );
         let snapshot = Arc::new(candidate);
-        Self::reconcile_committed(myself, state, &snapshot);
+        Self::reconcile_committed(myself, state, &snapshot).await;
         let mut degradations = Vec::new();
         if let Some(prepared) = prepared {
             if let Err(error) =
@@ -1465,7 +1482,7 @@ impl Actor for ProfilesActor {
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self::Msg>,
+        myself: ActorRef<Self::Msg>,
         args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         // Startup recovery must finish before mutations are admitted; the
@@ -1488,6 +1505,14 @@ impl Actor for ProfilesActor {
             })?;
         Self::log_reconcile_report(&report);
 
+        args.jobs
+            .reconcile(
+                &args.manager.snapshot_handle().load().state,
+                &myself,
+                1,
+                false,
+            )
+            .await?;
         let index = ProfileDependencyIndex::build(&args.manager.snapshot_handle().load().state);
         Ok(ProfilesActorState {
             mutations: args.mutations,
@@ -1501,9 +1526,9 @@ impl Actor for ProfilesActor {
             pending_imports: HashMap::new(),
             next_import_token: 1,
             gate: ProducerGate::Held,
-            scheduler: RemoteUpdateScheduler::default(),
+            jobs: args.jobs,
+            jobs_revision: 1,
             external_watchers: ExternalWatchers::default(),
-            reconcile_task: None,
             sources: SourceLedger::new(args.sources),
             shutdown: args.shutdown,
         })
@@ -1519,7 +1544,32 @@ impl Actor for ProfilesActor {
             message.refuse();
             return Ok(());
         }
+        let (message, job_context) = match message {
+            ProfilesActorMessage::SyncRemote {
+                uid,
+                patch,
+                context,
+                reply,
+            } => {
+                let origin = if context.0.trigger == nyanpasu_jobs::Trigger::Manual {
+                    RefreshOrigin::Manual
+                } else {
+                    RefreshOrigin::Scheduled
+                };
+                (
+                    ProfilesActorMessage::RefreshRemote {
+                        uid,
+                        patch,
+                        origin,
+                        reply: Some(reply),
+                    },
+                    Some(context.0),
+                )
+            }
+            message => (message, None),
+        };
         match message {
+            ProfilesActorMessage::SyncRemote { .. } => unreachable!(),
             ProfilesActorMessage::SaveFile {
                 uid,
                 content,
@@ -1872,6 +1922,7 @@ impl Actor for ProfilesActor {
                     url,
                     option,
                     definition,
+                    job_context.clone(),
                     move |outcome| {
                         let _ = actor.cast(ProfilesActorMessage::CommitRefreshed {
                             uid: settle_uid,
@@ -1885,6 +1936,7 @@ impl Actor for ProfilesActor {
                 state.pending_refresh.insert(
                     uid,
                     PendingRefresh {
+                        context: job_context,
                         token,
                         origin,
                         reply,
@@ -1912,15 +1964,18 @@ impl Actor for ProfilesActor {
                 let Some(pending) = state.pending_refresh.remove(&uid) else {
                     return Ok(());
                 };
-                let conclusion = Self::conclude_refresh(
+                let conclude = Self::conclude_refresh(
                     &myself,
                     state,
                     &uid,
                     url,
                     definition_fingerprint,
                     outcome,
-                )
-                .await;
+                );
+                let conclusion = match &pending.context {
+                    Some(context) => context.instrument(conclude).await,
+                    None => conclude.await,
+                };
                 let (outcome, result) = match conclusion {
                     RefreshConclusion::Committed(report) => (
                         SourceOutcome::Committed {
@@ -1989,6 +2044,7 @@ impl Actor for ProfilesActor {
                     url.clone(),
                     option.clone(),
                     definition_for_validation,
+                    None,
                     move |outcome| {
                         let _ = actor.cast(ProfilesActorMessage::CommitImported { token, outcome });
                     },
@@ -2258,7 +2314,13 @@ impl Actor for ProfilesActor {
                     }
                 }
             }
-            ProfilesActorMessage::StartProducers => Self::start_producers(&myself, state),
+            ProfilesActorMessage::RunMaterializationReconcile(reply) => {
+                let result = Self::reconcile_materializations(state)
+                    .await
+                    .map(|report| Self::log_reconcile_report(&report));
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::StartProducers => Self::start_producers(&myself, state).await,
         }
         Ok(())
     }
@@ -2268,10 +2330,6 @@ impl Actor for ProfilesActor {
         _myself: ActorRef<Self::Msg>,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        if let Some(handle) = state.reconcile_task.take() {
-            handle.abort();
-        }
-        state.scheduler.shutdown();
         state.external_watchers.shutdown();
         // The downloads are cut short and awaited, so none outlives the actor;
         // their callers learn that the application is shutting down.

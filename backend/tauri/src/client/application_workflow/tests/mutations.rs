@@ -363,6 +363,7 @@ pub(super) async fn fixture_from(
     let notifications = Arc::new(RecordingNotifications::default());
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
+            jobs: crate::client::jobs::test_client().await,
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
@@ -1151,6 +1152,7 @@ async fn confirm_and_cancel_each_hand_the_effects_owner_the_runtime_slice() {
 /// cancelled back to the baseline. The clock is virtual, so nothing sleeps.
 #[tokio::test(start_paused = true)]
 async fn a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt() {
+    let _clock = crate::client::jobs::explicit_test_time();
     for commit in [true, false] {
         let mut f = fixture().await;
         let (primed, result) = simple_mutate(

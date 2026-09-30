@@ -6,7 +6,8 @@ repository.workspace = true
 license.workspace = true
 
 [features]
-default = []
+default = ["redb-store"]
+redb-store = ["dep:redb"]
 specta = ["dep:specta"]
 test-support = []
 
@@ -19,6 +20,9 @@ serde_json = "1"
 sha2 = "0.10"
 thiserror.workspace = true
 specta = { version = "^2.0.0-rc.25", features = ["derive", "serde_json"], optional = true }
+
+tokio = { version = "1", features = ["rt", "sync"] }
+redb = { version = "4.2", optional = true }
 
 [dev-dependencies]
 nyanpasu-traffic = { path = ".", default-features = false, features = ["test-support"] }

@@ -41,7 +41,13 @@ separate small PR; service and service IPC must remain free of traffic changes.
 The domain slice passed `cargo test -p nyanpasu-traffic --all-features` (9 tests)
 and `cargo fmt -p nyanpasu-traffic -- --check` in its independent publishing
 worktree. Only models, pure computations, ports and fake-storage contracts are
-included in this slice; storage and application integration are still pending.
+included in this slice; application integration is still pending.
+The redb slice passed the same all-features command (19 tests: 1 panic
+propagation, 9 domain and 9 durable storage), plus `cargo check --all-features
+--locked` and format verification. Its lock change adds only the existing redb
+dependency to the traffic package. The domain lock also reconciles the existing
+runtime gitlink's jobs version metadata; no registry package was reselected.
+
 The repository hook requires a complete frontend installation, so commits use a
 task-local empty hooks directory after these manual Rust checks.
 

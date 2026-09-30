@@ -7,7 +7,7 @@
       "sh": "환경 변수 복사 (sh)"
     },
     "no_proxies": "프록시 없음",
-    "select_proxies": "프록시 선택",
+    "select_proxy": "프록시 선택",
     "dashboard": "대시보드",
     "direct_mode": "다이렉트 모드",
     "global_mode": "글로벌 모드",
@@ -24,8 +24,8 @@
       "log_dir": "로그 디렉터리"
     },
     "proxy_action": {
-      "on": "켜짐",
-      "off": "꺼짐"
+      "enabled": "켜짐",
+      "disabled": "꺼짐"
     },
     "quit": "종료",
     "rule_mode": "규칙 모드",

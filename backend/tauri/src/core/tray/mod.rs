@@ -473,8 +473,8 @@ impl Tray {
 
         let switch_map = {
             let mut map = std::collections::HashMap::new();
-            map.insert(true, t!("tray.proxy_action.on"));
-            map.insert(false, t!("tray.proxy_action.off"));
+            map.insert(true, t!("tray.proxy_action.enabled"));
+            map.insert(false, t!("tray.proxy_action.disabled"));
             map
         };
 

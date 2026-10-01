@@ -5,10 +5,11 @@ import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeleteSweepRounded from '~icons/material-symbols/delete-sweep-rounded'
 import SearchRounded from '~icons/material-symbols/search-rounded'
 import VerticalAlignBottomRounded from '~icons/material-symbols/vertical-align-bottom-rounded'
-import { useId, useState, type ReactNode } from 'react'
-import { Button } from '@/components/ui/button'
+import { memo, useId, useState, type ReactNode } from 'react'
+import { Button, buttonVariants } from '@/components/ui/button'
 import HighlightText from '@/components/ui/highlight-text'
 import { m } from '@/paraglide/messages'
+import { cn } from '@nyanpasu/utils'
 import LogJson from './log-json'
 import LogLevelBadge from './log-level-badge'
 
@@ -108,7 +109,15 @@ export function LogFollowButton({
   )
 }
 
-export function LogRecord({
+// Every visible row has two action buttons. The shared Button keeps ripple
+// state and motion per instance, which outweighs the rest of a row, so rows
+// use plain buttons with the same look.
+const rowActionClass = cn(
+  buttonVariants({ icon: true }),
+  'focus-visible:ring-primary shrink-0 focus-visible:ring-2',
+)
+
+export const LogRecord = memo(function LogRecord({
   time,
   timeTitle,
   level,
@@ -124,7 +133,8 @@ export function LogRecord({
   level: string
   target?: string
   message: string
-  raw: string
+  /** The raw text, or a record to show as JSON when copied or inspected. */
+  raw: unknown
   search: string
   incomplete?: boolean
   onInspect: () => void
@@ -133,6 +143,8 @@ export function LogRecord({
   const jsonId = useId()
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
+  const rawText = () =>
+    typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2)
   return (
     <article className="group/log-record border-outline-variant/50 hover:bg-on-surface/4 focus-within:bg-on-surface/4 border-b px-3 py-2 text-sm transition-colors sm:px-4">
       <div className="text-on-surface-variant flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1">
@@ -146,13 +158,13 @@ export function LogRecord({
           </span>
         )}
         <div className="ml-auto flex shrink-0 opacity-0 transition-opacity group-focus-within/log-record:opacity-100 group-hover/log-record:opacity-100 [@media(hover:none)]:opacity-100">
-          <Button
-            icon
-            className="focus-visible:ring-primary shrink-0 focus-visible:ring-2"
+          <button
+            type="button"
+            className={rowActionClass}
             aria-label={copied ? m.logs_copied() : m.logs_copy()}
             title={copied ? m.logs_copied() : m.logs_copy()}
             onClick={() =>
-              navigator.clipboard.writeText(raw).then(
+              navigator.clipboard.writeText(rawText()).then(
                 () => {
                   setCopied(true)
                   setCopyError(false)
@@ -166,21 +178,21 @@ export function LogRecord({
             ) : (
               <ContentCopyRounded aria-hidden className="size-4" />
             )}
-          </Button>
-          <Button
-            icon
+          </button>
+          <button
+            type="button"
             aria-label={m.logs_view_json()}
             title={m.logs_view_json()}
             aria-expanded={showJson}
             aria-controls={jsonId}
-            className="focus-visible:ring-primary shrink-0 focus-visible:ring-2"
+            className={rowActionClass}
             onClick={() => {
               if (!showJson) onInspect()
               setShowJson(!showJson)
             }}
           >
             <DataObjectRounded aria-hidden className="size-4" />
-          </Button>
+          </button>
         </div>
       </div>
       <div className="text-on-surface font-mono leading-relaxed [overflow-wrap:anywhere] break-words whitespace-pre-wrap">
@@ -196,7 +208,7 @@ export function LogRecord({
       )}
       {showJson && (
         <div id={jsonId} role="region" aria-label={m.logs_view_json()}>
-          <LogJson raw={raw} />
+          <LogJson raw={rawText()} />
         </div>
       )}
       {copyError && (
@@ -206,4 +218,4 @@ export function LogRecord({
       )}
     </article>
   )
-}
+})

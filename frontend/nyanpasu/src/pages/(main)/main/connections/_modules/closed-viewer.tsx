@@ -11,6 +11,7 @@ import {
 import {
   ChainCell,
   RelativeTimeCell,
+  RowsTickContext,
   RuleCell,
   TextCell,
   TrafficCell,
@@ -98,6 +99,8 @@ const ClosedViewer = memo(function ClosedViewer({
     () => (detailRow === null ? undefined : closedConnectionDetail(detailRow)),
     [detailRow],
   )
+
+  const closeDetail = useCallback(() => setDetailRow(null), [])
 
   const renderRow = useCallback(
     (row: ClosedConnection, props: RowProps) => (
@@ -264,10 +267,9 @@ const ClosedViewer = memo(function ClosedViewer({
         onSettingsOpenChange={onSettingsOpenChange}
       />
 
-      <ConnectionDetailModal
-        detail={detail}
-        onClose={() => setDetailRow(null)}
-      />
+      <RowsTickContext.Provider value={data}>
+        <ConnectionDetailModal detail={detail} onClose={closeDetail} />
+      </RowsTickContext.Provider>
     </>
   )
 })

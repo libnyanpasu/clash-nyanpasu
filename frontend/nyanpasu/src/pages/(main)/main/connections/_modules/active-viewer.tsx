@@ -19,6 +19,7 @@ import {
 import {
   ChainCell,
   RelativeTimeCell,
+  RowsTickContext,
   RuleCell,
   TextCell,
   TrafficCell,
@@ -153,6 +154,16 @@ const ActiveViewer = memo(function ActiveViewer({
   const detail = useMemo(
     () => detailRow && activeConnectionDetail(detailRow, detailRow !== liveRow),
     [detailRow, liveRow],
+  )
+
+  const closeDetail = useCallback(() => setDetailId(null), [])
+
+  const closeDetailConnection = useMemo(
+    () =>
+      detailId === null
+        ? undefined
+        : () => deleteConnectionsRef.current(detailId),
+    [detailId],
   )
 
   const columns = useMemo(
@@ -322,15 +333,13 @@ const ActiveViewer = memo(function ActiveViewer({
         onSettingsOpenChange={onSettingsOpenChange}
       />
 
-      <ConnectionDetailModal
-        detail={detail}
-        onClose={() => setDetailId(null)}
-        onCloseConnection={
-          detailId === null
-            ? undefined
-            : () => deleteConnections.mutateAsync(detailId)
-        }
-      />
+      <RowsTickContext.Provider value={connections}>
+        <ConnectionDetailModal
+          detail={detail}
+          onClose={closeDetail}
+          onCloseConnection={closeDetailConnection}
+        />
+      </RowsTickContext.Provider>
     </>
   )
 })

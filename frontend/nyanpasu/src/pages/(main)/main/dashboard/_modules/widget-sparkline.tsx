@@ -3,7 +3,7 @@ import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
 import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import { filesize } from 'filesize'
-import { ComponentProps, ComponentType } from 'react'
+import { ComponentProps, ComponentType, ReactNode } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Sparkline } from '@/components/ui/sparkline'
 import TextMarquee from '@/components/ui/text-marquee'
@@ -31,13 +31,13 @@ function SparklineCard({
   minW = 2,
   maxW,
   maxH,
-  data,
+  chart,
   className,
   children,
   onCloseClick,
   ...props
 }: ComponentProps<typeof Card> & {
-  data: number[]
+  chart: ReactNode
 } & WidgetItemProps) {
   return (
     <WidgetItem
@@ -53,7 +53,7 @@ function SparklineCard({
         data-slot="widget-sparkline-card"
         {...props}
       >
-        <Sparkline data={data} className="absolute inset-0 z-0" />
+        {chart}
 
         <CardContent
           className="relative z-10 flex size-full flex-col justify-between"
@@ -112,20 +112,53 @@ function SparklineCardBottom({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
+// Samples arrive several times a second. Only these leaves read them, so a
+// sample re-renders the chart and the figures, not the widget around them.
+
+const chartClass = 'absolute inset-0 z-0'
+
+function TrafficChart({ direction }: { direction: 'up' | 'down' }) {
   const { data: clashTraffic } = useClashTraffic()
 
+  return (
+    <Sparkline
+      data={padData(
+        clashTraffic?.map((item) => item[direction]),
+        MAX_TRAFFIC_HISTORY,
+      )}
+      className={chartClass}
+    />
+  )
+}
+
+function TrafficRate({ direction }: { direction: 'up' | 'down' }) {
+  const { data: clashTraffic } = useClashTraffic()
+
+  return (
+    <>
+      {filesize(clashTraffic?.at(-1)?.[direction] ?? 0, { standard: 'iec' })}/s
+    </>
+  )
+}
+
+function TrafficTotal({ field }: { field: 'downloadTotal' | 'uploadTotal' }) {
   const { data: clashConnections } = useClashConnections()
 
-  const total = clashConnections?.at(-1)?.downloadTotal
+  const total = clashConnections?.at(-1)?.[field]
 
+  return (
+    total !== undefined &&
+    m.dashboard_widget_traffic_total({
+      value: filesize(total, { standard: 'iec' }),
+    })
+  )
+}
+
+export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
   return (
     <SparklineCard
       id={id}
-      data={padData(
-        clashTraffic?.map((item) => item.down),
-        MAX_TRAFFIC_HISTORY,
-      )}
+      chart={<TrafficChart direction="down" />}
       onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={ArrowDownwardRounded}>
@@ -133,33 +166,21 @@ export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        {filesize(clashTraffic?.at(-1)?.down ?? 0, { standard: 'iec' })}/s
+        <TrafficRate direction="down" />
       </SparklineCardContent>
 
       <SparklineCardBottom>
-        {total !== undefined &&
-          m.dashboard_widget_traffic_total({
-            value: filesize(total, { standard: 'iec' }),
-          })}
+        <TrafficTotal field="downloadTotal" />
       </SparklineCardBottom>
     </SparklineCard>
   )
 }
 
 export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
-  const { data: clashTraffic } = useClashTraffic()
-
-  const { data: clashConnections } = useClashConnections()
-
-  const total = clashConnections?.at(-1)?.uploadTotal
-
   return (
     <SparklineCard
       id={id}
-      data={padData(
-        clashTraffic?.map((item) => item.up),
-        MAX_TRAFFIC_HISTORY,
-      )}
+      chart={<TrafficChart direction="up" />}
       onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={ArrowUpwardRounded}>
@@ -167,29 +188,41 @@ export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        {filesize(clashTraffic?.at(-1)?.up ?? 0, { standard: 'iec' })}/s
+        <TrafficRate direction="up" />
       </SparklineCardContent>
 
       <SparklineCardBottom>
-        {total !== undefined &&
-          m.dashboard_widget_traffic_total({
-            value: filesize(total, { standard: 'iec' }),
-          })}
+        <TrafficTotal field="uploadTotal" />
       </SparklineCardBottom>
     </SparklineCard>
   )
 }
 
-export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
+function ConnectionsChart() {
   const { data: clashConnections } = useClashConnections()
 
   return (
-    <SparklineCard
-      id={id}
+    <Sparkline
       data={padData(
         clashConnections?.map((item) => item.connectionCount),
         MAX_CONNECTIONS_HISTORY,
       )}
+      className={chartClass}
+    />
+  )
+}
+
+function ConnectionsCount() {
+  const { data: clashConnections } = useClashConnections()
+
+  return <>{clashConnections?.at(-1)?.connectionCount ?? 0}</>
+}
+
+export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
+  return (
+    <SparklineCard
+      id={id}
+      chart={<ConnectionsChart />}
       onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={SettingsEthernetRounded}>
@@ -197,7 +230,7 @@ export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        {clashConnections?.at(-1)?.connectionCount ?? 0}
+        <ConnectionsCount />
       </SparklineCardContent>
 
       <SparklineCardBottom />
@@ -205,24 +238,35 @@ export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
   )
 }
 
-export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
+function MemoryChart() {
   const { data: clashMemory } = useClashMemory()
 
   return (
-    <SparklineCard
-      id={id}
+    <Sparkline
       data={padData(
         clashMemory?.map((item) => item.inuse),
         MAX_MEMORY_HISTORY,
       )}
-      onCloseClick={onCloseClick}
-    >
+      className={chartClass}
+    />
+  )
+}
+
+function MemoryInUse() {
+  const { data: clashMemory } = useClashMemory()
+
+  return <>{filesize(clashMemory?.at(-1)?.inuse ?? 0, { standard: 'iec' })}</>
+}
+
+export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
+  return (
+    <SparklineCard id={id} chart={<MemoryChart />} onCloseClick={onCloseClick}>
       <SparklineCardTitle icon={MemoryOutlineRounded}>
         {m.dashboard_widget_memory()}
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        {filesize(clashMemory?.at(-1)?.inuse ?? 0, { standard: 'iec' })}
+        <MemoryInUse />
       </SparklineCardContent>
 
       <SparklineCardBottom />

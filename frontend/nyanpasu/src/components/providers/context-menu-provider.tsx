@@ -14,6 +14,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -118,10 +119,10 @@ export function RegisterContextMenu({ children }: PropsWithChildren) {
     [registerElement, unregisterElement, getChildren],
   )
 
+  const value = useMemo(() => ({ childrenRef, setTriggerEl }), [setTriggerEl])
+
   return (
-    <RegisterContextMenuInternalCtx.Provider
-      value={{ childrenRef, setTriggerEl }}
-    >
+    <RegisterContextMenuInternalCtx.Provider value={value}>
       {children}
     </RegisterContextMenuInternalCtx.Provider>
   )
@@ -182,13 +183,15 @@ export function RegisterContextMenuContent({ children }: PropsWithChildren) {
 
   useEffect(() => {
     // Also set in the effect body so that React StrictMode's cleanup+re-invoke
-    // cycle restores the value after the cleanup sets it to null.
+    // cycle restores the value after the cleanup sets it to null. Later
+    // renders update it above, so it runs on mount and unmount only.
     childrenRef.current = children
 
     return () => {
       childrenRef.current = null
     }
-  })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [childrenRef])
 
   return null
 }

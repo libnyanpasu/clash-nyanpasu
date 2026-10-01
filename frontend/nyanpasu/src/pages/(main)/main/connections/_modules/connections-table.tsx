@@ -1,7 +1,7 @@
 import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
 import BoxOutlineRounded from '~icons/material-symbols/box-outline-rounded'
 import {
-  Fragment,
+  memo,
   useEffect,
   useMemo,
   useState,
@@ -21,13 +21,16 @@ import {
   rowSortingFeature,
   tableFeatures,
   useTable,
+  type Column,
   type ColumnDef,
   type ColumnSizingState,
+  type Row,
   type RowData,
   type Updater,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useLocalStorage } from '@uidotdev/usehooks'
+import { RowsTickContext } from './cells'
 import { useColumnSettings } from './column-settings'
 import ColumnSettingsModal from './column-settings-modal'
 
@@ -55,7 +58,11 @@ export type ConnectionColumn<TRow extends RowData> = ColumnDef<
   header: () => string
 }
 
-type RowProps = ComponentProps<'tr'>
+export type RowProps = ComponentProps<'tr'>
+
+type RenderRow<TRow> = (row: TRow, props: RowProps) => ReactNode
+
+const renderPlainRow = (_: unknown, props: RowProps) => <tr {...props} />
 
 const COLUMN_SIZING_STORAGE_KEY = 'connections-column-sizing-v2'
 
@@ -65,12 +72,71 @@ const ROW_HEIGHT = 36
 // Rows closer than this to the end load the next page.
 const END_REACHED_THRESHOLD = 20
 
+const sameItems = <T,>(a: readonly T[], b: readonly T[]) =>
+  a.length === b.length && a.every((item, index) => item === b[index])
+
+type BodyRowProps<TRow extends RowData> = {
+  row: Row<typeof features, TRow>
+  // Compared only: the visible columns, in order, and their widths.
+  columns: ReadonlyArray<Column<typeof features, TRow>>
+  widths: readonly number[]
+  offset: number
+  renderRow: RenderRow<TRow>
+  isRowEqual: (a: TRow, b: TRow) => boolean
+}
+
+// A new sample replaces every row object, but most rows show the same values
+// as before, so a row re-renders only when `isRowEqual` tells its data apart
+// or the columns change.
+const BodyRow = memo(
+  function BodyRow<TRow extends RowData>({
+    row,
+    widths,
+    offset,
+    renderRow,
+  }: BodyRowProps<TRow>) {
+    return renderRow(row.original, {
+      className: cn(
+        'transition-colors',
+        'hover:bg-primary/5 active:bg-primary/10',
+      ),
+      style: {
+        height: `${ROW_HEIGHT}px`,
+        transform: `translateY(${offset}px)`,
+      },
+      children: row.getVisibleCells().map((cell, index) => (
+        <td
+          key={cell.id}
+          className={cn(
+            'border-outline-variant/25 h-9 max-w-0 truncate border-b px-3',
+            'text-on-surface-variant text-[13px]',
+            index === 0 && 'pl-4',
+            cell.column.columnDef.meta?.align === 'end' &&
+              'text-right tabular-nums',
+          )}
+          style={{ width: widths[index] }}
+        >
+          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        </td>
+      )),
+    })
+  },
+  (prev, next) =>
+    prev.offset === next.offset &&
+    prev.renderRow === next.renderRow &&
+    prev.isRowEqual === next.isRowEqual &&
+    sameItems(prev.columns, next.columns) &&
+    sameItems(prev.widths, next.widths) &&
+    next.isRowEqual(prev.row.original, next.row.original),
+) as <TRow extends RowData>(props: BodyRowProps<TRow>) => ReactNode
+
 export default function ConnectionsTable<TRow extends RowData>({
   settingsKey,
   columns,
   data,
   getRowId,
-  renderRow = (_, props) => <tr {...props} />,
+  renderRow = renderPlainRow,
+  isRowEqual = Object.is,
   emptyMessage,
   onEndReached,
   settingsOpen,
@@ -80,7 +146,9 @@ export default function ConnectionsTable<TRow extends RowData>({
   columns: Array<ConnectionColumn<TRow>>
   data: TRow[]
   getRowId: (row: TRow) => string
-  renderRow?: (row: TRow, props: RowProps) => ReactNode
+  renderRow?: RenderRow<TRow>
+  // Whether a row from a new sample shows the same as the one it replaces.
+  isRowEqual?: (a: TRow, b: TRow) => boolean
   emptyMessage: string
   onEndReached?: () => void
   settingsOpen: boolean
@@ -173,13 +241,17 @@ export default function ConnectionsTable<TRow extends RowData>({
     }
   }, [viewportRef])
 
-  const visibleColumnCount = table.getVisibleLeafColumns().length
+  const visibleColumns = table.getVisibleLeafColumns()
+  const visibleColumnCount = visibleColumns.length
   const tableBaseWidth = table.getTotalSize()
   const extraWidthPerColumn =
     visibleColumnCount > 0 && viewportWidth > tableBaseWidth
       ? (viewportWidth - tableBaseWidth) / visibleColumnCount
       : 0
   const tableRenderWidth = Math.max(tableBaseWidth, viewportWidth)
+  const cellWidths = visibleColumns.map(
+    (column) => column.getSize() + extraWidthPerColumn,
+  )
 
   const settingsModal = (
     <ColumnSettingsModal
@@ -303,50 +375,27 @@ export default function ConnectionsTable<TRow extends RowData>({
           </thead>
 
           <tbody className="select-text" data-slot="connections-virtual-tbody">
-            {virtualItems.map((virtualRow, index) => {
-              const row = rows[virtualRow.index]
+            <RowsTickContext.Provider value={data}>
+              {virtualItems.map((virtualRow, index) => {
+                const row = rows[virtualRow.index]
 
-              if (!row) {
-                return null
-              }
+                if (!row) {
+                  return null
+                }
 
-              const offset = virtualRow.start - index * virtualRow.size
-
-              return (
-                <Fragment key={row.id}>
-                  {renderRow(row.original, {
-                    className: cn(
-                      'transition-colors',
-                      'hover:bg-primary/5 active:bg-primary/10',
-                    ),
-                    style: {
-                      height: `${virtualRow.size}px`,
-                      transform: `translateY(${offset}px)`,
-                    },
-                    children: row.getVisibleCells().map((cell, index) => (
-                      <td
-                        key={cell.id}
-                        className={cn(
-                          'border-outline-variant/25 h-9 max-w-0 truncate border-b px-3',
-                          'text-on-surface-variant text-[13px]',
-                          index === 0 && 'pl-4',
-                          cell.column.columnDef.meta?.align === 'end' &&
-                            'text-right tabular-nums',
-                        )}
-                        style={{
-                          width: cell.column.getSize() + extraWidthPerColumn,
-                        }}
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
-                    )),
-                  })}
-                </Fragment>
-              )
-            })}
+                return (
+                  <BodyRow
+                    key={row.id}
+                    row={row}
+                    columns={visibleColumns}
+                    widths={cellWidths}
+                    offset={virtualRow.start - index * virtualRow.size}
+                    renderRow={renderRow}
+                    isRowEqual={isRowEqual}
+                  />
+                )
+              })}
+            </RowsTickContext.Provider>
           </tbody>
         </table>
       </div>

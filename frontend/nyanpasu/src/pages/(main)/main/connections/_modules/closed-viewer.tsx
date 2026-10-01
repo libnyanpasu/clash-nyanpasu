@@ -8,8 +8,17 @@ import {
   useTrafficClosedConnections,
   type ClosedConnection,
 } from '@nyanpasu/interface'
-import { ChainCell, RuleCell, TextCell, TrafficCell } from './cells'
-import ConnectionsTable, { type ConnectionColumn } from './connections-table'
+import {
+  ChainCell,
+  RelativeTimeCell,
+  RuleCell,
+  TextCell,
+  TrafficCell,
+} from './cells'
+import ConnectionsTable, {
+  type ConnectionColumn,
+  type RowProps,
+} from './connections-table'
 import { mockClosedConnections } from './mock-connections'
 import TableRow, {
   closedConnectionDetail,
@@ -18,8 +27,6 @@ import TableRow, {
 
 // The traffic history keeps the process path; the table shows its name.
 const processName = (process: string) => process.split('/').pop() || process
-
-const formatTime = (ms: number) => dayjs(ms).format('YYYY-MM-DD HH:mm:ss')
 
 // Closed connections of the current traffic session. Memoized like the active
 // view, so a keystroke's urgent render skips the table.
@@ -64,6 +71,13 @@ const ClosedViewer = memo(function ClosedViewer({
   const detail = useMemo(
     () => (detailRow === null ? undefined : closedConnectionDetail(detailRow)),
     [detailRow],
+  )
+
+  const renderRow = useCallback(
+    (row: ClosedConnection, props: RowProps) => (
+      <TableRow {...props} onViewDetails={() => setDetailRow(row)} />
+    ),
+    [],
   )
 
   const handleEndReached = useCallback(() => {
@@ -163,9 +177,7 @@ const ClosedViewer = memo(function ClosedViewer({
             rowA.original.started_at - rowB.original.started_at,
           size: 110,
           cell: (info) => (
-            <span title={formatTime(info.row.original.started_at)}>
-              {dayjs(info.row.original.started_at).fromNow()}
-            </span>
+            <RelativeTimeCell ms={info.row.original.started_at} />
           ),
         },
         {
@@ -175,11 +187,7 @@ const ClosedViewer = memo(function ClosedViewer({
           sortFn: (rowA, rowB) =>
             rowA.original.closed_at - rowB.original.closed_at,
           size: 110,
-          cell: (info) => (
-            <span title={formatTime(info.row.original.closed_at)}>
-              {dayjs(info.row.original.closed_at).fromNow()}
-            </span>
-          ),
+          cell: (info) => <RelativeTimeCell ms={info.row.original.closed_at} />,
         },
         {
           id: 'Source',
@@ -217,9 +225,7 @@ const ClosedViewer = memo(function ClosedViewer({
         data={data}
         // The store keys closed connections by both: a new core reuses ids.
         getRowId={(row) => `${row.closed_at}:${row.id}`}
-        renderRow={(row, props) => (
-          <TableRow {...props} onViewDetails={() => setDetailRow(row)} />
-        )}
+        renderRow={renderRow}
         emptyMessage={
           error
             ? m.connections_closed_unavailable()

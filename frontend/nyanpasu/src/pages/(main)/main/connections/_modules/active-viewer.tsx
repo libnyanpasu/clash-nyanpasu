@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import { memo, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
@@ -9,8 +9,17 @@ import {
   useClashConnectionDetails,
   useDeleteClashConnections,
 } from '@nyanpasu/interface'
-import { ChainCell, RuleCell, TextCell, TrafficCell } from './cells'
-import ConnectionsTable, { type ConnectionColumn } from './connections-table'
+import {
+  ChainCell,
+  RelativeTimeCell,
+  RuleCell,
+  TextCell,
+  TrafficCell,
+} from './cells'
+import ConnectionsTable, {
+  type ConnectionColumn,
+  type RowProps,
+} from './connections-table'
 import { mockActiveConnections } from './mock-connections'
 import TableRow, {
   activeConnectionDetail,
@@ -22,6 +31,14 @@ export type ConnectionRow = ClashConnection_Serialize & {
   // parsing both dates in every comparison.
   startMs: number
 }
+
+// A connection's other fields are fixed for its life in the core, and its
+// relative time follows the table's tick, so only its traffic changes a row.
+const sameTraffic = (a: ConnectionRow, b: ConnectionRow) =>
+  a.download === b.download &&
+  a.upload === b.upload &&
+  a.downloadSpeed === b.downloadSpeed &&
+  a.uploadSpeed === b.uploadSpeed
 
 // Memoized so a keystroke's urgent render skips the table; it re-renders
 // with the deferred search term, or on its own stream and prop updates.
@@ -62,7 +79,23 @@ const ActiveViewer = memo(function ActiveViewer({
 
   const deleteConnections = useDeleteClashConnections()
 
+  // `mutateAsync` is a new function on every render; the row renderer stays
+  // the same and calls the latest one, so rows can skip re-rendering.
+  const deleteConnectionsRef = useRef(deleteConnections.mutateAsync)
+  deleteConnectionsRef.current = deleteConnections.mutateAsync
+
   const [detailId, setDetailId] = useState<string | null>(null)
+
+  const renderRow = useCallback(
+    (row: ConnectionRow, props: RowProps) => (
+      <TableRow
+        {...props}
+        onViewDetails={() => setDetailId(row.id)}
+        onCloseConnection={() => deleteConnectionsRef.current(row.id)}
+      />
+    ),
+    [],
+  )
 
   // Looked up unfiltered: a search or proxy filter hiding the row does not
   // close the connection.
@@ -197,15 +230,7 @@ const ActiveViewer = memo(function ActiveViewer({
           accessorFn: ({ start }) => dayjs(start).fromNow(),
           sortFn: (rowA, rowB) => rowA.original.startMs - rowB.original.startMs,
           size: 110,
-          cell: (info) => (
-            <span
-              title={dayjs(info.row.original.start).format(
-                'YYYY-MM-DD HH:mm:ss',
-              )}
-            >
-              {dayjs(info.row.original.start).fromNow()}
-            </span>
-          ),
+          cell: (info) => <RelativeTimeCell ms={info.row.original.startMs} />,
         },
         {
           id: 'Source',
@@ -257,13 +282,8 @@ const ActiveViewer = memo(function ActiveViewer({
         columns={columns}
         data={data}
         getRowId={(row) => row.id}
-        renderRow={(row, props) => (
-          <TableRow
-            {...props}
-            onViewDetails={() => setDetailId(row.id)}
-            onCloseConnection={() => deleteConnections.mutateAsync(row.id)}
-          />
-        )}
+        renderRow={renderRow}
+        isRowEqual={sameTraffic}
         emptyMessage={m.connections_empty_message()}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}

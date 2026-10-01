@@ -9,11 +9,10 @@ use crate::{core, ipc, unified_rpc, window};
 
 pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
-        .commands(collect_commands![
-            unified_rpc::call_rpc,
-            ipc::subscribe_clash_connection_details,
-            ipc::unsubscribe_clash_connection_details
-        ])
+        // The only direct Tauri command is the UnifiedRpc transport entrypoint.
+        // Application operations, including Channel subscription control, belong
+        // in the schema builder below and dispatch through call_rpc.
+        .commands(collect_commands![unified_rpc::call_rpc])
         .events(collect_events![
             core::clash::ws::ClashWsEvent,
             window::WindowMessageEvent,
@@ -92,6 +91,9 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::retry_configuration_runtime,
             ipc::retry_configuration_effect,
             ipc::set_release_channel,
+            // Creating/releasing a detail receiver changes stream demand.
+            ipc::subscribe_clash_connection_details,
+            ipc::unsubscribe_clash_connection_details,
             // Side-effecting commands
             ipc::open_log_session,
             ipc::query_logs,
@@ -212,18 +214,34 @@ fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result
     const REPLACEMENT: &str =
         "import { invokeRpcCommand as __RPC_INVOKE } from \"./command-transport\";";
 
+    const CHANNEL_ORIGINAL: &str =
+        "import { invoke as __TAURI_INVOKE, Channel } from \"@tauri-apps/api/core\";";
+    const CHANNEL_TYPE_IMPORT: &str = "import type { Channel } from \"@tauri-apps/api/core\";";
+
     let path = path.as_ref();
     let source = std::fs::read_to_string(path)?;
-    if source.matches(ORIGINAL).count() != 1 {
+    let original = if source.contains(CHANNEL_ORIGINAL) {
+        CHANNEL_ORIGINAL
+    } else {
+        ORIGINAL
+    };
+    if source.matches(original).count() != 1 {
         return Err(Error::new(
             ErrorKind::InvalidData,
             "tauri-specta invoke import changed; command transport was not installed",
         ));
     }
+    // Channel is only a desktop command argument type. Keeping its import
+    // erased makes the shared schema safe to load in a browser.
+    let replacement = if original == CHANNEL_ORIGINAL {
+        format!("{REPLACEMENT}\n{CHANNEL_TYPE_IMPORT}")
+    } else {
+        REPLACEMENT.to_owned()
+    };
     std::fs::write(
         path,
         source
-            .replacen(ORIGINAL, REPLACEMENT, 1)
+            .replacen(original, &replacement, 1)
             .replace("__TAURI_INVOKE", "__RPC_INVOKE"),
     )
 }
@@ -266,7 +284,12 @@ function makeEvent<T>(name: string, serialize?: (payload: T) => unknown, deseria
     let start = source.find(EVENT_IMPL_START).unwrap();
     let end = source.find(EVENT_IMPL_END).unwrap() + EVENT_IMPL_END.len();
     source.replace_range(start..end, RPC_EVENT_IMPL);
-    if source.contains("__TAURI_EVENT") || source.contains("@tauri-apps/api/") {
+    let runtime_source =
+        source.replace("import type { Channel } from \"@tauri-apps/api/core\";", "");
+    if runtime_source.contains("__TAURI_EVENT")
+        || runtime_source.contains("@tauri-apps/api/")
+        || runtime_source.contains("new Channel")
+    {
         return Err(Error::new(
             ErrorKind::InvalidData,
             "RPC event binding still references Tauri",
@@ -365,10 +388,18 @@ mod tests {
         assert!(!generated.contains("__TAURI_INVOKE"));
         let (_, queries) = generated.split_once("export const queries =").unwrap();
         let (queries, mutations) = queries.split_once("export const mutations =").unwrap();
+        assert!(!transport_generated.contains("subscribeClashConnectionDetails:"));
+        assert!(!transport_generated.contains("unsubscribeClashConnectionDetails:"));
+        assert!(!queries.contains("subscribeClashConnectionDetails:"));
+        assert!(!queries.contains("unsubscribeClashConnectionDetails:"));
+        assert!(mutations.contains("subscribeClashConnectionDetails:"));
+        assert!(mutations.contains("unsubscribeClashConnectionDetails:"));
         assert!(!queries.contains("setDebugHttpEnabled:"));
         assert!(mutations.contains("setDebugHttpEnabled:"));
         assert!(!generated.contains("__TAURI_EVENT"));
-        assert!(!generated.contains("@tauri-apps/api/"));
+        assert!(generated.contains("import type { Channel }"));
+        assert!(!generated.contains("import { Channel }"));
+        assert!(!generated.contains("new Channel"));
         // PR-3 T08: the profile IPC surface now speaks the domain types, so the
         // legacy `Profiles` / `RemoteProfileOptions` exports are retired. The
         // domain document/options types are asserted via their specta remote
@@ -599,13 +630,13 @@ mod tests {
         // strongly typed Connection with the two rate fields, and unknown
         // Mihomo fields are named (`_extra`) rather than flattened, so the
         // detail dialog can tell them apart from known fields (A0/A2).
-        let clash_connection = exported_type(&transport_generated, "ClashConnection_Serialize");
+        let clash_connection = exported_type(&generated, "ClashConnection_Serialize");
         assert_contains_all(
             clash_connection,
             "ClashConnection_Serialize",
             &["downloadSpeed", "uploadSpeed", "Connection_Serialize"],
         );
-        let connection = exported_type(&transport_generated, "Connection_Serialize");
+        let connection = exported_type(&generated, "Connection_Serialize");
         assert_contains_all(
             connection,
             "Connection_Serialize",

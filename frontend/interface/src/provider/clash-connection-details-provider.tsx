@@ -7,13 +7,13 @@ import {
   type PropsWithChildren,
 } from 'react'
 import { Channel, isTauri } from '@tauri-apps/api/core'
-import {
-  commands,
-  type ClashConnectionDetails_Deserialize,
-  type ClashConnectionDetails_Serialize,
-  type ClashConnectionsConnectorState,
-  type SubscriptionId,
-} from '../ipc/bindings'
+import { rpc } from '../ipc/rpc'
+import type {
+  ClashConnectionDetails_Deserialize,
+  ClashConnectionDetails_Serialize,
+  ClashConnectionsConnectorState,
+  SubscriptionId,
+} from '../ipc/rpc-bindings'
 
 // Registers one consumer and returns its unregister; only the 0→1 and 1→0
 // transitions of the resulting count (not every register/unregister) drive
@@ -130,13 +130,28 @@ export const ClashConnectionDetailsProvider = ({
     channel.onmessage = (data) => {
       if (!disposed) setFrame(data)
     }
+    const unsubscribe = (id: SubscriptionId) => {
+      rpc
+        .unsubscribeClashConnectionDetails(id)
+        .then((result) => {
+          if (result.status === 'error') {
+            console.error(
+              'failed to unsubscribe from connection details:',
+              result.error,
+            )
+          }
+        })
+        .catch((error: unknown) => {
+          console.error('failed to unsubscribe from connection details:', error)
+        })
+    }
 
     // tauri-specta types every command argument's phase as "Deserialize",
     // including a Channel's payload type, which is actually the direction
     // Rust *serializes* into (ClashConnection's `_extra` is a named field
     // only on that side). The cast documents the mismatch; `channel` is the
     // only thing actually sent across the boundary.
-    commands
+    rpc
       .subscribeClashConnectionDetails(
         channel as unknown as Channel<ClashConnectionDetails_Deserialize>,
       )
@@ -150,17 +165,20 @@ export const ClashConnectionDetailsProvider = ({
         }
         if (disposed) {
           // The last consumer unmounted before this resolved.
-          commands.unsubscribeClashConnectionDetails(result.data)
+          unsubscribe(result.data)
           return
         }
         subscriptionId = result.data
+      })
+      .catch((error: unknown) => {
+        console.error('failed to subscribe to connection details:', error)
       })
 
     return () => {
       disposed = true
       setFrame(null)
       if (subscriptionId !== undefined) {
-        commands.unsubscribeClashConnectionDetails(subscriptionId)
+        unsubscribe(subscriptionId)
       }
     }
   }, [hasSubscribers])

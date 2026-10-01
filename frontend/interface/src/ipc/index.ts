@@ -65,4 +65,4 @@ export type {
   Connection_Serialize,
   Connection_Deserialize,
   ConnectionMetadataFields_Serialize,
-} from './bindings'
+} from './rpc-bindings'

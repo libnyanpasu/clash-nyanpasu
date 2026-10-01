@@ -67,6 +67,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let mut http_args = Vec::new();
     let mut fields = Vec::new();
     let mut field_names = Vec::new();
+    let mut tauri_fields = Vec::new();
+    let mut tauri_field_names = Vec::new();
     let mut http_supported = options.http && can_share_with_http(original, options.owner);
     let mut tauri_supported = true;
 
@@ -110,13 +112,18 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             wrapper_args.push(quote!(#ident));
             http_supported = false;
         } else if is_tauri_channel(&argument.ty) {
-            wrapper_args.push(quote!(#ident));
+            // Decode the frontend descriptor, then bind it to the invoking webview.
+            // Channel commands remain unsupported over HTTP.
             http_supported = false;
-            tauri_supported = false;
+            wrapper_args.push(quote!(#ident));
+            tauri_fields.push(quote!(#ident: ::tauri::ipc::JavaScriptChannelId));
+            tauri_field_names.push(ident.clone());
         } else {
             let ty = argument.ty.clone();
             fields.push(quote!(#ident: #ty));
             field_names.push(ident.clone());
+            tauri_fields.push(quote!(#ident: #ty));
+            tauri_field_names.push(ident.clone());
             wrapper_args.push(quote!(#ident));
             http_args.push(quote!(#ident));
             if contains_reference(&argument.ty) {
@@ -192,6 +199,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 || is_context_type(&argument.ty, "WebviewWindow")
             {
                 tauri_args.push(quote!(webview.clone()));
+            } else if is_tauri_channel(&argument.ty) {
+                tauri_args.push(quote!(#ident.channel_on(webview.clone())));
             } else {
                 tauri_args.push(quote!(#ident));
             }
@@ -208,7 +217,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             generic_args,
         );
         let output = output_value(&tauri_call, &original.output, options.result);
-        let parser = parser(&fields, &field_names);
+        let parser = parser(&tauri_fields, &tauri_field_names);
         quote! {
             #(#cfg_attrs)*
             fn #tauri_handler(
@@ -455,6 +464,37 @@ mod tests {
     }
 
     #[test]
+    fn channel_parameters_are_rebuilt_for_desktop_but_unsupported_over_http() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http, owner)]
+            pub fn stream(window: tauri::Window, on_chunk: tauri::ipc::Channel<String>) -> Result<()> { todo!() }
+        };
+        let expanded = expand(command).unwrap().to_string();
+
+        assert!(expanded.contains("on_chunk : :: tauri :: ipc :: JavaScriptChannelId"));
+        assert!(expanded.contains("on_chunk . channel_on (webview . clone ())"));
+        assert!(expanded.contains("RpcOwner :: desktop (window . label ())"));
+        assert!(!expanded.contains("struct Args { window"));
+        assert!(expanded.contains("RpcError :: unsupported (stringify ! (stream))"));
+    }
+
+    #[test]
+    fn channel_parameter_json_parser_uses_camel_case_fields() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http)]
+            pub fn stream(on_chunk: tauri::ipc::Channel<String>, page_size: usize) -> Result<()> {
+                todo!()
+            }
+        };
+        let expanded = expand(command).unwrap().to_string();
+
+        assert!(expanded.contains("rename_all = \"camelCase\""));
+        assert!(expanded.contains("page_size : usize"));
+        assert!(expanded.contains("from_value (params)"));
+        assert!(expanded.contains("on_chunk : :: tauri :: ipc :: JavaScriptChannelId"));
+    }
+
+    #[test]
     fn http_requires_opt_in_and_accepts_only_lifetime_generics() {
         for (source, supported) in [
             (
@@ -520,6 +560,60 @@ mod tests {
                     .contains("RpcError :: unsupported"),
                 "Tauri command {name} was compiled into an unsupported dispatcher"
             );
+        }
+    }
+
+    #[test]
+    fn every_ipc_tauri_command_uses_unified_rpc() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../tauri/src/ipc.rs");
+        let source = std::fs::read_to_string(path).expect("failed to read IPC command source");
+        let file = syn::parse_file(&source).expect("failed to parse IPC command source");
+        let mut commands = Vec::new();
+        collect_tauri_commands(&file.items, &mut commands);
+        assert!(!commands.is_empty(), "expected Tauri commands in ipc.rs");
+
+        let plain_commands = commands
+            .into_iter()
+            .filter(|command| {
+                !command.attrs.iter().any(|attribute| {
+                    attribute
+                        .path()
+                        .segments
+                        .last()
+                        .is_some_and(|segment| segment.ident == "rpc")
+                })
+            })
+            .map(|command| command.sig.ident.to_string())
+            .collect::<Vec<_>>();
+
+        assert!(
+            plain_commands.is_empty(),
+            "Tauri application commands in ipc.rs must use #[nyanpasu_macro::rpc(...)]: {}",
+            plain_commands.join(", ")
+        );
+    }
+
+    fn collect_tauri_commands(items: &[Item], commands: &mut Vec<ItemFn>) {
+        for item in items {
+            match item {
+                Item::Fn(function)
+                    if function.attrs.iter().any(|attribute| {
+                        attribute
+                            .path()
+                            .segments
+                            .last()
+                            .is_some_and(|segment| segment.ident == "command")
+                    }) =>
+                {
+                    commands.push(function.clone())
+                }
+                Item::Mod(module) => {
+                    if let Some((_, nested)) = &module.content {
+                        collect_tauri_commands(nested, commands);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 

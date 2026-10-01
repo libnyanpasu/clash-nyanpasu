@@ -1416,10 +1416,13 @@ pub async fn clear_clash_ws_history(
     Ok(())
 }
 
+// Subscription control uses UnifiedRpc; only frame delivery is a native Channel.
+// HTTP consumers use the dedicated SSE adapter instead of a webview channel.
+#[nyanpasu_macro::rpc(owner)]
 #[tauri::command]
 #[specta::specta]
 pub async fn subscribe_clash_connection_details(
-    webview: tauri::Webview,
+    window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
     subscriptions: tauri::State<
         '_,
@@ -1429,7 +1432,7 @@ pub async fn subscribe_clash_connection_details(
 ) -> Result<crate::core::clash::connection_details::SubscriptionId> {
     let receiver = client.subscribe_clash_connection_details();
     let parent = client.shutdown_child_token();
-    let (id, cancel) = subscriptions.register(&parent, webview.label().to_string());
+    let (id, cancel) = subscriptions.register(&parent, window.label().to_string());
     client.spawn_tracked(
         &cancel,
         crate::core::clash::connection_details::forward_details(receiver, on_frame),
@@ -1437,16 +1440,18 @@ pub async fn subscribe_clash_connection_details(
     Ok(id)
 }
 
+#[nyanpasu_macro::rpc(owner)]
 #[tauri::command]
 #[specta::specta]
 pub fn unsubscribe_clash_connection_details(
+    window: tauri::Window,
     subscriptions: tauri::State<
         '_,
         crate::core::clash::connection_details::ConnectionDetailSubscriptions,
     >,
     id: crate::core::clash::connection_details::SubscriptionId,
 ) -> Result {
-    subscriptions.unsubscribe(id);
+    subscriptions.unsubscribe(id, window.label())?;
     Ok(())
 }
 

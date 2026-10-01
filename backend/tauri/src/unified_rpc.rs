@@ -310,6 +310,8 @@ fn connection_detail_events(
     })
 }
 
+// This is the transport entrypoint, not an application operation. All
+// application commands must use #[nyanpasu_macro::rpc] and its registry.
 #[tauri::command]
 #[specta::specta]
 pub async fn call_rpc(
@@ -438,6 +440,14 @@ mod tests {
         assert!(rpc.command_names().contains(&"get_debug_http_status"));
         assert!(rpc.command_names().contains(&"get_profiles"));
         assert!(rpc.command_names().contains(&"quit_application"));
+        assert!(
+            rpc.command_names()
+                .contains(&"subscribe_clash_connection_details")
+        );
+        assert!(
+            rpc.command_names()
+                .contains(&"unsubscribe_clash_connection_details")
+        );
         let app = rpc.router();
         tauri::async_runtime::block_on(async move {
             for (body, status, expected) in [
@@ -473,6 +483,16 @@ mod tests {
                 ),
                 (
                     r#"{"method":"quit_application","params":{}}"#,
+                    StatusCode::NOT_IMPLEMENTED,
+                    Some("unsupported"),
+                ),
+                (
+                    r#"{"method":"subscribe_clash_connection_details","params":{"onFrame":"__CHANNEL__:1"}}"#,
+                    StatusCode::NOT_IMPLEMENTED,
+                    Some("unsupported"),
+                ),
+                (
+                    r#"{"method":"unsubscribe_clash_connection_details","params":{"id":0}}"#,
                     StatusCode::NOT_IMPLEMENTED,
                     Some("unsupported"),
                 ),

@@ -1,5 +1,6 @@
-//! Tauri boundary for per-webview connection-detail subscriptions (design
-//! §3.4, `docs/superpowers/specs/2026-09-29-stream-proxies-payload`).
+//! Tauri delivery adapter for per-webview connection-detail subscriptions.
+//! Subscribe/unsubscribe are UnifiedRpc mutations; only frame delivery uses
+//! a native Channel. Browser delivery uses the dedicated SSE adapter.
 //! `StreamsActor` only publishes frames on a `watch` channel (see
 //! `ws::StreamsClient::subscribe_connection_details`); this module owns each
 //! subscription's lifetime, since `Channel::send` cannot detect a reloaded
@@ -63,10 +64,20 @@ impl ConnectionDetailSubscriptions {
         (id, cancel)
     }
 
-    pub fn unsubscribe(&self, id: SubscriptionId) {
-        if let Some(subscription) = self.inner.lock().unwrap().remove(&id) {
+    /// Only the invoking webview may release its subscription. Missing ids
+    /// are idempotent, but a foreign owner must not cancel a live receiver.
+    pub fn unsubscribe(&self, id: SubscriptionId, webview: &str) -> anyhow::Result<()> {
+        let mut subscriptions = self.inner.lock().unwrap();
+        if let Some(subscription) = subscriptions.get(&id) {
+            anyhow::ensure!(
+                subscription.webview == webview,
+                "connection detail subscription belongs to another webview"
+            );
+        }
+        if let Some(subscription) = subscriptions.remove(&id) {
             subscription.cancel.cancel();
         }
+        Ok(())
     }
 
     /// Ends every subscription owned by `webview`: called when that webview
@@ -176,9 +187,30 @@ mod tests {
         assert_eq!(sink_rx.recv().await, Some(1));
         assert_eq!(tx.receiver_count(), 1);
 
-        subscriptions.unsubscribe(id);
+        subscriptions.unsubscribe(id, "main").unwrap();
         task.await.unwrap();
         assert_eq!(tx.receiver_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn foreign_webview_cannot_unsubscribe_and_owner_can_retry_cleanup() {
+        let (tx, rx) = watch::channel(Some(details(1)));
+        let subscriptions = ConnectionDetailSubscriptions::new();
+        let root = CancellationToken::new();
+        let (id, cancel) = subscriptions.register(&root, "main".into());
+        let (sink_tx, mut sink_rx) = mpsc::unbounded_channel();
+        let task = spawn_forwarding(cancel.clone(), rx, RecordingSink(sink_tx));
+
+        assert_eq!(sink_rx.recv().await, Some(1));
+        assert!(subscriptions.unsubscribe(id, "tray").is_err());
+        assert!(!cancel.is_cancelled());
+        tx.send_replace(Some(details(2)));
+        assert_eq!(sink_rx.recv().await, Some(2));
+
+        subscriptions.unsubscribe(id, "main").unwrap();
+        task.await.unwrap();
+        assert_eq!(tx.receiver_count(), 0);
+        subscriptions.unsubscribe(id, "main").unwrap();
     }
 
     #[tokio::test]

@@ -9,7 +9,7 @@ import {
 import { render } from 'vitest-browser-react'
 import { Channel } from '@tauri-apps/api/core'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
-import type { ClashConnectionDetails_Serialize } from '../src/ipc/bindings'
+import type { ClashConnectionDetails_Serialize } from '../src/ipc/rpc-bindings'
 import {
   ClashConnectionDetailsFreezeBoundary,
   ClashConnectionDetailsProvider,
@@ -33,6 +33,34 @@ function nextIndex() {
   }
 }
 
+type RpcCall = { method: string; params: Record<string, unknown> }
+
+function mockRpcCalls(
+  handleCall: (method: string, params: Record<string, unknown>) => unknown,
+) {
+  mockIPC((cmd, args) => {
+    expect(cmd).toBe('call_rpc')
+    expect(Object.keys(args ?? {}).sort()).toEqual(['method', 'params'])
+    expect(args).toEqual(
+      expect.objectContaining({
+        method: expect.any(String),
+        params: expect.any(Object),
+      }),
+    )
+    const { method, params } = args as RpcCall
+    if (method === 'subscribe_clash_connection_details') {
+      const channel =
+        params.onFrame as Channel<ClashConnectionDetails_Serialize>
+      expect(channel).toBeInstanceOf(Channel)
+      expect(JSON.parse(JSON.stringify(args))).toEqual({
+        method,
+        params: { onFrame: `__CHANNEL__:${channel.id}` },
+      })
+    }
+    return handleCall(method, params)
+  })
+}
+
 // Resolves subscribe calls with sequential ids and captures each channel, so
 // a test can push a frame or assert a subscription ended.
 function mockSubscriptions() {
@@ -41,21 +69,27 @@ function mockSubscriptions() {
   const unsubscribed: number[] = []
   const index = nextIndex()
 
-  mockIPC((cmd, args) => {
-    if (cmd === 'subscribe_clash_connection_details') {
+  mockRpcCalls((method, params) => {
+    if (method === 'subscribe_clash_connection_details') {
+      expect(Object.keys(params)).toEqual(['onFrame'])
+      expect(params.onFrame).toBeInstanceOf(Channel)
+      expect(
+        typeof (params.onFrame as Channel<ClashConnectionDetails_Serialize>)
+          .onmessage,
+      ).toBe('function')
       const id = nextId++
       channels.set(
         id,
-        (args as { onFrame: Channel<ClashConnectionDetails_Serialize> })
-          .onFrame,
+        params.onFrame as Channel<ClashConnectionDetails_Serialize>,
       )
       return id
     }
-    if (cmd === 'unsubscribe_clash_connection_details') {
-      unsubscribed.push((args as { id: number }).id)
+    if (method === 'unsubscribe_clash_connection_details') {
+      expect(Object.keys(params)).toEqual(['id'])
+      unsubscribed.push(params.id as number)
       return null
     }
-    throw new Error(`Unexpected IPC command: ${cmd}`)
+    throw new Error(`Unexpected RPC method: ${method}`)
   })
 
   const send = (id: number, frame: ClashConnectionDetails_Serialize) => {
@@ -152,22 +186,24 @@ test('a consumer that unmounts before subscribe resolves still gets unsubscribed
   const channels = new Map<number, Channel<ClashConnectionDetails_Serialize>>()
   const unsubscribed: number[] = []
 
-  mockIPC((cmd, args) => {
-    if (cmd === 'subscribe_clash_connection_details') {
+  mockRpcCalls((method, params) => {
+    if (method === 'subscribe_clash_connection_details') {
+      expect(Object.keys(params)).toEqual(['onFrame'])
+      expect(params.onFrame).toBeInstanceOf(Channel)
       channels.set(
         0,
-        (args as { onFrame: Channel<ClashConnectionDetails_Serialize> })
-          .onFrame,
+        params.onFrame as Channel<ClashConnectionDetails_Serialize>,
       )
       return new Promise<number>((resolve) => {
         resolveSubscribe = resolve
       })
     }
-    if (cmd === 'unsubscribe_clash_connection_details') {
-      unsubscribed.push((args as { id: number }).id)
+    if (method === 'unsubscribe_clash_connection_details') {
+      expect(Object.keys(params)).toEqual(['id'])
+      unsubscribed.push(params.id as number)
       return null
     }
-    throw new Error(`Unexpected IPC command: ${cmd}`)
+    throw new Error(`Unexpected RPC method: ${method}`)
   })
 
   const screen = await render(
@@ -213,6 +249,91 @@ test('a frozen boundary keeps the frame it had when freezing started', async ({
   expect(renders.at(-1)).toEqual(details(1))
 
   await screen.rerender(tree(false))
+  await expect.poll(() => renders.at(-1)).toEqual(details(2))
+})
+
+test('a failed subscription reports the error and does not unsubscribe', async ({
+  onTestFinished,
+}) => {
+  const error = new Error('subscription failed')
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  mockRpcCalls((method, params) => {
+    expect(method).toBe('subscribe_clash_connection_details')
+    expect(Object.keys(params)).toEqual(['onFrame'])
+    expect(params.onFrame).toBeInstanceOf(Channel)
+    throw error
+  })
+
+  const screen = await render(
+    <ClashConnectionDetailsProvider connectorState="connected">
+      <Consumer onRender={() => {}} />
+    </ClashConnectionDetailsProvider>,
+  )
+  teardown(onTestFinished, screen)
+  onTestFinished(() => errorSpy.mockRestore())
+
+  await expect
+    .poll(() => errorSpy)
+    .toHaveBeenCalledWith('failed to subscribe to connection details:', error)
+})
+
+test('a rejected unsubscribe is reported without an unhandled rejection', async ({
+  onTestFinished,
+}) => {
+  const error = new Error('unsubscribe failed')
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  let subscribed = false
+  mockRpcCalls((method) => {
+    if (method === 'subscribe_clash_connection_details') {
+      subscribed = true
+      return 0
+    }
+    if (method === 'unsubscribe_clash_connection_details') throw error
+    throw new Error(`Unexpected RPC method: ${method}`)
+  })
+
+  const screen = await render(
+    <ClashConnectionDetailsProvider connectorState="connected">
+      <Consumer onRender={() => {}} />
+    </ClashConnectionDetailsProvider>,
+  )
+  teardown(onTestFinished, screen)
+  onTestFinished(() => errorSpy.mockRestore())
+
+  await expect.poll(() => subscribed).toBe(true)
+  await screen.unmount()
+  await expect
+    .poll(() => errorSpy)
+    .toHaveBeenCalledWith(
+      'failed to unsubscribe from connection details:',
+      error,
+    )
+})
+
+test('late frames from an unmounted provider do not reach a remounted provider', async ({
+  onTestFinished,
+}) => {
+  const { channels, send } = mockSubscriptions()
+  const renders: unknown[] = []
+  const tree = () => (
+    <ClashConnectionDetailsProvider connectorState="connected">
+      <Consumer onRender={(data) => renders.push(data)} />
+    </ClashConnectionDetailsProvider>
+  )
+
+  const first = await render(tree())
+  await expect.poll(() => channels.size).toBe(1)
+  await first.unmount()
+
+  const second = await render(tree())
+  teardown(onTestFinished, second)
+  await expect.poll(() => channels.size).toBe(2)
+
+  send(0, details(99))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(renders.at(-1)).toBe(null)
+
+  send(1, details(2))
   await expect.poll(() => renders.at(-1)).toEqual(details(2))
 })
 

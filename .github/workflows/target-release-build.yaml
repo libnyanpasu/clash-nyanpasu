@@ -58,6 +58,7 @@ jobs:
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: false
+    secrets: inherit
 
   telegram:
     name: Send Release Message to Telegram

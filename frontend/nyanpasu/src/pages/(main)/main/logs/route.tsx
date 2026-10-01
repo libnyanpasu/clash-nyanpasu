@@ -6,7 +6,7 @@ import InfoRounded from '~icons/material-symbols/info-rounded'
 import SearchRounded from '~icons/material-symbols/search-rounded'
 import StopCircleRounded from '~icons/material-symbols/stop-circle-rounded'
 import WarningRounded from '~icons/material-symbols/warning-rounded'
-import { ComponentProps, PropsWithChildren } from 'react'
+import { ComponentProps, memo, PropsWithChildren } from 'react'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import {
@@ -115,33 +115,40 @@ function RouteComponent() {
   return <Outlet />
 }
 
-export function LogLevelsLayout({ children }: PropsWithChildren) {
+// The sidebar holds its own open state, so the page above it can re-render
+// for every log without re-rendering the level buttons.
+const LogLevelsSidebar = memo(function LogLevelsSidebar() {
   return (
     <SidebarProvider defaultOpen={false}>
-      <div
-        className={cn(
-          'relative flex min-h-0 w-full flex-1 overflow-hidden',
-          'divide-outline-variant divide-x',
-        )}
-      >
-        <Sidebar className="divide-outline-variant z-10 flex flex-col divide-y">
-          <SidebarContent className="flex flex-1 flex-col gap-2">
-            <LogLevelButton>{m.logs_all_levels()}</LogLevelButton>
+      <Sidebar className="divide-outline-variant z-10 flex flex-col divide-y">
+        <SidebarContent className="flex flex-1 flex-col gap-2">
+          <LogLevelButton>{m.logs_all_levels()}</LogLevelButton>
 
-            {Object.values(LogLevel).map((item) => (
-              <LogLevelButton key={item} level={item}>
-                {item}
-              </LogLevelButton>
-            ))}
-          </SidebarContent>
+          {Object.values(LogLevel).map((item) => (
+            <LogLevelButton key={item} level={item}>
+              {item}
+            </LogLevelButton>
+          ))}
+        </SidebarContent>
 
-          <SidebarContent className="flex h-16 justify-end">
-            <SidebarToggleButton aria-label={m.logs_level_sidebar()} />
-          </SidebarContent>
-        </Sidebar>
-
-        {children}
-      </div>
+        <SidebarContent className="flex h-16 justify-end">
+          <SidebarToggleButton aria-label={m.logs_level_sidebar()} />
+        </SidebarContent>
+      </Sidebar>
     </SidebarProvider>
+  )
+})
+
+export function LogLevelsLayout({ children }: PropsWithChildren) {
+  return (
+    <div
+      className={cn(
+        'relative flex min-h-0 w-full flex-1 overflow-hidden',
+        'divide-outline-variant divide-x',
+      )}
+    >
+      <LogLevelsSidebar />
+      {children}
+    </div>
   )
 }

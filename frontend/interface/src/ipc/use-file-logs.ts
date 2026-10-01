@@ -31,6 +31,14 @@ const empty = (): View => ({
   more: false,
 })
 
+/** Whether two pages show the same status above the rows. */
+const sameStatus = (a: LogPage, b: LogPage) =>
+  a.partial === b.partial &&
+  a.malformed === b.malformed &&
+  a.truncated === b.truncated &&
+  a.indexed_bytes === b.indexed_bytes &&
+  a.file_bytes === b.file_bytes
+
 /** Mount once per Logs route/source. No global cache retains closed viewer sessions. */
 export function useFileLogs(
   source: LogSource,
@@ -123,15 +131,34 @@ export function useFileLogs(
           if (page.more) delay = 25
         }
         rows = mergeLogRows(rows, page.rows, floor, direction === 'before')
-        setView((value) => ({
-          ...value,
-          rows,
-          page,
-          loading: false,
-          loadingOlder: requestOlder,
-          error: null,
-          more: floor ? false : direction === 'after' ? value.more : page.more,
-        }))
+        setView((value) => {
+          const more = floor
+            ? false
+            : direction === 'after'
+              ? value.more
+              : page.more
+          // An idle tail poll brings a new page object and nothing to show;
+          // keeping the view spares the viewer a render every second.
+          if (
+            value.rows === rows &&
+            value.page &&
+            sameStatus(value.page, page) &&
+            !value.loading &&
+            value.loadingOlder === requestOlder &&
+            !value.error &&
+            value.more === more
+          )
+            return value
+          return {
+            ...value,
+            rows,
+            page,
+            loading: false,
+            loadingOlder: requestOlder,
+            error: null,
+            more,
+          }
+        })
       } catch (error) {
         if (disposed) return
         const kind =

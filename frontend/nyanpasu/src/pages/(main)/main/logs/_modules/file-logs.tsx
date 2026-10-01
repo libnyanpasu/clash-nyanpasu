@@ -1,5 +1,13 @@
 import FilterListRounded from '~icons/material-symbols/filter-list-rounded'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -321,6 +329,13 @@ function FileRows({
 }) {
   const { isBottom, scrollDirection, isTop } = useScrollArea()
   const { viewportRef } = useScrollAreaViewport()
+  // A page from IPC, or a tail poll, mounts and measures new rows; deferring
+  // the rows keeps that render from blocking scrolling and input. Everything
+  // indexing the virtual list reads this one array so the indexes agree.
+  const rows = useDeferredValue(logs.rows)
+  // Rows mount in a deferred render, so a remount for another file or
+  // filter commits at once instead of rendering the previous rows first.
+  const showRows = useDeferredValue(true, false)
   const lastId = useRef<string | undefined>(undefined)
   const anchor = useRef<{
     id: string
@@ -328,13 +343,13 @@ function FileRows({
     firstId: string | undefined
   } | null>(null)
   const virtualizer = useVirtualizer({
-    count: logs.rows.length,
+    count: rows.length,
     getScrollElement: () => viewportRef.current,
     estimateSize: () => 110,
     overscan: 5,
     useFlushSync: false,
     useAnimationFrameWithResizeObserver: true,
-    getItemKey: (index) => logs.rows[index]?.id ?? index,
+    getItemKey: (index) => rows[index]?.id ?? index,
   })
   const totalSize = virtualizer.getTotalSize()
   useEffect(() => {
@@ -348,40 +363,40 @@ function FileRows({
     const frame = requestAnimationFrame(() => {
       if (following) anchor.current = null
       if (anchor.current) {
-        if (logs.rows[0]?.id === anchor.current.firstId && logs.more) return
-        const index = logs.rows.findIndex(
-          (row) => row.id === anchor.current?.id,
-        )
+        if (rows[0]?.id === anchor.current.firstId && logs.more) return
+        const index = rows.findIndex((row) => row.id === anchor.current?.id)
         if (index >= 0) {
           const offset = virtualizer.getOffsetForIndex(index, 'start')
           if (offset)
             virtualizer.scrollToOffset(offset[0] + anchor.current.delta)
         }
         anchor.current = null
-      } else if (following && logs.rows.length) {
-        virtualizer.scrollToIndex(logs.rows.length - 1, { align: 'end' })
+      } else if (following && rows.length) {
+        virtualizer.scrollToIndex(rows.length - 1, { align: 'end' })
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [logs.rows, logs.more, following, virtualizer, totalSize])
+  }, [rows, logs.more, following, virtualizer, totalSize])
   useEffect(() => {
-    const latest = logs.rows.at(-1)?.id
+    const latest = rows.at(-1)?.id
     if (!following && latest && lastId.current && latest !== lastId.current) {
-      const previous = logs.rows.findIndex((row) => row.id === lastId.current)
+      const previous = rows.findIndex((row) => row.id === lastId.current)
       setUnseen(
-        (count) => count + (previous < 0 ? 1 : logs.rows.length - previous - 1),
+        (count) => count + (previous < 0 ? 1 : rows.length - previous - 1),
       )
     }
     lastId.current = latest
     if (following) setUnseen(0)
-  }, [logs.rows, following, setUnseen])
+  }, [rows, following, setUnseen])
   useEffect(() => {
     if (logs.loading || logs.loadingOlder || logs.error || !logs.more) return
+    // Judge the page by rows on screen, not ones still rendering.
+    if (rows !== logs.rows) return
     const viewport = viewportRef.current
     const fitsViewport =
       viewport && viewport.scrollHeight <= viewport.clientHeight
     if (
-      logs.rows.length &&
+      rows.length &&
       !fitsViewport &&
       (following || !isTop || (viewportRef.current?.scrollTop ?? 0) > 0)
     )
@@ -391,18 +406,18 @@ function FileRows({
       const first = virtualizer
         .getVirtualItems()
         .find((item) => item.end > (viewportRef.current?.scrollTop ?? 0))
-      const row = first && logs.rows[first.index]
+      const row = first && rows[first.index]
       if (row && first)
         anchor.current = {
           id: row.id,
           delta: (viewportRef.current?.scrollTop ?? 0) - first.start,
-          firstId: logs.rows[0]?.id,
+          firstId: rows[0]?.id,
         }
       setFollowing(false)
       logs.loadOlder()
     }, 100)
     return () => clearTimeout(timer)
-  }, [logs, following, isTop, virtualizer, viewportRef, setFollowing])
+  }, [logs, rows, following, isTop, virtualizer, viewportRef, setFollowing])
   return (
     <div>
       {!logs.rows.length && !logs.loading && !logs.error && (
@@ -411,35 +426,36 @@ function FileRows({
         </LogEmptyState>
       )}
       <div className="relative" style={{ height: totalSize }}>
-        {virtualizer.getVirtualItems().map((item) => {
-          const row = logs.rows[item.index]
-          if (!row) return null
-          const date = row.timestamp ? new Date(Number(row.timestamp)) : null
-          return (
-            <div
-              key={row.id}
-              ref={virtualizer.measureElement}
-              data-index={item.index}
-              data-slot="logs-virtual-item"
-              className="absolute top-0 left-0 w-full select-text"
-              style={{
-                transform: `translateY(${item.start}px)`,
-              }}
-            >
-              <LogRecord
-                time={date?.toLocaleString() ?? '—'}
-                timeTitle={date?.toLocaleString()}
-                level={row.level}
-                target={row.target}
-                message={row.message}
-                raw={row.raw}
-                search={search}
-                incomplete={row.unparsed || row.truncated}
-                onInspect={() => setFollowing(false)}
-              />
-            </div>
-          )
-        })}
+        {showRows &&
+          virtualizer.getVirtualItems().map((item) => {
+            const row = rows[item.index]
+            if (!row) return null
+            const date = row.timestamp ? new Date(Number(row.timestamp)) : null
+            return (
+              <div
+                key={row.id}
+                ref={virtualizer.measureElement}
+                data-index={item.index}
+                data-slot="logs-virtual-item"
+                className="absolute top-0 left-0 w-full select-text"
+                style={{
+                  transform: `translateY(${item.start}px)`,
+                }}
+              >
+                <LogRecord
+                  time={date?.toLocaleString() ?? '—'}
+                  timeTitle={date?.toLocaleString()}
+                  level={row.level}
+                  target={row.target}
+                  message={row.message}
+                  raw={row.raw}
+                  search={search}
+                  incomplete={row.unparsed || row.truncated}
+                  onInspect={() => setFollowing(false)}
+                />
+              </div>
+            )
+          })}
       </div>
     </div>
   )

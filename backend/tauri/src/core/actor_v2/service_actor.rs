@@ -643,6 +643,7 @@ impl Actor for ServiceActor {
                     // which is a claim only the first case can make. The other
                     // two know nothing, and callers branch on the kind rather
                     // than on the message.
+                    let running = matches!(info.status, ServiceStatus::Running);
                     let refusal = match (&info.status, info.server.as_ref()) {
                         // A daemon that is not running cannot be holding a
                         // core process open.
@@ -674,25 +675,30 @@ impl Actor for ServiceActor {
                         });
                     }
                     state.publish(ServicePhase::Uninstalling, ServiceCompat::Unknown);
-                    state
-                        .tracked(ServiceCommandKind::Uninstall, |adapter| {
-                            Box::pin(async move { adapter.stop_daemon().await })
-                        })
-                        .await
-                        .map_err(|error| ServiceActorState::command_error("stop", error))?;
-                    let stopped = state.bounded(state.adapter.probe()).await;
-                    if !matches!(
-                        stopped,
-                        Ok(StatusInfo {
-                            status: ServiceStatus::Stopped | ServiceStatus::NotInstalled,
-                            ..
-                        })
-                    ) {
-                        return Err(CoreError::new(
-                            CoreErrorKind::AlreadyRunning,
-                            "the daemon did not prove it stopped; uninstall was refused",
-                            false,
-                        ));
+                    // Only a running daemon is stopped first: `stop` fails on
+                    // one that is already stopped, and that failure would
+                    // refuse an uninstall nothing stands in the way of.
+                    if running {
+                        state
+                            .tracked(ServiceCommandKind::Uninstall, |adapter| {
+                                Box::pin(async move { adapter.stop_daemon().await })
+                            })
+                            .await
+                            .map_err(|error| ServiceActorState::command_error("stop", error))?;
+                        let stopped = state.bounded(state.adapter.probe()).await;
+                        if !matches!(
+                            stopped,
+                            Ok(StatusInfo {
+                                status: ServiceStatus::Stopped | ServiceStatus::NotInstalled,
+                                ..
+                            })
+                        ) {
+                            return Err(CoreError::new(
+                                CoreErrorKind::AlreadyRunning,
+                                "the daemon did not prove it stopped; uninstall was refused",
+                                false,
+                            ));
+                        }
                     }
                     state
                         .tracked(ServiceCommandKind::Uninstall, |adapter| {
@@ -1217,6 +1223,13 @@ mod tests {
             &self,
         ) -> Result<(), crate::core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("stop_daemon");
+            // Like `nyanpasu-service stop`, which exits with an error for a
+            // service that is already stopped.
+            if !self.state.lock().unwrap().1 {
+                return Err(crate::core::service::control::ServiceCommandError::mock(
+                    "service already stopped",
+                ));
+            }
             if self.stop_succeeds.load(Ordering::SeqCst) {
                 self.state.lock().unwrap().1 = false;
             }
@@ -1689,9 +1702,14 @@ mod tests {
         daemon.set_detail(Some(CoreStateDetail::Running { epoch: 1, pid: 42 }));
         let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
 
+        daemon.calls.lock().unwrap().clear();
+
         client.uninstall().await.unwrap();
         assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 1);
         assert_eq!(client.status().phase, ServicePhase::NotInstalled);
+        // #5444: a stopped daemon is not stopped again on the way out.
+        let calls = daemon.calls.lock().unwrap().clone();
+        assert_eq!(&calls[..2], &["probe", "uninstall"]);
     }
 
     /// M-11: the latch is a latch. A probe that happens to find the daemon up

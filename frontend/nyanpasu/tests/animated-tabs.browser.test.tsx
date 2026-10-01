@@ -96,14 +96,30 @@ for (const byValue of [true, false]) {
     await expect.poll(() => indicator(container)).not.toBeNull()
     await nextFrame()
 
+    // Motion reads performance.now() on each real frame. Freeze animation time
+    // so slow CI frames cannot skip the starting or intermediate position.
+    let now = performance.now()
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now)
+    onTestFinished(() => clock.mockRestore())
+    await nextFrame()
+
     flushSync(() => controls.select('c'))
     await nextFrame()
     await nextFrame()
     expect(indicator(container).parentElement!.textContent).toBe('c')
-    // Two tabs to the right, so it starts about 200px back.
-    expect(translation(indicator(container))).toBeGreaterThan(100)
+    // Two tabs to the right, so it starts 200px back.
+    const start = translation(indicator(container))
+    expect(start).toBeCloseTo(200)
 
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    now += 100
+    await nextFrame()
+    await nextFrame()
+    expect(translation(indicator(container))).toBeGreaterThan(1)
+    expect(translation(indicator(container))).toBeLessThan(start)
+
+    now += 1000
+    await nextFrame()
+    await nextFrame()
     expect(translation(indicator(container))).toBeLessThan(1)
   })
 }

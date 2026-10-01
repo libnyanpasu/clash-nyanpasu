@@ -1,5 +1,6 @@
+import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
 
 const nextFrame = () =>
@@ -52,16 +53,23 @@ test('scroll consumers re-render only when a scroll flag changes', async ({
     '[data-slot="scroll-area-viewport"]',
   )!
 
+  // Keep a continuous gesture even when CI frames exceed the 50ms idle delay.
+  // Browser scroll events and React still run on real animation frames.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  onTestFinished(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  await scrollTo(viewport, 100)
   const before = renders.count
-  for (let top = 100; top <= 3000; top += 100) {
+  for (let top = 200; top <= 3000; top += 100) {
     await scrollTo(viewport, top)
   }
-  // Scrolling down through the middle flips isTop, isPastHeader,
-  // scrollDirection and isScrolling once each; isScrolling may toggle again
-  // if a frame takes longer than the scroll-end delay.
-  expect(renders.count - before).toBeLessThan(10)
+  expect(renders.count).toBe(before)
 
   const last = seen.at(-1)!
+  expect(last.isScrolling).toBe(true)
   expect(last.isTop).toBe(false)
   expect(last.isBottom).toBe(false)
   expect(last.scrollDirection).toBe('down')
@@ -72,4 +80,9 @@ test('scroll consumers re-render only when a scroll flag changes', async ({
   await scrollTo(viewport, 0)
   expect(seen.at(-1)!.isTop).toBe(true)
   expect(seen.at(-1)!.scrollDirection).toBe('up')
+
+  flushSync(() => vi.advanceTimersByTime(49))
+  expect(seen.at(-1)!.isScrolling).toBe(true)
+  flushSync(() => vi.advanceTimersByTime(1))
+  expect(seen.at(-1)!.isScrolling).toBe(false)
 })

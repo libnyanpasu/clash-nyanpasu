@@ -16,6 +16,14 @@ use std::{
 use tauri::utils::platform::current_exe;
 pub mod logging;
 
+/// The `migrate` subprocess exited unsuccessfully.
+#[derive(Debug, thiserror::Error)]
+#[error("child process failed: {status:?}, err: {stderr}")]
+pub struct MigrationChildFailed {
+    pub status: std::process::ExitStatus,
+    pub stderr: String,
+}
+
 pub fn run_pending_migrations() -> Result<()> {
     let current_exe = current_exe()?;
     let current_exe = dunce::canonicalize(current_exe)?;
@@ -90,7 +98,11 @@ pub fn run_pending_migrations() -> Result<()> {
         .map_err(|e| anyhow!("Failed to wait for child: {:?}, errs: {}", e, err))
         .and_then(|status| {
             if !status.success() {
-                Err(anyhow!("child process failed: {:?}, err: {}", status, err))
+                Err(MigrationChildFailed {
+                    status,
+                    stderr: err.clone(),
+                }
+                .into())
             } else {
                 Ok(())
             }

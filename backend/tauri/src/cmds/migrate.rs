@@ -1,6 +1,9 @@
 use clap::Args;
 
-use crate::core::migration::{MigrationAdvice, Runner, current_version, registry};
+use crate::core::{
+    backup::{BACKUP_FAILED_EXIT_CODE, BackupError},
+    migration::{MigrationAdvice, Runner, current_version, registry},
+};
 use colored::Colorize;
 
 #[derive(Debug, Args)]
@@ -30,6 +33,16 @@ fn is_fresh_install_instance() -> bool {
             let dirs = entry.collect::<Vec<Result<_, _>>>();
             dirs.is_empty()
         })
+}
+
+/// The exit code the parent process reads to tell a failed backup, after which
+/// nothing was migrated, from a failed migration.
+fn exit_code(error: &anyhow::Error) -> i32 {
+    if error.downcast_ref::<BackupError>().is_some() {
+        BACKUP_FAILED_EXIT_CODE
+    } else {
+        1
+    }
 }
 
 pub fn parse(args: &MigrateOpts) {
@@ -83,7 +96,7 @@ pub fn parse(args: &MigrateOpts) {
             Some(migration) => {
                 if let Err(error) = runner.run_migration(migration) {
                     eprintln!("Migration failed: {error:#}");
-                    std::process::exit(1);
+                    std::process::exit(exit_code(&error));
                 }
             }
             None => {
@@ -101,7 +114,7 @@ pub fn parse(args: &MigrateOpts) {
         }
         if let Err(error) = runner.run_pending() {
             eprintln!("Migration failed: {error:#}");
-            std::process::exit(1);
+            std::process::exit(exit_code(&error));
         }
     }
 }
@@ -184,4 +197,23 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 #[cfg(not(target_os = "windows"))]
 pub fn migrate_home_dir_handler(_target_path: &str) -> anyhow::Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Context as _;
+
+    #[test]
+    fn a_failed_backup_is_told_apart_from_a_failed_migration() {
+        let backup = Err::<(), _>(BackupError::Io {
+            path: "backups".into(),
+            source: std::io::Error::other("disk full"),
+        })
+        .context("failed to back up the config before migrating")
+        .unwrap_err();
+
+        assert_eq!(exit_code(&backup), BACKUP_FAILED_EXIT_CODE);
+        assert_eq!(exit_code(&anyhow::anyhow!("boom")), 1);
+    }
 }

@@ -21,6 +21,10 @@ pub const MANUAL_PREFIX: &str = "manual-";
 pub const KEEP_MIGRATION_BACKUPS: usize = 3;
 pub const KEEP_MANUAL_BACKUPS: usize = 3;
 
+/// Exit code of `clash-nyanpasu migrate` when the pre-migration backup failed,
+/// which tells the parent that no config file was touched.
+pub const BACKUP_FAILED_EXIT_CODE: i32 = 2;
+
 const MANIFEST_FILE: &str = "manifest.json";
 const CONFIG_DIR: &str = "config";
 const DATA_DIR: &str = "data";

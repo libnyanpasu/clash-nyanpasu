@@ -35,6 +35,14 @@
   },
   "dialog": {
     "panic": "請將此問題回報至 Nyanpasu 的 GitHub Issues。",
+    "migration_failed": {
+      "open_backups": "開啟備份資料夾",
+      "open_log": "開啟遷移日誌",
+      "exit": "結束",
+      "backup_kept": "遷移前已將設定備份到 %{path}。其中最新的 `migration-*` 資料夾即為本次遷移前的備份。",
+      "recovery": "還原步驟：結束應用程式，用備份中的 `config` 資料夾覆蓋設定目錄，用 `data/storage.db` 覆蓋資料目錄中的同名檔案，然後安裝遷移前使用的版本，或將 migration.log 附在新 issue 中提交。",
+      "not_modified": "備份未能建立，因此設定檔沒有被修改。請檢查磁碟剩餘空間與資料夾權限後重試，或將 migration.log 附在新 issue 中提交。"
+    },
     "migrate": "檢測到舊版本設定，是否遷移到新版本？\n警告：此操作會覆蓋掉現有設定。",
     "custom_app_dir_migrate": "你將要更改 App 目錄至 %{path}。\n需要將現有資料遷移到新目錄嗎？",
     "warning": {

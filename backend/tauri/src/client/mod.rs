@@ -3395,13 +3395,13 @@ pub(crate) mod tests {
         );
     }
 
-    /// S8 (leader ruling R8): ...and only by adopting a daemon that is
-    /// already up. Converging one would install and start the service,
-    /// raising a UAC prompt at every launch for a user who merely left the
-    /// setting on, and starting the core locally instead would silently run
-    /// it on a host nobody asked for. Startup waits for the daemon.
+    /// S8 (#5443, supersedes leader ruling R8): ...and only by adopting a
+    /// daemon that is already up. Converging one would install and start the
+    /// service, raising a UAC prompt at every launch for a user who merely
+    /// left the setting on. Service mode is a preference, so the core runs
+    /// locally instead.
     #[test]
-    fn startup_neither_converges_an_absent_daemon_nor_falls_back_to_local() {
+    fn startup_never_converges_an_absent_daemon_and_runs_the_core_locally() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::succeeding();
         endpoint.set_status(
@@ -3422,14 +3422,9 @@ pub(crate) mod tests {
         tauri::async_runtime::block_on(async {
             let report = client.startup_reconcile().await;
 
-            assert!(
-                matches!(
-                    report.outcome,
-                    application_workflow::startup::StartupOutcome::ReadyDegraded {
-                        health: crate::client::convergence::ConvergenceHealth::WaitingDependency,
-                        ..
-                    }
-                ),
+            assert_eq!(
+                report.outcome,
+                application_workflow::startup::StartupOutcome::Ready,
                 "{report:?}"
             );
             assert_eq!(
@@ -3437,10 +3432,10 @@ pub(crate) mod tests {
                 ExecutionHost::Local,
                 "an absent daemon must not be installed and started by startup"
             );
-            assert_eq!(endpoint.submissions(), 0, "nothing started locally instead");
+            assert_eq!(endpoint.submissions(), 1, "the core starts locally instead");
             assert_eq!(
                 client.configuration_status().runtime.health,
-                crate::client::convergence::ConvergenceHealth::WaitingDependency
+                crate::client::convergence::ConvergenceHealth::Healthy
             );
         });
     }

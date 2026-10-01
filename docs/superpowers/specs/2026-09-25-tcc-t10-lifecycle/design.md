@@ -15,7 +15,7 @@
 
 Leader 裁定（均有约束力）：
 
-- service 模式下 daemon 未就绪：不启动 core，报 WaitingDependency，自动重探，不静默回退到 Local。
+- service 模式下 daemon 未就绪：不启动 core，报 WaitingDependency，自动重探，不静默回退到 Local。（已被 #5443 取代：daemon 未 `Ready` 时解析为 Local 并在本地启动 core，见实施计划 R8。）
 - 恢复模型只保留一个 `LiveAttempt` 槽和一个预写的 `PendingAction` 槽，正常执行和恢复都推进这两个槽。
 - 任务切分为 6a（§1 + §4）、6b（§2 + §3）、7（§5）。
 

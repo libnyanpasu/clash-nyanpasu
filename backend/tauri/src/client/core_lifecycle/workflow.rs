@@ -26,6 +26,7 @@ use crate::core::actor_v2::{
         CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
         StopReport, UncertainReconcile,
     },
+    service_actor::ServicePhase,
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -59,9 +60,21 @@ pub(crate) enum Ownership {
     Established { host: ExecutionHost },
 }
 
-/// The host `enable_service_mode` asks for.
-pub(in crate::client) fn desired_host(application: &NyanpasuAppConfig) -> ExecutionHost {
-    if application.enable_service_mode {
+/// The host the core should run on. `enable_service_mode` is a preference:
+/// the core runs on the service host only while the daemon is `Ready` —
+/// installed, running and through the version gate — and locally otherwise,
+/// so an unusable service never leaves the user without a core (#5443).
+///
+/// Every path that decides a host resolves it here: startup and explicit
+/// starts from the phase their own probe just published, saves and retries
+/// from the phase last published. None of them installs or starts the daemon
+/// to make Service usable; only an explicit service action or switching
+/// service mode on does.
+pub(in crate::client) fn effective_host(
+    application: &NyanpasuAppConfig,
+    service: ServicePhase,
+) -> ExecutionHost {
+    if application.enable_service_mode && service == ServicePhase::Ready {
         ExecutionHost::Service
     } else {
         ExecutionHost::Local
@@ -319,11 +332,20 @@ impl CoreLifecycleWorkflow {
         }
     }
 
+    /// [`effective_host`] for the committed application config and the
+    /// service phase last published.
+    pub fn effective_host(&self) -> ExecutionHost {
+        effective_host(
+            &self.application.load().state,
+            self.core.service_status().phase,
+        )
+    }
+
     /// Whether a path that starts the core may do so (T10 §1.7): the proven
     /// owner is both the host the router drives and the host the user asked
     /// for.
     pub fn start_permitted(&self) -> bool {
-        let desired = desired_host(&self.application.load().state);
+        let desired = self.effective_host();
         self.ownership == Ownership::Established { host: desired }
             && self.core.core_status().host == desired
     }

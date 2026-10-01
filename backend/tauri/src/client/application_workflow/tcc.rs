@@ -40,7 +40,7 @@ use super::{
 use crate::{
     client::{
         convergence::{OutcomeClass, next_wait},
-        core_lifecycle::{RuntimeSubmission, desired_host, ports::RuntimePreparationPort},
+        core_lifecycle::{RuntimeSubmission, effective_host, ports::RuntimePreparationPort},
         runtime::{DegradationReason, InterruptFailure},
         runtime_error::{
             ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
@@ -346,7 +346,9 @@ impl ApplicationWorkflow {
         // An automatic retry never moves the runtime to another host: that
         // can mean installing or starting the daemon behind the user's back
         // (T10 §1.7 #2, D11). It waits for the owner instead.
-        let moves_host = !explicit && desired_host(&inputs.app) != baseline.host;
+        let moves_host = !explicit
+            && effective_host(&inputs.app, self.lifecycle.core.service_status().phase)
+                != baseline.host;
         if !baseline.settled || baseline.run_intent == CoreRunIntent::StoppedByUser || moves_host {
             let target = self.committed_target();
             target.waits = next_wait(target.waits, OutcomeClass::Dependency).1;
@@ -705,15 +707,17 @@ impl ApplicationWorkflow {
             };
         }
 
-        let target_host = if inputs
-            .as_ref()
-            .expect("critical inputs")
-            .app
-            .enable_service_mode
-        {
+        // Service mode is a preference resolved against the daemon's last
+        // published phase, so a save while the service is unusable stays on
+        // Local and never installs or starts it (#5443). Switching service
+        // mode on is the explicit request the convergence below may serve.
+        let app = &inputs.as_ref().expect("critical inputs").app;
+        let switching_on =
+            app.enable_service_mode && !self.lifecycle.application.load().state.enable_service_mode;
+        let target_host = if switching_on {
             ExecutionHost::Service
         } else {
-            ExecutionHost::Local
+            effective_host(app, self.lifecycle.core.service_status().phase)
         };
         let prepared = match self
             .preparation

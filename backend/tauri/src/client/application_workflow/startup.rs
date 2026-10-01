@@ -6,8 +6,9 @@
 //! it with a pure table, S3 honours a stop intent and retires any running
 //! instance this session holds no receipt for, and S4 applies the committed
 //! desired value from a stopped baseline. It never installs or starts the
-//! daemon, never falls back from Service to Local, and starts nothing while a
-//! second instance cannot be ruled out.
+//! daemon, and starts nothing while a second instance cannot be ruled out.
+//! Service mode is a preference: a service that is not `Ready` resolves to the
+//! Local host (`effective_host`), so the core still starts (#5443).
 //!
 //! The target it works for is carried by the live attempt from the first
 //! read to the last, so an interruption anywhere leaves it where recovery
@@ -36,7 +37,7 @@ use super::{
 use crate::{
     client::{
         convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
-        core_lifecycle::{Ownership, desired_host},
+        core_lifecycle::{Ownership, effective_host},
         runtime::ConfirmedRuntime,
         runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
@@ -456,7 +457,8 @@ impl ApplicationWorkflow {
     /// S1–S4 for the reestablish target the live attempt carries. Only an
     /// automatic retry spends its budget.
     async fn reestablish(&mut self, automatic: bool) -> (StartupObservation, Reestablished) {
-        let desired = desired_host(&self.lifecycle.application.load().state);
+        // Before S1 probes, the phase last published is all there is.
+        let desired = self.lifecycle.effective_host();
         // A spent budget refuses an automatic retry before it adopts, hands
         // off or retires anything.
         if automatic && self.committed_target().attempts_remaining == 0 {
@@ -492,6 +494,8 @@ impl ApplicationWorkflow {
             &self.lifecycle.core.probe_service_host().await,
             &self.lifecycle.instance_config_dir,
         );
+        // The host is resolved from the probe just taken, not a stale phase.
+        let desired = effective_host(&self.lifecycle.application.load().state, service.phase());
         let runtime = self.lifecycle.core.refresh_status().await.ok();
         let owner = runtime.as_ref().map_or_else(
             || self.lifecycle.core.core_status().host,

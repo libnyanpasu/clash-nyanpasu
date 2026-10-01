@@ -62,7 +62,6 @@
     "prepare:check": "deno run -A scripts/check.ts"
   },
   "dependencies": {
-    "@prettier/plugin-oxc": "0.2.3",
     "husky": "9.1.7"
   },
   "devDependencies": {

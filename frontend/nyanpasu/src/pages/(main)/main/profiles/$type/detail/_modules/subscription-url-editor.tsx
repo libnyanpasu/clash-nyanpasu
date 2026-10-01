@@ -24,9 +24,10 @@ import {
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
+import { subscriptionUrlSchema } from '../../../_modules/subscription-url-schema'
 
 const formSchema = z.object({
-  url: z.httpUrl(),
+  url: subscriptionUrlSchema,
 })
 
 /** The definition with its remote source pointed at `url`. */

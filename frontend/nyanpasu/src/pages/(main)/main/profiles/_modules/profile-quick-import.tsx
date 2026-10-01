@@ -10,9 +10,10 @@ import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useProfileMutations } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
+import { subscriptionUrlSchema } from './subscription-url-schema'
 
 const formSchema = z.object({
-  url: z.httpUrl(),
+  url: subscriptionUrlSchema,
 })
 
 export default function ProfileQuickImport() {

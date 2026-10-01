@@ -8,6 +8,7 @@ import {
   type TransformKind,
 } from '@nyanpasu/interface'
 import { ProfileType } from '../../_modules/consts'
+import { subscriptionUrlSchema } from '../../_modules/subscription-url-schema'
 
 export const CONFIG_KINDS = ['file', 'composition'] as const
 
@@ -59,7 +60,7 @@ export const formSchema = z
     }
 
     if (data.source === 'remote') {
-      const url = z.httpUrl().safeParse(data.url)
+      const url = subscriptionUrlSchema.safeParse(data.url)
       if (!url.success) {
         ctx.addIssue({
           code: 'custom',

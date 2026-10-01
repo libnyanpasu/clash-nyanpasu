@@ -1,4 +1,5 @@
 import { AnimatePresence } from 'motion/react'
+import { useDeferredValue } from 'react'
 import {
   SystemProxyButton,
   TunModeButton,
@@ -162,6 +163,11 @@ const SystemTools = () => {
 }
 
 function RouteComponent() {
+  // Route changes render synchronously and this page is long, so the sections
+  // below the first screen mount in a deferred render right after the page
+  // has committed.
+  const showAll = useDeferredValue(true, false)
+
   return (
     <>
       <SettingsTitle>{m.settings_label_system()}</SettingsTitle>
@@ -171,13 +177,17 @@ function RouteComponent() {
 
         <ProxyGuard />
 
-        <CurrentProxy />
+        {showAll && (
+          <>
+            <CurrentProxy />
 
-        <SystemService />
+            <SystemService />
 
-        <SystemLaunch />
+            <SystemLaunch />
 
-        {(isWindows || isMacOS) && <SystemTools />}
+            {(isWindows || isMacOS) && <SystemTools />}
+          </>
+        )}
       </div>
     </>
   )

@@ -4,7 +4,7 @@ import ContentCopyRounded from '~icons/material-symbols/content-copy-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeleteSweepRounded from '~icons/material-symbols/delete-sweep-rounded'
 import VerticalAlignBottomRounded from '~icons/material-symbols/vertical-align-bottom-rounded'
-import { memo, useId, useState, type ReactNode } from 'react'
+import { memo, useEffect, useId, useState, type ReactNode } from 'react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import HighlightText from '@/components/ui/highlight-text'
 import { m } from '@/paraglide/messages'
@@ -140,6 +140,11 @@ export const LogRecord = memo(function LogRecord({
   const jsonId = useId()
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
   const rawText = () =>
     typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2)
   return (

@@ -87,6 +87,10 @@ impl ApplicationWorkflow {
                 .retry_runtime(operation_id, explicit)
                 .await
                 .map(|_| Output::Unit),
+            Command::FollowService => {
+                self.follow_service(operation_id).await;
+                Ok(Output::Unit)
+            }
         }
     }
 

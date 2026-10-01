@@ -419,6 +419,9 @@ pub(crate) enum ReestablishCause {
     Startup,
     Recovery,
     ExplicitStart,
+    /// The daemon became ready, or stopped being ready, under a core on the
+    /// other host.
+    ServiceReadiness,
 }
 
 /// What the workflow publishes about mutations, separate from the core

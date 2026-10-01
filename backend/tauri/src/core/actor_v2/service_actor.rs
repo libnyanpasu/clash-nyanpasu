@@ -75,6 +75,25 @@ pub enum ServicePhase {
     Unknown,
 }
 
+impl ServicePhase {
+    /// Whether this phase settles if the daemon can serve: `None` for a
+    /// transition still under way and for a probe that could not tell.
+    pub fn readiness(self) -> Option<bool> {
+        match self {
+            Self::Ready => Some(true),
+            Self::NotInstalled | Self::DaemonStopped | Self::Incompatible | Self::Exhausted => {
+                Some(false)
+            }
+            Self::Probing
+            | Self::Installing
+            | Self::StartingDaemon
+            | Self::Restarting
+            | Self::Uninstalling
+            | Self::Unknown => None,
+        }
+    }
+}
+
 /// The watch projection (UI settings page + facade). Daemon state, never a
 /// second copy of core state.
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -86,6 +105,16 @@ pub struct ServiceHostStatus {
     pub phase: ServicePhase,
     pub compat: ServiceCompat,
     pub restart_attempts: u8,
+    /// The last settled [`ServicePhase::readiness`]: a transition or an
+    /// unreadable probe leaves it as it was. Internal, like the generation.
+    #[serde(skip)]
+    pub settled_ready: bool,
+    /// How many times `settled_ready` has turned true. A daemon that
+    /// restarted between two reads is a new daemon even when both say
+    /// `Ready`; this is what tells them apart. Internal: not part of the UI
+    /// projection.
+    #[serde(skip)]
+    pub ready_generation: u64,
 }
 
 /// Which mutating command an elevated call belongs to. It names the helper
@@ -150,6 +179,21 @@ pub enum ServiceActorMessage {
     /// while a helper that outlived its bound is still running. A stable
     /// phase is not this evidence, and neither is `Exhausted`.
     CommandSettled { reply: RpcReplyPort<bool> },
+    /// Whether the OS reports the daemon not running -- stopped or not
+    /// installed. A daemon that is not running cannot be holding a core open,
+    /// so this is the proof a handoff away from an unreachable Service host
+    /// needs. `false` covers "running" and "cannot tell" alike, and it is
+    /// the answer while a command helper may still be changing the daemon.
+    DaemonNotRunning { reply: RpcReplyPort<bool> },
+    /// Turns the periodic health check on or off. It runs only while service
+    /// mode is preferred, so the daemon is not probed for a user who never
+    /// asked for it.
+    SetHealthCheck { enabled: bool },
+    /// One health-check probe, sent by the timer `SetHealthCheck` arms. It
+    /// catches a daemon that stopped or came back while nothing else probed:
+    /// it never installs, starts or updates one. `round` names the timer that
+    /// sent it, so a tick from a check turned off since is dropped.
+    HealthCheck { round: u64 },
 }
 
 pub struct ServiceActor;
@@ -160,6 +204,10 @@ pub struct ServiceActor;
 /// test does not wait on this wall clock (see `ServiceClient::spawn_with_bounds`).
 const DEFAULT_SERVICE_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(100);
 
+/// How often the health check probes while it is on. A probe is one
+/// unelevated `status` query.
+const HEALTH_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
 pub struct ServiceActorArgs {
     pub adapter: Arc<dyn ServiceHostAdapter>,
     pub status_tx: watch::Sender<ServiceHostStatus>,
@@ -169,6 +217,7 @@ pub struct ServiceActorArgs {
     /// Bound applied to every adapter call the actor makes, `probe` included
     /// (F6).
     pub command_timeout: std::time::Duration,
+    pub health_interval: std::time::Duration,
 }
 
 pub struct ServiceActorState {
@@ -190,12 +239,34 @@ pub struct ServiceActorState {
         ServiceCommandKind,
         tokio::task::JoinHandle<Result<(), ServiceCommandError>>,
     )>,
+    health_interval: std::time::Duration,
+    /// The round of the health check while it is on. Each probe arms the
+    /// next one only after it finished, so a slow probe never piles ticks up
+    /// in the mailbox.
+    health_round: Option<u64>,
+    health_rounds: u64,
+    health_timer:
+        Option<tokio::task::JoinHandle<Result<(), ractor::MessagingErr<ServiceActorMessage>>>>,
 }
 
 impl ServiceActorState {
+    /// The settled readiness and its generation that publishing `phase` over
+    /// `current` yields. Only a settled not-ready before a settled ready makes
+    /// a new generation: a probe that failed in between proves no restart.
+    fn readiness(current: &ServiceHostStatus, phase: ServicePhase) -> (bool, u64) {
+        match phase.readiness() {
+            Some(true) if !current.settled_ready => (true, current.ready_generation + 1),
+            Some(ready) => (ready, current.ready_generation),
+            None => (current.settled_ready, current.ready_generation),
+        }
+    }
+
     fn publish(&self, phase: ServicePhase, compat: ServiceCompat) {
         let current = self.status_tx.borrow().clone();
+        let (settled_ready, ready_generation) = Self::readiness(&current, phase);
         self.status_tx.send_replace(ServiceHostStatus {
+            settled_ready,
+            ready_generation,
             name: current.name.clone(),
             version: current.version.clone(),
             status: current.status,
@@ -213,7 +284,10 @@ impl ServiceActorState {
         info: Option<&StatusInfo<'static>>,
     ) {
         let current = self.status_tx.borrow().clone();
+        let (settled_ready, ready_generation) = Self::readiness(&current, phase);
         self.status_tx.send_replace(ServiceHostStatus {
+            settled_ready,
+            ready_generation,
             name: info.map_or_else(|| current.name.clone(), |info| info.name.clone()),
             version: info.map_or_else(|| current.version.clone(), |info| info.version.clone()),
             status: info.map_or(current.status, |info| info.status),
@@ -389,6 +463,44 @@ impl ServiceActorState {
         (result, compat, phase)
     }
 
+    /// One health-check probe. Unlike `probe_and_publish` it publishes only
+    /// when what the daemon is has changed, so a steady daemon does not wake
+    /// every subscriber on each tick.
+    async fn health_check(&mut self) {
+        if !self.reap_outstanding().await {
+            return;
+        }
+        let result = self.bounded(self.adapter.probe()).await;
+        let (compat, phase) = Self::classify_probe(&result);
+        let published = if self.exhausted {
+            ServicePhase::Exhausted
+        } else {
+            phase
+        };
+        // A failed probe keeps the rest of the status as it was, so only the
+        // phase and the compat fact can change then.
+        let unchanged = {
+            let current = self.status_tx.borrow();
+            current.phase == published
+                && current.compat == compat
+                && result.as_ref().ok().is_none_or(|info| {
+                    info.status == current.status && info.version == current.version
+                })
+        };
+        if !unchanged {
+            self.publish_probe(published, compat, result.as_ref().ok());
+        }
+    }
+
+    /// Arms the next health-check tick of the current round, if it is on.
+    fn arm_health_check(&mut self, myself: &ActorRef<ServiceActorMessage>) {
+        self.health_timer = self.health_round.map(|round| {
+            myself.send_after(self.health_interval, move || {
+                ServiceActorMessage::HealthCheck { round }
+            })
+        });
+    }
+
     async fn recover_endpoint(&mut self) -> Result<EndpointHandle, CoreError> {
         if self.exhausted {
             return Err(CoreError::new(
@@ -517,6 +629,10 @@ impl Actor for ServiceActor {
             exhausted: false,
             command_timeout: args.command_timeout,
             outstanding: None,
+            health_interval: args.health_interval,
+            health_round: None,
+            health_rounds: 0,
+            health_timer: None,
         };
         // Startup version reconcile: an outdated-but-running daemon is
         // upgraded once, preserving the product's auto `update_service`
@@ -542,9 +658,20 @@ impl Actor for ServiceActor {
         Ok(state)
     }
 
-    async fn handle(
+    async fn post_stop(
         &self,
         _myself: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        if let Some(timer) = state.health_timer.take() {
+            timer.abort();
+        }
+        Ok(())
+    }
+
+    async fn handle(
+        &self,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -757,6 +884,39 @@ impl Actor for ServiceActor {
             ServiceActorMessage::CommandSettled { reply } => {
                 let _ = reply.send(state.settle_outstanding().await);
             }
+            ServiceActorMessage::DaemonNotRunning { reply } => {
+                let not_running = state.refuse_while_running().await.is_none() && {
+                    let (result, _, _) = state.probe_and_publish().await;
+                    matches!(
+                        result,
+                        Ok(StatusInfo {
+                            status: ServiceStatus::Stopped | ServiceStatus::NotInstalled,
+                            ..
+                        })
+                    )
+                };
+                let _ = reply.send(not_running);
+            }
+            ServiceActorMessage::SetHealthCheck { enabled } => {
+                if enabled == state.health_round.is_some() {
+                    return Ok(());
+                }
+                if let Some(timer) = state.health_timer.take() {
+                    timer.abort();
+                }
+                state.health_round = enabled.then(|| {
+                    state.health_rounds += 1;
+                    state.health_rounds
+                });
+                state.arm_health_check(&myself);
+            }
+            ServiceActorMessage::HealthCheck { round } => {
+                // A tick from a check turned off since is dropped.
+                if state.health_round == Some(round) {
+                    state.health_check().await;
+                    state.arm_health_check(&myself);
+                }
+            }
         }
         Ok(())
     }
@@ -838,6 +998,37 @@ impl ServiceClient {
         Self::spawn_with_bounds(adapter, restart_budget, DEFAULT_SERVICE_COMMAND_TIMEOUT).await
     }
 
+    /// Turns the periodic health check on or off. Best effort: an actor that
+    /// is gone has nothing left to check.
+    pub fn set_health_check(&self, enabled: bool) {
+        let _ = self
+            .actor
+            .cast(ServiceActorMessage::SetHealthCheck { enabled });
+    }
+
+    /// Whether the OS reports the daemon not running, which proves it holds
+    /// no core. See [`ServiceActorMessage::DaemonNotRunning`].
+    ///
+    /// It waits for the real answer: the probe inside is bounded at the
+    /// adapter, and a proof that arrives late is still the proof.
+    pub async fn daemon_not_running(&self) -> Result<bool, CoreError> {
+        match self
+            .actor
+            .call(
+                |reply| ServiceActorMessage::DaemonNotRunning { reply },
+                None,
+            )
+            .await
+        {
+            Ok(ractor::rpc::CallResult::Success(not_running)) => Ok(not_running),
+            _ => Err(CoreError::new(
+                CoreErrorKind::Internal,
+                "the service actor is gone",
+                false,
+            )),
+        }
+    }
+
     /// Test seam (F6): lets a test inject a short `command_timeout` so a
     /// hang test is bounded by the actor's own timeout instead of the
     /// production wall clock. Not `pub` -- production code always goes
@@ -855,6 +1046,8 @@ impl ServiceClient {
             phase: ServicePhase::Probing,
             compat: ServiceCompat::Unknown,
             restart_attempts: 0,
+            settled_ready: false,
+            ready_generation: 0,
         });
         let (actor, _handle) = Actor::spawn(
             None,
@@ -864,6 +1057,7 @@ impl ServiceClient {
                 status_tx,
                 restart_budget,
                 command_timeout,
+                health_interval: HEALTH_CHECK_INTERVAL,
             },
         )
         .await?;
@@ -2011,5 +2205,100 @@ mod tests {
         assert!(uninstall_worst_case > old_fixed_budget);
         assert!(ensure_ready_budget(DEFAULT_SERVICE_COMMAND_TIMEOUT) > ensure_ready_worst_case);
         assert!(uninstall_budget(DEFAULT_SERVICE_COMMAND_TIMEOUT) > uninstall_worst_case);
+    }
+    /// The health check probes only while it is on, publishes only what
+    /// changed, and never converges the daemon it finds stopped.
+    #[tokio::test]
+    async fn the_health_check_probes_while_on_and_publishes_only_changes() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let mut status = client.subscribe();
+        status.mark_unchanged();
+        // Rounds start at 1, so round 1 is the one turning the check on arms.
+        let check = |client: &ServiceClient| {
+            client
+                .actor
+                .cast(ServiceActorMessage::HealthCheck { round: 1 })
+                .unwrap();
+        };
+
+        let before = probes(&daemon);
+        check(&client);
+        assert!(client.command_settled().await.unwrap());
+        assert_eq!(probes(&daemon), before, "off: a stray tick probes nothing");
+
+        client.set_health_check(true);
+        check(&client);
+        assert!(client.command_settled().await.unwrap());
+        assert_eq!(probes(&daemon), before + 1);
+        assert!(
+            !status.has_changed().unwrap(),
+            "a steady daemon is not republished"
+        );
+
+        daemon.state.lock().unwrap().1 = false;
+        check(&client);
+        assert!(client.command_settled().await.unwrap());
+        assert!(status.has_changed().unwrap());
+        assert_eq!(
+            status.borrow_and_update().phase,
+            ServicePhase::DaemonStopped
+        );
+        assert_eq!(daemon.starts.load(Ordering::SeqCst), 0);
+        assert_eq!(daemon.installs.load(Ordering::SeqCst), 0);
+
+        // A probe that keeps failing is not republished either.
+        daemon.probe_fail.store(true, Ordering::SeqCst);
+        check(&client);
+        assert!(client.command_settled().await.unwrap());
+        assert_eq!(status.borrow_and_update().phase, ServicePhase::Unknown);
+        check(&client);
+        assert!(client.command_settled().await.unwrap());
+        assert!(!status.has_changed().unwrap());
+
+        client.set_health_check(false);
+        let before = probes(&daemon);
+        check(&client);
+        assert!(client.command_settled().await.unwrap());
+        assert_eq!(probes(&daemon), before);
+    }
+
+    /// A new ready generation needs a settled not-ready in between: a probe
+    /// that failed proves no restart, a daemon seen stopped does.
+    #[tokio::test]
+    async fn only_a_settled_restart_makes_a_new_ready_generation() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        let first = client.status();
+        assert_eq!(first.phase, ServicePhase::Ready);
+
+        daemon.probe_fail.store(true, Ordering::SeqCst);
+        assert_eq!(client.probe().await.unwrap().phase, ServicePhase::Unknown);
+        daemon.probe_fail.store(false, Ordering::SeqCst);
+        let after_failure = client.probe().await.unwrap();
+        assert_eq!(after_failure.phase, ServicePhase::Ready);
+        assert_eq!(after_failure.ready_generation, first.ready_generation);
+
+        daemon.state.lock().unwrap().1 = false;
+        assert!(!client.probe().await.unwrap().settled_ready);
+        daemon.state.lock().unwrap().1 = true;
+        let restarted = client.probe().await.unwrap();
+        assert!(restarted.settled_ready);
+        assert_eq!(restarted.ready_generation, first.ready_generation + 1);
+    }
+
+    /// Only the OS reporting the daemon not running releases a Service owner
+    /// that stopped answering.
+    #[tokio::test]
+    async fn daemon_not_running_answers_from_the_os_state() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        assert!(!client.daemon_not_running().await.unwrap());
+
+        daemon.state.lock().unwrap().1 = false;
+        assert!(client.daemon_not_running().await.unwrap());
+
+        *daemon.state.lock().unwrap() = (false, false, String::new());
+        assert!(client.daemon_not_running().await.unwrap());
     }
 }

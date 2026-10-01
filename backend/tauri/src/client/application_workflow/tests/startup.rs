@@ -177,6 +177,8 @@ pub(super) struct FakeDaemon {
     host: Arc<HostEndpoint>,
     pub(super) state: StdMutex<DaemonState>,
     pub(super) unreadable: AtomicBool,
+    /// Every probe from this count on fails, as `unreadable` does.
+    unreadable_from: AtomicUsize,
     pub(super) version: StdMutex<&'static str>,
     /// The config dir the daemon reports it was installed with.
     installed_for: PathBuf,
@@ -201,8 +203,10 @@ impl ServiceHostAdapter for FakeDaemon {
     async fn probe(
         &self,
     ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError> {
-        self.probes.fetch_add(1, Ordering::SeqCst);
-        if self.unreadable.load(Ordering::SeqCst) {
+        let probe = self.probes.fetch_add(1, Ordering::SeqCst);
+        if self.unreadable.load(Ordering::SeqCst)
+            || probe >= self.unreadable_from.load(Ordering::SeqCst)
+        {
             return Err(crate::core::service::control::ServiceCommandError::mock(
                 "scripted: the daemon's status cannot be read",
             ));
@@ -355,6 +359,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         host: service_host.clone(),
         state: StdMutex::new(setup.daemon),
         unreadable: AtomicBool::new(false),
+        unreadable_from: AtomicUsize::new(usize::MAX),
         version: StdMutex::new(setup.version),
         installed_for: if setup.foreign_daemon {
             PathBuf::from("/another-instance/config")
@@ -487,6 +492,40 @@ impl Graph {
 
     fn host(&self) -> ExecutionHost {
         self.core.status().host
+    }
+
+    /// Probes the daemon as the health check does, and waits until the
+    /// workflow has handled the readiness notification that probe caused. The
+    /// notification reaches it through a forwarding task, so the count it
+    /// answers with is what says it arrived.
+    async fn publish_readiness(&self) {
+        let seen = super::readiness_seen(&self.client).await;
+        self.service.probe().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while super::readiness_seen(&self.client).await == seen {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the probe changed the daemon's readiness");
+    }
+
+    /// Waits until the core sits on `host`, for a change that more than one
+    /// notification may bring.
+    async fn wait_for_host(&self, host: ExecutionHost) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            // The barrier comes first: the host flips mid-command, before the
+            // apply that follows it on the new host.
+            loop {
+                tokio::task::yield_now().await;
+                super::barrier(&self.client).await;
+                if self.host() == host {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("the core follows the service's readiness");
     }
 
     /// Saves service mode the way a user does while the core is stopped.
@@ -802,11 +841,11 @@ async fn a_service_start_without_a_ready_daemon_runs_the_core_locally() {
 
 /// #5443: while service mode falls back to Local, a save applies there and
 /// neither moves the core to Service nor installs or starts the daemon, even
-/// once the daemon is up but not yet seen. Once it is seen `Ready` -- as the
-/// settings page's install publishes it -- an explicit start adopts it
-/// without converging anything.
+/// once the daemon is up but not yet seen. Once it is seen `Ready` -- by the
+/// health check, or as the settings page's install publishes it -- the core
+/// follows it without converging anything.
 #[tokio::test]
-async fn a_save_while_falling_back_stays_local_until_an_explicit_start_adopts_the_service() {
+async fn a_save_while_falling_back_stays_local_until_the_service_is_seen_ready() {
     let mut g = graph(Setup {
         service_mode: true,
         ..Setup::default()
@@ -832,11 +871,10 @@ async fn a_save_while_falling_back_stays_local_until_an_explicit_start_adopts_th
     assert_eq!(g.log(), ["local:reconcile", "local:reconcile"]);
     assert_eq!(g.daemon.converged(), 0);
 
-    assert_eq!(g.service.probe().await.unwrap().phase, ServicePhase::Ready);
-    let report = g.client.reconcile().await.unwrap();
-
-    assert_eq!(report.applied.host, ExecutionHost::Service);
+    g.publish_readiness().await;
+    assert_eq!(g.service.status().phase, ServicePhase::Ready);
     assert_eq!(g.host(), ExecutionHost::Service);
+
     assert_eq!(
         g.log(),
         [
@@ -847,6 +885,185 @@ async fn a_save_while_falling_back_stays_local_until_an_explicit_start_adopts_th
         ]
     );
     assert_eq!(g.daemon.converged(), 0);
+}
+
+/// #5443: a ready service that fails to run the core gives way to the local
+/// host. It is tried again only once its readiness changes, never on a save.
+#[tokio::test]
+async fn a_ready_service_that_fails_to_run_the_core_falls_back_locally() {
+    let mut g = graph(Setup {
+        service_mode: true,
+        daemon: DaemonState::Running,
+        ..Setup::default()
+    })
+    .await;
+    g.service_host.delegate.set_rolls_back(true);
+
+    let report = g.start().await;
+
+    assert_eq!(report.outcome, StartupOutcome::Ready);
+    assert_eq!(
+        report.observation.map(|observation| observation.desired),
+        Some(ExecutionHost::Local)
+    );
+    assert_eq!(g.host(), ExecutionHost::Local);
+    assert_eq!(g.log().last().map(String::as_str), Some("local:reconcile"));
+
+    g.service_host.delegate.set_rolls_back(false);
+    let (id, result) = simple_mutate(
+        &mut g.clash,
+        &g.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+    assert_eq!(
+        settled(&g.client, id).await.outcome,
+        MutationOutcomeKind::Applied
+    );
+    assert_eq!(g.host(), ExecutionHost::Local);
+
+    // The daemon restarts. Both probes land before the workflow reads either,
+    // which the watch may coalesce into one `Ready`; the new ready generation
+    // still marks it as another daemon.
+    *g.daemon.state.lock().unwrap() = DaemonState::Stopped;
+    g.service.probe().await.unwrap();
+    *g.daemon.state.lock().unwrap() = DaemonState::Running;
+    g.service.probe().await.unwrap();
+    g.wait_for_host(ExecutionHost::Service).await;
+    assert_eq!(
+        g.log().last().map(String::as_str),
+        Some("service:reconcile")
+    );
+    assert_eq!(g.daemon.converged(), 0);
+}
+
+/// #5443: a daemon that stops being ready takes the core back to the local
+/// host without starting the daemon again.
+#[tokio::test]
+async fn the_core_returns_locally_when_the_service_stops_being_ready() {
+    let g = graph(Setup {
+        service_mode: true,
+        daemon: DaemonState::Running,
+        ..Setup::default()
+    })
+    .await;
+    assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
+    assert_eq!(g.host(), ExecutionHost::Service);
+
+    *g.daemon.state.lock().unwrap() = DaemonState::Stopped;
+    g.publish_readiness().await;
+    assert_eq!(g.host(), ExecutionHost::Local);
+
+    assert_eq!(g.log().last().map(String::as_str), Some("local:reconcile"));
+    assert_eq!(g.daemon.converged(), 0);
+}
+
+/// #5443: a ready daemon that cannot be adopted is not one that failed to run
+/// the core. Its probe turned unreadable after S1 saw it ready, so nothing
+/// proves what it holds now, and no local core starts on the older evidence.
+#[tokio::test]
+async fn a_daemon_that_turns_unreadable_before_adoption_starts_nothing_locally() {
+    let g = graph(Setup {
+        service_mode: true,
+        daemon: DaemonState::Running,
+        ..Setup::default()
+    })
+    .await;
+    // S1's probe still reads; the adoption's own probe does not.
+    g.daemon
+        .unreadable_from
+        .store(g.daemon.probes.load(Ordering::SeqCst) + 1, Ordering::SeqCst);
+
+    let report = g.start().await;
+
+    assert!(
+        matches!(report.outcome, StartupOutcome::ReadyDegraded { .. }),
+        "{report:?}"
+    );
+    assert_eq!(g.host(), ExecutionHost::Local);
+    assert!(g.log().is_empty(), "{:?}", g.log());
+    assert_eq!(g.daemon.converged(), 0);
+}
+
+/// #5443: a probe that could not tell what the daemon is leaves the core
+/// where it runs. A save then stays on the Service host it is on.
+#[tokio::test]
+async fn an_unreadable_probe_keeps_the_core_on_the_service_host() {
+    let mut g = graph(Setup {
+        service_mode: true,
+        daemon: DaemonState::Running,
+        ..Setup::default()
+    })
+    .await;
+    assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
+    assert_eq!(g.host(), ExecutionHost::Service);
+
+    g.daemon.unreadable.store(true, Ordering::SeqCst);
+    assert_eq!(
+        g.service.probe().await.unwrap().phase,
+        ServicePhase::Unknown
+    );
+    let (id, result) = simple_mutate(
+        &mut g.clash,
+        &g.client,
+        overrides(serde_json::json!({"mode": "global"})),
+        CommandClass::Save,
+    )
+    .await;
+
+    assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
+    assert_eq!(
+        settled(&g.client, id).await.outcome,
+        MutationOutcomeKind::Applied
+    );
+    assert_eq!(g.host(), ExecutionHost::Service);
+    assert_eq!(
+        g.log().last().map(String::as_str),
+        Some("service:reconcile")
+    );
+}
+
+/// #5443: the core crashed on the service host and the start that followed
+/// failed there too, leaving it stopped: the core moves to Local, though the
+/// daemon stays ready.
+#[tokio::test]
+async fn a_failed_explicit_start_on_the_service_host_runs_the_core_locally() {
+    let g = graph(Setup {
+        service_mode: true,
+        daemon: DaemonState::Running,
+        ..Setup::default()
+    })
+    .await;
+    assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
+    assert_eq!(g.host(), ExecutionHost::Service);
+    // The core crashed on its own: no stop was asked for.
+    g.service_host.delegate.set_status(Some(STOPPED), None);
+    g.service_host.delegate.set_rolls_back(true);
+
+    assert!(g.client.reconcile().await.is_err());
+
+    g.wait_for_host(ExecutionHost::Local).await;
+    assert_eq!(g.log().last().map(String::as_str), Some("local:reconcile"));
+    assert_eq!(g.daemon.converged(), 0);
+}
+
+/// Without service mode, a daemon becoming ready moves nothing.
+#[tokio::test]
+async fn a_ready_service_moves_nothing_without_service_mode() {
+    let g = graph(Setup {
+        daemon: DaemonState::Stopped,
+        ..Setup::default()
+    })
+    .await;
+    assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
+
+    *g.daemon.state.lock().unwrap() = DaemonState::Running;
+    g.publish_readiness().await;
+
+    assert_eq!(g.host(), ExecutionHost::Local);
+    assert_eq!(g.log(), ["local:reconcile"]);
 }
 
 /// S9: a transient start failure. Startup spends nothing, so three automatic

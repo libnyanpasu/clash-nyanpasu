@@ -14,7 +14,8 @@
 //!   rather than queued behind a leg that can take a minute.
 //! - **I-R2**: `Degraded` is an honest terminal, never a silent fallback to
 //!   another host. Recovery is an explicit new `ChangeHost` with a fresh
-//!   endpoint.
+//!   endpoint; moving to another host needs the caller's proof that the
+//!   degraded owner holds no runtime (`source_released`).
 //! - **I-R3**: the router never synthesizes lifecycle state. Projections carry
 //!   host-published snapshots verbatim.
 //!
@@ -315,6 +316,9 @@ pub enum CoreActorMessage {
     /// actor proves the source dead before adopting it.
     ChangeHost {
         target: EndpointHandle,
+        /// The caller proved an unreachable source holds no runtime, so the
+        /// move away from a degraded host needs no stop leg.
+        source_released: bool,
         reply: RpcReplyPort<Result<HandoffReport, CoreError>>,
     },
     /// Whether the handoff begun from `generation` has been processed to
@@ -886,8 +890,13 @@ impl Actor for CoreActor {
                 let _ = reply.send(result);
             }
 
-            CoreActorMessage::ChangeHost { target, reply } => {
-                self.change_host(&myself, state, target, reply).await;
+            CoreActorMessage::ChangeHost {
+                target,
+                source_released,
+                reply,
+            } => {
+                self.change_host(&myself, state, target, source_released, reply)
+                    .await;
             }
 
             CoreActorMessage::HandoffSettled { generation, reply } => {
@@ -1021,6 +1030,7 @@ impl CoreActor {
         myself: &ActorRef<CoreActorMessage>,
         state: &mut CoreActorState,
         target: EndpointHandle,
+        source_released: bool,
         reply: RpcReplyPort<Result<HandoffReport, CoreError>>,
     ) {
         if matches!(state.slot, EndpointSlot::ShutDown { .. }) {
@@ -1065,6 +1075,9 @@ impl CoreActor {
             // Same host, fresh endpoint: ownership never moved, so there is no
             // transfer to prove. This is the explicit recovery I-R2 demands.
             EndpointSlot::Degraded { desired, .. } if *desired == target.host() => None,
+            // The caller proved the unreachable owner holds no runtime -- its
+            // daemon is not running -- so there is nothing left to stop.
+            EndpointSlot::Degraded { .. } if source_released => None,
             // Moving to *another* host means claiming a runtime whose current
             // owner cannot be reached — which is precisely the case where
             // nothing can prove it stopped. Two hosts driving one core is
@@ -1444,9 +1457,25 @@ impl CoreClient {
         .await?
     }
 
+    #[cfg(test)]
     pub async fn change_host(&self, target: EndpointHandle) -> Result<HandoffReport, CoreError> {
+        self.change_host_from(target, false).await
+    }
+
+    /// A handoff to `target`. `source_released` says the caller proved a
+    /// degraded owner holds no runtime; against a connected owner it changes
+    /// nothing, since the stop leg still proves the source stopped.
+    pub async fn change_host_from(
+        &self,
+        target: EndpointHandle,
+        source_released: bool,
+    ) -> Result<HandoffReport, CoreError> {
         self.call(
-            |reply| CoreActorMessage::ChangeHost { target, reply },
+            |reply| CoreActorMessage::ChangeHost {
+                target,
+                source_released,
+                reply,
+            },
             self.handoff_budget,
             // Unlike `submit`, a handoff is not id-idempotent: retrying it
             // blind could start a second transfer on top of one still

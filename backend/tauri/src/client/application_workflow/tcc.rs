@@ -347,8 +347,11 @@ impl ApplicationWorkflow {
         // can mean installing or starting the daemon behind the user's back
         // (T10 §1.7 #2, D11). It waits for the owner instead.
         let moves_host = !explicit
-            && effective_host(&inputs.app, self.lifecycle.core.service_status().phase)
-                != baseline.host;
+            && effective_host(
+                &inputs.app,
+                self.lifecycle.service_usable_now(),
+                baseline.host,
+            ) != baseline.host;
         if !baseline.settled || baseline.run_intent == CoreRunIntent::StoppedByUser || moves_host {
             let target = self.committed_target();
             target.waits = next_wait(target.waits, OutcomeClass::Dependency).1;
@@ -715,9 +718,12 @@ impl ApplicationWorkflow {
         let switching_on =
             app.enable_service_mode && !self.lifecycle.application.load().state.enable_service_mode;
         let target_host = if switching_on {
+            // The explicit request tries the service again, whatever it did
+            // last time.
+            self.lifecycle.service_failed = None;
             ExecutionHost::Service
         } else {
-            effective_host(app, self.lifecycle.core.service_status().phase)
+            effective_host(app, self.lifecycle.service_usable_now(), baseline.host)
         };
         let prepared = match self
             .preparation
@@ -856,7 +862,13 @@ impl ApplicationWorkflow {
             .clone()
             .expect("critical baseline was observed");
         if target_host != baseline.host {
-            match self.lifecycle.move_execution_host(target_host).await {
+            // Only switching service mode on may install or start the daemon;
+            // any other save adopts a Service that is already `Ready`.
+            match self
+                .lifecycle
+                .move_execution_host(target_host, switching_on)
+                .await
+            {
                 Ok(report) => {
                     handed_off = report.completed();
                     if handed_off {
@@ -1370,7 +1382,7 @@ impl ApplicationWorkflow {
                 // host the Try switched to would restore the document while
                 // leaving execution where the cancelled mutation put it.
                 if self.lifecycle.core.core_status().host != receipt.host
-                    && let Err(error) = self.lifecycle.move_execution_host(receipt.host).await
+                    && let Err(error) = self.lifecycle.move_execution_host(receipt.host, true).await
                 {
                     // Ownership is where the failure left it, which is not a
                     // fact about who is holding the candidate's ports.

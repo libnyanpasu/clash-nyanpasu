@@ -35,6 +35,14 @@
   },
   "dialog": {
     "panic": "请将此问题汇报到 GitHub Issues。",
+    "migration_failed": {
+      "open_backups": "打开备份目录",
+      "open_log": "打开迁移日志",
+      "exit": "退出",
+      "backup_kept": "迁移前已将配置备份到 %{path}。其中最新的 `migration-*` 目录即本次迁移前的备份。",
+      "recovery": "恢复步骤：退出应用，用备份中的 `config` 目录覆盖配置目录，用 `data/storage.db` 覆盖数据目录中的同名文件，然后安装迁移前使用的版本，或将 migration.log 附在新 issue 中提交。",
+      "not_modified": "备份未能创建，因此配置文件没有被修改。请检查磁盘剩余空间和目录权限后重试，或将 migration.log 附在新 issue 中提交。"
+    },
     "migrate": "检测到旧版本配置文件，是否迁移到新版本?\n警告：此操作会覆盖掉现有配置文件！",
     "custom_app_dir_migrate": "你将要更改应用目录至 %{path}。\n需要将现有数据迁移到新目录吗？",
     "warning": {

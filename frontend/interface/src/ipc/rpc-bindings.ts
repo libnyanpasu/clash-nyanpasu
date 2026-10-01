@@ -271,6 +271,12 @@ export const commands = {
     typedError<null, IpcError>(__RPC_INVOKE('open_app_config_dir')),
   openAppDataDir: () =>
     typedError<null, IpcError>(__RPC_INVOKE('open_app_data_dir')),
+  openBackupsDir: () =>
+    typedError<null, IpcError>(__RPC_INVOKE('open_backups_dir')),
+  createConfigBackup: () =>
+    typedError<ConfigBackupInfo, IpcError>(
+      __RPC_INVOKE('create_config_backup'),
+    ),
   openLogsDir: () => typedError<null, IpcError>(__RPC_INVOKE('open_logs_dir')),
   openWebUrl: (url: string) =>
     typedError<null, IpcError>(__RPC_INVOKE('open_web_url', { url })),
@@ -871,6 +877,11 @@ export type CompositionConfig_Serialize = {
 }
 
 export type CompositionMemberRole = 'base' | 'contributor'
+
+export type ConfigBackupInfo = {
+  name: string
+  path: string
+}
 
 /**  A profile that can produce a complete config and can be selected by current. */
 export type ConfigDefinition =
@@ -4416,6 +4427,16 @@ export const mutations = {
     mutationKey: ['openAppDataDir'],
     mutationFn: (input: Parameters<typeof commands.openAppDataDir>) =>
       commands.openAppDataDir(...input),
+  }),
+  openBackupsDir: mutationOptions({
+    mutationKey: ['openBackupsDir'],
+    mutationFn: (input: Parameters<typeof commands.openBackupsDir>) =>
+      commands.openBackupsDir(...input),
+  }),
+  createConfigBackup: mutationOptions({
+    mutationKey: ['createConfigBackup'],
+    mutationFn: (input: Parameters<typeof commands.createConfigBackup>) =>
+      commands.createConfigBackup(...input),
   }),
   openLogsDir: mutationOptions({
     mutationKey: ['openLogsDir'],

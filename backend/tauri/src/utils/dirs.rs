@@ -184,10 +184,6 @@ pub fn profiles_path() -> Result<PathBuf> {
     Ok(app_config_dir()?.join(PROFILE_YAML))
 }
 
-pub fn storage_path() -> Result<PathBuf> {
-    Ok(app_data_dir()?.join(STORAGE_DB))
-}
-
 pub fn clash_pid_path() -> Result<PathBuf> {
     Ok(app_data_dir()?.join("clash.pid"))
 }

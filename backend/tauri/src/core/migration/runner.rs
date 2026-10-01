@@ -1,11 +1,18 @@
 use super::{
     Ctx, DocumentSpec, MigrationAdvice, MigrationCheckError, MigrationState, MigrationStep,
     ModuleKind, ModuleMigrator, StepCheck, current_version, fs, registry,
-    store::{MigrationStore, ModuleState},
+    store::{MigrationStore, ModuleState, STORE_FILE_NAME},
 };
-use crate::utils::path::PathResolver;
+use crate::{
+    core::backup::{
+        self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
+        StorageSource,
+    },
+    utils::path::PathResolver,
+};
 use anyhow::{Context, bail};
 use semver::Version;
+use time::OffsetDateTime;
 
 #[derive(Debug)]
 pub struct Runner {
@@ -13,6 +20,8 @@ pub struct Runner {
     force: bool,
     ctx: Ctx,
     store: MigrationStore,
+    /// The backup taken before the first step ran; one per runner.
+    backup: Option<BackupInfo>,
 }
 
 impl Default for Runner {
@@ -69,12 +78,19 @@ impl Runner {
         if matches!(advice, MigrationAdvice::Ignored | MigrationAdvice::Done) {
             return Ok(());
         }
+        self.ensure_backup()?;
         self.run_step(step)
     }
 
     pub fn run_pending(&mut self) -> anyhow::Result<()> {
         println!("Running migrations up to version: {}", self.target);
         self.ensure_known_revisions()?;
+        let has_pending = registry::modules()
+            .flat_map(|module| module.steps())
+            .any(|step| self.advice_step(*step) == MigrationAdvice::Pending);
+        if has_pending {
+            self.ensure_backup()?;
+        }
         let mut first_error = None;
 
         for module in registry::modules() {
@@ -114,7 +130,63 @@ impl Runner {
         self.store
             .flush_atomic(&self.ctx.state_path())
             .context("failed to persist successful migration state")?;
+
+        let backups_dir = self.ctx.paths().backups_dir();
+        if let Err(error) =
+            backup::prune_backups(&backups_dir, MIGRATION_PREFIX, KEEP_MIGRATION_BACKUPS)
+        {
+            eprintln!("Failed to prune old migration backups: {error:#}");
+        }
         Ok(())
+    }
+
+    /// Snapshots the files the steps may rewrite before the first one runs.
+    /// A failed backup aborts: nothing is migrated without a way back. A fresh
+    /// install has nothing to snapshot, so it takes no backup.
+    fn ensure_backup(&mut self) -> anyhow::Result<()> {
+        if self.backup.is_some() {
+            return Ok(());
+        }
+        if self.has_nothing_to_protect()? {
+            println!("Nothing to back up; skipping the backup.");
+            return Ok(());
+        }
+        let storage_path = self.ctx.storage_path();
+        let info = backup::create_backup(&BackupRequest {
+            paths: self.ctx.paths(),
+            storage: StorageSource::File(&storage_path),
+            kind: BackupKind::Migration {
+                from: self.store.app.last_succeeded.as_ref(),
+                target: &self.target,
+            },
+            now: OffsetDateTime::now_utc(),
+        })
+        .context("failed to back up the config before migrating")?;
+        println!("Backup created at {}", info.path.display());
+        self.backup = Some(info);
+        Ok(())
+    }
+
+    /// Whether the config dir holds nothing but the migration state file and
+    /// there is no `storage.db`, as on a fresh install.
+    fn has_nothing_to_protect(&self) -> anyhow::Result<bool> {
+        let config_dir = self.ctx.paths().app_config_dir();
+        let entries = match std::fs::read_dir(config_dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to read {}", config_dir.display()));
+            }
+        };
+        for entry in entries {
+            let entry =
+                entry.with_context(|| format!("failed to read {}", config_dir.display()))?;
+            if entry.file_name() != STORE_FILE_NAME {
+                return Ok(false);
+            }
+        }
+        Ok(!self.ctx.storage_path().exists())
     }
 
     fn with_context(target: Version, force: bool, ctx: Ctx) -> anyhow::Result<Self> {
@@ -125,6 +197,7 @@ impl Runner {
             force,
             ctx,
             store,
+            backup: None,
         };
         runner.ensure_baselines()?;
         Ok(runner)
@@ -523,6 +596,7 @@ mod tests {
             force,
             ctx: Ctx::new(config_dir, data_dir),
             store,
+            backup: None,
         }
     }
 
@@ -1486,5 +1560,202 @@ mod tests {
         assert_eq!(after, before);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
         assert!(state.module_state("profiles").stamped);
+    }
+
+    /// A config dir holding a real 1.6.1 install, which every module still has
+    /// to migrate.
+    struct LegacyCase {
+        _temp: tempfile::TempDir,
+        ctx: Ctx,
+    }
+
+    impl LegacyCase {
+        fn new() -> Self {
+            let case = Self::empty();
+            std::fs::write(
+                case.ctx.nyanpasu_config_path(),
+                include_str!("fixtures/v1_6_1/nyanpasu-config.yaml"),
+            )
+            .unwrap();
+            std::fs::write(
+                case.ctx.profiles_path(),
+                include_str!("fixtures/v1_6_1/profiles.yaml"),
+            )
+            .unwrap();
+            case
+        }
+
+        fn empty() -> Self {
+            let temp = tempfile::tempdir().unwrap();
+            let config_dir = temp.path().join("config");
+            let data_dir = temp.path().join("data");
+            std::fs::create_dir_all(&config_dir).unwrap();
+            std::fs::create_dir_all(&data_dir).unwrap();
+            Self {
+                ctx: Ctx::new(config_dir, data_dir),
+                _temp: temp,
+            }
+        }
+
+        fn runner(&self) -> Runner {
+            Runner::with_context(TEST_VERSION.clone(), false, self.ctx.clone()).unwrap()
+        }
+
+        fn backups_dir(&self) -> std::path::PathBuf {
+            self.ctx.paths().backups_dir()
+        }
+
+        fn backups(&self, prefix: &str) -> Vec<String> {
+            let mut names: Vec<_> = std::fs::read_dir(self.backups_dir())
+                .map(|entries| {
+                    entries
+                        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                        .filter(|name| name.starts_with(prefix))
+                        .collect()
+                })
+                .unwrap_or_default();
+            names.sort();
+            names
+        }
+
+        fn seed_backups(&self, names: &[&str]) {
+            for name in names {
+                std::fs::create_dir_all(self.backups_dir().join(name)).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn a_run_with_nothing_pending_takes_no_backup() {
+        let case = LegacyCase::new();
+        case.runner().run_pending().unwrap();
+        assert_eq!(case.backups("migration-").len(), 1);
+
+        let mut runner = case.runner();
+        runner.run_pending().unwrap();
+
+        assert!(runner.backup.is_none());
+        assert_eq!(case.backups("migration-").len(), 1);
+    }
+
+    #[test]
+    fn a_fresh_install_runs_its_pending_steps_without_a_backup() {
+        let case = LegacyCase::empty();
+
+        let mut runner = case.runner();
+        runner.run_pending().unwrap();
+
+        // typed_config baselines at revision 0 on an empty dir, so its steps
+        // are pending, but there is nothing to protect.
+        assert!(runner.backup.is_none());
+        assert!(!case.backups_dir().exists());
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert_eq!(
+            state.task_state("typed_config/split_legacy_config"),
+            Some(MigrationState::Completed)
+        );
+    }
+
+    #[test]
+    fn pending_steps_are_preceded_by_exactly_one_backup_of_the_old_files() {
+        let case = LegacyCase::new();
+
+        let mut runner = case.runner();
+        runner.run_pending().unwrap();
+
+        let backups = case.backups("migration-");
+        assert_eq!(backups.len(), 1, "{backups:?}");
+        assert!(backups[0].ends_with("-unknown-to-2.0.0"), "{backups:?}");
+        assert_eq!(runner.backup.as_ref().unwrap().name, backups[0]);
+        let config = case.backups_dir().join(&backups[0]).join("config");
+        assert_eq!(
+            std::fs::read_to_string(config.join("nyanpasu-config.yaml")).unwrap(),
+            include_str!("fixtures/v1_6_1/nyanpasu-config.yaml")
+        );
+        assert_eq!(
+            std::fs::read_to_string(config.join("profiles.yaml")).unwrap(),
+            include_str!("fixtures/v1_6_1/profiles.yaml")
+        );
+
+        // The migrated files differ, so the backup is not a view of them.
+        assert_ne!(
+            std::fs::read_to_string(case.ctx.profiles_path()).unwrap(),
+            include_str!("fixtures/v1_6_1/profiles.yaml")
+        );
+    }
+
+    #[test]
+    fn a_failed_step_keeps_the_backup_and_prunes_nothing() {
+        let case = LegacyCase::new();
+        case.seed_backups(&[
+            "migration-20250101T000000Z-1.0.0-to-1.1.0",
+            "migration-20250201T000000Z-1.1.0-to-1.2.0",
+            "migration-20250301T000000Z-1.2.0-to-1.3.0",
+        ]);
+        let mut runner = case.runner();
+        let step = TestStep {
+            id: "example/failing",
+            module: "example",
+            revision: 1,
+            fail: true,
+        };
+
+        assert!(runner.run_migration(&step).is_err());
+        // The backup is taken once per runner.
+        assert!(runner.run_migration(&step).is_err());
+
+        assert_eq!(case.backups("migration-").len(), 4);
+        assert!(runner.backup.is_some());
+    }
+
+    #[test]
+    fn a_successful_run_keeps_the_newest_three_migration_backups_only() {
+        let case = LegacyCase::new();
+        case.seed_backups(&[
+            "migration-20250101T000000Z-1.0.0-to-1.1.0",
+            "migration-20250201T000000Z-1.1.0-to-1.2.0",
+            "migration-20250301T000000Z-1.2.0-to-1.3.0",
+            "manual-20240101T000000Z",
+            "manual-20240201T000000Z",
+        ]);
+
+        let mut runner = case.runner();
+        runner.run_pending().unwrap();
+
+        let migration = case.backups("migration-");
+        assert_eq!(migration.len(), 3, "{migration:?}");
+        assert_eq!(migration[0], "migration-20250201T000000Z-1.1.0-to-1.2.0");
+        assert!(migration.contains(&runner.backup.as_ref().unwrap().name));
+        assert_eq!(case.backups("manual-").len(), 2);
+    }
+
+    #[test]
+    fn a_failed_backup_runs_no_step() {
+        let case = LegacyCase::new();
+        // A file where the backups dir belongs, so none can be created.
+        std::fs::write(case.backups_dir(), "").unwrap();
+        let mut runner = case.runner();
+
+        let error = runner.run_pending().unwrap_err();
+
+        assert!(
+            error.downcast_ref::<backup::BackupError>().is_some(),
+            "{error:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(case.ctx.nyanpasu_config_path()).unwrap(),
+            include_str!("fixtures/v1_6_1/nyanpasu-config.yaml")
+        );
+        assert_eq!(
+            std::fs::read_to_string(case.ctx.profiles_path()).unwrap(),
+            include_str!("fixtures/v1_6_1/profiles.yaml")
+        );
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert!(
+            registry::modules()
+                .flat_map(|module| module.steps())
+                .all(|step| state.task_state(step.id()).is_none())
+        );
+        assert_eq!(state.app.last_succeeded, None);
     }
 }

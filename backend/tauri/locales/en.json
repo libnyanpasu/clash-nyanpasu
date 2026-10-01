@@ -35,6 +35,14 @@
   },
   "dialog": {
     "panic": "Please report this issue to Github issue tracker.",
+    "migration_failed": {
+      "open_backups": "Open backups folder",
+      "open_log": "Open migration log",
+      "exit": "Exit",
+      "backup_kept": "Your config was backed up to %{path} before the migration. The newest `migration-*` folder there is the backup taken before this run.",
+      "recovery": "To recover: exit the app, copy the backup's `config` folder over your config directory and `data/storage.db` over the one in your data directory, then install the version you used before, or submit migration.log with a new issue.",
+      "not_modified": "The backup could not be created, so your config files were not modified. Check the free disk space and folder permissions, then try again, or submit migration.log with a new issue."
+    },
     "migrate": "Old version config file detected. Migrate to new version or not?\nWARNING: This will override your current config if exists",
     "custom_app_dir_migrate": "You will set custom app dir to %{path}\nShall we move the current app dir to the new one?",
     "warning": {

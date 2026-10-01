@@ -137,6 +137,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let traffic_store = open_traffic_store(&paths);
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
+    // Opened after the in-process migrations above, which open the same file.
+    let storage = crate::core::storage::Storage::try_new(&paths.storage_path())
+        .context("Failed to open the storage")?;
+    app.manage(storage.clone());
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         http_frontend: Some(debug_http_frontend(&app_handle)?),
@@ -151,6 +155,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
         },
         paths,
+        storage,
         runtime_paths: runtime_paths.clone(),
         ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
         core_v2,

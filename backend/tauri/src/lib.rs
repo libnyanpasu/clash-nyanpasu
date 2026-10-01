@@ -25,7 +25,10 @@ mod utils;
 mod widget;
 mod window;
 
-use crate::utils::{init, resolve};
+use crate::{
+    core::backup::BACKUP_FAILED_EXIT_CODE,
+    utils::{init, resolve},
+};
 use anyhow::Context;
 use specta_typescript::Typescript;
 use tauri::Manager;
@@ -162,14 +165,14 @@ pub fn run() -> std::io::Result<()> {
         .is_ok_and(|instance| instance.is_some())
         && let Err(e) = init::run_pending_migrations()
     {
-        // Try to open migration log files
-        if let Ok(data_dir) = crate::utils::dirs::app_data_dir() {
-            let _ = crate::utils::open::that(data_dir.join("migration.log"));
+        let backup_failed = e
+            .downcast_ref::<init::MigrationChildFailed>()
+            .is_some_and(|failed| failed.status.code() == Some(BACKUP_FAILED_EXIT_CODE));
+        let message = format!("Failed to finish migration event: {e}");
+        match utils::path::PathResolver::from_env(None) {
+            Ok(paths) => utils::dialog::migration_failed_dialog(&message, &paths, backup_failed),
+            Err(_) => utils::dialog::panic_dialog(&message),
         }
-
-        utils::dialog::panic_dialog(&format!(
-            "Failed to finish migration event: {e}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.",
-        ));
         std::process::exit(1);
     }
 

@@ -1,4 +1,4 @@
-use crate::{log_err, utils::dirs};
+use crate::log_err;
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use snafu::{ResultExt as _, Snafu};
@@ -89,6 +89,39 @@ impl Storage {
         Ok(Self {
             inner: Arc::new(inner),
         })
+    }
+
+    /// Writes a consistent snapshot of the store into a new database at `dest`.
+    ///
+    /// Everything is read in one read transaction, so the snapshot is
+    /// consistent even while writers are active, and it does not copy the
+    /// file, which redb keeps locked on Windows.
+    pub fn export_to(&self, dest: &std::path::Path) -> Result<()> {
+        let read_txn = self
+            .inner
+            .instance
+            .begin_read()
+            .context(BeginTransactionSnafu)?;
+        let source = read_txn
+            .open_table(NYANPASU_TABLE)
+            .context(OpenTableSnafu)?;
+
+        let snapshot = StorageInner::create_and_init_database(dest)?;
+        let write_txn = snapshot.begin_write().context(BeginTransactionSnafu)?;
+        {
+            let mut table = write_txn
+                .open_table(NYANPASU_TABLE)
+                .context(OpenTableSnafu)?;
+            for entry in source.iter().context(ListItemsSnafu)? {
+                let (key, value) = entry.context(ListItemsSnafu)?;
+                table
+                    .insert(key.value(), value.value())
+                    .context(WriteItemSnafu {
+                        key: String::from_utf8_lossy(key.value()),
+                    })?;
+            }
+        }
+        write_txn.commit().context(CommitTransactionSnafu)
     }
 }
 
@@ -311,14 +344,6 @@ pub fn register_web_storage_listener(app_handle: &tauri::AppHandle) {
             }
         });
     });
-}
-
-pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> anyhow::Result<()> {
-    let storage_path =
-        anyhow::Context::context(dirs::storage_path(), "failed to get storage path")?;
-    let storage = Storage::try_new(&storage_path)?;
-    app.manage(storage);
-    Ok(())
 }
 
 #[cfg(test)]

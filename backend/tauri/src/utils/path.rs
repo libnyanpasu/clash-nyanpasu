@@ -152,6 +152,11 @@ impl PathResolver {
         self.data_dir.join("jobs.redb")
     }
 
+    /// Config backups, one directory per backup.
+    pub fn backups_dir(&self) -> PathBuf {
+        self.data_dir.join("backups")
+    }
+
     /// `clash.pid` runtime file.
     pub fn clash_pid_path(&self) -> PathBuf {
         self.data_dir.join("clash.pid")
@@ -231,6 +236,7 @@ mod tests {
     fn data_derived_paths_join_data_dir() {
         let r = resolver();
         assert_eq!(r.storage_path(), Path::new("/data").join(dirs::STORAGE_DB));
+        assert_eq!(r.backups_dir(), Path::new("/data").join("backups"));
         assert_eq!(r.clash_pid_path(), Path::new("/data").join("clash.pid"));
         assert_eq!(r.app_logs_dir(), Path::new("/data").join("logs"));
         assert_eq!(r.cache_dir(), Path::new("/data").join("cache"));

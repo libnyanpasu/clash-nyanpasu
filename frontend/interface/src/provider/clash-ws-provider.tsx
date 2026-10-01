@@ -179,6 +179,9 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
           return
         }
         current = next
+        // Hidden to the tray, nothing is on screen: keep following the
+        // sequence but skip the re-render, and catch up when shown again.
+        if (document.visibilityState === 'hidden') return
         setSnapshot(next)
       })
       .then((stop) => {
@@ -198,8 +201,16 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
 
     const stopResync = rpc.listenResync(resync)
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'hidden' && current) {
+        setSnapshot(current)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
     return () => {
       stopResync()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       disposed = true
       unlisten?.()
     }

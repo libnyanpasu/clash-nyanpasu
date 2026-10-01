@@ -15,7 +15,6 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { getShikiSingleton } from '@/utils/shiki'
 import {
   rpc,
   unwrapResult,
@@ -178,6 +177,62 @@ const ServiceUninstallButton = () => {
     </Button>
   )
 }
+// Rendered in the open prompt only: highlighting loads shiki and its WASM
+// engine.
+const ServicePromptCode = ({ code }: { code: string }) => {
+  const [highlighted, setHighlighted] = useState<{
+    code: string
+    html: string
+  }>()
+
+  useEffect(() => {
+    let cancelled = false
+    import('@/utils/shiki')
+      .then(({ getShikiSingleton }) => getShikiSingleton())
+      .then((shiki) => {
+        if (cancelled) return
+        setHighlighted({
+          code,
+          html: shiki.codeToHtml(code, {
+            lang: 'shell',
+            themes: {
+              dark: 'nord',
+              light: 'min-light',
+            },
+          }),
+        })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [code])
+
+  const className = cn(
+    'overflow-clip rounded select-text',
+    '[&>pre]:overflow-auto [&>pre]:p-2',
+    '[&>pre]:bg-surface-variant! dark:[&>pre]:bg-black!',
+  )
+
+  if (highlighted?.code !== code) {
+    return (
+      <div className={className}>
+        <pre>
+          <code>{code}</code>
+        </pre>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={className}
+      dangerouslySetInnerHTML={{
+        __html: highlighted.html,
+      }}
+    />
+  )
+}
+
 // {
 //   operation: 'uninstall' | 'install' | 'start' | 'stop' | null
 // }
@@ -190,8 +245,6 @@ const ServicePromptButton = () => {
 
   const { data: coreDir } = useCoreDir()
 
-  const [codes, setCodes] = useState<string | null>(null)
-
   const userOperationCommands = useMemo(() => {
     if (systemService?.status === 'not_installed' && serviceInstallPrompt) {
       return `cd "${coreDir}"\n${serviceInstallPrompt}`
@@ -202,23 +255,6 @@ const ServicePromptButton = () => {
     }
     return ''
   }, [systemService?.status, serviceInstallPrompt, coreDir])
-
-  useEffect(() => {
-    const handleGenerateCodes = async () => {
-      const shiki = await getShikiSingleton()
-      const code = shiki.codeToHtml(userOperationCommands, {
-        lang: 'shell',
-        themes: {
-          dark: 'nord',
-          light: 'min-light',
-        },
-      })
-
-      setCodes(code)
-    }
-
-    handleGenerateCodes()
-  }, [userOperationCommands])
 
   const handleCopyToClipboard = useLockFn(async () => {
     if (!userOperationCommands) {
@@ -249,18 +285,7 @@ const ServicePromptButton = () => {
               {m.settings_system_proxy_system_service_ctrl_manual_operation_prompt()}
             </p>
 
-            {codes && (
-              <div
-                className={cn(
-                  'overflow-clip rounded select-text',
-                  '[&>pre]:overflow-auto [&>pre]:p-2',
-                  '[&>pre]:bg-surface-variant! dark:[&>pre]:bg-black!',
-                )}
-                dangerouslySetInnerHTML={{
-                  __html: codes,
-                }}
-              />
-            )}
+            <ServicePromptCode code={userOperationCommands} />
           </CardContent>
 
           <CardFooter className="gap-2">

@@ -37,6 +37,9 @@ export const useClashCores = () => {
 
   const query = useQuery({
     queryKey: coreQueryKey,
+    // Reading a version runs that core's binary; versions change only through
+    // the update and switch mutations, which refetch them.
+    staleTime: Infinity,
     queryFn: async () => {
       return await Object.keys(ClashCores).reduce(
         async (acc, key) => {
@@ -134,6 +137,11 @@ export const useClashCores = () => {
     return unwrapResult(await invokeQuery(queries.inspectUpdater(updaterId)))
   }
 
+  // An update replaces the binary after `updateCore` resolves, so its caller
+  // refetches once the updater is done.
+  const refetchVersions = () =>
+    queryClient.invalidateQueries({ queryKey: coreQueryKey })
+
   return {
     query,
     updateCore,
@@ -141,5 +149,18 @@ export const useClashCores = () => {
     upsert,
     restartSidecar,
     fetchRemote,
+    refetchVersions,
   }
+}
+
+/** The installed version of one core, for views that show only that core. */
+export const useClashCoreVersion = (core?: ClashCore_Serialize | null) => {
+  const options = queries.getCoreVersion(core as ClashCore_Deserialize)
+  return useQuery({
+    queryKey: options.queryKey,
+    queryFn: async () => unwrapResult(await invokeQuery(options)) ?? 'N/A',
+    enabled: !!core,
+    // Shares the invalidation of `useClashCores`, whose key prefixes this one.
+    staleTime: Infinity,
+  })
 }

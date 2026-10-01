@@ -112,10 +112,11 @@ async function resolveUpdater() {
 
   if (!shortHash) {
     const gitResult = await new Deno.Command("git", {
-      args: ["rev-parse", "--short", "pre-release"],
+      args: ["rev-parse", "pre-release"],
       stdout: "piped",
     }).output();
-    shortHash = new TextDecoder().decode(gitResult.stdout).trim();
+    // Must match the fixed-length hash prepare-nightly.ts signs into the build.
+    shortHash = new TextDecoder().decode(gitResult.stdout).trim().slice(0, 7);
   }
 
   consola.info(`latest pre-release short hash: ${shortHash}`);

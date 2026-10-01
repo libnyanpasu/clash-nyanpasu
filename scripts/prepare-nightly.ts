@@ -48,10 +48,15 @@ async function main() {
 
   consola.debug("Get current git short hash");
   const gitResult = await new Deno.Command("git", {
-    args: ["rev-parse", "--short", "HEAD"],
+    args: ["rev-parse", "HEAD"],
     stdout: "piped",
   }).output();
-  const GIT_SHORT_HASH = new TextDecoder().decode(gitResult.stdout).trim();
+  // `--short` scales with the clone's object count, so shallow build jobs and
+  // the full-history updater job disagree; the signed version must match both.
+  const GIT_SHORT_HASH = new TextDecoder()
+    .decode(gitResult.stdout)
+    .trim()
+    .slice(0, 7);
   consola.debug(`Current git short hash: ${GIT_SHORT_HASH}`);
 
   const version = `${tauriConf.version}-alpha+${GIT_SHORT_HASH}`;

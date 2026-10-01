@@ -1,7 +1,9 @@
 import FilterListRounded from '~icons/material-symbols/filter-list-rounded'
 import {
   lazy,
+  memo,
   Suspense,
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -35,6 +37,7 @@ import {
   type Filter,
   type Level,
   type LogError,
+  type LogRow,
   type LogSource,
 } from '@nyanpasu/interface'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -64,6 +67,34 @@ function errorMessage(error: LogError) {
   }
 }
 const DateTimeField = lazy(() => import('@/components/ui/date-time-field'))
+
+// A row formats its time once when it mounts, not on every list render.
+const FileLogRecord = memo(function FileLogRecord({
+  row,
+  search,
+  onInspect,
+}: {
+  row: LogRow
+  search: string
+  onInspect: () => void
+}) {
+  const time = row.timestamp
+    ? new Date(Number(row.timestamp)).toLocaleString()
+    : undefined
+  return (
+    <LogRecord
+      time={time ?? '—'}
+      timeTitle={time}
+      level={row.level}
+      target={row.target}
+      message={row.message}
+      raw={row.raw}
+      search={search}
+      incomplete={row.unparsed || row.truncated}
+      onInspect={onInspect}
+    />
+  )
+})
 
 export default function FileLogs({ source }: { source: LogSource }) {
   const { level } = Route.useSearch()
@@ -336,6 +367,7 @@ function FileRows({
   // Rows mount in a deferred render, so a remount for another file or
   // filter commits at once instead of rendering the previous rows first.
   const showRows = useDeferredValue(true, false)
+  const stopFollowing = useCallback(() => setFollowing(false), [setFollowing])
   const lastId = useRef<string | undefined>(undefined)
   const anchor = useRef<{
     id: string
@@ -430,7 +462,6 @@ function FileRows({
           virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index]
             if (!row) return null
-            const date = row.timestamp ? new Date(Number(row.timestamp)) : null
             return (
               <div
                 key={row.id}
@@ -442,16 +473,10 @@ function FileRows({
                   transform: `translateY(${item.start}px)`,
                 }}
               >
-                <LogRecord
-                  time={date?.toLocaleString() ?? '—'}
-                  timeTitle={date?.toLocaleString()}
-                  level={row.level}
-                  target={row.target}
-                  message={row.message}
-                  raw={row.raw}
+                <FileLogRecord
+                  row={row}
                   search={search}
-                  incomplete={row.unparsed || row.truncated}
-                  onInspect={() => setFollowing(false)}
+                  onInspect={stopFollowing}
                 />
               </div>
             )

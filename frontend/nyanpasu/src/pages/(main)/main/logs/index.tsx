@@ -1,5 +1,11 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -72,6 +78,7 @@ const Viewer = ({
   // instead: the page commits at once, and React renders and measures the
   // rows right after.
   const showRows = useDeferredValue(true, false)
+  const stopFollowing = useCallback(() => setFollowing(false), [setFollowing])
   useEffect(() => {
     // ScrollArea attaches its viewport ref after this child's layout effects.
     rowVirtualizer.measure()
@@ -113,9 +120,9 @@ const Viewer = ({
                   time={log.time || ''}
                   level={log.type}
                   message={log.payload || ''}
-                  raw={JSON.stringify(log, null, 2)}
+                  raw={log}
                   search={deferredSearch}
-                  onInspect={() => setFollowing(false)}
+                  onInspect={stopFollowing}
                 />
               </div>
             )

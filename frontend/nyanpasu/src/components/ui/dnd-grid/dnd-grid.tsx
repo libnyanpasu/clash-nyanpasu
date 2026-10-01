@@ -2,8 +2,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import {
   Fragment,
   useCallback,
-  useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -69,28 +69,25 @@ export function DndGrid<T extends string = string>({
   const constraintsMapRef = useRef<Record<string, GridItemConstraints>>({})
 
   const { containerRef, layout, computedSize, getItemRect, snapToGrid } =
-    useGridLayout(minCellSize, gap, size)
-
-  const onSizeChangeRef = useRef(onSizeChange)
-  onSizeChangeRef.current = onSizeChange
-
-  useEffect(() => {
-    if (computedSize) {
-      onSizeChangeRef.current?.(computedSize, constraintsMapRef.current)
-    }
-  }, [computedSize])
+    useGridLayout(minCellSize, gap, size, (newSize) =>
+      onSizeChange?.(newSize, constraintsMapRef.current),
+    )
 
   const [activeItem, setActiveItem] = useState<DndGridItemType<T> | null>(null)
   const [previewItem, setPreviewItem] = useState<DndGridItemType<T> | null>(
     null,
   )
 
-  const [displayItems, setDisplayItems] = useState<DndGridItemType<T>[]>(items)
+  // The items as they were when a drag or resize started; otherwise the grid
+  // shows `items` as given.
+  const [frozenItems, setFrozenItems] = useState<DndGridItemType<T>[] | null>(
+    null,
+  )
+  const displayItems = frozenItems ?? items
   const [dropInfoMap, setDropInfoMap] = useState<
     Record<string, { left: number; top: number }>
   >({})
 
-  const isDragging = useRef(false)
   const lastValidSnapRef = useRef<DndGridItemType<T> | null>(null)
 
   const resizeStateRef = useRef<{
@@ -107,17 +104,15 @@ export function DndGrid<T extends string = string>({
     null,
   )
 
-  useEffect(() => {
-    if (!isDragging.current && !resizeStateRef.current) {
-      setDisplayItems(items)
-    }
-  }, [items])
-
-  const effectiveDisplayItems = resizePreview
-    ? displayItems.map((item) =>
-        item.id === resizePreview.id ? resizePreview : item,
-      )
-    : displayItems
+  const effectiveDisplayItems = useMemo(
+    () =>
+      resizePreview
+        ? displayItems.map((item) =>
+            item.id === resizePreview.id ? resizePreview : item,
+          )
+        : displayItems,
+    [displayItems, resizePreview],
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -133,11 +128,10 @@ export function DndGrid<T extends string = string>({
         return
       }
 
-      isDragging.current = true
       lastValidSnapRef.current = item
       setActiveItem(item)
       setPreviewItem(item)
-      setDisplayItems(items)
+      setFrozenItems(items)
     },
     [items],
   )
@@ -179,12 +173,11 @@ export function DndGrid<T extends string = string>({
       const newItems = items.map((i) => (i.id === active.id ? finalItem : i))
       const id = String(active.id)
 
-      isDragging.current = false
       lastValidSnapRef.current = null
 
       setActiveItem(null)
       setPreviewItem(null)
-      setDisplayItems(newItems)
+      setFrozenItems(null)
       setDropInfoMap((prev) => ({
         ...prev,
         [id]: { left: dropLeft, top: dropTop },
@@ -195,12 +188,11 @@ export function DndGrid<T extends string = string>({
   )
 
   const handleDragCancel = useCallback(() => {
-    isDragging.current = false
     lastValidSnapRef.current = null
     setActiveItem(null)
     setPreviewItem(null)
-    setDisplayItems(items)
-  }, [items])
+    setFrozenItems(null)
+  }, [])
 
   const onResizeStart = useCallback(
     (id: string, handle: ResizeHandle, startX: number, startY: number) => {
@@ -218,6 +210,7 @@ export function DndGrid<T extends string = string>({
       }
 
       setResizingItemId(id)
+      setFrozenItems(items)
     },
     [items, disabled],
   )
@@ -259,10 +252,10 @@ export function DndGrid<T extends string = string>({
     resizePreviewRef.current = null
     setResizingItemId(null)
     setResizePreview(null)
+    setFrozenItems(null)
 
     if (preview) {
       const newItems = items.map((i) => (i.id === preview.id ? preview : i))
-      setDisplayItems(newItems)
       onLayoutChange?.(newItems)
     }
   }, [items, onLayoutChange])
@@ -311,24 +304,42 @@ export function DndGrid<T extends string = string>({
   const overlayRect = activeItem ? getItemRect(activeItem) : null
   const placeholderRect = previewItem ? getItemRect(previewItem) : null
 
+  const activeItemId = activeItem?.id ?? null
+  // Every item reads this context; a stable value keeps a re-render of the
+  // grid's parent from re-rendering every item.
+  const contextValue = useMemo(
+    () => ({
+      displayItems: effectiveDisplayItems,
+      getItemRect,
+      dropInfoMap,
+      activeItemId,
+      resizingItemId,
+      disabled,
+      sourceOnly,
+      dragIdPrefix,
+      isOverlay: false,
+      constraintsMapRef,
+      onResizeStart,
+      onResizeMove,
+      onResizeEnd,
+    }),
+    [
+      effectiveDisplayItems,
+      getItemRect,
+      dropInfoMap,
+      activeItemId,
+      resizingItemId,
+      disabled,
+      sourceOnly,
+      dragIdPrefix,
+      onResizeStart,
+      onResizeMove,
+      onResizeEnd,
+    ],
+  )
+
   const gridContent = (
-    <DndGridProvider
-      value={{
-        displayItems: effectiveDisplayItems,
-        getItemRect,
-        dropInfoMap,
-        activeItemId: activeItem?.id ?? null,
-        resizingItemId,
-        disabled,
-        sourceOnly,
-        dragIdPrefix,
-        isOverlay: false,
-        constraintsMapRef,
-        onResizeStart,
-        onResizeMove,
-        onResizeEnd,
-      }}
-    >
+    <DndGridProvider value={contextValue}>
       <div
         ref={containerRef}
         className={cn('relative', className)}
@@ -358,9 +369,11 @@ export function DndGrid<T extends string = string>({
           )}
         </AnimatePresence>
 
-        {effectiveDisplayItems.map((item) => (
-          <Fragment key={item.id}>{children(item)}</Fragment>
-        ))}
+        {/* Items render once the cells are measured, not first in a 1x1 grid. */}
+        {computedSize &&
+          effectiveDisplayItems.map((item) => (
+            <Fragment key={item.id}>{children(item)}</Fragment>
+          ))}
       </div>
 
       {!isManaged && (

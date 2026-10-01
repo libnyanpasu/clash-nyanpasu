@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { memo, ReactNode } from 'react'
 import type { DndGridItemType } from '@/components/ui/dnd-grid'
 import { CoreShortcutsWidget, ProxyShortcutsWidget } from './widget-shortcut'
 import {
@@ -24,16 +24,17 @@ export type WidgetComponentProps = {
   onCloseClick?: (id: string) => void
 }
 
+// Memoized: the grid renders every widget whenever the dashboard re-renders.
 export const RENDER_MAP: Record<
   WidgetId,
   (props: WidgetComponentProps) => ReactNode
 > = {
-  [WidgetId.TrafficDown]: TrafficDownWidget,
-  [WidgetId.TrafficUp]: TrafficUpWidget,
-  [WidgetId.Connections]: ConnectionsWidget,
-  [WidgetId.Memory]: MemoryWidget,
-  [WidgetId.ProxyShortcuts]: ProxyShortcutsWidget,
-  [WidgetId.CoreShortcuts]: CoreShortcutsWidget,
+  [WidgetId.TrafficDown]: memo(TrafficDownWidget),
+  [WidgetId.TrafficUp]: memo(TrafficUpWidget),
+  [WidgetId.Connections]: memo(ConnectionsWidget),
+  [WidgetId.Memory]: memo(MemoryWidget),
+  [WidgetId.ProxyShortcuts]: memo(ProxyShortcutsWidget),
+  [WidgetId.CoreShortcuts]: memo(CoreShortcutsWidget),
 }
 
 /** Default layout, designed for a 12-column grid. */

@@ -16,6 +16,7 @@ import { useSortable } from '@dnd-kit/react/sortable'
 import {
   scopedTransformsOf,
   useProfile,
+  useProfileMutations,
   type ProfileDefinition_Deserialize,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
@@ -197,7 +198,7 @@ export default function ChianEditorCard({
 }: {
   profile: ConfigProfile
 }) {
-  const { replaceDefinition } = useProfile()
+  const { replaceDefinition } = useProfileMutations()
 
   // The edited config item's own scoped transforms (File or Composition).
   const transforms = useMemo(() => scopedTransformsOf(profile), [profile])

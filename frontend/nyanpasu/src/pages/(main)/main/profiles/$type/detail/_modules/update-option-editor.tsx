@@ -20,7 +20,7 @@ import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   getRemoteSource,
-  useProfile,
+  useProfileMutations,
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
@@ -47,7 +47,7 @@ export default function UpdateOptionEditor({
 }: ComponentProps<typeof ModalTrigger> & {
   profile: ProfileItem_Serialize
 }) {
-  const { patchRemoteOptions } = useProfile()
+  const { patchRemoteOptions } = useProfileMutations()
 
   const [open, setOpen] = useState(false)
 

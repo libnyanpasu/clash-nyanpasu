@@ -2,7 +2,14 @@ import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-
 import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
 import { isEqual } from 'es-toolkit'
 import { AnimatePresence, motion } from 'motion/react'
-import { ComponentProps, RefObject, useEffect, useRef, useState } from 'react'
+import {
+  ComponentProps,
+  memo,
+  RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -64,7 +71,7 @@ const sourceLabelOf = (profile: ProfileItem_Serialize) => {
     : m.profile_source_local()
 }
 
-const GridViewProfile = ({
+const GridViewProfile = memo(function GridViewProfile({
   profile,
   index,
   isGlobal,
@@ -72,7 +79,7 @@ const GridViewProfile = ({
   profile: ProfileItem_Serialize
   index: number
   isGlobal: boolean
-}) => {
+}) {
   const { type } = IndexRoute.useParams()
 
   const activeProfile = useActiveProfile(profile)
@@ -193,7 +200,7 @@ const GridViewProfile = ({
       </RegisterContextMenuContent>
     </RegisterContextMenu>
   )
-}
+})
 
 const EmptyList = () => {
   return (

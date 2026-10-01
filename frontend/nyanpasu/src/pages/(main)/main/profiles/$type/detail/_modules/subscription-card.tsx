@@ -19,7 +19,7 @@ import { message } from '@/utils/notification'
 import {
   getRemoteSource,
   isTransformItem,
-  useProfile,
+  useProfileMutations,
   useProfileSyncStatus,
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
@@ -32,7 +32,7 @@ export const SubscriptionCard = ({
 }: {
   profile: ProfileItem_Serialize
 }) => {
-  const { update } = useProfile()
+  const { update } = useProfileMutations()
   const syncStatus = useProfileSyncStatus(profile.uid)
 
   const remote = getRemoteSource(profile)

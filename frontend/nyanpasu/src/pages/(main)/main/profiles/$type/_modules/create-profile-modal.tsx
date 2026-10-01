@@ -15,7 +15,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  useProfile,
+  useProfileMutations,
   type NewProfileRequest_Deserialize,
   type ProfileSource_Deserialize,
 } from '@nyanpasu/interface'
@@ -62,7 +62,7 @@ export default function CreateProfileModal({
   kind: CreateKind
   source: CreateSource
 }) {
-  const { create, patchMetadata } = useProfile()
+  const { create, patchMetadata } = useProfileMutations()
 
   const isConfig = (CONFIG_KINDS as readonly CreateKind[]).includes(kind)
 

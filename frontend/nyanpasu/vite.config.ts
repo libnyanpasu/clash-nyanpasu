@@ -1,11 +1,9 @@
 import path from 'node:path'
-import { NodePackageImporter } from 'sass-embedded'
 import AutoImport from 'unplugin-auto-import/vite'
 import IconsResolver from 'unplugin-icons/resolver'
 import Icons from 'unplugin-icons/vite'
 import { defineConfig, UserConfig } from 'vite'
 import { createHtmlPlugin } from 'vite-plugin-html'
-import sassDts from 'vite-plugin-sass-dts'
 import svgr from 'vite-plugin-svgr'
 import { paraglideVitePlugin } from '@inlang/paraglide-js'
 import tailwindPlugin from '@tailwindcss/vite'
@@ -24,30 +22,6 @@ export default defineConfig(({ command, mode }) => {
     clearScreen: false,
     server: {
       port: 3000,
-      watch: {
-        ignored: ['**/*.scss.d.ts'],
-      },
-    },
-    css: {
-      preprocessorOptions: {
-        scss: {
-          api: 'modern-compiler',
-          // @ts-expect-error fucking vite why embedded their own sass types definition????
-          importer: [
-            new NodePackageImporter(),
-            // TODO: fix this when vite-sass-dts support it, or fix it when we use `@alias`
-            // (...args: string[]) => {
-            //   if (args[0] !== '@/styles') {
-            //     return
-            //   }
-
-            //   return {
-            //     file: `${path.resolve(__dirname, './src/assets/styles')}`,
-            //   }
-            // },
-          ],
-        },
-      },
     },
     plugins: [
       tailwindPlugin(),
@@ -97,7 +71,6 @@ export default defineConfig(({ command, mode }) => {
       Icons({
         compiler: 'jsx', // or 'solid'
       }),
-      sassDts({ esmExport: true }),
       paraglideVitePlugin({
         project: './project.inlang',
         outdir: './src/paraglide',
@@ -180,7 +153,5 @@ export default defineConfig(({ command, mode }) => {
     },
     html: {},
   } satisfies UserConfig
-  // fucking vite why embedded their own sass types definition????
-  // oxlint-disable-next-line typescript/no-explicit-any
-  return config as any as UserConfig
+  return config
 })

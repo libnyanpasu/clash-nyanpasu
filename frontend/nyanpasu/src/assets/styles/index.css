@@ -1,6 +1,3 @@
-@use './fonts.scss';
-@use './theme.scss';
-
 body {
   margin: 0;
   overflow: hidden;
@@ -49,10 +46,6 @@ body {
   :root {
     background-color: rgb(18 18 18 / 100%);
   }
-}
-
-.user-none {
-  user-select: none;
 }
 
 .bg-inherit-allow-fallback {

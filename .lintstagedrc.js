@@ -44,7 +44,7 @@ export default {
     // do not submit untracked files
     // () => 'git add -u',
   ],
-  '*.{html,sass,scss,less}': ['prettier --write', 'stylelint --fix'],
+  '*.{css,html,less}': ['prettier --write', 'stylelint --fix'],
   'package.json': ['prettier --write'],
   '*.{md,json,jsonc,json5,yaml,yml,toml}': (filenames) => {
     // exclude frontend/nyanpasu/messages directory

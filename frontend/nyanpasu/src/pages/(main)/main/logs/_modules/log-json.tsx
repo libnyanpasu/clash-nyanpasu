@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import styles from './log-json.module.scss'
 
 export default function LogJson({ raw }: { raw: string }) {
   const code = useMemo(() => {
@@ -31,7 +30,8 @@ export default function LogJson({ raw }: { raw: string }) {
 
   return (
     <div
-      className={`${styles.viewer} bg-surface-variant/30 text-on-surface mt-2 rounded-xl p-3 text-xs`}
+      data-slot="log-json"
+      className="bg-surface-variant/30 text-on-surface mt-2 rounded-xl p-3 text-xs [&_.shiki]:!bg-transparent dark:[&_.shiki]:!text-[var(--shiki-dark)] [&_.shiki_span]:!bg-transparent dark:[&_.shiki_span]:!text-[var(--shiki-dark)] [&_pre]:m-0 [&_pre]:font-mono [&_pre]:leading-relaxed [&_pre]:wrap-anywhere [&_pre]:whitespace-pre-wrap"
     >
       {highlighted?.code === code ? (
         <div dangerouslySetInnerHTML={{ __html: highlighted.html }} />

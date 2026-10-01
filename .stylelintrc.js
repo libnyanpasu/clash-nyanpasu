@@ -1,10 +1,7 @@
-import PostCssScss from 'postcss-scss'
-
 export default {
   root: true,
   defaultSeverity: 'error',
   plugins: [
-    'stylelint-scss',
     'stylelint-order',
     'stylelint-declaration-block-no-ignored-properties',
   ],
@@ -61,36 +58,4 @@ export default {
       },
     ],
   },
-  overrides: [
-    {
-      files: ['**/*.scss', '*.scss'],
-      customSyntax: PostCssScss,
-      rules: {
-        'at-rule-no-unknown': null,
-        'import-notation': null,
-        'scss/at-rule-no-unknown': [
-          true,
-          {
-            ignoreAtRules: [
-              'tailwind',
-              'unocss',
-              'layer',
-              'apply',
-              'variants',
-              'responsive',
-              'screen',
-              'config',
-              'plugin',
-              'theme',
-              'variant',
-              'custom-variant',
-              'utility',
-              'source',
-              'reference',
-            ],
-          },
-        ],
-      },
-    },
-  ],
 }

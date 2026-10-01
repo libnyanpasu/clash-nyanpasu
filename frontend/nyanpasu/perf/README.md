@@ -31,6 +31,8 @@ least twice, and read changes smaller than a frame with suspicion.
 | `VITE_PERF_GROUPS`       | `30`       | Proxy groups in the fixture                                       |
 | `VITE_PERF_NODES`        | `1500`     | Nodes in the fixture; every group lists all of them               |
 | `VITE_PERF_SWITCHES`     | `12`       | Measured actions, including 2 warm-ups                            |
+| `VITE_PERF_LOGS`         | `1024`     | Logs in the logs fixture (`200`, one page, for a log file)        |
+| `VITE_PERF_SOURCE`       | `core`     | Logs page source: `core` history or the `app` log file            |
 | `VITE_PERF_PRINT_GAPS`   | unset      | `1` prints every frame gap of every action                        |
 | `VITE_PERF_PROFILE`      | unset      | A path to write a `.cpuprofile` of 6 more actions (Chromium only) |
 | `VITE_PERF_TRACE_REFLOW` | unset      | `1` logs every layout read of 2 ms or more with its call site     |

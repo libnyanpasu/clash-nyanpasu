@@ -1,3 +1,4 @@
+import { useDeferredValue } from 'react'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -104,6 +105,11 @@ const FieldFilterSettings = () => {
 }
 
 function RouteComponent() {
+  // Route changes render synchronously and this page is long, so the sections
+  // below the first screen mount in a deferred render right after the page
+  // has committed.
+  const showAll = useDeferredValue(true, false)
+
   return (
     <>
       <SettingsTitle>{m.settings_clash_settings_title()}</SettingsTitle>
@@ -111,13 +117,17 @@ function RouteComponent() {
       <div className="space-y-4 px-4 pb-4">
         <PatchSettings />
 
-        <PortSettings />
+        {showAll && (
+          <>
+            <PortSettings />
 
-        <ControlChannelSettings />
+            <ControlChannelSettings />
 
-        <CoreManagerSettings />
+            <CoreManagerSettings />
 
-        <FieldFilterSettings />
+            <FieldFilterSettings />
+          </>
+        )}
       </div>
     </>
   )

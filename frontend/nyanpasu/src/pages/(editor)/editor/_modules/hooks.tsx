@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   isConfigItem,
   isRemoteItem,
@@ -19,6 +19,11 @@ export function useCurrentProfile(uid: string): {
   data: CurrentProfileData | undefined
 } & Omit<ReturnType<typeof useProfile>['query'], 'data'> {
   const profiles = useProfile()
+
+  // The model path must stay stable across profiles refetches: a new path
+  // makes @monaco-editor/react create a fresh model from the saved content and
+  // swap it in, dropping the user's unsaved edits from the screen.
+  const [modelId] = useState(() => nanoid())
 
   const currentProfile = useMemo(() => {
     const item = profiles.query.data?.items?.find((item) => item.uid === uid)
@@ -51,10 +56,10 @@ export function useCurrentProfile(uid: string): {
         language,
         extension,
         readOnly,
-        virtualPath: `${nanoid()}${schemaType ? `.${schemaType}` : ''}.${language}`,
+        virtualPath: `${modelId}${schemaType ? `.${schemaType}` : ''}.${language}`,
       }
     }
-  }, [profiles.query.data, uid])
+  }, [profiles.query.data, uid, modelId])
 
   return {
     ...profiles.query,

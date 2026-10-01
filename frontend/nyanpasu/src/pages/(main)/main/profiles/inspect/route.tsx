@@ -283,6 +283,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
                   <YamlViewer
                     code={content.data.yaml}
                     label={m.inspect_yaml()}
+                    cacheKey={[snapshot.snapshot_id, selected.id]}
                   />
                 ) : content.data.diff ? (
                   <>

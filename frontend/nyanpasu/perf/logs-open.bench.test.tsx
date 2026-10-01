@@ -2,6 +2,7 @@ import { Profiler } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
+import type { ClashLog, LogRow } from '@nyanpasu/interface'
 import '@/assets/styles/tailwind.css'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -42,11 +43,38 @@ declare module 'vitest/browser' {
   }
 }
 
+// The logs the page shows. An arriving log replaces the array, as the
+// websocket history and the file log hook do.
+const store = vi.hoisted(() => ({
+  core: null as unknown as {
+    data: ClashLog[]
+    isLoading: boolean
+    error: null
+    clean: { mutateAsync: () => Promise<void> }
+  },
+  file: null as unknown as { rows: LogRow[] } & Record<string, unknown>,
+  listeners: new Set<() => void>(),
+  subscribe(listener: () => void) {
+    store.listeners.add(listener)
+    return () => store.listeners.delete(listener)
+  },
+  push(log: ClashLog | LogRow) {
+    if ('payload' in log) {
+      const { data } = store.core
+      store.core = { ...store.core, data: [...data.slice(1), log] }
+    } else {
+      const { rows } = store.file
+      store.file = { ...store.file, rows: [...rows.slice(1), log] }
+    }
+    for (const listener of store.listeners) listener()
+  },
+}))
+
 vi.mock('@nyanpasu/interface', async (importOriginal) => {
-  const { useEffect, useState } = await import('react')
+  const { useEffect, useState, useSyncExternalStore } = await import('react')
   const { createFileLogsFixture, createLogsFixture } =
     await import('./fixtures/logs')
-  const fileLogs = {
+  store.file = {
     rows: createFileLogsFixture(Number(import.meta.env.VITE_PERF_LOGS ?? 200)),
     files: [],
     page: null,
@@ -59,10 +87,8 @@ vi.mock('@nyanpasu/interface', async (importOriginal) => {
     latest: () => {},
     retry: () => {},
   }
-  const fileLogsLoading = { ...fileLogs, rows: [], loading: true }
-  // A stable object, as the websocket history context hands out between
-  // unrelated events.
-  const clashLogs = {
+  const fileLogsLoading = { ...store.file, rows: [], loading: true }
+  store.core = {
     data: createLogsFixture(Number(import.meta.env.VITE_PERF_LOGS ?? 1024)),
     isLoading: false,
     error: null,
@@ -71,16 +97,17 @@ vi.mock('@nyanpasu/interface', async (importOriginal) => {
 
   return {
     ...(await importOriginal<object>()),
-    useClashLogs: () => clashLogs,
+    useClashLogs: () => useSyncExternalStore(store.subscribe, () => store.core),
     // Like the real hook, a mounted viewer starts empty and receives its
     // first page from IPC a moment later.
     useFileLogs: () => {
-      const [view, setView] = useState<typeof fileLogs>(fileLogsLoading)
+      const [loaded, setLoaded] = useState(false)
+      const file = useSyncExternalStore(store.subscribe, () => store.file)
       useEffect(() => {
-        const timer = setTimeout(() => setView(fileLogs), 30)
+        const timer = setTimeout(() => setLoaded(true), 30)
         return () => clearTimeout(timer)
       }, [])
-      return view
+      return loaded ? file : fileLogsLoading
     },
   }
 })
@@ -231,6 +258,70 @@ test(`open the ${SOURCE} logs page with ${LOGS} logs`, async ({
     logs: LOGS,
     throttle: THROTTLE,
     renderedRows: rowCount(container),
+    ...summarize(samples.slice(WARMUP)),
+  }
+
+  console.log(`PERF_REPORT ${JSON.stringify(report)}`)
+})
+
+// With the logs page open and following, logs keep arriving; reports what
+// each one costs.
+test(`receive ${SOURCE} logs with ${LOGS} logs on the page`, async ({
+  onTestFinished,
+}) => {
+  const router = createLogsRouter()
+  await router.navigate({
+    to: '/main/logs' as never,
+    search: { source: SOURCE } as never,
+  })
+
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  root.render(<RouterProvider router={router as never} />)
+  onTestFinished(() => root.unmount())
+
+  await expect
+    .poll(() => rowCount(container), { timeout: 20_000 })
+    .toBeGreaterThan(3)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  if (THROTTLE > 1) {
+    await commands.throttleCpu(THROTTLE)
+  }
+
+  const { createFileLogsFixture, createLogsFixture } =
+    await import('./fixtures/logs')
+  const incoming = (
+    SOURCE === 'core'
+      ? createLogsFixture(LOGS + SWITCHES)
+      : createFileLogsFixture(LOGS + SWITCHES)
+  ).slice(LOGS)
+  const samples = []
+
+  for (const log of incoming) {
+    samples.push(await measureFrames(() => store.push(log), 250))
+  }
+
+  const last = incoming.at(-1)!
+  const text = 'payload' in last ? last.payload : last.message
+  // The page still follows the newest log.
+  await expect
+    .poll(() =>
+      container
+        .querySelector(
+          `[data-slot="logs-virtual-item"][data-index="${LOGS - 1}"]`,
+        )
+        ?.textContent?.includes(text.slice(0, 40)),
+    )
+    .toBe(true)
+
+  const report = {
+    browser: server.browser,
+    source: `${SOURCE}-steady`,
+    logs: LOGS,
+    throttle: THROTTLE,
+    events: SWITCHES - WARMUP,
     ...summarize(samples.slice(WARMUP)),
   }
 

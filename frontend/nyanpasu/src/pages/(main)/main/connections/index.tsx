@@ -57,7 +57,13 @@ function RouteComponent() {
   const scrollArea = (
     <ScrollArea
       key={status}
-      className="min-h-0 flex-1"
+      className={cn(
+        'min-h-0 flex-1',
+        // Start the vertical scrollbar below the sticky h-9 table header;
+        // Radix pins it to the top with an inline style.
+        '[&>[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:top-9!',
+        '[&>[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:h-auto',
+      )}
       scrollbars="both"
       type="hover"
     >
